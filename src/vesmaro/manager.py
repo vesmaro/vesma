@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from vesmaro.secrets_detector import SecretFinding
 
 from vesmaro import __version__
+from vesmaro.canon_validate import (
+    CanonViolationError,
+    validate_canon_record,
+)
 from vesmaro.config import Settings
 from vesmaro.danger_detectors import DetectionResult, detect
 from vesmaro.embeddings import EmbeddingProvider, create_embedding_provider
@@ -745,6 +749,76 @@ class MemoryManager:
         detection = MemoryManager._publish_gate_detection(memory, path=path, content=content)
         return detection.error is None and not detection.positive
 
+    def _canon_gate(self, memory: Memory, *, create_path: bool) -> None:
+        """vesmaro-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
+        write-path canon enforcement gate, shared by ``add`` (create) and
+        ``update``.
+
+        Scope rule FIRST (canon §9 transitional — HIGHEST priority): a
+        record WITHOUT ``metadata.canon`` is OUT OF CANON SCOPE — no
+        validation, no warning, no rejection, in BOTH modes (pre-canon and
+        imported/benchmark rows are legacy, not violations). Validation
+        applies ONLY to records that carry the envelope — at ``add`` that
+        means the trusted ``save_checkpoint`` path (which mints it) or an
+        internal caller that carries one deliberately.
+
+        Modes (``mnemos.canon_mode``):
+
+        * ``"warn"`` (default) — every violation is logged as ONE
+          machine-parseable warning line (``canon_violation:`` + memory id
+          + code + rule + detail, canon §9 telemetry format) and the
+          violation dicts are attached to the stored record as
+          ``metadata["canon_warnings"]``. The write ALWAYS succeeds.
+        * ``"strict"`` — violations REJECT the write on the CREATE path
+          ONLY (:class:`CanonViolationError`, a ``ValueError``). Update
+          paths are warn-only (canon §10 "new records only" / ADR-0003
+          obligation 6: the update of a pre-canon record must never fail
+          retroactively).
+        * ``"off"`` — no-op.
+
+        The validator itself (:func:`vesmaro.canon_validate.validate_canon_record`)
+        never raises; a crash inside it must not take the write down — the
+        gate degrades to a non-fatal log line (same discipline as the
+        secrets scanner and the embed upsert).
+        """
+        mode = self.settings.mnemos.canon_mode
+        if mode == "off":
+            return
+        try:
+            violations = validate_canon_record(
+                content=memory.content,
+                title=memory.title,
+                metadata=memory.metadata,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(
+                "canon validation failed (non-fatal): id=%s error=%s",
+                memory.id[:8],
+                exc,
+            )
+            return
+        if not violations:
+            return
+
+        for v in violations:
+            # Machine-parseable telemetry line (canon §9): the raw material
+            # of the future strict-default decision. id + code + rule +
+            # detail, one line per violation.
+            logger.warning(
+                "canon_violation: id=%s create_path=%s code=%s rule=%s detail=%s",
+                memory.id[:8],
+                create_path,
+                v.code,
+                v.rule,
+                v.detail,
+            )
+
+        records = [v.as_dict() for v in violations]
+        memory.metadata = {**memory.metadata, "canon_warnings": records}
+
+        if mode == "strict" and create_path:
+            raise CanonViolationError(violations)
+
     def add(
         self,
         data: MemoryCreate,
@@ -921,6 +995,8 @@ class MemoryManager:
 
         # Persist to SQLite (trusted_rewrite_provenance gates the C10
         # rewrite-column derivation — see the add docstring).
+        self._canon_gate(memory, create_path=True)
+
         self.sqlite.save(memory, trusted_rewrite_provenance=trusted_rewrite_provenance)
 
         # ADR-0019 Phase A ingest audit — one structured verdict per
@@ -1187,6 +1263,11 @@ class MemoryManager:
             memory.clean_content = None
 
         memory.updated_at = datetime.now(UTC)
+        # Canon gate, update leg — WARN-ONLY even in strict mode: canon §10
+        # ("new records only") / ADR-0003 obligation 6 — the update of a
+        # pre-canon record must never fail retroactively, and a record that
+        # carries an envelope is corrected forward, never refused on edit.
+        self._canon_gate(memory, create_path=False)
         self.sqlite.save(memory)
 
         # N1 demotion hygiene: the formerly-published projection's embed

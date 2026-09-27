@@ -120,6 +120,25 @@ class MnemosConfig(BaseModel):
     # mistyped config value surfaces on the first save, not silently.
     # Canonical env override: VESMARO_MNEMOS__CHECKPOINT_LANGUAGE=ru.
     checkpoint_language: Literal["ru", "en"] = "ru"
+    # vesmaro-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
+    # write-path canon enforcement level. The validator
+    # (``vesmaro.canon_validate``) runs on every record that CARRIES
+    # ``metadata.canon`` at the write path (manager add/update incl. the
+    # trusted ``save_checkpoint`` path); a record without the envelope is
+    # OUT OF CANON SCOPE (canon §9 transitional rule — pre-canon and
+    # imported rows are legacy, not violations) and is never validated.
+    #   * "warn" (default) — violations are logged as machine-parseable
+    #     warnings (code + memory id) and attached to the stored row as
+    #     ``metadata["canon_warnings"]``; the write ALWAYS succeeds.
+    #   * "strict" — violations REJECT the write on the CREATE path only
+    #     (``manager.add``). Update paths never fail retroactively (canon
+    #     §10 "new records only"): a legacy row's update must succeed even
+    #     in strict mode.
+    #   * "off" — no canon validation at all.
+    # Strict stays default-off until vesmaro 6.0 (canon §9 freeze: the
+    # warn telemetry decides the strict default, owner directive).
+    # Canonical env override: VESMARO_MNEMOS__CANON_MODE=strict.
+    canon_mode: Literal["off", "warn", "strict"] = "warn"
 
 
 class LoggingConfig(BaseModel):
