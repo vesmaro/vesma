@@ -480,6 +480,78 @@ class TestDepth2Killers:
         )
 
 
+# ── Backfill gate binding (#415 review, P1/P2) ──────────────────────────────
+
+
+class TestBackfillGates:
+    def test_starved_fused_tags_query_serves_no_untagged_rows(
+        self, walk_manager: MemoryManager
+    ) -> None:
+        """P2 killer (#415 review, I1 worst-link at the composition
+        boundary): a tags-filtered query with a PARTIALLY filled fused
+        block — 2 tagged rows fuse, 6 untagged candidates sit in the
+        surplus — must never backfill the page with untagged rows: the
+        fused loop's tags filter binds identically on the backfill leg.
+        The query's gates bind to the composition rule, never the
+        other way round.
+
+        Killer mutant: drop the backfill's tags filter — 6 untagged
+        rows land on the page and this goes RED.
+        """
+        for i in range(2):
+            walk_manager.add(
+                MemoryCreate(
+                    content=f"wanted tagged row number {i} about omega psi chi",
+                    tags=[f"project:{PROJECT}", f"agent:{AGENT}", "wanted", "mnemos:test"],
+                    source=MemorySource.MCP,
+                    status=MemoryStatus.PUBLISHED,
+                ),
+                project=PROJECT,
+                agent=AGENT,
+            )
+        for i in range(6):
+            _add(walk_manager, f"untagged corpus row number {i:02d} about omega psi chi")
+        _fts_only(walk_manager)
+
+        results = walk_manager.search("omega psi chi", tags=["wanted"], limit=8)
+        untagged = [r for r in results if "wanted" not in r.memory.tags]
+        assert results, "fixture: the tagged fused rows must surface"
+        assert untagged == [], (
+            f"P2/I1 violated: {len(untagged)} untagged rows backfilled a "
+            "tags-filtered page — the backfill skipped the fused loop's tags filter"
+        )
+        assert all("wanted" in r.memory.tags for r in results)
+
+    def test_starved_fused_walk_on_returns_empty_page_no_crash(
+        self, walk_manager: MemoryManager
+    ) -> None:
+        """P1 crash-pin (#415 review): an EMPTY fused block on the
+        flag-ON path (the tags filter drops every candidate at
+        ``limit >= 3`` — ``fused_surplus`` holds ALL candidates, the
+        fused block holds none) must return an empty page GRACEFULLY:
+        the composition rule is a no-op on an empty graph, never an
+        UnboundLocalError that takes down the whole search. The
+        flag-OFF path already returns an empty page for the same query
+        (the two surfaces must agree).
+
+        Killer mutant: initialise ``seen`` only inside the walk branch
+        — the search raises UnboundLocalError and this goes RED.
+        """
+        _add(walk_manager, "omega psi chi note one")
+        _add(walk_manager, "omega psi chi note two")
+        _fts_only(walk_manager)
+
+        page = walk_manager.search("omega psi chi", tags=["wanted"], limit=5)
+        assert page == [], (
+            "the starved fused block must yield an empty page, not rows the tags filter rejected"
+        )
+        # The flag-OFF surface agrees (the empty page is the shared
+        # contract, not a flag-ON quirk).
+        walk_manager.settings.mnemos.graph_walk = False
+        page_off = walk_manager.search("omega psi chi", tags=["wanted"], limit=5)
+        assert page_off == []
+
+
 # ── graph_epoch — per-project meta-counter (committee condition 2) ──────────
 
 
