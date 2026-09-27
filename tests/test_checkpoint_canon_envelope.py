@@ -44,13 +44,15 @@ from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import (
     CANON_SCHEMA_VERSION,
-    Memory,
     CHECKPOINT_FIELDS,
     CHECKPOINT_PLACEHOLDER_LINES,
     CHECKPOINT_PLACEHOLDERS,
     CHECKPOINT_SECTION_TITLES,
     CHECKPOINT_STAMP_KEYS,
+    Memory,
     MemoryCreate,
+    MemorySource,
+    MemoryStatus,
     MemoryUpdate,
     checkpoint_canon_envelope,
 )
@@ -421,6 +423,7 @@ def test_placeholder_goals_cannot_manufacture_hints_even_if_leaked() -> None:
         assert len(_goal_tokens(a) & _goal_tokens(b)) < 2, (a, b)
 
 
+# ---------------------------------------------------------------------------
 # 6. W2-S3 — dedup guards (store card vesmaro-canon-w2-s3-dedup-guards)
 # ---------------------------------------------------------------------------
 
@@ -583,3 +586,218 @@ def test_dedup_key_excludes_per_call_language_param(mgr: MemoryManager) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 7. W2-S4 — envelope-aware reads (store card vesmaro-canon-w2-s4-renderers)
+# ---------------------------------------------------------------------------
+
+
+def _import_goal_title():
+    from vesmaro.awareness import checkpoint_goal_title
+
+    return checkpoint_goal_title
+
+
+def test_canon_record_goal_via_the_frozen_section_map(mgr: MemoryManager) -> None:
+    """S4-1 envelope-present path: the Goals body of a canon record is
+    located by the frozen H2 map and returned as the title."""
+    checkpoint_goal_title = _import_goal_title()
+    memory, _dup = mgr.save_checkpoint(
+        {"goals": "land the dedup guards", "in_progress": "wip"},
+        project="canonproj",
+        language="ru",
+    )
+    assert memory.metadata["canon"]["language"] == "ru"
+    assert checkpoint_goal_title(memory) == "land the dedup guards"
+
+
+def test_canon_record_placeholder_goals_yield_none_in_both_languages(
+    mgr: MemoryManager,
+) -> None:
+    """S4-1: the per-language placeholder from the ENVELOPE's declared
+    language is template, not a goal — for ru AND en records."""
+    checkpoint_goal_title = _import_goal_title()
+    ru, _dup_ru = mgr.save_checkpoint({"context": "c"}, project="canonproj", language="ru")
+    en, _dup_en = mgr.save_checkpoint({"context": "c"}, project="canonproj", language="en")
+    assert checkpoint_goal_title(ru) is None
+    assert checkpoint_goal_title(en) is None
+
+
+def test_canon_record_uses_the_per_language_placeholder_not_the_full_set(
+    mgr: MemoryManager,
+) -> None:
+    """S4-1 language-awareness: a canon ru record whose Goals body
+    carries the EN placeholder line as user prose still yields it as a
+    goal — the OTHER language's placeholder is not a template for this
+    record (canon §6: one language per record). The legacy branch (full
+    literal set) would have wrongly skipped it."""
+    checkpoint_goal_title = _import_goal_title()
+    from vesmaro.models import Memory as _Memory
+    from vesmaro.models import MemorySource
+
+    en_goals_placeholder = CHECKPOINT_PLACEHOLDERS[("goals", "en")]
+    row = _Memory(
+        content="\n".join(
+            [
+                "# Session checkpoint — probe",
+                f"## {CHECKPOINT_SECTION_TITLES['goals']}",
+                en_goals_placeholder,
+                f"## {CHECKPOINT_SECTION_TITLES['completed']}",
+                CHECKPOINT_PLACEHOLDERS[("completed", "ru")],
+            ]
+        ),
+        tags=["project:canonproj", "agent:seed", "mnemos:checkpoint"],
+        source=MemorySource.MCP,
+        status=MemoryStatus.PUBLISHED,
+        metadata={
+            "checkpoint_agent": "seed",
+            "checkpoint_session": "sess-seed",
+            "checkpoint_dedup_key": "probe-key",
+            "canon": {
+                "schema_version": CANON_SCHEMA_VERSION,
+                "type": "checkpoint",
+                "status": "active",
+                "language": "ru",
+                "session_ref": "sess-seed",
+            },
+        },
+        project="canonproj",
+        agent="seed",
+    )
+    mgr.sqlite.save(row)
+    restamped = mgr.sqlite.get(row.id)
+    assert restamped is not None
+    # Envelope-aware branch: the foreign placeholder is USER PROSE here.
+    assert checkpoint_goal_title(restamped) == en_goals_placeholder
+
+
+def test_pre_canon_row_keeps_the_first_line_heuristic(mgr: MemoryManager) -> None:
+    """S4-1 pre-canon path (canon §9 transitional): a legacy checkpoint
+    row WITHOUT ``metadata.canon`` still resolves through the regex
+    fallback — materializer-shaped rows keep working unchanged."""
+    checkpoint_goal_title = _import_goal_title()
+    from vesmaro.models import Memory as _Memory
+    from vesmaro.models import MemorySource
+
+    legacy = _Memory(
+        content="# Session checkpoint — old render\n## Goals\npre-canon goal line\n",
+        tags=["project:canonproj", "agent:legacy", "mnemos:checkpoint"],
+        source=MemorySource.MCP,
+        status=MemoryStatus.PUBLISHED,
+        metadata={"checkpoint_agent": "legacy"},  # no envelope
+        project="canonproj",
+        agent="legacy",
+    )
+    assert "canon" not in legacy.metadata
+    assert checkpoint_goal_title(legacy) == "pre-canon goal line"
+
+    # And an empty-goals legacy row (no Goals header at all) stays None.
+    legacy_empty = _Memory(
+        content="# Session checkpoint — old render\n",
+        tags=["project:canonproj", "agent:legacy", "mnemos:checkpoint"],
+        source=MemorySource.MCP,
+        status=MemoryStatus.PUBLISHED,
+        metadata={"checkpoint_agent": "legacy"},
+        project="canonproj",
+        agent="legacy",
+    )
+    assert checkpoint_goal_title(legacy_empty) is None
+
+
+def test_malformed_envelope_falls_back_to_the_legacy_heuristic(mgr: MemoryManager) -> None:
+    """S4-1 defensive pin: a record with a checkpoint_agent stamp whose
+    envelope carries an out-of-enum language reads through the legacy
+    heuristic — never a wrong-language placeholder pass."""
+    checkpoint_goal_title = _import_goal_title()
+    from vesmaro.models import Memory as _Memory
+    from vesmaro.models import MemorySource
+
+    row = _Memory(
+        content=(
+            "# Session checkpoint — x\n## Goals\nheuristic goal\n"
+            "## Completed\n(nothing completed yet.)\n"
+        ),
+        tags=["project:canonproj", "agent:x", "mnemos:checkpoint"],
+        source=MemorySource.MCP,
+        status=MemoryStatus.PUBLISHED,
+        metadata={
+            "checkpoint_agent": "x",
+            "canon": {"schema_version": "1", "type": "checkpoint", "language": "de"},
+        },
+        project="canonproj",
+        agent="x",
+    )
+    assert checkpoint_goal_title(row) == "heuristic goal"
+
+
+def test_canon_goal_title_is_bounded(mgr: MemoryManager) -> None:
+    """The envelope-aware branch keeps the GOAL_TITLE_MAX_CHARS bound."""
+    checkpoint_goal_title = _import_goal_title()
+    from vesmaro.awareness import GOAL_TITLE_MAX_CHARS
+
+    memory, _dup = mgr.save_checkpoint(
+        {"goals": "g" * (GOAL_TITLE_MAX_CHARS + 50)}, project="canonproj"
+    )
+    title = checkpoint_goal_title(memory)
+    assert title is not None and len(title) == GOAL_TITLE_MAX_CHARS
+
+
+def _plant_legacy_goal_checkpoint(
+    mgr: MemoryManager, *, agent: str, session: str
+) -> None:
+    """Plant a PRE-CANON checkpoint row (stamped, no envelope) the way
+    the strata materializer does — via the trusted internal add."""
+    from vesmaro.models import MemoryCreate
+
+    body = "\n".join(
+        [
+            "# Session checkpoint — legacy",
+            f"## {CHECKPOINT_SECTION_TITLES['goals']}",
+            "legacy real goal",
+            f"## {CHECKPOINT_SECTION_TITLES['completed']}",
+            CHECKPOINT_PLACEHOLDERS[("completed", "ru")],
+        ]
+    )
+    mgr.add(
+        MemoryCreate(
+            content=body,
+            tags=["project:canonproj", f"agent:{agent}", "mnemos:checkpoint"],
+            source=MemorySource.MCP,
+            metadata={"checkpoint_agent": agent, "checkpoint_session": session},
+        ),
+        project="canonproj",
+        agent=agent,
+        trusted_checkpoint_stamps=True,
+    )
+
+
+def test_delta_surfaces_never_leak_placeholders(mgr: MemoryManager) -> None:
+    """S4-2 audit, pinned as a test: project_delta surfaces goal titles
+    ONLY through ``checkpoint_goal_title`` (placeholder-guarded) and the
+    render embeds slot facts + that guarded title — no body text, so no
+    placeholder line can leak into any awareness surface. Envelope-present
+    and pre-canon neighbors both audited."""
+    from vesmaro.awareness import project_delta, render_awareness_section
+
+    # Envelope-present neighbor: placeholder-only Goals → no goal title.
+    mgr.save_checkpoint(
+        {"completed": "c"}, project="canonproj", agent="neighbor-a", language="ru"
+    )
+    # Pre-canon neighbor with a real goal (heuristic path must keep working).
+    _plant_legacy_goal_checkpoint(mgr, agent="neighbor-b", session="sess-b")
+
+    delta = project_delta(
+        mgr, project="canonproj", since=_hour_ago_iso(), exclude_agent="caller"
+    )
+    titles = {a["agent"]: a.get("goal_title") for a in delta["agents"]}
+    assert titles["neighbor-a"] is None  # placeholder never surfaced
+    assert titles["neighbor-b"] == "legacy real goal"
+
+    rendered = render_awareness_section(delta, [])
+    for line in CHECKPOINT_PLACEHOLDER_LINES:
+        assert line not in rendered
+    assert "legacy real goal" in rendered
+
+
+def _hour_ago_iso() -> str:
+    from datetime import UTC, datetime, timedelta
+
+    return (datetime.now(UTC) - timedelta(hours=1)).isoformat()
