@@ -372,3 +372,5 @@ Standing rules: before the first recorded run, implementation-parameter registra
 ## 9. Run ledger (§6.6, append-only)
 
 *(empty — no run recorded; the window is open)*
+
+**2026-09-27 — RUN — arms A0/C/B/A — `f1-task-scope-9c08f24268dc` — recorded by explicit `--record`.** Corpus fingerprint `debd849ab02ad02ef8581573e44f6855be5fbb06501acbdad5ead7d6872ae112` (generator f1-mixed-2, seed 20260920, 960 rows); ledger state `f02ee67a2304…` (rejects=0, replacements=0, analyzed 192/48/24 — L-neg split 16 trap + 8 mixed, §8/15); budget 2048, top-5, lanes off, type-boost on, frozen clock 2026-09-20T12:00:00+00:00; code 6bc6265fbb70… (mnemos 4.3.0, python 3.12.3). Artifacts: `benchmarks/experiments/f1_task_scope/runs/f1-task-scope-9c08f24268dc/` (gitignored by design; committed deliberately by the report wave when citing). Invariants V1-V6 verified in the manifest; no statistics at run time — single-look analysis follows collection (§6.6).

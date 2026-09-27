@@ -1,0 +1,203 @@
+{
+  "runner_version": "f1-task-scope-runner-3",
+  "experiment": "f1-task-scope",
+  "spec": "docs/experiments/f1-task-scope.md \u00a71.3, \u00a72.8, \u00a73, \u00a74, \u00a76.5, \u00a79",
+  "arms": {
+    "A0": {
+      "mechanism": "context-free retrieval (baseline)",
+      "task_class_call": "assemble_context(query=q)",
+      "cross_class_call": "assemble_context(query=q) \u2014 the honest switch (filter/prefix dropped)"
+    },
+    "C": {
+      "mechanism": "honest tag-filter (pre-\u04240 client-side pattern)",
+      "task_class_call": "mgr.search(query=q, tags=[\"task:<slug>\"]) + standard block formatter",
+      "cross_class_call": "assemble_context(query=q) \u2014 the honest switch (filter/prefix dropped)"
+    },
+    "B": {
+      "mechanism": "emulated task context (query-prefix, zero \u04240)",
+      "task_class_call": "assemble_context(query=f\"{TASK_DISPLAY[slug]}: {q}\")",
+      "cross_class_call": "assemble_context(query=q) \u2014 the honest switch (filter/prefix dropped)"
+    },
+    "A": {
+      "mechanism": "task-scoped composition (\u04240 flags on)",
+      "task_class_call": "assemble_context(query=q, task=<slug>, lens=CODE)",
+      "cross_class_call": "assemble_context(query=q, lens=CODE) \u2014 task dropped, lens retained"
+    }
+  },
+  "arm_order": [
+    "A0",
+    "C",
+    "B",
+    "A"
+  ],
+  "common_block": {
+    "lanes_enabled": false,
+    "type_boost": true,
+    "expand_ccr": false,
+    "mode": "sync",
+    "budget": 2048,
+    "top_k": 5,
+    "embedder": "deterministic LexicalHashEmbedder",
+    "scanner": false,
+    "store": "single seeded build, byte-identical clone per arm (SQLite backup API)",
+    "clock": "frozen (retrieval stamps pre-seeded at RUN_NOW)",
+    "arm_order": [
+      "A0",
+      "C",
+      "B",
+      "A"
+    ]
+  },
+  "equal_budget": 2048,
+  "top_k": 5,
+  "retrieval": {
+    "hybrid_alpha": 0.5,
+    "recall_depth": 10
+  },
+  "corpus": {
+    "generator_version": "f1-mixed-2",
+    "stratum_version": "f1-mixed-2",
+    "seed": 20260920,
+    "fingerprint_blake2b": "debd849ab02ad02ef8581573e44f6855be5fbb06501acbdad5ead7d6872ae112",
+    "counts": {
+      "task_prose": 144,
+      "task_code": 96,
+      "task_doc": 120,
+      "shared": 120,
+      "checkpoint": 278,
+      "misc": 194,
+      "canary": 8,
+      "task_tagged": 360,
+      "distractors": 480,
+      "total": 960
+    },
+    "task_display": {
+      "payment-webhook-refactor": "Payment Webhook Refactor",
+      "billing-export-api": "Billing Export API",
+      "auth-token-rotation": "Auth Token Rotation",
+      "audit-log-streaming": "Audit Log Streaming",
+      "docs-site-search": "Docs Site Search",
+      "mobile-push-migration": "Mobile Push Migration",
+      "q3-capacity-audit": "Q3 Capacity Audit",
+      "notification-templates": "Notification Templates"
+    },
+    "tasks": [
+      "payment-webhook-refactor",
+      "billing-export-api",
+      "auth-token-rotation",
+      "audit-log-streaming",
+      "docs-site-search",
+      "mobile-push-migration",
+      "q3-capacity-audit",
+      "notification-templates"
+    ],
+    "projects": {
+      "payment-webhook-refactor": "checkout-platform",
+      "billing-export-api": "checkout-platform",
+      "auth-token-rotation": "checkout-platform",
+      "audit-log-streaming": "checkout-platform",
+      "docs-site-search": "support-portal",
+      "mobile-push-migration": "support-portal",
+      "q3-capacity-audit": "support-portal",
+      "notification-templates": "support-portal"
+    },
+    "agent": "atlas",
+    "l_neg_composition": {
+      "trap": 16,
+      "mixed": 8
+    },
+    "lens_observed": {
+      "trap_activations": 0,
+      "mixed_activations": 8,
+      "code_axis_activations": 72
+    }
+  },
+  "ledger": {
+    "artifact": "benchmarks/experiments/f1_task_scope/adjudication_ledger.json",
+    "state_sha256": "f02ee67a23044d98b86c667ee80bfc8ecb83d46a96dc2d1a0e83b20291e9abb3",
+    "rejects": 0,
+    "replacements": 0,
+    "analyzed": {
+      "t_gold": 192,
+      "x_gold": 48,
+      "l_neg": 24
+    },
+    "audit_subsample_pairs": 53,
+    "audit_rule": "sha256(pair-id) hex ascending, top ceil(20%), double-annotated (\u00a73.5)"
+  },
+  "queries": {
+    "total": 264,
+    "qid_set_sha256": "031388b6a35ba2efc0035fc90a76bfa4c098ff792ff2f67b07e2fd6cd4a59e38"
+  },
+  "clock": {
+    "run_now": "2026-09-20T12:00:00+00:00",
+    "session": "f1-task-scope",
+    "note": "frozen clock \u2014 retrieval stamps pre-seeded; wall-clock quantities never enter metrics"
+  },
+  "runtime": {
+    "scanner_enabled": false,
+    "embedder": "deterministic LexicalHashEmbedder",
+    "store_isolation": "single seeded build (fixed order, seeded uuid draw), cloned per arm through the SQLite backup API \u2014 byte-identical store copies",
+    "lanes_enabled": false,
+    "type_boost": true,
+    "expand_ccr": false,
+    "mode": "sync"
+  },
+  "code": {
+    "mnemos_version": "4.3.0",
+    "version_file": "4.3.0",
+    "python_version": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "sqlite_version": "3.45.1",
+    "git_commit": "6bc6265fbb704fad92bdd6885213c4b12d3ea908",
+    "git_dirty": true
+  },
+  "invariants": {
+    "V1": {
+      "probe": "arm A (cross, lens-inactive) vs A0: assembled text bytes identical",
+      "probes": 40,
+      "identical": 40,
+      "failures": []
+    },
+    "V3_shadow": {
+      "probe": "arm A (cross, lens-active): issued blocks are an order-preserving subset of the pre-lens candidate order AND every issued row is code-typed (the lens narrows only)",
+      "probes": 32,
+      "subset_ok": 32,
+      "code_only_ok": 32,
+      "failures": []
+    },
+    "V2": {
+      "lanes_enabled": false,
+      "arms": [
+        "A0",
+        "C",
+        "B",
+        "A"
+      ]
+    },
+    "V4": {
+      "canaries": 8,
+      "canaries_inert": 8,
+      "issued_blocks_scanned": 5066,
+      "violations": 0
+    },
+    "V5": {
+      "rows_verified": 960,
+      "violations": 0,
+      "canaries_inert": 8
+    },
+    "V6": {
+      "manifest_verified": true,
+      "write_once": "record_run refuses an existing run id (fails loud)",
+      "outcomes_reverified": "the written outcomes.json is re-verified on disk pre-rename",
+      "statistics_ban": "no p-values/CIs/verdicts/rates in artifacts (schema-enforced)"
+    },
+    "store_copy": {
+      "method": "SQLite backup API (benchmarks.stands.s4_availability.store_copy.clone_store)",
+      "content_digest_sha256": "5d4b3be2179fd535c6db846c00d41f7129df48212482299d996f00f219bdf240",
+      "digests_equal_across_arms": true
+    }
+  },
+  "run_id": "f1-task-scope-9c08f24268dc",
+  "created": "2026-09-27T19:46:05.299715+00:00",
+  "manifest_sha256": "a0d73063684045a4ad82cd890c87ba03e9dd226ea8294090bfa51f095e2f661c"
+}
