@@ -89,6 +89,66 @@ INCLUSIVELY, so the stored cursor is the consumed high-water mark +1µs
 — the next delta opens strictly after everything already rendered (a
 quiet store yields an empty delta, never a boundary-row re-render).
 
+── Operational picture SPEC (swarm v0a, ArchCom 2026-09-27) ────────
+
+The operational picture EXTENDS this contour with the swarm v0a block:
+agent presence + recent-records counters for SAME-PROJECT peer agents
+(the committee-ratified v0a contract: an explicit "operational picture"
+section composed from the slots the contour already reads — agent id,
+observed activity, per-window record count, checkpoint presence).
+The spec below is BINDING on every surface that renders or serves the
+picture; the presence-gate ruling that makes it possible:
+
+**Presence is BEHAVIORAL metadata** (agent id, activity timestamps,
+record counts of a peer) — the SEARCH gates cover record CONTENT and
+do NOT apply to presence. No title, no body, no tag of a peer record
+ever enters the picture: counts, ids and timestamps only. The seven
+hard conditions (each pinned by tests/test_awareness.py::TestPicture*):
+
+1. **Project-scoped only, fail-closed.** The picture inherits the R3
+   boundary: ``project=None`` raises before any query
+   (:func:`_require_project` — the :func:`presence_snapshot` /
+   ``project_delta`` precedent). Cross-project visibility does not
+   exist in v0: there is NO parameter, NO flag and NO code path that
+   widens the picture beyond one project ("all agents of the server"
+   is an R3 boundary change — a separate Security decision, not a
+   knob).
+2. **Zero stored picture-derived records.** The v0 convention holds:
+   cursors ride the meta table, actions ride the traces table — the
+   picture stores NOTHING (a picture query never adds a store row).
+3. **Born-no-federate (verbatim clause).** Any awareness-derived
+   RECORD is born ``mnemos:no-federate`` (CWE-359; presence of another
+   operator's agents is not exportable data). v0/v0a store none; the
+   clause is the module contract and travels with any future
+   picture-derived record.
+4. **Retention/bounds — the clamped windows are the ONLY windows.**
+   :data:`PRESENCE_WINDOW_SEC` (900 s) for presence and
+   :data:`DELTA_MAX_WINDOW_SEC` (3600 s) for the delta clamp are the
+   spec; NO surface accepts an arbitrary ``since`` that reaches beyond
+   the clamp (``_resolve_since`` clamps every caller forward).
+5. **Render bounds.** One line per agent (the E1 slot), at most
+   :data:`AWARENESS_MAX_RENDERED_AGENTS` (8) lines, scan bounded by
+   :data:`DELTA_FEED_LIMIT` (200); truncation is OBSERVABLE
+   (``agents_capped_from``), never silent.
+6. **Descriptive only.** The picture says who / what count / when —
+   observed facts. It is never predictive: no "agent X is about to…",
+   no recommendations, no work-deferral semantics (the disclaimer
+   frame governs it like every awareness surface).
+7. **The picture is data, never governance.** Picture blocks carry no
+   ``memory_id``, are never-pinnable (``pinnable=False``), carry no
+   ``applyTo:``/``severity:`` policy semantics and are not eligible
+   for the approval machine — awareness is data, not governance.
+
+**Rate cap (C9, hard):** every picture/awareness query is capped per
+``(project, agent)`` at :data:`PICTURE_RATE_LIMIT_PER_MINUTE`
+(configurable via ``vesmaro.awareness_picture_rate_limit_per_minute``,
+0 disables — mirrors the W2 knob shape of
+``context_rewrite_rate_limit_per_minute``). Over-limit DEGRADES: the
+section renders one "rate-limited, retry later" line and the response
+keeps its shape — never a hard error that breaks the composition
+contract. Rationale: without the cap, a polling harness reconstructs
+a neighbor's timeline at arbitrary resolution off the picture reads.
+
 ── Measurement surfaces (E0 docs/experiments/e0-meta-level.md) ──────
 
 The engine exists to make the D-leg hypotheses measurable: D1/D4
@@ -108,6 +168,9 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import weakref
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -176,6 +239,14 @@ CONFLICT_HINT_MIN_SHARED_TOKENS: Final[int] = 2
 
 #: Trace task label for abstention attribution rows (the chain anchor).
 ABSTENTION_TASK_LABEL: Final[str] = "awareness_abstention"
+
+#: C9 (ArchCom 2026-09-27, swarm v0a): default per-(project, agent)
+#: picture/awareness query cap per minute. In-process sliding window
+#: (the picture stores NOTHING — C2 — so a SQL counter over stored rows
+#: is structurally impossible; reads are not rows). Configurable via
+#: ``vesmaro.awareness_picture_rate_limit_per_minute`` (0 disables);
+#: over-limit DEGRADES to a rate-limit line, never a hard error.
+PICTURE_RATE_LIMIT_PER_MINUTE: Final[int] = 30
 
 #: Metadata key that marks a row as federation-imported for the delta
 #: exclusion hook. THREE import paths stamp it (all #254 review P2):
@@ -355,6 +426,110 @@ def _now_or(now: datetime | None) -> datetime:
     if now is None:
         return datetime.now(UTC)
     return now.replace(tzinfo=UTC) if now.tzinfo is None else now
+
+
+# ── The C9 rate gate (swarm v0a, ArchCom 2026-09-27) ───────────────────────────
+
+
+#: C9 ledger: manager instance → (project, agent) → admitted-query
+#: timestamps (a 60 s sliding window). WeakKeyDictionary so a closed
+#: manager's counters are garbage-collected with it. In-process by
+#: necessity: the picture stores NOTHING (C2) — reads are not rows, so
+#: the W2 SQL counter over stored rows is structurally impossible.
+_PICTURE_RATE_LEDGER: weakref.WeakKeyDictionary[
+    MemoryManager, dict[tuple[str, str], deque[datetime]]
+] = weakref.WeakKeyDictionary()
+
+#: Fallback ledger for a non-weakref-able manager (defensive; the real
+#: MemoryManager is weakref-able). Shared, like the module itself.
+_PICTURE_RATE_LEDGER_ALT: dict[tuple[str, str], deque[datetime]] = {}
+
+#: The ledger is read-modify-write — make it atomic under the FastAPI
+#: threadpool (REST twin) and any harness thread.
+_PICTURE_RATE_MUTEX: threading.Lock = threading.Lock()
+
+#: The C9 degraded line — the ONLY text an over-limit composition
+#: renders. One line, no error, no shape break (the composition
+#: contract must survive a rate hit).
+PICTURE_RATE_LIMITED_LINE: Final[str] = (
+    "## Peer awareness — rate-limited (too many awareness queries in the last minute); retry later"
+)
+
+
+def _picture_rate_limit(mgr: MemoryManager) -> int:
+    """Effective per-(project, agent)/minute cap from settings (0 = off).
+
+    The W2 knob shape: config knob
+    ``vesmaro.awareness_picture_rate_limit_per_minute``, default
+    :data:`PICTURE_RATE_LIMIT_PER_MINUTE`, 0 disables. Settings access
+    is defensive (an alt manager without the field degrades to the
+    constant, never crashes the composition).
+    """
+    mnemos_cfg = getattr(getattr(mgr, "settings", None), "mnemos", None)
+    return int(
+        getattr(
+            mnemos_cfg, "awareness_picture_rate_limit_per_minute", PICTURE_RATE_LIMIT_PER_MINUTE
+        )
+    )
+
+
+def _picture_rate_refused(
+    mgr: MemoryManager, *, project: str, agent: str, now_dt: datetime
+) -> bool:
+    """Admit ONE picture/awareness surface query under C9, or refuse it.
+
+    The unit is the SURFACE CALL (``mnemos_awareness`` pre-flight, the
+    hooks compositions, their REST twins) — the thing a polling harness
+    drives; the internal legs of one compose (presence + delta reads)
+    are one query from the caller's side. REFUSED queries consume no
+    quota, mirroring the W2 semantics ("counted STORED events" — a
+    refused write stored nothing; here a refused read rendered nothing
+    new): the limiter throttles a poller to ``limit`` successful
+    picture reads per minute, it never permanently locks a live poller
+    out.
+    """
+    limit = _picture_rate_limit(mgr)
+    if limit <= 0:
+        return False
+    window_start = now_dt - timedelta(minutes=1)
+    key = (project, agent)
+    with _PICTURE_RATE_MUTEX:
+        ledger = _PICTURE_RATE_LEDGER.get(mgr)
+        if ledger is None:
+            ledger = {}
+            try:
+                _PICTURE_RATE_LEDGER[mgr] = ledger
+            except TypeError:  # pragma: no cover — non-weakref-able manager
+                ledger = _PICTURE_RATE_LEDGER_ALT
+        stamps = ledger.get(key)
+        if stamps is not None:
+            while stamps and stamps[0] <= window_start:
+                stamps.popleft()
+            if len(stamps) >= limit:
+                logger.warning(
+                    "awareness: C9 picture rate cap fired project=%s agent=%s "
+                    "queries=%d limit=%d/min — degrading to the rate-limit line",
+                    project,
+                    agent,
+                    len(stamps),
+                    limit,
+                )
+                return True
+        ledger.setdefault(key, deque()).append(now_dt)
+        return False
+
+
+def _rate_limited_meta(project: str) -> dict[str, Any]:
+    """The degraded-composition meta shape (contract-stable)."""
+    return {
+        "included": True,
+        "lane": AWARENESS_LANE,
+        "rate_limited": True,
+        "project": project,
+        "agents": [],
+        "pinnable": False,
+        "disclaimer": AWARENESS_DISCLAIMER,
+    }
 
 
 # ── The R3 federated-exclusion hook ───────────────────────────────────────────
@@ -555,6 +730,11 @@ def presence_snapshot(
             "last_seen": slot["last_seen"],
             "entries": slot["entries"],
             "sessions": sorted(sessions_by_agent.get(slot["agent"], ())),
+            # swarm v0a: checkpoint PRESENCE (bool) — whether the peer
+            # has a server-stamped checkpoint in the window. A flag,
+            # never the checkpoint id (the picture renders counts, ids
+            # of AGENTS and timestamps only — no record ids, no content).
+            "checkpoint": slot["last_checkpoint_id"] is not None,
             "trust": "observed",
         }
         for slot in slots
@@ -656,6 +836,109 @@ def project_delta(
             "high_water": high_water.isoformat(),
         },
     }
+
+
+# ── The operational picture (swarm v0a, ArchCom 2026-09-27) ────────────────────
+
+
+def operational_picture(
+    mgr: MemoryManager,
+    *,
+    project: str | None,
+    exclude_agent: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """The swarm v0a operational picture — presence + record counters.
+
+    Same-project peers only, observed facts only: per agent — the agent
+    id, the last observed activity (``last_seen``), the number of rows
+    it wrote inside the presence window (``entries``), and checkpoint
+    presence (``checkpoint``). ALL fields are SERVER columns (``agent``,
+    ``created_at``, the #251 stamps) — no client-asserted text enters
+    v0a; no record id, no title, no body, no tag is echoed (the
+    presence-gate SPEC sections 1-7). Renders ONE LINE PER AGENT, capped to
+    :data:`AWARENESS_MAX_RENDERED_AGENTS`, most recent first, scan
+    bounded by :data:`DELTA_FEED_LIMIT`. Stores nothing (C2).
+    """
+    project = _require_project(project)
+    now_dt = _now_or(now)
+    window_start = now_dt - timedelta(seconds=PRESENCE_WINDOW_SEC)
+    window = _window_rows(mgr, project=project, since_dt=window_start)
+    rows = [m for m in window if not is_delta_excluded(m)]
+    slots, counts = _agent_slots(rows, exclude_agent=exclude_agent)
+
+    agents: list[dict[str, Any]] = [
+        {
+            "agent": slot["agent"],
+            "last_seen": slot["last_seen"],
+            "entries": slot["entries"],
+            "checkpoint": slot["last_checkpoint_id"] is not None,
+        }
+        for slot in slots
+    ]
+    capped = agents[:AWARENESS_MAX_RENDERED_AGENTS]
+    return {
+        "project": project,
+        "generated_at": now_dt.isoformat(),
+        "window_sec": PRESENCE_WINDOW_SEC,
+        "agents": capped,
+        # Truncation observable (SPEC §5), never silent.
+        "agents_capped_from": len(agents),
+        "counts": {**counts, "feed": len(rows)},
+        "disclaimer": AWARENESS_DISCLAIMER,
+    }
+
+
+def picture_line(agent: dict[str, Any]) -> str:
+    """The canonical per-agent picture line — counts/ids/timestamps only.
+
+    ``<agent>: <N> entries, last <iso>, checkpoint yes|no`` — one line
+    per agent (the E1 slot bound); server columns only, no content
+    echo, no record ids.
+    """
+    return (
+        f"{agent['agent']}: {agent['entries']} entries, "
+        f"last {agent['last_seen']}, "
+        f"checkpoint {'yes' if agent['checkpoint'] else 'no'}"
+    )
+
+
+def render_picture_section(picture: dict[str, Any]) -> str:
+    """Render the picture as its own model-facing section (two-level trust).
+
+    The picture is OBSERVED-ONLY (server columns), so it renders under
+    the observed header — no ``[unverified]`` qualifiers (no client text
+    enters v0a). The disclaimer frame rides verbatim (SPEC §6: the
+    picture is descriptive, never a work-deferral signal). An empty
+    picture renders as "" (no empty sections, the v0 rule).
+    """
+    agents = picture.get("agents", [])
+    if not agents:
+        return ""
+    lines = [
+        f"## Operational picture — same-project peers (project {picture['project']})",
+        AWARENESS_DISCLAIMER,
+        "",
+        "### observed — server-recorded write events (identity self-asserted)",
+    ]
+    lines += [f"- {picture_line(a)}" for a in agents]
+    capped_from = picture.get("agents_capped_from", len(agents))
+    if capped_from > len(agents):
+        lines.append(f"- ({capped_from - len(agents)} more agents not shown)")
+    return "\n".join(lines)
+
+
+def picture_blocks(picture: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per-agent picture blocks — the same never-pinnable E1 shape."""
+    return [
+        {
+            "lane": AWARENESS_LANE,
+            "agent": agent["agent"],
+            "content": picture_line(agent),
+            "pinnable": False,
+        }
+        for agent in picture.get("agents", [])
+    ]
 
 
 # ── Rendering (two-level trust, disclaimer, per-agent lines) ─────────────────
@@ -811,6 +1094,14 @@ def compose_pre_llm_awareness(
     _require_identity(agent, session)
     project = _require_project(project)
     now_dt = _now_or(now)
+    # C9 (swarm v0a): one composition = one picture query. Over-limit
+    # degrades to the rate-limit line — never a hard error.
+    if _picture_rate_refused(mgr, project=project, agent=agent, now_dt=now_dt):
+        return {
+            "text": PICTURE_RATE_LIMITED_LINE,
+            "blocks": [],
+            "meta": _rate_limited_meta(project),
+        }
     cursor = read_awareness_cursor(mgr, project=project, agent=agent, session=session)
     since_dt = _resolve_since(cursor, now_dt)
 
@@ -819,6 +1110,14 @@ def compose_pre_llm_awareness(
     )
     hints = conflict_hints(_my_goal(mgr, project=project, agent=agent), delta)
     text = render_awareness_section(delta, hints)
+    # swarm v0a: the operational picture rides as an additive tail-only
+    # section (SPEC §5/§7) — composed from the same feed, rendered below
+    # the delta, never pinnable.
+    picture = operational_picture(mgr, project=project, exclude_agent=agent, now=now_dt)
+    picture_text = render_picture_section(picture)
+    if picture_text:
+        text = f"{text}\n\n{picture_text}" if text else picture_text
+    picture_b = picture_blocks(picture)
 
     # Cursor high-water comes from the SAME feed the delta consumed
     # (``counts["high_water"]``, computed inside ``project_delta``'s single
@@ -834,13 +1133,14 @@ def compose_pre_llm_awareness(
     write_awareness_cursor(mgr, project=project, agent=agent, session=session, cursor=new_cursor)
     return {
         "text": text,
-        "blocks": delta_blocks(delta),
+        "blocks": [*delta_blocks(delta), *picture_b],
         "meta": {
             "included": True,
             "lane": AWARENESS_LANE,
             "since": delta["since"],
             "cursor": new_cursor,
             "agents": [a["agent"] for a in delta["agents"][:AWARENESS_MAX_RENDERED_AGENTS]],
+            "picture_agents": [a["agent"] for a in picture["agents"]],
             "conflict_hints": len(hints),
             "redactions": delta["counts"]["redactions"],
             "pinnable": False,
@@ -875,6 +1175,12 @@ def compose_session_presence(
         "agents": [a for a in snapshot["agents"] if a["agent"] != agent],
         "conflict_hints": hints,
         "disclaimer": AWARENESS_DISCLAIMER,
+        # swarm v0a: the operational picture rides additively (the
+        # on_session_start surface renders it below the presence block).
+        # No C9 gate HERE: this is an internal leg of a composition the
+        # CALLING surface already gated (double-counting one user query
+        # would halve the honest budget).
+        "picture": operational_picture(mgr, project=project, exclude_agent=agent, now=now_dt),
     }
 
 
@@ -910,6 +1216,19 @@ def pre_flight_snapshot(
     _require_identity(agent, session)
     project = _require_project(project)
     now_dt = _now_or(now)
+    # C9 (swarm v0a): the pre-flight is the POLLABLE surface — a harness
+    # can loop it freely (no cursor side), so the cap gates the whole
+    # call; refusal degrades to a rate-limited response shape, never a
+    # hard error dict.
+    if _picture_rate_refused(mgr, project=project, agent=agent, now_dt=now_dt):
+        return {
+            "action": "pre_flight",
+            "project": project,
+            "rate_limited": True,
+            "text": PICTURE_RATE_LIMITED_LINE,
+            "disclaimer": AWARENESS_DISCLAIMER,
+            "cursor_advanced": False,
+        }
     cursor = read_awareness_cursor(mgr, project=project, agent=agent, session=session)
     since_dt = _resolve_since(cursor, now_dt)
     delta = project_delta(
@@ -920,13 +1239,19 @@ def pre_flight_snapshot(
     delta["counts"]["agents_capped_from"] = len(slots)
     delta["agents"] = capped
     hints = conflict_hints(_my_goal(mgr, project=project, agent=agent), delta)
+    picture = operational_picture(mgr, project=project, exclude_agent=agent, now=now_dt)
+    picture_text = render_picture_section(picture)
+    text = render_awareness_section(delta, hints)
+    if picture_text:
+        text = f"{text}\n\n{picture_text}" if text else picture_text
     return {
         "action": "pre_flight",
         "project": project,
         "presence": compose_session_presence(mgr, project=project, agent=agent, now=now_dt),
         "delta": delta,
+        "picture": picture,
         "conflict_hints": hints,
-        "text": render_awareness_section(delta, hints),
+        "text": text,
         "disclaimer": AWARENESS_DISCLAIMER,
         "cursor_advanced": False,
     }

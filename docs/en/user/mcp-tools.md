@@ -52,6 +52,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_assemble_context`](#mnemos_assemble_context) *(#125)* | ADR-0017 D1 — assemble the pre-LLM-call context block (recall → CCR → filter → scan → align → budget) | no |
 | [`mnemos_context_rewrite`](#mnemos_context_rewrite) *(#125)* | ADR-0018 — `on_context_rewrite` lifecycle event: report a context rewrite, the original lands in LTM (idempotent, version-less) | no |
 | [`mnemos_hooks`](#mnemos_hooks) *(#125)* | ADR-0017 D1 / ADR-0018 lifecycle hooks — grouped `action:enum` tool: `pre_llm_call` / `on_session_start` / `post_tool_call` (autocompression, opt-in) | no |
+| [`mnemos_awareness`](#mnemos_awareness) *(#254)* | Awareness pre-flight — server-observed neighbor presence, delta, conflict hints, and the swarm v0a operational picture (same-project peers: counts/ids/timestamps only) | no |
 | [`mnemos_export`](#mnemos_export) | Export memories to a file (JSON or SQLite snapshot) | no |
 | [`mnemos_import`](#mnemos_import) | Import memories from an export file (merge or restore) | no |
 | [`mnemos_reprocess`](#mnemos_reprocess) | Manually run the knowledge pipeline over queued raw/processing entries | no |
@@ -1390,7 +1391,7 @@ Semantics (ADR-0018, verbatim):
 
 **Lifecycle hooks (ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3)** — the automation integration points, grouped behind `action:enum` (the mnemos #97 grouped-tool pattern). Three actions, one tool:
 
-- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `mnemos_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it.
+- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `mnemos_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (mnemos #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a operational picture (same-project peers: counts/ids/timestamps only) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`mnemos_awareness`](#mnemos_awareness)).
 - **`on_session_start`** — recall recent checkpoints for session bootstrap (thin wrapper over the recall path; the echoed content is scanned at issuance on this channel, mirroring `mnemos_recall_context`).
 - **`post_tool_call`** — the **autocompression entry point** (ADR-0018): when `auto_compress` resolves true (per-call argument, else the `hooks.auto_compress` config knob, default `false`), the tool output is compressed via CCR and the marker-headed `compressed_text` is returned — the caller **substitutes** it for the raw output in its window. Off by default: the envelope says so and nothing is written.
 
@@ -1430,6 +1431,44 @@ Semantics (ADR-0018, verbatim):
 - REST twin: `POST /hooks/{action}` — [http-api.md](http-api.md)
 - Programmatic surface: `MnemosSDK` ([integration-guide.md](integration-guide.md))
 - Rationale: ADR-0017 D1 (lifecycle integration), ADR-0018 (post_tool_call autocompression, residual register N2)
+
+---
+
+## `mnemos_awareness`
+
+**Awareness pre-flight (mnemos #254, R3; swarm v0a — ArchCom 2026-09-27)** — the surface a parallel session calls BEFORE a risky operation (the PR #224 contract: a release closed by an invisible parallel session). Two actions, one tool:
+
+- **`pre_flight`** (read-only) — server-observed neighbor activity: presence (who is active), delta (what changed since your cursor — one line per neighbor agent), lexical conflict hints against your last checkpoint goal, and the **operational picture** (swarm v0a): an explicit block of same-project peers where each line carries the agent id, last observed activity, record count in the 900 s presence window, and checkpoint presence — **counts, agent ids and timestamps only**. No title, no body, no tag of a peer record is ever echoed; no client-asserted text enters the picture. Strictly project-scoped (`project=None` fails closed; cross-project visibility does not exist — no parameter, no flag). The awareness cursor advances ONLY via `mnemos_hooks` `pre_llm_call` with `include_awareness=true` — a pre-flight never marks neighbor entries as consumed.
+- **`record_abstention`** — attribute an abstention-on-presence as an ACTION with a reconstructable provenance chain (abstention → delta-block → checkpoint-id → writer-session); pass `basis_checkpoint_id` from the pre-flight response.
+
+**Presence is behavioral metadata** (agent ids, activity timestamps, record counts) — the search gates cover record CONTENT and do not apply to presence. The picture is descriptive only (who / what count / when), never predictive, and it is data, never governance: picture blocks carry no `memory_id`, are never pinnable, and no `applyTo:`/`severity:` semantics ride along. Zero picture-derived records are stored (cursors ride the meta table, actions ride traces); any future awareness-derived record is born `mnemos:no-federate`.
+
+**Rate cap (C9):** picture/awareness queries are capped per `(project, agent)` at `vesmaro.awareness_picture_rate_limit_per_minute` (default 30, `0` disables). Over-limit DEGRADES to a one-line "rate-limited, retry later" section — the response keeps its shape; never a hard error.
+
+### Input
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | **yes** | `pre_flight` / `record_abstention`. |
+| `session` | string | **yes** | Caller session id. |
+| `project` | string | **yes** | Project slug (fail-closed; strictly same-project). |
+| `agent` | string | **yes** | Caller agent slug. |
+| `basis_checkpoint_id` | string | `record_abstention` | The neighbor checkpoint id the abstention is based on. |
+| `note` | string | no | `record_abstention`: optional free-text note (capped, scanned at issuance). |
+
+### Output
+
+`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable). `record_abstention` returns the trace id and the full provenance chain.
+
+### Notes
+
+- **Errors** — boundary violations return `{"error": …}`; the REST twin answers 422.
+- The fixed R3 disclaimer frame rides verbatim in every rendered section: presence claims must not defer work without operator coordination.
+
+### Related
+
+- Composition: `mnemos_hooks` `pre_llm_call` / `on_session_start` with `include_awareness=true` (the picture renders last, below the delta section)
+- REST twin: `POST /hooks/{action}` with `include_awareness` — [http-api.md](http-api.md)
 
 ---
 

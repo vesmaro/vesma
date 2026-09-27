@@ -700,6 +700,7 @@ validation can later prove provenance.
 | `tool_name` | string | `post_tool_call` | — | The tool that produced the output. |
 | `output_text` | string | `post_tool_call` | — | The raw tool output to compress. |
 | `auto_compress` | boolean | no | knob | `post_tool_call`: per-call override of `hooks.auto_compress` (default `false`). |
+| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): compose the awareness delta section AND the swarm v0a operational picture — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
 | `profile` | string | no | auto | `post_tool_call`: filter profile hint. |
 
 **Example**
@@ -717,7 +718,11 @@ as `POST /context/assemble`, sync delivery pinned); `on_session_start` →
 `{checkpoints: [{id, content, created_at, redactions, …}], redactions}`
 (content issuance-scanned on this channel); `post_tool_call` → the CCR
 envelope with `compressed_text`/`marker` to substitute (or the off-envelope
-`{auto_compress: false, compressed: false}` when not enabled). Full
+`{auto_compress: false, compressed: false}` when not enabled). With
+`include_awareness=true`, `pre_llm_call` additionally returns an `awareness`
+meta key and the rendered awareness + operational-picture sections ride the
+`text` tail (see [`mcp-tools.md` → `mnemos_awareness`](mcp-tools.md#mnemos_awareness)).
+Full
 field-by-field documentation: [`mcp-tools.md` → `mnemos_hooks`](mcp-tools.md#mnemos_hooks).
 
 ---

@@ -48,6 +48,7 @@ Connect — and it is there. No extra wiring required for anything in this table
 | **Meta-level: retrieval lanes** | Deterministic lanes (rules / decisions / knowledge) as a recall sub-stage of `assemble_context` — rolls out only if a pre-registered A/B/B0 experiment beats the trivial baseline ([ADR-0025](../project/adr/0025-memory-meta-level-lanes.md)) |
 | **Collapse cascade — "collapse with checks"** | Session → project → cross-project synthesis over clusters: automatic by default, never unconditional in authority — derivatives are born without `applyTo:`/`severity:`, nothing pins without an operator, every result traceable to its sources ([ADR-0025](../project/adr/0025-memory-meta-level-lanes.md)) |
 | **Awareness — presence & delta** | What each agent is working on and what changed since your last look, with conflict hints — built from server-observed facts; a nervous system, not a conductor ([ADR-0025](../project/adr/0025-memory-meta-level-lanes.md)) |
+| **Operational picture (swarm v0a)** | Same-project peers as one line each — agent id, last activity, record count in the window, checkpoint presence; counts/ids/timestamps only, strictly project-scoped, rate-capped, never pinnable |
 
 Roadmap invariant for the meta-level track: **zero silent losses** — a fact is either retained, or
 its loss is visible in a report; each rung above opens only after measurements confirm it.

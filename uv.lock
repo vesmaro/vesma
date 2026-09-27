@@ -1959,169 +1959,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mnemos-memory-server"
-version = "4.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "aiosqlite" },
-    { name = "apscheduler" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "idna" },
-    { name = "mcp" },
-    { name = "onnxruntime" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pygments" },
-    { name = "pyjwt" },
-    { name = "pyotp" },
-    { name = "python-dateutil" },
-    { name = "python-dotenv" },
-    { name = "python-frontmatter" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "rich" },
-    { name = "slowapi" },
-    { name = "starlette" },
-    { name = "tokenizers" },
-    { name = "trafilatura" },
-    { name = "typer" },
-    { name = "urllib3" },
-    { name = "uvicorn", extra = ["standard"] },
-    { name = "watchdog" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "anthropic" },
-    { name = "bandit" },
-    { name = "google-generativeai" },
-    { name = "mypy" },
-    { name = "ollama" },
-    { name = "openai" },
-    { name = "pip" },
-    { name = "pip-audit" },
-    { name = "pymupdf" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "python-docx" },
-    { name = "ruff" },
-    { name = "setuptools" },
-    { name = "types-pyyaml" },
-]
-anthropic = [
-    { name = "anthropic" },
-]
-azure = [
-    { name = "openai" },
-]
-dev = [
-    { name = "bandit" },
-    { name = "mypy" },
-    { name = "pip" },
-    { name = "pip-audit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "setuptools" },
-    { name = "types-pyyaml" },
-]
-docx = [
-    { name = "python-docx" },
-]
-gemini = [
-    { name = "google-generativeai" },
-]
-ollama = [
-    { name = "ollama" },
-]
-openai = [
-    { name = "openai" },
-]
-openvino = [
-    { name = "optimum", extra = ["openvino"] },
-]
-pdf = [
-    { name = "pymupdf" },
-]
-sentence-transformers = [
-    { name = "sentence-transformers" },
-]
-training = [
-    { name = "onnx" },
-    { name = "sentence-transformers" },
-    { name = "torch" },
-    { name = "transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.3,<4.0" },
-    { name = "aiosqlite", specifier = ">=0.20" },
-    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.25" },
-    { name = "apscheduler", specifier = ">=3.10" },
-    { name = "bandit", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=1.7" },
-    { name = "cryptography", specifier = ">=50.0.0" },
-    { name = "fastapi", specifier = ">=0.138.0" },
-    { name = "google-generativeai", marker = "extra == 'gemini'", specifier = ">=0.5" },
-    { name = "grpcio", specifier = ">=1.62,<2" },
-    { name = "grpcio-tools", specifier = ">=1.62,<2" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "huggingface-hub", specifier = ">=0.30" },
-    { name = "idna", specifier = ">=3.15" },
-    { name = "mcp", specifier = ">=2.0,<3.0" },
-    { name = "mnemos-memory-server", extras = ["anthropic", "openai", "gemini", "azure", "ollama", "mcp", "pdf", "docx", "dev"], marker = "extra == 'all'" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
-    { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.3" },
-    { name = "onnx", marker = "extra == 'training'", specifier = ">=1.17" },
-    { name = "onnxruntime", specifier = ">=1.20" },
-    { name = "openai", marker = "extra == 'azure'", specifier = ">=1.0" },
-    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
-    { name = "optimum", extras = ["openvino"], marker = "extra == 'openvino'", specifier = ">=1.19" },
-    { name = "pip", marker = "extra == 'dev'", specifier = ">=26.2" },
-    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.14.2" },
-    { name = "pygments", specifier = ">=2.20.0" },
-    { name = "pyjwt", specifier = ">=2.13.0" },
-    { name = "pymupdf", marker = "extra == 'pdf'", specifier = ">=1.24" },
-    { name = "pyotp", specifier = "~=2.9" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0" },
-    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
-    { name = "python-docx", marker = "extra == 'docx'", specifier = ">=1.1" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "python-frontmatter", specifier = ">=1.1" },
-    { name = "python-multipart", specifier = ">=0.0.31" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15,<0.16" },
-    { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.0" },
-    { name = "sentence-transformers", marker = "extra == 'training'", specifier = ">=3.0" },
-    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=83.0.0" },
-    { name = "slowapi", specifier = "~=0.1.9" },
-    { name = "starlette", specifier = ">=1.3.0,<2.0" },
-    { name = "tokenizers", specifier = ">=0.21" },
-    { name = "torch", marker = "extra == 'training'", specifier = ">=2.2" },
-    { name = "trafilatura", specifier = ">=1.12" },
-    { name = "transformers", marker = "extra == 'training'", specifier = ">=4.51" },
-    { name = "typer", specifier = ">=0.26.7" },
-    { name = "types-pyyaml", marker = "extra == 'dev'" },
-    { name = "urllib3", specifier = ">=2.7.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
-    { name = "watchdog", specifier = ">=4.0" },
-]
-provides-extras = ["anthropic", "openai", "gemini", "azure", "ollama", "sentence-transformers", "training", "openvino", "mcp", "pdf", "docx", "dev", "all"]
-
-[[package]]
 name = "mpmath"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4590,6 +4427,177 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/97/cc/48d232f33d60e2e2e0b42f4e73455b146b76ebe216487e862700457fbf3c/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:daf620c2995d193449393d6c62131b3fbd40a63bf7b307a1527856ace637fe88", size = 4328384, upload-time = "2025-10-16T22:16:59.36Z" },
     { url = "https://files.pythonhosted.org/packages/e4/16/c1fd27e9549f3c4baf1dc9c20c456cd2f822dbf8de9f463824b0c0357e06/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:6cde23eeda1a25c75b2e07d39970f3374105d5eafbaab2a4482be82f272d5a5e", size = 4296730, upload-time = "2025-10-16T22:17:00.744Z" },
 ]
+
+[[package]]
+name = "vesmaro"
+version = "4.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "aiosqlite" },
+    { name = "apscheduler" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "grpcio" },
+    { name = "grpcio-tools" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "idna" },
+    { name = "mcp" },
+    { name = "onnxruntime" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pygments" },
+    { name = "pyjwt" },
+    { name = "pyotp" },
+    { name = "python-dateutil" },
+    { name = "python-dotenv" },
+    { name = "python-frontmatter" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "slowapi" },
+    { name = "starlette" },
+    { name = "tokenizers" },
+    { name = "trafilatura" },
+    { name = "typer" },
+    { name = "urllib3" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "watchdog" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "anthropic" },
+    { name = "bandit" },
+    { name = "google-generativeai" },
+    { name = "mypy" },
+    { name = "ollama" },
+    { name = "openai" },
+    { name = "pip" },
+    { name = "pip-audit" },
+    { name = "pymupdf" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "python-docx" },
+    { name = "ruff" },
+    { name = "setuptools" },
+    { name = "types-pyyaml" },
+]
+anthropic = [
+    { name = "anthropic" },
+]
+azure = [
+    { name = "openai" },
+]
+dev = [
+    { name = "bandit" },
+    { name = "mypy" },
+    { name = "pip" },
+    { name = "pip-audit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "setuptools" },
+    { name = "types-pyyaml" },
+]
+docx = [
+    { name = "python-docx" },
+]
+gemini = [
+    { name = "google-generativeai" },
+]
+ollama = [
+    { name = "ollama" },
+]
+openai = [
+    { name = "openai" },
+]
+openvino = [
+    { name = "optimum", extra = ["openvino"] },
+]
+pdf = [
+    { name = "pymupdf" },
+]
+sentence-transformers = [
+    { name = "sentence-transformers" },
+]
+training = [
+    { name = "onnx" },
+    { name = "sentence-transformers" },
+    { name = "torch" },
+    { name = "transformers" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "vesmaro", extra = ["dev"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.3,<4.0" },
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.25" },
+    { name = "apscheduler", specifier = ">=3.10" },
+    { name = "bandit", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=1.7" },
+    { name = "cryptography", specifier = ">=50.0.0" },
+    { name = "fastapi", specifier = ">=0.138.0" },
+    { name = "google-generativeai", marker = "extra == 'gemini'", specifier = ">=0.5" },
+    { name = "grpcio", specifier = ">=1.62,<2" },
+    { name = "grpcio-tools", specifier = ">=1.62,<2" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "huggingface-hub", specifier = ">=0.30" },
+    { name = "idna", specifier = ">=3.15" },
+    { name = "mcp", specifier = ">=2.0,<3.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
+    { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.3" },
+    { name = "onnx", marker = "extra == 'training'", specifier = ">=1.17" },
+    { name = "onnxruntime", specifier = ">=1.20" },
+    { name = "openai", marker = "extra == 'azure'", specifier = ">=1.0" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
+    { name = "optimum", extras = ["openvino"], marker = "extra == 'openvino'", specifier = ">=1.19" },
+    { name = "pip", marker = "extra == 'dev'", specifier = ">=26.2" },
+    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "pygments", specifier = ">=2.20.0" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
+    { name = "pymupdf", marker = "extra == 'pdf'", specifier = ">=1.24" },
+    { name = "pyotp", specifier = "~=2.9" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0" },
+    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
+    { name = "python-docx", marker = "extra == 'docx'", specifier = ">=1.1" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "python-frontmatter", specifier = ">=1.1" },
+    { name = "python-multipart", specifier = ">=0.0.31" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "rich", specifier = ">=13.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15,<0.16" },
+    { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'training'", specifier = ">=3.0" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=83.0.0" },
+    { name = "slowapi", specifier = "~=0.1.9" },
+    { name = "starlette", specifier = ">=1.3.0,<2.0" },
+    { name = "tokenizers", specifier = ">=0.21" },
+    { name = "torch", marker = "extra == 'training'", specifier = ">=2.2" },
+    { name = "trafilatura", specifier = ">=1.12" },
+    { name = "transformers", marker = "extra == 'training'", specifier = ">=4.51" },
+    { name = "typer", specifier = ">=0.26.7" },
+    { name = "types-pyyaml", marker = "extra == 'dev'" },
+    { name = "urllib3", specifier = ">=2.7.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "vesmaro", extras = ["anthropic", "openai", "gemini", "azure", "ollama", "mcp", "pdf", "docx", "dev"], marker = "extra == 'all'" },
+    { name = "watchdog", specifier = ">=4.0" },
+]
+provides-extras = ["anthropic", "openai", "gemini", "azure", "ollama", "sentence-transformers", "training", "openvino", "mcp", "pdf", "docx", "dev", "all"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "vesmaro", extras = ["dev"] }]
 
 [[package]]
 name = "watchdog"

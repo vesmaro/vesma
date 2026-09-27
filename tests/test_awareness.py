@@ -75,22 +75,28 @@ from vesmaro.awareness import (
     AWARENESS_LANE,
     AWARENESS_MAX_RENDERED_AGENTS,
     DELTA_MAX_WINDOW_SEC,
+    PICTURE_RATE_LIMITED_LINE,
+    PRESENCE_WINDOW_SEC,
     assert_awareness_tail,
     compose_pre_llm_awareness,
     compose_session_presence,
     conflict_hints,
     delta_blocks,
     is_delta_excluded,
+    operational_picture,
+    picture_blocks,
+    picture_line,
     pre_flight_snapshot,
     presence_snapshot,
     project_delta,
     record_abstention,
     render_awareness_section,
+    render_picture_section,
 )
 from vesmaro.compact import CompactRecord
 from vesmaro.config import Settings
 from vesmaro.hooks import dispatch_hook
-from vesmaro.lanes import AWARENESS_CURSOR_PREFIX, awareness_cursor_key, read_awareness_cursor
+from vesmaro.lanes import AWARENESS_CURSOR_PREFIX, Lane, awareness_cursor_key, read_awareness_cursor
 from vesmaro.manager import MemoryManager
 from vesmaro.mcp_server import _dispatch, list_tools
 from vesmaro.models import Memory, MemoryCreate, MemorySource, MemoryStatus
@@ -114,16 +120,22 @@ def _settings(
     tmp: Path,
     *,
     lanes_enabled: bool = False,
-    **ccr: Any,
+    ccr_refuse: bool = False,
+    **mnemos_extra: Any,
 ) -> Settings:
     settings = Settings(
         mnemos={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
+            **mnemos_extra,
         },
         scanner={"enabled": False},
-        ccr={"min_size_chars": 100, **ccr},  # type: ignore[arg-type]
+        ccr={
+            "min_size_chars": 100,
+            # the refuse-mode fixture knob (ccr.retrieve_refuse_on_secret)
+            "retrieve_refuse_on_secret": ccr_refuse,
+        },  # type: ignore[arg-type]
         lanes={"enabled": lanes_enabled},
     )
     settings.resolve_paths()
@@ -150,7 +162,7 @@ def manager() -> Iterator[MemoryManager]:
 def refuse_manager() -> Iterator[MemoryManager]:
     """Refuse-mode deployment (ccr.retrieve_refuse_on_secret=True)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = _manager(_settings(Path(tmpdir), retrieve_refuse_on_secret=True))
+        mgr = _manager(_settings(Path(tmpdir), ccr_refuse=True))
         yield mgr
         mgr.close()
 
@@ -265,9 +277,16 @@ class TestEmptyDelta:
         first = compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
         assert first["meta"]["agents"] == [NEIGHBOR]
         second = compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
-        # The cursor consumed the window: strictly-forward, no re-render.
+        # The cursor consumed the window: strictly-forward, no re-render
+        # of the DELTA. v0a registered delta (swarm picture rides a
+        # fixed 900 s presence window, NOT the cursor): the second
+        # compose still renders the PICTURE line for the active
+        # neighbor — presence is behavioral metadata the presence-gate
+        # SPEC explicitly keeps outside the consumption semantics.
         assert second["meta"]["agents"] == []
-        assert second["text"] == ""
+        assert "## Peer awareness" not in second["text"]
+        assert "## Operational picture" in second["text"]
+        assert second["meta"]["picture_agents"] == [NEIGHBOR]
 
 
 def _hour_ago_iso() -> str:
@@ -593,8 +612,18 @@ class TestOffPathEquivalence:
         assert "awareness" in result
         lanes = [b.get("lane") for b in result["blocks"]]
         # Awareness blocks form a contiguous TAIL after every recall block.
+        # v0a registered delta: the tail is delta blocks then picture
+        # blocks — same lane, still one contiguous tail, still nothing
+        # awareness-laned inside the recall prefix.
         assert lanes[-1] == AWARENESS_LANE
-        assert AWARENESS_LANE not in lanes[:-1]
+        recall_prefix = []
+        for lane in lanes:
+            if lane == AWARENESS_LANE:
+                break
+            recall_prefix.append(lane)
+        assert AWARENESS_LANE not in recall_prefix
+        tail = lanes[len(recall_prefix) :]
+        assert all(lane == AWARENESS_LANE for lane in tail), "awareness tail must be contiguous"
         assert AWARENESS_DISCLAIMER in result["text"]
         # The composed list passes the E1 guard (wired in the hook).
         assert_awareness_tail(result["blocks"])
@@ -1038,7 +1067,13 @@ class TestRepairSingleFeedCursor:
         self, manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """project_delta's window query + _my_goal's agent-filtered query —
-        the deleted third query was the race window."""
+        the deleted third CURSOR-relevant query was the race window.
+        v0a registered delta: the swarm operational picture adds ONE
+        more list_recent — a FIXED 900 s presence-window read that never
+        feeds the cursor (no high-water leg), so the cursor race the
+        original pin closed stays closed. The pin becomes: delta +
+        my-goal + picture, and NOTHING else — any further query is a
+        regression."""
         _checkpoint(manager, goals="spy goal", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
         calls: list[str] = []
         real = manager.list_recent
@@ -1049,8 +1084,8 @@ class TestRepairSingleFeedCursor:
 
         monkeypatch.setattr(manager, "list_recent", _spy)
         compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
-        assert calls == ["list_recent", "list_recent"], (
-            f"compose must run exactly the delta + my-goal queries: {len(calls)} ran"
+        assert calls == ["list_recent", "list_recent", "list_recent"], (
+            f"compose must run exactly the delta + my-goal + picture queries: {len(calls)} ran"
         )
 
 
@@ -1340,5 +1375,391 @@ class TestRepairRestHooksParity:
                 body = on.json()
                 assert body["awareness"]["agents"] == [NEIGHBOR]
                 assert AWARENESS_DISCLAIMER in body["text"]
+        finally:
+            api_main._manager = None
+
+
+# ── Swarm v0a operational picture (ArchCom 2026-09-27; hard conditions) ───────
+
+
+class TestPictureCore:
+    """The picture: server columns only — counts, agent ids, timestamps,
+    checkpoint presence. No content echo, no record ids (SPEC: no title,
+    no body, no tag of a peer record ever enters the picture)."""
+
+    def test_picture_fields_server_columns_only(self, manager: MemoryManager) -> None:
+        cp_id = _checkpoint(
+            manager, goals="neighbor secret goal title", agent=NEIGHBOR, session=NEIGHBOR_SESSION
+        )
+        _knowledge(manager, "neighbor body content about deploy scripts")
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert len(picture["agents"]) == 1
+        entry = picture["agents"][0]
+        assert entry["agent"] == NEIGHBOR
+        assert entry["entries"] == 2
+        assert entry["last_seen"]
+        assert entry["checkpoint"] is True
+        # No content echo anywhere in the struct: no goal text, no row
+        # body, no record id, no tags.
+        dumped = repr(picture)
+        assert "neighbor secret goal title" not in dumped
+        assert "deploy scripts" not in dumped
+        assert cp_id not in dumped
+        assert picture["disclaimer"] == AWARENESS_DISCLAIMER
+
+    def test_picture_checkpoint_flag_false_for_plain_rows(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "plain knowledge row without checkpoint")
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert picture["agents"][0]["checkpoint"] is False
+
+    def test_picture_line_rendering_observed_only(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="render goal", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        text = render_picture_section(picture)
+        assert "## Operational picture" in text
+        assert AWARENESS_DISCLAIMER in text
+        # The canonical line: <agent>: <N> entries, last <iso>, checkpoint
+        # yes|no — counts/ids/timestamps only (SPEC: no record ids, no
+        # content). Pinned via the builder itself.
+        assert f"- {picture_line(picture['agents'][0])}" in text
+        assert ", checkpoint yes" in text
+        assert "render goal" not in text
+        # Two-level trust: the picture renders under the OBSERVED header
+        # (server columns only — no client text enters v0a).
+        assert "### observed" in text
+        assert "[unverified]" not in text
+
+    def test_picture_empty_renders_nothing(self, manager: MemoryManager) -> None:
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert picture["agents"] == []
+        assert render_picture_section(picture) == ""
+        assert picture_blocks(picture) == []
+
+
+class TestPictureC1SameProjectFailClosed:
+    """C1: project-scoped only, fail-closed; cross-project is
+    structurally impossible — the surface has NO cross-project entry
+    (no parameter, no flag)."""
+
+    def test_project_none_fail_closed_picture(self, manager: MemoryManager) -> None:
+        with pytest.raises(ValueError, match="project"):
+            operational_picture(manager, project=None)
+
+    def test_no_cross_project_parameter_exists(self) -> None:
+        """A probe over the public surface signature: ``operational_picture``
+        accepts no all-projects/cross-project knob. Adding one later is an
+        R3 boundary change — a Security decision, not a flag."""
+        import inspect
+
+        import vesmaro.awareness as awareness_mod
+
+        sig = inspect.signature(awareness_mod.operational_picture)
+        assert set(sig.parameters) == {"mgr", "project", "exclude_agent", "now"}
+        # The compositions take identity + project only — same probe.
+        for fn in (
+            awareness_mod.compose_pre_llm_awareness,
+            awareness_mod.pre_flight_snapshot,
+            awareness_mod.compose_session_presence,
+        ):
+            params = set(inspect.signature(fn).parameters)
+            assert not params & {"include_all", "all_projects", "cross_project"}
+
+    def test_picture_is_project_scoped(self, manager: MemoryManager) -> None:
+        """Neighbor rows in ANOTHER project never appear in mine."""
+        _checkpoint(
+            manager,
+            goals="foreign project neighbor",
+            agent="awr-foreign",
+            session="sess-foreign",
+            project="awr-other-project",
+        )
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert picture["project"] == PROJECT
+        assert picture["agents"] == []
+
+
+class TestPictureC2ZeroStoredRecords:
+    """C2: zero stored picture-derived records — a picture query never
+    adds a store row (cursors ride meta, actions ride traces)."""
+
+    def test_store_byte_untouched_by_picture_queries(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="c2 basis", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        conn = manager.sqlite._get_conn()
+        conn.commit()
+
+        def _db_bytes() -> bytes:
+            # WAL store: flush the write-ahead log into the main file so
+            # the byte comparison sees EVERYTHING committed (a plain
+            # read_bytes() alone would miss the -wal side file).
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            return Path(manager.settings.db_path).read_bytes()
+
+        before = _db_bytes()
+        for _ in range(3):
+            operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        pre_flight_snapshot(manager, project=PROJECT, agent=AGENT, session=SESSION)
+        after = _db_bytes()
+        assert before == after, "picture queries must not write a single store byte"
+
+    def test_compose_adds_no_memory_rows(self, manager: MemoryManager) -> None:
+        """The full pre_llm composition (picture included) may advance the
+        awareness CURSOR (meta table — the #254 contract, not a record);
+        what C2 forbids is a stored picture-derived RECORD. Row-count
+        pin: no memories row is ever minted by the awareness legs."""
+        _checkpoint(manager, goals="c2 rows", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        before = manager.sqlite.count()
+        compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
+        compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
+        assert manager.sqlite.count() == before, "composition must not mint memory rows"
+
+    def test_born_no_federate_clause_pinned(self) -> None:
+        """The verbatim born-no-federate clause lives in the module
+        contract (C2) — pinned hard against rewording."""
+        import vesmaro.awareness as awareness_mod
+
+        text = " ".join((awareness_mod.__doc__ or "").split())
+        assert "mnemos:no-federate" in text
+        assert "born ``mnemos:no-federate``" in text
+
+
+class TestPictureC9RateCap:
+    """C9: per-(project, agent) query cap, in-process; over-limit degrades
+    to a rate-limit line, never a hard error; refused queries consume no
+    quota; the knob 0 disables the limiter."""
+
+    def _capped_manager(self, tmpdir: str) -> MemoryManager:
+        settings = _settings(
+            Path(tmpdir),
+            # W2 knob shape: the real config field
+            # (awareness_picture_rate_limit_per_minute), set low to pin
+            # the C9 gate cheaply.
+            awareness_picture_rate_limit_per_minute=2,
+        )
+        return _manager(settings)
+
+    def test_cap_fires_and_degrades_gracefully(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = self._capped_manager(tmpdir)
+            try:
+                _checkpoint(mgr, goals="cap neighbor", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+                first = pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                second = pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                third = pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                # First two admitted (limit=2)…
+                assert "rate_limited" not in first
+                assert "rate_limited" not in second
+                # …the third DEGRADES: the rate-limit line, same shape,
+                # never an exception, cursor untouched.
+                assert third["rate_limited"] is True
+                assert third["text"] == PICTURE_RATE_LIMITED_LINE
+                assert third["cursor_advanced"] is False
+                assert third["disclaimer"] == AWARENESS_DISCLAIMER
+            finally:
+                mgr.close()
+
+    def test_compose_degrades_not_raises(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = self._capped_manager(tmpdir)
+            try:
+                _checkpoint(mgr, goals="compose cap", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+                compose_pre_llm_awareness(mgr, session=SESSION, project=PROJECT, agent=AGENT)
+                compose_pre_llm_awareness(mgr, session=SESSION, project=PROJECT, agent=AGENT)
+                over = compose_pre_llm_awareness(mgr, session=SESSION, project=PROJECT, agent=AGENT)
+                assert over["text"] == PICTURE_RATE_LIMITED_LINE
+                assert over["blocks"] == []
+                assert over["meta"]["rate_limited"] is True
+                assert over["meta"]["pinnable"] is False
+                # The rate-limited compose still passes the E1 guard.
+                assert_awareness_tail([*({"lane": Lane.KNOWLEDGE.value},), *over["blocks"]])
+            finally:
+                mgr.close()
+
+    def test_refused_queries_consume_no_quota(self) -> None:
+        """W2 semantics mirrored: a refused query burns nothing — the
+        limiter throttles to N admitted reads, it never permanently
+        locks a live poller out."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = self._capped_manager(tmpdir)
+            try:
+                for _ in range(10):
+                    pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                # All over the 2/minute budget are refused, and refusal
+                # never mints quota: the ledger must hold EXACTLY the
+                # admitted count, not the attempted count.
+                from vesmaro.awareness import _PICTURE_RATE_LEDGER
+
+                stamps = _PICTURE_RATE_LEDGER[mgr][(PROJECT, AGENT)]
+                assert len(stamps) == 2
+            finally:
+                mgr.close()
+
+    def test_per_project_agent_bucketing(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = self._capped_manager(tmpdir)
+            try:
+                for _ in range(3):
+                    pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                other_agent = pre_flight_snapshot(
+                    mgr, project=PROJECT, agent="awr-agent-b", session=SESSION
+                )
+                other_project = pre_flight_snapshot(
+                    mgr, project="awr-proj-b", agent=AGENT, session=SESSION
+                )
+                assert "rate_limited" not in other_agent
+                assert "rate_limited" not in other_project
+            finally:
+                mgr.close()
+
+    def test_knob_zero_disables(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _settings(Path(tmpdir), awareness_picture_rate_limit_per_minute=0)
+            mgr = _manager(settings)
+            try:
+                for _ in range(40):
+                    result = pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                    assert "rate_limited" not in result
+            finally:
+                mgr.close()
+
+
+class TestPictureClampsAndCaps:
+    """SPEC retention/bounds: the clamped windows are the ONLY windows —
+    no surface accepts an arbitrary ``since`` beyond the clamp; render
+    bounds: one line per agent, AWARENESS_MAX_RENDERED_AGENTS cap,
+    DELTA_FEED_LIMIT scan bound, truncation observable."""
+
+    def test_picture_signature_accepts_no_since(self) -> None:
+        """The picture surface has NO ``since`` parameter at all — the
+        presence window constant is the only window."""
+        import inspect
+
+        import vesmaro.awareness as awareness_mod
+
+        assert "since" not in inspect.signature(awareness_mod.operational_picture).parameters
+
+    def test_stale_neighbor_outside_window(self, manager: MemoryManager) -> None:
+        cp_id = _checkpoint(
+            manager, goals="stale neighbor", agent=NEIGHBOR, session=NEIGHBOR_SESSION
+        )
+        # Age the neighbor's rows past PRESENCE_WINDOW_SEC: rewrite the
+        # created_at server-side (fixture surgery; the picture reads the
+        # server column).
+        stale = datetime.now(UTC) - timedelta(seconds=PRESENCE_WINDOW_MARGIN_SEC)
+        conn = manager.sqlite._get_conn()
+        conn.execute("UPDATE memories SET created_at = ? WHERE id = ?", (stale.isoformat(), cp_id))
+        conn.commit()
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert picture["agents"] == []
+        assert picture["window_sec"] == PRESENCE_WINDOW_SEC
+
+    def test_render_caps_to_top_n_observable(self, manager: MemoryManager) -> None:
+        for i in range(AWARENESS_MAX_RENDERED_AGENTS + 2):
+            _checkpoint(manager, goals=f"cap {i}", agent=f"awr-n{i:02d}", session=f"sess-n{i:02d}")
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert len(picture["agents"]) == AWARENESS_MAX_RENDERED_AGENTS
+        assert picture["agents_capped_from"] == AWARENESS_MAX_RENDERED_AGENTS + 2
+        text = render_picture_section(picture)
+        observed = [ln for ln in text.splitlines() if ln.startswith("- awr-n")]
+        assert len(observed) == AWARENESS_MAX_RENDERED_AGENTS
+        # Truncation observable, never silent.
+        assert "more agents not shown" in text
+        blocks = picture_blocks(picture)
+        assert len(blocks) == AWARENESS_MAX_RENDERED_AGENTS
+
+    def test_picture_never_pinnable(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="pinnable probe", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        for block in picture_blocks(picture):
+            assert "memory_id" not in block
+            assert block["lane"] == AWARENESS_LANE
+            assert block["pinnable"] is False
+            assert "applyTo:" not in block["content"]
+            assert "severity:" not in block["content"]
+
+    def test_descriptive_never_predictive(self) -> None:
+        """SPEC: the picture renders no predictive language — the fixed
+        wording surfaces (the degraded rate-limit line, the section
+        headers, the per-agent line builder) carry no prediction or
+        recommendation verbs. Pinned against rewording."""
+        import vesmaro.awareness as awareness_mod
+
+        rendered_vocab = (
+            awareness_mod.PICTURE_RATE_LIMITED_LINE
+            + " "
+            + awareness_mod.render_picture_section.__doc__
+            + " "
+            + awareness_mod.picture_line.__doc__
+        )
+        low = " ".join(rendered_vocab.split()).lower()
+        for banned in ("will ", "predict", "recommend", "should ", "about to"):
+            assert banned not in low, f"predictive language leaked: {banned!r}"
+
+
+class TestPictureSurfaces:
+    """Composition/surface wiring: the picture rides additively in the
+    existing compositions, tail-only, observed header, MCP + REST."""
+
+    def test_compose_pre_llm_appends_picture_last(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="compose picture goal", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        composed = compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
+        assert composed["meta"]["picture_agents"] == [NEIGHBOR]
+        assert "## Operational picture" in composed["text"]
+        # Tail-only: picture blocks come AFTER the delta blocks.
+        assert composed["blocks"][-1]["agent"] == NEIGHBOR
+        # The composed block list passes the E1 guard.
+        assert_awareness_tail(composed["blocks"])
+
+    def test_pre_flight_carries_picture_key(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="preflight picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        result = pre_flight_snapshot(manager, project=PROJECT, agent=AGENT, session=SESSION)
+        assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
+        assert "## Operational picture" in result["text"]
+        assert read_awareness_cursor(manager, project=PROJECT, agent=AGENT, session=SESSION) is None
+
+    def test_session_presence_carries_picture(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="session picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        presence = compose_session_presence(manager, project=PROJECT, agent=AGENT)
+        assert presence["picture"]["agents"][0]["agent"] == NEIGHBOR
+
+    def test_mcp_pre_flight_carries_picture(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="mcp picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        result = _mcp_call(
+            manager,
+            "mnemos_awareness",
+            {"action": "pre_flight", "session": SESSION, "project": PROJECT, "agent": AGENT},
+        )
+        assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
+        assert "Operational picture" in result["text"]
+
+    def test_rest_hooks_on_session_start_picture(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="rest picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        api_main._manager = manager
+        test_app = FastAPI(title="Mnemos-Awr-Test", version="0.1.0", lifespan=lifespan)
+        for route in app.routes:
+            test_app.routes.append(route)
+        try:
+            with TestClient(test_app) as tc:
+                on = tc.post(
+                    "/hooks/on_session_start",
+                    json={
+                        "session": SESSION,
+                        "project": PROJECT,
+                        "agent": AGENT,
+                        "include_awareness": True,
+                    },
+                )
+                assert on.status_code == 200
+                body = on.json()
+                assert body["presence"]["picture"]["agents"][0]["agent"] == NEIGHBOR
         finally:
             api_main._manager = None
