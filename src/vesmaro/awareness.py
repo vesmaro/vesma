@@ -89,6 +89,66 @@ INCLUSIVELY, so the stored cursor is the consumed high-water mark +1µs
 — the next delta opens strictly after everything already rendered (a
 quiet store yields an empty delta, never a boundary-row re-render).
 
+── Operational picture SPEC (swarm v0a, ArchCom 2026-09-27) ────────
+
+The operational picture EXTENDS this contour with the swarm v0a block:
+agent presence + recent-records counters for SAME-PROJECT peer agents
+(the committee-ratified v0a contract: an explicit "operational picture"
+section composed from the slots the contour already reads — agent id,
+observed activity, per-window record count, checkpoint presence).
+The spec below is BINDING on every surface that renders or serves the
+picture; the presence-gate ruling that makes it possible:
+
+**Presence is BEHAVIORAL metadata** (agent id, activity timestamps,
+record counts of a peer) — the SEARCH gates cover record CONTENT and
+do NOT apply to presence. No title, no body, no tag of a peer record
+ever enters the picture: counts, ids and timestamps only. The seven
+hard conditions (each pinned by tests/test_awareness.py::TestPicture*):
+
+1. **Project-scoped only, fail-closed.** The picture inherits the R3
+   boundary: ``project=None`` raises before any query
+   (:func:`_require_project` — the :func:`presence_snapshot` /
+   ``project_delta`` precedent). Cross-project visibility does not
+   exist in v0: there is NO parameter, NO flag and NO code path that
+   widens the picture beyond one project ("all agents of the server"
+   is an R3 boundary change — a separate Security decision, not a
+   knob).
+2. **Zero stored picture-derived records.** The v0 convention holds:
+   cursors ride the meta table, actions ride the traces table — the
+   picture stores NOTHING (a picture query never adds a store row).
+3. **Born-no-federate (verbatim clause).** Any awareness-derived
+   RECORD is born ``mnemos:no-federate`` (CWE-359; presence of another
+   operator's agents is not exportable data). v0/v0a store none; the
+   clause is the module contract and travels with any future
+   picture-derived record.
+4. **Retention/bounds — the clamped windows are the ONLY windows.**
+   :data:`PRESENCE_WINDOW_SEC` (900 s) for presence and
+   :data:`DELTA_MAX_WINDOW_SEC` (3600 s) for the delta clamp are the
+   spec; NO surface accepts an arbitrary ``since`` that reaches beyond
+   the clamp (``_resolve_since`` clamps every caller forward).
+5. **Render bounds.** One line per agent (the E1 slot), at most
+   :data:`AWARENESS_MAX_RENDERED_AGENTS` (8) lines, scan bounded by
+   :data:`DELTA_FEED_LIMIT` (200); truncation is OBSERVABLE
+   (``agents_capped_from``), never silent.
+6. **Descriptive only.** The picture says who / what count / when —
+   observed facts. It is never predictive: no "agent X is about to…",
+   no recommendations, no work-deferral semantics (the disclaimer
+   frame governs it like every awareness surface).
+7. **The picture is data, never governance.** Picture blocks carry no
+   ``memory_id``, are never-pinnable (``pinnable=False``), carry no
+   ``applyTo:``/``severity:`` policy semantics and are not eligible
+   for the approval machine — awareness is data, not governance.
+
+**Rate cap (C9, hard):** every picture/awareness query is capped per
+``(project, agent)`` at :data:`PICTURE_RATE_LIMIT_PER_MINUTE`
+(configurable via ``vesmaro.awareness_picture_rate_limit_per_minute``,
+0 disables — mirrors the W2 knob shape of
+``context_rewrite_rate_limit_per_minute``). Over-limit DEGRADES: the
+section renders one "rate-limited, retry later" line and the response
+keeps its shape — never a hard error that breaks the composition
+contract. Rationale: without the cap, a polling harness reconstructs
+a neighbor's timeline at arbitrary resolution off the picture reads.
+
 ── Measurement surfaces (E0 docs/experiments/e0-meta-level.md) ──────
 
 The engine exists to make the D-leg hypotheses measurable: D1/D4
@@ -176,6 +236,14 @@ CONFLICT_HINT_MIN_SHARED_TOKENS: Final[int] = 2
 
 #: Trace task label for abstention attribution rows (the chain anchor).
 ABSTENTION_TASK_LABEL: Final[str] = "awareness_abstention"
+
+#: C9 (ArchCom 2026-09-27, swarm v0a): default per-(project, agent)
+#: picture/awareness query cap per minute. In-process sliding window
+#: (the picture stores NOTHING — C2 — so a SQL counter over stored rows
+#: is structurally impossible; reads are not rows). Configurable via
+#: ``vesmaro.awareness_picture_rate_limit_per_minute`` (0 disables);
+#: over-limit DEGRADES to a rate-limit line, never a hard error.
+PICTURE_RATE_LIMIT_PER_MINUTE: Final[int] = 30
 
 #: Metadata key that marks a row as federation-imported for the delta
 #: exclusion hook. THREE import paths stamp it (all #254 review P2):
