@@ -135,6 +135,20 @@ class MnemosSDK:
             )
         data = MemoryCreate(content=content, **kw)
         memory = self._manager.add(data, project=project, agent=agent)
+        # vesmaro-canon v1.0.0 (canon §9): the manager canon gate already
+        # logged + attached violations to ``metadata["canon_warnings"]``;
+        # THIS channel echoes the codes at its edge so an SDK caller sees
+        # the warning without parsing manager logs (write still succeeds —
+        # warn mode never blocks).
+        warnings = memory.metadata.get("canon_warnings")
+        if warnings:
+            codes = ",".join(w["code"] for w in warnings)
+            logger.warning(
+                "sdk.remember: canon warnings id=%s codes=%s — see "
+                "metadata['canon_warnings'] on the returned memory",
+                memory.id,
+                codes,
+            )
         logger.info("sdk.remember: project=%s agent=%s id=%s", project, agent, memory.id)
         return memory
 
