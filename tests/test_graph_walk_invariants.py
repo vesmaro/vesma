@@ -492,13 +492,28 @@ class TestI3PostGateWeights:
     def test_i3_ranking_deterministic_id_tiebreak(self, walk_manager: MemoryManager) -> None:
         """I3 clause 3: the ADR-0028 determinism line — the appended
         block is a pure function of the fused ranking + the edge table.
-        Two eligible neighbours of the SAME anchor (equal decay: same
-        first-anchor rank) surface in ID order regardless of their
-        weights (5.0 vs 0.5): at A0 the decay ignores ``w_edge`` (the
-        formula is A1), and no weight may reorder the block pre-gate.
+        Two eligible neighbours of the SAME anchor (equal decay base:
+        same first-anchor rank, same depth) surface in ID order
+        regardless of their weights (5.0 vs 0.5).
+
+        A1 AMENDMENT (registered, #325 / ArchCom 2026-09-27 verdict
+        (a) point 3): the A0 pin asserted "the decay ignores ``w_edge``"
+        with ``graph_rows[0].score == graph_rows[1].score``. A1 BY
+        DESIGN repeals that: the decay is now
+        ``(1-alpha)/(rrf_k + 2*pos) x w_edge x 0.7^(depth-1)``
+        (ADR-0030 §3), so equal-(pos, depth) neighbours score by their
+        w_edge — weights rank WITHIN the walked block, never touch the
+        fused block, never touch eligibility (I3), and the block ORDER
+        stays (anchor_pos, depth, id) (ADR-0028). The amendment moves
+        the pin to the new doctrine: the heavier sibling scores higher
+        but the deterministic ORDER is unchanged, and the fused anchor
+        keeps its A0 decay formula untouched. This is a reasoned
+        amendment to the doctrine the test pinned, not a test disable.
 
         Killer mutant M3c: order the expansion by edge weight
-        (heavier first) instead of the id-sorted neighbour walk.
+        (heavier first) instead of the deterministic (pos, depth, id)
+        order — the ID-ordered assertion below goes RED when the
+        LEXICOGRAPHICALLY LAST id carries the HEAVIEST weight.
         """
         anchor = _add(walk_manager, "anchor note about tide schedules")
         a = _add(walk_manager, "alpha dormant ledger reconciliation note")
@@ -513,13 +528,32 @@ class TestI3PostGateWeights:
         walk_manager.add_memory_edge(anchor.id, hi, kind="relates_to", weight=5.0)
         _fts_only(walk_manager)
 
-        results = walk_manager.search("anchor tide schedules", limit=5)
+        # limit=8 → quota k = min(ceil(8/5), 8//2) = 2: BOTH siblings fit
+        # the reserved walk slots (at limit=5 the quota admits ONE walk
+        # row and the second sibling would be gated by the reservation,
+        # not by ranking — the pin must isolate the ranking surface).
+        results = walk_manager.search("anchor tide schedules", limit=8)
         graph_rows = [r for r in results if r.via_graph]
         assert {r.memory.id for r in graph_rows} == {a.id, b.id}
-        # Equal decay ⇒ the id tiebreak decides; the weight opposition
-        # (0.5 on the id-first row, 5.0 on the id-last) must not reorder.
+        # ADR-0028 determinism: the block order is (anchor_pos, depth, id)
+        # — the weight opposition (0.5 on the id-first row, 5.0 on the
+        # id-last) must NOT reorder the block (M3c killer).
         assert [r.memory.id for r in graph_rows] == [lo, hi]
-        assert graph_rows[0].score == graph_rows[1].score
+        # A1 doctrine: w_edge ranks WITHIN the walked block — equal (pos,
+        # depth) neighbours now score by their w_edge (the A0
+        # equal-score pin is REPEALED by the A1 formula, registered
+        # amendment above); the fused anchor's own decay is untouched.
+        by_id = {r.memory.id: r for r in results}
+        assert by_id[hi].score > by_id[lo].score
+        # Exact A1 formula: decay = (1-alpha)/(rrf_k + 2*pos) x w_edge x
+        # 0.7^(depth-1) with alpha=0.5, rrf_k=60, pos=1, depth=1.
+        expected_lo = (1.0 - 0.5) / (60 + 2 * 1) * 0.5
+        expected_hi = (1.0 - 0.5) / (60 + 2 * 1) * 5.0
+        assert graph_rows[0].score == pytest.approx(expected_lo)
+        assert graph_rows[1].score == pytest.approx(expected_hi)
+        # The fused anchor keeps its A0 decay (no w_edge factor touches
+        # the fused block).
+        assert by_id[anchor.id].score == pytest.approx((1.0 - 0.5) / (60 + 1))
 
 
 # ── Acceptance telemetry (ADR-0030 Decision 2: minting-rate AND walk share) ──
@@ -626,7 +660,13 @@ class TestWalkAcceptanceTelemetry:
         fuel_manager.add_memory_edge(base.id, dormant.id, kind="relates_to")
         fuel_manager.add_memory_edge(base.id, superseded.id, kind="supersedes")
         _fts_only(fuel_manager)
-        enriched = fuel_manager.search("conveyor belt alignment procedure", limit=5)
+        # A1-S1 (#325): the flag-ON page reserves k = min(ceil(limit/5),
+        # limit//2) walk slots — at limit=5 the reservation admits ONE
+        # walk row and the supersedes candidate (first in deterministic
+        # order) claims it, so the walk counter would never move. At
+        # limit=8 the quota is 2: both legs' rows fit the reservation
+        # and the split-counter fixture keeps measuring both legs.
+        enriched = fuel_manager.search("conveyor belt alignment procedure", limit=8)
         assert {r.via_graph_kind for r in enriched if r.via_graph} == {
             "relates_to",
             "supersedes",

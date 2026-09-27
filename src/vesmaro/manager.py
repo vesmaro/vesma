@@ -233,6 +233,69 @@ VECTOR_LEG_OVERFETCH_FACTOR: Final[int] = 4
 # FIFO for free — no LRU bookkeeping.
 RETRIEVAL_ISO_REGISTRY_CAP: Final[int] = 10_000
 
+# ── ADR-0030 A1-S1 — the walk mechanics module (#325) ───────────────────────
+# Committee-ratified constants (ArchCom 2026-09-27, verdict (a)/(c)): the
+# composition rule ONLY applies on the flag-on path; the flag-off graph
+# leg (the unconditional supersedes expansion) is byte-identical to A0.
+
+
+# Reserved walk quota — k = min(ceil(limit/5), limit//2), 0 for limit < 3
+# (a PURE function of ``limit``, no store state — the adaptive-floor
+# alternative was rejected: it would make the composition a function of
+# store state and break the ADR-0028 determinism line). ~20% headroom
+# rent: a flag-on search never serves more than k walk-sourced rows at
+# the fused block's expense; fused surplus fills any walk shortfall.
+def _walk_quota(limit: int) -> int:
+    """Reserved walk slots for a flag-on page (ADR-0030 A1-S1, #325)."""
+    if limit < 3:
+        return 0
+    return min(-(-limit // 5), limit // 2)
+
+
+# Static w_edge decay multiplier per depth layer: a depth-2 neighbour
+# ranks at 0.7 of its depth-1 decay (ADR-0030 §3 "Ranking formula" —
+# ``(1-alpha)/(rrf_k + 2*pos) x w_edge x 0.7^(depth-1)``). Depth 1
+# multiplies by 1.0; the constant bounds the work so BFS-2's second
+# layer can never outrank the first.
+WALK_DEPTH_DECAY: Final[float] = 0.7
+
+# BFS-2 fanout cap (ADR-0030 §3): per-node neighbour budget for the
+# LAYERED expansion (depth-1 anchors expand in ONE batched
+# ``WHERE from_memory_id IN (...)`` pass, then the depth-2 layer).
+# Guards against hub rows (relates_to hubs with tag-sized fanout) —
+# a hub anchor contributes at most this many neighbours per layer.
+WALK_FANOUT_CAP: Final[int] = 32
+
+# BFS-2 total-work cap (ADR-0030 §3): the hard ceiling on VISITED-ROW
+# work across the whole layered expansion, independent of page size —
+# bound the query-time cost as a function of the corpus, not of ``limit``.
+WALK_TOTAL_WORK_CAP: Final[int] = 512
+
+# Depth-2 attribution: a depth-2 neighbour's anchor is its entry
+# neighbour's first anchor (first-anchor-wins across BOTH layers) —
+# the ADR-0028 (score desc, id asc) tiebreak line holds unchanged.
+
+
+@dataclass(frozen=True, slots=True)
+class _WalkCandidate:
+    """One walk-expansion candidate (ADR-0030 A1-S1).
+
+    ``anchor_pos`` is the 1-based position of the candidate's FIRST
+    anchor in the fused ranking (first-anchor-wins across both BFS
+    layers); ``depth`` is the BFS layer (1 = edge of a fused anchor,
+    2 = edge of a depth-1 neighbour); ``weight`` is the w_edge of the
+    edge that DISCOVERED the candidate (the first-edge-wins value —
+    post-gate ranking fuel only, never eligibility per I3);
+    ``via_relates`` records whether the discovery edge was a
+    ``relates_to`` edge (telemetry attribution per #324).
+    """
+
+    neighbour_id: str
+    anchor_pos: int
+    depth: int
+    weight: float
+    via_relates: bool
+
 
 @dataclass(frozen=True, slots=True)
 class IssuanceScan:
@@ -1936,50 +1999,194 @@ class MemoryManager:
         # scores; order between DIFFERENT scores is unchanged. This is
         # the single ranking surface — downstream stages (assemble.py
         # block ordering) only run stable sorts over this order.
+        #
+        # A1-S1 (#325, flag-ON path only): the fused block fills
+        # ``limit - k`` where ``k`` is the reserved walk quota
+        # (``_walk_quota`` — a pure function of ``limit``); the sorted
+        # candidates list is already materialized, so the SURPLUS beyond
+        # the fused cut is retained (fused fill / walk backfill both
+        # consume it in (score desc, id asc) order — ADR-0028 holds on
+        # every path). Flag-OFF: the fused block fills to ``limit``
+        # exactly as before (byte-identical A0 semantics).
+        fused_sorted: list[tuple[str, float]] = sorted(
+            scores.items(), key=lambda kv: (-kv[1], kv[0])
+        )
+        fused_fill: int = limit
+        if self.settings.mnemos.graph_walk and _walk_quota(limit) > 0:
+            fused_fill = limit - _walk_quota(limit)
         results: list[SearchResult] = []
-        for mid, score in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0])):
+        for mid, score in fused_sorted:
             matched: Memory | None = id_to_memory.get(mid)
             if matched is None:
                 continue
             if tags and not all(t in matched.tags for t in tags):
                 continue
             results.append(SearchResult(memory=matched, score=score, search_type=search_type))
-            if len(results) >= limit:
+            if len(results) >= fused_fill:
                 break
+        fused_surplus: list[tuple[str, float]] = []
+        if self.settings.mnemos.graph_walk and _walk_quota(limit) > 0:
+            # The candidates BEYOND the fused cut, in the same
+            # (score desc, id asc) order: the walk's shortfall backfill
+            # consumes them; a starved fused page (I1-I3 fixtures)
+            # simply yields a shorter list (nothing beyond the cut).
+            # Ids already on the page are excluded — the backfill never
+            # re-serves a fused row.
+            fused_surplus = [
+                (mid, score)
+                for mid, score in fused_sorted
+                if mid not in {r.memory.id for r in results}
+            ]
 
-        # ── Graph leg (v1 issue #313; relates_to walk issue #324) ────────
-        # 1-hop expansion along memory_edges from the top-``limit`` fused
-        # ids. Kinds walked: ``supersedes`` BOTH directions (v1, the
-        # unconditional leg) and, when ``mnemos.graph_walk`` is ON,
-        # ``relates_to`` both directions (ADR-0030 A0, issue #324 — the
-        # minted fuel reaches search; the flag is default-OFF, and
-        # invariants I1-I3 are pinned by tests/test_graph_walk_invariants.py).
-        # Edge-sourced rows that are NOT already fused get appended with a
-        # decayed RRF slot — deterministic rule: an expansion row's weight
-        # is (1-alpha)/(rrf_k + 2*anchor_rank) where anchor_rank is its
-        # FIRST anchor's 1-based position in the fused ranking, so the
+        # ── Graph leg (v1 issue #313; relates_to walk issue #324; A1-S1 #325) ─
+        # Expansion along memory_edges from the fused ids. Kinds walked:
+        # ``supersedes`` BOTH directions (v1, the unconditional leg) and,
+        # when ``mnemos.graph_walk`` is ON, ``relates_to`` both directions
+        # (ADR-0030 A0, issue #324; invariants I1-I3 are pinned by
+        # tests/test_graph_walk_invariants.py).
+        #
+        # ADR-0030 A1-S1 (#325, ArchCom 2026-09-27 — flag-OFF path is
+        # BYTE-IDENTICAL to A0): on the flag-ON path the fused page
+        # reserves ``k = min(ceil(limit/5), limit//2)`` walk slots
+        # (``_walk_quota`` — a PURE function of ``limit``), the walk fills
+        # its reserved slots, and the fused SURPLUS backfills any
+        # shortfall in the same (score desc, id asc) order — a search
+        # with an empty graph loses NOTHING (slots return, the
+        # byte-equality pin proves it), a search with graph fuel gets
+        # enrichment even when the fused page is full (the A0
+        # headroom-gate dead-on-arrival finding). The flag-OFF path
+        # keeps A0 semantics exactly: the unconditional supersedes leg
+        # runs only on headroom (``len(results) < limit``), quota does
+        # not apply — pinned by tests/test_graph_walk_quota.py.
+        # Depth: the flag-ON walk is a layered BFS-2 (ADR-0030 §3) —
+        # depth 1 = edge of a fused anchor, depth 2 = edge of a
+        # depth-1 neighbour; fanout + total-work caps bound hub rows.
+        # The flag-OFF leg stays 1-hop (A0 surface, unchanged).
+        # Deterministic decay: an expansion row's weight is
+        # (1-alpha)/(rrf_k + 2*anchor_pos) x w_edge x 0.7^(depth-1)
+        # where anchor_pos is its FIRST anchor's 1-based position in the
+        # fused ranking (first-anchor-wins across BOTH layers), so the
         # appended block is a pure function of the fused ranking + the
-        # edge table. Edge ``weight`` deliberately does NOT enter the A0
-        # decay (the w_edge ranking formula is A1, #325) and can never
-        # influence eligibility — I3.
+        # edge table (ADR-0028). w_edge ranks WITHIN the walked block
+        # and can never influence eligibility — I3.
         # The expansion passes the SAME gates as the fused rows on EVERY
         # axis and for BOTH kinds: project (the A9 authoritative guard,
         # review F2 / I1), status (the default ``allowed`` set AND the
         # explicit ``status=`` drill-down, review F1 / I1), quarantine
         # (absolute per ADR-0019 §5 — an edge is never a side door, I2)
-        # and refined_only (§4). Headroom-gated: the expansion runs only
-        # when the fused legs left room (``len(results) < limit`` — a full
-        # fused page needs no enrichment) and is capped at ``limit`` extra
-        # rows (so a search can at most double). No edges in the store →
-        # the whole leg is a no-op. Rows already surfaced by the fused
-        # legs (by id) are never re-appended via the graph.
+        # and refined_only (§4). Gate binding is the QUERY's (I1):
+        # candidate collection is never filtered by gate — every
+        # neighbour gets collected, gated at append. The walk is capped
+        # at ``limit`` extra rows (so a search can at most double); no
+        # edges in the store → the whole leg is a no-op. Rows already
+        # surfaced by the fused legs (by id) are never re-appended via
+        # the graph.
         # Each appended row is TAGGED with its first-anchor discovery
         # kind (``via_graph_kind``) so the enrichment telemetry splits by
         # SOURCE LEG (#324 review fix): a neighbour reachable via both
         # kinds from its first anchor counts as supersedes — the
         # unconditional leg reached it; the walk counter claims only what
         # the relates_to leg alone surfaced.
-        if len(results) < limit:
+        if self.settings.mnemos.graph_walk:
+            # ── Flag-ON: reserved-quota BFS-2 walk + surplus backfill ──
+            k = _walk_quota(limit)
+            # P1 fix (#415 review): ``seen`` is initialised BEFORE the
+            # ``k > 0 and results`` branch — the backfill loop below
+            # reads it unconditionally, and a STARVED fused block (a
+            # tags filter matching nothing, an empty status drill-down)
+            # must not turn the composition rule into an
+            # UnboundLocalError on the whole search (the leg is a
+            # no-op on ANY failure, not a page crash).
+            seen: set[str] = {r.memory.id for r in results}
+            if k > 0 and results:
+                fused_ids = [r.memory.id for r in results]
+                walk_rows = self._collect_walk_candidates(
+                    fused_ids,
+                    scores=scores,
+                )
+                appended: list[SearchResult] = []
+                # A walk candidate may be gated out at append time (I1/I2/
+                # I3 run here, on the query's scope) — the loop walks
+                # PAST gated candidates so a gated-out row never consumes
+                # a reserved slot (gates bind to the query, never to the
+                # reservation).
+                for cand in walk_rows:
+                    if len(appended) >= k:
+                        break
+                    neighbour = id_to_memory.get(cand.neighbour_id) or self.sqlite.get(
+                        cand.neighbour_id
+                    )
+                    if neighbour is None:
+                        continue  # edge to a deleted row — skip silently
+                    # A9 authoritative project guard, mirrored from the vector
+                    # resolve loop: the edge is stored by id only, so a
+                    # cross-project neighbour would otherwise leak into a
+                    # scoped search (review F2 — the edge must not widen the
+                    # A9 scope, only the soft-fallback retry may, and it tags).
+                    if project and (neighbour.project or "") != project:
+                        continue
+                    # A9-completion agent mirror (epic #308 Ф1-PREP): an
+                    # edge must not widen the agent scope either — the same
+                    # resolve-time guard as the vector leg above; the FTS
+                    # leg filters natively.
+                    if agent and (neighbour.agent or "") != agent:
+                        continue
+                    if tags and not all(t in neighbour.tags for t in tags):
+                        continue
+                    # Same status policy as the fused rows: the default gate
+                    # (``allowed``) AND the explicit ``status=`` drill-down
+                    # (review F1 — an edge must not widen an explicit status
+                    # request any more than the fused legs do).
+                    if status is not None and neighbour.status != status:
+                        continue
+                    if allowed is not None and not is_context_admissible(
+                        neighbour, statuses=allowed
+                    ):
+                        continue
+                    # ADR-0019 §5 — absolute quarantine exclusion on the graph path.
+                    if is_quarantined(neighbour):
+                        continue
+                    # ADR-0019 §4 — refined_only gates the graph leg identically.
+                    if refined_only and neighbour.pipeline_state != PipelineState.REFINED:
+                        continue
+                    # A1-S1 decay (ADR-0030 §3): (1-alpha)/(rrf_k + 2*pos)
+                    # x w_edge x 0.7^(depth-1). w_edge ranks WITHIN the
+                    # walked block only (post-gate, I3) — it never touches
+                    # the fused block, eligibility, or the gate order.
+                    decayed = (1.0 - alpha) / (rrf_k + 2 * cand.anchor_pos)
+                    decayed *= cand.weight * (WALK_DEPTH_DECAY ** (cand.depth - 1))
+                    appended.append(
+                        SearchResult(
+                            memory=neighbour,
+                            score=decayed,
+                            search_type=search_type,
+                            via_graph=True,
+                            via_graph_kind="relates_to" if cand.via_relates else "supersedes",
+                        )
+                    )
+                results.extend(appended)
+            # Backfill (flag-ON): the fused surplus fills any walk
+            # shortfall in the SAME (score desc, id asc) order — the
+            # page never ships short when the graph had less fuel than
+            # its quota reserved, and an edge-less corpus returns the
+            # slots to the fused block (the byte-equality pin,
+            # tests/test_graph_walk_quota.py, proves both at once).
+            # P2 fix (#415 review, I1 worst-link): the backfill rows
+            # pass the SAME tags filter as the fused loop — the query's
+            # gates bind to the composition rule, never the other way
+            # round; a tags-rejected row must not re-enter the page
+            # through the surplus.
+            for mid, score in fused_surplus:
+                if len(results) >= limit:
+                    break
+                matched = id_to_memory.get(mid)
+                if matched is None or matched.id in seen:
+                    continue
+                if tags and not all(t in matched.tags for t in tags):
+                    continue
+                results.append(SearchResult(memory=matched, score=score, search_type=search_type))
+        elif len(results) < limit:
+            # ── Flag-OFF: the A0 surface, byte-identical ────────────────
             fused_ids = [r.memory.id for r in results]
             anchor_rank: dict[str, int] = {}
             walk_sourced: set[str] = set()
@@ -2076,6 +2283,141 @@ class MemoryManager:
             )
         neighbours.discard(memory_id)  # self-edges are rejected at write time
         return neighbours
+
+    def _graph_adjacent_weighted_batch(
+        self, memory_ids: list[str], *, kind: str
+    ) -> dict[str, list[tuple[str, float]]]:
+        """Layered BFS-2 batch expansion (ADR-0030 A1-S1, #325).
+
+        One outgoing + one incoming ``WHERE ... IN (...)`` query per kind
+        for the WHOLE layer (4 indexed point queries per layer — the
+        sqlite_store.py:919-920 indexes serve them; NOT a recursive CTE,
+        see ADR-0030 Alternatives). Returns ``{node_id: [(neighbour_id,
+        w_edge), ...]}`` — the w_edge of the DISCOVERY edge rides along
+        so the A1 ranking formula (``x w_edge x 0.7^(depth-1)``) needs no
+        second lookup. Per-node fanout is capped at ``WALK_FANOUT_CAP``
+        (hub rows contribute a bounded neighbour budget, in
+        deterministic (weight, id) order — the cap is a ranking-surface
+        decision, so it stays deterministic). A missing memory id simply
+        has no rows in memory_edges. The leg is a no-op on ANY failure —
+        graph enrichment must never break the search it decorates.
+        """
+        if not memory_ids:
+            return {}
+        adjacency: dict[str, list[tuple[str, float]]] = {mid: [] for mid in memory_ids}
+        try:
+            conn = self.sqlite._get_conn()
+            placeholders = ",".join("?" * len(memory_ids))
+            outgoing = conn.execute(
+                "SELECT from_memory_id, to_memory_id, weight FROM memory_edges "
+                f"WHERE from_memory_id IN ({placeholders}) AND kind = ?",
+                (*memory_ids, kind),
+            ).fetchall()
+            incoming = conn.execute(
+                "SELECT to_memory_id, from_memory_id, weight FROM memory_edges "
+                f"WHERE to_memory_id IN ({placeholders}) AND kind = ?",
+                (*memory_ids, kind),
+            ).fetchall()
+        except Exception as exc:
+            # The leg is a no-op on ANY failure — graph enrichment must
+            # never break the search it decorates.
+            logger.warning("graph walk: batch edge lookup failed (non-fatal): %s", exc)
+            return adjacency
+        for row in outgoing:
+            source = str(row["from_memory_id"])
+            if source in adjacency:
+                adjacency[source].append((str(row["to_memory_id"]), float(row["weight"])))
+        for row in incoming:
+            target = str(row["to_memory_id"])
+            if target in adjacency:
+                adjacency[target].append((str(row["from_memory_id"]), float(row["weight"])))
+        for mid, pairs in adjacency.items():
+            # Fanout cap (ADR-0030 §3): deterministic cut — heaviest
+            # edges first, id tiebreak (the same ADR-0028 rule, applied
+            # to the candidate-set cut rather than the final ranking).
+            pairs.sort(key=lambda p: (-p[1], p[0]))
+            del pairs[WALK_FANOUT_CAP:]
+            adjacency[mid] = [(nid, w) for nid, w in pairs if nid != mid]
+        return adjacency
+
+    def _collect_walk_candidates(
+        self,
+        fused_ids: list[str],
+        *,
+        scores: dict[str, float],
+    ) -> list[_WalkCandidate]:
+        """Collect flag-on BFS-2 candidates (bounded by the work caps).
+
+        Layer 1: the fused anchors expand along ``supersedes`` then
+        ``relates_to`` (batched ``IN`` lookups, one per kind per
+        direction); layer 2: the depth-1 neighbours expand along
+        ``relates_to`` only (the committee scope — the unconditional
+        supersedes leg stays 1-hop; BFS-2 is the walk's mechanics).
+        FIRST-ANCHOR-WINS across both layers: a neighbour's anchor is
+        its first discoverer's fused position, its discovery weight is
+        the FIRST edge that reached it (max across that anchor's
+        discovery edges, id-tiebroken — a pure function of the edge
+        table), and a ``supersedes`` claim beats a ``relates_to`` claim
+        from the same anchor (the #324 attribution rule). Fused rows
+        (``scores``) are never re-surfaced. Work is bounded by the
+        total-work cap; collection NEVER filters by gate — the gates run
+        at append time on the query's scope (I1), never at collection.
+        """
+        claimed: dict[str, _WalkCandidate] = {}
+        on_page = set(scores)
+
+        def _claim(
+            neighbour_id: str, *, pos: int, depth: int, weight: float, via_relates: bool
+        ) -> None:
+            if neighbour_id in claimed or neighbour_id in on_page:
+                return  # first anchor wins; fused rows never re-surface
+            if len(claimed) >= WALK_TOTAL_WORK_CAP:
+                return  # total-work cap (ADR-0030 §3): expansion budget spent
+            claimed[neighbour_id] = _WalkCandidate(
+                neighbour_id=neighbour_id,
+                anchor_pos=pos,
+                depth=depth,
+                weight=weight,
+                via_relates=via_relates,
+            )
+
+        # Layer 1 — supersedes first (its attribution claim wins on ties):
+        # per anchor, a ``WALK_FANOUT_CAP`` budget (fanout cap, ADR-0030
+        # §3) — the fanout order is deterministic (weight, id), so the
+        # cut is a pure function of the edge table.
+        supers = self._graph_adjacent_weighted_batch(fused_ids, kind="supersedes")
+        for pos, anchor_id in enumerate(fused_ids, start=1):
+            for neighbour_id, w in supers.get(anchor_id, ())[:WALK_FANOUT_CAP]:
+                _claim(neighbour_id, pos=pos, depth=1, weight=w, via_relates=False)
+        relates = self._graph_adjacent_weighted_batch(fused_ids, kind="relates_to")
+        for pos, anchor_id in enumerate(fused_ids, start=1):
+            for neighbour_id, w in relates.get(anchor_id, ())[:WALK_FANOUT_CAP]:
+                _claim(neighbour_id, pos=pos, depth=1, weight=w, via_relates=True)
+        # Layer 2 — depth-1 entries expand along relates_to; the depth-2
+        # neighbour inherits its entry's first anchor (first-anchor-wins
+        # attribution across layers, ADR-0030 §3) and the walk-only
+        # relates_to attribution.
+        if len(claimed) < WALK_TOTAL_WORK_CAP:
+            layer1_ids = sorted(claimed)
+            layer2 = self._graph_adjacent_weighted_batch(layer1_ids, kind="relates_to")
+            for entry_id in layer1_ids:
+                entry = claimed[entry_id]
+                for neighbour_id, w in layer2.get(entry_id, ())[:WALK_FANOUT_CAP]:
+                    _claim(
+                        neighbour_id,
+                        pos=entry.anchor_pos,
+                        depth=2,
+                        weight=w,
+                        via_relates=True,
+                    )
+        # Deterministic order (ADR-0028): the collected block is a pure
+        # function of the fused ranking + the edge table —
+        # (anchor_pos asc, depth asc, id asc); the w_edge factor enters
+        # only the DECAY at append time (post-gate, I3).
+        return sorted(
+            claimed.values(),
+            key=lambda c: (c.anchor_pos, c.depth, c.neighbour_id),
+        )
 
     # ── ADR-0030 A0: relates_to auto-minting on write (issue #322) ────────
 
@@ -3062,7 +3404,13 @@ class MemoryManager:
         return report
 
     def search_stats(self) -> dict[str, Any]:
-        """Return in-memory search instrumentation (resets on restart)."""
+        """Return in-memory search instrumentation (resets on restart).
+
+        ADR-0030 A1-S1 (#325): also carries the per-project
+        ``graph_epoch`` durable meta-counters (edge-write generations).
+        The in-memory counters above reset on restart; the epochs do not
+        — a consumer keying on them survives restarts.
+        """
         with self._search_stats_lock:
             samples: list[float] = list(self._search_stats["latency_samples_ms"])
             counts: list[int] = list(self._search_stats["results_counts"])
@@ -3089,9 +3437,46 @@ class MemoryManager:
             "graph_walk_enriched_requests_total": int(
                 self._search_stats["graph_walk_enriched_requests_total"]
             ),
+            # ADR-0030 A1-S1 (#325): per-project edge-write generations —
+            # the meta-counter any ranking consumer can key on to
+            # invalidate graph-derived state (no in-repo cache key
+            # exists today; committee note: document keying in the
+            # ADR-0030 addendum, not here).
+            "graph_epoch_by_project": self._graph_epoch_snapshot(),
             "avg_latency_ms": avg_latency_ms,
             "avg_results": avg_results,
         }
+
+    def _graph_epoch_snapshot(self) -> dict[str, int]:
+        """Read every project's ``graph_epoch`` from the meta table.
+
+        Best-effort: a read failure yields ``{}`` (the search-stats
+        surface must never fail on the graph leg's observability ride).
+        """
+        try:
+            conn = self.sqlite._get_conn()
+            rows = conn.execute(
+                "SELECT key, value FROM meta WHERE key LIKE 'graph_epoch:%'"
+            ).fetchall()
+        except Exception as exc:
+            logger.warning("graph_epoch snapshot failed (non-fatal): %s", exc)
+            return {}
+        snapshot: dict[str, int] = {}
+        for row in rows:
+            key = str(row["key"])
+            # Key format: graph_epoch:{len}:{project} — split on the
+            # length prefix (project slugs may legally contain ':').
+            parts = key.split(":", 2)
+            if len(parts) != 3 or not parts[1].isdigit():
+                continue
+            plen = int(parts[1])
+            if len(parts[2]) != plen:
+                continue  # malformed — skip rather than guess
+            try:
+                snapshot[parts[2]] = int(str(row["value"]))
+            except ValueError:
+                continue
+        return snapshot
 
     # ── used/rejected feedback capture (ADR-0030 A0, issue #323) ──────────
 
@@ -3360,6 +3745,9 @@ class MemoryManager:
                 "walk_enabled": self.settings.mnemos.graph_walk,
                 "auto_dedupe_edges_total": g_stats["auto_dedupe_edges_total"],
                 "auto_dedupe_edges_by_project": g_stats["auto_dedupe_edges_by_project"],
+                # ADR-0030 A1-S1 (#325): durable per-project edge-write
+                # generations (see search_stats()["graph_epoch_by_project"]).
+                "graph_epoch_by_project": s_stats["graph_epoch_by_project"],
             },
             "vectors": {
                 "indexed_total": self.vectors.count(),
@@ -5751,14 +6139,25 @@ class MemoryManager:
         constraints live there — including the #324 weight validation:
         finite and strictly positive, negative/0/inf/NaN rejected with a
         caller-actionable ValueError). ADR-0030 A0 (issue #321): ``kind``
-        now also accepts ``relates_to``, and the edge carries ``weight`` /
-        ``provenance`` / ``scope_project`` / ``scope_agent`` with the
+        now also accepts ``relates_to``, and the edge carries ``weight``
+        / ``provenance`` / ``scope_project`` / ``scope_agent`` with the
         contract defaults (1.0 / 'declared' / NULL / NULL). Returns
         ``True`` when inserted, ``False`` when the edge already existed
         (idempotent). Still no MCP surface — minting arrives with the A0
         fuel slice.
+
+        ADR-0030 A1-S1 (#325): a successful insert bumps the
+        PER-PROJECT ``graph_epoch`` meta-counter (the awareness-cursor
+        precedent — ``set_meta``/``get_meta``, migration-free). Idempotent
+        re-inserts bump nothing: the epoch tracks EDGE-TABLE CHANGE,
+        not call volume. Per-project by committee ruling (ArchCom
+        2026-09-27: a global epoch would be a cheap fleet-wide
+        cache-DoS lever); ``scope_project``/the from-row's project is
+        the bump key — ``scope_project`` rides the FIRST event per the
+        I5 schema; when it is absent the from-row's own project is the
+        authoritative key.
         """
-        return self.sqlite.add_memory_edge(
+        inserted = self.sqlite.add_memory_edge(
             from_memory_id,
             to_memory_id,
             kind=kind,
@@ -5767,6 +6166,48 @@ class MemoryManager:
             scope_project=scope_project,
             scope_agent=scope_agent,
         )
+        if inserted:
+            project_key = scope_project
+            if not project_key:
+                row = self.sqlite.get(from_memory_id)
+                project_key = (row.project or "") if row is not None else ""
+            self._bump_graph_epoch(project_key or "")
+        return inserted
+
+    # ── ADR-0030 A1-S1: per-project graph_epoch (issue #325) ─────────────
+
+    def _bump_graph_epoch(self, project: str) -> int:
+        """Increment the per-project ``graph_epoch`` meta-counter.
+
+        PER-PROJECT by committee ruling (ArchCom 2026-09-27 — verdict
+        (c) condition 2: NOT global, a global epoch is a cheap
+        fleet-wide cache-DoS lever). Stored via ``set_meta`` (the
+        awareness-cursor precedent, migration-free); the counter is
+        durable and monotonic within a project. No in-repo search cache
+        key exists today — the epoch is a meta-counter any consumer can
+        key on (exposed via ``search_stats()["graph_epoch_by_project"]``).
+        """
+        key = f"graph_epoch:{len(project)}:{project}"
+        try:
+            current = self.sqlite.get_meta(key)
+            value = int(current) + 1 if current else 1
+            self.sqlite.set_meta(key, str(value))
+        except Exception as exc:
+            # A meta-counter failure must never fail the edge write it
+            # decorates — logged, best-effort.
+            logger.warning("graph_epoch bump failed (non-fatal): %s", exc)
+            return 0
+        return value
+
+    def graph_epoch(self, project: str) -> int:
+        """Read the per-project ``graph_epoch`` (0 = no edge writes yet)."""
+        key = f"graph_epoch:{len(project)}:{project}"
+        try:
+            current = self.sqlite.get_meta(key)
+        except Exception as exc:
+            logger.warning("graph_epoch read failed (non-fatal): %s", exc)
+            return 0
+        return int(current) if current else 0
 
     def get_memory_edges(
         self,
