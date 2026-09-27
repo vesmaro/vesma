@@ -180,7 +180,13 @@ from vesmaro.lanes import (
     read_awareness_cursor,
     write_awareness_cursor,
 )
-from vesmaro.models import Memory, MemorySource, MemoryStatus, is_context_admissible
+from vesmaro.models import (
+    CHECKPOINT_PLACEHOLDER_LINES,
+    Memory,
+    MemorySource,
+    MemoryStatus,
+    is_context_admissible,
+)
 from vesmaro.traces import TraceRecorder
 
 if TYPE_CHECKING:
@@ -571,6 +577,14 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
     review P1), so a goal title can never be minted by a plain client
     write. Returns ``None`` for non-checkpoint rows or checkpoints with
     an empty Goals section. Bounded to :data:`GOAL_TITLE_MAX_CHARS`.
+
+    vesmaro-canon v1.0.0 (ArchCom option A): ``save_checkpoint`` now
+    renders ALL five sections, so an empty Goals field carries the
+    deterministic placeholder line instead of an empty section — the
+    placeholder is template text, NOT a goal, so it never becomes a
+    goal title here (and can therefore never feed the conflict-hint
+    tokenizer as a false peer goal; the pre-W2 "no Goals section →
+    None" contract is preserved by treating the placeholder as absent).
     """
     if not memory.metadata.get("checkpoint_agent"):
         return None
@@ -580,6 +594,11 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
     for line in match.group(1).splitlines():
         collapsed = " ".join(line.split())
         if collapsed:
+            # Placeholder-only Goals section — template, not a goal
+            # (vesmaro-canon v1.0.0; the placeholder set lives in
+            # vesmaro.models so render and reads share one source).
+            if collapsed in CHECKPOINT_PLACEHOLDER_LINES:
+                continue
             return collapsed[:GOAL_TITLE_MAX_CHARS]
     return None
 

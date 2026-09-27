@@ -12,7 +12,8 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Final
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -209,8 +210,105 @@ CHECKPOINT_FIELDS: tuple[str, ...] = (
 # source). ``MemoryManager.add``/``update`` strip them from client
 # metadata; only ``save_checkpoint`` mints them (trusted flag).
 CHECKPOINT_STAMP_KEYS: frozenset[str] = frozenset(
-    {"checkpoint_agent", "checkpoint_session", "checkpoint_dedup_key"}
+    {"checkpoint_agent", "checkpoint_session", "checkpoint_dedup_key", "canon"}
 )
+
+# ── vesmaro-canon v1.0.0 — server-minted checkpoint envelope (metadata.canon) ────
+#
+# Canon v1.0.0 (ratified 2026-09-26, tag canon-v1.0.0; verdicts in
+# vesmaro-canon/docs/decisions/0003-archcom-v1-verdicts.md, engine
+# obligations 1-4) makes the checkpoint record a canon record: the
+# server stamps a canon envelope at ``metadata.canon`` and the body
+# always carries all five EN sections (``CHECKPOINT_SECTION_TITLES``,
+# pinned to the schemas' ``x-canon-sections`` annotation; empty fields
+# get a deterministic per-language placeholder line). ``metadata.canon``
+# is SERVER-MINTED like the identity stamps above — clients never set
+# it: ``save_checkpoint`` mints it behind ``trusted_checkpoint_stamps``,
+# every other create/update path strips client-supplied copies (the
+# key joined CHECKPOINT_STAMP_KEYS, so the existing strips apply).
+# Transitional rule (canon §9): a record WITHOUT ``metadata.canon`` is
+# outside canon scope — pre-W2 checkpoint rows and imported/benchmark
+# rows are legacy, not violations.
+
+#: Envelope format version (canon §2, envelope.schema.json ``const "1"``).
+CANON_SCHEMA_VERSION: Final[str] = "1"
+
+#: Allowed body languages (canon §2/§6: one language per record).
+CANON_LANGUAGES: frozenset[str] = frozenset({"ru", "en"})
+
+#: Explicit field → EN section title map (ADR-0003 obligation 2). The
+#: H2 titles are canon-frozen (canon §3/§10): byte-exact ``^## <Name>$``
+#: lines, never re-derived from ``.title()`` — a Python-idiom change
+#: (e.g. a new Unicode casing rule) must never drift the render. The
+#: ORDER of the values is pinned against the ``x-canon-sections``
+#: annotation of vesmaro-canon/schemas/checkpoint.schema.json by a
+#: drift test (tests/test_checkpoint_canon_envelope.py).
+CHECKPOINT_SECTION_TITLES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "goals": "Goals",
+        "completed": "Completed",
+        "in_progress": "In Progress",
+        "decisions": "Decisions",
+        "context": "Context",
+    }
+)
+
+#: Deterministic per-language placeholder line for an empty section
+#: (ADR-0003 obligation 1, option A): the render always emits all five
+#: sections, so an empty field gets THIS line instead of being skipped.
+#: Keyed ``(field, language)``. The lines are deliberately SHORT and
+#: lexically disjoint — no two share >= 2 non-stopword tokens under the
+#: awareness conflict-hint tokenizer (``awareness._goal_tokens``), so
+#: even if a placeholder ever leaked past the goal-title guard, two
+#: placeholder-only goals could not manufacture a false conflict hint.
+#: The read guard in ``awareness.checkpoint_goal_title`` treats the
+#: lines as "no goal"; this disjointness is belt-and-braces.
+CHECKPOINT_PLACEHOLDERS: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
+    {
+        ("goals", "en"): "(no goals recorded.)",
+        ("completed", "en"): "(nothing completed yet.)",
+        ("in_progress", "en"): "(nothing in progress at this point.)",
+        ("decisions", "en"): "(no decisions recorded.)",
+        ("context", "en"): "(no continuation context recorded.)",
+        ("goals", "ru"): "(цели не зафиксированы.)",
+        ("completed", "ru"): "(завершённая работа не зафиксирована.)",
+        ("in_progress", "ru"): "(на момент чекпоинта ничего не выполнялось.)",
+        ("decisions", "ru"): "(решения не зафиксированы.)",
+        ("context", "ru"): "(контекст продолжения не зафиксирован.)",
+    }
+)
+
+#: Every placeholder line in one set — the single membership test for
+#: "this line is template, not user prose" (used by the awareness goal
+#: title guard).
+CHECKPOINT_PLACEHOLDER_LINES: Final[frozenset[str]] = frozenset(CHECKPOINT_PLACEHOLDERS.values())
+
+
+def checkpoint_canon_envelope(*, language: str, session_ref: str | None = None) -> dict[str, Any]:
+    """Mint the server-owned canon envelope (``metadata.canon``) for a checkpoint.
+
+    Canon v1.0.0 §2 shape — ``schema_version``/``type``/``status``/
+    ``language`` plus the checkpoint extra ``session_ref`` (nullable).
+    Single construction site: every envelope for a stored checkpoint is
+    minted HERE (``save_checkpoint``), never by clients — generic
+    create/update paths strip client-supplied copies. The envelope never
+    duplicates server-owned fields (title/tags/agent/project/dates live
+    on the record, canon §2).
+
+    Raises ``ValueError`` on a language outside :data:`CANON_LANGUAGES`
+    — fail loud, never normalize (a mislabeled record poisons every
+    downstream language-aware consumer).
+    """
+    if language not in CANON_LANGUAGES:
+        raise ValueError(f"language must be one of {sorted(CANON_LANGUAGES)} (got {language!r})")
+    return {
+        "schema_version": CANON_SCHEMA_VERSION,
+        "type": "checkpoint",
+        "status": "active",
+        "language": language,
+        "session_ref": session_ref,
+    }
+
 
 # Allowed optional tag prefixes beyond the required ones
 ALLOWED_OPTIONAL_PREFIXES: frozenset[str] = frozenset(

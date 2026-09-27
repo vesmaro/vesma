@@ -42,6 +42,8 @@ from vesmaro.graph_minting import (
 )
 from vesmaro.models import (
     CHECKPOINT_FIELDS,
+    CHECKPOINT_PLACEHOLDERS,
+    CHECKPOINT_SECTION_TITLES,
     CHECKPOINT_STAMP_KEYS,
     CONTEXT_ADMISSIBLE_STATUSES,
     NO_FEDERATE_TAG,
@@ -54,6 +56,7 @@ from vesmaro.models import (
     MemoryUpdate,
     PipelineState,
     SearchResult,
+    checkpoint_canon_envelope,
     doc_grouping_from_metadata,
     is_context_admissible,
     is_quarantined,
@@ -144,7 +147,10 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # auditable in one place; a new internal key must be listed here.
 # mnemos #251 security review (P1): the server-minted checkpoint stamps
 # (CHECKPOINT_STAMP_KEYS) join this set — once ``save_checkpoint`` minted
-# them, no update path can rewrite or drop them.
+# them, no update path can rewrite or drop them. vesmaro-canon v1.0.0:
+# ``"canon"`` (the metadata.canon envelope key) joined
+# CHECKPOINT_STAMP_KEYS, so the envelope is equally server-minted —
+# an external update cannot forge, rewrite or drop it either.
 INTERNAL_METADATA_KEYS: frozenset[str] = (
     frozenset(
         {
@@ -778,6 +784,11 @@ class MemoryManager:
         ``data.metadata`` with a warning — a forged
         ``checkpoint_dedup_key`` on a generic create must never satisfy
         a later genuine checkpoint dedup (CWE-346/345 spoofed source).
+        vesmaro-canon v1.0.0 (ADR-0003 obligation 3): ``"canon"`` (the
+        ``metadata.canon`` envelope) joined ``CHECKPOINT_STAMP_KEYS`` —
+        the same strip protects the envelope; only ``save_checkpoint``
+        mints a canon envelope, and a client-forged one on a generic
+        create never persists.
 
         ``mint_relates_to`` (#322 review M2, TL decision) — minting
         fuel is ORGANIC USER WRITES only. Internal machine-driven
@@ -811,12 +822,17 @@ class MemoryManager:
         doc_grouping_from_metadata(data.metadata)
 
         # ── mnemos #251 review P1: strip client-forgeable stamps ────────
+        # vesmaro-canon v1.0.0: the canon envelope key ("canon") is a
+        # stamp too — a client-forged metadata.canon must never land on a
+        # generic create; only save_checkpoint mints it (canon §2, ADR-0003
+        # obligation 3, the same server-minted-only discipline).
         if not trusted_checkpoint_stamps:
             forged = sorted(k for k in CHECKPOINT_STAMP_KEYS if k in data.metadata)
             if forged:
                 logger.warning(
                     "generic create: stripped client-supplied checkpoint stamps "
-                    "(server-minted only, mnemos #251 review P1): keys=%s",
+                    "(server-minted only, mnemos #251 review P1 + canon v1.0.0): "
+                    "keys=%s",
                     forged,
                 )
                 data.metadata = {
@@ -1040,11 +1056,15 @@ class MemoryManager:
             # mnemos #251 review P1: checkpoint stamps are server-minted —
             # drop any client-supplied copies BEFORE the merge-back so
             # they cannot land on a row that never had them either.
+            # vesmaro-canon v1.0.0: the canon envelope ("canon") is a
+            # stamp too — an external update can neither forge nor drop a
+            # minted metadata.canon (the merge-back below restores it).
             forged = sorted(k for k in CHECKPOINT_STAMP_KEYS if k in memory.metadata)
             if forged:
                 logger.warning(
                     "update: stripped client-supplied checkpoint stamps "
-                    "(server-minted only, mnemos #251 review P1): id=%s keys=%s",
+                    "(server-minted only, mnemos #251 review P1 + canon v1.0.0): "
+                    "id=%s keys=%s",
                     memory_id[:8],
                     forged,
                 )
@@ -2302,6 +2322,7 @@ class MemoryManager:
         agent: str | None = None,
         session: str | None = None,
         memory_type: MemoryType = MemoryType.NOTE,
+        language: str | None = None,
     ) -> tuple[Memory, bool]:
         """Store a session checkpoint with validated agent identity (#251 D0).
 
@@ -2324,14 +2345,40 @@ class MemoryManager:
            normalised to ``""``) — NOT over the rendered markdown, which
            embeds a fresh timestamp and would never collide. A hit
            returns the EXISTING memory with ``duplicate=True`` and stores
-           nothing.
+           nothing. NOTE (vesmaro-canon v1.0.0): the payload does NOT
+           include ``language`` — a dedup hit returns the first-minted
+           row with its own envelope, the new call's language never
+           rewrites a stored record (canon §10, new-records-only).
         5. Store with server-controlled metadata stamps
            (``checkpoint_agent`` / ``checkpoint_session`` /
-           ``checkpoint_dedup_key``). The stamps are minted ONLY here
-           (``trusted_checkpoint_stamps`` on ``add``); generic
-           create/update paths strip client-supplied copies (review P1).
+           ``checkpoint_dedup_key``) PLUS the canon v1.0.0 envelope
+           (``metadata.canon``, vesmaro-canon ADR-0003 obligation 3):
+           ``schema_version="1"``, ``type="checkpoint"``,
+           ``status="active"``, ``language=<the language below>``,
+           ``session_ref=<session or null>``. The stamps and the
+           envelope are minted ONLY here (``trusted_checkpoint_stamps``
+           on ``add``); generic create/update paths strip
+           client-supplied copies (review P1 + canon stamp discipline —
+           ``"canon"`` joined :data:`CHECKPOINT_STAMP_KEYS`).
            Tags are display-only; these server columns/metadata are the
-           source of truth (the awareness read surface arrives with #254).
+           source of truth (the awareness read surface arrives with
+           #254).
+
+        ``language`` (vesmaro-canon v1.0.0, ADR-0003 obligation 4):
+        primary language of the record body — canon §2 enum ``"ru"``/
+        ``"en"``, NO heuristics. ``None`` (the default) falls back to the
+        ``mnemos.checkpoint_language`` config value. Every call MUST land
+        on a concrete language: the envelope mint raises ``ValueError``
+        on anything outside the canon enum, fail-loud.
+
+        The body render ALWAYS emits the five EN sections in
+        :data:`CHECKPOINT_FIELDS` order (canon §3, ArchCom option A —
+        ADR-0003 verdict B); an empty field gets the deterministic
+        per-language placeholder line from
+        :data:`CHECKPOINT_PLACEHOLDERS`. Section H2 titles come from the
+        explicit map :data:`CHECKPOINT_SECTION_TITLES` (never
+        ``str.title()``, ADR-0003 obligation 2) and are pinned against
+        the schemas' ``x-canon-sections`` by a drift test.
 
         Returns ``(memory, duplicate)``.
         """
@@ -2418,14 +2465,31 @@ class MemoryManager:
             return existing, True
 
         # 5. Build and store — content format unchanged from the legacy
-        # hardcoded-agent surfaces.
+        # hardcoded-agent surfaces EXCEPT (vesmaro-canon v1.0.0, ArchCom
+        # option A): every section is ALWAYS rendered, in
+        # CHECKPOINT_FIELDS order, so the stored body satisfies canon §3
+        # ("the body must contain all five `^## <Name>$` headers"). An
+        # empty field gets the deterministic per-language placeholder —
+        # never skipped, and the section order never depends on payload
+        # emptiness. H2 titles come from the explicit
+        # CHECKPOINT_SECTION_TITLES map (ADR-0003 obligation 2 — no
+        # ``str.title()`` re-derivation, drift-pinned to
+        # schemas x-canon-sections).
+        resolved_language = (
+            language if language is not None else self.settings.mnemos.checkpoint_language
+        )
+        canon = checkpoint_canon_envelope(language=resolved_language, session_ref=session)
+        placeholders = {
+            f: CHECKPOINT_PLACEHOLDERS[(f, resolved_language)] for f in CHECKPOINT_FIELDS
+        }
         parts = [f"# Session checkpoint — {datetime.now(UTC).isoformat()}\n"]
         for field in CHECKPOINT_FIELDS:
-            if normalized[field]:
-                parts.append(f"## {field.replace('_', ' ').title()}\n{normalized[field]}\n")
+            section_body = normalized[field] if normalized[field] else placeholders[field]
+            parts.append(f"## {CHECKPOINT_SECTION_TITLES[field]}\n{section_body}\n")
         metadata: dict[str, Any] = {
             "checkpoint_agent": resolved_agent,
             "checkpoint_dedup_key": dedup_key,
+            "canon": canon,
         }
         if session is not None:
             metadata["checkpoint_session"] = session

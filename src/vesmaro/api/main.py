@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
@@ -998,6 +998,11 @@ class SaveContextRequest(BaseModel):
     context: str | list[str] | None = None
     agent: str | None = None
     session: str | None = None
+    # vesmaro-canon v1.0.0 (ADR-0003 obligation 4) — the per-call
+    # override of the server-configured checkpoint body language
+    # (``mnemos.checkpoint_language``); validated at the manager
+    # boundary (canon enum, ValueError → 400).
+    language: Literal["ru", "en"] | None = None
 
 
 class RecallContextRequest(BaseModel):
@@ -1053,6 +1058,7 @@ async def save_context(req: SaveContextRequest) -> dict[str, Any]:
             agent=req.agent,
             session=req.session,
             memory_type=MemoryType.SESSION_CONTEXT,
+            language=req.language,
         )
     except SessionAgentMismatchError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
