@@ -567,6 +567,15 @@ async def _canonical_tools() -> list[Tool]:
                             "the same session but a different agent are rejected."
                         ),
                     },
+                    "language": {
+                        "type": "string",
+                        "enum": ["ru", "en"],
+                        "description": (
+                            "Primary language of the checkpoint body (vesmaro-canon "
+                            "envelope). Omitted → the server config default; no "
+                            "language guessing is performed."
+                        ),
+                    },
                 },
             },
         ),
@@ -1960,11 +1969,19 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "mnemos_save_context":
         project = args.get("project") or _detect_project()
         fields = {f: args.get(f) for f in CHECKPOINT_FIELDS}
+        # canon v1.0.0: ``language`` is the per-call override of the
+        # configured checkpoint body language (None → config default).
+        # An invalid language (outside the canon enum) raises ValueError
+        # in save_checkpoint — the SAME channel the identity/trivial-
+        # reject ValueErrors already surface through (the dispatch-level
+        # "❌ Error: ..." mapping, pre-W2 contract; do not intercept it
+        # here or the SessionAgentMismatchError contract changes).
         memory, duplicate = mgr.save_checkpoint(
             fields,
             project=project,
             agent=args.get("agent"),
             session=args.get("session"),
+            language=args.get("language"),
         )
         _track_call(is_save=True)
         instructions = _auto_collect_instructions(project) if _auto_collect_state["enabled"] else ""

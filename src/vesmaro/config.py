@@ -107,6 +107,20 @@ class MnemosConfig(BaseModel):
     # Canonical env override: VESMARO_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
     awareness_picture_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
+    # vesmaro-canon v1.0.0 (ADR-0003 engine obligation 4) — the
+    # server-minted canon envelope ``metadata.canon.language`` for
+    # checkpoints written by ``save_checkpoint``. One language per record
+    # (canon §6): the operator declares the deployment's checkpoint body
+    # language ONCE; the ``save_checkpoint`` ``language=`` parameter
+    # overrides per call, WITHOUT heuristics (a per-record language
+    # guess is explicitly out of scope — verdicts A/G condition 4).
+    # Canon enum: "ru" | "en" (schemas/envelope.schema.json). The
+    # validator enforces the same set at the manager boundary
+    # (``checkpoint_canon_envelope`` raises ValueError fail-loud), so a
+    # mistyped config value surfaces on the first save, not silently.
+    # Canonical env override: VESMARO_MNEMOS__CHECKPOINT_LANGUAGE=ru.
+    checkpoint_language: Literal["ru", "en"] = "ru"
+
 
 class LoggingConfig(BaseModel):
     """Logging configuration — file + console handlers with rotation.
