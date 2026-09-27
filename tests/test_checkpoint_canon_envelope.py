@@ -44,6 +44,7 @@ from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import (
     CANON_SCHEMA_VERSION,
+    Memory,
     CHECKPOINT_FIELDS,
     CHECKPOINT_PLACEHOLDER_LINES,
     CHECKPOINT_PLACEHOLDERS,
@@ -418,3 +419,167 @@ def test_placeholder_goals_cannot_manufacture_hints_even_if_leaked() -> None:
     lines = sorted(CHECKPOINT_PLACEHOLDER_LINES)
     for a, b in itertools.combinations(lines, 2):
         assert len(_goal_tokens(a) & _goal_tokens(b)) < 2, (a, b)
+
+
+# 6. W2-S3 — dedup guards (store card vesmaro-canon-w2-s3-dedup-guards)
+# ---------------------------------------------------------------------------
+
+
+def _planted_violation_row(mgr: MemoryManager) -> Memory:
+    """A stored canon checkpoint whose BODY violates the canon (§5 date
+    rule) while the envelope stays intact — planted through the
+    store-internal ``update_fields`` (no manager gate re-run), the same
+    way the strata materializer plants legacy rows."""
+    from vesmaro.canon_validate import CANON_WARN_CODES, validate_canon_record
+
+    memory, _dup = mgr.save_checkpoint({"goals": "same payload"}, project="canonproj")
+    assert "canon_warnings" not in memory.metadata
+    body_violation = memory.content + "\nreviewed 27.09, fixed yesterday\n"
+    assert mgr.sqlite.update_fields(memory.id, content=body_violation)
+    # The planted row WOULD violate on a real gate run (sanity for the
+    # pin below — the validator is the same one _canon_gate calls).
+    violations = validate_canon_record(
+        content=body_violation,
+        title=None,
+        metadata=memory.metadata,
+    )
+    assert [v.code for v in violations], "planting must produce a violation"
+    assert set(CANON_WARN_CODES) >= {v.code for v in violations}
+    return memory
+
+
+def test_dedup_hit_skips_the_canon_gate(
+    mgr: MemoryManager,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """S3-1 (canon §9/§10): a dedup hit is NOT a write — the existing
+    record is returned WITHOUT running the canon gate on it. A
+    violation-shaped stored row coming back from dedup must carry no
+    ``canon_warnings`` and emit no ``canon_violation:`` line."""
+    import logging
+
+    planted = _planted_violation_row(mgr)
+    with caplog.at_level(logging.WARNING, logger="vesmaro.manager"):
+        existing, duplicate = mgr.save_checkpoint(
+            {"goals": "same payload"}, project="canonproj"
+        )
+    assert duplicate is True
+    assert existing.id == planted.id
+    # The hit returned the stored record untouched by the gate.
+    assert "canon_warnings" not in existing.metadata
+    stored = mgr.sqlite.get(existing.id)
+    assert stored is not None
+    assert "canon_warnings" not in stored.metadata
+    # And the gate never spoke (contrast: the S2 warn-mode tests pin the
+    # 'canon_violation:' line on real writes).
+    assert not [r for r in caplog.records if "canon_violation:" in r.message]
+
+
+def test_trivial_reject_precedes_render_and_canon_gate(
+    mgr: MemoryManager,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """S3-2: an all-empty checkpoint is a CALLER bug (canon §9) —
+    ValueError BEFORE any store side effect, so it can never produce a
+    record with five placeholder sections nor reach the canon gate."""
+    import logging
+
+    with (
+        caplog.at_level(logging.WARNING, logger="vesmaro.manager"),
+        pytest.raises(ValueError, match="checkpoint rejected: all fields"),
+    ):
+        mgr.save_checkpoint(
+            {"goals": "", "completed": None, "in_progress": "", "decisions": None},
+            project="canonproj",
+        )
+    assert mgr.stats()["total"] == 0  # zero-loss: nothing stored, no placeholder shell
+    assert not [r for r in caplog.records if "canon_violation:" in r.message]
+
+    # Same verdict with a session presented — the reject still fires
+    # before any binding/dedup/envelope work.
+    with pytest.raises(ValueError, match="checkpoint rejected: all fields"):
+        mgr.save_checkpoint(
+            {"goals": None, "context": ""}, project="canonproj", session="sess-empty"
+        )
+    assert mgr.stats()["total"] == 0
+
+
+def test_trivial_reject_precedes_the_envelope_language_gate(mgr: MemoryManager) -> None:
+    """Ordering pin: the trivial-reject is the FIRST content gate — an
+    all-empty call with an invalid language fails with the checkpoint
+    message, never the envelope's language error (the envelope is minted
+    later, only for records that passed the reject)."""
+    with pytest.raises(ValueError, match="checkpoint rejected: all fields"):
+        mgr.save_checkpoint({"goals": ""}, project="canonproj", language="fr")
+
+
+def test_partial_empty_checkpoint_still_stores(mgr: MemoryManager) -> None:
+    """The reject is for ALL-empty only — placeholders exist for SOME
+    empty fields (canon §3 option A); one real field is a legal record."""
+    memory, duplicate = mgr.save_checkpoint({"decisions": "keep the gate"}, project="canonproj")
+    assert duplicate is False
+    assert CHECKPOINT_SECTION_TITLES["goals"] in memory.content  # placeholder section present
+
+
+def test_dedup_hash_is_exactly_the_field_payload(mgr: MemoryManager) -> None:
+    """S3-3 (the load-bearing pin): the dedup key is SHA-256 over
+    ``[project, agent, *(normalized[f] for f in CHECKPOINT_FIELDS)]``
+    with None normalized to "" — NOTHING else. Recomputed here from the
+    spec formula and compared against the stored stamp."""
+    import hashlib
+    import json
+
+    fields = {"goals": "g", "in_progress": "wip"}
+    normalized = [(fields.get(f) or "") for f in CHECKPOINT_FIELDS]
+    canonical = json.dumps(
+        ["canonproj", "hasher", *normalized],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    expected = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    memory, _dup = mgr.save_checkpoint(fields, project="canonproj", agent="hasher")
+    assert memory.metadata["checkpoint_dedup_key"] == expected
+
+    # The stored stamp IS the lookup key — a re-save collides on it.
+    again, duplicate = mgr.save_checkpoint(fields, project="canonproj", agent="hasher")
+    assert duplicate is True and again.id == memory.id
+
+
+def test_dedup_key_excludes_render_and_language(mgr: MemoryManager) -> None:
+    """S3-3: a test that changes the RENDER (placeholders, titles — here
+    via the per-call language) cannot move the dedup key: two saves
+    differing only in render-only details dedup-collide; the hash does
+    NOT include the language/config (canon §10 — a dedup hit returns the
+    first-minted row, the new call's language never rewrites it)."""
+    mgr.settings.mnemos.checkpoint_language = "en"
+    first, dup1 = mgr.save_checkpoint(
+        {"goals": "render-blind payload"}, project="canonproj", agent="rend"
+    )
+    assert dup1 is False
+    # Flip ONLY the render inputs (config-driven placeholder set changes).
+    mgr.settings.mnemos.checkpoint_language = "ru"
+    second, dup2 = mgr.save_checkpoint(
+        {"goals": "render-blind payload"}, project="canonproj", agent="rend"
+    )
+    assert dup2 is True
+    assert second.id == first.id
+    # The stored render is the FIRST mint (en placeholders), untouched.
+    assert CHECKPOINT_PLACEHOLDERS[("completed", "en")] in second.content
+    assert CHECKPOINT_PLACEHOLDERS[("completed", "ru")] not in second.content
+    assert second.metadata["canon"]["language"] == "en"
+
+
+def test_dedup_key_excludes_per_call_language_param(mgr: MemoryManager) -> None:
+    """Same pin at the per-call surface (no config mutation): identical
+    payloads with different ``language=`` arguments collide."""
+    first, _dup1 = mgr.save_checkpoint(
+        {"goals": "lang-param payload"}, project="canonproj", language="ru"
+    )
+    second, dup2 = mgr.save_checkpoint(
+        {"goals": "lang-param payload"}, project="canonproj", language="en"
+    )
+    assert dup2 is True and second.id == first.id
+
+
+# ---------------------------------------------------------------------------
