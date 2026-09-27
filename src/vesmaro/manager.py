@@ -2090,9 +2090,16 @@ class MemoryManager:
         if self.settings.mnemos.graph_walk:
             # ── Flag-ON: reserved-quota BFS-2 walk + surplus backfill ──
             k = _walk_quota(limit)
+            # P1 fix (#415 review): ``seen`` is initialised BEFORE the
+            # ``k > 0 and results`` branch — the backfill loop below
+            # reads it unconditionally, and a STARVED fused block (a
+            # tags filter matching nothing, an empty status drill-down)
+            # must not turn the composition rule into an
+            # UnboundLocalError on the whole search (the leg is a
+            # no-op on ANY failure, not a page crash).
+            seen: set[str] = {r.memory.id for r in results}
             if k > 0 and results:
                 fused_ids = [r.memory.id for r in results]
-                seen: set[str] = {r.memory.id for r in results}
                 walk_rows = self._collect_walk_candidates(
                     fused_ids,
                     scores=scores,
@@ -2164,11 +2171,18 @@ class MemoryManager:
             # its quota reserved, and an edge-less corpus returns the
             # slots to the fused block (the byte-equality pin,
             # tests/test_graph_walk_quota.py, proves both at once).
+            # P2 fix (#415 review, I1 worst-link): the backfill rows
+            # pass the SAME tags filter as the fused loop — the query's
+            # gates bind to the composition rule, never the other way
+            # round; a tags-rejected row must not re-enter the page
+            # through the surplus.
             for mid, score in fused_surplus:
                 if len(results) >= limit:
                     break
                 matched = id_to_memory.get(mid)
                 if matched is None or matched.id in seen:
+                    continue
+                if tags and not all(t in matched.tags for t in tags):
                     continue
                 results.append(SearchResult(memory=matched, score=score, search_type=search_type))
         elif len(results) < limit:
