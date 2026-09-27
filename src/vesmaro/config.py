@@ -96,6 +96,16 @@ class MnemosConfig(BaseModel):
     context_rewrite_project_rate_limit_per_minute: int = Field(default=300, ge=0, le=100_000)
     context_rewrite_max_content_chars: int = Field(default=1_048_576, ge=1)
     context_rewrite_max_diff_chars: int = Field(default=262_144, ge=1)
+    # C9 (ArchCom 2026-09-27, swarm v0a): per-(project, agent) cap on
+    # awareness/operational-picture queries per minute. In-process
+    # sliding window — the picture stores NOTHING (C2), so a SQL counter
+    # over stored rows is structurally impossible; reads are not rows.
+    # Over-limit degrades to a "rate-limited, retry later" line, never a
+    # hard error (the composition contract must not break). Without the
+    # cap a polling harness reconstructs a neighbor's timeline at
+    # arbitrary resolution. 0 disables the limiter.
+    # Canonical env override: VESMARO_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
+    awareness_picture_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
 
 class LoggingConfig(BaseModel):
