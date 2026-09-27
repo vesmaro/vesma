@@ -703,6 +703,7 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
 | `tool_name` | string | `post_tool_call` | — | Инструмент, породивший вывод. |
 | `output_text` | string | `post_tool_call` | — | Сырой вывод инструмента для сжатия. |
 | `auto_compress` | boolean | нет | ручка | `post_tool_call`: точечное переопределение `hooks.auto_compress` (по умолчанию `false`). |
+| `include_awareness` | boolean | нет | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): скомпоновать секцию awareness-дельты И «операционную картину» swarm v0a — добавляются ПОСЛЕДНИМИ, никогда не закрепляются; курсор awareness двигается только в `pre_llm_call`. Выключено (по умолчанию) = байт-идентичный вывод. Кап частоты по `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, по умолчанию 30) — при превышении деградация в rate-limit-строку, никогда 5xx. |
 | `profile` | string | нет | авто | `post_tool_call`: подсказка профиля фильтра. |
 
 **Пример**
@@ -720,7 +721,11 @@ curl -s -X POST http://127.0.0.1:8000/hooks/post_tool_call \
 → `{checkpoints: [{id, content, created_at, redactions, …}], redactions}`
 (контент сканируется на выдаче в самом канале); `post_tool_call` → конверт CCR
 с `compressed_text`/`marker` для подстановки (или выключенный конверт
-`{auto_compress: false, compressed: false}`). Полная документация по полям:
+`{auto_compress: false, compressed: false}`). С `include_awareness=true`
+`pre_llm_call` дополнительно возвращает ключ `awareness`, а отрендеренные
+секции awareness и операционной картины едут в хвосте `text`
+(см. [`mcp-tools.md` → `mnemos_awareness`](mcp-tools.md#mnemos_awareness)).
+Полная документация по полям:
 [`mcp-tools.md` → `mnemos_hooks`](mcp-tools.md#mnemos_hooks).
 
 ---
