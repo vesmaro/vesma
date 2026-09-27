@@ -181,7 +181,10 @@ from vesmaro.lanes import (
     write_awareness_cursor,
 )
 from vesmaro.models import (
+    CANON_LANGUAGES,
     CHECKPOINT_PLACEHOLDER_LINES,
+    CHECKPOINT_PLACEHOLDERS,
+    CHECKPOINT_SECTION_TITLES,
     Memory,
     MemorySource,
     MemoryStatus,
@@ -585,9 +588,34 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
     goal title here (and can therefore never feed the conflict-hint
     tokenizer as a false peer goal; the pre-W2 "no Goals section →
     None" contract is preserved by treating the placeholder as absent).
+
+    Two read modes (vesmaro-canon W2-S4, canon §9 transitional):
+
+    * ``metadata.canon`` present (canon record) — the section is located
+      by the FROZEN ``CHECKPOINT_SECTION_TITLES`` H2 map (never regex
+      over arbitrary body text) and candidate lines are matched against
+      the per-language placeholder set
+      ``CHECKPOINT_PLACEHOLDERS[(field, language)]`` from the envelope's
+      declared ``language`` (canon §2 — one language per record), not
+      the full literal set.
+    * No envelope (pre-canon legacy row) — the existing heuristic
+      fallback: regex ``_GOAL_SECTION_RE`` over the body + the full
+      ``CHECKPOINT_PLACEHOLDER_LINES`` membership skip (canon §9
+      transitional: legacy rows are out of canon scope, never
+      re-labeled).
     """
     if not memory.metadata.get("checkpoint_agent"):
         return None
+    canon = memory.metadata.get("canon")
+    if isinstance(canon, dict):
+        language = canon.get("language")
+        if language not in CANON_LANGUAGES:
+            # A mislabeled/stripped envelope is out of the language-aware
+            # branch's contract — fall through to the legacy heuristic
+            # rather than minting a wrong-language placeholder pass.
+            language = None
+        if language is not None:
+            return _canon_goal_title(memory, language=language)
     match = _GOAL_SECTION_RE.search(memory.effective_content())
     if match is None:
         return None
@@ -598,6 +626,39 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
             # (vesmaro-canon v1.0.0; the placeholder set lives in
             # vesmaro.models so render and reads share one source).
             if collapsed in CHECKPOINT_PLACEHOLDER_LINES:
+                continue
+            return collapsed[:GOAL_TITLE_MAX_CHARS]
+    return None
+
+
+def _canon_goal_title(memory: Memory, *, language: str) -> str | None:
+    """Envelope-aware Goals extraction (canon record read mode).
+
+    Locates the Goals section by the frozen ``CHECKPOINT_SECTION_TITLES``
+    H2 map (byte-exact canon §3 headers — the same literal the render
+    emitted, never a re-derived ``str.title()`` form) and skips ONLY the
+    ``("goals", language)`` placeholder line from
+    ``CHECKPOINT_PLACEHOLDERS`` — a canon record is single-language by
+    construction (canon §6), so the other language's placeholder cannot
+    legitimately appear and a user prose line equal to a foreign
+    placeholder stays a goal.
+    """
+    header = f"## {CHECKPOINT_SECTION_TITLES['goals']}"
+    content = memory.effective_content()
+    start = None
+    for line in content.splitlines():
+        if line.rstrip() == header:
+            start = True
+            continue
+        if start and line.startswith("## "):
+            break  # next H2 section — Goals body ended (canon §3 order)
+        if start:
+            collapsed = " ".join(line.split())
+            if not collapsed:
+                continue
+            # The per-language placeholder from the ENVELOPE's declared
+            # language — template, not a goal (canon §9).
+            if collapsed == CHECKPOINT_PLACEHOLDERS[("goals", language)]:
                 continue
             return collapsed[:GOAL_TITLE_MAX_CHARS]
     return None
