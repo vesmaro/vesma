@@ -526,6 +526,10 @@ def test_record_write_once_and_ledger_append(
     runs = tmp_path / "runs"
     monkeypatch.setattr(runner, "collect_run", lambda: (manifest, outcomes))
 
+    # Post-record era (PR #412): the committed E-file already carries ONE
+    # recorded run; this tmp-copy --record adds the NEXT entry. The pin
+    # counts entries relative to the copy's baseline, not against zero.
+    baseline_entries = doc_copy.read_text().count("— RUN — arms A0/C/B/A")
     rc = runner.main(["--record", "--runs-dir", str(runs), "--doc-path", str(doc_copy)])
     assert rc == 0
     run_dir = runs / str(manifest["run_id"])
@@ -533,9 +537,9 @@ def test_record_write_once_and_ledger_append(
     assert (run_dir / "outcomes.json").exists()
     doc_text = doc_copy.read_text()
     assert manifest["run_id"] in doc_text  # §9 entry appended
-    # exactly ONE ledger entry (the id appears twice inside it: the id
+    # exactly ONE new ledger entry (the id appears twice inside it: the id
     # itself + the artifacts path — the E0 §9 entry shape)
-    assert doc_text.count("— RUN — arms A0/C/B/A") == 1
+    assert doc_text.count("— RUN — arms A0/C/B/A") == baseline_entries + 1
 
     # write-once: a second --record of the SAME id fails loud and does
     # not double-append the ledger
@@ -800,4 +804,10 @@ def test_frozen_doc_sections_untouched_by_the_package() -> None:
     append_run_ledger (EOF append into §9), which --record alone fires."""
     text = runner.DOC_PATH.read_text()
     assert "## 8. Amendment log" in text and "## 9. Run ledger" in text
-    assert text.rstrip().endswith("*(empty — no run recorded; the window is open)*")
+    # Post-record era (PR #412): §9 carries the recorded run above the
+    # historical empty-marker line (the runner appends at EOF of §9's
+    # text, after the pre-record marker that stays as history); the
+    # recorded entry is present and §9 remains the LAST section.
+    assert "— RUN — arms A0/C/B/A" in text
+    tail = text.rsplit("## 9. Run ledger", 1)[1]
+    assert tail.rstrip().endswith("single-look analysis follows collection (§6.6).")
