@@ -2659,6 +2659,48 @@ class TestSchemasPack:
             set(self.CANON_SCHEMA_NAMES) - {"task.schema.json"}
         ) | {SCHEMAS_MANIFEST_NAME}, "only byte-identical pack schemas + manifest removed"
 
+    def test_deploy_refuses_tampered_pack_schema(self, tmp_path: Path) -> None:
+        """Cascade review SEC P3-4: the schemas deploy verifies pack file
+        checksums against SCHEMAS_SOURCE_PIN and fails LOUD — a tampered
+        pack file (or an unpinned/stale pin table) must never deploy wrong
+        bytes under a clean-pin manifest."""
+        import shutil
+
+        pack = tmp_path / "integrations"
+        (pack / "schemas").mkdir(parents=True)
+        for name in self.CANON_SCHEMA_NAMES:
+            shutil.copyfile(self._pack_file("schemas", name), pack / "schemas" / name)
+        # Tamper ONE schema after vendoring.
+        (pack / "schemas" / "envelope.schema.json").write_text(
+            '{"tampered": true}\n', encoding="utf-8"
+        )
+
+        marker = tmp_path / "marker"
+        marker.mkdir()
+        deploy_dir = tmp_path / "deploy" / "schemas"
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "pincheck": {
+                            "detect": [{"path": str(marker)}],
+                            "deploy": {"schemas": str(deploy_dir) + "/"},
+                            "format": "copy",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+
+        with pytest.raises(ValueError, match="SCHEMAS_SOURCE_PIN"):
+            mgr.deploy("pincheck")
+        assert not deploy_dir.exists() or not any(
+            deploy_dir.rglob("*")
+        ), "a pin mismatch must leave the deploy dir untouched"
+
     def test_schemas_kind_without_deploy_map_is_skipped(self, tmp_path: Path) -> None:
         """A target without a ``schemas`` deploy key ignores the kind silently."""
         pack = tmp_path / "integrations"

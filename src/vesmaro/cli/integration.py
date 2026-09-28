@@ -713,8 +713,28 @@ class IntegrationManager:
         the deployed bytes are identical AND the manifest carries the
         current version; UPDATED when bytes match but the manifest is
         stale (version bump re-deploy); DEPLOYED for new files.
+
+        Cascade review SEC P3-4: BEFORE any write, the pack file
+        checksums are verified against ``SCHEMAS_SOURCE_PIN["sha256"]``
+        — a tampered pack (drifted digest, unpinned pack file, or stale
+        pin entry) raises ``ValueError`` and NOTHING deploys. The pin
+        protocol (ADR-0003) must never mint a clean-pin manifest over
+        wrong bytes.
         """
         results: list[FileResult] = []
+
+        checksums = self._schema_checksums(files)
+        pin_sha: dict[str, str] = SCHEMAS_SOURCE_PIN["sha256"]
+        drifted = sorted(n for n, d in checksums.items() if pin_sha.get(n) != d)
+        unpinned = sorted(set(checksums) - set(pin_sha))
+        stale_pin = sorted(set(pin_sha) - set(checksums))
+        if drifted or unpinned or stale_pin:
+            raise ValueError(
+                "schemas pack does not match SCHEMAS_SOURCE_PIN "
+                f"({SCHEMAS_SOURCE_PIN['repo']}@{SCHEMAS_SOURCE_PIN['tag']}) — "
+                f"drifted={drifted} unpinned={unpinned} stale_pin={stale_pin}; "
+                "refusing to deploy (re-vendor the pack from the pin tag)"
+            )
 
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
         existing_manifest_version: str | None = None
@@ -723,7 +743,6 @@ class IntegrationManager:
                 manifest_path.read_text(encoding="utf-8", errors="replace")
             )
 
-        checksums = self._schema_checksums(files)
         manifest = schemas_manifest(self.version, checksums)
 
         for src in files:
