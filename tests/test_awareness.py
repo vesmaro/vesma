@@ -1385,8 +1385,10 @@ class TestRepairRestHooksParity:
 
 class TestPictureCore:
     """The picture: server columns only — counts, agent ids, timestamps,
-    checkpoint presence. No content echo, no record ids (SPEC: no title,
-    no body, no tag of a peer record ever enters the picture)."""
+    checkpoint presence. No content echo, no record ids in the OBSERVED
+    layer (SPEC: no title, no body, no tag of a peer record ever enters
+    the OBSERVED layer — the v0b ``task:`` claim is the self-reported
+    layer, §8)."""
 
     def test_picture_fields_server_columns_only(self, manager: MemoryManager) -> None:
         cp_id = _checkpoint(
@@ -2168,6 +2170,40 @@ class TestPictureTaskNeverPinnable:
         picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
         assert picture["agents"][0]["agent"] == NEIGHBOR
         assert picture["agents"][0]["task"] is None
+
+    def test_trailing_newline_tag_not_echoed(self, manager: MemoryManager) -> None:
+        """P2-1 (review round on PR #427): the read-side slug gate is
+        ``\\Z``-anchored, NOT ``$`` — the #367/#387 anchor class. A ``$``
+        anchor also matches just before a trailing newline, so a
+        surgical row tagged ``task:evil-task\\n`` would read as a task
+        claim carrying an EMBEDDED NEWLINE (the reviewer proved it live:
+        the scan passes — no scanner pattern matches a slug — and the
+        render emits a claim line broken mid-line). The drift pin uses
+        the EXACT drift shape: a trailing-newline slug that differs from
+        a clean slug ONLY in the character after the anchor point
+        (unlike the spaces/``!`` malformed fixture, where ``$`` and
+        ``\\Z`` regexes agree and the drift would stay hidden).
+        """
+        memory = Memory(
+            id="awr-newline-task-row",
+            content="row with a trailing-newline task tag",
+            tags=[f"project:{PROJECT}", f"agent:{NEIGHBOR}", "task:evil-task\n", "mnemos:learning"],
+            source=MemorySource.MCP,
+            status=MemoryStatus.PUBLISHED,
+            project=PROJECT,
+            agent=NEIGHBOR,
+        )
+        manager.sqlite.save(memory)
+        picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
+        assert picture["agents"][0]["agent"] == NEIGHBOR, "presence slot survives"
+        assert picture["agents"][0]["task"] is None, (
+            "a $-anchor would accept evil-task\\n — \\Z must reject it (read-side"
+            " drift from the write-side TASK_SLUG_RE, models.py's #360 shape)"
+        )
+        # And the newline never renders (no embedded-line-break claim).
+        text = render_picture_section(picture)
+        assert "evil-task" not in text
+        assert "\n[unverified]" not in text
 
 
 class TestPictureTaskSurfaces:

@@ -102,7 +102,10 @@ picture; the presence-gate ruling that makes it possible:
 **Presence is BEHAVIORAL metadata** (agent id, activity timestamps,
 record counts of a peer) — the SEARCH gates cover record CONTENT and
 do NOT apply to presence. No title, no body, no tag of a peer record
-ever enters the picture: counts, ids and timestamps only. The seven
+ever enters the OBSERVED layer of the picture: counts, ids and
+timestamps only (the swarm v0b ``task:`` tag — §8 — is the one
+deliberate exception: a self-reported claim riding the two-level-trust
+machinery, never an observed fact). The seven
 hard conditions (each pinned by tests/test_awareness.py::TestPicture*):
 
 1. **Project-scoped only, fail-closed.** The picture inherits the R3
@@ -331,10 +334,13 @@ _POLICY_TAG_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:applyTo|severity):[^\
 #: ADR-0027 task-slug alphabet — identical bytes to
 #: ``vesmaro.models._TASK_SLUG_PATTERN`` (``[a-z0-9_\-]{1,64}``), but
 #: duplicated DELIBERATELY so awareness cannot import the private
-#: underscore constant; a drift between the two would be caught by the
-#: tag contract's own tests plus the malformed-tag read-side pin
-#: (``TestPictureTaskNeverPinnable::test_malformed_task_tag_not_echoed``).
-_TASK_TAG_SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9_\-]{1,64}$")
+#: underscore constant. Anchored with ``\Z`` (absolute end), NOT ``$``
+#: — the #367/#387 anchor class: a ``$`` also matches just before a
+#: trailing newline, so a surgical ``task:evil-task\n`` tag would read
+#: as a task claim carrying an embedded newline. The read-side drift is
+#: pinned by its own anchor probe
+#: (``TestPictureTaskNeverPinnable::test_trailing_newline_tag_not_echoed``).
+_TASK_TAG_SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9_\-]{1,64}\Z")
 
 #: Stopwords dropped before overlap comparison (deterministic fixed set —
 #: single common words must not manufacture conflicts, D4).
@@ -771,9 +777,11 @@ def _picture_task_tag(
     exactly what the scan exists to catch.
 
     ``rows`` are the agent's task-tagged window rows, newest first
-    (the caller's order); ``rows[0]`` is the most recent claim.
-    ``context_prefix`` names the calling surface in scan log lines the
-    way the goal pass names its row (``awareness:picture:task:<row-id>``).
+    (``list_recent``'s SQL ``ORDER BY created_at DESC``, preserved
+    through the caller's grouping); ``rows[0]`` is the most recent
+    claim. ``context_prefix`` names the calling surface in scan log
+    lines the way the goal pass names its row
+    (``awareness:picture:task:<row-id>``).
     """
     claimed = _task_tag_from_row(rows[0]) if rows else None
     if claimed is None:
@@ -1050,12 +1058,14 @@ def operational_picture(
     Same-project peers only, observed facts only: per agent — the agent
     id, the last observed activity (``last_seen``), the number of rows
     it wrote inside the presence window (``entries``), and checkpoint
-    presence (``checkpoint``). ALL fields are SERVER columns (``agent``,
-    ``created_at``, the #251 stamps) — no client-asserted text enters
-    v0a; no record id, no title, no body, no tag is echoed (the
-    presence-gate SPEC sections 1-7). Renders ONE LINE PER AGENT, capped to
-    :data:`AWARENESS_MAX_RENDERED_AGENTS`, most recent first, scan
-    bounded by :data:`DELTA_FEED_LIMIT`. Stores nothing (C2).
+    presence (``checkpoint``). The OBSERVED layer is SERVER columns
+    only (``agent``, ``created_at``, the #251 stamps) — no record id,
+    no title, no body, no tag enters the OBSERVED layer (the
+    presence-gate SPEC sections 1-7; the v0b ``task:`` claim below is
+    the self-reported layer, never an observed fact). Renders ONE
+    LINE PER AGENT, capped to :data:`AWARENESS_MAX_RENDERED_AGENTS`,
+    most recent first, scan bounded by :data:`DELTA_FEED_LIMIT`.
+    Stores nothing (C2).
 
     swarm v0b (ArchCom 2026-09-27, C6; unblocked by the owner's Ф2
     no-migration arbitration 2026-09-28): the per-agent entry gains
@@ -1082,8 +1092,10 @@ def operational_picture(
     tasks_refused = 0
     redactions = 0
     for slot in slots:
-        # v0b: the agent's rows arrive newest-first (the _agent_slots
-        # sort) — the FIRST task-tagged row is the most recent claim.
+        # v0b: the agent's rows arrive newest-first (``list_recent``'s
+        # SQL ``ORDER BY created_at DESC`` — sqlite_store; the picture
+        # re-groups WITHOUT re-sorting, so the feed order is the claim
+        # order) — the FIRST task-tagged row is the most recent claim.
         # The ADR-0018 admissibility gate applies BEFORE the scan (the
         # goal pass's is_context_admissible precedent): inadmissible
         # rows contribute presence (the write event is observed) but
