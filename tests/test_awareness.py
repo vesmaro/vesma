@@ -1522,6 +1522,53 @@ class TestPictureC2ZeroStoredRecords:
         assert "born ``mnemos:no-federate``" in text
 
 
+class TestPictureC9SessionStartGap:
+    """The #414 pin: on_session_start + include_awareness is a POLLABLE
+    surface (the REST twin re-requests the hook freely) — the C9 gate
+    must cover IT too, not only the two compositions the v0a wave
+    gated. The review reproduced the bypass: pre_flight burns the quota,
+    then compose_session_presence (via the hook) returned a full picture
+    unlimited times."""
+
+    def test_session_start_degrades_under_cap(self) -> None:
+        import tempfile
+
+        from vesmaro import hooks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _settings(Path(tmpdir), awareness_picture_rate_limit_per_minute=1)
+            mgr = _manager(settings)
+            try:
+                # Burn the (project, agent) quota via the gated surface.
+                pre_flight_snapshot(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                # The hook path must degrade, NOT render a full picture —
+                # and stay degraded for every re-request (the #414 bypass).
+                for _ in range(3):
+                    res = hooks.on_session_start(
+                        mgr,
+                        session=SESSION,
+                        project=PROJECT,
+                        agent=AGENT,
+                        include_awareness=True,
+                    )
+                    pres = res["presence"]
+                    assert pres.get("rate_limited") is True
+                    assert "picture" not in pres
+                    assert pres.get("text") == PICTURE_RATE_LIMITED_LINE
+                    assert pres["disclaimer"] == AWARENESS_DISCLAIMER
+                    # Shape-stable: the hook's own contract keys survive.
+                    assert res["hook"] == "on_session_start"
+                    assert res["session"] == SESSION
+                # The refusal consumed no quota and wrote no cursor — the
+                # W2 "refused stores nothing" semantics on this path too.
+                assert (
+                    read_awareness_cursor(mgr, project=PROJECT, agent=AGENT, session=SESSION)
+                    is None
+                )
+            finally:
+                mgr.close()
+
+
 class TestPictureC9RateCap:
     """C9: per-(project, agent) query cap, in-process; over-limit degrades
     to a rate-limit line, never a hard error; refused queries consume no
