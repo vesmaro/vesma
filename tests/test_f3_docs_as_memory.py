@@ -46,6 +46,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -178,6 +179,42 @@ class TestChunkDocument:
         assert len(chunks) > 1
         assert all(c.heading_path == ("Big",) for c in chunks)
         assert [c.chunk_idx for c in chunks] == list(range(len(chunks)))
+
+    def test_chunker_returns_all_chunks_cap_is_callers(self) -> None:
+        """Review round P3-2: the chunker is PURE — it returns every chunk
+        it produced; the per-document cap is the CALLER's observable
+        decision (ingest_document slices + logs + flags)."""
+        from vesmaro.docs_ingest import _MAX_CHUNKS_PER_DOC
+
+        doc = "\n\n".join(
+            f"# Heading {i}\n\nBody line for section {i}." for i in range(_MAX_CHUNKS_PER_DOC + 3)
+        )
+        chunks = chunk_document(doc)
+        assert len(chunks) == _MAX_CHUNKS_PER_DOC + 3
+
+    def test_ingest_truncation_is_flagged_and_logged(
+        self, mgr: MemoryManager, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Review round P3-2: a document over the per-document cap is
+        ingested with exactly the cap's worth of chunks, ``truncated``
+        flips True in the result, and a WARNING is logged (the cap is a
+        defensive bound, never a silent content drop)."""
+        import logging
+
+        from vesmaro.docs_ingest import _MAX_CHUNKS_PER_DOC
+
+        doc = "\n\n".join(
+            f"# Section {i}\n\nClean body number {i}." for i in range(_MAX_CHUNKS_PER_DOC + 2)
+        )
+        with caplog.at_level(logging.WARNING, logger="vesmaro.docs_ingest"):
+            res = _ingest(mgr, doc, "trunc-doc")
+        assert res.truncated is True
+        assert res.chunks_total == _MAX_CHUNKS_PER_DOC
+        assert res.released == _MAX_CHUNKS_PER_DOC  # every kept chunk is clean
+        assert any("truncated" in r.message for r in caplog.records)
+        # The ordinary doc under the cap: truncated=False (default path).
+        res2 = _ingest(mgr, CLEAN_DOC, "trunc-doc-2")
+        assert res2.truncated is False
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +372,54 @@ class TestSweepRelease:
         assert m is not None
         assert m.quarantine_reason == "detector-error"
 
+    def test_doc_swept_at_stamp_is_server_minted(self, mgr: MemoryManager) -> None:
+        """Review round P3-1: ``doc_swept_at`` is a server-minted stamp
+        (the mnemos #251 checkpoint-stamp class) — a client cannot FORGE
+        it on a generic create nor on an update, and cannot ERASE a
+        minted stamp through the update metadata replacement."""
+        from vesmaro.docs_ingest import DOC_SWEEP_STAMP_METADATA_KEY as STAMP
+        from vesmaro.models import MemoryCreate, MemorySource, MemoryUpdate
+
+        # FORGE on create: a generic add carrying the stamp is stripped.
+        forged_row = mgr.add(
+            MemoryCreate(
+                content="plain prose row with a forged stamp",
+                tags=list(TAGS),
+                source=MemorySource.MCP,
+                status=MemoryStatus.PUBLISHED,
+                metadata={STAMP: "1999-01-01T00:00:00+00:00", "note": "client dict"},
+            ),
+            project=PROJECT,
+            agent=AGENT,
+        )
+        assert STAMP not in forged_row.metadata
+        assert "note" in forged_row.metadata  # the rest of the dict survives
+
+        # MINT: the sweep on a real doc chunk writes the stamp (server path).
+        res = _ingest(mgr, CLEAN_DOC, "stamp-doc")
+        target = res.memory_ids[0]
+        row = mgr.sqlite.get(target)
+        assert row is not None
+        assert STAMP in row.metadata
+        minted_value = row.metadata[STAMP]
+
+        # FORGE on update: a client metadata replacement carrying a forged
+        # stamp is stripped (the value must not change).
+        updated = mgr.update(
+            target,
+            MemoryUpdate(metadata={STAMP: "1999-01-01T00:00:00+00:00", "other": "x"}),
+        )
+        assert updated is not None
+        assert updated.metadata[STAMP] == minted_value
+        assert updated.metadata["other"] == "x"
+
+        # ERASE on update: a client metadata replacement WITHOUT the key
+        # cannot drop the minted stamp (merge-back restores it).
+        updated2 = mgr.update(target, MemoryUpdate(metadata={"fresh": "dict"}))
+        assert updated2 is not None
+        assert updated2.metadata[STAMP] == minted_value
+        assert updated2.metadata["fresh"] == "dict"
+
 
 # ---------------------------------------------------------------------------
 # 4. Invariant 7 — issuance re-scan for document chunks
@@ -425,6 +510,36 @@ class TestCcrCacheBump:
         for old in old_ids:
             assert mgr.sqlite.get(old) is None
         assert res2.chunks_total == 4
+
+    def test_reingest_cleans_vectors_and_vault_of_replaced_chunks(self, mgr: MemoryManager) -> None:
+        """Review-round P2-1 hygiene pin: a re-ingest must not leave the
+        replaced chunks' ids warm in the vector store (the
+        stale-embed-keeps-id-warm class) or orphan their vault files.
+        Mirrors manager.delete's hygiene; runs post-commit."""
+        res1 = _ingest(mgr, CLEAN_DOC, "hygiene-doc")
+        assert res1.released == 3
+        old_ids = list(res1.memory_ids)
+        # The released chunks carry live embeds and vault files.
+        old_paths = []
+        for mid in old_ids:
+            m = mgr.sqlite.get(mid)
+            assert m is not None
+            if mgr.vectors.has(mid):
+                assert m.file_path is not None
+            old_paths.append(m.file_path)
+        assert any(mgr.vectors.has(mid) for mid in old_ids), "fixture: embeds expected"
+
+        res2 = _ingest(mgr, CLEAN_DOC + "\n\n# More\n\nEven more prose.", "hygiene-doc")
+        assert res2.reingest is True
+        # The replaced ids are no longer warm in the vector store.
+        for mid in old_ids:
+            assert not mgr.vectors.has(mid), f"re-ingest left a stale vector id warm: {mid[:8]}"
+        # The new released chunks have their own fresh embeds.
+        assert any(mgr.vectors.has(mid) for mid in res2.memory_ids)
+        # The old vault files are gone (no orphans on disk).
+        for path in old_paths:
+            if path is not None:
+                assert not Path(path).exists(), f"re-ingest orphaned a vault file: {path}"
 
     def test_bump_is_per_reingest_monotonic(self, mgr: MemoryManager) -> None:
         _ingest(mgr, CLEAN_DOC, "mono-doc")
@@ -558,7 +673,6 @@ class TestExistingToolBoundary:
         ordinary visibility policy, NO born-quarantine, no doc-grouping
         metadata. The boundary is deliberate (the existing tool is not
         retroactively quarantined)."""
-        from unittest.mock import MagicMock
 
         # A fetch failure on a VALID public URL degrades to the
         # placeholder content path — still the ordinary (non-quarantine)
@@ -688,3 +802,70 @@ class TestSurfaceSmoke:
         assert isinstance(second, dict)
         assert second["reingest"] is True
         assert second["cache_version"] == first["cache_version"] + 1
+
+    def test_rest_ingest_url_agent_slice_twin_pin(self, tmp_path: Path) -> None:
+        """P1 repair pin (review round): the REST /ingest-url handler must
+        slice the ``agent:`` tag with the colon included — the len("agent")
+        regression stored ``':hermes'`` in the denormalised column and
+        agent_recall missed the row. The twin asserts BOTH the stored
+        column and the recall hit, so the slice can never drift again
+        (the MCP twin and /ingest-document kept the correct slice)."""
+
+        from fastapi.testclient import TestClient
+
+        from vesmaro.api import main as api_main
+        from vesmaro.api.main import app as real_app
+        from vesmaro.api.main import lifespan
+        from vesmaro.models import AgentRecallQuery
+
+        manager = MemoryManager(_settings(tmp_path))
+        manager._embedder = _HashEmbedder()
+        test_app = FastAPI(title="Mnemos-F3-P1", version="0.1.0", lifespan=lifespan)
+        for route in real_app.routes:
+            test_app.routes.append(route)
+        api_main._manager = manager
+
+        httpx_cls = MagicMock()
+        client_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.text = "ingested page body"
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        client_http.get.return_value = mock_resp
+        httpx_cls.return_value.__enter__.return_value = client_http
+
+        trafilatura_stub = MagicMock()
+        trafilatura_stub.extract.return_value = "extracted page body"
+        with TestClient(test_app) as client:
+            import sys as _sys
+
+            with (
+                patch("httpx.Client", httpx_cls),
+                patch.dict(_sys.modules, {"trafilatura": trafilatura_stub}),
+            ):
+                resp = client.post(
+                    "/ingest-url",
+                    json={
+                        "url": "https://example.com/docs",
+                        "tags": [
+                            "project:f3p",
+                            "agent:hermes",
+                            "mnemos:learning",
+                        ],
+                    },
+                )
+            assert resp.status_code == 201
+            memory_id = resp.json()["id"]
+            # The denormalised column stores the bare slug (colon sliced).
+            row = manager.sqlite.get(memory_id)
+            assert row is not None
+            assert row.agent == "hermes", (
+                f"REST /ingest-url agent slice regression: stored {row.agent!r}"
+            )
+            # And agent_recall finds the row through the agent predicate.
+            recalled = manager.agent_recall(
+                AgentRecallQuery(agent="hermes", project="f3p", limit=10)
+            )
+            assert any(r.memory.id == memory_id for r in recalled)
+        api_main._manager = None
+        manager.close()

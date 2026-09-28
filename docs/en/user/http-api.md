@@ -976,7 +976,10 @@ content-echoing channel — ADR-0027 invariant 7).
 
 **Re-ingest** (ADR-0027 invariant 4): re-ingesting the same `doc_id`
 replaces the document's chunk rows and bumps the doc-chunk `ccr_cache`
-version key **in the same SQLite transaction**.
+version key **in the same SQLite transaction**. Honest scope: the key is a
+**consumer-facing invalidation counter** (exposed in `GET /stats` as
+`doc_chunk_cache_version`, the same posture as `graph_epoch`); any
+assembly-cache consumer must read it. No in-repo consumer keys on it yet.
 
 Mirrors the `mnemos_ingest_document` plugin tool. `POST /ingest-url`
 keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
@@ -1001,7 +1004,8 @@ keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
   "quarantined": 1,
   "chunk_ids": ["550e8400…", "550e8401…", "550e8402…"],
   "reingest": false,
-  "cache_version": 0
+  "cache_version": 0,
+  "truncated": false
 }
 ```
 

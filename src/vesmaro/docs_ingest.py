@@ -49,8 +49,17 @@ Re-ingest / re-fragmentation (invariant 4): re-ingesting the SAME
 ``doc_id`` REPLACES the document's chunk rows and bumps the ccr_cache
 doc-chunk version key IN THE SAME TRANSACTION
 (:meth:`vesmaro.storage.sqlite_store.SQLiteStore.replace_doc_chunks`
-— ``BEGIN IMMEDIATE``; there is no window where the old cache version
-serves post-re-chunk assemblies).
+— ``BEGIN IMMEDIATE``). HONEST SCOPE (review round P2-2, the
+``graph_epoch`` posture the committee accepted for A1): the key is a
+CONSUMER-FACING INVALIDATION COUNTER — it is bumped transactionally on
+every re-fragmentation and readable by any assembly-cache consumer, but
+NO in-repo consumer keys on it YET (today's read paths do not consult
+it), so the "no window where the old cache serves post-re-chunk
+assemblies" holds by construction of the CURRENT readers, not by an
+enforced cache-bypass. The first consumer that caches doc-chunk-derived
+assemblies MUST read this counter and treat a change as a full
+invalidation; until then the counter is an exposed, bumped, test-pinned
+contract — not a wired defence.
 
 Boundary with the existing single-URL ingest: ``mnemos_ingest_url``
 (REST ``POST /ingest-url``, CLI ``mnemos add --url``) keeps its
@@ -92,6 +101,7 @@ __all__ = [
     "BORN_QUARANTINE_REASON",
     "DOC_CHUNK_CACHE_VERSION_META_KEY",
     "DOC_SWEEP_REASON_DETECTOR_PREFIX",
+    "DOC_SWEEP_STAMP_KEYS",
     "DOC_SWEEP_STAMP_METADATA_KEY",
     "DocChunk",
     "DocIngestResult",
@@ -113,11 +123,26 @@ BORN_QUARANTINE_REASON: Final[str] = "doc-ingest-born-quarantine"
 #: invalidate assemblies that may combine chunks across documents
 #: (invariant 7's "combining clean records creates a new context" cuts
 #: both ways: the assembly cache must never outlive the corpus shape).
+#: HONEST SCOPE (review round P2-2, the ``graph_epoch`` posture the
+#: committee accepted for A1): a CONSUMER-FACING INVALIDATION COUNTER —
+#: bumped transactionally on every re-fragmentation, exposed through
+#: ``MemoryManager.stats``, and every caching consumer MUST read it; no
+#: in-repo consumer keys on it YET, so today the guarantee it carries is
+#: the contract the counter exposes, not a wired cache-bypass.
 DOC_CHUNK_CACHE_VERSION_META_KEY: Final[str] = "ccr_cache_doc_chunk_version"
 
 #: Metadata stamp written on RELEASE (the explicit-release audit trail
 #: required by the §5.1 discipline — release is explicit AND audited).
 DOC_SWEEP_STAMP_METADATA_KEY: Final[str] = "doc_swept_at"
+
+#: The server-minted doc-sweep stamp keys (the mnemos #251
+#: checkpoint-stamp discipline, review round P3-1): only the doc sweep
+#: (:func:`sweep_document_chunks`) may write ``doc_swept_at`` — a client
+#: forging the stamp on ``add``/``update`` would fabricate a release
+#: audit trail. Every generic create/update path strips client-supplied
+#: copies; ``MemoryManager.update`` merge-protects an existing stamp
+#: (a client metadata dict cannot erase it either).
+DOC_SWEEP_STAMP_KEYS: frozenset[str] = frozenset({DOC_SWEEP_STAMP_METADATA_KEY})
 
 #: ``quarantine_reason`` prefix for swept-and-flagged chunks. The reason
 #: carries the detector class codes (``doc-sweep:prompt-injection,secret``)
@@ -150,7 +175,14 @@ class DocChunk:
 
 @dataclass(frozen=True, slots=True)
 class DocIngestResult:
-    """Outcome of one document ingest (all chunks of one doc_id)."""
+    """Outcome of one document ingest (all chunks of one doc_id).
+
+    ``truncated`` (review round P3-2): True when the document produced
+    more chunks than the per-document cap (``_MAX_CHUNKS_PER_DOC``) and
+    only the first ``chunks_total`` were ingested. The ingest logs a
+    WARNING in the same case — the cap is a defensive bound on
+    untrusted content, never a silent content drop.
+    """
 
     doc_id: str
     chunks_total: int
@@ -159,6 +191,7 @@ class DocIngestResult:
     memory_ids: tuple[str, ...]
     reingest: bool
     cache_version: int
+    truncated: bool = False
 
 
 # ── Structure-preserving chunking ────────────────────────────────────────────
@@ -212,7 +245,13 @@ def chunk_document(text: str) -> list[DocChunk]:
         else:
             pending.append(line)
     emit(pending, pending_path)
-    return chunks[:_MAX_CHUNKS_PER_DOC]
+    # Review round P3-2: the per-document chunk cap is enforced by the
+    # CALLER (ingest_document) so the truncation is observable — a pure
+    # function must not silently drop data the caller cannot see. The
+    # cap itself stays (a hostile "document" must not mint unbounded
+    # rows); what changed is that the caller now logs a warning and
+    # carries ``truncated`` in the result.
+    return chunks
 
 
 # ── The danger sweep ─────────────────────────────────────────────────────────
@@ -365,10 +404,17 @@ def ingest_document(
     <vesmaro.manager.MemoryManager.add>` (the ordinary write path —
     secrets auto-tag, canon gate, FTS bookkeeping) and are quarantined
     IMMEDIATELY after each write, before the sweep — no window exists
-    where a doc chunk is admissible pre-sweep (``add`` leaves a clean
-    row PUBLISHED under the ``immediate`` visibility policy; the
-    quarantine_entry that follows pulls the state and REMOVES the
-    embed within the same ingest step).
+    where a doc chunk is admissible pre-sweep. Two belts hold this
+    (review round P3-3 — the docstring now matches the code, which is
+    SAFER than the previously described single belt): the chunk is
+    created with an EXPLICIT ``status=RAW``, so the visibility-policy
+    branch never runs (an explicit status keeps the pre-B2b contract —
+    the row is born invisible by its own status), and the
+    ``quarantine_entry`` that follows pulls the lifecycle lane to
+    QUARANTINED and REMOVES the embed in the same ingest step. Even a
+    future policy change that publishes explicit-RAW seeds cannot make
+    the chunk admissible: the quarantine predicate composes with the
+    status gate.
 
     Re-ingest of an existing ``doc_id`` (invariant 4): the document's
     rows are REPLACED through the store's transactional
@@ -379,9 +425,23 @@ def ingest_document(
 
     Returns a :class:`DocIngestResult` with per-chunk ids and counts.
     """
-    chunks = chunk_document(text)
-    if not chunks:
+    all_chunks = chunk_document(text)
+    if not all_chunks:
         raise ValueError(f"ingest_document: document {doc_id!r} produced no chunks")
+    # Review round P3-2: the per-document cap is enforced HERE (visible
+    # to the caller), never silently inside the pure chunker. A
+    # truncation is logged — the cap is a defensive bound on untrusted
+    # content, not a silent content drop.
+    truncated = len(all_chunks) > _MAX_CHUNKS_PER_DOC
+    chunks = all_chunks[:_MAX_CHUNKS_PER_DOC]
+    if truncated:
+        logger.warning(
+            "doc ingest: doc_id=%s truncated %d -> %d chunks (per-document cap %d)",
+            doc_id[:32],
+            len(all_chunks),
+            len(chunks),
+            _MAX_CHUNKS_PER_DOC,
+        )
 
     existing_ids = manager.sqlite.list_doc_chunk_ids(doc_id)
     if existing_ids:
@@ -403,6 +463,14 @@ def ingest_document(
             rows,
             cache_version_key=DOC_CHUNK_CACHE_VERSION_META_KEY,
         )
+        # ── Post-commit external hygiene (review round P2-1) ────────────
+        # The transaction removed the SQL rows; the replaced chunks' side
+        # stores must not keep their ids warm (the stale-embed class) or
+        # orphan their vault files. Mirrors MemoryManager.delete's
+        # hygiene (vectors.delete + vault.delete_file), run AFTER the
+        # commit: a transaction rollback must not have destroyed the
+        # side-store entries of rows that then survive.
+        _cleanup_replaced_chunks(manager, counts["deleted_rows"])
         memory_ids = [r.id for r in rows]
         result = sweep_document_chunks(manager, memory_ids)
         logger.info(
@@ -422,6 +490,7 @@ def ingest_document(
             memory_ids=tuple(memory_ids),
             reingest=True,
             cache_version=counts["cache_version"],
+            truncated=truncated,
         )
 
     # ── First ingest: add() per chunk, quarantine immediately ────────────
@@ -463,6 +532,7 @@ def ingest_document(
         memory_ids=tuple(memory_ids),
         reingest=False,
         cache_version=manager.sqlite.doc_chunk_cache_version(DOC_CHUNK_CACHE_VERSION_META_KEY),
+        truncated=truncated,
     )
 
 
@@ -500,3 +570,40 @@ def _build_chunk_row(
         pipeline_state=PipelineState.QUARANTINED,
         quarantine_reason=BORN_QUARANTINE_REASON,
     )
+
+
+def _cleanup_replaced_chunks(manager: MemoryManager, deleted_rows: list[Memory]) -> None:
+    """Post-commit side-store hygiene for the re-ingest's replaced chunks.
+
+    Review round P2-1: ``replace_doc_chunks`` removed the SQL rows, but
+    the old chunk ids would otherwise stay warm in the vector store and
+    their vault files would orphan on disk (the stale-embed-keeps-id-warm
+    class — product search stays correct through the resolve-time guard,
+    but a warm id is a stale index entry waiting to mis-resolve).
+
+    Mirrors :meth:`MemoryManager.delete
+    <vesmaro.manager.MemoryManager.delete>` hygiene: ``vectors.delete`` +
+    ``vault.delete_file`` per replaced row. Runs AFTER the replace
+    transaction commits — a rollback must not destroy side-store entries
+    of rows that then survive. Each item is best-effort (a failure is
+    logged, never raised: the row is already gone from SQL; a lingering
+    vector id is inert for ranking and the vector sweeper heals it).
+    """
+    for row in deleted_rows:
+        try:
+            manager.vectors.delete(row.id)
+        except Exception as exc:  # non-fatal — sweeper heals stale ids
+            logger.warning(
+                "doc re-ingest hygiene: vector delete failed for %s (non-fatal): %s",
+                row.id[:8],
+                exc,
+            )
+        if row.file_path:
+            try:
+                manager.vault.delete_file(row.file_path)
+            except Exception as exc:  # non-fatal — an orphan file is inert
+                logger.warning(
+                    "doc re-ingest hygiene: vault file delete failed for %s (non-fatal): %s",
+                    row.id[:8],
+                    exc,
+                )

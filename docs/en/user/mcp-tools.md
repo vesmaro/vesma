@@ -653,7 +653,7 @@ Ingest a full document as chunked memory rows — **docs-as-memory** (ADR-0027 P
 
 ### Re-ingest and the cache version (ADR-0027 invariant 4)
 
-Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-fragmentation) and bumps the doc-chunk `ccr_cache` version key **in the same SQLite transaction** — there is no window where a stale cache version serves assemblies over the new chunk set.
+Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-fragmentation) and bumps the doc-chunk `ccr_cache` version key **in the same SQLite transaction**. Honest scope: the version key is a **consumer-facing invalidation counter** (exposed in `mnemos_stats` / `GET /stats` as `doc_chunk_cache_version`, the same posture as `graph_epoch`) — bumped transactionally on every re-fragmentation; any assembly-cache consumer **must** read it and treat a change as a full invalidation. No in-repo consumer keys on it yet.
 
 ### Boundary with `mnemos_ingest_url`
 
@@ -679,7 +679,8 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
   "quarantined": 1,
   "chunk_ids": ["…", "…", "…"],
   "reingest": false,
-  "cache_version": 0
+  "cache_version": 0,
+  "truncated": false
 }
 ```
 

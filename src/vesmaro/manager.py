@@ -42,7 +42,11 @@ from vesmaro.danger_detectors import DetectionResult, detect
 # collision (the function IS ``ingest_document`` on both sides; the
 # manager's method is the public surface, the module's function is the
 # single implementation).
-from vesmaro.docs_ingest import DocIngestResult
+from vesmaro.docs_ingest import (
+    DOC_CHUNK_CACHE_VERSION_META_KEY,
+    DOC_SWEEP_STAMP_KEYS,
+    DocIngestResult,
+)
 from vesmaro.docs_ingest import ingest_document as docs_ingest_document
 from vesmaro.embeddings import EmbeddingProvider, create_embedding_provider
 from vesmaro.graph_minting import (
@@ -1075,6 +1079,24 @@ class MemoryManager:
                     k: v for k, v in data.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
                 }
 
+        # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
+        # server-minted too — only sweep_document_chunks may write
+        # ``doc_swept_at`` (the explicit-release audit trail). A client
+        # forging it on a generic create would fabricate a release audit
+        # entry; the same #251 strip class. No trusted-caller flag exists:
+        # the sweep writes through the STORE's update_fields (server-
+        # internal), never through add().
+        doc_forged = sorted(k for k in DOC_SWEEP_STAMP_KEYS if k in data.metadata)
+        if doc_forged:
+            logger.warning(
+                "generic create: stripped client-supplied doc-sweep stamps "
+                "(server-minted only, ADR-0027 Ф3 review P3-1): keys=%s",
+                doc_forged,
+            )
+            data.metadata = {
+                k: v for k, v in data.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+            }
+
         # ── Layer 1: write-path secrets scanner ───────────────────────────
         # Run before Memory construction so the tag is part of the persisted
         # record from the first write (no second UPDATE needed). Non-fatal:
@@ -1309,10 +1331,36 @@ class MemoryManager:
                 memory.metadata = {
                     k: v for k, v in memory.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
                 }
+            # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
+            # the server-minted class — strip a client-supplied
+            # ``doc_swept_at`` (a forged release audit entry); the merge
+            # back below restores the row's own minted stamp (a client
+            # metadata dict cannot erase it either). The sweep writes
+            # through the STORE's update_fields, never through update().
+            doc_forged = sorted(k for k in DOC_SWEEP_STAMP_KEYS if k in memory.metadata)
+            if doc_forged:
+                logger.warning(
+                    "update: stripped client-supplied doc-sweep stamps "
+                    "(server-minted only, ADR-0027 Ф3 review P3-1): "
+                    "id=%s keys=%s",
+                    memory_id[:8],
+                    doc_forged,
+                )
+                memory.metadata = {
+                    k: v for k, v in memory.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+                }
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
             }
             memory.metadata = {**memory.metadata, **internal}
+            # ADR-0027 Ф3 (review round P3-1): restore the row's own
+            # minted doc-sweep stamp on top of the replacement dict —
+            # a client metadata dict can neither forge nor erase it
+            # (the same merge-protect the checkpoint stamps get).
+            memory.metadata = {
+                **memory.metadata,
+                **{k: previous_metadata[k] for k in DOC_SWEEP_STAMP_KEYS if k in previous_metadata},
+            }
             # ADR-0027 Phase 0 (slice-1 review item 1) — the update twin
             # of the add() gate: the REPLACEMENT metadata dict must not
             # persist a partial doc-grouping triple. Validated AFTER the
@@ -4318,6 +4366,15 @@ class MemoryManager:
                 # None means the pipeline has never run yet.
                 "last_processed_at": self.sqlite.get_meta("pipeline_last_run"),
             },
+            # ADR-0027 Ф3 (epic #308, review round P2-2): the doc-chunk
+            # ccr_cache invalidation counter — the graph_epoch posture:
+            # EXPOSED for any assembly-cache consumer, bumped
+            # transactionally on every document re-fragmentation; no
+            # in-repo consumer keys on it yet (the counter is the
+            # contract, not a wired cache-bypass).
+            "doc_chunk_cache_version": self.sqlite.doc_chunk_cache_version(
+                DOC_CHUNK_CACHE_VERSION_META_KEY
+            ),
             "search_health": {
                 "fts_available": True,  # FTS5 is always available (SQLite built-in)
                 "vector_available": vector_count > 0,

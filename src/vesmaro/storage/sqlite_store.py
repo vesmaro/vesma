@@ -3942,8 +3942,11 @@ class SQLiteStore:
     # replacement + cache-version bump the ADR-0027 invariant 4 demands:
     # re-fragmentation (a re-ingest of the same doc_id replacing its
     # chunks) bumps the ccr_cache version key IN THE SAME TRANSACTION as
-    # the chunk-row changes — there is no window where the old cache
-    # version serves post-re-chunk assemblies.
+    # the chunk-row changes. HONEST SCOPE (review round P2-2, the
+    # graph_epoch posture): the version key is a consumer-facing
+    # invalidation counter — bumped transactionally, readable by any
+    # assembly-cache consumer, but no in-repo consumer keys on it yet;
+    # the first caching consumer MUST read it.
 
     def replace_doc_chunks(
         self,
@@ -3951,17 +3954,20 @@ class SQLiteStore:
         rows: list[Memory],
         *,
         cache_version_key: str,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Replace every chunk row of ``doc_id`` and bump the cache version.
 
         ADR-0027 invariant 4 (CCR-atomcity, the Ф3 leg): the chunk-row
         replacement (DELETE of the previous doc_id rows + INSERT of the
         new ones) and the ``meta`` upsert of ``cache_version_key`` run
         in ONE explicit ``BEGIN IMMEDIATE`` transaction. A crash between
-        the two would otherwise leave a stale cache version serving
-        assemblies over a corpus that no longer matches it — the same
-        transactional-discipline class as the A1 edges rebuild (#263 /
-        #193 test pattern).
+        the two would otherwise leave the version counter disagreeing
+        with the stored corpus — the same transactional-discipline
+        class as the A1 edges rebuild (#263 / #193 test pattern).
+        Honest scope (review round P2-2, the ``graph_epoch`` posture):
+        the counter is a consumer-facing invalidation signal — bumped
+        transactionally, exposed via stats; no in-repo consumer keys on
+        it yet, and the first caching consumer MUST read it.
 
         The DELETE keys on the metadata JSON (``json_extract(metadata,
         '$.doc_id') = ?``) — the Ф0 convention IS the doc identity; no
@@ -3972,6 +3978,17 @@ class SQLiteStore:
         trigger contract as the ordinary ``save``), so the external-
         content index stays in sync inside the same transaction.
 
+        Review round (P2-1): the return carries ``deleted_rows`` — the
+        row snapshots taken BEFORE the transactional DELETE — so the
+        CALLER can perform the external hygiene (vector embeds + vault
+        files) for the deleted chunk ids AFTER the commit. The store
+        owns the atomic row/version swap; the manager-side caller owns
+        the side stores (the same hygiene split as
+        :meth:`MemoryManager.delete
+        <vesmaro.manager.MemoryManager.delete>`: vectors.delete +
+        vault.delete_file live outside the SQL transaction — a rollback
+        must not have destroyed them for rows that survive).
+
         Args:
             doc_id: The logical document identity (validated upstream).
             rows: The NEW chunk rows (each already carries the doc-grouping
@@ -3981,8 +3998,10 @@ class SQLiteStore:
                 (monotonic integer as text) in the same transaction.
 
         Returns:
-            ``{"deleted": N, "inserted": M, "cache_version": V}`` — the
-            per-statement row counts and the NEW cache version value.
+            ``{"deleted": N, "inserted": M, "cache_version": V,
+            "deleted_rows": [Memory, …]}`` — the per-statement row
+            counts, the NEW cache version value, and the pre-DELETE
+            snapshots of the replaced rows (for post-commit hygiene).
         """
         if not rows:
             raise ValueError("replace_doc_chunks: rows must be non-empty")
@@ -3999,6 +4018,11 @@ class SQLiteStore:
             " quarantine_reason, marker_version) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         )
+        # Pre-DELETE snapshots of the rows being replaced — taken BEFORE
+        # the transaction so the caller gets them even if the DELETE
+        # itself is what the crash pins (post-commit hygiene needs the
+        # ids/file_paths, not the row bodies).
+        deleted_rows = self.list_doc_chunks(doc_id)
         # B608: the script is composed EXCLUSIVELY of static literals and
         # bound parameters via conn.execute — the json_extract fragment is
         # a static string with a `?` bind for doc_id. One transaction so
@@ -4083,12 +4107,34 @@ class SQLiteStore:
             inserted,
             new_version,
         )
-        return {"deleted": deleted, "inserted": inserted, "cache_version": new_version}
+        return {
+            "deleted": deleted,
+            "inserted": inserted,
+            "cache_version": new_version,
+            "deleted_rows": deleted_rows,
+        }
 
     def doc_chunk_cache_version(self, cache_version_key: str) -> int:
         """Read the current ccr_cache doc-chunk version (0 when absent)."""
         value = self.get_meta(cache_version_key)
         return int(value) if value is not None else 0
+
+    def list_doc_chunks(self, doc_id: str) -> list[Memory]:
+        """Full row snapshots of every chunk of ``doc_id`` (Ф0 convention).
+
+        The re-ingest replace path uses the pre-DELETE snapshots for the
+        post-commit external hygiene (vector embeds + vault files of the
+        replaced rows) — see :meth:`replace_doc_chunks`. Ordered by the
+        convention ``chunk_idx`` (document order).
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT * FROM memories "
+            "WHERE json_extract(metadata, '$.doc_id') = ? "
+            "ORDER BY CAST(json_extract(metadata, '$.chunk_idx') AS INTEGER) ASC",
+            (doc_id,),
+        ).fetchall()
+        return [self._row_to_memory(r) for r in rows]
 
     def list_doc_chunk_ids(self, doc_id: str) -> list[str]:
         """Ids of every chunk row of ``doc_id`` (the Ф0 metadata convention).

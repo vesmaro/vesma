@@ -1465,7 +1465,10 @@ async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
     url_clean = re.sub(r"(https?://)([^@]*@)", r"\1", req.url)
     tags = validate_tag_contract(req.tags, strict=settings.mnemos.strict_tag_contract)
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
-    agent = next((t[len("agent") :] for t in tags if t.startswith("agent:")), "")
+    # P1 repair (review round): the len("agent") slice dropped the ':'
+    # and stored ':a' in the denormalised column for tag agent:a —
+    # agent_recall then missed the row. REST twin of the MCP slice.
+    agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
     memory = mgr.ingest_url(url_clean, tags=tags, project=project, agent=agent)
     return {"id": str(memory.id), "title": memory.auto_title(), "url": url_clean}
 
@@ -1493,7 +1496,7 @@ class IngestDocumentRequest(BaseModel):
 
 @app.post("/ingest-document", status_code=201)
 async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
-    """Ingest a document as chunked, born-quarantained memory rows (Ф3).
+    """Ingest a document as chunked, born-quarantined memory rows (Ф3).
 
     Mirrors the ``mnemos_ingest_document`` MCP tool. Chunks are born
     quarantined (ADR-0027 invariant 8) and swept at completion; a
@@ -1529,6 +1532,7 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
         "chunk_ids": list(result.memory_ids),
         "reingest": result.reingest,
         "cache_version": result.cache_version,
+        "truncated": result.truncated,
     }
 
 

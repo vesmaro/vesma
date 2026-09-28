@@ -2392,6 +2392,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             "chunk_ids": list(result.memory_ids),
             "reingest": result.reingest,
             "cache_version": result.cache_version,
+            "truncated": result.truncated,
         }
 
     # ── mnemos_watch_* ──────────────────────────────────────────────────────
