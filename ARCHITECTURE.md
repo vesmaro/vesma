@@ -180,7 +180,7 @@ classDiagram
 
 ### MCP tools (stable names — integration plugins reference these)
 
-The MCP surface is **26 tools** (`mcp_server.py` `list_tools()`). The v1-era table of 11 is superseded; the current contract, grouped:
+The MCP surface is **38 tools** (`mcp_server.py` `list_tools()`). The v1-era table of 11 is superseded; the current contract, grouped:
 
 | Group | Tools |
 |---|---|
@@ -188,14 +188,15 @@ The MCP surface is **26 tools** (`mcp_server.py` `list_tools()`). The v1-era tab
 | Context assembly & hooks | `mnemos_assemble_context`, `mnemos_context_rewrite`, `mnemos_hooks`, `mnemos_filter`, `mnemos_compress`, `mnemos_retrieve`, `mnemos_align_prefix` |
 | Tags & workflow | `mnemos_tags`, `mnemos_tags_rename`, `mnemos_workflow` |
 | Import / export | `mnemos_export`, `mnemos_import` |
-| Watcher | `mnemos_watch_start`, `mnemos_watch_stop`, `mnemos_watch_status` |
+| Watch poll (project graph, ADR-0032 §3.2) | `mnemos_watch_start`, `mnemos_watch_stop`, `mnemos_watch_status` |
+| Project graph (ADR-0032, default-off) | `mnemos_index_project`, `mnemos_project_graph_status`, `mnemos_search_graph`, `mnemos_trace_path`, `mnemos_get_file_outline`, `mnemos_get_code_snippet`, `mnemos_check_graph_coverage`, `mnemos_get_graph_schema`, `mnemos_list_graph_projects`, `mnemos_delete_graph_project` |
 | Stats & pipeline | `mnemos_stats`, `mnemos_auto_collect_status`, `mnemos_reprocess` |
 
 Full per-tool reference — input schemas, output shapes, JSON-RPC examples: [docs/en/user/mcp-tools.md](docs/en/user/mcp-tools.md).
 
 ### HTTP API
 
-Mirrors MCP tools (`POST /memories`, `GET /recall/agent/{name}`, `POST /search`, etc.) plus pipeline endpoints `POST /process`, `POST /synthesize`, `POST /publish/{memory_id}`, `GET /memories?status=`, `GET /traces`, `GET /metrics`.
+Mirrors MCP tools (`POST /memories`, `GET /recall/agent/{name}`, `POST /search`, etc.) plus pipeline endpoints `POST /process`, `POST /synthesize`, `POST /publish/{memory_id}`, `GET /memories?status=`, `GET /traces`, `GET /metrics`, the project-graph namespace `/graph/*`, and the watch poll `/watch/*`.
 
 ### CLI
 
@@ -323,6 +324,24 @@ File watcher on `.github/instructions/*.instructions.md` in configured repos. On
 
 This makes path-scoped rules first-class searchable knowledge instead of inert instruction files.
 
+## 8a. Project graph (ADR-0032)
+
+A symbol graph over **registered** project roots, persisted in the sidecar `code_graph.db` next to the main DB — never inside it, never in the vault. Tree-sitter parses sources into nodes (`Class`, `Function`, `Method`, `Type`, `Module`, `File`) and edges (`DEFINES`, `IMPORTS`, `CALLS`, `INHERITS`, `TESTS`, `USES`), indexed fully or incrementally (mtime+size staleness, per-project serialization lock). Ten MCP tools + the `/graph/` REST namespace; the watch poll (`/watch/*`) reindexes on actual changes from one cooperative thread.
+
+- **Default off.** Master flag `code_graph.enabled` (default `false`) gates the whole surface; `code_graph.watch` is a separate opt-in; `code_graph.beacon` (default on when enabled) adds one ≤200-byte freshness line to `assemble_context` output — outside the token budget, never pinned.
+- **Memory-grade hygiene.** The token contract (budget = `max_output_tokens` × 4 bytes, whole-row/whole-line drops, strictly advancing cursor) and the fail-closed index limits (`index_max_files`, `index_max_source_mb` — a breach refuses the whole index) apply everywhere.
+- **Security invariants PG1–PG7** (zero bytes of source persisted, root confinement, denylist/allowlist surface + poisoned-forever set, scan-at-issue snippets with no cache, born-no-federate sidecar, untrusted-origin wrapper, limits + per-agent audit) are mechanisms with tests, not declarations. Details: [ADR-0032](docs/project/adr/0032-project-graph.md).
+
+```mermaid
+flowchart LR
+    SRC["Registered project root"] -->|"tree-sitter (PG1: shapes, no source)"| IDX["Indexer\n(incremental, fail-closed limits)"]
+    IDX --> ATOM["Atomic publish\ncode_graph.db (sidecar)"]
+    ATOM --> TOOLS["10 MCP tools + /graph/ REST\n(default-off operator gate)"]
+    ATOM --> POLL["Watch poll /watch/*\n(adaptive interval, reindex on change)"]
+    ATOM --> BEACON["Recall beacon in assemble_context\n(one line, outside the budget)"]
+    TOOLS --> AG["Agent (attribution + audit, PG7)"]
+```
+
 ## 9. Security & operational posture
 
 - **Rootless podman** by default. MCP server bound to localhost / unix-socket; HTTP API loopback only unless explicitly bound.
@@ -350,7 +369,7 @@ src/
     config.py            # env + YAML settings; legacy env-name aliases (#139)
     models.py            # Memory, TagContract, Trace data models
     manager.py           # MemoryManager — core CRUD + search orchestrator
-    mcp_server.py        # MCP server over stdio — 26 mnemos_* tools
+    mcp_server.py        # MCP server over stdio — 38 mnemos_* tools
     sdk.py               # MnemosSDK — thin typed facade over MemoryManager
     workflow.py          # workflow lifecycle state machine for memories (#96)
     traces.py            # explainability / trace layer (M6)
