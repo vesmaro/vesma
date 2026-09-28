@@ -397,6 +397,33 @@ class TestFlagContract:
                     (r.memory.id, r.score, r.via_graph, r.via_graph_kind)
                     for r in mgr.search("harbour cranes maintenance", limit=limit)
                 ]
+                # P2-1 (review round 1): pin the OFF-page-neutrality
+                # axis against a PRISTINE oracle, not OFF-vs-OFF — the
+                # coordinated mutant "guard dropped + counter kept
+                # honest" passes the view comparison (both legs mutated
+                # identically, the leak cancels) and never trips the
+                # counter. The capture-heavy sibling's walked score at
+                # apply=OFF is its BASE decay value (no factor): with
+                # FEEDBACK_BOOST_CAP used-events the mutant leaks the
+                # x2.0 factor into the OFF leg and the sibling's score
+                # doubles — this absolute pin reddens where the
+                # relative one is blind.
+                sib_scores = [s for (mid, s, *_rest) in s1_view if mid == sibling.id]
+                assert sib_scores, "fixture: the capture-heavy sibling rides the walked block"
+                # Base (factor-free) walked score for the sibling: the
+                # S1 decay formula from the shipped code — alpha/(rrf_k
+                # + 2*anchor_pos) * w_edge(=1.0 default) *
+                # 0.7^(depth-1)(=1.0 at depth 1) — with the sibling's
+                # anchor at fused position 2: 0.5/64 = 0.0078125. ANY
+                # capture factor leaking into the OFF leg at CAP(10) x
+                # SLOPE(0.1) = +1.0 doubles this value to 0.015625.
+                base = 0.5 / (60 + 2 * 2)
+                assert sib_scores[0] == pytest.approx(base), (
+                    f"flag-off pass must not apply capture data: sibling walked score "
+                    f"{sib_scores[0]!r} != factor-free base {base!r} — the x2.0 "
+                    "saturation factor leaked into the OFF leg "
+                    "(review P2-1 coordinated mutant)"
+                )
                 # Run the ON pass BETWEEN the two OFF passes — any state
                 # leak from the ON leg (reads, counters, re-sorts)
                 # surfaces in the second OFF pass below.
