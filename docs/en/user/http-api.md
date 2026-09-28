@@ -705,7 +705,7 @@ validation can later prove provenance.
 | `tool_name` | string | `post_tool_call` | — | The tool that produced the output. |
 | `output_text` | string | `post_tool_call` | — | The raw tool output to compress. |
 | `auto_compress` | boolean | no | knob | `post_tool_call`: per-call override of `hooks.auto_compress` (default `false`). |
-| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): compose the awareness delta section AND the swarm v0a operational picture — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
+| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): compose the awareness delta section AND the swarm v0a/v0b operational picture (observed counts/ids/timestamps plus each peer's claimed task — a self-reported `[unverified]`-labeled claim) — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
 | `profile` | string | no | auto | `post_tool_call`: filter profile hint. |
 
 **Example**
