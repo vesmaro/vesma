@@ -1043,6 +1043,24 @@ def assemble_context(
             "budget": budget_stats,
         },
     }
+    # ADR-0032 §3.5 — the project-graph beacon v1: ONE tail line appended
+    # AFTER the budget stage. It rides OUTSIDE the budget blocks (never a
+    # block, never counted in ``tokens.estimated`` — the ADR-0027 budget
+    # the beacon lives outside) and is never pinned: a plain trailing
+    # line. NOT a seventh pipeline stage — no stats, no stage key. Every
+    # failure degrades to absence (guest-contract discipline, same as
+    # the vitals plane): the beacon must never break the assembly.
+    if mgr.settings.code_graph.enabled and mgr.settings.code_graph.beacon:
+        beacon: str | None = None
+        try:
+            graph_service = mgr.get_codegraph_service()
+            if graph_service is not None:
+                beacon = graph_service.beacon_line(project)
+        except Exception:
+            logger.debug("codegraph beacon skipped (wiring error)", exc_info=True)
+        if beacon:
+            result["text"] = f"{result['text']}\n\n{beacon}" if result["text"] else beacon
+
     # ADR-0027 Phase 0 echoes — ADDITIVE ONLY when the respective
     # parameter was given: the default (no task, no lens) result dict
     # shape is byte-identical to the pre-Phase-0 output (pinned by

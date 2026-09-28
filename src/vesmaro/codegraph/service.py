@@ -346,7 +346,7 @@ class CodeGraphService:
                 actor,
                 session=sess,
                 reason=str(exc),
-                details={"outcome": "limit-refused"},
+                details={"outcome": "limit-refused", "trigger": reason},
             )
             raise
         payload = self._index_payload(result)
@@ -400,6 +400,53 @@ class CodeGraphService:
             "last_indexed_at": report.last_indexed_at,
         }
 
+    # ── slice-6 wiring: watch registrar probe + the recall beacon (§3.5) ────
+
+    def watch_probe(self, project_id: str) -> tuple[str, str]:
+        """PG2 resolution for the watch registrar (slice 6): the graph
+        key + the registered root, refusing unregistered projects. The
+        poll itself re-resolves through ``index_project`` on every
+        actual run — a project deregistered mid-watch fails there and
+        the scheduler drops the dead registration."""
+        registered = self._resolve_root(project_id)
+        return registered.graph_key, registered.root
+
+    def beacon_line(self, project_id: str) -> str | None:
+        """The recall beacon v1 (ADR-0032 §3.5): ONE line describing
+        the project graph's freshness, or ``None`` when it must not
+        show (master/beacon flag off, unregistered project, no index).
+
+        The numbers are the CHEAP classification (mtime+size against
+        ``graph_files`` — zero byte reads, no sha256 anywhere on this
+        path: the session-start latency contract). The line never
+        raises — the beacon is a guest in the assembly pipeline and
+        degrades to absence on any failure.
+        """
+        try:
+            if not self._config.enabled or not self._config.beacon:
+                return None
+            try:
+                registered = self._resolve_root(project_id)
+            except GraphToolError:
+                return None  # unregistered/unresolvable project — silent skip
+            key = registered.graph_key
+            if self._store.count_files(key) == 0:
+                return None  # no index yet — nothing to advertise
+            report = incremental_mod.staleness_check(key, registered.root, self._store)
+            stale = len(report.changed_files)
+            total = report.total_files
+            fresh = max(total - stale, 0)
+            poisoned = len(self._store.get_poisoned_paths(key))
+            stamp = (report.last_indexed_at or "unknown")[:19]
+            tail = (
+                f" indexed {stamp}, {fresh}/{total} files fresh "
+                f"({stale} stale, {poisoned} poisoned) — call mnemos_search_graph"
+            )
+            return _fit_beacon_line(key, tail)
+        except Exception:
+            logger.debug("codegraph: beacon_line skipped (service error)", exc_info=True)
+            return None
+
     # ── tool 2: project_graph_status ────────────────────────────────────────
 
     def status(self, project_id: str, *, agent: str, session: str | None = None) -> dict[str, Any]:
@@ -420,7 +467,11 @@ class CodeGraphService:
             "staleness": self._staleness_payload(key, registered.root),
         }
         self._audit.record(
-            key, "graph-read", actor, session=sess, reason="status",
+            key,
+            "graph-read",
+            actor,
+            session=sess,
+            reason="status",
             details={"files": payload["files"], "nodes": payload["nodes"]},
         )
         return payload
@@ -465,7 +516,11 @@ class CodeGraphService:
                 row.pop("signature", None)
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
         self._audit.record(
-            key, "graph-read", actor, session=sess, reason="search",
+            key,
+            "graph-read",
+            actor,
+            session=sess,
+            reason="search",
             details={"matches": len(rows), "returned": len(page)},
         )
         return {
@@ -561,7 +616,11 @@ class CodeGraphService:
         rows = sorted(visited.values(), key=lambda r: (r["depth"], str(r["qname"])))
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, 0)
         self._audit.record(
-            key, "graph-read", actor, session=sess, reason="trace",
+            key,
+            "graph-read",
+            actor,
+            session=sess,
+            reason="trace",
             details={"start": start.qname, "visited": len(rows), "edges": len(edges_out)},
         )
         return {
@@ -641,7 +700,11 @@ class CodeGraphService:
         rows.sort(key=lambda r: (r["start_line"] is None, r["start_line"], str(r["qname"])))
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
         self._audit.record(
-            key, "graph-read", actor, session=sess, reason="outline",
+            key,
+            "graph-read",
+            actor,
+            session=sess,
+            reason="outline",
             details={"path": rel, "symbols": len(rows)},
         )
         return {
@@ -690,7 +753,11 @@ class CodeGraphService:
         if rel in self._store.get_poisoned_paths(key):
             # «навсегда»: refuses even when a reindex scan now misses.
             self._audit.record(
-                key, "snippet-read", actor, session=sess, reason="poisoned-refusal",
+                key,
+                "snippet-read",
+                actor,
+                session=sess,
+                reason="poisoned-refusal",
                 details={"path": rel},
             )
             raise GraphToolError(
@@ -709,15 +776,14 @@ class CodeGraphService:
             stat = os.stat(abs_path)
         except OSError as exc:
             raise GraphToolError(
-                f"path {rel!r} vanished from disk since indexation "
-                f"(stale graph — reindex needed)"
+                f"path {rel!r} vanished from disk since indexation (stale graph — reindex needed)"
             ) from exc
         freshness_key = (record.mtime, record.size)
         if None not in freshness_key and (stat.st_mtime, stat.st_size) != freshness_key:
-                raise GraphToolError(
-                    f"path {rel!r} CHANGED on disk since indexation — staleness marker, "
-                    "no content issued; reindex to refresh (PG4)"
-                )
+            raise GraphToolError(
+                f"path {rel!r} CHANGED on disk since indexation — staleness marker, "
+                "no content issued; reindex to refresh (PG4)"
+            )
         try:
             source = abs_path.read_bytes()
         except OSError as exc:
@@ -743,21 +809,27 @@ class CodeGraphService:
         if findings:
             patterns = findings_by_pattern(findings)
             self._audit.record(
-                key, "snippet-read", actor, session=sess, reason="secret-refusal",
+                key,
+                "snippet-read",
+                actor,
+                session=sess,
+                reason="secret-refusal",
                 details={"path": rel, "patterns": patterns},
             )
             raise GraphToolError(
                 f"snippet of {rel!r} refused fail-closed (PG4): secret pattern(s) "
                 f"{sorted(patterns)} hit in the requested range; nothing issued"
             )
-        rows = [
-            {"line": start_line + i, "text": text} for i, text in enumerate(requested)
-        ]
+        rows = [{"line": start_line + i, "text": text} for i, text in enumerate(requested)]
         page, has_more, _ = window_rows(rows, max_output_tokens, 0)
         first_kept = page[0]["line"] if page else start_line
         last_kept = page[-1]["line"] if page else start_line - 1
         self._audit.record(
-            key, "snippet-read", actor, session=sess, reason="issued",
+            key,
+            "snippet-read",
+            actor,
+            session=sess,
+            reason="issued",
             details={"path": rel, "lines": f"{first_kept}-{last_kept}"},
         )
         return {
@@ -823,7 +895,11 @@ class CodeGraphService:
                     verdict["verdict"] = "indexed"
             verdicts.append(verdict)
         self._audit.record(
-            key, "graph-read", actor, session=sess, reason="coverage",
+            key,
+            "graph-read",
+            actor,
+            session=sess,
+            reason="coverage",
             details={"paths": len(verdicts)},
         )
         return {"project": key, "coverage": verdicts}
@@ -872,7 +948,11 @@ class CodeGraphService:
             }
         self._audit.record(
             "<none>" if project_id is None else payload.get("project", "<none>"),
-            "graph-read", actor, session=sess, reason="schema", details={},
+            "graph-read",
+            actor,
+            session=sess,
+            reason="schema",
+            details={},
         )
         return payload
 
@@ -914,7 +994,11 @@ class CodeGraphService:
             )
         page, has_more, next_cursor = window_rows(rows, MAX_MAX_OUTPUT_TOKENS, 0)
         self._audit.record(
-            "<none>", "graph-read", actor, session=sess, reason="list-projects",
+            "<none>",
+            "graph-read",
+            actor,
+            session=sess,
+            reason="list-projects",
             details={"projects": len(rows)},
         )
         return {"projects": page, "has_more": has_more, "cursor": next_cursor}
@@ -939,13 +1023,42 @@ class CodeGraphService:
         deleted = self._store.purge_project(key)
         bump_project_graph_epoch(self._main, key)
         self._audit.record(
-            key, "delete", actor, session=sess, reason=reason,
+            key,
+            "delete",
+            actor,
+            session=sess,
+            reason=reason,
             details={"deleted_nodes": deleted},
         )
-        logger.info(
-            "codegraph: project graph %s deleted (%d nodes) by %s", key, deleted, actor
-        )
+        logger.info("codegraph: project graph %s deleted (%d nodes) by %s", key, deleted, actor)
         return {"project": key, "deleted_nodes": deleted, "status": "deleted"}
+
+
+#: Beacon v1 (§3.5) budget discipline: the whole line is capped at 200
+#: UTF-8 bytes and lives OUTSIDE the assembly token budget entirely.
+BEACON_LINE_MAX_BYTES = 200
+BEACON_LINE_PREFIX = "project-graph: "
+BEACON_CALL_HINT = "call mnemos_search_graph"
+
+
+def _fit_beacon_line(project: str, tail: str) -> str:
+    """Assemble the beacon line under the 200-byte cap: the fixed
+    prefix, the call hint and the freshness tail are load-bearing and
+    never truncated — overflow eats the PROJECT SLUG (byte-safe, never
+    mid-codepoint)."""
+    room = (
+        BEACON_LINE_MAX_BYTES - len(BEACON_LINE_PREFIX.encode("utf-8")) - len(tail.encode("utf-8"))
+    )
+    if room < 1:
+        # Degenerate only with an absurd tail (numbers cannot reach it):
+        # drop the slug entirely rather than break the byte cap.
+        return (
+            (BEACON_LINE_PREFIX + tail.lstrip())
+            .encode("utf-8")[:BEACON_LINE_MAX_BYTES]
+            .decode("utf-8", "ignore")
+        )
+    name = project.encode("utf-8")[:room].decode("utf-8", "ignore")
+    return f"{BEACON_LINE_PREFIX}{name}{tail}"
 
 
 # ── per-manager registry (MCP/REST access; manager wiring is slice 6) ─────────
