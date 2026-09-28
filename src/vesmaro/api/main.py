@@ -679,8 +679,16 @@ async def agent_recall(
     limit: int = Query(default=20, le=100),
 ) -> list[dict[str, Any]]:
     mgr = get_manager()
-    query = AgentRecallQuery(agent=name, project=project, query=q, task=task, limit=limit)
-    results = mgr.agent_recall(query)
+    # Ф2 review fix 1 (P1): the task boundary's ValueError (unsalvageable
+    # slug / prefix-carrying value) maps to 400 like every other REST
+    # twin of this wave — the #407 twin discipline; without the handler
+    # the probe GET /recall/agent/x?task=my/task surfaced as a 500,
+    # contradicting the documented 400.
+    try:
+        query = AgentRecallQuery(agent=name, project=project, query=q, task=task, limit=limit)
+        results = mgr.agent_recall(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # ADR-0018 P1-b (M1 + review F1/F3): scan-at-issuance on BOTH echoed
     # strings (content and title) — same policy and per-item notes as
     # /search.
