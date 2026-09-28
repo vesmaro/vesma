@@ -2722,18 +2722,18 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 "error": "project_id is required and must be a non-empty string",
                 "code": "bad-request",
             }
-        agent = _graph_req_str(args, "agent")
-        if agent is None:
+        watch_agent = _graph_req_str(args, "agent")
+        if watch_agent is None:
             return {
                 "error": "agent is required and must be a non-empty string "
                 "(PG7 per-agent attribution is a binding)",
                 "code": "attribution-required",
             }
-        session = args.get("session")
-        if session is not None and not isinstance(session, str):
+        watch_session = args.get("session")
+        if watch_session is not None and not isinstance(watch_session, str):
             return {"error": "session must be a string when provided", "code": "bad-request"}
         try:
-            return mgr.watch_start(project_id, agent=agent.strip(), session=session)
+            return mgr.watch_start(project_id, agent=watch_agent.strip(), session=watch_session)
         except GraphToolError as exc:
             payload = {"error": str(exc)}
             payload["code"] = "disabled" if isinstance(exc, GraphDisabledError) else "bad-request"
