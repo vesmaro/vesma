@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 from vesmaro import __version__
 from vesmaro.canon_validate import (
     CanonViolationError,
+    canon_envelope_is_client_authored,
     validate_canon_record,
 )
 from vesmaro.config import Settings
@@ -198,28 +199,11 @@ INTERNAL_METADATA_KEYS: frozenset[str] = (
 # fixtures and the neighbor intake contract all assume they do). Only the
 # CHECKPOINT envelope stays server-minted (save_checkpoint is its single
 # minter), and a MALFORMED canon value (non-dict) is stripped like a
-# forged stamp. The strip is therefore TYPE-CONDITIONAL at the call sites;
-# the ``"canon"`` key stays inside CHECKPOINT_STAMP_KEYS for the
-# checkpoint case and the malformed case (see models.py).
-_CLIENT_CANON_ENVELOPE_TYPES: Final[frozenset[str]] = frozenset(
-    {"task", "decision", "report"}
-)
-
-
-def _client_canon_envelope_persists(canon: object) -> bool:
-    """True when a client-supplied ``metadata.canon`` value is a canon §2
-    CLIENT envelope (task/decision/report) and must persist through the
-    generic paths, flowing into the canon gate for validation.
-
-    ``False`` for everything else: the checkpoint type (server-minted
-    domain — ``save_checkpoint`` is the only minter) and every malformed
-    shape (non-dict, missing/unknown ``type``) — those strip exactly like
-    forged stamps (cascade review SEC P2-2).
-    """
-    return (
-        isinstance(canon, dict)
-        and canon.get("type") in _CLIENT_CANON_ENVELOPE_TYPES
-    )
+# forged stamp. The strip is therefore TYPE-CONDITIONAL at the call sites
+# (canon_envelope_is_client_authored, defined in canon_validate so the
+# JSON import strip shares the same type rule); the ``"canon"`` key stays
+# inside CHECKPOINT_STAMP_KEYS for the checkpoint case and the malformed
+# case (see models.py).
 
 
 # mnemos #251 D0 — a session id is already bound to a different agent.
@@ -1152,7 +1136,7 @@ class MemoryManager:
         # (non-dict) strips whole, like a forged stamp.
         if not trusted_checkpoint_stamps:
             strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
-            if _client_canon_envelope_persists(data.metadata.get("canon")):
+            if canon_envelope_is_client_authored(data.metadata.get("canon")):
                 strip_keys = strip_keys - {"canon"}
             forged = sorted(k for k in strip_keys if k in data.metadata)
             if forged:
@@ -1426,7 +1410,7 @@ class MemoryManager:
             # forge warnings nor delete honest ones; only an actual fix
             # (fresh empty list) clears them.
             strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
-            if _client_canon_envelope_persists(memory.metadata.get("canon")):
+            if canon_envelope_is_client_authored(memory.metadata.get("canon")):
                 strip_keys = strip_keys - {"canon"}
             forged = sorted(k for k in strip_keys if k in memory.metadata)
             if forged:
@@ -1468,7 +1452,7 @@ class MemoryManager:
             # carries a client-type envelope (task/decision/report), the
             # client's replacement — corrected envelope or absence —
             # stands, exactly like any other client metadata key.
-            if "canon" in internal and _client_canon_envelope_persists(internal["canon"]):
+            if "canon" in internal and canon_envelope_is_client_authored(internal["canon"]):
                 del internal["canon"]
             memory.metadata = {**memory.metadata, **internal}
             # ADR-0027 Ф3 (review round P3-1): restore the row's own

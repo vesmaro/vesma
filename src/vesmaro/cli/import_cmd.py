@@ -46,6 +46,20 @@ def import_cmd(
         Path | None,
         typer.Option("--backup-dir", help="Backup current DB here before restore"),
     ] = None,
+    trusted_restore: Annotated[
+        bool,
+        typer.Option(
+            "--trusted-restore",
+            help=(
+                "Operator asserts the export is a trusted self-backup: canon-line "
+                "server-minted keys (checkpoint stamps, checkpoint-type canon "
+                "envelope, canon warnings) are kept verbatim instead of stripped. "
+                "Without this flag an import is UNTRUSTED input and those keys are "
+                "stripped from every row (a forged checkpoint dedup key or canon "
+                "envelope must never land as if the server had minted it)."
+            ),
+        ),
+    ] = False,
     config: Annotated[
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
@@ -70,6 +84,7 @@ def import_cmd(
         dry_run=dry_run,
         passphrase_file=passphrase_file,
         backup_dir=backup_dir,
+        trusted_restore=trusted_restore,
     )
 
     label = "Dry run" if dry_run else "Imported"
