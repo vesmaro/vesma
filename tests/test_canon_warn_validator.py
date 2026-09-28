@@ -522,6 +522,166 @@ def test_fixing_content_edit_clears_canon_warnings(mgr: MemoryManager) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 4.6 Client envelopes persist (cascade review SEC P2-2, TL ruling:
+# engine returns to ratified canon §2) — task/decision/report envelopes
+# are CLIENT data and survive the generic create/update strip; only the
+# CHECKPOINT type (and malformed canon values) strip.
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_remember_task_envelope_persists_and_validates(mgr: MemoryManager) -> None:
+    """SDK remember with a task envelope: a VALID one persists silently
+    (no canon_warnings); an INVALID one persists WITH canon_warnings."""
+    from vesmaro.sdk import MnemosSDK
+
+    sdk = MnemosSDK(manager=mgr)
+
+    valid = sdk.remember(
+        _TASK_BODY,
+        project="canonproj",
+        agent="alice",
+        title="valid task row",
+        tags=["project:canonproj", "agent:alice", "mnemos:open-question"],
+        metadata={"canon": _task_envelope()},
+    )
+    assert valid.metadata["canon"] == _task_envelope()
+    assert "canon_warnings" not in valid.metadata
+    stored = mgr.sqlite.get(valid.id)
+    assert stored is not None
+    assert stored.metadata["canon"]["type"] == "task"
+
+    invalid = sdk.remember(
+        _TASK_BODY,
+        project="canonproj",
+        agent="alice",
+        title="broken task row",
+        tags=["project:canonproj", "agent:alice", "mnemos:open-question"],
+        metadata={"canon": _task_envelope(size="HUGE")},
+    )
+    assert invalid.metadata["canon"]["size"] == "HUGE"  # envelope persisted
+    assert any(
+        w["code"] == "CANON-E-ENVELOPE" and "size" in w["detail"]
+        for w in invalid.metadata["canon_warnings"]
+    )
+
+
+def test_generic_create_checkpoint_type_envelope_still_stripped(
+    mgr: MemoryManager,
+) -> None:
+    """The checkpoint type stays server-minted: a client-forged
+    checkpoint envelope never lands (the W2-S1 strip, unchanged)."""
+    memory = mgr.add(
+        MemoryCreate(
+            content="forged checkpoint envelope",
+            tags=["project:canonproj", "agent:mallory"],
+            metadata={"canon": dict(_CP_ENVELOPE), "harmless": 1},
+        ),
+        project="canonproj",
+        agent="mallory",
+    )
+    assert memory.metadata["harmless"] == 1
+    assert "canon" not in memory.metadata
+
+
+def test_generic_create_malformed_canon_stripped(mgr: MemoryManager) -> None:
+    """A malformed canon value (non-dict) strips whole, like a forged
+    stamp — it can never satisfy the envelope shape the gate validates."""
+    memory = mgr.add(
+        MemoryCreate(
+            content="malformed envelope row",
+            tags=["project:canonproj", "agent:mallory"],
+            metadata={"canon": "task", "harmless": 1},
+        ),
+        project="canonproj",
+        agent="mallory",
+    )
+    assert memory.metadata["harmless"] == 1
+    assert "canon" not in memory.metadata
+    # A dict with an unknown/missing type is not a client envelope either.
+    memory2 = mgr.add(
+        MemoryCreate(
+            content="unknown type envelope row",
+            tags=["project:canonproj", "agent:mallory"],
+            metadata={"canon": {"schema_version": "1", "type": "rumour"}},
+        ),
+        project="canonproj",
+        agent="mallory",
+    )
+    assert "canon" not in memory2.metadata
+
+
+def test_strict_mode_rejects_violating_task_envelope_on_create(
+    mgr: MemoryManager,
+) -> None:
+    """Strict mode is now MEANINGFUL for the client types: a violating
+    task envelope on the generic create path raises CanonViolationError."""
+    mgr.settings.mnemos.canon_mode = "strict"
+    with pytest.raises(CanonViolationError) as excinfo:
+        mgr.add(
+            MemoryCreate(
+                content=_TASK_BODY,
+                title="strict task reject",
+                tags=["project:canonproj", "agent:alice"],
+                metadata={"canon": _task_envelope(priority="URGENT")},
+            ),
+            project="canonproj",
+            agent="alice",
+        )
+    assert any(
+        v.code == "CANON-E-ENVELOPE" and "priority" in v.detail
+        for v in excinfo.value.violations
+    )
+    assert mgr.stats()["total"] == 0  # nothing stored
+
+
+def test_update_of_task_envelope_record_keeps_corrected_envelope(
+    mgr: MemoryManager,
+) -> None:
+    """A task-envelope row is corrected FORWARD through update: the
+    client's replacement envelope stands (client data, no merge-back of
+    the old value)."""
+    memory = mgr.add(
+        MemoryCreate(
+            content=_TASK_BODY,
+            title="task row to correct",
+            tags=["project:canonproj", "agent:alice"],
+            metadata={"canon": _task_envelope(status="draft")},
+        ),
+        project="canonproj",
+        agent="alice",
+    )
+    assert memory.metadata["canon"]["status"] == "draft"
+
+    corrected = mgr.update(
+        memory.id,
+        MemoryUpdate(metadata={"canon": _task_envelope(status="active"), "note": 1}),
+    )
+    assert corrected is not None
+    assert corrected.metadata["note"] == 1
+    assert corrected.metadata["canon"]["status"] == "active", (
+        "the corrected client envelope must stand (no stale merge-back)"
+    )
+    assert "canon_warnings" not in corrected.metadata
+
+
+def test_update_cannot_convert_checkpoint_row_to_client_type(
+    mgr: MemoryManager,
+) -> None:
+    """The merge-back stays server-owned for CHECKPOINT rows: a client
+    sending a task envelope on a minted checkpoint row is clobbered —
+    a checkpoint row stays a checkpoint row."""
+    memory, _dup = mgr.save_checkpoint({"goals": "g"}, project="canonproj")
+    minted = memory.metadata["canon"]
+    updated = mgr.update(
+        memory.id,
+        MemoryUpdate(metadata={"canon": _task_envelope(), "note": 2}),
+    )
+    assert updated is not None
+    assert updated.metadata["canon"] == minted
+    assert updated.metadata["note"] == 2
+
+
+# ---------------------------------------------------------------------------
 # 5. Drift pin — CANON_REQUIRED_SECTIONS vs the schemas' x-canon-sections
 # ---------------------------------------------------------------------------
 

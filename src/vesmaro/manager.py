@@ -189,6 +189,38 @@ INTERNAL_METADATA_KEYS: frozenset[str] = (
     | CHECKPOINT_STAMP_KEYS
 )
 
+# Cascade review SEC P2-2 (TL ruling: engine returns to ratified canon §2).
+# ADR-0003 obligation 3 was read over-broad in W2-S1: canon §2 defines
+# CLIENT-AUTHORED envelopes for the non-checkpoint types — task/decision/
+# report carry extras (owner_slug/priority/size, reversible, period) the
+# server cannot know, so those envelopes are client data and MUST persist
+# through the generic create/update paths (the W3a pack docs, ADR-0004
+# fixtures and the neighbor intake contract all assume they do). Only the
+# CHECKPOINT envelope stays server-minted (save_checkpoint is its single
+# minter), and a MALFORMED canon value (non-dict) is stripped like a
+# forged stamp. The strip is therefore TYPE-CONDITIONAL at the call sites;
+# the ``"canon"`` key stays inside CHECKPOINT_STAMP_KEYS for the
+# checkpoint case and the malformed case (see models.py).
+_CLIENT_CANON_ENVELOPE_TYPES: Final[frozenset[str]] = frozenset(
+    {"task", "decision", "report"}
+)
+
+
+def _client_canon_envelope_persists(canon: object) -> bool:
+    """True when a client-supplied ``metadata.canon`` value is a canon §2
+    CLIENT envelope (task/decision/report) and must persist through the
+    generic paths, flowing into the canon gate for validation.
+
+    ``False`` for everything else: the checkpoint type (server-minted
+    domain — ``save_checkpoint`` is the only minter) and every malformed
+    shape (non-dict, missing/unknown ``type``) — those strip exactly like
+    forged stamps (cascade review SEC P2-2).
+    """
+    return (
+        isinstance(canon, dict)
+        and canon.get("type") in _CLIENT_CANON_ENVELOPE_TYPES
+    )
+
 
 # mnemos #251 D0 — a session id is already bound to a different agent.
 # Subclasses ValueError so every caller that already maps ValueError to a
@@ -944,8 +976,11 @@ class MemoryManager:
         validation, no warning, no rejection, in BOTH modes (pre-canon and
         imported/benchmark rows are legacy, not violations). Validation
         applies ONLY to records that carry the envelope — at ``add`` that
-        means the trusted ``save_checkpoint`` path (which mints it) or an
-        internal caller that carries one deliberately.
+        means the trusted ``save_checkpoint`` path (which mints the
+        checkpoint type), an internal caller that carries one deliberately,
+        or, since cascade review SEC P2-2, a CLIENT-authored
+        task/decision/report envelope (canon §2) persisting through the
+        generic path.
 
         Modes (``mnemos.canon_mode``):
 
@@ -1058,14 +1093,17 @@ class MemoryManager:
         ``data.metadata`` with a warning — a forged
         ``checkpoint_dedup_key`` on a generic create must never satisfy
         a later genuine checkpoint dedup (CWE-346/345 spoofed source).
-        vesmaro-canon v1.0.0 (ADR-0003 obligation 3): ``"canon"`` (the
-        ``metadata.canon`` envelope) joined ``CHECKPOINT_STAMP_KEYS`` —
-        the same strip protects the envelope; only ``save_checkpoint``
-        mints a canon envelope, and a client-forged one on a generic
-        create never persists. Cascade review SEC P2-1: a client-supplied
-        ``canon_warnings`` is stripped on the same non-trusted paths —
-        ``_canon_gate`` is the single writer of that key (see
-        INTERNAL_METADATA_KEYS above).
+        vesmaro-canon v1.0.0 (ADR-0003 obligation 3): a CHECKPOINT-type
+        ``"canon"`` envelope is equally server-minted — only
+        ``save_checkpoint`` mints one, and a client-forged checkpoint
+        envelope on a generic create never persists. Cascade review
+        SEC P2-2 (canon §2): task/decision/report envelopes are
+        CLIENT-authored data (extras the server cannot know) and DO
+        persist through the generic paths, flowing into the canon gate
+        (warn/strict apply to them). Cascade review SEC P2-1: a
+        client-supplied ``canon_warnings`` is stripped on the same
+        non-trusted paths — ``_canon_gate`` is the single writer of that
+        key (see INTERNAL_METADATA_KEYS above).
 
         ``mint_relates_to`` (#322 review M2, TL decision) — minting
         fuel is ORGANIC USER WRITES only. Internal machine-driven
@@ -1099,15 +1137,23 @@ class MemoryManager:
         doc_grouping_from_metadata(data.metadata)
 
         # ── mnemos #251 review P1: strip client-forgeable stamps ────────
-        # vesmaro-canon v1.0.0: the canon envelope key ("canon") is a
-        # stamp too — a client-forged metadata.canon must never land on a
-        # generic create; only save_checkpoint mints it (canon §2, ADR-0003
-        # obligation 3, the same server-minted-only discipline).
+        # vesmaro-canon v1.0.0: the CHECKPOINT envelope is a stamp too —
+        # a client-forged checkpoint-type metadata.canon must never land
+        # on a generic create; only save_checkpoint mints it (canon §2,
+        # ADR-0003 obligation 3, the same server-minted-only discipline).
         # Cascade review SEC P2-1: ``canon_warnings`` joins the strip set
         # — the gate is its single writer, so a client cannot forge
         # warnings onto a clean generic create either.
+        # Cascade review SEC P2-2 (canon §2): the strip over ``canon`` is
+        # TYPE-CONDITIONAL — task/decision/report envelopes are CLIENT
+        # data (extras the server cannot know) and PERSIST, flowing into
+        # the canon gate for validation/warnings (strict mode is now
+        # meaningful for those types on the create path). Malformed canon
+        # (non-dict) strips whole, like a forged stamp.
         if not trusted_checkpoint_stamps:
             strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
+            if _client_canon_envelope_persists(data.metadata.get("canon")):
+                strip_keys = strip_keys - {"canon"}
             forged = sorted(k for k in strip_keys if k in data.metadata)
             if forged:
                 logger.warning(
@@ -1357,9 +1403,13 @@ class MemoryManager:
             # mnemos #251 review P1: checkpoint stamps are server-minted —
             # drop any client-supplied copies BEFORE the merge-back so
             # they cannot land on a row that never had them either.
-            # vesmaro-canon v1.0.0: the canon envelope ("canon") is a
-            # stamp too — an external update can neither forge nor drop a
-            # minted metadata.canon (the merge-back below restores it).
+            # vesmaro-canon v1.0.0: the CHECKPOINT envelope is a stamp
+            # too — an external update can neither forge nor drop a
+            # minted checkpoint metadata.canon (the merge-back below
+            # restores it). Cascade review SEC P2-2 (canon §2): the strip
+            # over ``canon`` is TYPE-CONDITIONAL — a task/decision/report
+            # envelope is CLIENT data and persists (the corrected
+            # envelope of a task row is exactly the client's to send).
             # Cascade review SEC P2-1: ``canon_warnings`` is stripped the
             # same way and is deliberately NOT merged back — the canon
             # gate (update leg, below) is its single writer and re-derives
@@ -1367,6 +1417,8 @@ class MemoryManager:
             # forge warnings nor delete honest ones; only an actual fix
             # (fresh empty list) clears them.
             strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
+            if _client_canon_envelope_persists(memory.metadata.get("canon")):
+                strip_keys = strip_keys - {"canon"}
             forged = sorted(k for k in strip_keys if k in memory.metadata)
             if forged:
                 logger.warning(
@@ -1400,6 +1452,15 @@ class MemoryManager:
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
             }
+            # Cascade review SEC P2-2: the ``canon`` merge-back is
+            # type-conditional on the ROW's own envelope. Only the
+            # server-minted checkpoint envelope is merge-protected (a
+            # checkpoint row stays a checkpoint row); when the row itself
+            # carries a client-type envelope (task/decision/report), the
+            # client's replacement — corrected envelope or absence —
+            # stands, exactly like any other client metadata key.
+            if "canon" in internal and _client_canon_envelope_persists(internal["canon"]):
+                del internal["canon"]
             memory.metadata = {**memory.metadata, **internal}
             # ADR-0027 Ф3 (review round P3-1): restore the row's own
             # minted doc-sweep stamp on top of the replacement dict —
