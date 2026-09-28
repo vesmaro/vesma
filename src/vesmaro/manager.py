@@ -169,6 +169,16 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # ``"canon"`` (the metadata.canon envelope key) joined
 # CHECKPOINT_STAMP_KEYS, so the envelope is equally server-minted —
 # an external update cannot forge, rewrite or drop it either.
+#
+# NOT here, by design: ``"canon_warnings"`` (cascade review SEC P2-1 /
+# QA P1-1). That key's SINGLE WRITER is ``_canon_gate`` — it attaches the
+# fresh violation list on every add/update pass and REMOVES the key when
+# the fresh list is empty (a fixing edit clears stale warnings). It is
+# therefore never merged back on update (the gate re-derives it), and
+# client-supplied copies are stripped on both the create and update
+# paths together with the forged stamps — a client must neither forge
+# warnings onto a clean record nor delete honest ones from a violating
+# record; only an actual content/metadata fix may clear them.
 INTERNAL_METADATA_KEYS: frozenset[str] = (
     frozenset(
         {
@@ -944,6 +954,11 @@ class MemoryManager:
           + code + rule + detail, canon §9 telemetry format) and the
           violation dicts are attached to the stored record as
           ``metadata["canon_warnings"]``. The write ALWAYS succeeds.
+          ``_canon_gate`` is the SINGLE writer of that key (cascade
+          review SEC P2-1/QA P1-1): when the fresh violation list is
+          EMPTY the gate REMOVES a stale ``canon_warnings`` — a fixing
+          edit clears the warnings instead of leaving them stuck on the
+          row forever.
         * ``"strict"`` — violations REJECT the write on the CREATE path
           ONLY (:class:`CanonViolationError`, a ``ValueError``). Update
           paths are warn-only (canon §10 "new records only" / ADR-0003
@@ -973,6 +988,16 @@ class MemoryManager:
             )
             return
         if not violations:
+            # Cascade review SEC P2-1 / QA P1-1: the gate is the SINGLE
+            # writer of ``canon_warnings`` — a fresh EMPTY violation list
+            # REMOVES a stale key (the fixing-edit lifecycle). Without
+            # this the gate early-returned and a corrected record kept
+            # its warnings forever; a client could also not clear them
+            # (the key is stripped from client metadata below/above).
+            if "canon_warnings" in memory.metadata:
+                memory.metadata = {
+                    k: v for k, v in memory.metadata.items() if k != "canon_warnings"
+                }
             return
 
         for v in violations:
@@ -1037,7 +1062,10 @@ class MemoryManager:
         ``metadata.canon`` envelope) joined ``CHECKPOINT_STAMP_KEYS`` —
         the same strip protects the envelope; only ``save_checkpoint``
         mints a canon envelope, and a client-forged one on a generic
-        create never persists.
+        create never persists. Cascade review SEC P2-1: a client-supplied
+        ``canon_warnings`` is stripped on the same non-trusted paths —
+        ``_canon_gate`` is the single writer of that key (see
+        INTERNAL_METADATA_KEYS above).
 
         ``mint_relates_to`` (#322 review M2, TL decision) — minting
         fuel is ORGANIC USER WRITES only. Internal machine-driven
@@ -1075,8 +1103,12 @@ class MemoryManager:
         # stamp too — a client-forged metadata.canon must never land on a
         # generic create; only save_checkpoint mints it (canon §2, ADR-0003
         # obligation 3, the same server-minted-only discipline).
+        # Cascade review SEC P2-1: ``canon_warnings`` joins the strip set
+        # — the gate is its single writer, so a client cannot forge
+        # warnings onto a clean generic create either.
         if not trusted_checkpoint_stamps:
-            forged = sorted(k for k in CHECKPOINT_STAMP_KEYS if k in data.metadata)
+            strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
+            forged = sorted(k for k in strip_keys if k in data.metadata)
             if forged:
                 logger.warning(
                     "generic create: stripped client-supplied checkpoint stamps "
@@ -1085,7 +1117,7 @@ class MemoryManager:
                     forged,
                 )
                 data.metadata = {
-                    k: v for k, v in data.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
+                    k: v for k, v in data.metadata.items() if k not in strip_keys
                 }
 
         # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
@@ -1328,7 +1360,14 @@ class MemoryManager:
             # vesmaro-canon v1.0.0: the canon envelope ("canon") is a
             # stamp too — an external update can neither forge nor drop a
             # minted metadata.canon (the merge-back below restores it).
-            forged = sorted(k for k in CHECKPOINT_STAMP_KEYS if k in memory.metadata)
+            # Cascade review SEC P2-1: ``canon_warnings`` is stripped the
+            # same way and is deliberately NOT merged back — the canon
+            # gate (update leg, below) is its single writer and re-derives
+            # it from the fresh violation list, so a client can neither
+            # forge warnings nor delete honest ones; only an actual fix
+            # (fresh empty list) clears them.
+            strip_keys = CHECKPOINT_STAMP_KEYS | {"canon_warnings"}
+            forged = sorted(k for k in strip_keys if k in memory.metadata)
             if forged:
                 logger.warning(
                     "update: stripped client-supplied checkpoint stamps "
@@ -1338,7 +1377,7 @@ class MemoryManager:
                     forged,
                 )
                 memory.metadata = {
-                    k: v for k, v in memory.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
+                    k: v for k, v in memory.metadata.items() if k not in strip_keys
                 }
             # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
             # the server-minted class — strip a client-supplied

@@ -422,6 +422,106 @@ def test_off_mode_disables_validation(mgr: MemoryManager) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 4.5 canon_warnings lifecycle (cascade review SEC P2-1 + QA P1-1) —
+# the gate is the SINGLE writer: client copies never land, and a fixing
+# edit CLEARS the key (the gate removes it when the fresh violation list
+# is empty instead of early-returning on the stale value).
+# ---------------------------------------------------------------------------
+
+
+_FORGED_WARNINGS = [{"code": "CANON-E-TITLE", "rule": "canon §3", "detail": "forged"}]
+
+
+def test_generic_create_strips_client_canon_warnings(mgr: MemoryManager) -> None:
+    """A client cannot forge warnings onto a clean generic create."""
+    memory = mgr.add(
+        MemoryCreate(
+            content="clean row, out of canon scope",
+            tags=["project:canonproj", "agent:mallory"],
+            metadata={"canon_warnings": _FORGED_WARNINGS, "harmless": 1},
+        ),
+        project="canonproj",
+        agent="mallory",
+    )
+    assert memory.metadata["harmless"] == 1
+    assert "canon_warnings" not in memory.metadata
+    stored = mgr.sqlite.get(memory.id)
+    assert stored is not None
+    assert "canon_warnings" not in stored.metadata
+
+
+def test_update_strips_client_canon_warnings(mgr: MemoryManager) -> None:
+    """A client metadata replacement cannot smuggle warnings in (the gate
+    re-derives the key — it is never merged back like internal keys)."""
+    plain = mgr.add(
+        MemoryCreate(content="plain row", tags=["project:canonproj", "agent:bob"]),
+        project="canonproj",
+        agent="bob",
+    )
+    updated = mgr.update(
+        plain.id,
+        MemoryUpdate(metadata={"canon_warnings": _FORGED_WARNINGS, "ok": 2}),
+    )
+    assert updated is not None
+    assert updated.metadata["ok"] == 2
+    assert "canon_warnings" not in updated.metadata
+
+
+def test_update_cannot_delete_honest_canon_warnings(mgr: MemoryManager) -> None:
+    """A client metadata replacement cannot DELETE honest warnings from a
+    violating row either: the strip drops the client copy, the gate
+    re-attaches the fresh (still-violating) list."""
+    violating = _cp_trusted_add(mgr, language="fr")
+    assert violating is not None
+    assert "canon_warnings" in violating.metadata
+    updated = mgr.update(violating.id, MemoryUpdate(metadata={"note": 1}))
+    assert updated is not None
+    assert updated.metadata["note"] == 1
+    assert [w["code"] for w in updated.metadata["canon_warnings"]] == ["CANON-E-LANGUAGE"]
+
+
+def test_fixing_update_clears_canon_warnings(mgr: MemoryManager) -> None:
+    """THE regression (QA P1-1): violating record → fixing update → the
+    key is ABSENT (the gate removes it on a fresh empty violation list;
+    the pre-fix gate early-returned and left the stale warnings stuck).
+    The fixing edit carries a METADATA replacement too, so the path also
+    exercises the strip-client-copy → gate-re-derives ordering."""
+    # A valid canon row broken by a content edit (section removed → warns).
+    memory = _cp_trusted_add(mgr)
+    assert memory is not None
+    broken = mgr.update(memory.id, MemoryUpdate(content="sections removed"))
+    assert broken is not None
+    assert [w["code"] for w in broken.metadata["canon_warnings"]] == ["CANON-E-SECTION"]
+
+    # The fixing edit: restored body + an unrelated metadata replacement
+    # (a client canon_warnings copy here would be stripped, never merged).
+    fixed = mgr.update(
+        memory.id,
+        MemoryUpdate(content=_CP_BODY, metadata={"note": 1}),
+    )
+    assert fixed is not None
+    assert fixed.metadata["note"] == 1
+    assert "canon_warnings" not in fixed.metadata, "fixing edit must clear stale warnings"
+    stored = mgr.sqlite.get(memory.id)
+    assert stored is not None
+    assert "canon_warnings" not in stored.metadata
+
+
+def test_fixing_content_edit_clears_canon_warnings(mgr: MemoryManager) -> None:
+    """Same lifecycle via a CONTENT-only fix (no metadata replacement):
+    the gate re-validates on every update leg and removes the key when
+    the body passes."""
+    memory, _dup = mgr.save_checkpoint({"goals": "g"}, project="canonproj")
+    broken = mgr.update(memory.id, MemoryUpdate(content="sections removed"))
+    assert broken is not None
+    assert [w["code"] for w in broken.metadata["canon_warnings"]] == ["CANON-E-SECTION"]
+    # Restore a canon-shaped body — the fresh violation list is empty.
+    fixed = mgr.update(memory.id, MemoryUpdate(content=_CP_BODY))
+    assert fixed is not None
+    assert "canon_warnings" not in fixed.metadata
+
+
+# ---------------------------------------------------------------------------
 # 5. Drift pin — CANON_REQUIRED_SECTIONS vs the schemas' x-canon-sections
 # ---------------------------------------------------------------------------
 
