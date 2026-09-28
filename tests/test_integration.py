@@ -2614,6 +2614,51 @@ class TestSchemasPack:
         assert result.removed, "dry-run still reports what WOULD be removed"
         assert sorted(p.name for p in schemas_dir.iterdir()) == before, "dry-run writes nothing"
 
+    def test_uninstall_ignores_forged_manifest_ownership(
+        self, schemas_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        """Cascade review SEC P3-3: manifest checksums may NOT prove
+        ownership of the files they sit next to. A co-writer of the deploy
+        directory forges ``mnemos-schemas.manifest.json`` naming foreign
+        ``*.schema.json`` files (one wearing a PACK NAME, one arbitrary) —
+        uninstall must leave BOTH; only the inline stamp or byte-identity
+        with the current pack proves ownership."""
+        target = "zcode"
+        schemas_dir = canon_home / ".zcode" / "schemas"
+        schemas_manager.deploy(target)
+
+        # Foreign file wearing a PACK file name (old rule matched by name
+        # AND by the forged manifest digest → deleted).
+        pack_named = schemas_dir / "task.schema.json"
+        pack_named.write_text('{"not": "ours"}\n', encoding="utf-8")
+        # Foreign file with an arbitrary name, named ONLY by the forged
+        # manifest digest (old rule: digest in manifest values → deleted).
+        arbitrary = schemas_dir / "totally-foreign.schema.json"
+        arbitrary.write_text('{"also": "not ours"}\n', encoding="utf-8")
+
+        # The forged manifest: properly stamped, lists the foreign files
+        # with their TRUE checksums.
+        forged_files = {
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in (pack_named, arbitrary)
+        }
+        manifest_dest = schemas_dir / SCHEMAS_MANIFEST_NAME
+        manifest_dest.write_text(
+            schemas_manifest(schemas_manager.version, forged_files), encoding="utf-8"
+        )
+
+        uninstall = schemas_manager.uninstall(target)
+        assert pack_named.is_file(), "foreign file wearing a pack name must survive"
+        assert arbitrary.is_file(), "foreign file named by a forged manifest must survive"
+        assert pack_named in uninstall.skipped_user_files
+        assert arbitrary in uninstall.skipped_user_files
+        # The genuine byte-identical schemas still go, the forged stamped
+        # manifest goes with the kind.
+        removed_names = {p.name for p in uninstall.removed if p.parent == schemas_dir}
+        assert removed_names == (
+            set(self.CANON_SCHEMA_NAMES) - {"task.schema.json"}
+        ) | {SCHEMAS_MANIFEST_NAME}, "only byte-identical pack schemas + manifest removed"
+
     def test_schemas_kind_without_deploy_map_is_skipped(self, tmp_path: Path) -> None:
         """A target without a ``schemas`` deploy key ignores the kind silently."""
         pack = tmp_path / "integrations"
