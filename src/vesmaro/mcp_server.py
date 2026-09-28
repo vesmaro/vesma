@@ -810,6 +810,48 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="mnemos_ingest_document",
+            description=(
+                "Ingest a document as chunked memory rows (ADR-0027 Phase 3). "
+                "Chunks are born quarantined (untrusted content) and released "
+                "by a danger-sweep at ingest-completion; flagged chunks stay "
+                "quarantined. NOT a replacement for mnemos_ingest_url — that "
+                "tool keeps its single-row semantics."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The full document text to chunk and ingest",
+                    },
+                    "doc_id": {
+                        "type": "string",
+                        "description": (
+                            "Logical document identity (stable across re-ingest; "
+                            "a re-ingest of the same doc_id replaces the chunks "
+                            "and bumps the doc-chunk cache version in the same "
+                            "transaction)"
+                        ),
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Optional document title",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tags (must include project:, agent:, mnemos:)",
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "description": "Optional provenance URL for the document",
+                    },
+                },
+                "required": ["text", "doc_id", "tags"],
+            },
+        ),
+        Tool(
             name="mnemos_watch_start",
             description=(
                 "Start watching directories for file changes and auto-index into memory. "
@@ -2317,6 +2359,40 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         if title_scan.refused:
             return {"error": f"issuance refused: {title_scan.reason}"}
         return {"id": memory.id, "title": title_scan.title, "url": url_clean}
+
+    # ── mnemos_ingest_document ──────────────────────────────────────────────
+    if name == "mnemos_ingest_document":
+        # ADR-0027 Ф3 (epic #308): the DOCUMENT ingest — chunked,
+        # born-quarantined, swept at completion. The single-URL
+        # mnemos_ingest_url above keeps its pre-Ф3 semantics untouched.
+        raw_tags = args.get("tags", [])
+        tags = validate_tag_contract(
+            raw_tags,
+            strict=settings.mnemos.strict_tag_contract,
+        )
+        project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
+        agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
+        doc_id = str(args["doc_id"]).strip()
+        if not doc_id:
+            return {"error": "doc_id must be a non-empty string"}
+        result = mgr.ingest_document(
+            args["text"],
+            doc_id=doc_id,
+            title=args.get("title"),
+            tags=tags,
+            project=project,
+            agent=agent,
+            source_url=args.get("source_url"),
+        )
+        return {
+            "doc_id": result.doc_id,
+            "chunks_total": result.chunks_total,
+            "released": result.released,
+            "quarantined": result.quarantined,
+            "chunk_ids": list(result.memory_ids),
+            "reingest": result.reingest,
+            "cache_version": result.cache_version,
+        }
 
     # ── mnemos_watch_* ──────────────────────────────────────────────────────
     if name == "mnemos_watch_start":

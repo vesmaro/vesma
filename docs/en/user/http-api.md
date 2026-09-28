@@ -954,6 +954,77 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 ---
 
+## Document ingest (ADR-0027 Phase 3)
+
+### `POST /ingest-document` — ingest a document as chunked, quarantined rows
+
+Docs-as-memory: the document text is split structure-preservingly into
+heading-scoped chunks (each row carries the `{doc_id, chunk_idx,
+heading_path}` metadata convention) and every chunk enters memory **born
+quarantined** — ingested documents are untrusted content (ADR-0027
+invariant 8), invisible to every recall/assembly path until the
+danger-sweep at ingest-completion clears them.
+
+**Lifecycle** (the ADR-0019 §5 discipline): born-quarantine → the Phase A
+danger detector sweeps every chunk (clean chunks release to ordinary
+`published` rows; flagged chunks stay quarantined with the detector class
+codes in the operator-side reason; scanner errors fail closed) →
+chunk-atomic release semantics (a clean chunk releases even if a sibling
+is flagged) → issuance stays the last line (a released chunk contaminated
+after release is still refused/redacted by the repeat secret scan on every
+content-echoing channel — ADR-0027 invariant 7).
+
+**Re-ingest** (ADR-0027 invariant 4): re-ingesting the same `doc_id`
+replaces the document's chunk rows and bumps the doc-chunk `ccr_cache`
+version key **in the same SQLite transaction**.
+
+Mirrors the `mnemos_ingest_document` plugin tool. `POST /ingest-url`
+keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | **yes** | Full document text to chunk and ingest. |
+| `doc_id` | string | **yes** | Logical document identity; stable across re-ingest. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `title` | string | no | Optional document title. |
+| `source_url` | string | no | Optional provenance URL. |
+
+**Response 201**
+
+```json
+{
+  "doc_id": "dep-guide",
+  "chunks_total": 3,
+  "released": 2,
+  "quarantined": 1,
+  "chunk_ids": ["550e8400…", "550e8401…", "550e8402…"],
+  "reingest": false,
+  "cache_version": 0
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: application/json"   -d '{
+    "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
+    "doc_id": "dep-guide",
+    "title": "Deployment Guide",
+    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"]
+  }'
+```
+
+**Errors**
+
+| Code | Cause |
+|------|-------|
+| `422` | Missing required tag, missing `text`/`doc_id`, or an empty `doc_id` |
+| `500` | SQLite / vault write failure |
+
+---
+
 ## File watcher (M8)
 
 These endpoints manage a background vault watcher that auto-indexes new and

@@ -25,10 +25,13 @@ import pytest
 
 from vesmaro.cli.doctor import CheckStatus, _check_mcp_transport
 
-# The 27-tool model-visible contract (#185): names are frozen; any change
-# here is a breaking contract change and must not happen silently.
+# The model-visible tool manifest contract (#185): names are frozen; any
+# change here is a breaking contract change and must not happen silently.
 # 26 → 27 (mnemos #254): mnemos_awareness added (R3 awareness pre-flight).
-EXPECTED_TOOL_COUNT = 27
+# 27 → 28 (ADR-0027 Ф3, epic #308): mnemos_ingest_document added — the
+# docs-as-memory document ingest (born-quarantined chunks, swept at
+# completion; mnemos_ingest_url keeps its single-row semantics).
+EXPECTED_TOOL_COUNT = 28
 
 
 # The conftest installs MagicMock stubs into sys.modules BEFORE any test
@@ -211,8 +214,8 @@ def test_doctor_json_includes_mcp_transport(tmp_path, monkeypatch: pytest.Monkey
     not _REAL_MCP_INSTALLED,
     reason="real mcp SDK 2.x not installed (stub env / 1.x ambient)",
 )
-def test_in_memory_handshake_lists_26_tools() -> None:
-    """initialize + tools/list over an in-memory session returns the 27 tools.
+def test_in_memory_handshake_lists_28_tools() -> None:
+    """initialize + tools/list over an in-memory session returns the 28 tools.
 
     This is the #185 acceptance probe: it exercises the exact SDK 2.x
     server wiring (constructor-registered handlers) through a real

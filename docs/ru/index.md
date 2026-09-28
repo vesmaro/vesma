@@ -91,6 +91,7 @@ mnemos integration setup
 | `mnemos_tags_rename` | Массово переименовать префикс тега по существующим записям (по умолчанию dry-run) |
 | `mnemos_tags` | Массовые операции с тегами: переименовать префикс, удалить или добавить теги |
 | `mnemos_ingest_url` | Скачать веб-страницу и сохранить как запись |
+| `mnemos_ingest_document` | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) |
 | `mnemos_watch_start` | Запустить фоновый watcher файлов |
 | `mnemos_watch_stop` | Остановить watcher |
 | `mnemos_watch_status` | Статус watcher |

@@ -128,6 +128,15 @@ _FIELD_UPDATERS: dict[str, str] = {
     # mutated after first write", and the swap's first write is exactly
     # here. No other caller writes it through this path.
     "raw_content": "raw_content=?",
+    # ADR-0027 Ф3 (epic #308): the doc-sweep release stamps the sweep
+    # timestamp into the chunk row's metadata JSON alongside the
+    # pipeline_state/quarantine_reason flip (the §5.1 explicit-release
+    # audit trail). Same store-internal discipline as the lifecycle
+    # columns above: MemoryCreate/MemoryUpdate carry metadata but the
+    # MANAGER validates it (the add()/update() doc-grouping gates), and
+    # this targeted path is manager-internal only. JSON-serialised by
+    # update_fields before the bind (the dict is never interpolated).
+    "metadata": "metadata=?",
 }
 
 # FTS5 query-syntax special chars. Stripping them and wrapping the rest in
@@ -1917,13 +1926,13 @@ class SQLiteStore:
         if not kwargs:
             return False
         # Drop keys not in the whitelist before they reach the SQL builder.
-        # This is the only filter needed: setters are built from the dict
+        # The only filter needed: setters are built from the dict
         # values (static SQL fragments), and values are bound parameters.
         updates: dict[str, Any] = {k: kwargs[k] for k in _FIELD_UPDATERS if k in kwargs}
         if not updates:
             return False
         # Serialise JSON fields (only str accepted per the strict whitelist).
-        for field in ("derived_from", "tags", "filter_stats"):
+        for field in ("derived_from", "tags", "filter_stats", "metadata"):
             if field in updates and not isinstance(updates[field], str):
                 updates[field] = json.dumps(updates[field], ensure_ascii=False)
         updates["updated_at"] = datetime.now(UTC).isoformat()
@@ -3923,6 +3932,190 @@ class SQLiteStore:
         cur = conn.execute("DELETE FROM ccr_cache")
         conn.commit()
         return cur.rowcount or 0
+
+    # ── ADR-0027 Ф3 (epic #308): docs-as-memory — doc-chunk rows ───────────
+    #
+    # The re-ingest/re-fragmentation surface. A doc_id's chunk rows live
+    # in the ordinary ``memories`` table (the Ф0 metadata convention —
+    # ``{doc_id, chunk_idx, heading_path}`` in the metadata JSON column,
+    # zero migration). What this block adds is the TRANSACTIONAL
+    # replacement + cache-version bump the ADR-0027 invariant 4 demands:
+    # re-fragmentation (a re-ingest of the same doc_id replacing its
+    # chunks) bumps the ccr_cache version key IN THE SAME TRANSACTION as
+    # the chunk-row changes — there is no window where the old cache
+    # version serves post-re-chunk assemblies.
+
+    def replace_doc_chunks(
+        self,
+        doc_id: str,
+        rows: list[Memory],
+        *,
+        cache_version_key: str,
+    ) -> dict[str, int]:
+        """Replace every chunk row of ``doc_id`` and bump the cache version.
+
+        ADR-0027 invariant 4 (CCR-atomcity, the Ф3 leg): the chunk-row
+        replacement (DELETE of the previous doc_id rows + INSERT of the
+        new ones) and the ``meta`` upsert of ``cache_version_key`` run
+        in ONE explicit ``BEGIN IMMEDIATE`` transaction. A crash between
+        the two would otherwise leave a stale cache version serving
+        assemblies over a corpus that no longer matches it — the same
+        transactional-discipline class as the A1 edges rebuild (#263 /
+        #193 test pattern).
+
+        The DELETE keys on the metadata JSON (``json_extract(metadata,
+        '$.doc_id') = ?``) — the Ф0 convention IS the doc identity; no
+        dedicated column exists (zero migration is a Phase-3 premise).
+
+        FTS5 consistency: the DELETE fires the ``memories_ad`` AFTER
+        DELETE trigger and each INSERT fires ``memories_ai`` (same
+        trigger contract as the ordinary ``save``), so the external-
+        content index stays in sync inside the same transaction.
+
+        Args:
+            doc_id: The logical document identity (validated upstream).
+            rows: The NEW chunk rows (each already carries the doc-grouping
+                metadata triple). Stored via the same INSERT statement
+                shape as :meth:`save` (fresh ids — the caller mints them).
+            cache_version_key: The ``meta`` key whose value is bumped
+                (monotonic integer as text) in the same transaction.
+
+        Returns:
+            ``{"deleted": N, "inserted": M, "cache_version": V}`` — the
+            per-statement row counts and the NEW cache version value.
+        """
+        if not rows:
+            raise ValueError("replace_doc_chunks: rows must be non-empty")
+        conn = self._get_conn()
+        now = datetime.now(UTC).isoformat()
+        insert_sql = (
+            "INSERT INTO memories "
+            "(id, content, title, tags, source, source_url, memory_type, "
+            " created_at, updated_at, metadata, file_path, category, "
+            " project, agent, status, quality_score, confidence, "
+            " source_coverage, cluster_id, derived_from, embedding_id, "
+            " raw_content, clean_content, filter_profile, filter_stats, "
+            " filter_version, pipeline_state, processed_at, swap_key, "
+            " quarantine_reason, marker_version) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )
+        # B608: the script is composed EXCLUSIVELY of static literals and
+        # bound parameters via conn.execute — the json_extract fragment is
+        # a static string with a `?` bind for doc_id. One transaction so
+        # the chunk replacement and the cache-version bump are atomic.
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            deleted = int(
+                conn.execute(
+                    "DELETE FROM memories WHERE json_extract(metadata, '$.doc_id') = ?",
+                    (doc_id,),
+                ).rowcount
+            )
+            for memory in rows:
+                pipeline_state_val = memory.pipeline_state.value if memory.pipeline_state else None
+                processed_at_val = memory.processed_at.isoformat() if memory.processed_at else None
+                meta_json = json.dumps(memory.metadata, ensure_ascii=False)
+                title = memory.auto_title()
+                conn.execute(
+                    insert_sql,
+                    (
+                        memory.id,
+                        memory.content,
+                        title,
+                        json.dumps(memory.tags, ensure_ascii=False),
+                        memory.source.value,
+                        memory.source_url,
+                        memory.memory_type.value,
+                        memory.created_at.isoformat(),
+                        memory.updated_at.isoformat(),
+                        meta_json,
+                        memory.file_path,
+                        memory.category,
+                        memory.project,
+                        memory.agent,
+                        memory.status.value,
+                        memory.quality_score,
+                        memory.confidence,
+                        memory.source_coverage,
+                        memory.cluster_id,
+                        json.dumps(memory.derived_from, ensure_ascii=False),
+                        memory.embedding_id,
+                        memory.raw_content,
+                        memory.clean_content,
+                        memory.filter_profile,
+                        (
+                            json.dumps(memory.filter_stats, ensure_ascii=False)
+                            if memory.filter_stats
+                            else None
+                        ),
+                        memory.filter_version,
+                        pipeline_state_val,
+                        processed_at_val,
+                        memory.swap_key,
+                        memory.quarantine_reason,
+                        memory.marker_version,
+                    ),
+                )
+            inserted = len(rows)
+            # The version bump: read-modify-write INSIDE the transaction.
+            # BEGIN IMMEDIATE holds the write lock, so two racing re-ingests
+            # serialize; each commits a strictly larger integer.
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (cache_version_key,)
+            ).fetchone()
+            prev = int(row["value"]) if row is not None else 0
+            new_version = prev + 1
+            conn.execute(
+                "INSERT INTO meta (key, value, updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "  value=excluded.value, updated_at=excluded.updated_at",
+                (cache_version_key, str(new_version), now),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.rollback()
+            raise
+        self._invalidate_caches()
+        logger.info(
+            "doc re-chunk: doc_id=%s deleted=%d inserted=%d cache_version=%d",
+            doc_id[:32],
+            deleted,
+            inserted,
+            new_version,
+        )
+        return {"deleted": deleted, "inserted": inserted, "cache_version": new_version}
+
+    def doc_chunk_cache_version(self, cache_version_key: str) -> int:
+        """Read the current ccr_cache doc-chunk version (0 when absent)."""
+        value = self.get_meta(cache_version_key)
+        return int(value) if value is not None else 0
+
+    def list_doc_chunk_ids(self, doc_id: str) -> list[str]:
+        """Ids of every chunk row of ``doc_id`` (the Ф0 metadata convention).
+
+        Keys on ``json_extract(metadata, '$.doc_id')`` — the Ф0
+        convention IS the doc identity; no dedicated column exists
+        (zero migration is a Phase-3 premise). Ordered by the convention
+        ``chunk_idx`` so callers see document order.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id FROM memories "
+            "WHERE json_extract(metadata, '$.doc_id') = ? "
+            "ORDER BY CAST(json_extract(metadata, '$.chunk_idx') AS INTEGER) ASC",
+            (doc_id,),
+        ).fetchall()
+        return [str(r["id"]) for r in rows]
+
+    def delete_doc_chunks(self, doc_id: str) -> int:
+        """Delete every chunk row of ``doc_id`` (no cache bump — test/maintenance)."""
+        conn = self._get_conn()
+        cur = conn.execute(
+            "DELETE FROM memories WHERE json_extract(metadata, '$.doc_id') = ?", (doc_id,)
+        )
+        conn.commit()
+        self._invalidate_caches()
+        return int(cur.rowcount)
 
     # ── Memory edges (ADR-0018 Phase 1 groundwork) ─────────────────────────
 

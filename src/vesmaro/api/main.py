@@ -1465,9 +1465,71 @@ async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
     url_clean = re.sub(r"(https?://)([^@]*@)", r"\1", req.url)
     tags = validate_tag_contract(req.tags, strict=settings.mnemos.strict_tag_contract)
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
-    agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
+    agent = next((t[len("agent") :] for t in tags if t.startswith("agent:")), "")
     memory = mgr.ingest_url(url_clean, tags=tags, project=project, agent=agent)
     return {"id": str(memory.id), "title": memory.auto_title(), "url": url_clean}
+
+
+# ── Document ingest (ADR-0027 Phase 3, epic #308) ─────────────────────────────
+
+
+class IngestDocumentRequest(BaseModel):
+    """Request body for POST /ingest-document — mirrors ``mnemos_ingest_document``.
+
+    ADR-0027 invariant 8: the ingested document is UNTRUSTED CONTENT.
+    The chunks are born quarantined (excluded from every issuance path)
+    and released per-chunk by the ADR-0019 Phase A danger sweep at
+    ingest-completion. A re-ingest of the same ``doc_id`` replaces the
+    chunks and bumps the doc-chunk cache version in the same
+    transaction (invariant 4).
+    """
+
+    text: str
+    doc_id: str
+    tags: list[str]
+    title: str | None = None
+    source_url: str | None = None
+
+
+@app.post("/ingest-document", status_code=201)
+async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
+    """Ingest a document as chunked, born-quarantained memory rows (Ф3).
+
+    Mirrors the ``mnemos_ingest_document`` MCP tool. Chunks are born
+    quarantined (ADR-0027 invariant 8) and swept at completion; a
+    re-ingest of the same ``doc_id`` replaces the rows and bumps the
+    ccr_cache doc-chunk version in the same transaction (invariant 4).
+    ``POST /ingest-url`` keeps its single-row pre-Ф3 semantics — that
+    boundary is deliberate (the existing tool is not retroactively
+    quarantined).
+    """
+    _track_http_call()
+    mgr = get_manager()
+    settings = mgr.settings
+    doc_id = req.doc_id.strip()
+    if not doc_id:
+        raise HTTPException(status_code=422, detail="doc_id must be a non-empty string")
+    tags = validate_tag_contract(req.tags, strict=settings.mnemos.strict_tag_contract)
+    project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
+    agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
+    result = mgr.ingest_document(
+        req.text,
+        doc_id=doc_id,
+        title=req.title,
+        tags=tags,
+        project=project,
+        agent=agent,
+        source_url=req.source_url,
+    )
+    return {
+        "doc_id": result.doc_id,
+        "chunks_total": result.chunks_total,
+        "released": result.released,
+        "quarantined": result.quarantined,
+        "chunk_ids": list(result.memory_ids),
+        "reingest": result.reingest,
+        "cache_version": result.cache_version,
+    }
 
 
 # ── File watcher (M8) ─────────────────────────────────────────────────────────

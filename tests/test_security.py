@@ -408,6 +408,11 @@ class TestSqlInjectionSafe:
             # the column is still NULL — zero-loss demands the source be
             # preserved before content is replaced on the same row.
             "raw_content",
+            # ADR-0027 Ф3 (epic #308): the doc-sweep release stamps the
+            # sweep timestamp into the chunk row's metadata JSON alongside
+            # the lifecycle flip. Same store-internal discipline as the
+            # lifecycle columns above (manager-internal callers only).
+            "metadata",
         }
         assert set(sqlite_store._FIELD_UPDATERS) == expected_keys
         # Every value is a static "col=?" fragment.

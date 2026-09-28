@@ -36,6 +36,14 @@ from vesmaro.canon_validate import (
 )
 from vesmaro.config import Settings
 from vesmaro.danger_detectors import DetectionResult, detect
+
+# ADR-0027 Ф3 (epic #308) — the docs-as-memory document-ingest
+# authority. Imported as an alias to avoid the module↔manager name
+# collision (the function IS ``ingest_document`` on both sides; the
+# manager's method is the public surface, the module's function is the
+# single implementation).
+from vesmaro.docs_ingest import DocIngestResult
+from vesmaro.docs_ingest import ingest_document as docs_ingest_document
 from vesmaro.embeddings import EmbeddingProvider, create_embedding_provider
 from vesmaro.graph_minting import (
     AUTO_DEDUPE_CANDIDATE_POOL,
@@ -4736,6 +4744,44 @@ class MemoryManager:
             source_url=url,
         )
         return self.add(data, project=project, agent=agent)
+
+    def ingest_document(
+        self,
+        text: str,
+        *,
+        doc_id: str,
+        title: str | None,
+        tags: list[str],
+        project: str,
+        agent: str,
+        source_url: str | None = None,
+    ) -> DocIngestResult:
+        """ADR-0027 Ф3 (epic #308) — ingest a document as doc-chunk rows.
+
+        Thin wrapper over :func:`vesmaro.docs_ingest.ingest_document`
+        (the single authority for the Ф3 lifecycle: chunk →
+        born-quarantine → danger-sweep → release/refuse). The chunks
+        are BORN QUARANTINED (ADR-0027 invariant 8 — untrusted
+        content) and released per-chunk by the ADR-0019 Phase A danger
+        detector at ingest-completion; a re-ingest of the same
+        ``doc_id`` replaces the rows and bumps the ccr_cache doc-chunk
+        version in the same transaction (invariant 4).
+
+        This is the DOCUMENT surface; the single-URL :meth:`ingest_url`
+        keeps its pre-Ф3 semantics (one row, the ordinary visibility
+        policy, no born-quarantine) — the boundary is pinned in the Ф3
+        tests and documented on both tool surfaces.
+        """
+        return docs_ingest_document(
+            self,
+            text,
+            doc_id=doc_id,
+            title=title,
+            tags=tags,
+            project=project,
+            agent=agent,
+            source_url=source_url,
+        )
 
     # ── Watchers ─────────────────────────────────────────────────────────────
 

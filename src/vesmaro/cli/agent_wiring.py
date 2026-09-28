@@ -77,6 +77,9 @@ VESMARO_TOOLS: tuple[str, ...] = (
     "mnemos/mnemos_list_recent",
     "mnemos/mnemos_list_tags",
     "mnemos/mnemos_ingest_url",
+    # ADR-0027 Ф3 (epic #308): the document ingest (born-quarantined
+    # doc chunks, swept at completion) joins the wired tool set.
+    "mnemos/mnemos_ingest_document",
     "mnemos/mnemos_stats",
     "mnemos/mnemos_auto_collect_status",
 )
