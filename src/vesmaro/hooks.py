@@ -80,6 +80,7 @@ it — flagged for ratification in the #125 report.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
@@ -263,9 +264,32 @@ def on_session_start(
         "redactions": total_redactions,
     }
     if include_awareness:
-        from vesmaro.awareness import compose_session_presence
+        # C9 (swarm v0a review P2-1, issue #414): on_session_start is a
+        # POLLABLE surface — the REST twin lets a harness re-request
+        # this hook freely, so the picture cap must gate THIS path too
+        # (the v0a claim that the calling surface already gated it held
+        # for pre_llm_call, not for this hook). Refusal degrades to the
+        # rate-limited line, never a hard error — the hook's response
+        # contract stays shape-stable (module-level ``datetime`` keeps
+        # the gate freezable the same way ``vesmaro.manager.datetime``
+        # is in tests).
+        from vesmaro.awareness import (
+            AWARENESS_DISCLAIMER,
+            PICTURE_RATE_LIMITED_LINE,
+            _picture_rate_refused,
+            compose_session_presence,
+        )
 
-        result["presence"] = compose_session_presence(mgr, project=project, agent=agent)
+        now_dt = datetime.now(UTC)
+        if _picture_rate_refused(mgr, project=project, agent=agent, now_dt=now_dt):
+            result["presence"] = {
+                "hook": "on_session_start",
+                "rate_limited": True,
+                "text": PICTURE_RATE_LIMITED_LINE,
+                "disclaimer": AWARENESS_DISCLAIMER,
+            }
+        else:
+            result["presence"] = compose_session_presence(mgr, project=project, agent=agent)
     return result
 
 
