@@ -971,6 +971,31 @@ class MeshTCPConfig(BaseModel):
         return self
 
 
+class CodeGraphConfig(BaseModel):
+    """Project code graph indexer knobs (ADR-0032 PG-0, ArchCom 2026-09-28).
+
+    The graph is MEMORY, not a per-process index: the sidecar
+    ``code_graph.db`` (slice 1) is rebuilt from sources. PG7 fail-closed
+    limits are DEFAULT ON — we learn from DeusData's default-off
+    mistake (ADR-0032 §5): a breach fails the WHOLE index, no partial
+    graph is ever published. The limits are ceilings the indexer checks
+    BEFORE committing its transaction, so a hostile or misconfigured
+    root cannot balloon the sidecar store.
+
+    Canonical env override: ``VESMARO_CODE_GRAPH__INDEX_MAX_FILES`` /
+    ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB``.
+
+    Fields:
+        index_max_files: Hard cap on indexed files per project.
+            Default 20000 (ADR-0032 §3.4).
+        index_max_source_mb: Hard cap on total source bytes per
+            project, MiB. Default 500 (ADR-0032 §3.4).
+    """
+
+    index_max_files: int = Field(default=20_000, ge=1)
+    index_max_source_mb: int = Field(default=500, ge=1)
+
+
 class VitalsConfig(BaseModel):
     """Passive assemble metrics into the vitals sidecar (ADR-0026).
 
@@ -1117,6 +1142,7 @@ class Settings(BaseSettings):
     federation: FederationConfig = FederationConfig()
     scanner: ScannerConfig = ScannerConfig()
     mesh: MeshConfig = MeshConfig()
+    code_graph: CodeGraphConfig = CodeGraphConfig()
     vitals: VitalsConfig = VitalsConfig()
     logging: LoggingConfig = LoggingConfig()
     # M5: declarative policy rules (loaded from YAML or set programmatically)
