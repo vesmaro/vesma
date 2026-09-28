@@ -451,6 +451,52 @@ class TestComparativeTelemetry:
         assert stats["task_param_queries_total"] == 0
         assert stats["task_tag_queries_total"] == 0
 
+    def test_composite_surfaces_attribute_at_caller_intent(self, mgr: MemoryManager) -> None:
+        """Review fix 2 (P2, TL decision): the INTERNAL translation form
+        must not leak into the comparative metric. A caller who used the
+        first-class ``task=`` on a composite surface increments the param
+        counter uniformly — the query leg of ``recall_context`` threads
+        the PARAM form, exactly like ``search`` / ``agent_recall`` — so
+        ``task_tag - task_param`` measures the genuine tag-only share,
+        not an implementation shape."""
+        mgr.save_checkpoint({"goals": "g"}, project=PROJECT, agent=AGENT, task=TASK)
+
+        s0 = mgr.search_stats()
+        mgr.recall_context(project=PROJECT, query="checkpoint", task=TASK)
+        s1 = mgr.search_stats()
+        assert s1["task_param_queries_total"] - s0["task_param_queries_total"] == 1
+        assert s1["task_tag_queries_total"] - s0["task_tag_queries_total"] == 1
+
+        # agent_recall(query=, task=): unchanged behavior (already +1/+1).
+        s0 = mgr.search_stats()
+        mgr.agent_recall(
+            AgentRecallQuery(agent=AGENT, project=PROJECT, query="checkpoint", task=TASK)
+        )
+        s1 = mgr.search_stats()
+        assert s1["task_param_queries_total"] - s0["task_param_queries_total"] == 1
+        assert s1["task_tag_queries_total"] - s0["task_tag_queries_total"] == 1
+
+        # The recency legs run no search call at all — counters untouched
+        # (the disclosed slice-1 trade-off; list_all paths carry no
+        # counters, so attribution is unaffected).
+        s0 = mgr.search_stats()
+        mgr.recall_context(project=PROJECT, task=TASK)
+        mgr.agent_recall(AgentRecallQuery(agent=AGENT, project=PROJECT, task=TASK))
+        s1 = mgr.search_stats()
+        assert s1["task_param_queries_total"] == s0["task_param_queries_total"]
+        assert s1["task_tag_queries_total"] == s0["task_tag_queries_total"]
+
+    def test_conflicting_task_read_is_silent_empty_not_fatal(self, mgr: MemoryManager) -> None:
+        """Review fix 3 (doc-wording pin): the READ path runs no
+        tag-contract validation — ``task=`` + a DIFFERENT ``task:`` tag
+        in ``tags`` is a strict-AND no row can satisfy: a silent EMPTY
+        result, never a rejection (the always-fatal multiple-``task:``
+        check binds to the WRITE paths, where the contract validates)."""
+        _add(mgr, "alpha in task one", task=TASK)
+        _add(mgr, "beta in task two", task=TASK_B)
+        results = mgr.search("alpha", project=PROJECT, task=TASK, tags=[f"task:{TASK_B}"], limit=10)
+        assert results == []  # strict-AND: silent empty, not TagContractError
+
 
 # ---------------------------------------------------------------------------
 # 5. MCP twins — dispatch threading + fail-loud mapping
@@ -654,6 +700,18 @@ class TestRestTwins:
         with client_factory as tc:
             resp = tc.get(f"/recall/agent/{AGENT}?project={PROJECT}&task={TASK}&limit=10").json()
         assert len(resp) == 2
+
+    def test_agent_recall_bad_task_maps_to_400(
+        self, mixed_corpus: MemoryManager, client_factory: Any
+    ) -> None:
+        """Review fix 1 (P1): the task boundary's ValueError maps to 400
+        like every other REST twin of this wave — the probe
+        ``GET /recall/agent/x?task=my/task`` used to surface as a 500,
+        contradicting the documented 400 (the #407 twin discipline)."""
+        with client_factory as tc:
+            resp = tc.get(f"/recall/agent/{AGENT}?project={PROJECT}&task=my/task")
+        assert resp.status_code == 400
+        assert "task" in resp.json()["detail"]
 
     def test_agent_recall_task_param_equals_tag_filter(
         self, mixed_corpus: MemoryManager, client_factory: Any

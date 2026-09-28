@@ -375,7 +375,7 @@ List the most recent memory entries, oldest-last.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `limit` | integer | no | `10` | Max entries. |
-| `tags` | string[] | no | — | Filter: any of these tags must be present. |
+| `tags` | string[] | no | — | Filter: all of these tags must be present (AND). |
 | `project` | string | no | — | Restrict to a project slug. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to appending `task:<slug>` to `tags` (the F1 arm-C surface); composes with `tags` by intersection (both must hold). |
 
