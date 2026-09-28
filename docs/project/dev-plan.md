@@ -80,52 +80,44 @@
 | 2026-09-20 | Пост-квотный кадр: CI-гигиена + Ф0 целиком + A1-упреждение + A0-измерение | (1) [#355](https://github.com/vesmaro/vesmaro/pull/355) гигиена гейтов (закрывает [#337](https://github.com/vesmaro/vesmaro/issues/337): mypy/coverage на реальный код, ruff+format repo-wide, dependency-groups — ловушка #335 убита структурно, канарейки). (2) **Ф0 мультиконтекст ЗАВЕРШЕНА**: [#356](https://github.com/vesmaro/vesmaro/pull/356) срез 1 (task-тег + doc-metadata) + [#360](https://github.com/vesmaro/vesmaro/pull/360) срез 2 (линза + task-параметр хвостовой + write-валидация); Ф1-подготовительная волна скоупирована на [#308](https://github.com/vesmaro/vesmaro/issues/308). (3) [#358](https://github.com/vesmaro/vesmaro/pull/358) A1-упреждение N1–N4 (major-урок: python-sqlite3 не транзактит DDL — BEGIN IMMEDIATE + raw-probe тест). (4) **A0-review измерение**: порог 0.92 ПОДТВЕРЖДЁН (полоса ниже = 0/37 дублей), плотность проходная, **walk-DOA** (headroom-gate никогда не срабатывает — очередь комитета, пре-рид 27.09); 7-дневное окно на кроне (день-1: 9 рёбер, органика подтверждена). (5) [#344](https://github.com/vesmaro/vesmaro/issues/344) закрыт stale (сборка+запуск доказаны), [#357](https://github.com/vesmaro/vesmaro/issues/357) осмотррик-зонтик 5.0.0. main=74ba226, сьют 3736/0 |
 | 2026-09-20 | (параллельные сессии) Core/mesh-волны: курсоры подписки, ACL-харднинг, W2.5 mTLS + канонизация ссылок | [#370](https://github.com/vesmaro/vesmaro/pull/370) ADR-0020 subscription cursor contract (core-minted opaque cursors + Pull-leg transport) · [#373](https://github.com/vesmaro/vesmaro/pull/373) ACL hardening (fail-closed effective-set на всех MnemosCore-путях + degenerate-config rejection) · [#376](https://github.com/vesmaro/vesmaro/pull/376) W2.5 TCP leg (mTLS-порт на grpcio-листенере MeshServer); follow-up-notes открыты: [#363](https://github.com/vesmaro/vesmaro/issues/363)/[#364](https://github.com/vesmaro/vesmaro/issues/364)/[#366](https://github.com/vesmaro/vesmaro/issues/366)/[#372](https://github.com/vesmaro/vesmaro/issues/372)/note-#375 · [#377](https://github.com/vesmaro/vesmaro/pull/377) канонизация ссылок репо после переноса орга (main=3c8f270). Волны чужих сессий — записано для полноты реестра |
 | 2026-09-21 | Волна Ф1-раннера (эпик [#308](https://github.com/vesmaro/vesmaro/issues/308), ADR-0027 Phase 1) | [PR #379](https://github.com/vesmaro/vesmaro/pull/379): `benchmarks/experiments/f1_task_scope/` — генератор корпуса `f1-mixed-2` (fingerprint `debd849ab02a…`, страты T-gold 192 / X-gold 48 / L-neg 8 mixed + 16 trap, seed 20260920), runner по §4.3-канону E3 (refuse-to-record default, write-once content-addressed, статс-бан структурный, V1–V6 в манифесте), якорный квартет §6.5 (0.3544/0.6800/0.5477/0.8794) воспроизведён тестом точно; §8-леджер E-файла: 16 датированных pre-run записей. Три раунда ревью: round-1 P2 «коридор G4b вакуумно-зелёный» → mixed-рекат; round-2 TL и ревьюер независимо сошлись на зеркальный P1 «guaranteed-RED + build-ассерт вытеснял красный путь в краш» → финал (entries 15–16): коридор G4b на trap-подмножестве (двусторонне фальсифицируем через данные), 8 mixed — описательная мера «mixed-phrasing activation cost», линза-активация — наблюдение манифеста (`lens_observed: 0/8/72`), окно поправок закрыто. Сьют 3924/2; хвосты [#382](https://github.com/vesmaro/vesmaro/issues/382) (закрыть до первого `--record`), [#383](https://github.com/vesmaro/vesmaro/issues/383). Параллельно влиты: [#380](https://github.com/vesmaro/vesmaro/pull/380) mesh-image recipe (закрыл [#374](https://github.com/vesmaro/vesmaro/issues/374)), [#381](https://github.com/vesmaro/vesmaro/pull/381) federation S2-phase-1. main=e2da19d |
+| 2026-09-27 | Кадр-созыв 27.09: вердикт A0-окна + АрхКом graph/A1/«рой» + Ф1 первый записанный прогон | (1) **A0-окно финальный вердикт** (7 дней, запись mnemos `1b9c0a30`): авто-минтинг по дням 20–27.09 = 24/6/39/71/27/33/53/3 (последний день частичный), итог **256 рёбер / 2766 записей ≈ 9.3/100 живого стора**; органика подтверждена **6–8 рёбер/день** (выше прогноза ~4.2), аномалий каналов ноль; когорта минтинга ≈ **2.45 рёбер на post-A0 запись ≈ 245/100** (104 записи → 256 рёбер). Порог edges/100 ≥ 50 на raw-сторе не достигнут и недостижим на органических таймскейлах — пересчитан комитетом (см. A0-review ниже). (2) **АрхКом 2026-09-27** (протокол `~/.gcw/architectural-committee/2026-09-27-archcom-verdict-graph-a1-swarm.md`, вне репо): V1 reserved-walk-quota принят (k=min(⌈limit/5⌉, limit//2), чистая функция limit, только flag-ON путь); «рой» разбит на v0a/v0b с жёсткими условиями C1–C10; **A1 GO с перебазелированным гейтом плотности edges-per-post-A0-write ≥ 0.5** (когортная семантика; revisitable-клауза ADR-0030 исполнена на данных). (3) **Ф1 первый записанный прогон** [PR #412](https://github.com/vesmaro/vesmaro/pull/412) (run `f1-task-scope-9c08f24268dc`, владелец-авторизован; артефакты закоммичены; §9-леджер E-файла): **H1 PASS — A 192/192 vs A0 158/192 = +17.71 пп** (≥ +15 пп MDE), точный McNemar **p=1.164e-10**, дискорданс 34/0 однонаправленный; гварды G1–G4 держатся (X-gold 48/48; утечка 0/192; токены 663.5 ≤ 766.5, знаковое правило 6/8; линза-retention 1.0000, trap-коридор 16/16); **H2/H3 — ties** (arm ceiling A==C==B на 1.0) → срабатывание §5.2-маршрутизации «эргономика одна, форму решает владелец»; realized power ≈ 1.000 при D=0.1771. Предрегистрация выдержала сагу фальсифицируемости G4b (§8, записи 1–16) и вердикт PASS |
+| 2026-09-28 | Ф2 — арбитраж владельца + task-примитив первого класса (эпик [#308](https://github.com/vesmaro/vesmaro/issues/308)) | [PR #420](https://github.com/vesmaro/vesmaro/pull/420) (`7ee30d3`): **АРБИТРАЖ ВЛАДЕЛЬЦА** (mnemos `2b3ae42f`) перекрыл §5.2-тай-маршрутизацию в пользу постройки примитива — value call на эргономику и опциональность (без миграции схемы; постоянная сравнительная метрика), зафиксирован дословно в ADR-0027 §A.3. Реализация: `task=` на 9 поверхностях (search / recall_context / list_recent / agent_recall + save_checkpoint на записи + MCP/REST-твины) через **единственную точку перевода** `_normalize_task_boundary` (канон #407: нормализация слага + минтинг `task:`-префикса, fail-loud на неисправимых слагах); **47 пинов эквивалентности** (A==C по построению: `task="X"` байт-идентично `tags=["task:X"]` на каждой поверхности; +44 теста, сьют 4329/2 на ветке со старыми 2 сбоями); сравнительная метрика `task_param_queries_total`/`task_tag_queries_total` с атрибуцией **по caller-intent** (внутренний перевод не течёт в метрику). Ревью-раунд поймал до мерджа REST-гэп 500-вместо-400 (твин-дисциплина #407/#420) и перекос атрибуции метрики; хвосты [#422](https://github.com/vesmaro/vesmaro/issues/422)/[#423](https://github.com/vesmaro/vesmaro/issues/423). Параллельно [PR #421](https://github.com/vesmaro/vesmaro/pull/421): пост-record-эра F1-пины (два пина раннера указывали на до-записанное состояние и падали на чистом main после #412 — TL-фикс, сьют 4287/2) |
+| 2026-09-28 | A1-S1 + A1-S2 — механика графа целиком (карточка [#325](https://github.com/vesmaro/vesmaro/issues/325), контракт комитета) | **S1** [PR #415](https://github.com/vesmaro/vesmaro/pull/415) (`6eaa8c5`): reserved quota k=min(⌈limit/5⌉, limit//2) (k=0 при limit<3) **только на flag-ON пути** (`mnemos.graph_walk`; flag-off байт-идентичен A0 — cross-revision A/B по fingerprints страниц; пин walk-ON+пустой-граф == walk-OFF), слоистый BFS-2 (fanout-cap 32, total-work-cap 512, «first anchor wins» на depth 2), per-project `graph_epoch` (meta-счётчик, прецедент awareness-курсоров, миграции нет; выставлен в `search_stats`), статический `w_edge`-ранж внутри walked-блока (поправка I3-пина зарегистрирована с обоснованием в докстринге — reasoned amendment, не disable). Ревью поймало два дефекта до мерджа (краш на starved-fused — `seen` инициализирован вне walk-ветки; дыра backfill-tags-фильтра — сурплас без фильтра нарушал гейты) — оба закрыты killer-пинами. **S2** [PR #425](https://github.com/vesmaro/vesmaro/pull/425) (`2688d57`): APPLY — насыщающий множитель f(used)=1+min(used,10)×0.1 (макс ×2.0, rank-only; I6: мутационный тест 10k-флуд не двигает ранг за границу насыщения), `feedback_epoch` bump-on-capture идемпотентный (повторные ретраи не бампают), **свой default-off флаг** `mnemos.feedback_apply` (независимая нога по решению комитета; graph_walk=ON+apply=OFF == S1 байт-идентично, пин), `feedback_boosted_queries_total` = observable для enablement. **Карточка #325 (A1) COMPLETE — всё за default-off флагами**; включение = отдельное решение по capture-телеметрии |
+| 2026-09-28 | swarm-v0a + v0b + фикс C9-гэпа — operational picture (АрхКом 2026-09-27) | **v0a** [PR #413](https://github.com/vesmaro/vesmaro/pull/413) (`e3170cc`): presence + счётчики записей same-project peers, только серверные колонки (ноль клиентского текста): C1 fail-closed same-project (`_require_project`), C2 ноль записанных picture-строк (WAL-checkpointed байт-компар), C9 rate-cap 30/min in-process на (project, agent) (degrade-строка, не hard error; knob `awareness_picture_rate_limit_per_minute`). **v0b** [PR #427](https://github.com/vesmaro/vesmaro/pull/427) (`815249c`): task-клеймы в picture под C6 two-level-trust (клейм = клиентский текст): scan fail-closed на эхо-слаге, слой `self-reported` с квантификатором `[unverified]`, поправка дисклеймера откомитетирована и закодирована; дрифт read-side slug-анкора `$`→`\Z` (класс #367/#387) пойман ревью, починен с мутационным пином. **C9 session-start-гэп** [PR #428](https://github.com/vesmaro/vesmaro/pull/428) (`512c3c6`) закрывает [#414](https://github.com/vesmaro/vesmaro/issues/414): `on_session_start` обходил кап — один гейт в `dispatch_hook` покрывает все входные поверхности (hook/MCP/REST). Хвост [#430](https://github.com/vesmaro/vesmaro/issues/430) (P3) |
+| 2026-09-28 | Ф3 — docs-as-memory; **ЭПИК [#308](https://github.com/vesmaro/vesmaro/issues/308) ДОСТАВЛЕН ЦЕЛИКОМ (Ф0/Ф1/Ф2/Ф3 ✅)** | [PR #429](https://github.com/vesmaro/vesmaro/pull/429) (`efc72f9`): born-quarantine каждого чанка с первого мига (единый authority-модуль `docs_ingest.py`; суффикс lifecycle ADR-0019 §5) → chunk-atomic danger-sweep на ingest-completion (authority guard: ручной карантин свипом НЕ снимается; scanner-error fail-closed) → issuance re-scan — выданные чанки = обычные строки, существующая `scan_issuance`-машина покрывает все каналы эха по построению (инвариант 7, planted post-release contamination закоммичен пином: refuse + redact + drop из search-loop) → transactional replace + bump (инвариант 4: DELETE+INSERT+версия `ccr_cache_doc_chunk_version` в ОДНОЙ `BEGIN IMMEDIATE` транзакции; crash-test по дисциплине #263/#193; версия выставлена в `stats` — поза `graph_epoch`). Поверхности: MCP `mnemos_ingest_document` (manifest 27→28) + REST `POST /ingest-document`; `mnemos_ingest_url` НЕ ретро-карантинен (граница закреплена пином). Ревью-раунд поймал односимвольную регрессию agent-slice в СУЩЕСТВУЮЩЕМ `/ingest-url`-обработчике (`t[len('agent:')]`→`t[len('agent')]` — строка терялась из agent_recall) — починена + twin-pin (мутационно верифицирован). Сьют 4378/2 (+25 тестов). **Эпилог эпика: обязанность κ-аудит-артефакта (ADR-0027 §A.5) + статусная запись Ф3 в ADR** — docs-волны; backlog [#432](https://github.com/vesmaro/vesmaro/issues/432) |
+| 2026-09-28 | ADR-адденды: 0027 Phase-2 decision record + 0030 A0-review record | [PR #424](https://github.com/vesmaro/vesmaro/pull/424) (`5f8d1ae`): **ADR-0027 §A** — вердикт Ф1 + арбитраж владельца дословно (value call с зафиксированной властью §5.2; mnemos `2b3ae42f`), что влито как Phase 2 (§A.4), обязанность κ-аудит-артефакта (§A.5: 53 пар double-annotated blind-аудита должны жить в записи репо; placeholder-указатель на mnemos `762adcac`), §7 exploratory set получил явный дом («в аналитической записи; перемер на следующем recorded run»). **ADR-0030 §B** — A0-review record: перебазелирование гейта (cohort-семантика ≥ 0.5), контракт S1/S2, инварианты depth-2 кодифицированы ДО BFS-2 (I3-пин поправлен зарегистрированно), семантика `graph_epoch` (per-PROJECT, bump через manager-wrapper, идемпотентность), калибровочные заметки S1→S2. Тела ADR байт-не-тронуты (179/0 и 160/0 diff-строк; конвенция append-only) |
+| 2026-09-28 | Кросс-проектная подача: mnemos-eyes [#130](https://github.com/Korrnals/mnemos-eyes/issues/130) | Настройка switcher-режима GUI (директива владельца 2026-09-28, транслирована в eyes-трекер): режим **AUTO** (default) — дефолтный поиск, при пустом результате retry второй формой (client-side fallback — обе формы бьют один движок, strict-AND); плюс режимы **task-param / task-tag** — зеркало сравнительной метрики ядра (`task_param_queries_total`/`task_tag_queries_total` из PR #420) на стороне клиента |
 | 2026-09-15 | АрхКом: Memory Graph → «самозаправляющийся граф» (ревизия роадмапа) | Владелец обнаружил потерю инициативы «Memory Graph + Learning Loop» (очередь АрхКома с 2026-08-21, TL-рекомендация P1; при вычистке очереди 2026-08-31 не переоформлена — disposition отсутствовал, в dev-plan выжил только D2-хвост [#172](https://github.com/vesmaro/vesmaro/issues/172)). Комитет (TL chair + Product Architect + Senior System Engineer + Senior Security Engineer, все conditional → сходимость в фазе критики) принял **accept-staged**: прод-факт 1662 записи / 0 рёбер опроверг теорию топлива от харнессов ⇒ топливо прежде механики. A0 (S–M): миграция видов (`relates_to`+веса+provenance/scope, одноразовое окно пустой таблицы), детерминированный авто-минтинг `relates_to` на write (без LLM, без supersede-решений), capture used/rejected в `edge_stats` (`event_id` PK, append-only, volume-cap), I1–I3 mutation-verified ДО включения 1-hop walk — acceptance: minting-rate + `via_graph`>0, guard recall@5 ≥ 0.9409. A1 (M) за гейтом плотности edges/100 ≥ 50 (revisitable на A0-review): BFS-2 прикладной уровнями, feedback APPLY rank-only, `graph_epoch` в cache key. B/C — Later (C за отдельной threat-model сессией). Линия едет мажорным 4.4.0; 4.3.0 не тронут; D2 #172 слит в эпик. Инварианты I1–I9 + процессные анти-потеря-фиксы (рекомендация → issue ≤48ч; disposition на каждый item при вычистке; dev-plan = derived state) — ADR-0030 `docs/project/adr/0030-memory-graph-self-fueling.md`; mnemos `d11debf8`/`1d4bf66e`; план — §4c |
 
 ## 4. DAG ближайших волн
 
-> Статус-обновление 2026-09-21: Ф1-раннер сдан ([#379](https://github.com/vesmaro/vesmaro/pull/379);
-> §8-леджер 1–16, окно поправок закрыто «Amendments stop here»); A1 ждёт
-> headroom-redesign (созыв 27.09); 7-дневное окно A0 идёт (до 27.09);
-> core/mesh-волны #370/#373/#376/#380/#381 — параллельные сессии.
-> DAG перерисован под живой остаток (обещание от 2026-09-20 исполнено).
-> Регенерирован 2026-09-21 (правило derived state): мастер-карта ниже
-> собирает ЖИВЫЕ линии: граф (ADR-0030, §4c), мультиконтекст (ADR-0027,
-> §4b), NM-остаток, поисковые остатки, релизы.
+> Статус-обновление 2026-09-28 (frame-II close): созыв 27.09 отработан
+> одним кадром (вердикт A0-окна + АрхКом graph/A1/«рой» + Ф1 первый
+> записанный прогон); **эпик #308 доставлен целиком** (Ф0/Ф1/Ф2/Ф3 ✅;
+> Ф2 — через арбитраж владельца над §5.2-тай-маршрутизацией);
+> **A1 сдан** (S1+S2 за default-off флагами, гейт плотности
+> перебазелирован комитетом на когорту ≥ 0.5 edges/post-A0-write);
+> swarm v0a/v0b + C9-фикс влиты. DAG перерисован под живой остаток
+> (правило derived state; регистрация 2026-09-21 исполнена).
 > Источник номеров — трекер (vesmaro/vesmaro).
 
 ```mermaid
 flowchart TD
     OWN3{{"ЖДЁТ ВЛАДЕЛЬЦА:<br/>«да» vesmaro-регистрации<br/>(runbook готов; окно 5.0.0)"}}
-    OWN4{{"ЖДЁТ ВЛАДЕЛЬЦА (после 27.09):<br/>команда на Ф1 первый --record<br/>(до записи закрыть #382)"}}
-    WIN["7-дневное окно A0<br/>(крон, ежедневно до 27.09)"]
-    SUM{{"СОЗЫВ 27.09 одним кадром:<br/>headroom-redesign + «рой» + вердикт A1<br/>+ сводка окна (edges/100 ≥ 50?)"}}
-    A1["A1 · #325 · BFS-2 + feedback APPLY<br/>+ graph_epoch · БЛОК: headroom-redesign"]
-    SW["«Рой» · v0 = operational picture<br/>(awareness-расширение) ·<br/>полный контур после A1"]
-    F1REC["Ф1 · первый --record → single-look анализ<br/>(§6.6; раннер сдан #379,<br/>корпус f1-mixed-2, §8/1–16)"]
-    F2["Ф2 · task-примитив за флагом<br/>(только при PASS)"]
-    F3["Ф3 · docs-as-memory"]
-    XF["Фиксация в ADR-0027:<br/>примитив не строится<br/>(зарегистрированный честный исход)"]
-    D2S["#328 · D2-хвост: каскад цитирований<br/>+ CCR-индекс (после A1)"]
+    ENB{{"ЖДУТ ВЛАДЕЛЬЦА/ТЕЛЕМЕТРИЮ:<br/>три решения о включении флагов:<br/>lens default-on · graph_walk default-on<br/>· feedback_apply (по capture-телеметрии)"}}
+    SW["«Рой» · полный контур<br/>(v0a/v0b сданы: #413/#427 + C9-фикс #428)<br/>полный loop — после A1-телеметрии"]
+    NM["#197 · NM-трек остаток: NM-3a #223<br/>(LLM-stack rebase, 682 теста зелёные)<br/>+ NM-3b · ADR-0021 · свой гейт качества"]
+    D2S["#328 · D2-хвост: каскад цитирований<br/>+ CCR-индекс (после A1-телеметрии)"]
     LB["#326 · Later-B · sidecar default-OFF<br/>+ gap detection (за телеметрией A0/A1)"]
     LC["#327 · Later-C · консолидация + авто-supersedes<br/>БЛОК: threat-model сессия (egress)"]
-    M440{{"МАЖОР 4.4.0 · линия графа<br/>(граф воспоминаний ADR-0030)"}}
+    M440{{"МАЖОР 4.4.0 · линия графа<br/>(A0/A1 сданы за флагами;<br/>гейт включения — телеметрия)"}}
     OWNPG{{"ЖДЁТ ВЛАДЕЛЬЦА:<br/>green-light PG-0<br/>(ADR-0032)"}}
     PG["Граф проектов · PG-0..PG-3 · ADR-0032<br/>sidecar code_graph.db (memory-first)<br/>— линия ОТДЕЛЬНАЯ от 4.4.0-графа<br/>воспоминаний; линия 4.4.x/4.5 — за владельцем"]
-    NM["#197 · NM-трек остаток: NM-3a #223<br/>(LLM-stack rebase, 682 теста зелёные)<br/>+ NM-3b · ADR-0021 · свой гейт качества"]
     REN["vesmaro-переименование · волна 5.0.0<br/>#331 (после регистраций; GWS card)"]
-    SIDE["ФОН · #368 линза-гейт (pre default-enablement) ·<br/>#357 sweep-5.0.0 · #382/#383 F1-хвосты ·<br/>#316/#329 поиск P3 · #278 awareness ·<br/>mesh-notes #353–#376 · Cache-Phase-2 M1 (vitals) ·<br/>D-behavioral нейро-эксперимент"]
-    WIN --> SUM
-    SUM -- "go (headroom решён)" --> A1
-    SUM -- "ретро-калибровка" --> A1
-    SUM -. "решение по v0" .-> SW
-    OWN4 --> F1REC
-    F1REC -- "PASS" --> F2
-    F1REC -- "FAIL / NO-DATA" --> XF
-    F2 --> F3
-    A1 --> M440
-    SW -. после A1 .-> M440
+    SIDE["ФОН · #430 swarm P3 · #432 ingest-бэклог ·<br/>#422/#423 task= хвосты ·<br/>#433 canon vendored-schema RED on main<br/>(канон-лайн, пре-существующий класс)<br/>#316/#329 поиск P3 · #357 sweep-5.0.0 ·<br/>mesh-notes #353–#376 · Cache-Phase-2 M1"]
+    SW -. после A1-телеметрии .-> M440
     NM -. свой гейт ADR-0021 .-> M440
+    ENB -.-> M440
     M440 --> D2S
     M440 -.-> LB
     M440 -.-> LC
@@ -138,10 +130,10 @@ flowchart TD
     classDef gate fill:#fde4cf,stroke:#c46210
     classDef later fill:#e8e8f8,stroke:#5b5b9e
     classDef side fill:#eeeeee,stroke:#888888,stroke-dasharray: 4 3
-    class OWN3,OWN4 owner
-    class WIN,SUM,M440 gate
-    class A1,SW,F1REC,F2,F3 wave
-    class XF,NM,D2S,LB,LC,REN later
+    class OWN3,ENB owner
+    class SW wave
+    class M440 gate
+    class NM,D2S,LB,LC,REN later
     class SIDE side
     class OWNPG gate
     class PG later
@@ -149,45 +141,51 @@ flowchart TD
 
 Пояснения:
 
-- **Исполненное (реестр §3)**: релиз 4.3.0 (все каналы, 2026-09-16), волна
-  A0-1 топлива графа 4/4, A0-review (порог 0.92 подтверждён; walk-DOA →
-  headroom-redesign в повестку 27.09), Ф0 мультиконтекста, Ф1-подготовка
-  (предрегистрация #365 + харднинг #367), Ф1-раннер (#379) — детали и
-  артефакты в §3-реестре.
-- **Созыв 27.09** — контрольная точка одним кадром: headroom-redesign
-  (рекомендация TL в пре-риде: reserved quota k=2–3 с возвратом слотов) +
-  «рой» + вердикт о допуске A1 + сводка 7-дневного окна (edges/100 vs ≥ 50,
-  minting-rate). Канон повестки вне репо: очередь АрхКома
-  (mnemos `86d3a6b0`) + пре-рид
-  `~/.gcw/architectural-committee/2026-09-27-preread-graph-a1-swarm.md`
-  (узлы SUM/SW ниже — выжимка оттуда); пре-рид готов, рассылка участникам —
-  заранее до 27.09.
-- **Ф1-первый `--record`** — owner-gated шаг после 27.09; до записи закрыть
-  #382 (schema self-consistency записанных артефактов). Анализ — single-look
-  по §6.6, вердиктная решётка §5.1 предрегистрации; FAIL/NO-DATA —
-  зарегистрированный честный исход (фиксация в ADR-0027).
-- **Later-B/Later-C** — маркеры отложки (re-cut при unlock); C жёстко
-  блокируется отдельной threat-model сессией (egress sidecar +
-  автоматические семантические мутации графа).
+- **Исполненное (реестр §3, кадр 27–28.09)**: A0-окно финальный вердикт
+  (256 рёбер / 2766 записей ≈ 9.3/100; когорта ≈2.45/write; органика
+  6–8/день подтверждена), АрхКом 2026-09-27 (V1 reserved-quota, swarm
+  v0a/v0b split, A1 GO с перебазелированным гейтом), Ф1 первый
+  записанный прогон (#412: H1 PASS +17.71 пп; H2/H3 ties → §5.2),
+  Ф2 (#420 — арбитраж владельца, task= на 9 поверхностях, 47 пинов
+  эквивалентности), Ф3 (#429 — docs-as-memory), A1-S1/S2 (#415/#425 —
+  карточка #325 COMPLETE за default-off флагами), swarm v0a/v0b + C9-фикс
+  (#413/#427/#428), ADR-адденды 0027/0030 (#424), пост-record-пины Ф1
+  (#421). **Мультиконтекстная линия (#308) DONE** — эпилог: κ-аудит-артефакт
+  (ADR-0027 §A.5) + статусная запись Ф3 — docs-волны.
+- **Три решения о включении (owner-or-telemetry-gated)**: lens default-on
+  (#368-гейт снят фиксом #387; включение — решение владельца),
+  `graph_walk` default-on и `feedback_apply` (оба — по доказанной
+  capture-телеметрии; окно A0 меряло минтинг, не feedback). Молчаливых
+  включений нет — флаги off до явного решения.
+- **«Рой»**: v0a (presence+счётчики, #413) и v0b (task-клеймы под C6
+  two-level-trust, #427) сданы; session-start C9-гэп закрыт (#428,
+  закрывает #414); P3-хвост #430. Полный loop (stigmergy-трейлы на
+  рёбрах A0/A1) — после A1-телеметрии.
+- **D2-слайс (#328, закрывает #172)** — каскад цитирований + CCR-индекс
+  на накопленном топливе; после A1-телеметрии (не блокирует маркеры).
 - **NM-трек (#197)** — живой остаток инициативы владельца (ADR-0021):
   NM-3a = #223 (rebase + merge LLM-стека, 682 теста зелёные на ветках),
   NM-3b за ним; свой гейт качества (S1m-коридоры), не блокирует
   мажорные маркеры. Ревью-правка 2026-09-15: узел возвращён в DAG
   после потери при первой регенерации (ловушка derived-state —
   благодарность ревьюеру PR #330).
-- **Параллельный фон** не блокирует критический путь: #316 (idf-floor)
-  и #329 (Snowball) — поисковые P3; Cache-Phase-2 M1 живёт в
-  vitals-сессии (ADR-0026 sidecar); D-behavioral — главный поведенческий
-  эксперимент нейро-трека, recall-пул фразовых агентов готов к замеру
-  после search-v2.
-- **Мажорные маркеры** (политика v2 5a5ac447): 4.4.0 = линия графа;
-  5.0.0 = окно переименования vesmaro (регистрации по runbook, GWS card,
-  ADR — все за «да» владельца).
+- **Канон-лайн (параллельные сессии)** — W2/W3-волны (#416–#419, #426,
+  #431) влиты; #433 RED on main закрыт #436 (worktree-independent pin).
+- **Параллельный фон** не блокирует критический путь: #430/#432
+  (review-хвосты), #422/#423 (task= REST-гэп и recency-окно), #316
+  (idf-floor) и #329 (Snowball) — поисковые P3; #357 sweep-5.0.0;
+  mesh-notes #353–#376; Cache-Phase-2 M1 живёт в vitals-сессии
+  (ADR-0026 sidecar); D-behavioral — главный поведенческий эксперимент
+  нейро-трека, за NM-3a/3b (см. §4a; recall-пул готов к замеру).
 - **Граф проектов (ADR-0032, узел PG)** — линия ОТДЕЛЬНАЯ от 4.4.0
   (граф воспоминаний ADR-0030): sidecar `code_graph.db`, memory-first,
   волны PG-0..PG-3 за green-light'ом владельца; линия версий
   (4.4.x-минор vs 4.5) — открытый вопрос владельцу. Не блокирует
   критический путь. План — §4d.
+- **Мажорные маркеры** (политика v2 5a5ac447): 4.4.0 = линия графа
+  (A0/A1 сданы; включение флагов — решение владельца по телеметрии);
+  5.0.0 = окно переименования vesmaro (регистрации по runbook, GWS
+  card, ADR — все за «да» владельца).
 
 ## 4a. Мета-уровень памяти — план реализации (цикл АрхКома 2026-09-08/09)
 
@@ -465,24 +463,24 @@ fail-closed, never-pinnable + born no-federate, федеративное иск�
 
 ```mermaid
 flowchart TD
-    F0["Ф0 · КОМПОЗИЦИЯ БЕЗ СХЕМЫ<br/>task: тег-префикс (расширение контракта)<br/>+ doc-metadata {doc_id, chunk_idx, heading_path}<br/>+ кодовый линза-пресет + task-параметр<br/>assemble_context (хвост)"]
-    F1["Ф1 · МИНИМАЛЬНЫЙ ЭКСПЕРИМЕНТ (S5)<br/>A: B0+type_boost · B: эмуляция task-контекста<br/>C: честный tag-фильтр · предрегистрация ДО"]
-    F2["Ф2 · TASK-ПРИМИТИВ ЗА ФЛАГОМ<br/>default-off · только при PASS<br/>форма (колонка/тег/таблица) — по данным Ф1"]
-    F3["Ф3 · DOCS-AS-MEMORY<br/>born-quarantine + danger-sweep<br/>+ bump ccr_cache при рефрагментации"]
+    F0["Ф0 · КОМПОЗИЦИЯ БЕЗ СХЕМЫ ✅<br/>СДАНО 2026-09-20 (PR #356 + #360)"]
+    F1["Ф1 · ЭКСПЕРИМЕНТ-ГЕЙТ (S5) ✅<br/>ПРОГОН 2026-09-27 (PR #412):<br/>H1 PASS +17.71 пп; H2/H3 ties<br/>→ §5.2-маршрутизация"]
+    F2["Ф2 · TASK-ПРИМИТИВ ✅<br/>2026-09-28 (PR #420) — арбитраж<br/>владельца: строить; 9 поверхностей,<br/>47 пинов эквивалентности"]
+    F3["Ф3 · DOCS-AS-MEMORY ✅<br/>2026-09-28 (PR #429): born-quarantine<br/>+ sweep + re-scan + ccr bump"]
     D2["D2 #172 · кросс-граф — слит в эпик<br/>«Memory Graph» (АрхКом 2026-09-15,<br/>см. §4c; worst-link no-federate = I4)"]
-    GATE{{"PASS / FAIL / NO-DATA"}}
-    XF["Фиксация в ADR-0027:<br/>примитив не строится"]
-    F0 --> F1 --> GATE
-    GATE -- PASS --> F2 --> F3
-    GATE -- "FAIL / NO-DATA" --> XF
+    EPIL["ЭПИЛОГ ЭПИКА (docs-волны):<br/>κ-аудит-артефакт (ADR-0027 §A.5)<br/>+ статусная запись Ф3 в ADR"]
+    F0 --> F1 --> F2 --> F3 --> EPIL
     D2 -. синхронно, свои гейты .-> F2
-    classDef phase fill:#daf5da,stroke:#3d8b3d
-    classDef gate fill:#fff3c4,stroke:#b8860b
-    classDef stop fill:#f8d7da,stroke:#8b3d3d
-    class F0,F1,F2,F3 phase
-    class GATE gate
-    class XF stop
+    classDef done fill:#daf5da,stroke:#3d8b3d
+    classDef side fill:#eeeeee,stroke:#888888,stroke-dasharray: 4 3
+    class F0,F1,F2,F3 done
+    class EPIL side
 ```
+
+> **Статус 2026-09-28: ЭПИК [#308](https://github.com/vesmaro/vesmaro/issues/308)
+> ДОСТАВЛЕН ЦЕЛИКОМ** — Ф0/Ф1/Ф2/Ф3 все ✅ (см. чеклист ниже и реестр
+> §3). Официальное закрытие issue-зонта + эпилог (κ-обязанность
+> ADR-0027 §A.5, статусная запись Ф3) — ближайшие docs-волны.
 
 ### Чеклист эпика
 
@@ -505,7 +503,7 @@ flowchart TD
       **✅ СДАНО 2026-09-20**: срез 1 [PR #356](https://github.com/vesmaro/vesmaro/pull/356)
       (`task:`-тег + doc-metadata) + срез 2 [PR #360](https://github.com/vesmaro/vesmaro/pull/360)
       (код-линза + хвостовой `task`-параметр + write-валидация).
-- [ ] **Ф1 — предрегистрация + прогон** (гейт; канон E0/E3-runner,
+- [x] **Ф1 — предрегистрация + прогон** (гейт; канон E0/E3-runner,
       run-ledger): руки A/B/C (C — честный tag-фильтр, не чучело);
       primary = per-context recall@k на per-query-gold; коридоры:
       cross-context recall ≥ базлайна, шум чужого контекста ≤ порога,
@@ -516,7 +514,9 @@ flowchart TD
       вердиктов закрыта; окно порогов закроет первый `--record`);
       код-харднинг влит [#367](https://github.com/vesmaro/vesmaro/pull/367)
       (lens-signal hardening, `\Z`-якоря, agent-predicate guards; хвост
-      #368 = гейт перед lens default-enablement). СЛЕДУЮЩАЯ ВОЛНА:
+      #368 закрыт [#387](https://github.com/vesmaro/vesmaro/pull/387)
+      = гейт перед lens default-enablement снят, включение — отдельное
+      решение владельца). СЛЕДУЮЩАЯ ВОЛНА:
       Ф1-раннер (`benchmarks/experiments/f1_task_scope/`, strata по §4.3
       канона, фиксированные параметры как §8 pre-run ревизии; якорный
       квартет мощностей MUST-reproduce); прогон `--record` — после 27.09 /
@@ -526,12 +526,47 @@ flowchart TD
       trap), §4.3-канон, якорный квартет тестом, §8-леджер 1–16 (коридор G4b
       на trap-подмножестве, mixed-phrasing activation cost — описательная
       мера; «Amendments stop here»); сьют 3924/2. До первого `--record`
-      закрыть [#382](https://github.com/vesmaro/vesmaro/issues/382).
-- [ ] **Ф2 — примитив за флагом** (только при PASS; default-off; миграции
+      закрыть [#382](https://github.com/vesmaro/vesmaro/issues/382) —
+      закрыт 21.09.
+      **✅ ПЕРВЫЙ ЗАПИСАННЫЙ ПРОГОН 2026-09-27 ([PR #412](https://github.com/vesmaro/vesmaro/pull/412),
+      run `f1-task-scope-9c08f24268dc`): H1 PASS** — A 192/192 vs A0
+      158/192, +17.71 пп, точный McNemar p=1.164e-10, дискорданс 34/0
+      однонаправленный; гварды G1–G4 держатся; H2/H3 — ties (arm ceiling)
+      → §5.2-маршрутизация; realized power ≈ 1.000 при D=0.1771.
+      Гейт ПРОЙДЕН; Ф2 разблокирована (форма — арбитраж владельца, см.
+      строку Ф2 ниже). Пост-record-эра закреплена [PR #421](https://github.com/vesmaro/vesmaro/pull/421)
+      (§9 append-only, пины указывают на записанное состояние).
+- [x] **Ф2 — примитив за флагом** (только при PASS; default-off; миграции
       последними; повторный секрет-скан кросс-контекстных сборок в том же
       PR; дефолт-он = отдельное решение владельца).
-- [ ] **Ф3 — docs-as-memory** (born-quarantine до danger-sweep; повторный
+      **✅ СДАНО 2026-09-28, [PR #420](https://github.com/vesmaro/vesmaro/pull/420)
+      (`7ee30d3`): АРБИТРАЖ ВЛАДЕЛЬЦА** (mnemos `2b3ae42f`) перекрыл
+      §5.2-тай-маршрутизацию в пользу постройки примитива — value call на
+      эргономику/опциональность, БЕЗ миграции схемы (колоночный и
+      табличный варианты отвергнуты), со стоячей сравнительной метрикой
+      (`task_param_queries_total`/`task_tag_queries_total`, атрибуция по
+      caller-intent). `task=` на 9 поверхностях через единственную точку
+      перевода `_normalize_task_boundary` (канон #407); **47 пинов
+      эквивалентности** — A==C по построению, не по утверждению; запись
+      дословно в ADR-0027 §A.3. Ревью поймало до мерджа REST 500-гэп и
+      перекос атрибуции метрики. Хвосты: [#422](https://github.com/vesmaro/vesmaro/issues/422)
+      (REST 500→422), [#423](https://github.com/vesmaro/vesmaro/issues/423)
+      (recency-нога task-постфильтр после limit-fetch).
+- [x] **Ф3 — docs-as-memory** (born-quarantine до danger-sweep; повторный
       скан на выдаче; bump версии ccr_cache при перечанкинге).
+      **✅ СДАНО 2026-09-28, [PR #429](https://github.com/vesmaro/vesmaro/pull/429)
+      (`efc72f9`):** born-quarantine (единый authority-модуль
+      `docs_ingest.py`) → chunk-atomic danger-sweep (authority guard:
+      ручной карантин свипом не снимается) → issuance re-scan (инвариант 7,
+      посаженный contamination пин) → transactional replace+bump
+      (инвариант 4, crash-test #263/#193; версия в `stats` — поза
+      `graph_epoch`); MCP `mnemos_ingest_document` (manifest 28) + REST
+      `POST /ingest-document`; `/ingest-url` не ретро-карантинен (граница
+      запинена). Ревью поймало односимвольную agent-slice регрессию в
+      существующем `/ingest-url`-обработчике — починена + twin-pin.
+      Сьют 4378/2 (+25). Хвост: [#432](https://github.com/vesmaro/vesmaro/issues/432)
+      (штамп-minting на свежих строках + POST-твины 500→422; не блокирует
+      Ф3). Статусная запись Ф3 в ADR-0027 — docs-волна (эпилог эпика).
 - [ ] Синхронизация с D2 [#172](https://github.com/vesmaro/vesmaro/issues/172):
       кросс-граф НЕ часть эпика — гейты D2 (id-tiebreak #280 → измеренный
       retrieval-гейн → worst-link транзитивность no-federate → рёбра
@@ -566,6 +601,17 @@ flowchart TD
 примитив НЕ строится, исход фиксируется в ADR-0027. Это приемлемый
 результат, а не провал эксперимента.
 
+**Риск МАТЕРИЗОВАЛСЯ — и разрешён арбитражем владельца (2026-09-28).**
+Прогон `f1-task-scope-9c08f24268dc` показал именно это: H2/H3 — ties
+(«task-контекст == tag-фильтр» на корпусе, A==C==B на потолке 1.0).
+Зарегистрированная §5.2-маршрутизация отдала форму примитива владельцу —
+и владелец **выбрал строить** (value call на эргономику и опциональность,
+не экспериментальное заявление; без миграции схемы; со стоячей
+сравнительной метрикой для наблюдения adoption-drift). Полная запись —
+ADR-0027 §A.2–§A.3; mnemos `2b3ae42f`. Зарегистрированный риск сработал
+как задумано: он был честно принят, измерен, зафиксирован — и разрешён
+владельцем, а не молча забыт.
+
 
 ## 4c. Memory Graph — самозаправляющийся граф (АрхКом 2026-09-15)
 
@@ -583,23 +629,27 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A0["A0 · ТОПЛИВО (S–M) · линия 4.4.0<br/>миграция: relates_to + веса + provenance/scope<br/>(окно пустой таблицы одноразовое)<br/>авто-минтинг relates_to на write<br/>(FTS+vector top-1..3, без LLM)<br/>capture used/rejected → edge_stats<br/>I1–I3 mutation-verified ДО walk"]
-    GA{{"A0-review:<br/>minting-rate + via_graph>0?<br/>edges/100 → перебазелировать порог"}}
-    A1["A1 · МЕХАНИКА (M) · unlock edges/100 ≥ 50<br/>BFS-2 прикладной уровнями (caps)<br/>feedback APPLY rank-only bounded Δ<br/>graph_epoch в cache key"]
+    A0["A0 · ТОПЛИВО (S–M) · СДАНО 2026-09-16 ✅<br/>миграция relates_to+веса+provenance/scope<br/>авто-минтинг на write · edge_stats<br/>I1–I3 mutation-verified до walk"]
+    GA{{"A0-review ✅ 2026-09-27:<br/>окно подтверждено (256 рёбер,<br/>когорта 2.45/write); гейт перебазелирован:<br/>edges/post-A0-write ≥ 0.5 — снят"}}
+    A1["A1 · МЕХАНИКА ✅ СДАНО 2026-09-28<br/>S1: reserved quota + BFS-2 + graph_epoch<br/>+ статический w_edge-ранж (PR #415)<br/>S2: APPLY f(used) saturating + feedback_epoch<br/>за СВОИМ default-off флагом (PR #425)<br/>enablement — по capture-телеметрии"]
     LR["Later · фазы B/C<br/>B: sidecar (default-OFF), gap detection<br/>C: консолидация, авто-supersedes за флагом<br/>— C за отдельной threat-model сессией"]
     D2S["D2 #172 · каскад цитирований + CCR-индекс<br/>— downstream-слайс эпика"]
     A0 --> GA
-    GA -- "плотность достигнута" --> A1
-    GA -. "топливо не едет" .-> A0R["A0-retune: порог минтинга /<br/>candidate-set калибровка"]
+    GA -- "плотность достигнута (2.45 ≥ 0.5)" --> A1
     A1 -. после телеметрии .-> LR
     A1 -.-> D2S
-    classDef phase fill:#daf5da,stroke:#3d8b3d
+    classDef done fill:#daf5da,stroke:#3d8b3d
     classDef gate fill:#fff3c4,stroke:#b8860b
     classDef later fill:#e8e8f8,stroke:#5b5b9e
-    class A0,A1 phase
+    class A0,A1 done
     class GA gate
-    class LR,D2S,A0R later
+    class LR,D2S later
 ```
+
+> **Статус 2026-09-28: A0 + A1 доставлены** (карточка #325 COMPLETE, всё
+> за default-off флагами `mnemos.graph_walk` / `mnemos.feedback_apply`).
+> Включение флагов — решение владельца по capture-телеметрии;
+> фазы B/C (Later) и D2-слайс — без изменений, за телеметрией A0/A1.
 
 ### Чеклист эпика
 
@@ -611,17 +661,34 @@ flowchart TD
       тесты в том же PR, до включения 1-hop walk `relates_to`; acceptance:
       minting-rate телеметрия + доля поисков `via_graph=True` > 0; guard:
       reference recall@5 ≥ 0.9409; каждая нога default-off флагом до валидации.
-- [ ] **A1 — механика** (unlock-гейт слияния — `edges/100 ≥ 50`, экспертный,
-      revisitable на A0-review; ranking-feature unlock, НЕ access-гейт): BFS-2
-      прикладной уровнями (fanout-cap + total-work-cap, «first anchor wins»,
-      id-tiebreak ADR-0028 не трогаем); feedback APPLY (rank-only, bounded Δ
-      per-principal, uniform-404); `graph_epoch` в cache key CCR/assemble_context.
-      **Статус 2026-09-20:** упреждение N1–N4 ВЛИТО (PR #358: preimage event_id,
-      глобальный кап + транзакционная операторская очистка, single-scan stats);
-      БЛОКЕР — headroom-redesign (walk-обогащение измерено = 0 всегда: векторная
-      нога переполняет страницу, слотов графу не остаётся; очередь комитета,
-      пре-рид 2026-09-27); 7-дневное подтверждающее окно идёт (старт 20.09,
-      органика подтверждена: 9 рёбер день-1).
+      **A0-окно ПОДТВЕРЖДЕНО 2026-09-27** (финальный вердикт 27.09: 256 рёбер /
+      2766 записей ≈ 9.3/100; органика 6–8 рёбер/день; когорта ≈2.45
+      рёбер/post-A0-запись; ноль аномалий каналов; запись mnemos `1b9c0a30`).
+- [x] **A1 — механика** (СДАНО 2026-09-28, S1 [PR #415](https://github.com/vesmaro/vesmaro/pull/415)
+      `6eaa8c5` + S2 [PR #425](https://github.com/vesmaro/vesmaro/pull/425)
+      `2688d57`; карточка [#325](https://github.com/vesmaro/vesmaro/issues/325)
+      COMPLETE): **unlock-гейт перебазелирован АрхКомом 2026-09-27** —
+      written-гейт edges/100 ≥ 50 не достигнут на raw-сторе и недостижим
+      органически (замороженный знаменатель легаси); честная величина —
+      **когорта минтинга: edges per post-A0 write ≥ 0.5** (2.45 ≥ 0.5 —
+      гейт снят; revisitable-клауза ADR исполнена, запись — ADR-0030 §B.2).
+      Контракт комитета (протокол 2026-09-27): S1 = reserved quota
+      k=min(⌈limit/5⌉, limit//2) только на flag-ON пути (`mnemos.graph_walk`;
+      flag-off байт-идентичен A0 — cross-revision A/B + пин
+      walk-ON+пустой-граф==walk-OFF) + слоистый BFS-2 (fanout-cap 32,
+      total-work-cap 512, «first anchor wins») + per-project `graph_epoch`
+      (meta-счётчик; exposed в `search_stats`; инварианты depth-2
+      mutation-verified ДО включения; поправка I3-пина зарегистрирована
+      с обоснованием) + статический `w_edge`-ранж внутри walked-блока.
+      S2 = APPLY (насыщающий f(used)=1+min(used,10)×0.1, rank-only, I6
+      10k-флуд мутационный тест; `feedback_epoch` bump-on-capture
+      идемпотентный; **свой default-off флаг** `mnemos.feedback_apply`;
+      `feedback_boosted_queries_total` = enablement-observable). Ревью S1
+      поймало два дефекта до мерджа (краш starved-fused, дыра backfill
+      tags-фильтра) — оба killer-пины. **Всё за default-off флагами;
+      enablement = отдельное решение по capture-телеметрии** (окно
+      меряло минтинг, не feedback — механика без топлива = собственный
+      анти-паттерн ADR-0030).
 - [ ] **Later:** фаза B (sidecar-верификация default-OFF + gap detection — после
       телеметрии A0/A1); фаза C (Contradicts/DerivedFrom, write-time консолидация,
       авто-supersedes за флагом) — блокируется отдельной threat-model сессией.
