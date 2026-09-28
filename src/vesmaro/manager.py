@@ -1761,8 +1761,11 @@ class MemoryManager:
         task scope. Combined with ``tags=`` the two INTERSECT (both must
         hold — the scope-hierarchy doctrine; passing ``task="x"`` and a
         ``tags`` list already carrying ``task:x`` is the identity, any
-        OTHER ``task:`` tag in ``tags`` is the always-fatal ambiguity of
-        the tag contract).
+        OTHER ``task:`` tag in ``tags`` is a strict-AND no row can
+        satisfy — a SILENT EMPTY result on this READ path: reads run no
+        tag-contract validation; the always-fatal multiple-``task:``
+        check binds to the WRITE paths only, where the contract
+        validates).
 
         A9 (ArchCom 2026-08-27) — project scoping is PRE-RRF on BOTH legs:
         the FTS leg passes ``project`` to ``fts_search`` as before, and the
@@ -1877,9 +1880,13 @@ class MemoryManager:
             task_tag = self._normalize_task_boundary(task)
             # Intersection semantics (both must hold): the minted tag
             # joins the caller's tags list; a duplicate of the SAME tag
-            # is the identity (all(...) membership), a DIFFERENT task:
-            # tag there stays reachable only as the contract's
-            # always-fatal ambiguity — never silently resolved here.
+            # is the identity (all(...) membership). A DIFFERENT task:
+            # tag there makes the filter a strict-AND no row can
+            # satisfy — a silent EMPTY result on this READ path (reads
+            # run no tag-contract validation); the always-fatal
+            # multiple-task: check binds to the write paths only,
+            # where the contract validates. Never silently resolved
+            # here either way.
             tags = [*(tags or []), task_tag]
 
         # Ф2 comparative telemetry (the owner's standing metric): split
@@ -2846,10 +2853,24 @@ class MemoryManager:
             task_tag = self._normalize_task_boundary(task)
             tags.append(task_tag)
         if query:
+            # Ф2 review fix 2 (P2, TL decision — attribute at
+            # CALLER-INTENT): the query leg threads the PARAM form
+            # (``task=``), not the minted tags list, so the comparative
+            # counters attribute uniformly — a caller who used the
+            # first-class parameter on recall_context(query=, task=)
+            # increments task_param_queries_total exactly like the same
+            # call on search/agent_recall. The internal translation
+            # (minting the tag into ``tags``) must NOT leak into the
+            # owner's standing metric: ``task_tag - task_param`` stays
+            # the genuine tag-only share, not an implementation shape.
+            # The recency leg below keeps the tags form (list_all has no
+            # task parameter — the disclosed slice-1 trade-off; list_all
+            # paths run no counters, so attribution is unaffected).
             results = self.search(
                 query=query,
                 tags=tags,
                 project=project,
+                task=task,
                 limit=limit,
             )
             return [r.memory for r in results]
