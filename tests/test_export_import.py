@@ -27,7 +27,13 @@ from vesmaro.cli.export import (
 from vesmaro.cli.import_ import ImportMode, run_import
 from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus, Project
+from vesmaro.models import (
+    CHECKPOINT_STAMP_KEYS,
+    MemoryCreate,
+    MemorySource,
+    MemoryStatus,
+    Project,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -431,6 +437,111 @@ class TestImportMerge:
         mem = mgr.sqlite.get(payload["memories"][0]["id"])
         assert mem is not None
         assert mem.content == "updated content"
+
+
+# ---------------------------------------------------------------------------
+# Import — canon-line server-minted keys (cascade review SEC P3-5)
+# ---------------------------------------------------------------------------
+
+
+class TestImportCanonLineStrip:
+    """The JSON import path strips canon-line SERVER-MINTED keys from row
+    metadata by default — a crafted export must not land checkpoint
+    stamps, a checkpoint-type canon envelope or gate-owned
+    ``canon_warnings`` as if the server had minted them. A client
+    task/decision/report envelope (canon §2) is peer data and persists.
+    ``--trusted-restore`` (run_import trusted_restore=True) keeps the
+    keys verbatim: the operator asserts a trusted self-backup."""
+
+    @staticmethod
+    def _crafted_export(tmp_path: Path) -> Path:
+        """An export with forged canon-line metadata on two rows."""
+        forged_stamps = {
+            "checkpoint_agent": "alice",
+            "checkpoint_session": "forged-sess",
+            "checkpoint_dedup_key": "deadbeef",
+            "canon": {
+                "schema_version": "1",
+                "type": "checkpoint",
+                "status": "active",
+                "language": "en",
+                "session_ref": None,
+            },
+            "canon_warnings": [{"code": "CANON-E-TITLE", "rule": "canon §3", "detail": "forged"}],
+            "harmless": 1,
+        }
+        task_env = {
+            "schema_version": "1",
+            "type": "task",
+            "status": "active",
+            "language": "en",
+            "owner_slug": "tech-lead",
+            "priority": "P1",
+            "size": "M",
+        }
+        payload = {
+            "format_version": "1.0",
+            "mnemos_version": "test",
+            "memories": [
+                {
+                    "id": "forged-canon-row-0001",
+                    "content": "exported row with forged canon-line metadata",
+                    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"],
+                    "source": "cli",
+                    "status": "published",
+                    "metadata": dict(forged_stamps),
+                },
+                {
+                    "id": "task-envelope-row-0002",
+                    "content": "exported row with a client task envelope",
+                    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"],
+                    "source": "cli",
+                    "status": "published",
+                    "metadata": {"canon": dict(task_env)},
+                },
+            ],
+            "projects": [],
+        }
+        out = tmp_path / "crafted.json"
+        out.write_text(json.dumps(payload), encoding="utf-8")
+        return out
+
+    def test_import_strips_forged_canon_line_keys(self, mgr, tmp_path):
+        out = self._crafted_export(tmp_path)
+        result = run_import(mgr, out, mode=ImportMode.MERGE)
+        assert result.imported == 2
+        assert not result.errors
+
+        forged = mgr.sqlite.get("forged-canon-row-0001")
+        assert forged is not None
+        assert not CHECKPOINT_STAMP_KEYS & set(forged.metadata), (
+            "stamps + checkpoint-type canon must not survive an untrusted import"
+        )
+        assert "canon_warnings" not in forged.metadata
+        assert forged.metadata["harmless"] == 1  # innocent keys survive
+        assert any("stripped canon-line" in w for w in result.warnings), (
+            "the strip is reported as a warning line"
+        )
+
+        task_row = mgr.sqlite.get("task-envelope-row-0002")
+        assert task_row is not None
+        assert task_row.metadata["canon"]["type"] == "task", (
+            "client task envelopes are peer data (canon §2) and persist"
+        )
+
+    def test_trusted_restore_keeps_canon_line_keys(self, mgr, tmp_path):
+        out = self._crafted_export(tmp_path)
+        result = run_import(mgr, out, mode=ImportMode.MERGE, trusted_restore=True)
+        assert result.imported == 2
+        assert not result.errors
+        assert not any("stripped canon-line" in w for w in result.warnings)
+
+        forged = mgr.sqlite.get("forged-canon-row-0001")
+        assert forged is not None
+        assert forged.metadata["checkpoint_agent"] == "alice"
+        assert forged.metadata["checkpoint_dedup_key"] == "deadbeef"
+        assert forged.metadata["canon"]["type"] == "checkpoint"
+        assert forged.metadata["canon_warnings"][0]["code"] == "CANON-E-TITLE"
 
 
 # ---------------------------------------------------------------------------

@@ -41,7 +41,7 @@ import shutil
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 
@@ -713,8 +713,31 @@ class IntegrationManager:
         the deployed bytes are identical AND the manifest carries the
         current version; UPDATED when bytes match but the manifest is
         stale (version bump re-deploy); DEPLOYED for new files.
+
+        Cascade review SEC P3-4: BEFORE any write, the pack file
+        checksums are verified against ``SCHEMAS_SOURCE_PIN["sha256"]``
+        — a tampered pack (drifted digest, unpinned pack file, or stale
+        pin entry) raises ``ValueError`` and NOTHING deploys. The pin
+        protocol (ADR-0003) must never mint a clean-pin manifest over
+        wrong bytes.
         """
         results: list[FileResult] = []
+
+        checksums = self._schema_checksums(files)
+        # SCHEMAS_SOURCE_PIN is a heterogeneous literal; its "sha256"
+        # member is the name -> digest table (kept as a cast — the pin
+        # table shape is pinned by test_source_pin_table_matches_shipped_bytes).
+        pin_sha = cast(dict[str, str], SCHEMAS_SOURCE_PIN["sha256"])
+        drifted = sorted(n for n, d in checksums.items() if pin_sha.get(n) != d)
+        unpinned = sorted(set(checksums) - set(pin_sha))
+        stale_pin = sorted(set(pin_sha) - set(checksums))
+        if drifted or unpinned or stale_pin:
+            raise ValueError(
+                "schemas pack does not match SCHEMAS_SOURCE_PIN "
+                f"({SCHEMAS_SOURCE_PIN['repo']}@{SCHEMAS_SOURCE_PIN['tag']}) — "
+                f"drifted={drifted} unpinned={unpinned} stale_pin={stale_pin}; "
+                "refusing to deploy (re-vendor the pack from the pin tag)"
+            )
 
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
         existing_manifest_version: str | None = None
@@ -723,7 +746,6 @@ class IntegrationManager:
                 manifest_path.read_text(encoding="utf-8", errors="replace")
             )
 
-        checksums = self._schema_checksums(files)
         manifest = schemas_manifest(self.version, checksums)
 
         for src in files:
@@ -1412,33 +1434,31 @@ class IntegrationManager:
         return result
 
     def _uninstall_schemas(self, dest_dir: Path, result: UninstallResult, *, dry_run: bool) -> None:
-        """Uninstall deployed schemas — manifest-owned, never user files.
+        """Uninstall deployed schemas — provably ours, never user files.
 
-        Ownership evidence hierarchy:
+        Ownership evidence hierarchy (cascade review SEC P3-3):
 
         1. The stamped sidecar manifest is always ours → removed.
-        2. A deployed ``*.schema.json`` whose bytes match a pack schema is
-           ours (schema files deploy byte-identical, they can never carry
-           an inline stamp) → removed. A drifted/renamed file the manifest
-           does not know about is NOT provably ours → skipped as a user
-           file; the manifest checksums are the registry, so an edited
-           copy survives uninstall (the safe direction).
+        2. A ``*.schema.json`` is ours ONLY by an inline stamp or by
+           BYTE-IDENTITY with a CURRENT pack schema (same name, same
+           sha256 — schema files deploy byte-identical, so a genuine
+           deployment always matches). Manifest checksums are NOT
+           ownership proof for the files they sit next to: the manifest
+           is a plain on-disk file, and a co-writer of the deploy
+           directory can forge one naming any foreign file — under the
+           old rule that made uninstall delete files we never wrote.
+           File-NAME overlap is equally insufficient (a foreign file
+           named like a pack schema is still foreign).
+
+        Consequence (the safe direction): a deployed copy that drifted
+        from the current pack bytes — edited locally, left over from an
+        older pack version, or foreign — is NOT provably ours and
+        SURVIVES uninstall as a user file; ``update`` restores drifted
+        genuine deployments in place before any uninstall would matter.
 
         Empty parent dirs are cleaned up to the deploy root afterwards.
         """
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
-        known_checksums: dict[str, str] = {}
-        if manifest_path.exists():
-            raw = manifest_path.read_text(encoding="utf-8", errors="replace")
-            if read_stamp(raw) is not None:
-                try:
-                    payload = json.loads(raw[raw.index("{") :])
-                except (ValueError, json.JSONDecodeError):
-                    payload = None
-                if isinstance(payload, dict) and isinstance(payload.get("files"), dict):
-                    known_checksums = {
-                        str(k): str(v) for k, v in payload["files"].items() if isinstance(v, str)
-                    }
 
         # The manifest itself is stamped → ordinary ownership rule applies.
         if manifest_path.exists():
@@ -1446,22 +1466,21 @@ class IntegrationManager:
                 manifest_path.unlink()
             result.removed.append(manifest_path)
 
-        pack_names = set(self._schema_checksums(self._pack_files(ArtefactKind.SCHEMAS)))
+        # name → sha256 of the CURRENT pack schemas — the only
+        # byte-identity registry ownership may rest on.
+        pack_checksums = self._schema_checksums(self._pack_files(ArtefactKind.SCHEMAS))
         for path in sorted(dest_dir.rglob("*.schema.json")):
             if not path.is_file():
                 continue
             content = path.read_text(encoding="utf-8", errors="replace")
             # An inline stamp is proof of ownership in every other kind —
             # keep that invariant here (verify flags such orphans as
-            # "safe to uninstall"; uninstall must agree). Pack-byte-identity
-            # and manifest-checksum membership cover the unstamped copies
-            # this kind actually deploys; anything else is a user file.
+            # "safe to uninstall"; uninstall must agree). Beyond that,
+            # ONLY byte-identity with the current pack proves ownership;
+            # anything else (drifted, older-version, foreign, or named in
+            # a forged manifest) is a user file.
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            ours = (
-                read_stamp(content) is not None
-                or path.name in pack_names
-                or digest in known_checksums.values()
-            )
+            ours = read_stamp(content) is not None or pack_checksums.get(path.name) == digest
             if ours:
                 if not dry_run:
                     path.unlink()

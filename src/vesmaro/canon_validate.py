@@ -91,6 +91,29 @@ ENVELOPE_ALLOWED_KEYS: Final[Mapping[str, frozenset[str]]] = {
 TASK_PRIORITIES: Final[frozenset[str]] = frozenset({"P0", "P1", "P2", "P3"})
 TASK_SIZES: Final[frozenset[str]] = frozenset({"XS", "S", "M", "L"})
 
+#: The canon §2 CLIENT-authored envelope types (cascade review SEC P2-2):
+#: task/decision/report carry extras the server cannot know
+#: (owner_slug/priority/size, reversible, period), so a client-supplied
+#: ``metadata.canon`` of one of these types PERSISTS through the
+#: client-facing write paths (generic create/update, JSON import) and
+#: flows into this validator; only the CHECKPOINT type is server-minted
+#: (``save_checkpoint`` is its single minter).
+CLIENT_ENVELOPE_TYPES: Final[frozenset[str]] = frozenset({"task", "decision", "report"})
+
+
+def canon_envelope_is_client_authored(canon: object) -> bool:
+    """True when ``canon`` is a CLIENT-authored envelope (canon §2): a
+    dict whose ``type`` is one of :data:`CLIENT_ENVELOPE_TYPES`.
+
+    ``False`` for everything else — the checkpoint type (server-minted
+    domain) and every malformed shape (non-dict, missing/unknown type):
+    those strip on the client-facing paths exactly like forged stamps
+    (cascade review SEC P2-2). Shared by the manager create/update
+    strips and the JSON import strip so the type rule lives once.
+    """
+    return isinstance(canon, dict) and canon.get("type") in CLIENT_ENVELOPE_TYPES
+
+
 #: Required body sections per canon type (canon §3). The checkpoint tuple
 #: must equal the CHECKPOINT_SECTION_TITLES render order — pinned by tests.
 #: Mirrors schemas/*.schema.json ``x-canon-sections``.
