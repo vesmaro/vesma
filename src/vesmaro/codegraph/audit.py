@@ -1,0 +1,130 @@
+"""PG7 audit trail for the project graph (ADR-0032 §3.6 invariant 7).
+
+Every index / reindex / delete / snippet-read / graph-read lands in the
+append-only ``graph_audit`` table of the SIDECAR database (the table
+ships with the slice-1 schema) — the same ``code_graph.db`` file, but
+through its OWN connection: one sidecar, two writers, WAL-mediated (the
+``CodeGraphStore.db_path`` property documents the contract). Reads are
+attributed per-agent (``actor`` = agent_id, ``session`` = session_id
+when the caller binds one); a call WITHOUT agent attribution is refused
+at the tool layer BEFORE any read happens — this module never sees an
+anonymous actor.
+
+``details`` is a JSON object for coarse counters only (query shape,
+verdicts, byte totals) — NEVER source bytes, snippet text or query
+literals that could smuggle content into the audit trail (PG1 applies
+to the audit too).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+import threading
+from datetime import UTC, datetime
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+#: Audit ``action`` values (the closed vocabulary of §3.6).
+AUDIT_ACTIONS = (
+    "index",
+    "reindex",
+    "delete",
+    "snippet-read",
+    "graph-read",
+)
+
+
+class GraphAudit:
+    """Append-only writer for the sidecar ``graph_audit`` table.
+
+    A dedicated thread-local connection (NOT the store's) keeps the
+    audit path independent of the store's transactions — an audit row
+    for a failed index is exactly the row the operator needs, so the
+    audit write must not share the store's rollback scope.
+    """
+
+    def __init__(self, db_path: str) -> None:
+        self._db_path = str(db_path)
+        self._local = threading.local()
+
+    def _conn(self) -> sqlite3.Connection:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            self._local.conn = conn
+        return conn
+
+    def record(
+        self,
+        project: str,
+        action: str,
+        actor: str,
+        *,
+        session: str | None = None,
+        reason: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Append one audit row. ``action`` must be in the closed
+        vocabulary; ``actor`` is the non-empty agent id (the PG7
+        binding — the tool layer refuses anonymous callers before this
+        runs). A bad row raises (fail-closed): audit is part of the
+        operation, not best-effort telemetry."""
+        if action not in AUDIT_ACTIONS:
+            raise ValueError(f"unknown audit action: {action!r}")
+        if not actor or not actor.strip():
+            raise ValueError("audit requires a non-empty actor (agent attribution, PG7)")
+        try:
+            self._conn().execute(
+                "INSERT INTO graph_audit (project, action, actor, session, reason, details, ts) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (
+                    project,
+                    action,
+                    actor,
+                    session,
+                    reason,
+                    json.dumps(details or {}, ensure_ascii=False),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            self._conn().commit()
+        except sqlite3.Error:
+            logger.exception("graph audit write failed (project=%s action=%s)", project, action)
+            raise
+
+    def recent(self, project: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        """Newest audit rows (debug/eyes surface; never source bytes)."""
+        limit = max(1, min(int(limit), 500))
+        sql = (
+            "SELECT project, action, actor, session, reason, details, ts "
+            "FROM graph_audit"
+        )
+        params: tuple[Any, ...] = ()
+        if project is not None:
+            sql += " WHERE project=?"
+            params = (project,)
+        sql += " ORDER BY id DESC LIMIT ?"
+        rows = self._conn().execute(sql, (*params, limit)).fetchall()
+        return [
+            {
+                "project": r[0],
+                "action": r[1],
+                "actor": r[2],
+                "session": r[3],
+                "reason": r[4],
+                "details": json.loads(r[5]) if r[5] else {},
+                "ts": r[6],
+            }
+            for r in rows
+        ]
+
+    def close(self) -> None:
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None

@@ -986,12 +986,19 @@ class CodeGraphConfig(BaseModel):
     ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB``.
 
     Fields:
+        enabled: Master flag for the project-graph tool surface (the
+            10 graph MCP tools and the ``/graph/`` REST namespace,
+            ADR-0032 §3.3). DEFAULT OFF — «each mechanism default-off
+            until validated» (wave gate): the tools stay in the MCP
+            manifest but every call answers a disabled error until the
+            operator opts in.
         index_max_files: Hard cap on indexed files per project.
             Default 20000 (ADR-0032 §3.4).
         index_max_source_mb: Hard cap on total source bytes per
             project, MiB. Default 500 (ADR-0032 §3.4).
     """
 
+    enabled: bool = False
     index_max_files: int = Field(default=20_000, ge=1)
     index_max_source_mb: int = Field(default=500, ge=1)
 
