@@ -628,8 +628,7 @@ def test_strict_mode_rejects_violating_task_envelope_on_create(
             agent="alice",
         )
     assert any(
-        v.code == "CANON-E-ENVELOPE" and "priority" in v.detail
-        for v in excinfo.value.violations
+        v.code == "CANON-E-ENVELOPE" and "priority" in v.detail for v in excinfo.value.violations
     )
     assert mgr.stats()["total"] == 0  # nothing stored
 
@@ -706,9 +705,9 @@ def test_strict_reject_leaves_no_vault_trace(mgr: MemoryManager) -> None:
             agent="alice",
         )
     assert mgr.stats()["total"] == 0  # nothing stored
-    assert not vault.exists() or not any(
-        vault.rglob("*.md")
-    ), "a rejected write must leave no vault file behind"
+    assert not vault.exists() or not any(vault.rglob("*.md")), (
+        "a rejected write must leave no vault file behind"
+    )
 
 
 # ---------------------------------------------------------------------------

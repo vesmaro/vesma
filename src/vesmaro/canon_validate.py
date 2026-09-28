@@ -113,6 +113,7 @@ def canon_envelope_is_client_authored(canon: object) -> bool:
     """
     return isinstance(canon, dict) and canon.get("type") in CLIENT_ENVELOPE_TYPES
 
+
 #: Required body sections per canon type (canon §3). The checkpoint tuple
 #: must equal the CHECKPOINT_SECTION_TITLES render order — pinned by tests.
 #: Mirrors schemas/*.schema.json ``x-canon-sections``.

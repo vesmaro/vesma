@@ -41,7 +41,7 @@ import shutil
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 
@@ -724,7 +724,10 @@ class IntegrationManager:
         results: list[FileResult] = []
 
         checksums = self._schema_checksums(files)
-        pin_sha: dict[str, str] = SCHEMAS_SOURCE_PIN["sha256"]
+        # SCHEMAS_SOURCE_PIN is a heterogeneous literal; its "sha256"
+        # member is the name -> digest table (kept as a cast — the pin
+        # table shape is pinned by test_source_pin_table_matches_shipped_bytes).
+        pin_sha = cast(dict[str, str], SCHEMAS_SOURCE_PIN["sha256"])
         drifted = sorted(n for n, d in checksums.items() if pin_sha.get(n) != d)
         unpinned = sorted(set(checksums) - set(pin_sha))
         stale_pin = sorted(set(pin_sha) - set(checksums))

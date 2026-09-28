@@ -2639,8 +2639,7 @@ class TestSchemasPack:
         # The forged manifest: properly stamped, lists the foreign files
         # with their TRUE checksums.
         forged_files = {
-            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in (pack_named, arbitrary)
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (pack_named, arbitrary)
         }
         manifest_dest = schemas_dir / SCHEMAS_MANIFEST_NAME
         manifest_dest.write_text(
@@ -2655,9 +2654,9 @@ class TestSchemasPack:
         # The genuine byte-identical schemas still go, the forged stamped
         # manifest goes with the kind.
         removed_names = {p.name for p in uninstall.removed if p.parent == schemas_dir}
-        assert removed_names == (
-            set(self.CANON_SCHEMA_NAMES) - {"task.schema.json"}
-        ) | {SCHEMAS_MANIFEST_NAME}, "only byte-identical pack schemas + manifest removed"
+        assert removed_names == (set(self.CANON_SCHEMA_NAMES) - {"task.schema.json"}) | {
+            SCHEMAS_MANIFEST_NAME
+        }, "only byte-identical pack schemas + manifest removed"
 
     def test_deploy_refuses_tampered_pack_schema(self, tmp_path: Path) -> None:
         """Cascade review SEC P3-4: the schemas deploy verifies pack file
@@ -2697,9 +2696,9 @@ class TestSchemasPack:
 
         with pytest.raises(ValueError, match="SCHEMAS_SOURCE_PIN"):
             mgr.deploy("pincheck")
-        assert not deploy_dir.exists() or not any(
-            deploy_dir.rglob("*")
-        ), "a pin mismatch must leave the deploy dir untouched"
+        assert not deploy_dir.exists() or not any(deploy_dir.rglob("*")), (
+            "a pin mismatch must leave the deploy dir untouched"
+        )
 
     def test_schemas_kind_without_deploy_map_is_skipped(self, tmp_path: Path) -> None:
         """A target without a ``schemas`` deploy key ignores the kind silently."""

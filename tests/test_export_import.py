@@ -467,9 +467,7 @@ class TestImportCanonLineStrip:
                 "language": "en",
                 "session_ref": None,
             },
-            "canon_warnings": [
-                {"code": "CANON-E-TITLE", "rule": "canon §3", "detail": "forged"}
-            ],
+            "canon_warnings": [{"code": "CANON-E-TITLE", "rule": "canon §3", "detail": "forged"}],
             "harmless": 1,
         }
         task_env = {

@@ -1146,9 +1146,7 @@ class MemoryManager:
                     "keys=%s",
                     forged,
                 )
-                data.metadata = {
-                    k: v for k, v in data.metadata.items() if k not in strip_keys
-                }
+                data.metadata = {k: v for k, v in data.metadata.items() if k not in strip_keys}
 
         # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
         # server-minted too — only sweep_document_chunks may write
@@ -1421,9 +1419,7 @@ class MemoryManager:
                     memory_id[:8],
                     forged,
                 )
-                memory.metadata = {
-                    k: v for k, v in memory.metadata.items() if k not in strip_keys
-                }
+                memory.metadata = {k: v for k, v in memory.metadata.items() if k not in strip_keys}
             # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
             # the server-minted class — strip a client-supplied
             # ``doc_swept_at`` (a forged release audit entry); the merge
