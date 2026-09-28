@@ -1858,121 +1858,122 @@ class MemoryManager:
     ) -> list[SearchResult]:
         """Hybrid search: FTS5 + vector + Reciprocal Rank Fusion + graph leg.
 
-        Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
-        task-scope switcher, the bare slug (the ``task:`` prefix is
-        minted HERE, at the boundary — a value already carrying it is
-        rejected with an actionable message). Semantics are BYTE-IDENTICAL
-        to ``tags=["task:<slug>"]`` (the F1 arm-C surface, the A==C
-        equivalence doctrine the F1 experiment measured and this wave
-        pins): both forms thread the SAME ``tags`` filter through every
-        leg, so ``task="x"`` ≡ ``tags=["task:x"]`` on every axis
-        (soft-fallback exemption included). Normalized at the boundary
-        via :func:`vesmaro.models.normalize_task_slug` (the #407 canon —
-        one normalization shared with the save path); an unsalvageable
-        slug raises ``ValueError`` fail-loud, never a silently-different
-        task scope. Combined with ``tags=`` the two INTERSECT (both must
-        hold — the scope-hierarchy doctrine; passing ``task="x"`` and a
-        ``tags`` list already carrying ``task:x`` is the identity, any
-        OTHER ``task:`` tag in ``tags`` is a strict-AND no row can
-        satisfy — a SILENT EMPTY result on this READ path: reads run no
-        tag-contract validation; the always-fatal multiple-``task:``
-        check binds to the WRITE paths only, where the contract
-        validates).
+                Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
+                task-scope switcher, the bare slug (the ``task:`` prefix is
+                minted HERE, at the boundary — a value already carrying it is
+                rejected with an actionable message). Semantics are BYTE-IDENTICAL
+                to ``tags=["task:<slug>"]`` (the F1 arm-C surface, the A==C
+                equivalence doctrine the F1 experiment measured and this wave
+                pins): both forms thread the SAME ``tags`` filter through every
+                leg, so ``task="x"`` ≡ ``tags=["task:x"]`` on every axis
+                (soft-fallback exemption included). Normalized at the boundary
+                via :func:`vesmaro.models.normalize_task_slug` (the #407 canon —
+                one normalization shared with the save path); an unsalvageable
+                slug raises ``ValueError`` fail-loud, never a silently-different
+                task scope. Combined with ``tags=`` the two INTERSECT (both must
+                hold — the scope-hierarchy doctrine; passing ``task="x"`` and a
+                ``tags`` list already carrying ``task:x`` is the identity, any
+                OTHER ``task:`` tag in ``tags`` is a strict-AND no row can
+                satisfy — a SILENT EMPTY result on this READ path: reads run no
+                tag-contract validation; the always-fatal multiple-``task:``
+                check binds to the WRITE paths only, where the contract
+                validates).
 
-        A9 (ArchCom 2026-08-27) — project scoping is PRE-RRF on BOTH legs:
-        the FTS leg passes ``project`` to ``fts_search`` as before, and the
-        vector leg now applies a native store-level project predicate
-        (embedding metadata) plus an authoritative resolve-time guard on
-        the SQLite ``Memory.project``, both BEFORE fusion — out-of-project
-        rows never surface and never consume RRF rank slots. ``project``
-        of ``None`` (or empty) is the EXPLICIT global mode: the search is
-        cross-project by definition and is counted in
-        ``search_stats()["cross_project_requests_total"]`` for audit.
+                A9 (ArchCom 2026-08-27) — project scoping is PRE-RRF on BOTH legs:
+                the FTS leg passes ``project`` to ``fts_search`` as before, and the
+                vector leg now applies a native store-level project predicate
+                (embedding metadata) plus an authoritative resolve-time guard on
+                the SQLite ``Memory.project``, both BEFORE fusion — out-of-project
+                rows never surface and never consume RRF rank slots. ``project``
+                of ``None`` (or empty) is the EXPLICIT global mode: the search is
+                cross-project by definition and is counted in
+                ``search_stats()["cross_project_requests_total"]`` for audit.
 
-        A9-completion (epic #308 Ф1-PREP, #360 review) — the AGENT
-        predicate: native on the FTS leg only; the vector resolve loop
-        and the graph leg carry the authoritative resolve-time mirror on
-        the SQLite ``Memory.agent``, so ``agent=``-scoped searches never
-        surface other agents' rows through a stale embed or an edge
-        neighbour. No native VectorStore agent predicate by TL decision
-        (the store stays project-only; scoping guards resolve here).
+                A9-completion (epic #308 Ф1-PREP, #360 review) — the AGENT
+                predicate: native on the FTS leg only; the vector resolve loop
+                and the graph leg carry the authoritative resolve-time mirror on
+                the SQLite ``Memory.agent``, so ``agent=``-scoped searches never
+                surface other agents' rows through a stale embed or an edge
+                neighbour. No native VectorStore agent predicate by TL decision
+                (the store stays project-only; scoping guards resolve here).
 
-        Search v2 (issue #313) — PROJECT SOFT FALLBACK: a scoped search
-        that returns ZERO rows is retried ONCE without the scope (the
-        A9 pre-RRF predicate is unchanged — the fallback is a NEW OUTER
-        retry, not a change to A9 semantics; the retry itself runs in the
-        explicit global mode). Results that surface ONLY via the retry
-        carry ``project_scope_fallback=True`` so the caller can see they
-        are cross-project relative to the original request, and the event
-        is counted in ``search_stats()["project_scope_fallback_total"]``.
-        Deliberately NOT retried: ``status``-drilled queries — a drill-
-        down is the caller asserting the row's lifecycle, and an unscoped
-        retry would resurface junk from other projects' lanes (the same
-        status policy is KEPT on the retry; the guard here is that a
-        scoped ``status=`` query returning zero is information, not a
-        scope-drift candidate). ADR-0027 Phase 0 (#308) adds the same
-        exemption for TASK-SCOPED queries — a ``tags`` filter carrying a
-        ``task:`` tag asserts the task dimension of the scope hierarchy
-        (project x agent x session x task, inheritance = INTERSECTION),
-        and a task tag may only NARROW, never widen: the retry keeps the
-        task tag while dropping the project scope, which would surface
-        foreign-project rows into a task view. Zero rows in a task scope
-        is information ("this task has no matching rows yet"), not scope
-        drift.
+                Search v2 (issue #313) — PROJECT SOFT FALLBACK: a scoped search
+                that returns ZERO rows is retried ONCE without the scope (the
+                A9 pre-RRF predicate is unchanged — the fallback is a NEW OUTER
+                retry, not a change to A9 semantics; the retry itself runs in the
+                explicit global mode). Results that surface ONLY via the retry
+                carry ``project_scope_fallback=True`` so the caller can see they
+                are cross-project relative to the original request, and the event
+                is counted in ``search_stats()["project_scope_fallback_total"]``.
+                Deliberately NOT retried: ``status``-drilled queries — a drill-
+                down is the caller asserting the row's lifecycle, and an unscoped
+                retry would resurface junk from other projects' lanes (the same
+                status policy is KEPT on the retry; the guard here is that a
+                scoped ``status=`` query returning zero is information, not a
+                scope-drift candidate). ADR-0027 Phase 0 (#308) adds the same
+                exemption for TASK-SCOPED queries — a ``tags`` filter carrying a
+                ``task:`` tag asserts the task dimension of the scope hierarchy
+                (project x agent x session x task, inheritance = INTERSECTION),
+                and a task tag may only NARROW, never widen: the retry keeps the
+                task tag while dropping the project scope, which would surface
+                foreign-project rows into a task view. Zero rows in a task scope
+                is information ("this task has no matching rows yet"), not scope
+                drift.
 
-        Graph leg v1 (issue #313): after RRF fusion, the top-``limit``
-        fused ids are 1-hop expanded along ``memory_edges`` (BOTH
-        directions of ``supersedes``); edge-sourced rows not already
-        fused are appended with a decayed rank slot and
-        ``via_graph=True`` provenance, passing the SAME gates as the
-        fused rows on every axis: project (the A9 authoritative guard —
-        an edge never widens a scope), agent (the A9-completion
-        resolve-time mirror — same rule, Ф1-PREP epic #308), status
-        (default set AND the explicit ``status=`` drill-down), quarantine
-        (ADR-0019 §5) and refined_only (§4). Headroom-gated: the expansion runs only when
-        the fused legs left room (a full fused page needs no
-        enrichment); no edges → the leg is a no-op. ADR-0030 A0 (issue
-        #324): with ``mnemos.graph_walk`` ON (default OFF) the walk
-        additionally expands ``relates_to`` neighbours under the
-        identical gates and decay — invariants I1-I3 are pinned by
-        tests/test_graph_walk_invariants.py.
+                Graph leg v1 (issue #313): after RRF fusion, the top-``limit``
+                fused ids are 1-hop expanded along ``memory_edges`` (BOTH
+                directions of ``supersedes``); edge-sourced rows not already
+                fused are appended with a decayed rank slot and
+                ``via_graph=True`` provenance, passing the SAME gates as the
+                fused rows on every axis: project (the A9 authoritative guard —
+                an edge never widens a scope), agent (the A9-completion
+                resolve-time mirror — same rule, Ф1-PREP epic #308), status
+                (default set AND the explicit ``status=`` drill-down), quarantine
+                (ADR-0019 §5) and refined_only (§4). Headroom-gated: the expansion runs only when
+                the fused legs left room (a full fused page needs no
+                enrichment); no edges → the leg is a no-op. ADR-0030 A0 (issue
+                #324): with ``mnemos.graph_walk`` ON (default ON since the owner
+        decision of 2026-09-28) the walk
+                additionally expands ``relates_to`` neighbours under the
+                identical gates and decay — invariants I1-I3 are pinned by
+                tests/test_graph_walk_invariants.py.
 
-        Status filtering precedence:
-          1. Explicit ``status`` — always wins (caller knows what they want).
-          2. ``include_raw=True`` — all statuses EXCEPT ``archived`` are
-             returned. ``archived`` means "intentionally hidden from normal
-             search" and is excluded unless the caller passes
-             ``status=MemoryStatus.ARCHIVED`` explicitly.
-          3. Default (``include_raw=False``, no ``status``) — only
-             ``published`` and ``processed`` memories surface, preserving the
-             documented "Only searches 'published' knowledge units by default"
-             contract.
+                Status filtering precedence:
+                  1. Explicit ``status`` — always wins (caller knows what they want).
+                  2. ``include_raw=True`` — all statuses EXCEPT ``archived`` are
+                     returned. ``archived`` means "intentionally hidden from normal
+                     search" and is excluded unless the caller passes
+                     ``status=MemoryStatus.ARCHIVED`` explicitly.
+                  3. Default (``include_raw=False``, no ``status``) — only
+                     ``published`` and ``processed`` memories surface, preserving the
+                     documented "Only searches 'published' knowledge units by default"
+                     contract.
 
-        ADR-0019 §5 — on every status-filtered leg (2 and 3 above) the
-        quarantine predicate composes with the allowed set AND holds
-        absolutely on its own: ``pipeline_state='quarantined'`` rows are
-        excluded from issuance REGARDLESS of status — an EXPLICIT
-        ``status=`` drill-down included (quarantined rows carry
-        status='published', and the external payloads carry no
-        pipeline_state, so the caller could not even detect the
-        contamination). Direct ``get`` by id stays the documented
-        residual access until the B2 retraction render. The graph
-        expansion path runs the SAME absolute quarantine predicate — an
-        edge neighbour is never a quarantine side door.
+                ADR-0019 §5 — on every status-filtered leg (2 and 3 above) the
+                quarantine predicate composes with the allowed set AND holds
+                absolutely on its own: ``pipeline_state='quarantined'`` rows are
+                excluded from issuance REGARDLESS of status — an EXPLICIT
+                ``status=`` drill-down included (quarantined rows carry
+                status='published', and the external payloads carry no
+                pipeline_state, so the caller could not even detect the
+                contamination). Direct ``get`` by id stays the documented
+                residual access until the B2 retraction render. The graph
+                expansion path runs the SAME absolute quarantine predicate — an
+                edge neighbour is never a quarantine side door.
 
-        ADR-0019 §4 — ``refined_only=True`` additionally keeps only
-        entries whose served projection is the refined one
-        (``pipeline_state='refined'``); NULL/legacy pipeline_state rows
-        never match. Composable with every status mode above.
+                ADR-0019 §4 — ``refined_only=True`` additionally keeps only
+                entries whose served projection is the refined one
+                (``pipeline_state='refined'``); NULL/legacy pipeline_state rows
+                never match. Composable with every status mode above.
 
-        mnemos #400 — the QUERY boundary normalizes a non-empty
-        ``project`` with :func:`vesmaro.models.normalize_project_slug`
-        (single authority: the same normalization the checkpoint save
-        boundary and the tag-contract lax mode apply), so a
-        ``project='MyProject'`` filter hits the ``myproject`` rows instead
-        of silently returning zero in-scope rows and tripping the #313
-        soft fallback across projects. ``project=None``/empty stays the
-        EXPLICIT global mode — untouched.
+                mnemos #400 — the QUERY boundary normalizes a non-empty
+                ``project`` with :func:`vesmaro.models.normalize_project_slug`
+                (single authority: the same normalization the checkpoint save
+                boundary and the tag-contract lax mode apply), so a
+                ``project='MyProject'`` filter hits the ``myproject`` rows instead
+                of silently returning zero in-scope rows and tripping the #313
+                soft fallback across projects. ``project=None``/empty stays the
+                EXPLICIT global mode — untouched.
         """
         _t0 = time.monotonic()
 

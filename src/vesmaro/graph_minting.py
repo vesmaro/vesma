@@ -52,8 +52,8 @@ This module holds the CONSTANTS and the PURE candidate selector so the
 exclusion set (invariants I4 / §5 / intra-project / admissibility) is
 unit-testable without a store. The orchestration (retrieval, edge
 insert, telemetry) lives in ``MemoryManager._mint_relates_to_edges``;
-the flag gate (``mnemos.graph_auto_mint``, default OFF) lives at that
-call site.
+the flag gate (``mnemos.graph_auto_mint``, default ON since the
+owner decision of 2026-09-28) lives at that call site.
 """
 
 from __future__ import annotations

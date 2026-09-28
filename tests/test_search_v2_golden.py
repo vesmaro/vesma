@@ -60,11 +60,17 @@ CORPUS_HYPHEN_PROSE = "the release trigger fires before the deploy window"
 
 
 def _settings(tmp: Path) -> Settings:
+    # Leg-isolation goldens: the vector leg is wiped per-test, and the
+    # graph legs (auto-mint + walk, default-on since the owner decision
+    # of 2026-09-28) are pinned OFF — each golden pins ONE leg's
+    # semantics; the graph surface has its own suites.
     settings = Settings(
         mnemos={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
+            "graph_auto_mint": False,
+            "graph_walk": False,
         },
         scanner={"enabled": False},
     )

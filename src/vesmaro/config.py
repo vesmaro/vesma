@@ -49,12 +49,14 @@ class MnemosConfig(BaseModel):
     # write: after every add, ONE synchronous hybrid search through the
     # EXISTING FTS+vector legs mints up to 3 `relates_to` edges to
     # near-duplicate candidates (provenance 'auto-dedupe', raised weight;
-    # exclusions per ADR-0030 I4/§5/intra-project). Default OFF until
-    # validated on the live corpus — ADR-0030 Decision 2, "Acceptance and
-    # guards": each leg ships default-off behind a flag. Minting is
-    # best-effort: a minting failure never fails the write.
-    # Canonical env override: VESMARO_MNEMOS__GRAPH_AUTO_MINT=true.
-    graph_auto_mint: bool = False
+    # exclusions per ADR-0030 I4/§5/intra-project). DEFAULT ON (owner
+    # decision 2026-09-28 «graphs on by default»): the A0-review density
+    # gate was met on the live corpus (cohort ≥0.5 edges/write, 7-day
+    # window, ADR-0030 addendum B.1) — minting is the fuel line the
+    # ecosystem builds on. Minting is best-effort: a minting failure
+    # never fails the write.
+    # Canonical env override: VESMARO_MNEMOS__GRAPH_AUTO_MINT=false.
+    graph_auto_mint: bool = True
     # ADR-0030 A0 (issue #324) — the 1-hop ``relates_to`` walk in the
     # search graph leg: the leg extends from ``supersedes`` (both
     # directions, unchanged) to also expand ``relates_to`` neighbours,
@@ -62,23 +64,23 @@ class MnemosConfig(BaseModel):
     # F2, ADR-0019 §4/§5) and the existing decay rule. Invariants
     # I1-I3 are codified as mutation-verified contract tests
     # (tests/test_graph_walk_invariants.py) — the Security condition
-    # for letting minted fuel reach search. Default OFF until validated
-    # on the live corpus (ADR-0030 Decision 2, "Acceptance and guards":
-    # each leg ships default-off behind a flag).
-    # Canonical env override: VESMARO_MNEMOS__GRAPH_WALK=true.
-    graph_walk: bool = False
+    # for letting minted fuel reach search. DEFAULT ON (owner decision
+    # 2026-09-28): S1 shipped with the reserved-quota discipline and
+    # the dedicated guard floor recall@5 ≥ 0.9121 (ADR-0030 B.3).
+    # Canonical env override: VESMARO_MNEMOS__GRAPH_WALK=false.
+    graph_walk: bool = True
     # ADR-0030 A1-S2 (issue #325) — feedback APPLY: the edge_stats
     # `used` counters multiply walked-block edge weights by a
     # SATURATING, bounded factor (I6: rank-only, bounded Δ per
     # principal — never eligibility, never the fused block, never past
     # the quota). INDEPENDENT of `graph_walk` by committee ruling
     # (ArchCom 2026-09-27, verdict (c) Security residual: independent
-    # default-off flag per leg): graph_walk=OFF ⇒ apply is inert (the
-    # walk does not run); graph_walk=ON + feedback_apply=OFF ⇒ A1-S1
-    # behavior byte-identical. Default OFF — enablement is a separate
-    # decision gated on proven capture telemetry (committee condition).
-    # Canonical env override: VESMARO_MNEMOS__FEEDBACK_APPLY=true.
-    feedback_apply: bool = False
+    # flag per leg): graph_walk=OFF ⇒ apply is inert (the walk does
+    # not run); graph_walk=ON + feedback_apply=OFF ⇒ A1-S1 behavior
+    # byte-identical. DEFAULT ON (owner decision 2026-09-28); capture
+    # telemetry validated in the A0 7-day window.
+    # Canonical env override: VESMARO_MNEMOS__FEEDBACK_APPLY=false.
+    feedback_apply: bool = True
     # mnemos #96: workflow lifecycle guardrails. Stale-lock threshold governs
     # how long a lock survives before a different actor can take it over
     # without ``force`` (guardrail 2). Rate limit caps transitions per memory
@@ -198,14 +200,16 @@ class SearchConfig(BaseModel):
     # recall@5 +3.9pp (nano) / +3.7pp (lexical), zero G-neg displacement.
     hybrid_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
     # ADR-0030 A0 (issue #323) — used/rejected feedback CAPTURE into the
-    # append-only ``edge_stats`` table (I5). DEFAULT OFF: every leg of
-    # the memory-graph line ships dark until validated (ADR-0030
-    # Decision 2, "Acceptance and guards"). Capture only — feedback has
-    # ZERO ranking influence in A0; APPLY (rank-only, bounded Δ) is
-    # slice A1 (#325). Flag off = ``report_search_feedback`` performs no
-    # writes and no telemetry (zero behavior). Env:
-    # ``VESMARO_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
-    feedback_capture_enabled: bool = False
+    # append-only ``edge_stats`` table (I5). DEFAULT ON (owner decision
+    # 2026-09-28 «graphs on by default»): capture is the fuel
+    # ``feedback_apply`` consumes — an apply without capture is
+    # decorative, so the whole loop ships enabled together (capture
+    # telemetry was validated in the A0 7-day window; I5 caps volume,
+    # capture-only has zero ranking influence). Flag off =
+    # ``report_search_feedback`` performs no writes and no telemetry
+    # (and ``feedback_apply`` stays inert on an empty counter set).
+    # Env: ``VESMARO_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
+    feedback_capture_enabled: bool = True
 
 
 class ApiConfig(BaseModel):
@@ -988,10 +992,10 @@ class CodeGraphConfig(BaseModel):
     Fields:
         enabled: Master flag for the project-graph tool surface (the
             10 graph MCP tools and the ``/graph/`` REST namespace,
-            ADR-0032 §3.3). DEFAULT OFF — «each mechanism default-off
-            until validated» (wave gate): the tools stay in the MCP
-            manifest but every call answers a disabled error until the
-            operator opts in.
+            ADR-0032 §3.3). DEFAULT ON (owner decision 2026-09-28
+            «graphs on by default»: ecosystem components build on the
+            graphs, so they are first-class, not an opt-in). Set
+            ``false`` to hide the graph from agents entirely.
         index_max_files: Hard cap on indexed files per project.
             Default 20000 (ADR-0032 §3.4).
         index_max_source_mb: Hard cap on total source bytes per
@@ -1006,10 +1010,12 @@ class CodeGraphConfig(BaseModel):
             trigger (b), slice 6): registers a light poll task INSIDE
             the server process (no daemon) that checks graph-file
             mtime+size on an adaptive interval and reindexes on actual
-            changes (audit reason ``watch``). DEFAULT OFF — separate
-            opt-in from ``enabled`` (a poll that mutates the sidecar
-            without an explicit call is the noisier mechanism). The
-            master ``enabled`` gate still applies on top.
+            changes (audit reason ``watch``). DEFAULT ON (owner
+            decision 2026-09-28): the poll is inert until a project
+            is EXPLICITLY registered via ``watch_start`` (it never
+            seeds a first index and never runs uninvited), so the
+            default costs nothing while keeping the surface usable
+            without a second operator toggle.
         watch_max_registrations: Global cap on ACTIVE watch
             registrations per process (contract §3.2: per-session 1 /
             global 8 — an MCP call carries no session context, so the
@@ -1017,18 +1023,18 @@ class CodeGraphConfig(BaseModel):
             ``watch_stop`` is the slice-6 binding). A registration
             beyond the cap is refused.
         watch_base_interval_sec / watch_interval_per_500_files /
-            watch_max_interval_sec: The adaptive poll interval model
+        watch_max_interval_sec: The adaptive poll interval model
             (contract §3.2): ``base + (files // 500) * per_500``, capped
             — 5s base, +1s per 500 files, 60s cap. Exposed as config
             fields so tests can shrink them (injection) and operators
             can widen them; the DEFAULTS are the contract's numbers.
     """
 
-    enabled: bool = False
+    enabled: bool = True
     index_max_files: int = Field(default=20_000, ge=1)
     index_max_source_mb: int = Field(default=500, ge=1)
     beacon: bool = True
-    watch: bool = False
+    watch: bool = True
     watch_max_registrations: int = Field(default=8, ge=1)
     watch_base_interval_sec: float = Field(default=5.0, ge=0.01)
     watch_interval_per_500_files: float = Field(default=1.0, ge=0.0)

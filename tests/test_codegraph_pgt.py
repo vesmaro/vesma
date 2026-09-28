@@ -26,7 +26,7 @@ leave open and does NOT duplicate their coverage:
 Plus the PG-0 acceptance on THIS repository (contract §4): the
 self-index over ``src/`` with tmp-only storage (the real ``~/.mnemos``
 and the main DB are never touched), the honest status circuit, and the
-config default-off gate.
+config gate (default-on since the owner decision of 2026-09-28).
 """
 
 from __future__ import annotations
@@ -500,20 +500,22 @@ class TestStatusCircuit:
         assert service.status(PROJECT, agent=AGENT)["staleness"]["changed_files"] == []
 
 
-# ── config sanity: the wave gate (default-off) ───────────────────────────────
+# ── config sanity: default-on (owner decision 2026-09-28) ───────────────────
 
 
-class TestConfigDefaultOff:
+class TestConfigDefaults:
     def test_code_graph_config_defaults(self) -> None:
         config = CodeGraphConfig()
-        assert config.enabled is False
-        assert config.watch is False
-        # beacon defaults ON by design but is INERT under the master
-        # flag (beacon_line returns None) — the gate is ``enabled``.
+        # Owner decision 2026-09-28 «graphs on by default»: ecosystem
+        # components build on the graphs; tree-sitter is core since the
+        # same decision. Disabling remains a one-flag operator choice.
+        assert config.enabled is True
+        # The watch poll is inert until an EXPLICIT watch_start
+        # registration — on-by-default costs nothing.
+        assert config.watch is True
         assert config.beacon is True
-        # The Settings-level default is the same gate.
         default = Settings.model_fields["code_graph"].default
-        assert isinstance(default, CodeGraphConfig) and default.enabled is False
+        assert isinstance(default, CodeGraphConfig) and default.enabled is True
 
     def test_explicit_subflags_inert_while_master_off(self, tmp_path: Path) -> None:
         """beacon=True + watch=True change nothing while enabled=False."""
@@ -531,9 +533,11 @@ class TestConfigDefaultOff:
         finally:
             service.close()
 
-    def test_default_manager_activates_nothing(self, tmp_path: Path) -> None:
-        """A manager with DEFAULT settings: no service, no watch, no
-        beacon — по умолчанию ничего не активируется (wave gate)."""
+    def test_default_manager_is_inert_until_used(self, tmp_path: Path) -> None:
+        """Default settings (graphs ON, owner 2026-09-28): the service
+        exists, but NOTHING runs by itself — no watch registrations, no
+        beacon without an index, zero nodes anywhere. The graph waits
+        for an explicit index_project, not the other way around."""
         settings = Settings(
             mnemos={
                 "vault_path": str(tmp_path / "vault"),
@@ -545,8 +549,11 @@ class TestConfigDefaultOff:
         settings.resolve_paths()
         mgr = MemoryManager(settings)
         try:
-            assert mgr.get_codegraph_service() is None
-            assert mgr.watch_status()["watch_enabled"] is False
+            service = mgr.get_codegraph_service()
+            assert service is not None  # default-on since 2026-09-28
+            assert mgr.watch_status()["watch_enabled"] is True
+            assert mgr.watch_status()["registrations"] == []
             assert "project-graph" not in mgr.assemble_context(session="s", project=PROJECT)["text"]
+            assert service.store.count_nodes(PROJECT) == 0
         finally:
             mgr.close()

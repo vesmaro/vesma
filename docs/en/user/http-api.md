@@ -1031,7 +1031,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 ---
 
-## Project graph (ADR-0032, default-off)
+## Project graph (ADR-0032)
 
 The `/graph/` namespace mirrors the ten [`mnemos_*graph*` MCP tools](mcp-tools.md#project-graph-tools-adr-0032) over a registered project's code graph (symbols, outlines, snippets — [ADR-0032](../../project/adr/0032-project-graph.md)).
 
@@ -1365,7 +1365,7 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
 
 These endpoints manage the in-process watch poll: a single cooperative thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes. They mirror the `mnemos_watch_start`, `mnemos_watch_stop`, and `mnemos_watch_status` MCP tools.
 
-> **Changed.** The former directory-watcher form (`paths=` / `scan=` / `include_rules=`) was an unimplemented stub and is gone — those fields are no longer accepted. `POST /watch/start` requires the operator flags `code_graph.enabled` and `code_graph.watch` (both default off) plus an existing index; otherwise `503` / `400`.
+> **Changed.** The former directory-watcher form (`paths=` / `scan=` / `include_rules=`) was an unimplemented stub and is gone — those fields are no longer accepted. `POST /watch/start` requires the graph flags (on by default since 2026-09-28) plus an existing index; an explicit `code_graph.enabled: false` yields `503`, an unregistered project `403`.
 
 ### `POST /watch/start` — register the project-graph watch poll
 

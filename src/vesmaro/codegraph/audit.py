@@ -100,10 +100,7 @@ class GraphAudit:
     def recent(self, project: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """Newest audit rows (debug/eyes surface; never source bytes)."""
         limit = max(1, min(int(limit), 500))
-        sql = (
-            "SELECT project, action, actor, session, reason, details, ts "
-            "FROM graph_audit"
-        )
+        sql = "SELECT project, action, actor, session, reason, details, ts FROM graph_audit"
         params: tuple[Any, ...] = ()
         if project is not None:
             sql += " WHERE project=?"

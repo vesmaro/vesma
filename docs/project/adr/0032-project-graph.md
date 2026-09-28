@@ -4,6 +4,19 @@
 each wave PG-0..PG-3 launches only on an explicit owner green-light;
 the owner-only questions are listed in «Open questions». Decision
 mnemos id `266aa582`; contract mnemos id `b7572c97`.
+
+**Update 2026-09-28 (owner, same day):** «graphs on by default» — the
+owner exercised the reserved default-on decision for BOTH graph
+families: `graph_auto_mint` / `graph_walk` / `feedback_apply`
+(ADR-0030) and `code_graph.enabled` / `code_graph.watch` (this ADR)
+now default to `true`; `tree-sitter` was promoted from the
+`[code-graph]` extra to a CORE dependency in the same unreleased wave
+(a default-enabled flag over a missing dependency would be a silent
+degradation). Verified after the flip: full suite green (4575), bench
+s1 gate PASS (recall@5 = 0.9484 vs the 0.9121 walk-on guard floor),
+and the graph remains inert until an explicit `index_project` /
+`watch_start`. The operator can still hide the surface with
+`code_graph.enabled: false`. Decision mnemos id `8457c635`.
 **Deciders:** Tech Lead (chair), Product Architect, Senior System Engineer,
 Senior Security Engineer — all four entered conditional positions; the
 challenge phase converged every one (Python-only wave 1, beacon before

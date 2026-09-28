@@ -427,11 +427,13 @@ class TestWatch:
         )
         assert resp.status_code == 422  # project_id/agent are required now
 
-    def test_watch_start_disabled_without_operator_flags(self, client):
-        """Default config keeps code_graph.enabled=false → 503 operator gate."""
+    def test_watch_start_unknown_project_confined(self, client):
+        """Default-on (owner 2026-09-28): the graph surface answers — an
+        UNREGISTERED project is refused by PG2 confinement (403), not by
+        an operator gate."""
         resp = client.post("/watch/start", json={"project_id": "smoke", "agent": "qa"})
-        assert resp.status_code == 503
-        assert "disabled" in resp.json()["detail"].lower()
+        assert resp.status_code == 403
+        assert "registered" in resp.json()["detail"].lower()
 
     def test_watch_status_shape(self, client):
         """Status is available without any start and reports the gate state."""
@@ -441,7 +443,9 @@ class TestWatch:
         assert "running" in data
         assert isinstance(data["running"], bool)
         assert data["running"] is False
-        assert data["watch_enabled"] is False
+        # default-on (owner 2026-09-28): the poll is armed, just idle —
+        # no registrations exist in this fixture.
+        assert data["watch_enabled"] is True
 
     def test_watch_stop(self, client):
         """Stop returns status=stopped."""

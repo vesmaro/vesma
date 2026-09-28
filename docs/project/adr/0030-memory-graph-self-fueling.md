@@ -468,3 +468,11 @@ decision — the owner chose the no-migration form on 2026-09-28
   (≈ 1.0 single-leg / ≈ 2.0 both-legs at `rrf_k = 60`) were
   re-derived from the quoted totals and the shipped decay formula
   during the writing of this addendum.
+
+### B.9 Owner default-on decision (2026-09-28, one line)
+
+«Graphs on by default» (owner, mnemos `8457c635`): `graph_auto_mint`,
+`graph_walk` and `feedback_apply` flipped to default `true` — the
+reserved default-on decision of Decision 2, exercised after the B.1
+density gate held and S1/S2 shipped with their guard floors; bench s1
+re-run after the flip: gate PASS, recall@5 = 0.9484 (floor 0.9121).

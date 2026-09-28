@@ -121,21 +121,18 @@ def mini_repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (root / "test_app.py").write_text(
-        "from app import Derived\n"
-        "\n"
-        "def test_derived():\n"
-        "    assert Derived is not None\n",
+        "from app import Derived\n\ndef test_derived():\n    assert Derived is not None\n",
         encoding="utf-8",
     )
     (root / "notes.py").write_text(
-        "LINE_A = 'alpha'\n" "LINE_B = 'beta'\n" "LINE_C = 'gamma'\n",
+        "LINE_A = 'alpha'\nLINE_B = 'beta'\nLINE_C = 'gamma'\n",
         encoding="utf-8",
     )
     # three ~180-char lines: a 128-token budget (512 bytes) fits only two
     # of them → the snippet token window must drop the third WHOLE line
     filler = "a" * 172
     (root / "longlines.py").write_text(
-        f'V1 = "{filler}"\n' f'V2 = "{filler}"\n' f'V3 = "{filler}"\n',
+        f'V1 = "{filler}"\nV2 = "{filler}"\nV3 = "{filler}"\n',
         encoding="utf-8",
     )
     (root / "longname.py").write_text(
@@ -214,9 +211,7 @@ class TestTokenContractUnits:
 
 class TestTokenContractSearch:
     def test_ceiling_and_opt_in_signatures(self, indexed: CodeGraphService) -> None:
-        result = indexed.search_graph(
-            PROJECT, "Base", agent=AGENT, max_output_tokens=640, limit=50
-        )
+        result = indexed.search_graph(PROJECT, "Base", agent=AGENT, max_output_tokens=640, limit=50)
         budget_bytes = 640 * BYTES_PER_TOKEN
         spent = sum(_row_bytes(r) for r in result["results"])
         assert spent <= budget_bytes
@@ -358,9 +353,7 @@ class TestSnippetPG4:
         # the whole requested range fit — nothing left over
         assert snippet["has_more"] is False and snippet["next_start_line"] is None
 
-    def test_snippet_budget_truncates_range_whole_lines(
-        self, indexed: CodeGraphService
-    ) -> None:
+    def test_snippet_budget_truncates_range_whole_lines(self, indexed: CodeGraphService) -> None:
         snippet = indexed.get_code_snippet(
             PROJECT, "longlines.py", 1, 3, agent=AGENT, max_output_tokens=128
         )
@@ -393,9 +386,7 @@ class TestSnippetPG4:
         the issuance fail-closed (the scan at issue is mandatory, PG4)."""
         import vesmaro.codegraph.service as service_module
 
-        monkeypatch.setattr(
-            service_module, "detect_secrets", lambda content: [object()]
-        )
+        monkeypatch.setattr(service_module, "detect_secrets", lambda content: [object()])
         monkeypatch.setattr(
             service_module, "findings_by_pattern", lambda findings: {"new-pattern": 1}
         )
@@ -460,7 +451,7 @@ class TestPGMechanics:
 
     def test_flag_off_answers_disabled(self, tmp_path: Path, mini_repo: Path) -> None:
         main = FakeMainStore(FakeProject(id="p-1", name=PROJECT, paths=[str(mini_repo)]))
-        service = CodeGraphService(main, tmp_path / "data", CodeGraphConfig())  # type: ignore[arg-type]
+        service = CodeGraphService(main, tmp_path / "data", CodeGraphConfig(enabled=False))  # type: ignore[arg-type]
         with pytest.raises(GraphDisabledError, match="disabled"):
             service.index_project(PROJECT, agent=AGENT)
         with pytest.raises(GraphDisabledError):
@@ -486,9 +477,7 @@ class TestPGMechanics:
         with pytest.raises(GraphConfinementError):
             indexed.check_coverage(PROJECT, ["../../secrets.env"], agent=AGENT)
 
-    def test_pg7_limit_breach_publishes_nothing(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_pg7_limit_breach_publishes_nothing(self, tmp_path: Path, mini_repo: Path) -> None:
         service, _ = make_service(tmp_path, mini_repo, index_max_files=1)
         with pytest.raises(IndexLimitError):
             service.index_project(PROJECT, agent=AGENT)
@@ -542,9 +531,7 @@ class TestMcpLayer:
         from vesmaro.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
-        result = _handle_graph(
-            "mnemos_project_graph_status", mgr, {"project_id": PROJECT}
-        )
+        result = _handle_graph("mnemos_project_graph_status", mgr, {"project_id": PROJECT})
         assert result["code"] == "attribution-required"
 
     def test_disabled_flag_answered_as_disabled(self, tmp_path: Path, mini_repo: Path) -> None:
@@ -652,9 +639,7 @@ class TestRestTwins:
         assert search.json()["results"][0]["name"] == "Base"
 
     def test_delete_twin(self, rest_client: TestClient) -> None:
-        rest_client.post(
-            "/graph/index", json={"project_id": "restproj", "agent": "tester"}
-        )
+        rest_client.post("/graph/index", json={"project_id": "restproj", "agent": "tester"})
         resp = rest_client.request(
             "DELETE", "/graph/projects/restproj", json={"agent": "tester", "reason": "twin"}
         )

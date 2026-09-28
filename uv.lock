@@ -4516,6 +4516,8 @@ dependencies = [
     { name = "starlette" },
     { name = "tokenizers" },
     { name = "trafilatura" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-python" },
     { name = "typer" },
     { name = "urllib3" },
     { name = "uvicorn", extra = ["standard"] },
@@ -4546,10 +4548,6 @@ anthropic = [
 ]
 azure = [
     { name = "openai" },
-]
-code-graph = [
-    { name = "tree-sitter" },
-    { name = "tree-sitter-python" },
 ]
 dev = [
     { name = "bandit" },
@@ -4647,8 +4645,8 @@ requires-dist = [
     { name = "torch", marker = "extra == 'training'", specifier = ">=2.2" },
     { name = "trafilatura", specifier = ">=1.12" },
     { name = "transformers", marker = "extra == 'training'", specifier = ">=4.51" },
-    { name = "tree-sitter", marker = "extra == 'code-graph'", specifier = ">=0.24,<0.27" },
-    { name = "tree-sitter-python", marker = "extra == 'code-graph'", specifier = ">=0.25.0,<0.26" },
+    { name = "tree-sitter", specifier = ">=0.24,<0.27" },
+    { name = "tree-sitter-python", specifier = ">=0.25.0,<0.26" },
     { name = "typer", specifier = ">=0.26.7" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "urllib3", specifier = ">=2.7.0" },
@@ -4656,7 +4654,7 @@ requires-dist = [
     { name = "vesmaro", extras = ["anthropic", "openai", "gemini", "azure", "ollama", "mcp", "pdf", "docx", "dev"], marker = "extra == 'all'" },
     { name = "watchdog", specifier = ">=4.0" },
 ]
-provides-extras = ["anthropic", "openai", "gemini", "azure", "ollama", "sentence-transformers", "training", "openvino", "mcp", "pdf", "code-graph", "docx", "dev", "all"]
+provides-extras = ["anthropic", "openai", "gemini", "azure", "ollama", "sentence-transformers", "training", "openvino", "mcp", "pdf", "docx", "dev", "all"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "vesmaro", extras = ["dev"] }]

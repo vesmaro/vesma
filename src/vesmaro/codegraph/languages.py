@@ -25,8 +25,10 @@ class LanguageSpec:
             from the union over all specs.
         language_factory: Zero-arg factory returning the tree-sitter
             ``Language`` object (imports the grammar package lazily —
-            the ``code-graph`` extra is optional, a missing extra must
-            not break import of this module).
+            tree-sitter is a CORE dependency since the owner
+            default-on decision of 2026-09-28; the lazy import keeps
+            THIS module cheap to import and surfaces a missing
+            grammar at first index, not at server startup).
         import_resolver: Callable mapping a dotted module name to a
             repo-relative source path candidate list, or ``None`` when
             the language has no resolution story yet.

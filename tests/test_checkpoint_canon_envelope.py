@@ -463,9 +463,7 @@ def test_dedup_hit_skips_the_canon_gate(
 
     planted = _planted_violation_row(mgr)
     with caplog.at_level(logging.WARNING, logger="vesmaro.manager"):
-        existing, duplicate = mgr.save_checkpoint(
-            {"goals": "same payload"}, project="canonproj"
-        )
+        existing, duplicate = mgr.save_checkpoint({"goals": "same payload"}, project="canonproj")
     assert duplicate is True
     assert existing.id == planted.id
     # The hit returned the stored record untouched by the gate.
@@ -740,9 +738,7 @@ def test_canon_goal_title_is_bounded(mgr: MemoryManager) -> None:
     assert title is not None and len(title) == GOAL_TITLE_MAX_CHARS
 
 
-def _plant_legacy_goal_checkpoint(
-    mgr: MemoryManager, *, agent: str, session: str
-) -> None:
+def _plant_legacy_goal_checkpoint(mgr: MemoryManager, *, agent: str, session: str) -> None:
     """Plant a PRE-CANON checkpoint row (stamped, no envelope) the way
     the strata materializer does — via the trusted internal add."""
     from vesmaro.models import MemoryCreate
@@ -778,15 +774,11 @@ def test_delta_surfaces_never_leak_placeholders(mgr: MemoryManager) -> None:
     from vesmaro.awareness import project_delta, render_awareness_section
 
     # Envelope-present neighbor: placeholder-only Goals → no goal title.
-    mgr.save_checkpoint(
-        {"completed": "c"}, project="canonproj", agent="neighbor-a", language="ru"
-    )
+    mgr.save_checkpoint({"completed": "c"}, project="canonproj", agent="neighbor-a", language="ru")
     # Pre-canon neighbor with a real goal (heuristic path must keep working).
     _plant_legacy_goal_checkpoint(mgr, agent="neighbor-b", session="sess-b")
 
-    delta = project_delta(
-        mgr, project="canonproj", since=_hour_ago_iso(), exclude_agent="caller"
-    )
+    delta = project_delta(mgr, project="canonproj", since=_hour_ago_iso(), exclude_agent="caller")
     titles = {a["agent"]: a.get("goal_title") for a in delta["agents"]}
     assert titles["neighbor-a"] is None  # placeholder never surfaced
     assert titles["neighbor-b"] == "legacy real goal"
