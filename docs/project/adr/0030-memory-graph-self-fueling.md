@@ -433,7 +433,7 @@ justification in the test docstring — not a disable.
    re-add is a legitimate bump.
 2. **A walked row can exceed fused-anchor absolute scores at elevated
    `w_edge`** (at `rrf_k = 60`, `alpha = 0.5`: a depth-1 row at
-   `anchor_pos = 0` needs `w_edge ≈ 1.0` to match a single-leg fused
+   the first anchor (`anchor_pos = 1`, 1-based) needs `w_edge ≈ 1.0` to match a single-leg fused
    top score and `w_edge ≈ 2.0` to match a both-legs fused top). This
    is **legal under I3** — ranking within the block, never
    eligibility — but the calibration (how often and how much) becomes

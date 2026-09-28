@@ -267,7 +267,7 @@ Guardrails, all hold (corridor-class, blocking for the unlock):
 |---|---|
 | G1 cross-recall (X-gold, n = 48) | holds — A 48/48 == A0 48/48 |
 | G2 foreign-leakage (treatment) | holds — 0/192 queries with foreign-task blocks (descriptive contrast: A0 8, B 2, C 0) |
-| G3 tokens | holds — median A 663.5 ≤ A0 766.5; per-task sign rule 6/8 (recorded value; the ≥ 6-of-8 threshold met) |
+| G3 tokens | holds — median A 663.5 ≤ A0 766.5; per-task sign rule 6/8 on the analysis record's per-task-median basis; the registered §2.6 sum basis (tokens-per-completed-task) re-derives 8/8 — the ≥ 6-of-8 corridor holds under both readings |
 | G4 lens | holds — gold retention 48/48 = 1.0000 (≥ 0.95); trap corridor 16/16 == A0 |
 
 Two disclosures ride the verdict, stated plainly. **Arm ceiling:** arms
