@@ -1043,7 +1043,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 ## `mnemos_trace_path`
 
-BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `mnemos_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). Token contract applies.
+BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `mnemos_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 
