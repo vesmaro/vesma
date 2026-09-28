@@ -306,3 +306,165 @@ flowchart TB
   0 `memory_edges` rows.
 - Issue #172 (D2 citation cascade + CCR index) — merged into the
   «Memory Graph» epic as a downstream slice.
+
+---
+
+## Addendum — A0-review verdict (2026-09-27)
+
+*Appended 2026-09-28. Everything above this section is the accepted
+ADR body of 2026-09-15, byte-untouched. This addendum records the
+A0-review the ADR itself reserved («revisitable at A0-review»): the
+7-day window data, the gate re-baseline, the headroom decision and
+S1/S2 phasing, the depth-2 invariant codification, the `graph_epoch`
+semantics, and the S2 calibration notes. Per the README convention:
+status changes are appended, never in-place mutations.*
+
+### B.1 The 7-day window data (2026-09-20 → 27)
+
+The A0 fuel slice ran live for seven days. Window summary (analysis
+record: mnemos `1b9c0a30`):
+
+| Measure | Value |
+|---|---|
+| Auto-dedupe edges by day (20–27.09) | 24 / 6 / 39 / 71 / 27 / 33 / 53 / 3 (last day partial) |
+| Total | **256 auto-dedupe edges / 2766 memories ≈ 9.3 per 100** of the live store |
+| Organic minting | **6–8 edges/day** — above the ~4.2/day forecast |
+| Channel anomalies | **zero** |
+| Rescan bursts | 22–23.09 and 26.09 — the GCW file-rescan class, accounted per the window methodology |
+
+### B.2 The gate re-baseline — the committee's core A0-review act
+
+The written unlock gate (**edges/100 records ≥ 50**, §3 of the ADR
+body) is **not met on the raw store and is unreachable on organic
+timescales** — waiting for the raw ratio to reach 50 would mean months
+with no new information. But the raw ratio is a **lagging mix
+indicator**: ~2766 legacy memories are structurally edge-free (written
+before minting existed), so every new edge is diluted by a frozen
+denominator.
+
+The honest quantity is the **minting cohort** — edges created by
+post-A0 writes:
+
+- Cohort density ≈ **2.45 edges per post-A0 write ≈ 245/100** (104
+  post-A0 writes → 256 edges), bracketed by the replay-window estimate
+  **244–252/100**, and inside the ADR's own expert band of **1–3
+  links per write** from which the ≥ 50 gate was originally derived.
+
+**Re-baselined unlock gate: edges per post-A0 write ≥ 0.5 (cohort
+semantics).** The gate is met (2.45 ≥ 0.5). The raw store ratio stays
+on the dashboard as a **trend indicator**, not a gate. This is exactly
+the review the ADR reserved: the threshold was always an expert
+estimate «revisitable at A0-review against live minting telemetry» —
+an explicit revisitable threshold beat an infinite gate, and it was
+revisited on data.
+
+### B.3 Headroom decision + S1/S2 phasing (ArchCom 2026-09-27)
+
+The full protocol:
+`~/.gcw/architectural-committee/2026-09-27-archcom-verdict-graph-a1-swarm.md`
+(committee-local, not part of this repository). Decisions:
+
+1. **Variant 1 (reserved walk quota) ratified** —
+   `k = min(⌈limit/5⌉, limit//2)`, `k = 0` for `limit < 3`: a pure
+   function of `limit`, applied **only on the flag-on path**
+   (`mnemos.graph_walk`); the flag-off path is byte-identical to A0
+   (the supersedes leg stays unconditional). V2 (k-slot merge) remains
+   an **A2+ candidate**; V3 (adaptive floor) is **rejected without
+   data** — an adaptive floor is a function of store state, i.e. the
+   worst kind of non-determinism.
+2. **S1 merged** as PR #415 (`6eaa8c5`): reserved quota + layered
+   BFS-2 + per-project `graph_epoch` + static `w_edge` ranking — one
+   PR, one merge window, per the committee's phasing compromise.
+3. **S2 (APPLY) follows** in the same merge window but as a separate
+   PR **under its own default-off flag**; flag enablement is gated on
+   **proven capture telemetry** — the window measured minting, not
+   feedback; mechanics without fuel is this ADR's own anti-pattern.
+   The «capture without APPLY demotivates» residual is not extended.
+4. Acceptance surface: bench-s1 guard floor **recall@5 ≥ 0.9121**
+   (the post-#314 baseline is 0.9409; the ADR-0029 re-record procedure
+   applies on corridor exit in either direction) — the «empty-graph»
+   formulation was dropped because no such corpus exists (the harness
+   itself mints `supersedes` edges).
+
+### B.4 Depth-2 invariants codified (the «inert until codified» discipline held)
+
+I1/I2/I3 were re-derived and killed **at depth 2** before BFS-2
+enabled — the A0-era tests covered the 1-hop walk; the depth-2
+extension (2-node paths) is a new surface and got its own mutation-
+verified killers (worst-link inheritance, quarantine absorption,
+post-gate weights, project-guard at depth 2; shipped in the same S1
+slice, `tests/test_graph_walk_quota.py::TestDepth2Killers`).
+
+**The I3 pin amendment, registered here:** the A0-era test pin
+«decay ignores `w_edge`» is **repealed by A1 design** — the §3 ranking
+formula `(1-α)/(rrf_k + 2·pos) × w_edge × 0.7^(depth-1)` makes `w_edge`
+a ranking input within the walked block. The pin now asserts the new
+doctrine: `w_edge` ranks **within the walked block only** — never the
+fused block, never eligibility, never the gate order; the id tiebreak
+stands (ADR-0028). A reasoned, registered amendment with its
+justification in the test docstring — not a disable.
+
+### B.5 `graph_epoch` semantics (committee corrections folded in)
+
+- **Per-PROJECT meta-counter** (`set_meta`/`get_meta`, the
+  awareness-cursor precedent, migration-free) — **NOT global**: a
+  global epoch is a cheap fleet-wide cache-DoS lever.
+- **Bumped on edge writes through the manager wrapper**
+  (`add_memory_edge`) — which covers the mint path, since minting
+  routes through the wrapper.
+- **Idempotent re-inserts do not bump** — the epoch tracks edge-table
+  *change*, not call volume.
+- **Exposed via `search_stats["graph_epoch_by_project"]`** and the
+  dashboard graph section.
+- **Note for the record:** at S1 time there is **no in-repo search
+  cache key** — the epoch is a **consumer-facing counter** (the
+  pre-read's «part of the CCR/assemble cache key» overstated what
+  exists; corrected per committee). The `feedback_epoch` component
+  (S2: bump on capture with `used`/`rejected` events where
+  `capture > 0`; idempotent retries do not bump) completes the
+  invalidation story for APPLY.
+
+### B.6 S1-era calibration notes carried for S2 (from the #415 review)
+
+1. **Mint-path idempotency is per-edge-PK, not per-content.** A
+   re-write of the same content creates new candidate edges (new row
+   ids → new edges → epoch bumps). The `add_memory_edge` docstring
+   should not be read as content-level idempotency; a same-content
+   re-add is a legitimate bump.
+2. **A walked row can exceed fused-anchor absolute scores at elevated
+   `w_edge`** (at `rrf_k = 60`, `alpha = 0.5`: a depth-1 row at
+   the first anchor (`anchor_pos = 1`, 1-based) needs `w_edge ≈ 1.0` to match a single-leg fused
+   top score and `w_edge ≈ 2.0` to match a both-legs fused top). This
+   is **legal under I3** — ranking within the block, never
+   eligibility — but the calibration (how often and how much) becomes
+   **measurable only once APPLY/feedback flows**; it rides the S2
+   enablement checklist.
+
+### B.7 Swarm linkage (one line)
+
+Stigmergy trails ride the same rails: graph edges + `edge_stats`
+(A0/A1). The committee's swarm-v0a (operational picture — presence and
+record counters, same-project only; PR #413) and v0b (task-tags in the
+picture) follow the same rails, with v0b deferred behind the Ф2 form
+decision — the owner chose the no-migration form on 2026-09-28
+(ADR-0027 addendum §A.3), which unblocks v0b's design.
+
+### B.8 Sources for this addendum
+
+- ArchCom protocol 2026-09-27 —
+  `2026-09-27-archcom-verdict-graph-a1-swarm.md` (committee-local);
+  A0 window summary: mnemos `1b9c0a30`.
+- PRs: #415 (A1-S1, merged `6eaa8c5`), #413 (swarm v0a), #420 (Ф2
+  form decision context, ADR-0027 addendum).
+- Code anchors verified at S1: `_walk_quota` and the walk block
+  (`manager.py`), `_bump_graph_epoch` in the `add_memory_edge` wrapper
+  (`manager.py`), `search_stats["graph_epoch_by_project"]` exposure,
+  `tests/test_graph_walk_invariants.py` (I3 pin amendment),
+  `tests/test_graph_walk_quota.py` (byte-equality pin, depth-2
+  killers, epoch tests).
+- The day-by-day window numbers are quoted from the window record
+  (mnemos `1b9c0a30`) as given; the cohort arithmetic (104 writes →
+  256 edges → ≈ 2.45/write) and the `w_edge` score-crossing thresholds
+  (≈ 1.0 single-leg / ≈ 2.0 both-legs at `rrf_k = 60`) were
+  re-derived from the quoted totals and the shipped decay formula
+  during the writing of this addendum.

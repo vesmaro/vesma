@@ -55,10 +55,10 @@ documented elsewhere, or anything that fits in a code comment.
 | [0024](0024-unified-harness-connection.md) | Unified harness connection via `mnemos connect` over a harness-profile registry | Accepted | 2026-09-06 |
 | [0025](0025-memory-meta-level-lanes.md) | Memory meta-level: retrieval lanes and area manifests (experiment precedes implementation; brain metaphor = narrative only) | Lanes leg FALSIFIED (ratified 2026-09-14); acceptance superseded for the lanes leg | 2026-09-08 |
 | [0026](0026-memory-value-observability.md) | Memory-value observability: passive metrics sidecar + S5 replay stand + F8 metric family | Accepted (with conditions) | 2026-09-09 |
-| [0027](0027-multi-context-memory.md) | Multi-context memory: compose existing context levels now; task primitive behind a pre-registered experiment gate | Accepted | 2026-09-14 |
+| [0027](0027-multi-context-memory.md) | Multi-context memory: compose existing context levels now; task primitive behind a pre-registered experiment gate | Accepted; Phase-2 decision appended 2026-09-28 (F1 PASS + owner arbitration — addendum §A) | 2026-09-14 |
 | [0028](0028-cache-contract.md) | Cache contract: prefix-stable content supply, tail discipline, and the harness boundary | Accepted | 2026-09-14 |
 | [0029](0029-search-v2-query-semantics.md) | Search v2 query semantics: per-token prefix AND, soft project fallback, graph leg, embedding_id stamp | Accepted | 2026-09-15 |
-| [0030](0030-memory-graph-self-fueling.md) | Memory Graph — the self-fueling graph (search graph line continuation) | Accepted | 2026-09-15 |
+| [0030](0030-memory-graph-self-fueling.md) | Memory Graph — the self-fueling graph (search graph line continuation) | Accepted; A0-review appended 2026-09-28 (gate re-baseline edges/post-A0-write ≥ 0.5 + S1/S2 — addendum §B) | 2026-09-15 |
 | [0031](0031-rebrand-mnemos-to-vesmaro.md) | Rebrand — mnemos → vesmaro (additive dual-prefix; legacy retires in 6.0) | Accepted | 2026-09-15 |
 
 ## Themes

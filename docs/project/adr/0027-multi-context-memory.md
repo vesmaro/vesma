@@ -233,3 +233,182 @@ chunks; a `ccr_cache` version bump on any re-fragmentation.
   (`2026-09-14-multi-context-memory.md`) and contract
   (`2026-09-14-multi-context-memory-contract.md`), archived with the
   committee records, team-local, not part of this repository.
+
+---
+
+## Addendum — Phase 2 decision record (2026-09-27/28)
+
+*Appended 2026-09-28. Everything above this section is the accepted
+ADR body of 2026-09-14, byte-untouched. This addendum records the
+Phase-1 verdict, the registered routing consequence, the owner
+arbitration that overrode it, what shipped as Phase 2, and the two
+standing record obligations. It follows the README convention:
+status changes are appended, never in-place mutations.*
+
+### A.1 The F1 verdict (single-look, run `f1-task-scope-9c08f24268dc`)
+
+The pre-registered experiment ([f1-task-scope.md](../../experiments/f1-task-scope.md))
+ran once, owner-authorized, and recorded 2026-09-27 (PR #412; artifacts
+committed under
+`benchmarks/experiments/f1_task_scope/runs/f1-task-scope-9c08f24268dc/`).
+Analysis is single-look under the frozen §6 plan against the frozen §5.1
+lattice; no statistic existed before the record.
+
+| Comparison | Result (T-gold, n = 192) |
+|---|---|
+| **H1 (primary): A vs A0** | **PASS** — A 192/192 vs A0 158/192, **+17.71 pp** (≥ +15 pp MDE); exact McNemar **p = 1.164e-10**; discordance 34/0 (A-only / A0-only — one-directional, A0 never won a query A lost); realized power ≈ 1.000 at realized D = 0.1771 |
+| Sanity / zone | A0 = 0.823 — inside the registered band [0.35, 0.90]: not NOISE, not CEILING |
+| H2: A vs C | **tie** — 192 == 192, discordance 0/0, p = 1.0 |
+| H3: A vs B (and C vs B) | **tie** — 192 == 192, discordance 0/0, p = 1.0 |
+
+Guardrails, all hold (corridor-class, blocking for the unlock):
+
+| Guardrail | Result |
+|---|---|
+| G1 cross-recall (X-gold, n = 48) | holds — A 48/48 == A0 48/48 |
+| G2 foreign-leakage (treatment) | holds — 0/192 queries with foreign-task blocks (descriptive contrast: A0 8, B 2, C 0) |
+| G3 tokens | holds — median A 663.5 ≤ A0 766.5; per-task sign rule 6/8 on the analysis record's per-task-median basis; the registered §2.6 sum basis (tokens-per-completed-task) re-derives 8/8 — the ≥ 6-of-8 corridor holds under both readings |
+| G4 lens | holds — gold retention 48/48 = 1.0000 (≥ 0.95); trap corridor 16/16 == A0 |
+
+Two disclosures ride the verdict, stated plainly. **Arm ceiling:** arms
+A/C/B sit at 1.0 on T-gold, so H2/H3 differentiation is unreachable on
+this corpus — the ties are the registered tie outcome, not NO-DATA, and
+H1 stays valid because A0 (0.823) discriminates. **One-directional
+discordance:** every discordant pair went A's way (34/0), so the win is
+uniform, not marginal-averaged.
+
+### A.2 The registered §5.2 routing consequence
+
+The E-file's §5.2 table was pre-registered before any data. Its fired
+row: **H2 tie ∧ B ≈ C (and B ≈ A)** ⇒ «task-context = an honest
+tag-filter with a different label» on this corpus — the surviving
+argument for the primitive is **ergonomics alone** (no prefixing
+discipline, no meta-knowledge), Ф2 reduces to tag-infrastructure
+hardening, and **the owner arbitrates the form**. The data showed
+equivalence between the parameter form and the tag-filter form; the
+lattice routes, it does not decide.
+
+### A.3 The owner arbitration (2026-09-28) — the load-bearing record
+
+The owner **overrode the tie-routing in favor of building the
+primitive**, on four stated grounds:
+
+1. **The win is real today and horizon-uncertain.** The +18 pp scoping
+   win (A vs A0) may grow or shrink as corpora and usage evolve — so
+   the switcher forms must be tracked against each other as a
+   **standing comparative metric**, not settled by one corpus.
+2. **Optionality without migration cost.** A full second switcher form
+   that needs **no schema migration** (the `task_id`-column and
+   `tasks`+`task_members`-table alternatives were rejected) is useful
+   across scenarios and more ergonomic than raw tag filters.
+3. **Test it thoroughly** — the equivalence must be pinned, not
+   assumed.
+4. **Compare the switcher forms against each other as a permanent
+   metric** — the adoption and drift watch is part of the decision,
+   not an afterthought.
+
+For the record, stated as such: the data showed equivalence between
+the forms; building the primitive anyway is the owner's **value call on
+ergonomics and optionality**, not an experimental claim. Committee
+recommendations are recommendations, not auto-truth — this one is
+**ratified by the owner** (arbitration reference: mnemos `2b3ae42f`,
+2026-09-28), which is the authority the §5.2 routing reserved the
+decision for.
+
+### A.4 What shipped as Phase 2 (PR #420, merged `7ee30d3`)
+
+The arbitrated form: **the `task=` parameter as a first-class switcher,
+zero schema migrations** — semantically the strict tag intersection,
+equivalent to `tags=["task:<slug>"]` by construction, not by assertion.
+
+- **Read-side parity** — `task=` accepted on the read surfaces:
+  `MemoryManager.search`, `recall_context`, `list_recent`,
+  `agent_recall` (via `AgentRecallQuery.task`), with MCP twins
+  (`mnemos_search`, `mnemos_agent_recall`, `mnemos_recall_context`,
+  `mnemos_list_recent`) and REST twins (`POST /search`,
+  `GET /memories`, `GET /recall/agent/{name}`, `POST /context/recall`).
+- **Write-side convenience** — `task=` accepted on `save_checkpoint`
+  (manager boundary), `mnemos_save_context` (MCP), and
+  `POST /context/save` (REST). **Zero-or-one task per record** holds by
+  construction (the checkpoint channel mints its own tags list); the
+  tag contract's always-fatal multiple-`task:` check remains the last
+  line of defense on every other write path.
+- **One translation point** — `_normalize_task_boundary`
+  (`manager.py`, the #407 canon): the single authority that normalizes
+  the slug and mints the `task:` prefix, fails loud on unsalvageable
+  slugs (a dead `task:` tag would be unreachable at query time — the
+  #368 class). No surface has its own spelling of the boundary.
+- **Equivalence pinned by tests, not trusted** — 47 tests in
+  `tests/test_f2_task_primitive.py` assert byte-identical results
+  between `task="X"` and `tags=["task:X"]` on every gained surface,
+  the combined `task=`+`tags=` intersection, and the no-silent-fallback
+  discipline (per the owner's «test it thoroughly»).
+- **Conflicting reads documented** — a read combining `task=` with a
+  *different* `task:` tag in `tags=` is a strict-AND no row can
+  satisfy: a **silent empty result** (reads run no tag-contract
+  validation). Documented in the boundary comment and user docs;
+  never silently resolved.
+- **The standing comparative metric** —
+  `search_stats["task_param_queries_total"]` and
+  `search_stats["task_tag_queries_total"]`, attributed at
+  **caller intent**: the internal translation form never leaks into the
+  metric (a `task=` call increments the param counter; a raw
+  `tags=["task:…"]` call increments the tag counter; a `task=` call
+  does not double-count as a tag query) — the review P2 decision.
+  Purpose: watch the two switcher forms' adoption share; the F1 A==C
+  doctrine makes semantic drift impossible by construction, so what
+  remains observable is **adoption drift**, re-measurable via
+  future F1-runner collect-only repeats.
+
+Phase-2 security conditions (per the ADR body) were discharged by
+construction: no new cross-context assembly path exists beyond the
+already-scanned surfaces, and `task` ∩ project intersection rides the
+existing project predicate unchanged (same gate block, §A.4 of the
+mermaid in the ADR body is untouched).
+
+### A.5 The κ-audit artifact obligation (from the review of #412)
+
+The §3.5 blind applicability audit double-annotated **53 adjudication
+pairs (arm-stripped)** — `manifest.json` records
+`audit_subsample_pairs: 53` under the frozen sha256-ascending
+ceil(20%) rule. Obligation, registered here:
+
+- The arm-stripped pair list and the annotation record must live in
+  the repository record — pointer placeholder: the analysis record is
+  mnemos `762adcac`; the run artifacts are committed under
+  `benchmarks/experiments/f1_task_scope/runs/f1-task-scope-9c08f24268dc/`
+  (manifest + outcomes carry the pair-ids and per-query tuples the
+  audit subsample was drawn from). The pair-list file itself is an open
+  item for the owning wave to commit or explicitly re-point.
+- The **§7 exploratory set** — recall@3/@10, the A-naive always-on
+  policy arm, token histograms, lens-precision, the doc-chunk
+  neighborhood measure, and the mixed-phrasing activation cost
+  (A 0/8 vs A0 8/8 on the 8 mixed L-neg queries, −33 pp — the #368
+  risk class) — gets its explicit home here: **reported in the
+  analysis record (mnemos `762adcac`); re-measured on the next
+  recorded run.** None of it gates; all of it re-runs with the next §9
+  entry.
+
+### A.6 Post-record era
+
+The runner tests pin the recorded state (PR #421): §9 of the E-file is
+append-only, recorded runs are write-once, and the amendment window
+stays closed — future recorded runs append to §9 without touching
+sections 1–7. The F1 runner/corpus surface is frozen (PR #420 carried a
+zero diff over `benchmarks/experiments/f1_task_scope/`).
+
+### A.7 Sources for this addendum
+
+- Run `f1-task-scope-9c08f24268dc` — `manifest.json` and `outcomes.json`
+  under `benchmarks/experiments/f1_task_scope/runs/…/` (committed, PR
+  #412); §9 ledger entry of 2026-09-27 in the E-file.
+- PRs: #379 (F1 runner), #412 (recorded run + verdict), #420 (Ф2,
+  merged `7ee30d3`), #421 (post-record-era pins).
+- Owner arbitration record — mnemos `2b3ae42f` (2026-09-28); analysis
+  record — mnemos `762adcac`.
+- Numbers in §A.1 were re-derived independently from `outcomes.json`
+  during the writing of this addendum (hits, medians, discordance,
+  leakage counts, retention, trap corridor); the McNemar p-value and
+  realized power were re-computed with the committed
+  `benchmarks/experiments/f1_task_scope/power.py` arithmetic
+  (p = 1.164e-10 on 34/0; power ≈ 1.000 at D = 0.1771).
