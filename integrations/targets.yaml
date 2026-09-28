@@ -14,6 +14,10 @@ targets:
     deploy:
       instructions: "~/.copilot/instructions/"
       skills: "~/.copilot/skills/"
+      # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
+      # stamped sidecar manifest (mnemos-schemas.manifest.json); consumers
+      # like the mnemos-eyes Go validator read them straight from here.
+      schemas: "~/.copilot/schemas/"
     format: copy
 
   generic-copilot:
@@ -51,6 +55,9 @@ targets:
       - path: "~/.zcode"
     deploy:
       skills: "~/.zcode/skills/"
+      # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
+      # stamped sidecar manifest (mnemos-schemas.manifest.json).
+      schemas: "~/.zcode/schemas/"
       agents_md: "~/.zcode/AGENTS.md"
     format: copy
     layout: nested
@@ -70,6 +77,9 @@ targets:
       - path: "~/.agents"
     deploy:
       skills: "~/.agents/skills/"
+      # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
+      # stamped sidecar manifest (mnemos-schemas.manifest.json).
+      schemas: "~/.agents/schemas/"
       agents_md: "~/.agents/AGENTS.md"
     format: copy
     layout: nested

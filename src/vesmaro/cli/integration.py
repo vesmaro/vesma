@@ -14,16 +14,25 @@ This module is the engine behind the `mnemos util-*` CLI subcommands. It:
 * Verifies deployed files against the current package version.
 * Updates stale files in place.
 * Uninstalls only stamped files — never user-created content.
+* Deploys the canon JSON Schemas (``schemas`` kind) BYTE-IDENTICAL —
+  never inline-stamped, because a schema file must stay valid JSON for
+  schema validators; ownership is recorded in a sidecar manifest.
 
 The version stamp is a Markdown HTML comment on the first non-shebang line::
 
     <!-- mnemos-integration: v2.0.0 -->
 
 This is invisible in rendered Markdown but trivially greppable.
+
+For the ``schemas`` kind the same discipline lives in a stamped JSON
+sidecar manifest (``mnemos-schemas.manifest.json``) written NEXT TO the
+deployed schema files: it carries the deploy version, the pin provenance
+and the sha256 of every deployed schema file.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -43,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "AGENTS_MD_BLOCK_RE",
+    "SCHEMAS_MANIFEST_NAME",
+    "SCHEMAS_SOURCE_PIN",
     "ArtefactKind",
     "DeployResult",
     "DeployStatus",
@@ -53,6 +64,7 @@ __all__ = [
     "load_targets",
     "read_agents_md_version",
     "render_agents_md_block",
+    "schemas_manifest",
     "strip_agents_md_block",
 ]
 
@@ -74,7 +86,14 @@ AGENTS_MD_BLOCK_RE = re.compile(
 )
 
 #: Artefact sub-directories inside the shipped ``integrations/`` pack.
-ARTEFACT_DIRS: tuple[str, ...] = ("instructions", "skills", "prompts", "extensions", "agents_md")
+ARTEFACT_DIRS: tuple[str, ...] = (
+    "instructions",
+    "skills",
+    "prompts",
+    "extensions",
+    "schemas",
+    "agents_md",
+)
 
 #: File extensions considered deployable (skip ``.gitkeep`` and READMEs).
 DEPLOYABLE_SUFFIXES: tuple[str, ...] = (".md", ".yaml", ".yml", ".json", ".txt", ".ts")
@@ -82,6 +101,41 @@ DEPLOYABLE_SUFFIXES: tuple[str, ...] = (".md", ".yaml", ".yml", ".json", ".txt",
 #: Suffixes whose comment syntax requires a ``//`` prefix for the stamp
 #: (TypeScript/JavaScript integration artefacts, e.g. the Pi bridge).
 LINE_COMMENT_SUFFIXES: frozenset[str] = frozenset({".ts", ".js", ".mjs", ".cjs"})
+
+#: Sidecar manifest written next to deployed schema files (kind
+#: ``schemas``). JSON Schema files are deployed BYTE-IDENTICAL to the
+#: canon pin — an inline ``<!-- -->`` stamp would make them invalid JSON —
+#: so the version stamp, provenance and per-file checksums live here
+#: instead. The manifest is a stamped file in the ordinary sense (its
+#: raw text carries the ``mnemos-integration`` marker), which keeps
+#: verify/uninstall ownership detection uniform across kinds.
+SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
+
+#: Provenance of the vendored canon schemas (ADR-0003 pin protocol).
+#: Bumping the pin changes these literals, the vendored files under
+#: ``integrations/schemas/`` and their sha256 table in
+#: ``integrations/schemas/README.md`` — in the same change.
+SCHEMAS_SOURCE_PIN = {
+    "repo": "github.com/vesmaro/vesmaro-canon",
+    "tag": "canon-v1.0.0",
+    "commit": "d4e998089acde88a9d57551fa71cfa2ef3c23fdf",
+    # Per-file sha256 of the pinned schema content. Kept as a nested dict
+    # with line breaks: file name + 64-hex digest cannot fit the 100-char
+    # ruff line budget otherwise.
+    "sha256": {
+        "envelope.schema.json": (
+            "3b7a57bcda64eb2758460e025ef1756236a03a481d0c4ae8c39cf206ba583f8f"
+        ),
+        "checkpoint.schema.json": (
+            "e71ad139e4e21ef911c2ab3278df1b0ccbe6c94a9fea8c3db056803261808161"
+        ),
+        "task.schema.json": ("a08ad9fc718e1be977bd337bbb681a87e11403df1ebe5b024f4a84857a834b0c"),
+        "decision.schema.json": (
+            "1a832e8c283c3e076b7f1252a28184544285aa5d32f0a872d30c313067047a3a"
+        ),
+        "report.schema.json": ("0936b9d147dcb5c5cc1740a9ac32648dae4127b58e47d97fa273906e0595a51a"),
+    },
+}
 
 
 class ArtefactKind(StrEnum):
@@ -91,6 +145,11 @@ class ArtefactKind(StrEnum):
     SKILLS = "skills"
     PROMPTS = "prompts"
     EXTENSION = "extensions"
+    #: Canon JSON Schemas, deployed BYTE-IDENTICAL (no inline stamp —
+    #: schema validators require valid JSON). Ownership lives in the
+    #: stamped sidecar manifest (``SCHEMAS_MANIFEST_NAME``) written next
+    #: to the files; the deploy-map value is the schemas directory.
+    SCHEMAS = "schemas"
     #: Always-on behavioral pack injected as a stamped block INTO a shared
     #: user-owned ``AGENTS.md``-standard file. The deploy-map value is the
     #: FILE to inject into (not a directory) — handled by dedicated block
@@ -365,6 +424,36 @@ def read_stamp(content: str) -> str | None:
     return match.group(1) if match else None
 
 
+# ── Schemas kind (byte-identical deployment + sidecar manifest) ───────────────
+
+
+def schemas_manifest(version: str, checksums: dict[str, str]) -> str:
+    """Render the stamped sidecar manifest for the ``schemas`` kind.
+
+    The schema files themselves deploy byte-identical to the canon pin (a
+    JSON Schema must stay valid JSON for schema validators — an inline
+    HTML-comment stamp would break parsing), so the ordinary file stamp
+    lives on this sidecar instead: its RAW text carries the regular
+    ``mnemos-integration`` marker, which keeps ownership detection and
+    uninstall discipline uniform across kinds, while ``json.loads`` of the
+    body still works for any consumer that reads the manifest itself.
+
+    The trailing ``\\n`` plus the marker line after the closing brace keep
+    the payload parseable via the standard trick of ignoring trailing
+    non-JSON content (``JSONDecoder.raw_decode``).
+    """
+    ordered = dict(sorted(checksums.items()))
+    payload = {
+        "schema_version": 1,
+        "kind": ArtefactKind.SCHEMAS.value,
+        "source": dict(SCHEMAS_SOURCE_PIN),
+        "deployed_version": version,
+        "files": ordered,
+    }
+    body = json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False)
+    return f"{make_stamp(version)}\n{body}\n"
+
+
 # ── AGENTS.md block engine ────────────────────────────────────────────────────
 
 
@@ -571,6 +660,14 @@ class IntegrationManager:
                 continue
             if path.name == ".gitkeep":
                 continue
+            if (
+                kind is ArtefactKind.SCHEMAS
+                and path.parent == directory
+                and path.name == "README.md"
+            ):
+                # The provenance README documents the vendored pack — it is
+                # pack documentation, not a deployable schema artefact.
+                continue
             if path.suffix not in DEPLOYABLE_SUFFIXES:
                 continue
             files.append(path)
@@ -592,6 +689,112 @@ class IntegrationManager:
             return "", None
         content = "\n\n".join(p.read_text(encoding="utf-8").strip() for p in files) + "\n"
         return content, files[0]
+
+    # ── Schemas kind: byte-identical files + sidecar manifest ────────────────
+
+    def _schema_checksums(self, files: list[Path]) -> dict[str, str]:
+        """Compute sha256 of each schema file keyed by its file name."""
+        checksums: dict[str, str] = {}
+        for src in files:
+            digest = hashlib.sha256(src.read_bytes()).hexdigest()
+            checksums[src.name] = digest
+        return checksums
+
+    def _deploy_schemas(
+        self, dest_dir: Path, files: list[Path], *, dry_run: bool
+    ) -> list[FileResult]:
+        """Deploy the schema pack byte-identical plus the stamped manifest.
+
+        Unlike every other file-copy kind, schema files are written
+        WITHOUT the inline version stamp: JSON Schema files must stay
+        valid JSON for schema validators. Ownership is recorded in
+        ``mnemos-schemas.manifest.json`` (stamped, JSON body) written into
+        the same directory. Idempotency contract per file: CURRENT when
+        the deployed bytes are identical AND the manifest carries the
+        current version; UPDATED when bytes match but the manifest is
+        stale (version bump re-deploy); DEPLOYED for new files.
+        """
+        results: list[FileResult] = []
+
+        manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        existing_manifest_version: str | None = None
+        if manifest_path.exists():
+            existing_manifest_version = read_stamp(
+                manifest_path.read_text(encoding="utf-8", errors="replace")
+            )
+
+        checksums = self._schema_checksums(files)
+        manifest = schemas_manifest(self.version, checksums)
+
+        for src in files:
+            dest = dest_dir / src.name
+            if dest.exists():
+                existing = dest.read_bytes()
+                if existing == src.read_bytes() and existing_manifest_version == self.version:
+                    results.append(
+                        FileResult(
+                            source=src,
+                            destination=dest,
+                            status=DeployStatus.CURRENT,
+                            deployed_version=self.version,
+                            note="byte-identical and manifest up to date",
+                        )
+                    )
+                    continue
+                if not dry_run:
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(src.read_bytes())
+                results.append(
+                    FileResult(
+                        source=src,
+                        destination=dest,
+                        status=DeployStatus.UPDATED,
+                        deployed_version=self.version,
+                        note=(
+                            f"manifest refreshed from v{existing_manifest_version}"
+                            if existing_manifest_version
+                            else "content refreshed"
+                        ),
+                    )
+                )
+                continue
+
+            if not dry_run:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(src.read_bytes())
+            results.append(
+                FileResult(
+                    source=src,
+                    destination=dest,
+                    status=DeployStatus.DEPLOYED,
+                    deployed_version=self.version,
+                    note="byte-identical schema deployed",
+                )
+            )
+
+        # Refresh the manifest whenever its version is stale or absent.
+        if existing_manifest_version != self.version and not dry_run:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(manifest_path, manifest)
+
+        results.append(
+            FileResult(
+                source=Path("<schemas-manifest>"),
+                destination=manifest_path,
+                status=(
+                    DeployStatus.CURRENT
+                    if existing_manifest_version == self.version
+                    else (
+                        DeployStatus.UPDATED
+                        if existing_manifest_version is not None
+                        else DeployStatus.DEPLOYED
+                    )
+                ),
+                deployed_version=self.version,
+                note="stamped sidecar manifest",
+            )
+        )
+        return results
 
     # ── Deploy ─────────────────────────────────────────────────────────────────
 
@@ -630,6 +833,12 @@ class IntegrationManager:
                     target_name,
                     kind.value,
                 )
+                continue
+
+            if kind is ArtefactKind.SCHEMAS:
+                # Byte-identical copy path with the sidecar manifest —
+                # handled by the dedicated schemas engine (no inline stamp).
+                result.files.extend(self._deploy_schemas(dest_dir, files, dry_run=dry_run))
                 continue
 
             for src in files:
@@ -786,6 +995,11 @@ class IntegrationManager:
             if dest_dir is None:
                 continue
 
+            if kind is ArtefactKind.SCHEMAS:
+                # Byte-identical content + manifest version/stamp checks.
+                result.files.extend(self._verify_schemas(dest_dir, files))
+                continue
+
             # Track which dest paths correspond to pack files.
             seen_dests: set[Path] = set()
             for src in files:
@@ -919,6 +1133,152 @@ class IntegrationManager:
             deployed_version=self.version,
         )
 
+    def _verify_schemas(self, dest_dir: Path, files: list[Path]) -> list[FileResult]:
+        """Verify deployed schemas: byte-identity + manifest stamp/version.
+
+        The manifest doubles as the ownership marker for the directory: it
+        must carry the regular stamp. Schema files are verified by content
+        (sha256 of the deployed bytes vs the pack), never by an inline
+        stamp. Extra ``*.json`` files in the directory are classified the
+        usual way — stamped-but-unmanaged (schema files have no inline
+        stamp, so a schema file can only be stamped if it is a manifest
+        copy from another deploy, which is stale) vs unstamped user files.
+        """
+        results: list[FileResult] = []
+
+        manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        manifest_version: str | None = None
+        if manifest_path.exists():
+            manifest_version = read_stamp(
+                manifest_path.read_text(encoding="utf-8", errors="replace")
+            )
+        else:
+            results.append(
+                FileResult(
+                    source=Path("<schemas-manifest>"),
+                    destination=manifest_path,
+                    status=DeployStatus.MISSING,
+                    note="no sidecar manifest — schemas not deployed",
+                )
+            )
+
+        # The manifest is always a reported row: it is the ownership marker
+        # for the whole kind (see _deploy_schemas / _uninstall_schemas).
+        if manifest_path.exists():
+            if manifest_version is None:
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=manifest_path,
+                        status=DeployStatus.SKIPPED,
+                        note="manifest carries no mnemos stamp — not ours",
+                    )
+                )
+            elif manifest_version != self.version:
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=manifest_path,
+                        status=DeployStatus.STALE,
+                        deployed_version=manifest_version,
+                        note=f"manifest v{manifest_version} != current v{self.version}",
+                    )
+                )
+            else:
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=manifest_path,
+                        status=DeployStatus.CURRENT,
+                        deployed_version=self.version,
+                    )
+                )
+
+        seen_dests: set[Path] = {manifest_path}
+        for src in files:
+            dest = dest_dir / src.name
+            seen_dests.add(dest)
+            if not dest.exists():
+                results.append(
+                    FileResult(
+                        source=src,
+                        destination=dest,
+                        status=DeployStatus.MISSING,
+                        note="not deployed",
+                    )
+                )
+                continue
+            if dest.read_bytes() != src.read_bytes():
+                results.append(
+                    FileResult(
+                        source=src,
+                        destination=dest,
+                        status=DeployStatus.STALE,
+                        deployed_version=manifest_version,
+                        note="deployed bytes differ from pack — update restores them",
+                    )
+                )
+                continue
+            if manifest_version is None:
+                results.append(
+                    FileResult(
+                        source=src,
+                        destination=dest,
+                        status=DeployStatus.SKIPPED,
+                        note="bytes match pack but no stamped manifest — not ours",
+                    )
+                )
+                continue
+            if manifest_version != self.version:
+                results.append(
+                    FileResult(
+                        source=src,
+                        destination=dest,
+                        status=DeployStatus.STALE,
+                        deployed_version=manifest_version,
+                        note=f"manifest v{manifest_version} != current v{self.version}",
+                    )
+                )
+                continue
+            results.append(
+                FileResult(
+                    source=src,
+                    destination=dest,
+                    status=DeployStatus.CURRENT,
+                    deployed_version=self.version,
+                )
+            )
+
+        # Extra files in the deploy dir: classify as ours-stale vs user.
+        if dest_dir.exists():
+            for path in sorted(dest_dir.rglob("*")):
+                if not path.is_file() or path in seen_dests:
+                    continue
+                if path.name == ".gitkeep":
+                    continue
+                content = path.read_text(encoding="utf-8", errors="replace")
+                deployed_version = read_stamp(content)
+                if deployed_version is not None:
+                    results.append(
+                        FileResult(
+                            source=Path("<not-in-pack>"),
+                            destination=path,
+                            status=DeployStatus.STALE,
+                            deployed_version=deployed_version,
+                            note="stamped file no longer in pack — safe to uninstall",
+                        )
+                    )
+                else:
+                    results.append(
+                        FileResult(
+                            source=Path("<user-file>"),
+                            destination=path,
+                            status=DeployStatus.SKIPPED,
+                            note="user file — not managed by mnemos",
+                        )
+                    )
+        return results
+
     # ── Update ────────────────────────────────────────────────────────────────
 
     def update(self, target_name: str, *, dry_run: bool = False) -> DeployResult:
@@ -970,9 +1330,15 @@ class IntegrationManager:
 
             # Build the set of dest paths the pack expects (same mapping as deploy).
             expected_dests: set[Path] = set()
-            for src in files:
-                rel = src.relative_to(self.pack_root / kind.value)
-                expected_dests.add(target.dest_for(kind.value, rel))
+            if kind is ArtefactKind.SCHEMAS:
+                # Schema files are flat copies; the stamped sidecar manifest
+                # belongs to us even though it ships from no pack file.
+                expected_dests = {dest_dir / src.name for src in files}
+                expected_dests.add(dest_dir / SCHEMAS_MANIFEST_NAME)
+            else:
+                for src in files:
+                    rel = src.relative_to(self.pack_root / kind.value)
+                    expected_dests.add(target.dest_for(kind.value, rel))
 
             for path in sorted(dest_dir.rglob("*")):
                 if not path.is_file() or path in expected_dests:
@@ -1020,6 +1386,10 @@ class IntegrationManager:
             if dest_dir is None or not dest_dir.exists():
                 continue
 
+            if kind is ArtefactKind.SCHEMAS:
+                self._uninstall_schemas(dest_dir, result, dry_run=dry_run)
+                continue
+
             for path in sorted(dest_dir.rglob("*")):
                 if not path.is_file():
                     continue
@@ -1040,6 +1410,67 @@ class IntegrationManager:
                 result.removed.append(removed)
 
         return result
+
+    def _uninstall_schemas(self, dest_dir: Path, result: UninstallResult, *, dry_run: bool) -> None:
+        """Uninstall deployed schemas — manifest-owned, never user files.
+
+        Ownership evidence hierarchy:
+
+        1. The stamped sidecar manifest is always ours → removed.
+        2. A deployed ``*.schema.json`` whose bytes match a pack schema is
+           ours (schema files deploy byte-identical, they can never carry
+           an inline stamp) → removed. A drifted/renamed file the manifest
+           does not know about is NOT provably ours → skipped as a user
+           file; the manifest checksums are the registry, so an edited
+           copy survives uninstall (the safe direction).
+
+        Empty parent dirs are cleaned up to the deploy root afterwards.
+        """
+        manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        known_checksums: dict[str, str] = {}
+        if manifest_path.exists():
+            raw = manifest_path.read_text(encoding="utf-8", errors="replace")
+            if read_stamp(raw) is not None:
+                try:
+                    payload = json.loads(raw[raw.index("{") :])
+                except (ValueError, json.JSONDecodeError):
+                    payload = None
+                if isinstance(payload, dict) and isinstance(payload.get("files"), dict):
+                    known_checksums = {
+                        str(k): str(v) for k, v in payload["files"].items() if isinstance(v, str)
+                    }
+
+        # The manifest itself is stamped → ordinary ownership rule applies.
+        if manifest_path.exists():
+            if not dry_run:
+                manifest_path.unlink()
+            result.removed.append(manifest_path)
+
+        pack_names = set(self._schema_checksums(self._pack_files(ArtefactKind.SCHEMAS)))
+        for path in sorted(dest_dir.rglob("*.schema.json")):
+            if not path.is_file():
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
+            # An inline stamp is proof of ownership in every other kind —
+            # keep that invariant here (verify flags such orphans as
+            # "safe to uninstall"; uninstall must agree). Pack-byte-identity
+            # and manifest-checksum membership cover the unstamped copies
+            # this kind actually deploys; anything else is a user file.
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            ours = (
+                read_stamp(content) is not None
+                or path.name in pack_names
+                or digest in known_checksums.values()
+            )
+            if ours:
+                if not dry_run:
+                    path.unlink()
+                result.removed.append(path)
+            else:
+                result.skipped_user_files.append(path)
+
+        if not dry_run:
+            self._cleanup_empty_parents(manifest_path, dest_dir)
 
     def _uninstall_agents_md(self, dest: Path, *, dry_run: bool) -> Path | None:
         """Remove the mnemos block(s) from a shared AGENTS.md file.

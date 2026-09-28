@@ -12,6 +12,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,8 @@ import yaml
 from typer.testing import CliRunner
 
 from vesmaro.cli.integration import (
+    SCHEMAS_MANIFEST_NAME,
+    SCHEMAS_SOURCE_PIN,
     DeployStatus,
     IntegrationManager,
     Target,
@@ -26,6 +29,7 @@ from vesmaro.cli.integration import (
     load_targets,
     make_stamp,
     read_stamp,
+    schemas_manifest,
     stamp_content,
 )
 from vesmaro.cli.main import app
@@ -2284,3 +2288,267 @@ class TestCanonPack:
         assert canon_skill_dest in uninstall.removed, "stamped canon skill removed"
         assert not canon_skill_dir.exists(), "empty nested dir cleaned up"
         assert user_note.is_file(), "user files are never deleted"
+
+
+class TestSchemasPack:
+    """W3b schemas pack (vesmaro-canon v1.0.0) — new ``schemas`` artefact kind.
+
+    Canon JSON Schemas deploy BYTE-IDENTICAL (an inline HTML-comment stamp
+    would make them invalid JSON for schema validators), with ownership
+    carried by the stamped sidecar manifest
+    ``mnemos-schemas.manifest.json``. The tests pin:
+
+    * vendored files exist in the shipped pack and parse as JSON;
+    * the full deploy → verify → drift/stale → update → uninstall lifecycle
+      through the real IntegrationManager against a fake home (zcode
+      target — the production path);
+    * byte-identity against the canon pin — sibling repo checkout when
+      present (live pin protocol, canon §9), the frozen sha256 table in
+      ``SCHEMAS_SOURCE_PIN`` otherwise;
+    * manifest JSON body validity (``JSONDecoder.raw_decode`` over the
+      stamped raw text) and pin provenance;
+    * uninstall never deletes unstamped files and leaves foreign files in
+      the schemas deploy dir untouched.
+    """
+
+    #: The five canon schemas vendored from the pin tag.
+    CANON_SCHEMA_NAMES = (
+        "envelope.schema.json",
+        "checkpoint.schema.json",
+        "task.schema.json",
+        "decision.schema.json",
+        "report.schema.json",
+    )
+
+    @pytest.fixture
+    def canon_home(self, tmp_path: Path) -> Path:
+        home = tmp_path / "schemas-home"
+        (home / ".zcode").mkdir(parents=True)
+        return home
+
+    @pytest.fixture
+    def schemas_manager(self, canon_home: Path) -> IntegrationManager:
+        cfg = load_targets(home=canon_home)
+        return IntegrationManager(
+            version="9.9.9", pack_root=None, targets_config=cfg, home=canon_home
+        )
+
+    @staticmethod
+    def _repo_root() -> Path:
+        return Path(__file__).resolve().parent.parent
+
+    def _pack_file(self, *parts: str) -> Path:
+        return self._repo_root().joinpath("integrations", *parts)
+
+    # ── Shipped pack: provenance + byte-identity drift pin ────────────────────
+
+    def test_vendored_schemas_present_and_provenance(self) -> None:
+        readme = self._pack_file("schemas", "README.md")
+        assert readme.is_file(), "schemas/README.md provenance must ship"
+        text = readme.read_text(encoding="utf-8")
+        assert "canon-v1.0.0" in text, "README pins the source tag"
+        assert "d4e9980" in text, "README pins the source commit"
+        assert "vesmaro-canon" in text, "README names the source repo"
+        assert "Do not edit" in text, "README forbids hand edits"
+        for name in self.CANON_SCHEMA_NAMES:
+            path = self._pack_file("schemas", name)
+            assert path.is_file(), f"{name} must ship in the vendored pack"
+            assert "mnemos-integration" not in path.read_text(encoding="utf-8"), (
+                f"{name} must NOT carry an inline stamp — it must stay valid JSON"
+            )
+            assert f"`{name}`" in text, f"README documents {name} provenance"
+
+    def test_vendored_schemas_are_valid_json_and_parse(self) -> None:
+        for name in self.CANON_SCHEMA_NAMES:
+            schema = json.loads(self._pack_file("schemas", name).read_text(encoding="utf-8"))
+            assert schema["$schema"].startswith("https://json-schema.org/draft/")
+            assert schema["$id"].endswith(f"/schemas/{name}")
+
+    def test_vendored_schemas_byte_identical_to_pin(self) -> None:
+        """Drift pin: shipped bytes == canon pin tag (live sibling, else sha256 table).
+
+        The canon repo is a sibling checkout in this workspace; when present
+        the comparison is against the LIVE ``canon-v1.0.0`` tag content (a
+        canon-side change to the pinned files breaks this test LOUDLY, the
+        pin protocol, canon §9). Without the sibling checkout the frozen
+        sha256 table in ``SCHEMAS_SOURCE_PIN`` keeps the pin enforceable.
+        """
+        import subprocess  # nosec B404 — trusted local git, list args, no shell
+
+        canon_repo = self._repo_root().parent / "vesmaro-canon"
+        live_tag_available = (canon_repo / ".git").exists()
+        for name in self.CANON_SCHEMA_NAMES:
+            shipped = self._pack_file("schemas", name).read_bytes()
+            if live_tag_available:
+                expected = subprocess.run(  # nosec B603
+                    ["git", "-C", str(canon_repo), "show", f"canon-v1.0.0:schemas/{name}"],
+                    check=True,
+                    capture_output=True,
+                ).stdout
+            else:
+                expected = bytes.fromhex(SCHEMAS_SOURCE_PIN["sha256"][name])  # type: ignore[arg-type]
+            assert shipped == expected, (
+                f"{name} drifted from canon-v1.0.0 — re-vendor from the pin tag"
+            )
+
+    def test_source_pin_table_matches_shipped_bytes(self) -> None:
+        """The frozen sha256 table in SCHEMAS_SOURCE_PIN matches the shipped files."""
+        assert SCHEMAS_SOURCE_PIN["tag"] == "canon-v1.0.0"
+        assert SCHEMAS_SOURCE_PIN["commit"].startswith("d4e9980")
+        assert set(SCHEMAS_SOURCE_PIN["sha256"]) == set(self.CANON_SCHEMA_NAMES)
+        import hashlib
+
+        for name, digest in SCHEMAS_SOURCE_PIN["sha256"].items():
+            actual = hashlib.sha256(self._pack_file("schemas", name).read_bytes()).hexdigest()
+            assert actual == digest, f"{name}: sha256 mismatch vs SCHEMAS_SOURCE_PIN"
+
+    # ── Manifest rendering ────────────────────────────────────────────────────
+
+    def test_schemas_manifest_is_stamped_and_json_parseable(self) -> None:
+        raw = schemas_manifest("2.0.0", {"a.schema.json": "deadbeef"})
+        assert raw.startswith("<!-- mnemos-integration: v2.0.0 -->\n")
+        payload, _ = json.JSONDecoder().raw_decode(raw[raw.index("{") :])
+        assert payload["deployed_version"] == "2.0.0"
+        assert payload["kind"] == "schemas"
+        assert payload["files"] == {"a.schema.json": "deadbeef"}
+        assert payload["source"]["tag"] == "canon-v1.0.0"
+
+    # ── Round-trip through the real shipped pack + zcode target ───────────────
+
+    def test_roundtrip_deploy_verify_update_uninstall(
+        self, schemas_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        target = "zcode"
+        schemas_dir = canon_home / ".zcode" / "schemas"
+        manifest_dest = schemas_dir / SCHEMAS_MANIFEST_NAME
+
+        # -- deploy: five byte-identical schemas + stamped manifest -------------
+        deploy = schemas_manager.deploy(target)
+        schema_rows = {
+            f.destination.name: f for f in deploy.files if f.destination.name.endswith(".json")
+        }
+        assert set(schema_rows) == set(self.CANON_SCHEMA_NAMES) | {SCHEMAS_MANIFEST_NAME}, (
+            "exactly the five canon schemas plus the manifest deploy"
+        )
+        for name in self.CANON_SCHEMA_NAMES:
+            deployed = (schemas_dir / name).read_bytes()
+            assert deployed == self._pack_file("schemas", name).read_bytes(), (
+                f"{name} must deploy byte-identical"
+            )
+            assert "mnemos-integration" not in deployed.decode("utf-8"), (
+                f"{name} must carry no inline stamp (valid JSON for validators)"
+            )
+            json.loads((schemas_dir / name).read_text(encoding="utf-8")), "valid JSON on disk"
+
+        assert manifest_dest.is_file(), "stamped sidecar manifest deployed"
+        manifest_raw = manifest_dest.read_text(encoding="utf-8")
+        assert manifest_raw.startswith("<!-- mnemos-integration: v9.9.9 -->\n")
+        payload, _ = json.JSONDecoder().raw_decode(manifest_raw[manifest_raw.index("{") :])
+        assert payload["deployed_version"] == "9.9.9"
+        assert set(payload["files"]) == set(self.CANON_SCHEMA_NAMES)
+
+        # -- verify: everything current (schema rows + manifest row) ------------
+        verify = schemas_manager.verify(target)
+        assert verify.all_current, (
+            f"verify not current: {[(f.destination.name, f.status) for f in verify.files]}"
+        )
+        assert any(
+            f.destination == manifest_dest and f.status is DeployStatus.CURRENT
+            for f in verify.files
+        ), "manifest verified as ours and current"
+
+        # -- idempotency: re-deploy writes nothing new --------------------------
+        redeploy = schemas_manager.deploy(target)
+        schema_statuses = {
+            f.destination.name: f.status
+            for f in redeploy.files
+            if f.destination.name in self.CANON_SCHEMA_NAMES
+        }
+        assert set(schema_statuses.values()) == {DeployStatus.CURRENT}, (
+            "re-deploy reports CURRENT for byte-identical files + current manifest"
+        )
+
+        # -- stale manifest version detected; drift restored by update ----------
+        stale_cfg = load_targets(home=canon_home)
+        stale_mgr = IntegrationManager(
+            version="9.9.8", pack_root=None, targets_config=stale_cfg, home=canon_home
+        )
+        stale_mgr.deploy(target)
+        verify2 = schemas_manager.verify(target)
+        assert verify2.stale_count > 0, "current manager sees the 9.9.8 deployment as stale"
+        drifted = schemas_dir / "envelope.schema.json"
+        drifted.write_text('{"edited": true}\n', encoding="utf-8")
+        verify3 = schemas_manager.verify(target)
+        envelope_row = next(f for f in verify3.files if f.destination == drifted)
+        assert envelope_row.status is DeployStatus.STALE, "byte-drift on a schema is STALE"
+        update = schemas_manager.update(target)
+        assert any(
+            f.destination == drifted and f.status is DeployStatus.UPDATED for f in update.files
+        ), "update restores drifted schema bytes in place"
+        assert schemas_manager.verify(target).all_current, "post-update verify is fully current"
+
+        # -- uninstall: only ours go; foreign files untouched -------------------
+        foreign = schemas_dir / "my-own-notes.json"
+        foreign.write_text('{"user": true}\n', encoding="utf-8")
+        foreign_schema = schemas_dir / "drifted-copy.schema.json"
+        foreign_schema.write_text('{"not": "ours"}\n', encoding="utf-8")
+        stamped_orphan = schemas_dir / "orphan.schema.json"
+        stamped_orphan.write_text("<!-- mnemos-integration: v0.0.1 -->\n{}\n", encoding="utf-8")
+        uninstall = schemas_manager.uninstall(target)
+        schemas_removed = {p for p in uninstall.removed if p.parent == schemas_dir}
+        assert schemas_removed == {schemas_dir / name for name in self.CANON_SCHEMA_NAMES} | {
+            manifest_dest,
+            stamped_orphan,
+        }, "all five schemas + manifest + stamped orphan removed; drifted/foreign copies stay"
+        assert foreign.is_file(), "user file is never deleted"
+        assert foreign_schema.is_file(), "manifest-unowned drifted copy survives (safe direction)"
+        assert stamped_orphan in uninstall.removed and not stamped_orphan.exists(), (
+            "stamped orphan (verify: safe to uninstall) is removed"
+        )
+        assert not manifest_dest.exists(), "manifest removed with the kind"
+
+    def test_uninstall_dry_run_touches_nothing(
+        self, schemas_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        target = "zcode"
+        schemas_dir = canon_home / ".zcode" / "schemas"
+        schemas_manager.deploy(target)
+        before = sorted(p.name for p in schemas_dir.iterdir())
+        result = schemas_manager.uninstall(target, dry_run=True)
+        assert result.removed, "dry-run still reports what WOULD be removed"
+        assert sorted(p.name for p in schemas_dir.iterdir()) == before, "dry-run writes nothing"
+
+    def test_schemas_kind_without_deploy_map_is_skipped(self, tmp_path: Path) -> None:
+        """A target without a ``schemas`` deploy key ignores the kind silently."""
+        pack = tmp_path / "integrations"
+        (pack / "schemas").mkdir(parents=True)
+        (pack / "schemas" / "envelope.schema.json").write_text('{"a": 1}\n', encoding="utf-8")
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "bare": {
+                            "detect": [{"path": str(tmp_path / "marker")}],
+                            "deploy": {"skills": str(tmp_path / "deploy" / "skills") + "/"},
+                            "format": "copy",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "marker").mkdir()
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+        deploy = mgr.deploy("bare")
+        assert deploy.files == [], "no schemas deploy map → kind skipped silently"
+        assert not (tmp_path / "deploy" / "schemas").exists()
+
+    def test_readme_provenance_never_deploys(
+        self, schemas_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        target = "zcode"
+        schemas_manager.deploy(target)
+        assert not (canon_home / ".zcode" / "schemas" / "README.md").exists(), (
+            "pack documentation is not a deployable schema artefact"
+        )
