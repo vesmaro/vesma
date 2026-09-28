@@ -131,6 +131,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 | `query` | string | **yes** | — | Natural language search string. Matched as ONE whole phrase by the FTS5 leg (see Query semantics above). |
 | `tags` | string[] | no | — | Filter: all of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. |
 | `limit` | integer | no | `10` | Max results. |
 | `include_raw` | boolean | no | `false` | If true, returns `raw_content` instead of cleaned `content`. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -191,6 +192,7 @@ Per-agent recall (M3). Returns the most recent entries for a single agent, optio
 |-------|------|----------|---------|-------------|
 | `agent` | string | **yes** | — | Agent slug, e.g. `cr-security-reviewer`. |
 | `project` | string | no | — | Restrict to a project slug. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to a `task:<slug>` tag filter (the F1 arm-C surface): narrows the agent's entries to one task scope, on both the recency and the query legs. |
 | `query` | string | no | — | Optional FTS / vector query within the agent scope. |
 | `limit` | integer | no | `20` | Max entries to return. |
 
@@ -251,6 +253,7 @@ Restore the latest session checkpoint for a project. The **first** thing an agen
 |-------|------|----------|---------|-------------|
 | `project` | string | no | auto (cwd) | Project name. Auto-detected from the current working directory if omitted. |
 | `query` | string | no | — | Optional focus aspect. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to the checkpoint tag filter plus `task:<slug>` (the F1 arm-C surface): returns only checkpoints saved under that task. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
 | `effort` | string | no | config default | One of `low`, `medium`, `high`. Injects reasoning-effort hint into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
 
@@ -322,8 +325,9 @@ Persist a session checkpoint. Agents should call this **proactively**: after mea
 | `context` | string | no | — | Other context (file paths, architecture, gotchas). |
 | `agent` | string | no | `"user"` | Agent identity for the checkpoint — the validated identity channel (non-empty string when provided, whitespace-only rejected). Must match the server-side session→agent binding when `session` is supplied. |
 | `session` | string | no | — | Session id binding the checkpoint to a conversation. First presentation records the session→agent binding server-side; later calls with the same session but a different agent are rejected. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `mnemos_recall_context` / `mnemos_search` / `mnemos_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
 
-Mnemos synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint`. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
+Mnemos synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
 
 A checkpoint whose five payload fields are all empty is trivially rejected before any store (zero-loss: the caller is told, nothing is silently dropped). Re-sending an identical payload for the same `(project, agent)` is idempotent: the existing memory id is returned with `duplicate=true` and nothing new is stored.
 
@@ -373,6 +377,7 @@ List the most recent memory entries, oldest-last.
 | `limit` | integer | no | `10` | Max entries. |
 | `tags` | string[] | no | — | Filter: any of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to appending `task:<slug>` to `tags` (the F1 arm-C surface); composes with `tags` by intersection (both must hold). |
 
 ### Output
 

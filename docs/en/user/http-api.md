@@ -315,6 +315,7 @@ curl -s http://127.0.0.1:8000/memories/550e8400-e29b-41d4-a716-446655440000
 |------|------|---------|-------------|
 | `status` | string | — | Filter by `MemoryStatus` enum value. |
 | `project` | string | — | Restrict to a project slug. |
+| `task` | string | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to appending `task:<slug>` to `tags`; composes with `tags` by intersection. Invalid slugs → `400`. |
 | `limit` | int | `20` | Max rows. Hard cap `500`. |
 
 **Response 200** — array of [`Memory`](#memory-schema) (without `raw_content`).
@@ -373,6 +374,7 @@ RRF fusion of FTS5 and vector legs. Only `published` memories are searched by de
 | `query` | string | **yes** | — | Natural-language search string. Matched as ONE whole phrase by the FTS5 leg (see Query semantics above). |
 | `tags` | string[] | no | — | Filter: all of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface); composes with `tags` by intersection. Invalid slugs → `400` (normalized first: `My Task` → `my-task`). |
 | `limit` | int | no | `20` | Max results. |
 | `include_raw` | bool | no | `false` | If true, returns `raw_content` instead of cleaned content. |
 
@@ -428,6 +430,7 @@ Returns the most recent entries for a single agent, optionally filtered by proje
 |------|------|---------|-------------|
 | `project` | string | — | Restrict to a project slug. |
 | `q` | string | — | Optional FTS / vector sub-query. |
+| `task` | string | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to a `task:<slug>` tag filter; narrows the agent's entries to one task scope on both legs. Invalid slugs → `400`. |
 | `limit` | int | `20` | Max rows. Hard cap `100`. |
 
 **Response 200** — array of:
@@ -473,6 +476,7 @@ Builds structured Markdown from the supplied fields and stores it as a
 | `context` | string | no | — | File paths, architecture notes, gotchas. |
 | `agent` | string | no | `"user"` | Agent identity — the validated identity channel (non-empty string when provided, whitespace-only rejected). Must match the server-side session→agent binding when `session` is supplied. |
 | `session` | string | no | — | Session id binding the checkpoint to a conversation; first presentation records the session→agent binding server-side (first writer wins). |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on the checkpoint at the save boundary (at most one task per record); recall it with `task=` on `POST /context/recall` / `POST /search` / `GET /memories`. A dedup hit returns the first-minted row with ITS task scope. Invalid slugs → `400`. |
 
 **Response 201**
 
@@ -506,7 +510,7 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
 
 | Code | Cause |
 |------|-------|
-| `400` | Identity validation failed (empty/whitespace `agent` or `session`) or trivial-reject: all five payload fields are empty — nothing is stored |
+| `400` | Identity validation failed (empty/whitespace `agent` or `session`), an unsalvageable `task` slug, or trivial-reject: all five payload fields are empty — nothing is stored |
 | `409` | `session` is already bound to a different agent (server-side session→agent binding, first writer wins) |
 | `422` | Missing required `project` field (Pydantic validation) |
 | `500` | SQLite / vault write failure |
@@ -522,6 +526,7 @@ filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
 |-------|------|----------|---------|-------------|
 | `project` | string | **yes** | — | Project slug to recall. |
 | `query` | string | no | — | Optional FTS / vector sub-query to focus results. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to the checkpoint tag filter plus `task:<slug>` (the F1 arm-C surface): returns only checkpoints saved under that task. Invalid slugs → `400`. |
 | `limit` | int | no | `5` | Max checkpoints to return. |
 
 **Response 200 — with prior context**
