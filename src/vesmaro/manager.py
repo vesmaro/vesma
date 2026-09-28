@@ -275,6 +275,44 @@ WALK_FANOUT_CAP: Final[int] = 32
 # bound the query-time cost as a function of the corpus, not of ``limit``.
 WALK_TOTAL_WORK_CAP: Final[int] = 512
 
+# ── ADR-0030 A1-S2 — feedback APPLY constants (#325, ArchCom 2026-09-27) ──────
+# The pheromone line: at walk-fill time an edge's effective weight
+# multiplies by ``w_eff = w_edge x (1 + min(used, CAP) x SLOPE)`` where
+# ``used`` is the clamped per-neighbour `used` counter from the
+# append-only edge_stats capture table (I5). SATURATING by construction
+# (I6, THE Security residual): the factor plateaus at
+# ``1 + CAP x SLOPE = 2.0`` however many events one principal floods —
+# a 10k-cap flood moves a walked-block row's rank by at most the
+# saturation bound, and rank moves never flip eligibility (gates run
+# BEFORE the factor applies; rank-only is I6). CALIBRATION (A1 starting
+# point, per the committee: "conservative values, measurable once
+# capture flows"): CAP=10 says the FIRST ten real uses carry the
+# signal — a citation proven valuable a handful of times is boosted to
+# the ceiling; SLOPE=0.1 caps the whole mechanism at x2.0 — a
+# used-heavy edge outranks its used-light sibling WITHIN the walked
+# block but can never leapfrog the fused ranking, the depth decay, or
+# the gate order. Both constants are revisitable at the A1 telemetry
+# checkpoint (the junk-edge share measurement the verdict names); they
+# change NOTHING structurally — any (CAP, SLOPE) pair keeps f(0)=1.0
+# (the neutral factor) and f bounded (the saturation property), the
+# two properties the pin tests lock.
+FEEDBACK_BOOST_CAP: Final[int] = 10
+FEEDBACK_BOOST_SLOPE: Final[float] = 0.1
+
+
+def _feedback_boost_factor(used: int) -> float:
+    """Saturating usage factor (ADR-0030 A1-S2, I6 bounded Δ).
+
+    ``f(used) = 1 + min(used, FEEDBACK_BOOST_CAP) x FEEDBACK_BOOST_SLOPE``
+    — f(0)=1.0 (neutral: a zero-capture store reproduces the flag-off
+    ranking byte-identically), f monotone non-decreasing, f bounded at
+    ``1 + CAP x SLOPE`` (saturation: no amount of capture moves one
+    row's walked-block rank beyond the saturation bound). A PURE
+    function of the clamped counter — the structural I6 guarantee.
+    """
+    return 1.0 + min(max(used, 0), FEEDBACK_BOOST_CAP) * FEEDBACK_BOOST_SLOPE
+
+
 # Depth-2 attribution: a depth-2 neighbour's anchor is its entry
 # neighbour's first anchor (first-anchor-wins across BOTH layers) —
 # the ADR-0028 (score desc, id asc) tiebreak line holds unchanged.
@@ -511,6 +549,15 @@ class MemoryManager:
             # trade-off as the graph-leg counters above.
             "task_param_queries_total": 0,
             "task_tag_queries_total": 0,
+            # ADR-0030 A1-S2 (#325) — the flag-ON telemetry hook: requests
+            # whose walked block used feedback-influenced weights (at
+            # least one row got a non-neutral f(used) factor). The S2
+            # acceptance observable (committee: "flag-on only after
+            # proven capture telemetry" — THIS counter is how capture
+            # reaching APPLY is proven later). Flag OFF (or zero-capture
+            # store) ⇒ 0 forever — same in-memory trade-off as the
+            # graph-leg counters above.
+            "feedback_boosted_queries_total": 0,
             "latency_samples_ms": [],
             "results_counts": [],
         }
@@ -2296,6 +2343,36 @@ class MemoryManager:
                 # PAST gated candidates so a gated-out row never consumes
                 # a reserved slot (gates bind to the query, never to the
                 # reservation).
+                # A1-S2 (ADR-0030 §3 APPLY, #325; ArchCom 2026-09-27,
+                # I6 — THE Security residual): when the
+                # ``mnemos.feedback_apply`` flag is ON, the captured
+                # edge_stats ``used`` counters multiply each walked
+                # row's weight by the SATURATING factor
+                # ``f(used) = 1 + min(used, CAP) x SLOPE`` (bounded at
+                # x2.0, the FEEDBACK_BOOST_CAP/SLOPE constants above).
+                # RANK-ONLY within the walked block: the factor applies
+                # AFTER every gate (the loops below filter on the
+                # query's scope exactly as before), never touches the
+                # fused block, and never expands the quota — one
+                # batched ``used`` lookup per query over the
+                # idx_edge_stats_memory index; a store read failure
+                # degrades to an empty dict (the factor is neutral,
+                # flag-on falls back to S1 semantics — enrichment must
+                # never break the search it decorates). A zero-capture
+                # store yields f(0)=1.0 for every row: flag-on ≡
+                # flag-off byte-identically (pinned).
+                used_counts: dict[str, int] = {}
+                if self.settings.mnemos.feedback_apply and walk_rows:
+                    try:
+                        used_counts = self.sqlite.get_edge_stats_used_counts_batch(
+                            [c.neighbour_id for c in walk_rows]
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "feedback apply: used-counter lookup failed (non-fatal): %s", exc
+                        )
+                        used_counts = {}
+                boosted = False
                 for cand in walk_rows:
                     if len(appended) >= k:
                         break
@@ -2341,6 +2418,17 @@ class MemoryManager:
                     # the fused block, eligibility, or the gate order.
                     decayed = (1.0 - alpha) / (rrf_k + 2 * cand.anchor_pos)
                     decayed *= cand.weight * (WALK_DEPTH_DECAY ** (cand.depth - 1))
+                    # A1-S2 (I6 rank-only): the usage factor multiplies the
+                    # POST-GATE weight — the row already passed every gate,
+                    # so the boost can never restore eligibility (I6), and
+                    # the saturating f bounds how far rank can move
+                    # (bounded Δ). Non-neutral factors mark the query as
+                    # feedback-influenced (the S2 acceptance observable).
+                    used = int(used_counts.get(cand.neighbour_id, 0))
+                    factor = _feedback_boost_factor(used)
+                    if factor != 1.0:
+                        boosted = True
+                    decayed *= factor
                     appended.append(
                         SearchResult(
                             memory=neighbour,
@@ -2350,6 +2438,28 @@ class MemoryManager:
                             via_graph_kind="relates_to" if cand.via_relates else "supersedes",
                         )
                     )
+                # A1-S2 (I6 rank-only, ADR-0028 determinism): when (and
+                # only when) feedback_apply=ON AND the boost actually
+                # moved something, the walked block RE-SORTS by
+                # (score desc, id asc) — the same deterministic tiebreak
+                # line the fused block uses; the boost moves rows WITHIN
+                # the block only (fused-block order untouched — the block
+                # appends after it; eligibility untouched — the cut
+                # already happened at ``len(appended) >= k``). Flag OFF,
+                # zero-capture store, or an all-neutral pass: NO
+                # re-sort, S1 order byte-identical (the S1 block order is
+                # the collection order (anchor_pos, depth, id) — a pure
+                # function of the fused ranking + edge table; sorting a
+                # neutral block could still permute equal-score-free
+                # rows away from the S1 order, so the sort is skipped
+                # entirely unless a factor moved a row).
+                if boosted and len(appended) > 1:
+                    appended.sort(key=lambda r: (-r.score, r.memory.id))
+                if boosted:
+                    with self._search_stats_lock:
+                        self._search_stats["feedback_boosted_queries_total"] = (
+                            int(self._search_stats["feedback_boosted_queries_total"]) + 1
+                        )
                 results.extend(appended)
             # Backfill (flag-ON): the fused surplus fills any walk
             # shortfall in the SAME (score desc, id asc) order — the
@@ -3734,12 +3844,25 @@ class MemoryManager:
             # for the share arithmetic (a task= call lands in BOTH).
             "task_param_queries_total": int(self._search_stats["task_param_queries_total"]),
             "task_tag_queries_total": int(self._search_stats["task_tag_queries_total"]),
+            # ADR-0030 A1-S2 (#325) — requests whose walked block used
+            # feedback-influenced weights (see _search_stats init for the
+            # acceptance-observable rationale).
+            "feedback_boosted_queries_total": int(
+                self._search_stats["feedback_boosted_queries_total"]
+            ),
             # ADR-0030 A1-S1 (#325): per-project edge-write generations —
             # the meta-counter any ranking consumer can key on to
             # invalidate graph-derived state (no in-repo cache key
             # exists today; committee note: document keying in the
             # ADR-0030 addendum, not here).
             "graph_epoch_by_project": self._graph_epoch_snapshot(),
+            # ADR-0030 A1-S2 (#325; ArchCom 2026-09-27, Security residual
+            # 2): per-project FEEDBACK generations — bumped on edge_stats
+            # CAPTURE (rows actually appended, captured > 0; idempotent
+            # retries bump nothing). Once APPLY is live, an epoch-keyed
+            # consumer must invalidate on feedback inserts too — a stale
+            # feedback loop otherwise.
+            "feedback_epoch_by_project": self._feedback_epoch_snapshot(),
             "avg_latency_ms": avg_latency_ms,
             "avg_results": avg_results,
         }
@@ -3763,6 +3886,41 @@ class MemoryManager:
             key = str(row["key"])
             # Key format: graph_epoch:{len}:{project} — split on the
             # length prefix (project slugs may legally contain ':').
+            parts = key.split(":", 2)
+            if len(parts) != 3 or not parts[1].isdigit():
+                continue
+            plen = int(parts[1])
+            if len(parts[2]) != plen:
+                continue  # malformed — skip rather than guess
+            try:
+                snapshot[parts[2]] = int(str(row["value"]))
+            except ValueError:
+                continue
+        return snapshot
+
+    def _feedback_epoch_snapshot(self) -> dict[str, int]:
+        """Read every project's ``feedback_epoch`` from the meta table.
+
+        Mirrors ``_graph_epoch_snapshot`` exactly (the same best-effort
+        contract: a read failure yields ``{}`` — the search-stats surface
+        must never fail on the feedback leg's observability ride).
+        """
+        try:
+            conn = self.sqlite._get_conn()
+            rows = conn.execute(
+                "SELECT key, value FROM meta WHERE key LIKE 'feedback_epoch:%'"
+            ).fetchall()
+        except Exception as exc:
+            logger.warning("feedback_epoch snapshot failed (non-fatal): %s", exc)
+            return {}
+        snapshot: dict[str, int] = {}
+        for row in rows:
+            key = str(row["key"])
+            # Key format: feedback_epoch:{len}:{project} — the SAME
+            # length-prefix discipline as graph_epoch (#415 review
+            # finding: project slugs may legally contain ':' in other
+            # namespaces, so the length prefix, not a bare split, is the
+            # parse authority).
             parts = key.split(":", 2)
             if len(parts) != 3 or not parts[1].isdigit():
                 continue
@@ -3895,6 +4053,20 @@ class MemoryManager:
             self._feedback_stats["duplicates_ignored_total"] += int(outcome["duplicates"])
             self._feedback_stats["out_of_scope_dropped_total"] += int(outcome["out_of_scope"])
             self._feedback_stats["cap_dropped_total"] += int(outcome["cap_dropped"])
+        # ADR-0030 A1-S2 (#325; ArchCom 2026-09-27, Security residual 2):
+        # bump the per-project ``feedback_epoch`` meta-counter ONLY when
+        # rows were ACTUALLY APPENDED (captured > 0) — an idempotent
+        # retry (all duplicates) or a fully-dropped report (cap/out of
+        # scope) bumps nothing: the epoch tracks FEEDBACK-TABLE CHANGE,
+        # not call volume (the same discipline as graph_epoch on
+        # idempotent edge re-inserts). The bump key is the REPORTING
+        # PRINCIPAL's project (norm_project; "" = the explicit global
+        # bucket) — per-project by the same committee ruling that made
+        # graph_epoch per-project (a global epoch is a cheap fleet-wide
+        # cache-DoS lever). Best-effort: a meta-counter failure must
+        # never fail the capture it decorates.
+        if int(outcome["captured"]) > 0:
+            self._bump_feedback_epoch(norm_project)
         if outcome["captured"] or outcome["cap_dropped"]:
             logger.info(
                 "feedback capture: kind=%s captured=%d duplicates=%d "
@@ -4040,11 +4212,20 @@ class MemoryManager:
             "graph": {
                 "auto_mint_enabled": self.settings.mnemos.graph_auto_mint,
                 "walk_enabled": self.settings.mnemos.graph_walk,
+                "feedback_apply_enabled": self.settings.mnemos.feedback_apply,
                 "auto_dedupe_edges_total": g_stats["auto_dedupe_edges_total"],
                 "auto_dedupe_edges_by_project": g_stats["auto_dedupe_edges_by_project"],
                 # ADR-0030 A1-S1 (#325): durable per-project edge-write
                 # generations (see search_stats()["graph_epoch_by_project"]).
                 "graph_epoch_by_project": s_stats["graph_epoch_by_project"],
+                # ADR-0030 A1-S2 (#325): durable per-project FEEDBACK
+                # generations (capture events; see
+                # search_stats()["feedback_epoch_by_project"]).
+                "feedback_epoch_by_project": s_stats["feedback_epoch_by_project"],
+                # ADR-0030 A1-S2 (#325): requests whose walked block used
+                # feedback-influenced weights — the S2 acceptance
+                # observable.
+                "feedback_boosted_queries_total": s_stats["feedback_boosted_queries_total"],
             },
             "vectors": {
                 "indexed_total": self.vectors.count(),
@@ -6503,6 +6684,42 @@ class MemoryManager:
             current = self.sqlite.get_meta(key)
         except Exception as exc:
             logger.warning("graph_epoch read failed (non-fatal): %s", exc)
+            return 0
+        return int(current) if current else 0
+
+    # ── ADR-0030 A1-S2: per-project feedback_epoch (#325) ────────────────
+
+    def _bump_feedback_epoch(self, project: str) -> int:
+        """Increment the per-project ``feedback_epoch`` meta-counter.
+
+        Bumped ONLY on actual edge_stats row APPENDS (``captured > 0``
+        from ``report_search_feedback``); idempotent retries bump
+        nothing (ArchCom 2026-09-27, Security residual 2: without this
+        component an epoch-keyed consumer serves STALE feedback once
+        APPLY is live). Key discipline mirrors ``graph_epoch``
+        verbatim — ``feedback_epoch:{len}:{project}``, the length
+        prefix making the key colon-safe (the #415 review finding:
+        the ``{len}`` segment survives ':' in project slugs).
+        Best-effort: a meta-counter failure never fails the capture it
+        decorates (logged, returns 0).
+        """
+        key = f"feedback_epoch:{len(project)}:{project}"
+        try:
+            current = self.sqlite.get_meta(key)
+            value = int(current) + 1 if current else 1
+            self.sqlite.set_meta(key, str(value))
+        except Exception as exc:
+            logger.warning("feedback_epoch bump failed (non-fatal): %s", exc)
+            return 0
+        return value
+
+    def feedback_epoch(self, project: str) -> int:
+        """Read the per-project ``feedback_epoch`` (0 = no captures yet)."""
+        key = f"feedback_epoch:{len(project)}:{project}"
+        try:
+            current = self.sqlite.get_meta(key)
+        except Exception as exc:
+            logger.warning("feedback_epoch read failed (non-fatal): %s", exc)
             return 0
         return int(current) if current else 0
 

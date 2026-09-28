@@ -4148,6 +4148,34 @@ class SQLiteStore:
             counters[str(row["kind"])] = min(int(row["n"]), EDGE_STATS_COUNTER_CLAMP)
         return counters
 
+    def get_edge_stats_used_counts_batch(self, memory_ids: list[str]) -> dict[str, int]:
+        """Per-memory CLAMPED ``used`` counters for a batch of ids.
+
+        ADR-0030 A1-S2 (issue #325) — the APPLY read leg: ONE indexed
+        ``WHERE memory_id IN (...) AND kind = 'used'`` point query per
+        walked-block construction (the idx_edge_stats_memory index
+        serves it). Values are clamped at ``EDGE_STATS_COUNTER_CLAMP``
+        (the I5 bounded-counter discipline: whatever the table
+        accumulates, the readable signal stays bounded — the caller's
+        saturating factor then bounds the RANK delta on top, I6). An
+        id with no rows simply has no entry — the caller reads absent
+        as 0. ``rejected`` events are deliberately NOT read: the S2
+        contract boosts by real usage only (a rejected citation is not
+        anti-boosted; demotion experiments wait for the A1 telemetry
+        checkpoint).
+        """
+        if not memory_ids:
+            return {}
+        conn = self._get_conn()
+        placeholders = ",".join("?" * len(memory_ids))
+        rows = conn.execute(
+            "SELECT memory_id, COUNT(*) AS n FROM edge_stats "
+            f"WHERE memory_id IN ({placeholders}) AND kind = 'used' "
+            "GROUP BY memory_id",
+            tuple(memory_ids),
+        ).fetchall()
+        return {str(row["memory_id"]): min(int(row["n"]), EDGE_STATS_COUNTER_CLAMP) for row in rows}
+
     def count_edge_stats(self, *, kind: str | None = None) -> int:
         """Durable edge_stats row count (telemetry; optional kind filter).
 
