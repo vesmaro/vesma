@@ -431,10 +431,11 @@ justification in the test docstring — not a disable.
    ids → new edges → epoch bumps). The `add_memory_edge` docstring
    should not be read as content-level idempotency; a same-content
    re-add is a legitimate bump.
-2. **`w_edge` ≥ ~1.2 lets a walked row exceed fused-anchor absolute
-   scores** (at `rrf_k = 60`, a depth-1 row at `anchor_pos = 0` with
-   `w_edge ≈ 1.2` matches the fused top score; higher weights exceed
-   it). This is **legal under I3** — ranking within the block, never
+2. **A walked row can exceed fused-anchor absolute scores at elevated
+   `w_edge`** (at `rrf_k = 60`, `alpha = 0.5`: a depth-1 row at
+   `anchor_pos = 0` needs `w_edge ≈ 1.0` to match a single-leg fused
+   top score and `w_edge ≈ 2.0` to match a both-legs fused top). This
+   is **legal under I3** — ranking within the block, never
    eligibility — but the calibration (how often and how much) becomes
    **measurable only once APPLY/feedback flows**; it rides the S2
    enablement checklist.
@@ -463,6 +464,7 @@ decision — the owner chose the no-migration form on 2026-09-28
   killers, epoch tests).
 - The day-by-day window numbers are quoted from the window record
   (mnemos `1b9c0a30`) as given; the cohort arithmetic (104 writes →
-  256 edges → ≈ 2.45/write) and the w_edge ≈ 1.2 threshold were
+  256 edges → ≈ 2.45/write) and the `w_edge` score-crossing thresholds
+  (≈ 1.0 single-leg / ≈ 2.0 both-legs at `rrf_k = 60`) were
   re-derived from the quoted totals and the shipped decay formula
   during the writing of this addendum.
