@@ -67,6 +67,18 @@ class MnemosConfig(BaseModel):
     # each leg ships default-off behind a flag).
     # Canonical env override: VESMARO_MNEMOS__GRAPH_WALK=true.
     graph_walk: bool = False
+    # ADR-0030 A1-S2 (issue #325) — feedback APPLY: the edge_stats
+    # `used` counters multiply walked-block edge weights by a
+    # SATURATING, bounded factor (I6: rank-only, bounded Δ per
+    # principal — never eligibility, never the fused block, never past
+    # the quota). INDEPENDENT of `graph_walk` by committee ruling
+    # (ArchCom 2026-09-27, verdict (c) Security residual: independent
+    # default-off flag per leg): graph_walk=OFF ⇒ apply is inert (the
+    # walk does not run); graph_walk=ON + feedback_apply=OFF ⇒ A1-S1
+    # behavior byte-identical. Default OFF — enablement is a separate
+    # decision gated on proven capture telemetry (committee condition).
+    # Canonical env override: VESMARO_MNEMOS__FEEDBACK_APPLY=true.
+    feedback_apply: bool = False
     # mnemos #96: workflow lifecycle guardrails. Stale-lock threshold governs
     # how long a lock survives before a different actor can take it over
     # without ``force`` (guardrail 2). Rate limit caps transitions per memory
