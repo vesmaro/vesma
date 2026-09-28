@@ -101,4 +101,5 @@ Unknown prefixes not listed here are **rejected** in strict mode.
 ## See also
 
 - Instruction `mnemos-tag-contract.instructions.md`
+- Skill `mnemos-canon-write` — canon-compliant records (task / decision / report)
 - [Tag Contract (user docs)](../../docs/en/user/tag-contract.md)

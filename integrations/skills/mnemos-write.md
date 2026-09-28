@@ -91,4 +91,6 @@ beyond the current session.
 
 - Skill `mnemos-tag-contract` — full tag schema reference
 - Skill `mnemos-recall` — search before writing (avoid duplicates)
+- Skill `mnemos-canon-write` — canon-compliant records (task / decision / report)
 - Instruction `mnemos-memory-ops.instructions.md`
+- Instruction `canon-records.instructions.md`

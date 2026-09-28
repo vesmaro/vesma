@@ -167,5 +167,7 @@ mnemos_ingest_url(
 
 - `mnemos-session-lifecycle.instructions.md` — recall at start, checkpoint on compaction
 - `mnemos-tag-contract.instructions.md` — required tag composition
+- `canon-records.instructions.md` — canon record standards (envelope + body sections)
 - Skill `mnemos-recall` — effective search (narrow → broaden)
 - Skill `mnemos-write` — writing good entries
+- Skill `mnemos-canon-write` — canon-compliant task / decision / report records
