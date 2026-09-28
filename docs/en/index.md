@@ -75,6 +75,7 @@ Set `MNEMOS_AUTO_COLLECT=1` in the server's `env` block to make Mnemos prompt yo
 | `mnemos_tags_rename` | Bulk rename a tag prefix across existing memories (dry-run by default) |
 | `mnemos_tags` | Bulk tag operations: rename a prefix, remove or add tags |
 | `mnemos_ingest_url` | Fetch a web page and save it as a memory |
+| `mnemos_ingest_document` | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) |
 | `mnemos_watch_start` | Start the background file watcher |
 | `mnemos_watch_stop` | Stop the watcher |
 | `mnemos_watch_status` | Report watcher status |

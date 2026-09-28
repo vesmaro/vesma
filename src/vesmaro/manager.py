@@ -36,6 +36,18 @@ from vesmaro.canon_validate import (
 )
 from vesmaro.config import Settings
 from vesmaro.danger_detectors import DetectionResult, detect
+
+# ADR-0027 Ф3 (epic #308) — the docs-as-memory document-ingest
+# authority. Imported as an alias to avoid the module↔manager name
+# collision (the function IS ``ingest_document`` on both sides; the
+# manager's method is the public surface, the module's function is the
+# single implementation).
+from vesmaro.docs_ingest import (
+    DOC_CHUNK_CACHE_VERSION_META_KEY,
+    DOC_SWEEP_STAMP_KEYS,
+    DocIngestResult,
+)
+from vesmaro.docs_ingest import ingest_document as docs_ingest_document
 from vesmaro.embeddings import EmbeddingProvider, create_embedding_provider
 from vesmaro.graph_minting import (
     AUTO_DEDUPE_CANDIDATE_POOL,
@@ -1067,6 +1079,24 @@ class MemoryManager:
                     k: v for k, v in data.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
                 }
 
+        # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
+        # server-minted too — only sweep_document_chunks may write
+        # ``doc_swept_at`` (the explicit-release audit trail). A client
+        # forging it on a generic create would fabricate a release audit
+        # entry; the same #251 strip class. No trusted-caller flag exists:
+        # the sweep writes through the STORE's update_fields (server-
+        # internal), never through add().
+        doc_forged = sorted(k for k in DOC_SWEEP_STAMP_KEYS if k in data.metadata)
+        if doc_forged:
+            logger.warning(
+                "generic create: stripped client-supplied doc-sweep stamps "
+                "(server-minted only, ADR-0027 Ф3 review P3-1): keys=%s",
+                doc_forged,
+            )
+            data.metadata = {
+                k: v for k, v in data.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+            }
+
         # ── Layer 1: write-path secrets scanner ───────────────────────────
         # Run before Memory construction so the tag is part of the persisted
         # record from the first write (no second UPDATE needed). Non-fatal:
@@ -1301,10 +1331,36 @@ class MemoryManager:
                 memory.metadata = {
                     k: v for k, v in memory.metadata.items() if k not in CHECKPOINT_STAMP_KEYS
                 }
+            # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
+            # the server-minted class — strip a client-supplied
+            # ``doc_swept_at`` (a forged release audit entry); the merge
+            # back below restores the row's own minted stamp (a client
+            # metadata dict cannot erase it either). The sweep writes
+            # through the STORE's update_fields, never through update().
+            doc_forged = sorted(k for k in DOC_SWEEP_STAMP_KEYS if k in memory.metadata)
+            if doc_forged:
+                logger.warning(
+                    "update: stripped client-supplied doc-sweep stamps "
+                    "(server-minted only, ADR-0027 Ф3 review P3-1): "
+                    "id=%s keys=%s",
+                    memory_id[:8],
+                    doc_forged,
+                )
+                memory.metadata = {
+                    k: v for k, v in memory.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+                }
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
             }
             memory.metadata = {**memory.metadata, **internal}
+            # ADR-0027 Ф3 (review round P3-1): restore the row's own
+            # minted doc-sweep stamp on top of the replacement dict —
+            # a client metadata dict can neither forge nor erase it
+            # (the same merge-protect the checkpoint stamps get).
+            memory.metadata = {
+                **memory.metadata,
+                **{k: previous_metadata[k] for k in DOC_SWEEP_STAMP_KEYS if k in previous_metadata},
+            }
             # ADR-0027 Phase 0 (slice-1 review item 1) — the update twin
             # of the add() gate: the REPLACEMENT metadata dict must not
             # persist a partial doc-grouping triple. Validated AFTER the
@@ -4310,6 +4366,15 @@ class MemoryManager:
                 # None means the pipeline has never run yet.
                 "last_processed_at": self.sqlite.get_meta("pipeline_last_run"),
             },
+            # ADR-0027 Ф3 (epic #308, review round P2-2): the doc-chunk
+            # ccr_cache invalidation counter — the graph_epoch posture:
+            # EXPOSED for any assembly-cache consumer, bumped
+            # transactionally on every document re-fragmentation; no
+            # in-repo consumer keys on it yet (the counter is the
+            # contract, not a wired cache-bypass).
+            "doc_chunk_cache_version": self.sqlite.doc_chunk_cache_version(
+                DOC_CHUNK_CACHE_VERSION_META_KEY
+            ),
             "search_health": {
                 "fts_available": True,  # FTS5 is always available (SQLite built-in)
                 "vector_available": vector_count > 0,
@@ -4736,6 +4801,44 @@ class MemoryManager:
             source_url=url,
         )
         return self.add(data, project=project, agent=agent)
+
+    def ingest_document(
+        self,
+        text: str,
+        *,
+        doc_id: str,
+        title: str | None,
+        tags: list[str],
+        project: str,
+        agent: str,
+        source_url: str | None = None,
+    ) -> DocIngestResult:
+        """ADR-0027 Ф3 (epic #308) — ingest a document as doc-chunk rows.
+
+        Thin wrapper over :func:`vesmaro.docs_ingest.ingest_document`
+        (the single authority for the Ф3 lifecycle: chunk →
+        born-quarantine → danger-sweep → release/refuse). The chunks
+        are BORN QUARANTINED (ADR-0027 invariant 8 — untrusted
+        content) and released per-chunk by the ADR-0019 Phase A danger
+        detector at ingest-completion; a re-ingest of the same
+        ``doc_id`` replaces the rows and bumps the ccr_cache doc-chunk
+        version in the same transaction (invariant 4).
+
+        This is the DOCUMENT surface; the single-URL :meth:`ingest_url`
+        keeps its pre-Ф3 semantics (one row, the ordinary visibility
+        policy, no born-quarantine) — the boundary is pinned in the Ф3
+        tests and documented on both tool surfaces.
+        """
+        return docs_ingest_document(
+            self,
+            text,
+            doc_id=doc_id,
+            title=title,
+            tags=tags,
+            project=project,
+            agent=agent,
+            source_url=source_url,
+        )
 
     # ── Watchers ─────────────────────────────────────────────────────────────
 

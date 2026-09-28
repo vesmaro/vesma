@@ -41,6 +41,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_tags_rename`](#mnemos_tags_rename) | Bulk rename tag prefixes across memories (e.g. `gcw:` → `mnemos:`); dry-run by default | no |
 | [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Workflow lifecycle: set / get / history (`action: enum`) | no |
 | [`mnemos_ingest_url`](#mnemos_ingest_url) | Fetch and save a web page | yes |
+| [`mnemos_ingest_document`](#mnemos_ingest_document) | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) | yes |
 | [`mnemos_watch_start`](#mnemos_watch_start) | Start a background file watcher | no |
 | [`mnemos_watch_stop`](#mnemos_watch_stop) | Stop the file watcher | no |
 | [`mnemos_watch_status`](#mnemos_watch_status) | Report watcher status | no |
@@ -633,6 +634,86 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 - HTTP equivalent: [`POST /memories` with manual content](http-api.md#post-memories--create-memory)
 - HTTP equivalent: [`POST /ingest-url`](http-api.md#post-ingest-url--fetch-and-save-a-web-page)
 - Security: [security.md](../admin/security.md#2-ssrf-prevention-memorymanager_validate_url)
+
+---
+
+## `mnemos_ingest_document`
+
+Ingest a full document as chunked memory rows — **docs-as-memory** (ADR-0027 Phase 3). The document text is split structure-preservingly (heading-scoped chunks carrying the `{doc_id, chunk_idx, heading_path}` metadata convention) and every chunk row enters memory **born quarantined**: ingested documents are untrusted content, invisible to every recall/assembly path until the **danger-sweep** clears them.
+
+### Quarantine lifecycle (ADR-0019 §5 discipline)
+
+1. **Born-quarantine** — every chunk row is created in the terminal danger-lane state (`pipeline_state=quarantined`, reason `doc-ingest-born-quarantine`): not recallable, not admissible to assembly, no vector embed.
+2. **Danger-sweep at ingest-completion** — the ADR-0019 Phase A danger detector (the same enumerated positive-signal set that powers the publication gate) runs over every chunk of the document together:
+   - a **clean** chunk is **released**: it becomes an ordinary `published` memory row (recallable, task-scopable, task-lens-visible — no special-casing), with the sweep timestamp recorded in its metadata;
+   - a chunk with a **positive detector signal** (prompt-injection payload, high-confidence secret) **stays quarantined** with the detector class codes in the operator-side `quarantine_reason` — release is explicit and audited, quarantine is absorbing;
+   - a **scanner error** fails closed: the chunk stays quarantined with reason `detector-error`.
+3. **Release semantics are chunk-atomic** — a clean chunk is released even if a sibling chunk of the same document is flagged; the flagged chunk stays quarantined. A document is never half-released in the visibility sense: before the sweep no chunk is admissible, after it exactly the clean chunks are.
+4. **Issuance remains the last line** (ADR-0027 invariant 7) — a released chunk contaminated *after* release is still subject to the repeat secret scan every content-echoing channel runs at issuance; refuse mode drops the item, redact mode replaces matched spans. The sweep is not the last line, issuance is.
+
+### Re-ingest and the cache version (ADR-0027 invariant 4)
+
+Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-fragmentation) and bumps the doc-chunk `ccr_cache` version key **in the same SQLite transaction**. Honest scope: the version key is a **consumer-facing invalidation counter** (exposed in `mnemos_stats` / `GET /stats` as `doc_chunk_cache_version`, the same posture as `graph_epoch`) — bumped transactionally on every re-fragmentation; any assembly-cache consumer **must** read it and treat a change as a full invalidation. No in-repo consumer keys on it yet.
+
+### Boundary with `mnemos_ingest_url`
+
+`mnemos_ingest_url` keeps its pre-Phase-3 semantics: a fetched page saved as ONE memory row through the ordinary visibility policy, no born-quarantine. It is **not** retroactively quarantined — the document path is this separate tool.
+
+### Input
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | **yes** | Full document text to chunk and ingest. |
+| `doc_id` | string | **yes** | Logical document identity; stable across re-ingest (replaces the chunks + bumps the cache version). |
+| `tags` | string[] | **yes** | Same M2 contract as `mnemos_add`. |
+| `title` | string | no | Optional document title. |
+| `source_url` | string | no | Optional provenance URL. |
+
+### Output
+
+```json
+{
+  "doc_id": "dep-guide",
+  "chunks_total": 3,
+  "released": 2,
+  "quarantined": 1,
+  "chunk_ids": ["…", "…", "…"],
+  "reingest": false,
+  "cache_version": 0,
+  "truncated": false
+}
+```
+
+### Example call
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "method": "tools/call",
+  "params": {
+    "name": "mnemos_ingest_document",
+    "arguments": {
+      "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
+      "doc_id": "dep-guide",
+      "tags": ["project:research", "agent:user", "mnemos:learning"],
+      "title": "Deployment Guide"
+    }
+  }
+}
+```
+
+### Errors
+
+| Error | Cause |
+|-------|-------|
+| `❌ Error: ...` | Empty/whitespace document (no chunks produced), or a doc_id boundary violation. |
+
+### Related
+
+- HTTP equivalent: [`POST /ingest-document`](http-api.md#post-ingest-document--ingest-a-document-as-chunked-quarantined-rows)
+- Single-URL tool: [`mnemos_ingest_url`](#mnemos_ingest_url) (separate semantics — one row, no born-quarantine)
+- ADR: [ADR-0027](../../project/adr/0027-multi-context-memory.md) (Phase 3, invariants 4/7/8); [ADR-0019](../../project/adr/0019-optimistic-publication-async-refinement.md) (§5 quarantine, Phase A danger gate)
 
 ---
 

@@ -297,24 +297,27 @@ async def test_auto_collect_status_touches_no_manager_data_method() -> None:
 
 
 async def test_no_brand_env_canonical_manifest_only() -> None:
-    """Without VESMARO_MCP_BRAND the manifest stays 27 canonical mnemos_ tools."""
+    """Without VESMARO_MCP_BRAND the manifest stays 28 canonical mnemos_ tools.
+
+    Ф3 (epic #308): mnemos_ingest_document joined the canonical set —
+    the count pin moved 27 → 28 with it."""
     with patch("vesmaro.mcp_server._MCP_BRAND", ""):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 27
+    assert len(names) == 28
     assert all(n.startswith("mnemos_") for n in names)
 
 
 async def test_brand_env_appends_vesmaro_aliases() -> None:
-    """VESMARO_MCP_BRAND=vesmaro doubles the manifest: 27 canonical + 27 aliases."""
+    """VESMARO_MCP_BRAND=vesmaro doubles the manifest: 28 canonical + 28 aliases."""
     from vesmaro.mcp_server import _canonical_tools
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 54
+    assert len(names) == 56
     aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert len(aliases) == 27
+    assert len(aliases) == 28
     assert "vesmaro_search" in aliases
     assert "vesmaro_retrieve" in aliases
     # aliases share the canonical schema objects (same Tool input_schema object)
@@ -351,8 +354,8 @@ async def test_brand_self_alias_and_invalid_brand_rejected() -> None:
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "mnemos"):
         tools = await list_tools()
-    assert len(tools) == 27  # no doubling
+    assert len(tools) == 28  # no doubling
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "Bad Brand!"):
         tools = await _canonical_tools()
-    assert len(tools) == 27  # malformed brand is a no-op
+    assert len(tools) == 28  # malformed brand is a no-op
