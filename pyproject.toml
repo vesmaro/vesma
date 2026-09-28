@@ -120,6 +120,18 @@ mcp = [
 pdf = [
     "pymupdf>=1.24",
 ]
+# Project code graph (ADR-0032 PG-0): tree-sitter is OPTIONAL by TL
+# ruling — the graph indexes on demand and the base install must not
+# carry the parser stack. Canonical PyPI name is ``tree-sitter`` (the
+# old ``py-tree-sitter`` distribution was renamed; the old name no
+# longer resolves on the index). ``tree-sitter-python`` 0.25.0 requires
+# ``tree-sitter~=0.24``, hence the <0.27 ceiling keeps the pair
+# resolver-stable while wave 1 stays Python-only. PG-3 adds language
+# packs as extra entries here.
+code-graph = [
+    "tree-sitter>=0.24,<0.27",
+    "tree-sitter-python>=0.25.0,<0.26",
+]
 docx = [
     "python-docx>=1.1",
 ]
