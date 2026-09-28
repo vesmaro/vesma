@@ -73,6 +73,6 @@ v4.0.0 codebase — 26 tools registered at the time, skill pack
 in `integrations/skills/`, pipeline stages in `src/mnemos/pipeline/`,
 benchmark stands in `benchmarks/`. Updated 2026-09-05; meta-level roadmap rows
 added 2026-09-13 per ADR-0025; tool count refreshed 2026-09-28 — 38 tools in
-`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, default-off)._
+`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, on by default)._
 
 _Last updated: 2026-09-28_

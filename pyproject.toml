@@ -37,6 +37,17 @@ dependencies = [
     # imported ONLY by vesmaro.mcp_server via the CLI subcommand handler
     # (guard test test_mcp_core_isolation).
     "mcp>=2.0,<3.0",
+    # Project code graph (ADR-0032, owner decision 2026-09-28 «graphs on by
+    # default»): ecosystem components build on the graphs, so the parser
+    # stack is CORE, not an extra — a default-enabled flag over a missing
+    # dependency would be a silent degradation. Canonical PyPI name is
+    # ``tree-sitter`` (the old ``py-tree-sitter`` distribution was renamed;
+    # the old name no longer resolves). ``tree-sitter-python`` 0.25.0
+    # requires ``tree-sitter~=0.24``, hence the <0.27 ceiling keeps the
+    # pair resolver-stable; wave 1 stays Python-only, PG-3 adds language
+    # packs here.
+    "tree-sitter>=0.24,<0.27",
+    "tree-sitter-python>=0.25.0,<0.26",
     # Transitive CVE closure (M15.5.1) — pinned directly to force resolver
     # past vulnerable transitive versions still pulled by fastapi/uvicorn.
     # Floor 3.14.3 (#267): PYSEC-2026-3546/3547 fixed in 3.14.2,
@@ -120,18 +131,9 @@ mcp = [
 pdf = [
     "pymupdf>=1.24",
 ]
-# Project code graph (ADR-0032 PG-0): tree-sitter is OPTIONAL by TL
-# ruling — the graph indexes on demand and the base install must not
-# carry the parser stack. Canonical PyPI name is ``tree-sitter`` (the
-# old ``py-tree-sitter`` distribution was renamed; the old name no
-# longer resolves on the index). ``tree-sitter-python`` 0.25.0 requires
-# ``tree-sitter~=0.24``, hence the <0.27 ceiling keeps the pair
-# resolver-stable while wave 1 stays Python-only. PG-3 adds language
-# packs as extra entries here.
-code-graph = [
-    "tree-sitter>=0.24,<0.27",
-    "tree-sitter-python>=0.25.0,<0.26",
-]
+# Project code graph: moved to CORE dependencies (owner decision
+# 2026-09-28 — graphs default-on; the [code-graph] extra is retired in
+# the same unreleased wave, so no backcompat alias is needed).
 docx = [
     "python-docx>=1.1",
 ]

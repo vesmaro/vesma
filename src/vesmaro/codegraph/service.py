@@ -247,7 +247,7 @@ class CodeGraphService:
         if not self._config.enabled:
             raise GraphDisabledError(
                 "project graph is disabled (settings.code_graph.enabled=false); "
-                "the operator must opt in (ADR-0032: default-off until validated)"
+                "the operator has disabled the graph (on by default since 2026-09-28)"
             )
 
     # ── PG2: registration resolution ────────────────────────────────────────

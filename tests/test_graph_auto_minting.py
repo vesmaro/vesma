@@ -133,7 +133,7 @@ def mint_manager(tmp_path: Path) -> Iterator[MemoryManager]:
 
 @pytest.fixture
 def plain_manager(tmp_path: Path) -> Iterator[MemoryManager]:
-    """Flag OFF (the shipped default) — baseline semantics."""
+    """Flag OFF (explicit) — baseline semantics; the shipped default is ON (owner 2026-09-28)."""
     mgr = MemoryManager(_settings(tmp_path, flag=False))
     mgr._embedder = _HashEmbedder()
     yield mgr
@@ -178,8 +178,11 @@ def _out_edges(mgr: MemoryManager, memory_id: str) -> list[dict[str, Any]]:
 
 
 class TestFlagOff:
-    def test_default_settings_flag_off(self) -> None:
-        assert Settings().mnemos.graph_auto_mint is False
+    def test_default_settings_flag_on(self) -> None:
+        # Owner decision 2026-09-28 «graphs on by default»: the A0
+        # density gate was met (ADR-0030 addendum B.1) — minting is the
+        # fuel line; the flag-off behaviour is pinned right below.
+        assert Settings().mnemos.graph_auto_mint is True
 
     def test_flag_off_mints_zero_edges(self, plain_manager: MemoryManager) -> None:
         _add(plain_manager, NEAR_DUP_A)

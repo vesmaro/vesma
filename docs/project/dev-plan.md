@@ -635,7 +635,7 @@ ADR-0027 §A.2–§A.3; mnemos `2b3ae42f`. Зарегистрированный 
 flowchart TD
     A0["A0 · ТОПЛИВО (S–M) · СДАНО 2026-09-16 ✅<br/>миграция relates_to+веса+provenance/scope<br/>авто-минтинг на write · edge_stats<br/>I1–I3 mutation-verified до walk"]
     GA{{"A0-review ✅ 2026-09-27:<br/>окно подтверждено (256 рёбер,<br/>когорта 2.45/write); гейт перебазелирован:<br/>edges/post-A0-write ≥ 0.5 — снят"}}
-    A1["A1 · МЕХАНИКА ✅ СДАНО 2026-09-28<br/>S1: reserved quota + BFS-2 + graph_epoch<br/>+ статический w_edge-ранж (PR #415)<br/>S2: APPLY f(used) saturating + feedback_epoch<br/>за СВОИМ default-off флагом (PR #425)<br/>enablement — по capture-телеметрии"]
+    A1["A1 · МЕХАНИКА ✅ СДАНО 2026-09-28<br/>S1: reserved quota + BFS-2 + graph_epoch<br/>+ статический w_edge-ранж (PR #415)<br/>S2: APPLY f(used) saturating + feedback_epoch<br/>(PR #425)<br/>⚠ 2026-09-28: ВСЕ флаги включены по умолчанию<br/>решением владельца (mnemos 8457c635)"]
     LR["Later · фазы B/C<br/>B: sidecar (default-OFF), gap detection<br/>C: консолидация, авто-supersedes за флагом<br/>— C за отдельной threat-model сессией"]
     D2S["D2 #172 · каскад цитирований + CCR-индекс<br/>— downstream-слайс эпика"]
     A0 --> GA
@@ -651,7 +651,7 @@ flowchart TD
 ```
 
 > **Статус 2026-09-28: A0 + A1 доставлены** (карточка #325 COMPLETE, всё
-> за default-off флагами `mnemos.graph_walk` / `mnemos.feedback_apply`).
+> за флагами `mnemos.graph_walk` / `mnemos.feedback_apply`; 2026-09-28 — владелец включил по умолчанию ВСЮ граф-семью, mnemos 8457c635).
 > Включение флагов — решение владельца по capture-телеметрии;
 > фазы B/C (Later) и D2-слайс — без изменений, за телеметрией A0/A1.
 
@@ -736,7 +736,7 @@ wave-аннотаций (S/M/L, зависимости); сверка «реко
 ```mermaid
 flowchart TD
     OWN{{"ВЛАДЕЛЕЦ:<br/>green-light PG-0"}}
-    PG0["PG-0 · ФУНДАМЕНТ (M) · всё default-off<br/>code_graph_store.py + схема (4 таблицы)<br/>tree-sitter-python индексатор + инкрементальность<br/>инструменты 1–10 (MCP+REST) + токен-контракт<br/>PG1–PG7 механизмами + тесты PGT-1..7<br/>маячок в recall + watch_start poll<br/>acceptance: индекс собственного репо (~2–3k узлов)"]
+    PG0["PG-0 · ФУНДАМЕНТ (M) ✅ СДАНО (PR #438)<br/>2026-09-28: включено по умолчанию (владелец)<br/>code_graph_store.py + схема (4 таблицы)<br/>tree-sitter-python индексатор + инкрементальность<br/>инструменты 1–10 (MCP+REST) + токен-контракт<br/>PG1–PG7 механизмами + тесты PGT-1..7<br/>маячок в recall + watch_start poll<br/>acceptance: индекс собственного репо (~2–3k узлов)"]
     HR{{"ГЕЙТ headroom:<br/>headroom-redesign закрыт<br/>(A1-блокер; guard #299;<br/>токены/продуктивный контекст ≥ baseline)"}}
     PG1["PG-1 · RECALL (M)<br/>repo-map секция assemble_context<br/>(200–400 токенов, PageRank)<br/>с PG6-обёрткой (origin: project-graph<br/>+ injection-детектор)"]
     S5{{"ГЕЙТ S5-прогон:<br/>стенд с графом vs без<br/>(PG-0/PG-1 зелёные)"}}

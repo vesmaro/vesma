@@ -308,11 +308,13 @@ class TestI6BoundedDelta:
 
 
 class TestFlagContract:
-    def test_default_settings_apply_off(self) -> None:
-        assert Settings().mnemos.feedback_apply is False
+    def test_default_settings_apply_on(self) -> None:
+        # Owner decision 2026-09-28 «graphs on by default» (rank-only,
+        # bounded Δ per I6; inert while graph_walk is off — pinned below).
+        assert Settings().mnemos.feedback_apply is True
 
     def test_graph_walk_off_makes_apply_inert(self, tmp_path: Path) -> None:
-        """Independent default-off flags (Security residual 3):
+        """Independent flags (Security residual 3):
         graph_walk=OFF ⇒ apply is INERT even with feedback_apply=ON —
         the walked block never runs, so the factor has no surface to
         act on; the page is the plain A0 surface.
@@ -669,10 +671,12 @@ class TestFeedbackEpoch:
             apply_manager.settings.search.feedback_capture_enabled = False
 
     def test_no_bump_when_flag_off(self, apply_manager: MemoryManager) -> None:
-        """Flag off → zero writes → zero bumps (the capture flag gates
-        the whole leg; the epoch tracks table change, and the table
-        did not change).
+        """Capture flag OFF (explicit; default-on since the owner
+        decision of 2026-09-28) → zero writes → zero bumps (the capture
+        flag gates the whole leg; the epoch tracks table change, and the
+        table did not change).
         """
+        apply_manager.settings.search.feedback_capture_enabled = False
         row = _add(apply_manager, "anchor note about dry dock gates")
         outcome = apply_manager.report_search_feedback(
             [row.id], kind="used", project=PROJECT, agent=AGENT

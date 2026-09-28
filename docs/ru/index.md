@@ -92,10 +92,10 @@ mnemos integration setup
 | `mnemos_tags` | Массовые операции с тегами: переименовать префикс, удалить или добавить теги |
 | `mnemos_ingest_url` | Скачать веб-страницу и сохранить как запись |
 | `mnemos_ingest_document` | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) |
-| `mnemos_watch_start` | Регистрация проекта в watch-опросе графа проектов (ADR-0032 §3.2; default-off операторские флаги) |
+| `mnemos_watch_start` | Регистрация проекта в watch-опросе графа проектов (ADR-0032 §3.2; графовые флаги включены по умолчанию с 2026-09-28) |
 | `mnemos_watch_stop` | Остановить одну или все регистрации watch |
 | `mnemos_watch_status` | Активные регистрации watch и итог последнего опроса |
-| `mnemos_index_project` | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, default-off) |
+| `mnemos_index_project` | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, on by default) |
 | `mnemos_project_graph_status` | Объёмы, свежесть, ошибки разбора и poisoned-файлы графа проекта |
 | `mnemos_search_graph` | Ранжированный поиск по графу с токен-контрактом |
 | `mnemos_trace_path` | BFS по рёбрам графа от одного символа (глубина ≤ 2) |

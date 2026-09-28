@@ -91,13 +91,14 @@ watcher:
 # ("Project graph tools") and docs/project/adr/0032-project-graph.md.
 code_graph:
   # Master flag for the graph tool surface (MCP + REST).
-  enabled: false
+  # ON by default (owner decision 2026-09-28 — graphs are first-class).
+  enabled: true
   # One tail line in assemble_context output advertising graph freshness
   # (effective only when enabled).
   beacon: true
-  # Separate opt-in for the watch poll (mnemos_watch_start / POST /watch/start);
-  # the master gate applies on top.
-  watch: false
+  # Watch poll (mnemos_watch_start / POST /watch/start): armed by default,
+  # inert until an explicit registration; the master gate applies on top.
+  watch: true
   # Fail-closed index ceilings per project (PG7).
   index_max_files: 20000
   index_max_source_mb: 500

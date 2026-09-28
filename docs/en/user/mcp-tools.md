@@ -45,7 +45,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_watch_start`](#mnemos_watch_start) | Register the project-graph watch poll (ADR-0032 §3.2) | no |
 | [`mnemos_watch_stop`](#mnemos_watch_stop) | Stop one or all watch registrations | no |
 | [`mnemos_watch_status`](#mnemos_watch_status) | Report watch registrations and last poll outcome | no |
-| [`mnemos_index_project`](#mnemos_index_project) | Index a registered project root into the project graph (ADR-0032, default-off) | no |
+| [`mnemos_index_project`](#mnemos_index_project) | Index a registered project root into the project graph (ADR-0032, on by default) | no |
 | [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
 | [`mnemos_search_graph`](#mnemos_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
 | [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
@@ -733,7 +733,7 @@ Register a project's code graph for the in-process watch poll (ADR-0032 §3.2). 
 
 > **Changed.** This is not a directory watcher. The former `paths=` / `scan=` / `include_rules=` form was an unimplemented stub that reported false success; it is gone, and those arguments are now rejected with `bad-request`.
 
-**Prerequisites:** the operator flags `code_graph.enabled` **and** `code_graph.watch` (both default off), an existing index for the project, and agent attribution (PG7).
+**Prerequisites:** the graph flags (on by default since the owner decision of 2026-09-28; `code_graph.enabled` and `code_graph.watch`), an existing index for the project, and agent attribution (PG7).
 
 ### Input
 
@@ -862,15 +862,15 @@ None.
 
 Ten tools over the **project code graph**: symbols and file outlines parsed by tree-sitter, navigation, coverage honesty. Only names, qualified names, line ranges and signature shapes are persisted — zero bytes of source live in the graph (PG1). The design, security invariants and roadmap: [ADR-0032](../../project/adr/0032-project-graph.md).
 
-> **Default off — operator flag.** The tools stay listed in the manifest, but every call answers `code: "disabled"` until the operator sets `code_graph.enabled: true`. The same gate shapes the [`/graph/` REST namespace](http-api.md#project-graph-adr-0032-default-off).
+> **On by default (owner decision 2026-09-28).** Graphs are first-class: ecosystem components build on them, and tree-sitter ships as a core dependency. An operator can still hide the whole surface with `code_graph.enabled: false` — every call then answers `code: "disabled"`. The same gate shapes the [`/graph/` REST namespace](http-api.md#project-graph-adr-0032).
 
 ### Operator gate (configuration)
 
 | Key (`code_graph.`) | Default | Meaning |
 |---------------------|---------|---------|
-| `enabled` | `false` | Master flag for the 10 tools and the `/graph/` REST namespace. |
+| `enabled` | `true` | Master flag for the 10 tools and the `/graph/` REST namespace — ON by default (owner decision 2026-09-28); `false` hides the whole surface. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness (effective only when `enabled`). |
-| `watch` | `false` | Separate opt-in for the watch poll (`mnemos_watch_start`); the master gate applies on top. |
+| `watch` | `true` | The watch poll (`mnemos_watch_start`) is armed by default but INERT until an explicit registration; the master gate applies on top. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project. Fail-closed: a breach refuses the WHOLE index — no partial graph is ever published (PG7). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (same fail-closed discipline). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
@@ -887,7 +887,7 @@ Every windowed tool takes `max_output_tokens` (integer, 128–1,000,000, default
 - The cursor **strictly advances** (at least one row is always consumed). A budget that cannot fit even one row is refused (`GraphBudgetError`, HTTP `400`) instead of looping on the same page.
 - Detail is opt-in: signatures ride only when `include_signature: true` is passed to `mnemos_search_graph`.
 
-Errors shared by the whole group — `disabled` (operator gate), `attribution-required` (missing `agent`, PG7), confinement refusals (unregistered project or a path escaping the registered root, PG2), budget refusals. Every call, read or write, is audited per agent (PG7). REST twins map these to HTTP codes: see the [project graph REST section](http-api.md#project-graph-adr-0032-default-off).
+Errors shared by the whole group — `disabled` (operator gate), `attribution-required` (missing `agent`, PG7), confinement refusals (unregistered project or a path escaping the registered root, PG2), budget refusals. Every call, read or write, is audited per agent (PG7). REST twins map these to HTTP codes: see the [project graph REST section](http-api.md#project-graph-adr-0032).
 
 ---
 
