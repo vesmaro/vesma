@@ -60,7 +60,7 @@ Targets, flags, and the full deploy map: [integration-guide.md](user/integration
 
 Set `MNEMOS_AUTO_COLLECT=1` in the server's `env` block to make Mnemos prompt your agent to call `mnemos_save_context` after every ~6 tool calls (proactive checkpoint nagging). See [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#auto-collect-mode) for trade-offs.
 
-### 26 MCP tools (`mnemos_` prefix)
+### 38 MCP tools (`mnemos_` prefix)
 
 | Tool | Purpose |
 |------|---------|
@@ -76,9 +76,19 @@ Set `MNEMOS_AUTO_COLLECT=1` in the server's `env` block to make Mnemos prompt yo
 | `mnemos_tags` | Bulk tag operations: rename a prefix, remove or add tags |
 | `mnemos_ingest_url` | Fetch a web page and save it as a memory |
 | `mnemos_ingest_document` | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) |
-| `mnemos_watch_start` | Start the background file watcher |
-| `mnemos_watch_stop` | Stop the watcher |
-| `mnemos_watch_status` | Report watcher status |
+| `mnemos_watch_start` | Register the project-graph watch poll (ADR-0032 §3.2; default-off operator flags) |
+| `mnemos_watch_stop` | Stop one or all watch registrations |
+| `mnemos_watch_status` | Report watch registrations and last poll outcome |
+| `mnemos_index_project` | Index a registered project root into the project graph (ADR-0032, default-off) |
+| `mnemos_project_graph_status` | Project-graph volumes, freshness, parse failures, poisoned count |
+| `mnemos_search_graph` | Ranked search over the graph with the token contract |
+| `mnemos_trace_path` | BFS over project edges from one symbol (depth ≤ 2) |
+| `mnemos_get_file_outline` | Symbol outline of one indexed file (shapes, never bodies) |
+| `mnemos_get_code_snippet` | Secret-scanned line range read from disk (PG4) |
+| `mnemos_check_graph_coverage` | Per-path coverage verdicts: indexed / stale / parse-error / unindexed / poisoned |
+| `mnemos_get_graph_schema` | The graph contract card for agents |
+| `mnemos_list_graph_projects` | Registered projects joined with index status |
+| `mnemos_delete_graph_project` | Drop the graph index (sidecar only); clears the poisoned set |
 | `mnemos_auto_collect_status` | Compaction-detection signal vector (M7) |
 | `mnemos_stats` | Health counters and key paths |
 | `mnemos_reprocess` | Manually run the knowledge pipeline over queued entries |

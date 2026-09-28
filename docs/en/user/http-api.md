@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/http-api.md)
 
-> Complete reference for the Mnemos HTTP API — memory CRUD, search, pipeline, DLQ, context filter, traces, path-scoped rules, and the A2A Sessions API (M16).
+> Complete reference for the Mnemos HTTP API — memory CRUD, search, pipeline, DLQ, context filter, traces, path-scoped rules, the project graph (ADR-0032), and the A2A Sessions API (M16).
 
 The HTTP server is a FastAPI app served by Uvicorn. Start it with:
 
@@ -43,12 +43,14 @@ For the same capabilities over other transports, see [mcp-tools.md](mcp-tools.md
 |------|---------------------|
 | `200` | OK (default success) |
 | `201` | Created (POST that inserts a row) |
-| `400` | Bad request (e.g. trying to publish a non-`processed` memory) |
+| `400` | Bad request (e.g. trying to publish a non-`processed` memory; project-graph budget refusal) |
 | `404` | Not found (memory_id, cluster_id, dlq_id, session_id, turn_id) |
 | `401` | Unauthorised (missing or invalid session token; only when `api.auth_enabled=true`) |
+| `403` | Forbidden — policy refusal: project-graph confinement (path escapes the registered root, or unregistered project, PG2) on `/graph/*` and `/watch/start` |
+| `413` | Payload too large — project-graph index limit breach (fail-closed, PG7) on `/graph/index` |
 | `422` | Unprocessable entity (Pydantic validation failure on the request body) |
 | `500` | Internal server error (see server logs) |
-| `503` | Auth not initialised (fail-closed: AuthMiddleware is active but config is absent) |
+| `503` | Service unavailable — auth not initialised (fail-closed AuthMiddleware), or the project-graph master flag `code_graph.enabled` is off (operator gate on `/graph/*` and `/watch/start`) |
 
 ---
 
@@ -1029,30 +1031,369 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 ---
 
-## File watcher (M8)
+## Project graph (ADR-0032, default-off)
 
-These endpoints manage a background vault watcher that auto-indexes new and
-modified files into Mnemos. They mirror the `mnemos_watch_start`,
-`mnemos_watch_stop`, and `mnemos_watch_status` plugin tools.
+The `/graph/` namespace mirrors the ten [`mnemos_*graph*` MCP tools](mcp-tools.md#project-graph-tools-adr-0032) over a registered project's code graph (symbols, outlines, snippets — [ADR-0032](../../project/adr/0032-project-graph.md)).
 
-### `POST /watch/start` — start the file watcher
+> **Default off — operator flag.** Every endpoint answers `503` until the operator sets `code_graph.enabled: true`.
+
+**Error codes for the whole namespace** — `503` disabled (operator gate), `403` confinement (unregistered project or a path escaping the registered root, PG2), `413` index limit breach (fail-closed, PG7), `400` bad request (budget cannot fit one row, malformed arguments). Every call — read or write — is audited per agent (PG7); the `agent` field is therefore required everywhere.
+
+### `POST /graph/index` — index a registered project
+
+Full or incremental indexation of the registered project root. Serialized per project; PG7 limits are fail-closed.
 
 **Request body**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `paths` | string[] | no | `[cwd]` | Directories to watch. |
-| `scan` | bool | no | `true` | Run an initial scan to catch up on existing files. |
-| `include_rules` | bool | no | `false` | Also watch `*.instructions.md` rule files. |
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+| `incremental` | bool | no | `true` | Skip work when nothing changed. |
+| `reason` | string | no | — | Audit reason. |
 
 **Response 200**
 
 ```json
 {
-  "status": "started",
-  "paths": ["/home/you/projects/mnemos"],
-  "scan": true,
-  "include_rules": false
+  "status": "indexed",
+  "nodes": 2143,
+  "edges": 5107,
+  "files_indexed": 312,
+  "files_skipped": 88,
+  "poisoned": [],
+  "parse_errors": {},
+  "duration_sec": 4.212,
+  "incremental": true,
+  "staleness": { "total_files": 400, "fresh_percent": 100.0, "changed_files": [], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/index \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
+```
+
+### `GET /graph/status/{project_id}` — project graph status
+
+Volumes, freshness, parse failures and the poisoned count. `agent` is a required query parameter; `session` optional.
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "nodes": 2143,
+  "edges": 5107,
+  "files": 400,
+  "parse_errors": {},
+  "parse_error_count": 0,
+  "poisoned_count": 0,
+  "staleness": { "total_files": 400, "fresh_percent": 97.5, "changed_files": ["src/vesmaro/manager.py"], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+}
+```
+
+**Example**
+
+```bash
+curl -s "http://127.0.0.1:8000/graph/status/mnemos?agent=ci-runner"
+```
+
+### `POST /graph/search` — search the project graph
+
+Ranked name/qname/path search (exact > prefix > substring), token-contract windowed.
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `query` | string | **yes** | — | Name / qname / path substring. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+| `kind` | string | no | — | Node-kind filter (`Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`). |
+| `limit` | int | no | `50` | Max ranked rows per page. |
+| `cursor` | int | no | `0` | Page cursor from the previous call. |
+| `max_output_tokens` | int | no | `3200` | Output budget (128–1M). |
+| `include_signature` | bool | no | `false` | Include signature shapes (opt-in). |
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "query_kind": null,
+  "results": [
+    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "mnemos", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+  ],
+  "total_matches": 1,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/search \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "query": "window_rows", "agent": "ci-runner"}'
+```
+
+### `POST /graph/trace` — trace the path from a symbol
+
+BFS over project edges from one symbol (resolve by qname; ambiguous refusals name the search). Depth ≤ 2, fanout and total-work caps.
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `qname` | string | **yes** | — | Symbol qualified name (exact or unique tail). |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+| `depth` | int | no | `2` | BFS depth, 1–2. |
+| `max_output_tokens` | int | no | `3200` | Output budget (128–1M). |
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "start": "vesmaro.codegraph.service.window_rows",
+  "depth": 2,
+  "nodes": [ { "id": "mnemos#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
+  "edges": [ { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
+  "truncated": false,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/trace \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
+```
+
+### `POST /graph/outline` — symbol outline of one file
+
+Symbol outline of one indexed file — shapes, never bodies (PG1). Repo-relative path, confined to the registered root (PG2).
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `path` | string | **yes** | — | Repo-relative file path. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+| `cursor` | int | no | `0` | Page cursor. |
+| `max_output_tokens` | int | no | `3200` | Output budget (128–1M). |
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "lang": "python",
+  "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
+  "parse_error": null,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/outline \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
+```
+
+### `POST /graph/snippet` — secret-scanned line range from disk
+
+Read a line range FROM DISK (PG4): poisoned refusal (permanent) → confinement → indexed check → mtime+size+sha256 freshness → issuance secret scan (any hit refuses fail-closed) → whole-line token window. No snippet cache.
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `path` | string | **yes** | — | Repo-relative file path. |
+| `start_line` | int | **yes** | — | First line (1-based). |
+| `end_line` | int | **yes** | — | Last line (inclusive). |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+| `max_output_tokens` | int | no | `3200` | Output budget (128–1M); whole-line drops. |
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "start_line": 158,
+  "end_line": 172,
+  "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...",
+  "total_file_lines": 1081,
+  "has_more": true,
+  "next_start_line": 173,
+  "scanned": true,
+  "stale": false
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/snippet \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
+```
+
+### `POST /graph/coverage` — batch coverage check
+
+Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Coverage honesty — verify content with `POST /graph/snippet`.
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `paths` | string[] | **yes** | — | Repo-relative paths to check. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+
+**Response 200**
+
+```json
+{
+  "project": "mnemos",
+  "coverage": [
+    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
+    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" }
+  ]
+}
+```
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/graph/coverage \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "mnemos", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
+```
+
+### `GET /graph/schema` — graph contract card
+
+Node/edge kinds, token contract, limits, schema version; an optional `project_id` query parameter adds that project's volumes.
+
+**Response 200**
+
+```json
+{
+  "schema_version": 1,
+  "node_kinds": ["Project", "File", "Module", "Class", "Function", "Method", "Type"],
+  "edge_kinds": ["CONTAINS_FILE", "DEFINES", "IMPORTS", "CALLS", "INHERITS", "TESTS", "USES"],
+  "token_contract": { "max_output_tokens_default": 3200, "max_output_tokens_min": 128, "max_output_tokens_max": 1000000, "bytes_per_token": 4 },
+  "limits": { "index_max_files": 20000, "index_max_source_mb": 500 },
+  "trace": { "max_depth": 2, "fanout_cap": 32, "total_work_cap": 512 }
+}
+```
+
+**Example**
+
+```bash
+curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=mnemos"
+```
+
+### `GET /graph/projects` — list graph projects
+
+Registered projects joined with their index status; registered-but-never-indexed stays visible.
+
+**Response 200**
+
+```json
+{
+  "projects": [
+    { "project": "mnemos", "registered": true, "has_root": true, "nodes": 2143, "edges": 5107, "files": 400, "poisoned": 0, "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+  ],
+  "has_more": false,
+  "cursor": 0
+}
+```
+
+**Example**
+
+```bash
+curl -s "http://127.0.0.1:8000/graph/projects?agent=ci-runner"
+```
+
+### `DELETE /graph/projects/{project_id}` — drop a graph index
+
+Drop the project's graph INDEX (sidecar data only — never the project entity). The ONLY operation that clears the poisoned set (PG3). `agent` is a required query parameter; the request body carries optional `session` and `reason`.
+
+**Response 200**
+
+```json
+{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+```
+
+**Example**
+
+```bash
+curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "reindex from scratch"}'
+```
+
+---
+
+## Watch poll (project graph, ADR-0032 §3.2)
+
+These endpoints manage the in-process watch poll: a single cooperative thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes. They mirror the `mnemos_watch_start`, `mnemos_watch_stop`, and `mnemos_watch_status` MCP tools.
+
+> **Changed.** The former directory-watcher form (`paths=` / `scan=` / `include_rules=`) was an unimplemented stub and is gone — those fields are no longer accepted. `POST /watch/start` requires the operator flags `code_graph.enabled` and `code_graph.watch` (both default off) plus an existing index; otherwise `503` / `400`.
+
+### `POST /watch/start` — register the project-graph watch poll
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id to watch. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Session id for the audit trail. |
+
+**Response 200**
+
+```json
+{
+  "status": "registered",
+  "project": "mnemos",
+  "project_id": "mnemos",
+  "root": "/home/you/projects/mnemos",
+  "agent": "ci-runner",
+  "session": null,
+  "registered_at": "2026-09-28T12:00:00+00:00",
+  "interval_sec": 5.0,
+  "runs": 0,
+  "reindexes": 0,
+  "last_run_at": null,
+  "last_result": null,
+  "last_error": null
 }
 ```
 
@@ -1061,37 +1402,39 @@ modified files into Mnemos. They mirror the `mnemos_watch_start`,
 ```bash
 curl -s -X POST http://127.0.0.1:8000/watch/start \
   -H "Content-Type: application/json" \
-  -d '{"paths": ["/home/you/projects/mnemos"], "include_rules": true}'
+  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
 ```
 
-### `POST /watch/stop` — stop the file watcher
+### `POST /watch/stop` — stop watch registrations
 
-Idempotent — returns `{"status": "stopped"}` whether or not a watcher was
-running.
+Idempotent. The optional `project_id` query parameter stops one registration; without it, ALL registrations stop.
 
 **Response 200**
 
 ```json
-{"status": "stopped"}
+{"status": "stopped", "stopped": 1}
 ```
 
 **Example**
 
 ```bash
-curl -s -X POST http://127.0.0.1:8000/watch/stop
+curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=mnemos"
 ```
 
-### `GET /watch/status` — watcher status
+### `GET /watch/status` — watch poll status
+
+Active registrations and the last poll outcome per project.
 
 **Response 200**
 
 ```json
 {
   "running": true,
-  "paths": ["/home/you/projects/mnemos"],
-  "files_queued": 3,
-  "files_indexed": 42,
-  "include_rules": false
+  "watch_enabled": true,
+  "cap": 8,
+  "registrations": [
+    { "project": "mnemos", "project_id": "mnemos", "root": "/home/you/projects/mnemos", "agent": "ci-runner", "session": null, "registered_at": "2026-09-28T12:00:00+00:00", "interval_sec": 5.0, "runs": 3, "reindexes": 1, "last_run_at": "2026-09-28T12:00:15+00:00", "last_result": "fresh", "last_error": null }
+  ]
 }
 ```
 

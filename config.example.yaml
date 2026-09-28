@@ -82,6 +82,32 @@ watcher:
   max_file_size_kb: 512
   auto_scan: true
 
+# ── Project code graph (ADR-0032 PG-0) ───────────────────────────────────────
+# Symbol graph over REGISTERED project roots: 10 MCP tools + the /graph/ REST
+# namespace. DEFAULT OFF — every call answers a disabled error until the
+# operator opts in. The graph persists names, qnames, line ranges and
+# signature shapes only (zero bytes of source, PG1); limits are fail-closed —
+# a breach refuses the WHOLE index (PG7). See docs/en/user/mcp-tools.md
+# ("Project graph tools") and docs/project/adr/0032-project-graph.md.
+code_graph:
+  # Master flag for the graph tool surface (MCP + REST).
+  enabled: false
+  # One tail line in assemble_context output advertising graph freshness
+  # (effective only when enabled).
+  beacon: true
+  # Separate opt-in for the watch poll (mnemos_watch_start / POST /watch/start);
+  # the master gate applies on top.
+  watch: false
+  # Fail-closed index ceilings per project (PG7).
+  index_max_files: 20000
+  index_max_source_mb: 500
+  # Watch poll: global registration cap + adaptive interval
+  # base + 1s per 500 indexed files, capped.
+  watch_max_registrations: 8
+  watch_base_interval_sec: 5.0
+  watch_interval_per_500_files: 1.0
+  watch_max_interval_sec: 60.0
+
 # ── Federation (Phase 0 batch sync, issue #85) ───────────────────────────────
 # Operator-curated, OFFLINE, cron-triggered batch sync between two mnemos
 # instances. NOT networked — transfer is out-of-band (rsync / scp / shared

@@ -76,7 +76,7 @@ mnemos integration setup
 (проактивные напоминания о чекпоинтах). О компромиссах:
 [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#режим-auto-collect).
 
-### 26 MCP-инструментов (префикс `mnemos_`)
+### 38 MCP-инструментов (префикс `mnemos_`)
 
 | Инструмент | Назначение |
 |-----------|-----------|
@@ -92,9 +92,19 @@ mnemos integration setup
 | `mnemos_tags` | Массовые операции с тегами: переименовать префикс, удалить или добавить теги |
 | `mnemos_ingest_url` | Скачать веб-страницу и сохранить как запись |
 | `mnemos_ingest_document` | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) |
-| `mnemos_watch_start` | Запустить фоновый watcher файлов |
-| `mnemos_watch_stop` | Остановить watcher |
-| `mnemos_watch_status` | Статус watcher |
+| `mnemos_watch_start` | Регистрация проекта в watch-опросе графа проектов (ADR-0032 §3.2; default-off операторские флаги) |
+| `mnemos_watch_stop` | Остановить одну или все регистрации watch |
+| `mnemos_watch_status` | Активные регистрации watch и итог последнего опроса |
+| `mnemos_index_project` | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, default-off) |
+| `mnemos_project_graph_status` | Объёмы, свежесть, ошибки разбора и poisoned-файлы графа проекта |
+| `mnemos_search_graph` | Ранжированный поиск по графу с токен-контрактом |
+| `mnemos_trace_path` | BFS по рёбрам графа от одного символа (глубина ≤ 2) |
+| `mnemos_get_file_outline` | Схема символов одного проиндексированного файла (формы, никогда тела) |
+| `mnemos_get_code_snippet` | Секрет-сканированное чтение диапазона строк с диска (PG4) |
+| `mnemos_check_graph_coverage` | Вердикты покрытия по путям: indexed / stale / parse-error / unindexed / poisoned |
+| `mnemos_get_graph_schema` | Карта контракта графа для агентов |
+| `mnemos_list_graph_projects` | Зарегистрированные проекты вместе со статусом индекса |
+| `mnemos_delete_graph_project` | Удалить индекс графа (только sidecar); очищает poisoned-набор |
 | `mnemos_auto_collect_status` | Вектор сигналов уплотнения контекста (M7) |
 | `mnemos_stats` | Счётчики здоровья и ключевые пути |
 | `mnemos_reprocess` | Вручную запустить конвейер знаний по очереди записей |
