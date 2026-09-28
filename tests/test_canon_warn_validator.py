@@ -682,6 +682,36 @@ def test_update_cannot_convert_checkpoint_row_to_client_type(
 
 
 # ---------------------------------------------------------------------------
+# 4.7 Gate ordering (cascade review SEC P3-1) — strict reject leaves NO
+# vault trace: _canon_gate runs BEFORE the Obsidian markdown write, the
+# same fail-loud-before-persist discipline as the doc-grouping gate.
+# ---------------------------------------------------------------------------
+
+
+def test_strict_reject_leaves_no_vault_trace(mgr: MemoryManager) -> None:
+    """A strict-mode reject on the create path must not leave the refused
+    content persisted in the vault directory (the pre-fix order wrote the
+    markdown BEFORE the gate raise)."""
+    mgr.settings.mnemos.canon_mode = "strict"
+    vault = Path(mgr.settings.mnemos.vault_path)
+    with pytest.raises(CanonViolationError):
+        mgr.add(
+            MemoryCreate(
+                content=_TASK_BODY,
+                title="strict vault reject",
+                tags=["project:canonproj", "agent:alice"],
+                metadata={"canon": _task_envelope(priority="URGENT")},
+            ),
+            project="canonproj",
+            agent="alice",
+        )
+    assert mgr.stats()["total"] == 0  # nothing stored
+    assert not vault.exists() or not any(
+        vault.rglob("*.md")
+    ), "a rejected write must leave no vault file behind"
+
+
+# ---------------------------------------------------------------------------
 # 5. Drift pin — CANON_REQUIRED_SECTIONS vs the schemas' x-canon-sections
 # ---------------------------------------------------------------------------
 

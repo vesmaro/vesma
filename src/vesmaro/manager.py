@@ -1257,6 +1257,17 @@ class MemoryManager:
             memory.status = MemoryStatus.PUBLISHED
             memory.pipeline_state = PipelineState.PENDING
 
+        # ── Canon gate, create leg — BEFORE any persistence (cascade ─────
+        # review SEC P3-1). Ordering precedent: the doc-grouping gate at
+        # the top of add(). A strict-mode reject must leave NO trace of
+        # the rejected content — previously the gate ran after the vault
+        # markdown write, so the refused bytes stayed in the Obsidian
+        # vault (a file the SQLite row never pointed at). Running it
+        # above BOTH sinks (vault + SQLite) also means the gate-attached
+        # ``canon_warnings`` land in the vault render together with the
+        # stored row — one consistent write, not two views.
+        self._canon_gate(memory, create_path=True)
+
         # Write to Obsidian vault
         try:
             file_path = self.vault.memory_to_file(memory)
@@ -1266,8 +1277,6 @@ class MemoryManager:
 
         # Persist to SQLite (trusted_rewrite_provenance gates the C10
         # rewrite-column derivation — see the add docstring).
-        self._canon_gate(memory, create_path=True)
-
         self.sqlite.save(memory, trusted_rewrite_provenance=trusted_rewrite_provenance)
 
         # ADR-0019 Phase A ingest audit — one structured verdict per
