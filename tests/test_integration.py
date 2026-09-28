@@ -12,7 +12,9 @@ Covers:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -2340,7 +2342,39 @@ class TestSchemasPack:
     def _pack_file(self, *parts: str) -> Path:
         return self._repo_root().joinpath("integrations", *parts)
 
-    # ── Shipped pack: provenance + byte-identity drift pin ────────────────────
+    def _canon_repo(self) -> Path:
+        """Locate the ``vesmaro-canon`` sibling checkout, worktree-safe (#433).
+
+        The primary anchor is derived from the repo's COMMON git dir —
+        ``git rev-parse --path-format=absolute --git-common-dir`` resolves to
+        the primary worktree's ``.git`` regardless of which linked worktree
+        (or cwd) the test runs from — so the sibling of the PRIMARY worktree
+        (``Path(common_dir).parent.parent``) is checked first. The old
+        ``__file__``-relative location is kept as a fallback so a bare
+        sibling-adjacent checkout keeps working.
+        """
+        common_dir = subprocess.run(  # nosec B603
+            [
+                "git",
+                "-C",
+                str(self._repo_root()),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        # <primary-worktree>/ .git → primary worktree root → its parent dir
+        candidates = (
+            Path(common_dir).parent.parent / "vesmaro-canon",
+            self._repo_root().parent / "vesmaro-canon",
+        )
+        for candidate in candidates:
+            if (candidate / ".git").exists():
+                return candidate
+        return candidates[-1]
 
     def test_vendored_schemas_present_and_provenance(self) -> None:
         readme = self._pack_file("schemas", "README.md")
@@ -2365,17 +2399,20 @@ class TestSchemasPack:
             assert schema["$id"].endswith(f"/schemas/{name}")
 
     def test_vendored_schemas_byte_identical_to_pin(self) -> None:
-        """Drift pin: shipped bytes == canon pin tag (live sibling, else sha256 table).
+        """Drift pin: shipped bytes == canon pin tag (live sibling, else sha256).
 
-        The canon repo is a sibling checkout in this workspace; when present
-        the comparison is against the LIVE ``canon-v1.0.0`` tag content (a
-        canon-side change to the pinned files breaks this test LOUDLY, the
-        pin protocol, canon §9). Without the sibling checkout the frozen
-        sha256 table in ``SCHEMAS_SOURCE_PIN`` keeps the pin enforceable.
+        The canon repo is a sibling checkout of the repo's PRIMARY worktree;
+        when present the comparison is against the LIVE ``canon-v1.0.0`` tag
+        content (a canon-side change to the pinned files breaks this test
+        LOUDLY, the pin protocol, canon §9). Without the sibling checkout
+        the frozen sha256 table in ``SCHEMAS_SOURCE_PIN`` keeps the pin
+        enforceable as a checksum comparison (hex digest of the file vs the
+        hex digest stored in the table). The sibling lookup is
+        primary-worktree-based so the test passes from ANY linked worktree
+        (#433 — it used to fail in every non-primary worktree because the
+        sibling was looked up next to the test file's checkout).
         """
-        import subprocess  # nosec B404 — trusted local git, list args, no shell
-
-        canon_repo = self._repo_root().parent / "vesmaro-canon"
+        canon_repo = self._canon_repo()
         live_tag_available = (canon_repo / ".git").exists()
         for name in self.CANON_SCHEMA_NAMES:
             shipped = self._pack_file("schemas", name).read_bytes()
@@ -2386,18 +2423,77 @@ class TestSchemasPack:
                     capture_output=True,
                 ).stdout
             else:
-                expected = bytes.fromhex(SCHEMAS_SOURCE_PIN["sha256"][name])  # type: ignore[arg-type]
+                expected = hashlib.sha256(shipped).hexdigest()
+                digest = SCHEMAS_SOURCE_PIN["sha256"][name]  # type: ignore[arg-type]
+                assert expected == digest, (
+                    f"{name} drifted from canon-v1.0.0 — re-vendor from the pin tag"
+                )
+                continue
             assert shipped == expected, (
                 f"{name} drifted from canon-v1.0.0 — re-vendor from the pin tag"
             )
+
+    def test_canon_sibling_lookup_is_worktree_independent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The canon sibling resolves from a NON-primary worktree too (#433).
+
+        Regression for #433: the sibling lookup used to be
+        ``__file__``-relative, so in a linked worktree it looked next to the
+        WORKTREE instead of next to the primary checkout and never found the
+        live canon repo — silently degrading every run to (the then-broken)
+        frozen-bytes branch. Here a throwaway linked worktree is created via
+        ``git worktree add`` (cleaned up in ``finally``, never committed),
+        ``_repo_root`` is pointed at it, and ``_canon_repo()`` must resolve
+        the SAME live sibling as it does from this (primary) checkout — via
+        the repo's ``--git-common-dir``. Skipped when no sibling exists at
+        all (e.g. CI runs the frozen-sha256 leg instead).
+        """
+        repo_root = self._repo_root()
+        reference = self._canon_repo()
+        if not (reference / ".git").exists():
+            pytest.skip("no vesmaro-canon sibling checkout — live-tag leg not active")
+
+        worktree = tmp_path / "secondary-worktree"
+        subprocess.run(  # nosec B603
+            ["git", "-C", str(repo_root), "worktree", "add", "--detach", str(worktree), "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        try:
+
+            def _worktree_root() -> Path:
+                return worktree
+
+            # Simulate the test running from the linked worktree: __file__
+            # there resolves to <worktree>/tests/test_integration.py.
+            monkeypatch.setattr(TestSchemasPack, "_repo_root", staticmethod(_worktree_root))
+            resolved = self._canon_repo()
+        finally:
+            subprocess.run(  # nosec B603
+                ["git", "-C", str(repo_root), "worktree", "remove", "--force", str(worktree)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(  # nosec B603
+                ["git", "-C", str(repo_root), "worktree", "prune"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        assert resolved == reference, (
+            "canon sibling resolved differently from a secondary worktree "
+            f"({resolved}) than from the primary checkout ({reference})"
+        )
+        assert (resolved / ".git").exists(), "resolved sibling must be a live checkout"
 
     def test_source_pin_table_matches_shipped_bytes(self) -> None:
         """The frozen sha256 table in SCHEMAS_SOURCE_PIN matches the shipped files."""
         assert SCHEMAS_SOURCE_PIN["tag"] == "canon-v1.0.0"
         assert SCHEMAS_SOURCE_PIN["commit"].startswith("d4e9980")
         assert set(SCHEMAS_SOURCE_PIN["sha256"]) == set(self.CANON_SCHEMA_NAMES)
-        import hashlib
-
         for name, digest in SCHEMAS_SOURCE_PIN["sha256"].items():
             actual = hashlib.sha256(self._pack_file("schemas", name).read_bytes()).hexdigest()
             assert actual == digest, f"{name}: sha256 mismatch vs SCHEMAS_SOURCE_PIN"
