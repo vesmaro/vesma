@@ -6,7 +6,7 @@
 
 Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) поверх **stdio JSON-RPC 2.0**. VS Code Copilot и любой MCP-совместимый клиент могут вызывать инструменты, перечисленные здесь.
 
-Сервер определён в `src/mnemos/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
+Сервер определён в `src/vesmaro/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
 
 Быстрое подключение к VS Code — в [getting-started.md#run-the-mcp-server](getting-started.md#подключите-ваш-харнес-mcp). Те же возможности доступны через HTTP — см. [http-api.md](http-api.md). Схема тегов, соблюдаемая большинством инструментов, — в [tag-contract.md](tag-contract.md).
 
@@ -42,9 +42,19 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 | [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Жизненный цикл workflow: set / get / history (`action: enum`) | нет |
 | [`mnemos_ingest_url`](#mnemos_ingest_url) | Загрузить и сохранить веб-страницу | да |
 | [`mnemos_ingest_document`](#mnemos_ingest_document) | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) | да |
-| [`mnemos_watch_start`](#mnemos_watch_start) | Запустить фоновый file watcher | нет |
-| [`mnemos_watch_stop`](#mnemos_watch_stop) | Остановить file watcher | нет |
-| [`mnemos_watch_status`](#mnemos_watch_status) | Статус watcher'а | нет |
+| [`mnemos_watch_start`](#mnemos_watch_start) | Регистрирует проект в watch-опросе графа проектов (ADR-0032 §3.2) | нет |
+| [`mnemos_watch_stop`](#mnemos_watch_stop) | Остановить одну или все регистрации watch | нет |
+| [`mnemos_watch_status`](#mnemos_watch_status) | Активные регистрации watch и итог последнего опроса | нет |
+| [`mnemos_index_project`](#mnemos_index_project) | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, default-off) | нет |
+| [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Объёмы, свежесть, ошибки разбора и число poisoned-файлов по проекту | нет |
+| [`mnemos_search_graph`](#mnemos_search_graph) | Ранжированный поиск по имени/квалифицированному имени/пути в графе, окно токен-контракта | нет |
+| [`mnemos_trace_path`](#mnemos_trace_path) | BFS по рёбрам графа от одного символа (глубина ≤ 2) | нет |
+| [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Схема символов одного проиндексированного файла (формы, никогда тела) | нет |
+| [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Секрет-сканированное чтение диапазона строк С ДИСКА (PG4) | нет |
+| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / poisoned | нет |
+| [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
+| [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
+| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Вектор сигналов сжатия контекста (M7) | нет |
 | [`mnemos_compress`](#mnemos_compress) | Обратимое сжатие (CCR) — кэш оригинала, маркер в вывод | нет |
 | [`mnemos_retrieve`](#mnemos_retrieve) | Извлечение оригинала из кэша CCR или FTS5-сниппеты | нет |
@@ -716,25 +726,43 @@ Mnemos синтезирует части в единую запись Markdown �
 
 ## `mnemos_watch_start`
 
-Запустить фоновый file watcher. Новые и изменённые файлы по отслеживаемым путям автоматически индексируются в Mnemos.
+Регистрирует граф кода проекта во внутрипроцессном watch-опросе (ADR-0032 §3.2). Один кооперативный фоновый поток проверяет проиндексированные файлы проекта по mtime+size на адаптивном интервале и переиндексирует при фактических изменениях — с аудитом под причиной `watch`.
+
+> **Изменение поведения.** Это не file watcher директорий. Прежняя форма `paths=` / `scan=` / `include_rules=` была нереализованной заглушкой, возвращавшей ложный успех; она удалена, эти аргументы теперь отклоняются с `bad-request`.
+
+**Предусловия:** операторские флаги `code_graph.enabled` **и** `code_graph.watch` (оба выключены по умолчанию), существующий индекс проекта и атрибуция агента (PG7).
 
 ### Входные параметры
 
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|-------------|---------- |
-| `paths` | string[] | нет | `[cwd]` | Директории для наблюдения. |
-| `scan` | boolean | нет | `true` | Выполнить начальное сканирование для обработки существующих файлов. |
-| `include_rules` | boolean | нет | `false` | Также отслеживать `.github/instructions/*.instructions.md` (правила M8). |
+| `project_id` | string | **да** | — | Идентификатор зарегистрированного проекта. |
+| `agent` | string | **да** | — | Идентичность вызывающего (атрибуция PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
 
 ### Вывод
 
-```text
-✅ Watcher started on ['/home/you/project']
-# или, с include_rules:
-✅ Watcher started on ['/home/you/project'] (including .instructions.md rules)
+```json
+{
+  "status": "registered",
+  "project": "mnemos",
+  "project_id": "mnemos",
+  "root": "/home/you/mnemos",
+  "agent": "tech-writer",
+  "session": null,
+  "registered_at": "2026-09-28T12:00:00+00:00",
+  "interval_sec": 5.0,
+  "runs": 0,
+  "reindexes": 0,
+  "last_run_at": null,
+  "last_result": null,
+  "last_error": null
+}
 ```
 
-### Пример вызова
+Повторная регистрация того же проекта возвращает payload с `"status": "already-registered"`. Регистрации живут в пределах жизни процесса — рестарт их сбрасывает, нужна повторная регистрация. Глобальный лимит — `code_graph.watch_max_registrations` (по умолчанию 8).
+
+### Пример вызова (JSON-RPC)
 
 ```json
 {
@@ -743,49 +771,52 @@ Mnemos синтезирует части в единую запись Markdown �
   "method": "tools/call",
   "params": {
     "name": "mnemos_watch_start",
-    "arguments": {
-      "paths": ["/home/you/mnemos", "/home/you/notes"],
-      "include_rules": true
-    }
+    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
   }
 }
 ```
 
-### Примечания
+### Ошибки
 
-- Лимит размера файла — `watcher.max_file_size_kb` (по умолчанию 512 КБ); файлы больше пропускаются.
-- Игнорируемые директории по умолчанию: `.git`, `node_modules`, `__pycache__`, `.venv`, `dist`, `build`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`.
-- Отслеживаемые расширения по умолчанию: `.md`, `.py`, `.js`, `.ts`, `.yaml`, `.yml`, `.toml`, `.json`, `.txt`, `.rst`, `.sh`, `.css`, `.html`, `.sql`.
+| Ошибка | Причина |
+|--------|---------|
+| `code: "disabled"` | Флаг `code_graph.enabled` или `code_graph.watch` выключен. |
+| `code: "attribution-required"` | Отсутствует или пуст `agent`. |
+| `code: "bad-request"` | Нет `project_id`; индекса ещё нет (опрос переиндексирует — первый индекс он не создаёт); достигнут лимит регистраций; либо отклонённая легаси-форма (`paths=` / `scan=` / `include_rules=`). |
 
 ### Связанные ресурсы
 
-- HTTP-эквивалент: [`POST /watch/start`](http-api.md#post-watchstart--запустить-файловый-наблюдатель)
+- HTTP-эквивалент: [`POST /watch/start`](http-api.md#post-watchstart--регистрация-watch-опроса-графа-проектов)
+- Семейство инструментов графа: [Инструменты графа проектов (ADR-0032)](#инструменты-графа-проектов-adr-0032)
 
 ---
 
 ## `mnemos_watch_stop`
 
-Остановить фоновый file watcher.
+Остановить одну регистрацию watch (по `project_id`) или ВСЕ, если аргумент опущен. Идемпотентно.
 
 ### Входные параметры
 
-Отсутствуют.
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | нет | — | Проект, за которым перестать следить; опустите, чтобы остановить все. |
 
 ### Вывод
 
 ```text
-✅ Watcher stopped.
+✅ Watch stopped.
 ```
 
 ### Связанные ресурсы
 
-- HTTP-эквивалент: [`POST /watch/stop`](http-api.md#post-watchstop--остановить-файловый-наблюдатель)
+- HTTP-эквивалент: [`POST /watch/stop`](http-api.md#post-watchstop--остановить-регистрации-watch)
+- Семейство инструментов графа: [Инструменты графа проектов (ADR-0032)](#инструменты-графа-проектов-adr-0032)
 
 ---
 
 ## `mnemos_watch_status`
 
-Сообщить текущее состояние фонового watcher'а.
+Активные регистрации watch и итог последнего опроса по каждому проекту (watch-опрос ADR-0032).
 
 ### Входные параметры
 
@@ -796,16 +827,483 @@ Mnemos синтезирует части в единую запись Markdown �
 ```json
 {
   "running": true,
-  "paths": ["/home/you/mnemos"],
-  "files_queued": 3,
-  "files_indexed": 142,
-  "include_rules": false
+  "watch_enabled": true,
+  "cap": 8,
+  "registrations": [
+    {
+      "project": "mnemos",
+      "project_id": "mnemos",
+      "root": "/home/you/mnemos",
+      "agent": "tech-writer",
+      "session": null,
+      "registered_at": "2026-09-28T12:00:00+00:00",
+      "interval_sec": 5.0,
+      "runs": 3,
+      "reindexes": 1,
+      "last_run_at": "2026-09-28T12:00:15+00:00",
+      "last_result": "fresh",
+      "last_error": null
+    }
+  ]
 }
 ```
 
 ### Связанные ресурсы
 
-- HTTP-эквивалент: [`GET /watch/status`](http-api.md#get-watchstatus--статус-наблюдателя)
+- HTTP-эквивалент: [`GET /watch/status`](http-api.md#get-watchstatus--статус-watch-опроса)
+- Семейство инструментов графа: [Инструменты графа проектов (ADR-0032)](#инструменты-графа-проектов-adr-0032)
+
+---
+
+## Инструменты графа проектов (ADR-0032)
+
+Десять инструментов над **графом кода проектов**: символы и схемы файлов, разобранные tree-sitter'ом, навигация, честность покрытия. В графе хранятся только имена, квалифицированные имена, диапазоны строк и формы сигнатур — ни одного байта исходника (PG1). Дизайн, инварианты безопасности и дорожная карта: [ADR-0032](../../project/adr/0032-project-graph.md).
+
+> **Default-off — операторский флаг.** Инструменты остаются в манифесте, но каждый вызов отвечает `code: "disabled"`, пока оператор не включит `code_graph.enabled: true`. Тот же гейт действует на [REST-namespace `/graph/`](http-api.md#граф-проектов-adr-0032-default-off).
+
+### Операторский гейт (конфигурация)
+
+| Ключ (`code_graph.`) | По умолчанию | Значение |
+|----------------------|--------------|----------|
+| `enabled` | `false` | Мастер-флаг 10 инструментов и REST-namespace `/graph/`. |
+| `beacon` | `true` | Одна строка-хвост в выводе `assemble_context` со свежестью графа (действует только при включённом `enabled`). |
+| `watch` | `false` | Отдельный opt-in для watch-опроса (`mnemos_watch_start`); мастер-гейт действует поверх. |
+| `index_max_files` | `20000` | Жёсткий лимит проиндексированных файлов на проект. Fail-closed: превышение отклоняет ВЕСЬ индекс — частичный граф не публикуется никогда (PG7). |
+| `index_max_source_mb` | `500` | Жёсткий лимит суммарного объёма исходников на проект, МиБ (тот же fail-closed-принцип). |
+| `watch_max_registrations` | `8` | Глобальный лимит активных watch-регистраций на процесс. |
+| `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Адаптивный интервал опроса: база + 1с за каждые 500 файлов, с потолком. |
+
+Переопределение через окружение — по канонической схеме настроек: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`.
+
+### Токен-контракт
+
+Каждое оконное движение принимает `max_output_tokens` (целое, 128–1 000 000, по умолчанию 3200):
+
+- Бюджет считается в **байтах = токены × 4** — детерминированный потолок 4 байта UTF-8 на токен, никакой токенизаторной угадайки.
+- Строки **не режутся пополам**: строка, не влезающая в бюджет, отбрасывается ЦЕЛИКОМ; сниппеты — целыми СТРОКАМИ. `has_more: true` и курсор говорят, что осталось.
+- Курсор **строго возрастает** (хотя бы одна строка всегда потребляется). Бюджет, в который не влезает даже одна строка, отклоняется (`GraphBudgetError`, HTTP `400`) вместо зацикливания на той же странице.
+- Детализация — opt-in: сигнатуры едут только при `include_signature: true` в `mnemos_search_graph`.
+
+Ошибки, общие для всей группы: `disabled` (операторский гейт), `attribution-required` (нет `agent`, PG7), отказы конфайнмента (незарегистрированный проект или путь вне зарегистрированного корня, PG2), отказы бюджета. Каждый вызов — чтение или запись — аудируется по агенту (PG7). REST-близнецы отображают их на HTTP-коды: см. [REST-раздел графа проектов](http-api.md#граф-проектов-adr-0032-default-off).
+
+---
+
+## `mnemos_index_project`
+
+Индексация **зарегистрированного** корня проекта в общий граф проектов — полная или инкрементальная. Сериализуется по проекту: параллельный вызов сразу получает статус `in-progress`. PG2: принимается только проект, зарегистрированный в таблице projects; произвольные пути отклоняются. PG7: лимиты fail-closed, запуск аудируется с вашим agent id.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `incremental` | boolean | нет | `true` | Пропустить работу, если ничего не изменилось. |
+| `reason` | string | нет | — | Причина для аудита. |
+
+### Вывод
+
+```json
+{
+  "status": "indexed",
+  "nodes": 2143,
+  "edges": 5107,
+  "files_indexed": 312,
+  "files_skipped": 88,
+  "poisoned": ["deploy/secret.env"],
+  "parse_errors": {"legacy/parser.py": "unsupported syntax"},
+  "duration_sec": 4.212,
+  "incremental": true,
+  "staleness": {
+    "total_files": 400,
+    "fresh_percent": 100.0,
+    "changed_files": [],
+    "last_indexed_at": "2026-09-28T12:00:04+00:00"
+  }
+}
+```
+
+`status` — `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` равен `null`, когда ничего не изменилось (без фальшивой свежести). Ошибки разбора едут в ответе как маркер честности — «clean ≠ proof». Poisoned-пути сработали на детектор секретов при индексации и навсегда отклоняются при выдаче сниппетов (PG3).
+
+### Пример вызова (JSON-RPC)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 30,
+  "method": "tools/call",
+  "params": {
+    "name": "mnemos_index_project",
+    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+  }
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/index`](http-api.md#post-graphindex--индексация-зарегистрированного-проекта)
+- Модель безопасности: [ADR-0032, инварианты PG1–PG7](../../project/adr/0032-project-graph.md)
+
+---
+
+## `mnemos_project_graph_status`
+
+Статус графа проектов по одному зарегистрированному проекту: объёмы узлов/рёбер/файлов, свежесть (процент fresh, `last_indexed_at`), ошибки разбора (остаются видимыми) и число poisoned-файлов (PG3). Только чтение, с аудитом.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "nodes": 2143,
+  "edges": 5107,
+  "files": 400,
+  "parse_errors": {"legacy/parser.py": "unsupported syntax"},
+  "parse_error_count": 1,
+  "poisoned_count": 1,
+  "staleness": {
+    "total_files": 400,
+    "fresh_percent": 97.5,
+    "changed_files": ["src/vesmaro/manager.py"],
+    "last_indexed_at": "2026-09-28T12:00:04+00:00"
+  }
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`GET /graph/status/{project_id}`](http-api.md#get-graphstatusproject_id--статус-графа-проекта)
+
+---
+
+## `mnemos_search_graph`
+
+Поиск по графу проектов по имени / квалифицированному имени / пути (подстрока). Ранжирование ДО бюджетного среза: точные совпадения выше префиксных, префиксные выше подстрочных. Действует токен-контракт.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `query` | string | **да** | — | Подстрока имени / квалифицированного имени / пути. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `kind` | string | нет | — | Фильтр по виду узла: один из `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`. |
+| `limit` | integer | нет | `50` | Максимум ранжированных строк на страницу (жёсткий потолок страницы — 200). |
+| `cursor` | integer | нет | `0` | Курсор страницы из предыдущего вызова. |
+| `max_output_tokens` | integer | нет | `3200` | Бюджет вывода (128–1 млн). |
+| `include_signature` | boolean | нет | `false` | Opt-in-флаг детализации: включить формы сигнатур. |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "query_kind": null,
+  "results": [
+    {
+      "score": 3,
+      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "project": "mnemos",
+      "kind": "Function",
+      "name": "window_rows",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "path": "src/vesmaro/codegraph/service.py",
+      "start_line": 158,
+      "end_line": 190,
+      "lang": "python",
+      "signature": "def window_rows(rows: list[dict[str, Any]], max_output_tokens: int, cursor: int) -> tuple[list[dict[str, Any]], bool, int]"
+    }
+  ],
+  "total_matches": 1,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/search`](http-api.md#post-graphsearch--поиск-по-графу-проектов)
+- Токен-контракт: [выше](#токен-контракт)
+
+---
+
+## `mnemos_trace_path`
+
+BFS по `project_edges` от одного символа, разрешаемого по квалифицированному имени (точное совпадение или уникальный dotted-tail — неоднозначные отказы называют `mnemos_search_graph`). Глубина ≤ 2 с лимитом fanout на узел и лимитом суммарной работы (дисциплина обхода ADR-0030). Токен-контракт действует на секцию `nodes`; секция `edges` идёт вне токен-бюджета — её ограничивают только лимиты fanout/total, при достижении честно ставится `truncated` (бюджет рёбер — волна PG-1, ADR-0032).
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `qname` | string | **да** | — | Квалифицированное имя символа (точное или уникальный хвост). |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `depth` | integer | нет | `2` | Глубина BFS, 1–2. |
+| `max_output_tokens` | integer | нет | `3200` | Бюджет вывода (128–1 млн). |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "start": "vesmaro.codegraph.service.window_rows",
+  "depth": 2,
+  "nodes": [
+    {
+      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "kind": "Function",
+      "path": "src/vesmaro/codegraph/service.py",
+      "start_line": 158,
+      "end_line": 190,
+      "depth": 0
+    }
+  ],
+  "edges": [
+    { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" }
+  ],
+  "truncated": false,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+`truncated: true` означает, что сработал лимит fanout или суммарной работы — обход честно сообщает, что пропустил.
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/trace`](http-api.md#post-graphtrace--обход-пути-от-символа)
+
+---
+
+## `mnemos_get_file_outline`
+
+Схема символов одного проиндексированного файла: виды, имена, квалифицированные имена, диапазоны строк, формы сигнатур — никогда тела (PG1). Путь относительный (repo-relative) и обязан оставаться внутри зарегистрированного корня (PG2). Ошибки разбора едут в ответе как маркер честности. Действует токен-контракт.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `path` | string | **да** | — | Путь к файлу относительно корня репозитория. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `cursor` | integer | нет | `0` | Курсор страницы. |
+| `max_output_tokens` | integer | нет | `3200` | Бюджет вывода (128–1 млн). |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "lang": "python",
+  "outline": [
+    {
+      "kind": "Function",
+      "name": "window_rows",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "start_line": 158,
+      "end_line": 190,
+      "signature": "def window_rows(rows, max_output_tokens, cursor)"
+    }
+  ],
+  "parse_error": null,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/outline`](http-api.md#post-graphoutline--схема-символов-одного-файла)
+
+---
+
+## `mnemos_get_code_snippet`
+
+Чтение диапазона строк **с диска** для проиндексированного файла. При каждом вызове выполняется полная последовательность PG4: отказ poisoned (навсегда) → конфайнмент пути → проверка индексации → свежесть по mtime+size+sha256 → секрет-скан выдачи (ЛЮБОЕ попадание отклоняет весь диапазон fail-closed) → целострочное токен-окно. **Кэша сниппетов нет** — каждый вызов перечитывает файл.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `path` | string | **да** | — | Путь к файлу относительно корня репозитория. |
+| `start_line` | integer | **да** | — | Первая строка (с 1). |
+| `end_line` | integer | **да** | — | Последняя строка (включительно). |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `max_output_tokens` | integer | нет | `3200` | Бюджет вывода (128–1 млн); целострочные дропы. |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "start_line": 158,
+  "end_line": 172,
+  "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...\n)",
+  "total_file_lines": 1081,
+  "has_more": true,
+  "next_start_line": 173,
+  "scanned": true,
+  "stale": false
+}
+```
+
+Файл, изменившийся на диске после индексации, даёт маркер устаревания — но не содержимое; для обновления переиндексируйте. Poisoned-файл (сработал детектор секретов при индексации) отклоняется навсегда — очищает его только `mnemos_delete_graph_project` (PG3).
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/snippet`](http-api.md#post-graphsnippet--секрет-сканированный-диапазон-строк-с-диска)
+
+---
+
+## `mnemos_check_graph_coverage`
+
+Пакетная проверка покрытия: вердикт по каждому пути — `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Честность покрытия — доверять здесь НЕЧЕМУ; проверяйте через `mnemos_get_code_snippet`.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `paths` | string[] | **да** | — | Пути относительно корня репозитория (непустой список). |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+
+### Вывод
+
+```json
+{
+  "project": "mnemos",
+  "coverage": [
+    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
+    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
+    { "path": "docs/en/user/mcp-tools.md", "verdict": "unindexed" },
+    { "path": "deploy/secret.env", "verdict": "poisoned", "reason": "secret-detected (permanent)" }
+  ]
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`POST /graph/coverage`](http-api.md#post-graphcoverage--пакетная-проверка-покрытия)
+
+---
+
+## `mnemos_get_graph_schema`
+
+Карта контракта графа проектов для агентов: виды узлов и рёбер, токен-контракт, лимиты индексации и обхода, версия схемы. Необязательный `project_id` добавляет объёмы этого проекта.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `project_id` | string | нет | — | Идентификатор или имя зарегистрированного проекта (добавляет объёмы). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+
+### Вывод
+
+```json
+{
+  "schema_version": 1,
+  "node_kinds": ["Project", "File", "Module", "Class", "Function", "Method", "Type"],
+  "edge_kinds": ["CONTAINS_FILE", "DEFINES", "IMPORTS", "CALLS", "INHERITS", "TESTS", "USES"],
+  "token_contract": {
+    "max_output_tokens_default": 3200,
+    "max_output_tokens_min": 128,
+    "max_output_tokens_max": 1000000,
+    "bytes_per_token": 4
+  },
+  "limits": { "index_max_files": 20000, "index_max_source_mb": 500 },
+  "trace": { "max_depth": 2, "fanout_cap": 32, "total_work_cap": 512 }
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`GET /graph/schema`](http-api.md#get-graphschema--карта-контракта-графа)
+
+---
+
+## `mnemos_list_graph_projects`
+
+Зарегистрированные проекты вместе со статусом их индекса (объёмы, число poisoned, `last_indexed_at`). Зарегистрированные, но ещё не индексированные проекты остаются видимыми; как и проиндексированные «сироты», чья сущность проекта дерегистрирована.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+
+### Вывод
+
+```json
+{
+  "projects": [
+    {
+      "project": "mnemos",
+      "registered": true,
+      "has_root": true,
+      "nodes": 2143,
+      "edges": 5107,
+      "files": 400,
+      "poisoned": 1,
+      "last_indexed_at": "2026-09-28T12:00:04+00:00"
+    }
+  ],
+  "has_more": false,
+  "cursor": 0
+}
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`GET /graph/projects`](http-api.md#get-graphprojects--список-проектов-графа)
+
+---
+
+## `mnemos_delete_graph_project`
+
+Удалить ИНДЕКС графа проекта — только sidecar-данные, никогда сущность проекта в основной БД. Единственная операция, очищающая poisoned-набор (PG3, «навсегда»). Аудируется с необязательной причиной.
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или уникальное имя зарегистрированного проекта. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+| `reason` | string | нет | — | Причина для аудита. |
+
+### Вывод
+
+```json
+{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+```
+
+### Связанные ресурсы
+
+- HTTP-эквивалент: [`DELETE /graph/projects/{project_id}`](http-api.md#delete-graphprojectsproject_id--удаление-индекса-графа)
 
 ---
 

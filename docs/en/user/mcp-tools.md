@@ -6,7 +6,7 @@
 
 Mnemos speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) over **stdio JSON-RPC 2.0**. VS Code Copilot and any MCP-aware client can call the tools listed here.
 
-The server is defined in `src/mnemos/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
+The server is defined in `src/vesmaro/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
 
 For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp-server](getting-started.md#connect-your-harness-mcp). For programmatic access, the same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
 
@@ -42,9 +42,19 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Workflow lifecycle: set / get / history (`action: enum`) | no |
 | [`mnemos_ingest_url`](#mnemos_ingest_url) | Fetch and save a web page | yes |
 | [`mnemos_ingest_document`](#mnemos_ingest_document) | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) | yes |
-| [`mnemos_watch_start`](#mnemos_watch_start) | Start a background file watcher | no |
-| [`mnemos_watch_stop`](#mnemos_watch_stop) | Stop the file watcher | no |
-| [`mnemos_watch_status`](#mnemos_watch_status) | Report watcher status | no |
+| [`mnemos_watch_start`](#mnemos_watch_start) | Register the project-graph watch poll (ADR-0032 §3.2) | no |
+| [`mnemos_watch_stop`](#mnemos_watch_stop) | Stop one or all watch registrations | no |
+| [`mnemos_watch_status`](#mnemos_watch_status) | Report watch registrations and last poll outcome | no |
+| [`mnemos_index_project`](#mnemos_index_project) | Index a registered project root into the project graph (ADR-0032, default-off) | no |
+| [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
+| [`mnemos_search_graph`](#mnemos_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
+| [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
+| [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
+| [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
+| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / poisoned | no |
+| [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
+| [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
+| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Compaction signal vector (M7) | no |
 | [`mnemos_compress`](#mnemos_compress) | Reversible compression (CCR) — cache original, embed marker | no |
 | [`mnemos_retrieve`](#mnemos_retrieve) | Retrieve a CCR-cached original or FTS5 snippets | no |
@@ -719,25 +729,43 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
 
 ## `mnemos_watch_start`
 
-Start a background file watcher. New and modified files under the watched paths are auto-indexed into Mnemos.
+Register a project's code graph for the in-process watch poll (ADR-0032 §3.2). One cooperative background thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes — audited with reason `watch`.
+
+> **Changed.** This is not a directory watcher. The former `paths=` / `scan=` / `include_rules=` form was an unimplemented stub that reported false success; it is gone, and those arguments are now rejected with `bad-request`.
+
+**Prerequisites:** the operator flags `code_graph.enabled` **and** `code_graph.watch` (both default off), an existing index for the project, and agent attribution (PG7).
 
 ### Input
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `paths` | string[] | no | `[cwd]` | Directories to watch. |
-| `scan` | boolean | no | `true` | Run an initial scan to catch up on existing files. |
-| `include_rules` | boolean | no | `false` | Also watch `.github/instructions/*.instructions.md` (M8 path-scoped rules). |
+| `project_id` | string | **yes** | — | Registered project id to watch. |
+| `agent` | string | **yes** | — | Caller identity (PG7 per-agent attribution). |
+| `session` | string | no | — | Optional session id for the audit trail. |
 
 ### Output
 
-```text
-✅ Watcher started on ['/home/you/project']
-# or, with include_rules:
-✅ Watcher started on ['/home/you/project'] (including .instructions.md rules)
+```json
+{
+  "status": "registered",
+  "project": "mnemos",
+  "project_id": "mnemos",
+  "root": "/home/you/mnemos",
+  "agent": "tech-writer",
+  "session": null,
+  "registered_at": "2026-09-28T12:00:00+00:00",
+  "interval_sec": 5.0,
+  "runs": 0,
+  "reindexes": 0,
+  "last_run_at": null,
+  "last_result": null,
+  "last_error": null
+}
 ```
 
-### Example call
+A repeat registration for the same project returns the payload with `"status": "already-registered"`. Registrations live for the process lifetime — a restart drops them and they must be re-registered. The global cap is `code_graph.watch_max_registrations` (default 8).
+
+### Example call (JSON-RPC)
 
 ```json
 {
@@ -746,49 +774,52 @@ Start a background file watcher. New and modified files under the watched paths 
   "method": "tools/call",
   "params": {
     "name": "mnemos_watch_start",
-    "arguments": {
-      "paths": ["/home/you/mnemos", "/home/you/notes"],
-      "include_rules": true
-    }
+    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
   }
 }
 ```
 
-### Notes
+### Errors
 
-- File size cap is `watcher.max_file_size_kb` (default 512 KB) — files larger than this are skipped.
-- Default ignored dirs: `.git`, `node_modules`, `__pycache__`, `.venv`, `dist`, `build`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`.
-- Default watched extensions: `.md`, `.py`, `.js`, `.ts`, `.yaml`, `.yml`, `.toml`, `.json`, `.txt`, `.rst`, `.sh`, `.css`, `.html`, `.sql`.
+| Error | Cause |
+|-------|-------|
+| `code: "disabled"` | `code_graph.enabled` or `code_graph.watch` is off. |
+| `code: "attribution-required"` | Missing or empty `agent`. |
+| `code: "bad-request"` | Missing `project_id`; no index yet (the poll reindexes — it never seeds a first index); registration cap reached; or the rejected legacy form (`paths=` / `scan=` / `include_rules=`). |
 
 ### Related
 
-- HTTP equivalent: [`POST /watch/start`](http-api.md#post-watchstart--start-the-file-watcher)
+- HTTP equivalent: [`POST /watch/start`](http-api.md#post-watchstart--register-the-project-graph-watch-poll)
+- Graph tool family: [Project graph tools (ADR-0032)](#project-graph-tools-adr-0032)
 
 ---
 
 ## `mnemos_watch_stop`
 
-Stop the background file watcher.
+Stop one watch registration (by `project_id`) or ALL of them when the argument is omitted. Idempotent.
 
 ### Input
 
-None.
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | no | — | Project to stop watching; omit to stop all. |
 
 ### Output
 
 ```text
-✅ Watcher stopped.
+✅ Watch stopped.
 ```
 
 ### Related
 
-- HTTP equivalent: [`POST /watch/stop`](http-api.md#post-watchstop--stop-the-file-watcher)
+- HTTP equivalent: [`POST /watch/stop`](http-api.md#post-watchstop--stop-watch-registrations)
+- Graph tool family: [Project graph tools (ADR-0032)](#project-graph-tools-adr-0032)
 
 ---
 
 ## `mnemos_watch_status`
 
-Report the current state of the background watcher.
+Report active watch registrations and the last poll outcome per project (ADR-0032 watch poll).
 
 ### Input
 
@@ -799,16 +830,483 @@ None.
 ```json
 {
   "running": true,
-  "paths": ["/home/you/mnemos"],
-  "files_queued": 3,
-  "files_indexed": 142,
-  "include_rules": false
+  "watch_enabled": true,
+  "cap": 8,
+  "registrations": [
+    {
+      "project": "mnemos",
+      "project_id": "mnemos",
+      "root": "/home/you/mnemos",
+      "agent": "tech-writer",
+      "session": null,
+      "registered_at": "2026-09-28T12:00:00+00:00",
+      "interval_sec": 5.0,
+      "runs": 3,
+      "reindexes": 1,
+      "last_run_at": "2026-09-28T12:00:15+00:00",
+      "last_result": "fresh",
+      "last_error": null
+    }
+  ]
 }
 ```
 
 ### Related
 
-- HTTP equivalent: [`GET /watch/status`](http-api.md#get-watchstatus--watcher-status)
+- HTTP equivalent: [`GET /watch/status`](http-api.md#get-watchstatus--watch-poll-status)
+- Graph tool family: [Project graph tools (ADR-0032)](#project-graph-tools-adr-0032)
+
+---
+
+## Project graph tools (ADR-0032)
+
+Ten tools over the **project code graph**: symbols and file outlines parsed by tree-sitter, navigation, coverage honesty. Only names, qualified names, line ranges and signature shapes are persisted — zero bytes of source live in the graph (PG1). The design, security invariants and roadmap: [ADR-0032](../../project/adr/0032-project-graph.md).
+
+> **Default off — operator flag.** The tools stay listed in the manifest, but every call answers `code: "disabled"` until the operator sets `code_graph.enabled: true`. The same gate shapes the [`/graph/` REST namespace](http-api.md#project-graph-adr-0032-default-off).
+
+### Operator gate (configuration)
+
+| Key (`code_graph.`) | Default | Meaning |
+|---------------------|---------|---------|
+| `enabled` | `false` | Master flag for the 10 tools and the `/graph/` REST namespace. |
+| `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness (effective only when `enabled`). |
+| `watch` | `false` | Separate opt-in for the watch poll (`mnemos_watch_start`); the master gate applies on top. |
+| `index_max_files` | `20000` | Hard cap on indexed files per project. Fail-closed: a breach refuses the WHOLE index — no partial graph is ever published (PG7). |
+| `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (same fail-closed discipline). |
+| `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
+| `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1s per 500 indexed files, capped. |
+
+Env overrides follow the canonical settings pattern: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`.
+
+### Token contract
+
+Every windowed tool takes `max_output_tokens` (integer, 128–1,000,000, default 3200):
+
+- The budget is enforced in **bytes = tokens × 4** — a deterministic 4 UTF-8 bytes per token ceiling, never a tokenizer guess.
+- Rows are **never split**: a row that no longer fits is dropped WHOLE; snippets drop whole LINES. `has_more: true` and a cursor tell you what remains.
+- The cursor **strictly advances** (at least one row is always consumed). A budget that cannot fit even one row is refused (`GraphBudgetError`, HTTP `400`) instead of looping on the same page.
+- Detail is opt-in: signatures ride only when `include_signature: true` is passed to `mnemos_search_graph`.
+
+Errors shared by the whole group — `disabled` (operator gate), `attribution-required` (missing `agent`, PG7), confinement refusals (unregistered project or a path escaping the registered root, PG2), budget refusals. Every call, read or write, is audited per agent (PG7). REST twins map these to HTTP codes: see the [project graph REST section](http-api.md#project-graph-adr-0032-default-off).
+
+---
+
+## `mnemos_index_project`
+
+Index a **registered** project root into the shared project graph — full or incremental. Serialized per project: a concurrent call gets `in-progress` status immediately. PG2: only a project registered in the projects table is accepted; arbitrary paths are refused. PG7: limits are fail-closed, the run is audited with your agent id.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `incremental` | boolean | no | `true` | Skip work when nothing changed. |
+| `reason` | string | no | — | Audit reason. |
+
+### Output
+
+```json
+{
+  "status": "indexed",
+  "nodes": 2143,
+  "edges": 5107,
+  "files_indexed": 312,
+  "files_skipped": 88,
+  "poisoned": ["deploy/secret.env"],
+  "parse_errors": {"legacy/parser.py": "unsupported syntax"},
+  "duration_sec": 4.212,
+  "incremental": true,
+  "staleness": {
+    "total_files": 400,
+    "fresh_percent": 100.0,
+    "changed_files": [],
+    "last_indexed_at": "2026-09-28T12:00:04+00:00"
+  }
+}
+```
+
+`status` is `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` is `null` when nothing changed (no fake freshness). Parse failures ride along as an honesty marker — «clean ≠ proof». Poisoned paths hit the secrets detector at index time and are refused at snippet issuance forever (PG3).
+
+### Example call (JSON-RPC)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 30,
+  "method": "tools/call",
+  "params": {
+    "name": "mnemos_index_project",
+    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+  }
+}
+```
+
+### Related
+
+- HTTP equivalent: [`POST /graph/index`](http-api.md#post-graphindex--index-a-registered-project)
+- Security model: [ADR-0032 §6 (invariants PG1–PG7)](../../project/adr/0032-project-graph.md)
+
+---
+
+## `mnemos_project_graph_status`
+
+Project-graph status for one registered project: node/edge/file volumes, freshness (fresh %, `last_indexed_at`), parse failures (they stay visible) and the poisoned-file count (PG3). Read-only, audited.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "nodes": 2143,
+  "edges": 5107,
+  "files": 400,
+  "parse_errors": {"legacy/parser.py": "unsupported syntax"},
+  "parse_error_count": 1,
+  "poisoned_count": 1,
+  "staleness": {
+    "total_files": 400,
+    "fresh_percent": 97.5,
+    "changed_files": ["src/vesmaro/manager.py"],
+    "last_indexed_at": "2026-09-28T12:00:04+00:00"
+  }
+}
+```
+
+### Related
+
+- HTTP equivalent: [`GET /graph/status/{project_id}`](http-api.md#get-graphstatusproject_id--project-graph-status)
+
+---
+
+## `mnemos_search_graph`
+
+Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `query` | string | **yes** | — | Name / qname / path substring. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `kind` | string | no | — | Filter by node kind: one of `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`. |
+| `limit` | integer | no | `50` | Max ranked rows per page (hard page ceiling 200). |
+| `cursor` | integer | no | `0` | Page cursor from the previous call. |
+| `max_output_tokens` | integer | no | `3200` | Output budget (128–1M). |
+| `include_signature` | boolean | no | `false` | Opt-in detail flag: include signature shapes. |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "query_kind": null,
+  "results": [
+    {
+      "score": 3,
+      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "project": "mnemos",
+      "kind": "Function",
+      "name": "window_rows",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "path": "src/vesmaro/codegraph/service.py",
+      "start_line": 158,
+      "end_line": 190,
+      "lang": "python",
+      "signature": "def window_rows(rows: list[dict[str, Any]], max_output_tokens: int, cursor: int) -> tuple[list[dict[str, Any]], bool, int]"
+    }
+  ],
+  "total_matches": 1,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+### Related
+
+- HTTP equivalent: [`POST /graph/search`](http-api.md#post-graphsearch--search-the-project-graph)
+- Token contract: [above](#token-contract)
+
+---
+
+## `mnemos_trace_path`
+
+BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `mnemos_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `qname` | string | **yes** | — | Symbol qualified name (exact or unique tail). |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `depth` | integer | no | `2` | BFS depth, 1–2. |
+| `max_output_tokens` | integer | no | `3200` | Output budget (128–1M). |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "start": "vesmaro.codegraph.service.window_rows",
+  "depth": 2,
+  "nodes": [
+    {
+      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "kind": "Function",
+      "path": "src/vesmaro/codegraph/service.py",
+      "start_line": 158,
+      "end_line": 190,
+      "depth": 0
+    }
+  ],
+  "edges": [
+    { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" }
+  ],
+  "truncated": false,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+`truncated: true` means a fanout or total-work cap bit — the walk is honest about what it skipped.
+
+### Related
+
+- HTTP equivalent: [`POST /graph/trace`](http-api.md#post-graphtrace--trace-the-path-from-a-symbol)
+
+---
+
+## `mnemos_get_file_outline`
+
+Symbol outline of one indexed file: kinds, names, qnames, line ranges, signature shapes — never bodies (PG1). The path is repo-relative and must stay inside the registered root (PG2). Parse failures ride along as an honesty marker. Token contract applies.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `path` | string | **yes** | — | Repo-relative file path. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `cursor` | integer | no | `0` | Page cursor. |
+| `max_output_tokens` | integer | no | `3200` | Output budget (128–1M). |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "lang": "python",
+  "outline": [
+    {
+      "kind": "Function",
+      "name": "window_rows",
+      "qname": "vesmaro.codegraph.service.window_rows",
+      "start_line": 158,
+      "end_line": 190,
+      "signature": "def window_rows(rows, max_output_tokens, cursor)"
+    }
+  ],
+  "parse_error": null,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
+### Related
+
+- HTTP equivalent: [`POST /graph/outline`](http-api.md#post-graphoutline--symbol-outline-of-one-file)
+
+---
+
+## `mnemos_get_code_snippet`
+
+Read a line range **from disk** for an indexed file. The full PG4 sequence runs on every call: poisoned refusal (permanent) → path confinement → indexed check → mtime+size+sha256 freshness → issuance secret scan (ANY hit refuses the whole range fail-closed) → whole-line token window. There is **no snippet cache** — every call re-reads the file.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `path` | string | **yes** | — | Repo-relative file path. |
+| `start_line` | integer | **yes** | — | First line (1-based). |
+| `end_line` | integer | **yes** | — | Last line (inclusive). |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `max_output_tokens` | integer | no | `3200` | Output budget (128–1M); whole-line drops. |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "path": "src/vesmaro/codegraph/service.py",
+  "start_line": 158,
+  "end_line": 172,
+  "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...\n)",
+  "total_file_lines": 1081,
+  "has_more": true,
+  "next_start_line": 173,
+  "scanned": true,
+  "stale": false
+}
+```
+
+A file that changed on disk since indexation yields a staleness marker — never content; reindex to refresh. A poisoned file (hit the secrets detector at index time) is refused permanently — only `mnemos_delete_graph_project` clears it (PG3).
+
+### Related
+
+- HTTP equivalent: [`POST /graph/snippet`](http-api.md#post-graphsnippet--secret-scanned-line-range-from-disk)
+
+---
+
+## `mnemos_check_graph_coverage`
+
+Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `paths` | string[] | **yes** | — | Repo-relative paths to check (non-empty). |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+
+### Output
+
+```json
+{
+  "project": "mnemos",
+  "coverage": [
+    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
+    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
+    { "path": "docs/en/user/mcp-tools.md", "verdict": "unindexed" },
+    { "path": "deploy/secret.env", "verdict": "poisoned", "reason": "secret-detected (permanent)" }
+  ]
+}
+```
+
+### Related
+
+- HTTP equivalent: [`POST /graph/coverage`](http-api.md#post-graphcoverage--batch-coverage-check)
+
+---
+
+## `mnemos_get_graph_schema`
+
+The project-graph contract card for agents: node/edge kinds, the token contract, index and trace limits, schema version. An optional `project_id` adds that project's volumes.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `project_id` | string | no | — | Registered project id or name (adds volumes). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+
+### Output
+
+```json
+{
+  "schema_version": 1,
+  "node_kinds": ["Project", "File", "Module", "Class", "Function", "Method", "Type"],
+  "edge_kinds": ["CONTAINS_FILE", "DEFINES", "IMPORTS", "CALLS", "INHERITS", "TESTS", "USES"],
+  "token_contract": {
+    "max_output_tokens_default": 3200,
+    "max_output_tokens_min": 128,
+    "max_output_tokens_max": 1000000,
+    "bytes_per_token": 4
+  },
+  "limits": { "index_max_files": 20000, "index_max_source_mb": 500 },
+  "trace": { "max_depth": 2, "fanout_cap": 32, "total_work_cap": 512 }
+}
+```
+
+### Related
+
+- HTTP equivalent: [`GET /graph/schema`](http-api.md#get-graphschema--graph-contract-card)
+
+---
+
+## `mnemos_list_graph_projects`
+
+Registered projects joined with their index status (volumes, poisoned count, `last_indexed_at`). Registered-but-never-indexed projects stay visible; so do indexed orphans whose project entity was deregistered.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+
+### Output
+
+```json
+{
+  "projects": [
+    {
+      "project": "mnemos",
+      "registered": true,
+      "has_root": true,
+      "nodes": 2143,
+      "edges": 5107,
+      "files": 400,
+      "poisoned": 1,
+      "last_indexed_at": "2026-09-28T12:00:04+00:00"
+    }
+  ],
+  "has_more": false,
+  "cursor": 0
+}
+```
+
+### Related
+
+- HTTP equivalent: [`GET /graph/projects`](http-api.md#get-graphprojects--list-graph-projects)
+
+---
+
+## `mnemos_delete_graph_project`
+
+Drop a project's graph INDEX — the sidecar data only, never the project entity in the main DB. The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Registered project id or unique name. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+| `reason` | string | no | — | Audit reason. |
+
+### Output
+
+```json
+{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+```
+
+### Related
+
+- HTTP equivalent: [`DELETE /graph/projects/{project_id}`](http-api.md#delete-graphprojectsproject_id--drop-a-graph-index)
 
 ---
 

@@ -971,6 +971,70 @@ class MeshTCPConfig(BaseModel):
         return self
 
 
+class CodeGraphConfig(BaseModel):
+    """Project code graph indexer knobs (ADR-0032 PG-0, ArchCom 2026-09-28).
+
+    The graph is MEMORY, not a per-process index: the sidecar
+    ``code_graph.db`` (slice 1) is rebuilt from sources. PG7 fail-closed
+    limits are DEFAULT ON — we learn from DeusData's default-off
+    mistake (ADR-0032 §5): a breach fails the WHOLE index, no partial
+    graph is ever published. The limits are ceilings the indexer checks
+    BEFORE committing its transaction, so a hostile or misconfigured
+    root cannot balloon the sidecar store.
+
+    Canonical env override: ``VESMARO_CODE_GRAPH__INDEX_MAX_FILES`` /
+    ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB``.
+
+    Fields:
+        enabled: Master flag for the project-graph tool surface (the
+            10 graph MCP tools and the ``/graph/`` REST namespace,
+            ADR-0032 §3.3). DEFAULT OFF — «each mechanism default-off
+            until validated» (wave gate): the tools stay in the MCP
+            manifest but every call answers a disabled error until the
+            operator opts in.
+        index_max_files: Hard cap on indexed files per project.
+            Default 20000 (ADR-0032 §3.4).
+        index_max_source_mb: Hard cap on total source bytes per
+            project, MiB. Default 500 (ADR-0032 §3.4).
+        beacon: The recall beacon v1 (ADR-0032 §3.5, slice 6): ONE tail
+            line appended to the ``assemble_context`` output AFTER the
+            budget stage — outside the budget blocks, never pinned,
+            never a pipeline stage. Effective only when ``enabled`` is
+            on. Default ON (it is the discovery surface for the ten
+            tools; without it the graph is invisible to agents).
+        watch: The ``watch_start`` poll registrar (contract §3.2
+            trigger (b), slice 6): registers a light poll task INSIDE
+            the server process (no daemon) that checks graph-file
+            mtime+size on an adaptive interval and reindexes on actual
+            changes (audit reason ``watch``). DEFAULT OFF — separate
+            opt-in from ``enabled`` (a poll that mutates the sidecar
+            without an explicit call is the noisier mechanism). The
+            master ``enabled`` gate still applies on top.
+        watch_max_registrations: Global cap on ACTIVE watch
+            registrations per process (contract §3.2: per-session 1 /
+            global 8 — an MCP call carries no session context, so the
+            session cap is not enforceable; the global cap + manual
+            ``watch_stop`` is the slice-6 binding). A registration
+            beyond the cap is refused.
+        watch_base_interval_sec / watch_interval_per_500_files /
+            watch_max_interval_sec: The adaptive poll interval model
+            (contract §3.2): ``base + (files // 500) * per_500``, capped
+            — 5s base, +1s per 500 files, 60s cap. Exposed as config
+            fields so tests can shrink them (injection) and operators
+            can widen them; the DEFAULTS are the contract's numbers.
+    """
+
+    enabled: bool = False
+    index_max_files: int = Field(default=20_000, ge=1)
+    index_max_source_mb: int = Field(default=500, ge=1)
+    beacon: bool = True
+    watch: bool = False
+    watch_max_registrations: int = Field(default=8, ge=1)
+    watch_base_interval_sec: float = Field(default=5.0, ge=0.01)
+    watch_interval_per_500_files: float = Field(default=1.0, ge=0.0)
+    watch_max_interval_sec: float = Field(default=60.0, ge=0.1)
+
+
 class VitalsConfig(BaseModel):
     """Passive assemble metrics into the vitals sidecar (ADR-0026).
 
@@ -1117,6 +1181,7 @@ class Settings(BaseSettings):
     federation: FederationConfig = FederationConfig()
     scanner: ScannerConfig = ScannerConfig()
     mesh: MeshConfig = MeshConfig()
+    code_graph: CodeGraphConfig = CodeGraphConfig()
     vitals: VitalsConfig = VitalsConfig()
     logging: LoggingConfig = LoggingConfig()
     # M5: declarative policy rules (loaded from YAML or set programmatically)

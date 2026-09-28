@@ -18,7 +18,7 @@ Connect — and it is there. No extra wiring required for anything in this table
 
 | Capability | What you get |
 |------------|--------------|
-| **Universal connectivity** | MCP server (26 tools, stdio) + REST API — any harness with MCP support connects in one line. Details: [mcp-tools.md](user/mcp-tools.md), [http-api.md](user/http-api.md) |
+| **Universal connectivity** | MCP server (38 tools, stdio) + REST API — any harness with MCP support connects in one line. Details: [mcp-tools.md](user/mcp-tools.md), [http-api.md](user/http-api.md) |
 | **Ready integrations** | zcode, the `~/.agents` standard (Claude Code, Codex, Continue, Qwen, and others), and pi — via `mnemos integration`: universal deploy targets, one-line MCP presets, and a multi-harness doctor (`mnemos doctor` checks MCP registration across known harnesses). See the [integration guide](user/integration-guide.md) |
 | **Skill pack** | 14+ memory skills deployed into your harnesses alongside the tools |
 | **Flexible memory** | Hybrid search (full-text + vector, rank fusion), the [tag contract](user/tag-contract.md), memory scoped per agent and per project, a [context filter](user/context-filter.md) with content-aware filter profiles (code / docs / web / logs …), and CCR compression — marker in context, original in memory, 70–90% token savings |
@@ -69,9 +69,10 @@ its loss is visible in a report; each rung above opens only after measurements c
 ---
 
 _Source: owner-approved feature map (2026-08-31), cross-checked against the
-v4.0.0 codebase — 26 tools registered in `src/mnemos/mcp_server.py`, skill pack
+v4.0.0 codebase — 26 tools registered at the time, skill pack
 in `integrations/skills/`, pipeline stages in `src/mnemos/pipeline/`,
 benchmark stands in `benchmarks/`. Updated 2026-09-05; meta-level roadmap rows
-added 2026-09-13 per ADR-0025._
+added 2026-09-13 per ADR-0025; tool count refreshed 2026-09-28 — 38 tools in
+`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, default-off)._
 
-_Last updated: 2026-09-13_
+_Last updated: 2026-09-28_

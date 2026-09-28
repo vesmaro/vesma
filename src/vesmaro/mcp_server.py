@@ -307,8 +307,33 @@ async def list_tools() -> list[Tool]:
     return tools
 
 
+#: Shared schema fragments of the 10 project-graph tools (ADR-0032 §3.3)
+#: — identical across the manifest, so they are defined once.
+_GRAPH_PROJECT_PROP: dict[str, str] = {
+    "type": "string",
+    "description": "Registered project id or name.",
+}
+_GRAPH_AGENT_PROP: dict[str, str] = {
+    "type": "string",
+    "description": "Caller agent id (PG7 attribution).",
+}
+_GRAPH_SESSION_PROP: dict[str, str] = {
+    "type": "string",
+    "description": "Caller session id (optional).",
+}
+
+
+def _graph_node_kinds() -> tuple[str, ...]:
+    """Node kinds of the project graph (ADR-0032 schema) — a lazy import
+    keeps the module import graph untouched when the codegraph slice is
+    absent (the manifest builder calls it at request time only)."""
+    from vesmaro.storage.code_graph_store import NODE_KINDS
+
+    return NODE_KINDS
+
+
 async def _canonical_tools() -> list[Tool]:
-    """Return the tool manifest (27 tools — stable model-visible contract).
+    """Return the tool manifest (37 tools — stable model-visible contract).
 
     Pre-2.x this was decorated with ``@server.list_tools()``; the port keeps
     the callable importable with the same zero-arg signature (the test suite
@@ -854,34 +879,51 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_watch_start",
             description=(
-                "Start watching directories for file changes and auto-index into memory. "
-                "Runs in background."
+                "Register a project's code graph for the in-process watch poll "
+                "(ADR-0032 §3.2): checks indexed files by mtime+size on an "
+                "adaptive interval and reindexes on actual changes. Requires the "
+                "operator flags code_graph.enabled and code_graph.watch, an "
+                "existing index, and agent attribution. The former "
+                "directory-watcher form was an unimplemented stub and is gone."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Directories to watch (defaults to cwd)",
+                    "project_id": {
+                        "type": "string",
+                        "description": "Registered project id to watch",
                     },
-                    "scan": {"type": "boolean", "default": True},
-                    "include_rules": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Also watch .github/instructions/*.instructions.md (M8)",
+                    "agent": {
+                        "type": "string",
+                        "description": "Caller identity (PG7 per-agent attribution)",
+                    },
+                    "session": {
+                        "type": "string",
+                        "description": "Optional session id for the audit trail",
                     },
                 },
+                "required": ["project_id", "agent"],
             },
         ),
         Tool(
             name="mnemos_watch_stop",
-            description="Stop the background file watcher.",
-            input_schema={"type": "object", "properties": {}},
+            description=(
+                "Stop one watch registration (by project_id) or ALL of them when "
+                "omitted. Idempotent."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project to stop watching"}
+                },
+            },
         ),
         Tool(
             name="mnemos_watch_status",
-            description="Report background watcher status.",
+            description=(
+                "Report active watch registrations and the last poll outcome per "
+                "project (ADR-0032 watch poll)."
+            ),
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -1604,6 +1646,269 @@ async def _canonical_tools() -> list[Tool]:
                     },
                 },
                 "required": ["action", "memory_id"],
+            },
+        ),
+        # ── project graph, 10 tools (ADR-0032 §3.3 / contract §3.3) ────────
+        # Master flag settings.code_graph.enabled (default OFF): the tools
+        # stay in the manifest, every call answers a disabled error —
+        # the same gate shape as auto-collect's description swap above.
+        Tool(
+            name="mnemos_index_project",
+            description=(
+                "Index a REGISTERED project root into the shared project "
+                "graph (ADR-0032). Full or incremental; serialized per "
+                "project (a concurrent call gets 'in-progress' status). "
+                "PG2: only a project registered in the projects table is "
+                "accepted — arbitrary paths are refused. PG7: limits are "
+                "fail-closed, the run is audited with your agent id. "
+                "Returns the result plus a staleness summary."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Registered project id or unique name.",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "incremental": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Skip work when nothing changed (default true).",
+                    },
+                    "reason": {"type": "string", "description": "Audit reason (optional)."},
+                },
+                "required": ["project_id", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_project_graph_status",
+            description=(
+                "Project-graph status for one registered project: node/edge/"
+                "file volumes, freshness (fresh %, last_indexed_at), parse "
+                "failures ('clean ≠ proof' — they stay visible) and the "
+                "poisoned-file count (PG3). Read-only, audited."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["project_id", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_search_graph",
+            description=(
+                "Search the project graph by name / qualified name / path "
+                "(substring; exact hits outrank prefix, prefix outranks "
+                "substring). Token contract: max_output_tokens 128-1M "
+                "(default 3200), whole-row drops, strictly advancing "
+                "cursor, has_more; signatures are opt-in via "
+                "include_signature. Read-only, audited per agent."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "query": {"type": "string", "description": "Name/qname/path substring."},
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "kind": {
+                        "type": "string",
+                        "enum": list(_graph_node_kinds()),
+                        "description": "Filter by node kind (optional).",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Max ranked rows per page.",
+                    },
+                    "cursor": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Page cursor from the previous call.",
+                    },
+                    "max_output_tokens": {
+                        "type": "integer",
+                        "default": 3200,
+                        "description": "Output budget (128-1M); 4 UTF-8 bytes per token ceiling.",
+                    },
+                    "include_signature": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Opt-in detail flag: include signatures.",
+                    },
+                },
+                "required": ["project_id", "query", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_trace_path",
+            description=(
+                "BFS over project_edges from one symbol (resolve by qname, "
+                "unique — ambiguous refusals name search_graph). Depth ≤ 2, "
+                "per-node fanout cap, total-work cap (the ADR-0030 walk "
+                "discipline). Token contract applies."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "qname": {
+                        "type": "string",
+                        "description": "Symbol qualified name (exact or unique tail).",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "depth": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "BFS depth, 1-2.",
+                    },
+                    "max_output_tokens": {
+                        "type": "integer",
+                        "default": 3200,
+                        "description": "Output budget (128-1M).",
+                    },
+                },
+                "required": ["project_id", "qname", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_get_file_outline",
+            description=(
+                "Symbol outline of one indexed file (kinds, names, qnames, "
+                "line ranges; signatures included — shapes, never bodies, "
+                "PG1). Path is repo-relative and must stay inside the "
+                "registered root (PG2). Parse failures ride along as an "
+                "honesty marker. Token contract applies."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "path": {"type": "string", "description": "Repo-relative file path."},
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "cursor": {"type": "integer", "default": 0, "description": "Page cursor."},
+                    "max_output_tokens": {
+                        "type": "integer",
+                        "default": 3200,
+                        "description": "Output budget (128-1M).",
+                    },
+                },
+                "required": ["project_id", "path", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_get_code_snippet",
+            description=(
+                "Read a line range FROM DISK for an indexed file (PG4): "
+                "mtime+size+sha256 verified against the indexed record — a "
+                "divergence yields a staleness marker, never content; the "
+                "range is secret-scanned at issuance and ANY hit refuses "
+                "fail-closed. Poisoned files (hit the secrets detector at "
+                "index time) are refused permanently — only "
+                "mnemos_delete_graph_project clears them. No snippet cache. "
+                "Token contract applies (whole-line drops)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "path": {"type": "string", "description": "Repo-relative file path."},
+                    "start_line": {"type": "integer", "description": "First line (1-based)."},
+                    "end_line": {"type": "integer", "description": "Last line inclusive."},
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "max_output_tokens": {
+                        "type": "integer",
+                        "default": 3200,
+                        "description": "Output budget (128-1M).",
+                    },
+                },
+                "required": ["project_id", "path", "start_line", "end_line", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_check_graph_coverage",
+            description=(
+                "Batch coverage check: per-path verdict indexed / stale / "
+                "parse-error / unindexed / poisoned (coverage honesty — "
+                "trust is NOT here; verify with mnemos_get_code_snippet)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Repo-relative paths to check.",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["project_id", "paths", "agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_get_graph_schema",
+            description=(
+                "The project-graph contract card for agents: node/edge "
+                "kinds, token contract, index and trace limits, schema "
+                "version; an optional project adds its volumes."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Registered project id or name (optional).",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_list_graph_projects",
+            description=(
+                "Registered projects joined with their index status "
+                "(volumes, poisoned count, last_indexed_at); "
+                "registered-but-never-indexed stays visible."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["agent"],
+            },
+        ),
+        Tool(
+            name="mnemos_delete_graph_project",
+            description=(
+                "Drop a project's graph INDEX (sidecar data — never the "
+                "project entity in the main DB). The ONLY operation that "
+                "clears the poisoned set (PG3 'forever'). Audited with a "
+                "reason."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": _GRAPH_PROJECT_PROP,
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                    "reason": {"type": "string", "description": "Audit reason (optional)."},
+                },
+                "required": ["project_id", "agent"],
             },
         ),
     ]
@@ -2395,18 +2700,51 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             "truncated": result.truncated,
         }
 
-    # ── mnemos_watch_* ──────────────────────────────────────────────────────
+    # ── mnemos_watch_* (project-graph poll, ADR-0032 §3.2) ──────────────────
     if name == "mnemos_watch_start":
-        paths = args.get("paths") or [os.getcwd()]
-        include_rules = args.get("include_rules", False)
-        mgr.watch_start(paths=paths, scan=args.get("scan", True), include_rules=include_rules)
-        return f"✅ Watcher started on {paths}" + (
-            " (including .instructions.md rules)" if include_rules else ""
+        from vesmaro.codegraph.service import (
+            GraphDisabledError,
+            GraphToolError,
         )
 
+        legacy = [key for key in ("paths", "scan", "include_rules") if key in args]
+        if legacy:
+            return {
+                "error": "watch_start is the project-graph poll registrar (ADR-0032 §3.2): "
+                "pass project_id and agent. The M8 vault-watcher form "
+                "(paths=/scan=/include_rules=) was never implemented and the "
+                "stub it targeted is gone.",
+                "code": "bad-request",
+            }
+        project_id = _graph_req_str(args, "project_id")
+        if project_id is None:
+            return {
+                "error": "project_id is required and must be a non-empty string",
+                "code": "bad-request",
+            }
+        watch_agent = _graph_req_str(args, "agent")
+        if watch_agent is None:
+            return {
+                "error": "agent is required and must be a non-empty string "
+                "(PG7 per-agent attribution is a binding)",
+                "code": "attribution-required",
+            }
+        watch_session = args.get("session")
+        if watch_session is not None and not isinstance(watch_session, str):
+            return {"error": "session must be a string when provided", "code": "bad-request"}
+        try:
+            return mgr.watch_start(project_id, agent=watch_agent.strip(), session=watch_session)
+        except GraphToolError as exc:
+            payload = {"error": str(exc)}
+            payload["code"] = "disabled" if isinstance(exc, GraphDisabledError) else "bad-request"
+            return payload
+
     if name == "mnemos_watch_stop":
-        mgr.watch_stop()
-        return "✅ Watcher stopped."
+        project_id = args.get("project_id")
+        if project_id is not None and not isinstance(project_id, str):
+            return {"error": "project_id must be a string when provided", "code": "bad-request"}
+        mgr.watch_stop(project_id.strip() if isinstance(project_id, str) else None)
+        return "✅ Watch stopped."
 
     if name == "mnemos_watch_status":
         return mgr.watch_status()
@@ -2604,7 +2942,192 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "mnemos_import":
         return _handle_import(mgr, args)
 
+    # ── project graph (ADR-0032 §3.3 — the 10 tools) ───────────────────────
+    if name in _GRAPH_TOOLS:
+        return _handle_graph(name, mgr, args)
+
     return f"Unknown tool: {name}"
+
+
+# ── project graph handlers (ADR-0032 PG-0 slice 4) ───────────────────────────
+#
+# The tools are thin MCP adapters over CodeGraphService (vesmaro.codegraph.
+# service) — the policy layers (PG2 confinement, the §3.4 token contract,
+# PG3 poisoning, PG4 issuance, PG7 attribution + audit) live in the service.
+# Boundary guards here follow the mnemos_hooks pattern: a malformed caller
+# gets a clean error dict, never a traceback.
+
+_GRAPH_TOOLS = frozenset(
+    {
+        "mnemos_index_project",
+        "mnemos_project_graph_status",
+        "mnemos_search_graph",
+        "mnemos_trace_path",
+        "mnemos_get_file_outline",
+        "mnemos_get_code_snippet",
+        "mnemos_check_graph_coverage",
+        "mnemos_get_graph_schema",
+        "mnemos_list_graph_projects",
+        "mnemos_delete_graph_project",
+    }
+)
+
+
+def _graph_req_str(args: dict[str, Any], key: str) -> str | None:
+    """A required non-empty string argument (None → boundary error)."""
+    value = args.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _graph_req_int(args: dict[str, Any], key: str) -> int | None:
+    """A required integer argument (None → boundary error)."""
+    value = args.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch the 10 project-graph tools to CodeGraphService."""
+    from vesmaro.codegraph.indexer import IndexLimitError
+    from vesmaro.codegraph.service import (
+        GraphAttributionError,
+        GraphBudgetError,
+        GraphConfinementError,
+        GraphDisabledError,
+        GraphToolError,
+        get_graph_service,
+    )
+
+    agent = _graph_req_str(args, "agent")
+    if agent is None:
+        return {
+            "error": "agent is required and must be a non-empty string "
+            "(PG7 per-agent attribution is a binding)",
+            "code": "attribution-required",
+        }
+    session = args.get("session")
+    if session is not None and not isinstance(session, str):
+        return {"error": "session must be a string when provided", "code": "bad-request"}
+
+    def bad(key: str, kind: str) -> dict[str, Any]:
+        return {"error": f"{key} is required and must be {kind}", "code": "bad-request"}
+
+    common: dict[str, Any] = {"agent": agent.strip(), "session": session}
+    try:
+        if name == "mnemos_index_project":
+            incremental = args.get("incremental", True)
+            if not isinstance(incremental, bool):
+                return {"error": "incremental must be a boolean", "code": "bad-request"}
+            project_id = _graph_req_str(args, "project_id")
+            if project_id is None:
+                return bad("project_id", "a non-empty string")
+            return get_graph_service(mgr).index_project(
+                project_id,
+                incremental=incremental,
+                reason=_optional_str(args.get("reason")),
+                **common,
+            )
+        if name == "mnemos_project_graph_status":
+            project_id = _graph_req_str(args, "project_id")
+            if project_id is None:
+                return bad("project_id", "a non-empty string")
+            return get_graph_service(mgr).status(project_id, **common)
+        if name == "mnemos_search_graph":
+            project_id = _graph_req_str(args, "project_id")
+            query = _graph_req_str(args, "query")
+            if project_id is None or query is None:
+                return bad("project_id, query", "non-empty strings")
+            return get_graph_service(mgr).search_graph(
+                project_id,
+                query,
+                kind=args.get("kind"),
+                limit=args.get("limit", 50),
+                cursor=args.get("cursor", 0),
+                max_output_tokens=args.get("max_output_tokens"),
+                include_signature=bool(args.get("include_signature", False)),
+                **common,
+            )
+        if name == "mnemos_trace_path":
+            project_id = _graph_req_str(args, "project_id")
+            qname = _graph_req_str(args, "qname")
+            if project_id is None or qname is None:
+                return bad("project_id, qname", "non-empty strings")
+            return get_graph_service(mgr).trace_path(
+                project_id,
+                qname,
+                depth=args.get("depth", 2),
+                max_output_tokens=args.get("max_output_tokens"),
+                **common,
+            )
+        if name == "mnemos_get_file_outline":
+            project_id = _graph_req_str(args, "project_id")
+            path = _graph_req_str(args, "path")
+            if project_id is None or path is None:
+                return bad("project_id, path", "non-empty strings")
+            return get_graph_service(mgr).get_file_outline(
+                project_id,
+                path,
+                cursor=args.get("cursor", 0),
+                max_output_tokens=args.get("max_output_tokens"),
+                **common,
+            )
+        if name == "mnemos_get_code_snippet":
+            project_id = _graph_req_str(args, "project_id")
+            path = _graph_req_str(args, "path")
+            start_line = _graph_req_int(args, "start_line")
+            end_line = _graph_req_int(args, "end_line")
+            if project_id is None or path is None or start_line is None or end_line is None:
+                return bad("project_id, path, start_line, end_line", "strings / integers")
+            return get_graph_service(mgr).get_code_snippet(
+                project_id,
+                path,
+                start_line,
+                end_line,
+                max_output_tokens=args.get("max_output_tokens"),
+                **common,
+            )
+        if name == "mnemos_check_graph_coverage":
+            project_id = _graph_req_str(args, "project_id")
+            paths = args.get("paths")
+            if (
+                project_id is None
+                or not isinstance(paths, list)
+                or not all(isinstance(p, str) for p in paths)
+            ):
+                return bad("project_id, paths", "a string and a list of strings")
+            return get_graph_service(mgr).check_coverage(project_id, paths, **common)
+        if name == "mnemos_get_graph_schema":
+            return get_graph_service(mgr).get_graph_schema(args.get("project_id"), **common)
+        if name == "mnemos_list_graph_projects":
+            return get_graph_service(mgr).list_graph_projects(**common)
+        # name == "mnemos_delete_graph_project"
+        project_id = _graph_req_str(args, "project_id")
+        if project_id is None:
+            return bad("project_id", "a non-empty string")
+        return get_graph_service(mgr).delete_graph_project(
+            project_id, reason=_optional_str(args.get("reason")), **common
+        )
+    except GraphToolError as exc:
+        payload = {"error": str(exc)}
+        if isinstance(exc, GraphDisabledError):
+            payload["code"] = "disabled"
+        elif isinstance(exc, GraphAttributionError):
+            payload["code"] = "attribution-required"
+        elif isinstance(exc, GraphConfinementError):
+            payload["code"] = "confinement-refused"
+        elif isinstance(exc, GraphBudgetError):
+            payload["code"] = "budget-refused"
+        else:
+            payload["code"] = "refused"
+        return payload
+    except IndexLimitError as exc:
+        # PG7 fail-closed: the whole index refused, the previous graph
+        # survives — surfaced as a clean refusal, not a traceback.
+        return {"error": str(exc), "code": "limit-refused"}
+
+
+def _optional_str(raw: Any) -> str | None:
+    """Pass-through for optional string args (None when absent)."""
+    return raw if isinstance(raw, str) and raw.strip() else None
 
 
 # ── MCP SDK 2.x server wiring (#185) ───────────────────────────────────────────

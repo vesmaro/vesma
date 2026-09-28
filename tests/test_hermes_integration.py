@@ -415,28 +415,33 @@ class TestIngestUrl:
 
 
 class TestWatch:
-    def test_watch_start(self, client):
-        """Starting the watcher returns status=started."""
+    """The watch surface is the ADR-0032 §3.2 project-graph poll registrar:
+    the former M8 directory-watcher form was an unimplemented stub and is
+    gone; without the operator flags the endpoint refuses (503)."""
+
+    def test_watch_start_legacy_form_refused(self, client):
+        """Legacy paths=/scan=/include_rules= body no longer validates."""
         resp = client.post(
             "/watch/start",
             json={"paths": [], "scan": False, "include_rules": False},
         )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "started"
-        assert "paths" in data
+        assert resp.status_code == 422  # project_id/agent are required now
 
-    def test_watch_status_after_start(self, client):
-        """After start, status reports running state."""
-        client.post(
-            "/watch/start",
-            json={"paths": [], "scan": False, "include_rules": False},
-        )
+    def test_watch_start_disabled_without_operator_flags(self, client):
+        """Default config keeps code_graph.enabled=false → 503 operator gate."""
+        resp = client.post("/watch/start", json={"project_id": "smoke", "agent": "qa"})
+        assert resp.status_code == 503
+        assert "disabled" in resp.json()["detail"].lower()
+
+    def test_watch_status_shape(self, client):
+        """Status is available without any start and reports the gate state."""
         resp = client.get("/watch/status")
         assert resp.status_code == 200
         data = resp.json()
         assert "running" in data
         assert isinstance(data["running"], bool)
+        assert data["running"] is False
+        assert data["watch_enabled"] is False
 
     def test_watch_stop(self, client):
         """Stop returns status=stopped."""

@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     # Annotation-only (the dataclass fields are lazy strings under
     # ``from __future__ import annotations``); the scanner is imported
     # lazily at the call sites to keep the module import light.
+    from vesmaro.codegraph.service import CodeGraphService
+    from vesmaro.codegraph.watch import GraphWatchScheduler
     from vesmaro.secrets_detector import SecretFinding
 
 from vesmaro import __version__
@@ -524,7 +526,12 @@ class MemoryManager:
         self.vault = VaultManager(settings.mnemos.vault_path)
         self.vectors = VectorStore(settings.mnemos.data_dir)
         self._embedder: EmbeddingProvider | None = None
-        self._watcher: Any = None
+        # ADR-0032 slice 6 — the project-graph wiring: the sidecar
+        # service is built LAZILY on first use (get_codegraph_service,
+        # behind the master ``code_graph.enabled`` flag) and the watch
+        # poll scheduler on the first ``watch_start`` (behind the
+        # ``code_graph.watch`` flag — default OFF, contract §3.2).
+        self._graph_watch: GraphWatchScheduler | None = None
         # In-memory search instrumentation (resets on restart).
         # Accepted trade-off for the dashboard: not persisted, no history.
         self._search_stats: dict[str, Any] = {
@@ -648,6 +655,9 @@ class MemoryManager:
 
     def close(self) -> None:
         self.stop_background_processor()
+        watch = self._graph_watch
+        if watch is not None:
+            watch.close()  # stops the poll thread BEFORE the stores close
         self.sqlite.close()
         self.vectors.close()
         vitals = self._vitals_store
@@ -655,7 +665,6 @@ class MemoryManager:
             vitals.close()
 
     # ── helpers ───────────────────────────────────────────────────────────
-
     @staticmethod
     def _normalize_task_boundary(task: str) -> str:
         """Normalize + validate a bare task slug, minting ``task:<slug>``.
@@ -4840,21 +4849,121 @@ class MemoryManager:
             source_url=source_url,
         )
 
-    # ── Watchers ─────────────────────────────────────────────────────────────
+    # ── Project graph (ADR-0032, slice 6 wiring) ────────────────────────────
+
+    def get_codegraph_service(self) -> CodeGraphService | None:
+        """The per-manager :class:`CodeGraphService` (lazy, built once,
+        weak-keyed in :func:`vesmaro.codegraph.service.get_graph_service`
+        — a discarded manager takes its sidecar connections with it).
+
+        Returns ``None`` when the master flag
+        ``settings.code_graph.enabled`` is off (the default): every
+        caller (beacon, watch, future surfaces) silently skips — the
+        graph is a full opt-in mechanism (ADR-0032 wave gate).
+        """
+        if not self.settings.code_graph.enabled:
+            return None
+        from vesmaro.codegraph.service import get_graph_service
+
+        return get_graph_service(self)
+
+    # ── Watchers (project-graph poll, contract §3.2 trigger (b)) ────────────
 
     def watch_start(
-        self, *, paths: list[str], scan: bool = True, include_rules: bool = False
-    ) -> None:
-        """Start the background vault watcher (M8)."""
-        logger.info("watch_start: paths=%s include_rules=%s", paths, include_rules)
+        self,
+        project_id: str | None = None,
+        *,
+        agent: str | None = None,
+        session: str | None = None,
+        paths: list[str] | None = None,
+        scan: bool = True,
+        include_rules: bool = False,
+    ) -> dict[str, Any]:
+        """Register a project for the in-process watch poll (ADR-0032
+        §3.2 trigger (b) — the former M8 stub stops being a stub).
 
-    def watch_stop(self) -> None:
-        if self._watcher is not None:
-            self._watcher.stop()
-            self._watcher = None
+        One cooperative poll thread (no daemon, no separate process)
+        checks the project's graph files by mtime+size on the adaptive
+        interval and reindexes on ACTUAL changes — audited with reason
+        ``watch``. Requires ``code_graph.enabled`` AND ``code_graph.watch``
+        (default OFF), agent attribution (PG7), an EXISTING index (the
+        poll reindexes — it never seeds a first index) and room under
+        the global registration cap.
+
+        The legacy M8 vault-watcher keyword form (``paths=`` /
+        ``scan=`` / ``include_rules=``) is refused with an actionable
+        error instead of the old silent no-op: it was never implemented,
+        and the fake "✅ Watcher started" it produced was a lie.
+        """
+        if paths is not None or not scan or include_rules:
+            raise ValueError(
+                "watch_start is the project-graph poll registrar (ADR-0032 §3.2): "
+                "pass project_id and agent. The M8 vault-watcher form "
+                "(paths=/scan=/include_rules=) was never implemented and the "
+                "stub it targeted is gone."
+            )
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise ValueError("watch_start requires a non-empty project_id")
+        cfg = self.settings.code_graph
+        if not cfg.enabled:
+            from vesmaro.codegraph.service import GraphDisabledError
+
+            raise GraphDisabledError(
+                "project graph is disabled (settings.code_graph.enabled=false); "
+                "the operator must opt in (ADR-0032: default-off until validated)"
+            )
+        if not cfg.watch:
+            from vesmaro.codegraph.service import GraphToolError
+
+            raise GraphToolError(
+                "the watch poll is disabled (settings.code_graph.watch=false) — "
+                "a sidecar-mutating poll is a separate opt-in from the master flag"
+            )
+        if not isinstance(agent, str) or not agent.strip():
+            from vesmaro.codegraph.service import GraphToolError
+
+            raise GraphToolError("agent attribution is required (PG7): pass the caller's agent id")
+        service = self.get_codegraph_service()
+        assert service is not None  # enabled ⇒ the lazy build always yields one
+        if self._graph_watch is None:
+            from vesmaro.codegraph.watch import GraphWatchScheduler
+
+            self._graph_watch = GraphWatchScheduler(
+                service,
+                base_interval_sec=cfg.watch_base_interval_sec,
+                interval_per_500_files=cfg.watch_interval_per_500_files,
+                max_interval_sec=cfg.watch_max_interval_sec,
+            )
+        return self._graph_watch.register(
+            project_id.strip(),
+            agent=agent.strip(),
+            session=session.strip() if isinstance(session, str) else None,
+            cap=cfg.watch_max_registrations,
+        )
+
+    def watch_stop(self, project_id: str | None = None) -> dict[str, Any]:
+        """Stop one watch registration (by project id or graph key) or
+        ALL of them when no argument is given. Idempotent."""
+        scheduler = self._graph_watch
+        if scheduler is None:
+            return {"stopped": 0}
+        return {"stopped": scheduler.stop(project_id)}
 
     def watch_status(self) -> dict[str, Any]:
-        return {"running": self._watcher is not None}
+        """Active watch registrations + the last poll outcome per
+        project (the legacy ``running`` key stays top-level for the
+        existing MCP/REST consumers)."""
+        cfg = self.settings.code_graph
+        scheduler = self._graph_watch
+        payload: dict[str, Any] = {
+            "running": False,
+            "watch_enabled": cfg.enabled and cfg.watch,
+            "cap": cfg.watch_max_registrations,
+            "registrations": [],
+        }
+        if scheduler is not None:
+            payload.update(scheduler.status())
+        return payload
 
     # ── Pipeline (M4) ───────────────────────────────────────────────────────
 

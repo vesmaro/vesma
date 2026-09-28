@@ -13,7 +13,7 @@ import re
 import sys
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -1536,56 +1536,53 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
     }
 
 
-# ── File watcher (M8) ─────────────────────────────────────────────────────────
+# ── File watcher (project-graph poll, ADR-0032 §3.2) ─────────────────────────
 
 
 class WatchStartRequest(BaseModel):
     """Request body for POST /watch/start — mirrors ``mnemos_watch_start``."""
 
-    paths: list[str] = []
-    scan: bool = True
-    include_rules: bool = False
+    project_id: str
+    agent: str
+    session: str | None = None
 
 
 @app.post("/watch/start")
 async def watch_start(req: WatchStartRequest) -> dict[str, Any]:
-    """Start the background vault watcher.
+    """Register a project's code graph for the in-process watch poll.
 
-    Mirrors the ``mnemos_watch_start`` MCP tool. When ``paths`` is empty the
-    current working directory is watched. When ``include_rules`` is true the
-    watcher also ingests ``*.instructions.md`` rule files found under the
-    watched paths.
+    Mirrors the ``mnemos_watch_start`` MCP tool (ADR-0032 §3.2): checks the
+    project's indexed files by mtime+size on an adaptive interval and
+    reindexes on ACTUAL changes — audited with reason ``watch``. Requires the
+    operator flags ``code_graph.enabled`` and ``code_graph.watch``; refuses
+    without an existing index. The former directory-watcher form was an
+    unimplemented stub and is gone.
     """
     _track_http_call()
     mgr = get_manager()
-    paths = req.paths or [str(Path.cwd())]
-    mgr.watch_start(paths=paths, scan=req.scan, include_rules=req.include_rules)
-    return {
-        "status": "started",
-        "paths": paths,
-        "scan": req.scan,
-        "include_rules": req.include_rules,
-    }
+    return _graph_call(
+        lambda: mgr.watch_start(req.project_id, agent=req.agent, session=req.session)
+    )
 
 
 @app.post("/watch/stop")
-async def watch_stop() -> dict[str, str]:
-    """Stop the background vault watcher.
+async def watch_stop(project_id: str | None = None) -> dict[str, Any]:
+    """Stop one watch registration (by project_id) or ALL of them.
 
-    Mirrors the ``mnemos_watch_stop`` MCP tool. Idempotent — returns
-    ``{"status": "stopped"}`` whether or not a watcher was running.
+    Mirrors the ``mnemos_watch_stop`` MCP tool. Idempotent.
     """
     _track_http_call()
     mgr = get_manager()
-    mgr.watch_stop()
-    return {"status": "stopped"}
+    stopped = mgr.watch_stop(project_id)
+    return {"status": "stopped", **stopped}
 
 
 @app.get("/watch/status")
 async def watch_status() -> dict[str, Any]:
-    """Return the current watcher status.
+    """Return watch registrations and the last poll outcome per project.
 
-    Mirrors the ``mnemos_watch_status`` MCP tool. Returns ``{"running": bool}``.
+    Mirrors the ``mnemos_watch_status`` MCP tool; ``running`` stays
+    top-level for existing consumers.
     """
     _track_http_call()
     mgr = get_manager()
@@ -1746,6 +1743,235 @@ async def api_import(
         return result.summary()
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+# ── Project graph API (ADR-0032 §3.3 — REST twins of the 10 MCP tools) ───────
+# Surface parity canon: every mnemos_<tool> has a /graph/ twin riding the
+# SAME app, so the ADR-0014 auth contour (AuthMiddleware) applies unchanged.
+# The policy layers (PG2 confinement, token contract, PG3/PG4/PG7) live in
+# CodeGraphService — these routes are thin adapters, as the MCP handlers are.
+
+
+class GraphIndexRequest(BaseModel):
+    project_id: str
+    agent: str
+    session: str | None = None
+    incremental: bool = True
+    reason: str | None = None
+
+
+class GraphSearchRequest(BaseModel):
+    project_id: str
+    query: str
+    agent: str
+    session: str | None = None
+    kind: str | None = None
+    limit: int = 50
+    cursor: int = 0
+    max_output_tokens: int | None = None
+    include_signature: bool = False
+
+
+class GraphTraceRequest(BaseModel):
+    project_id: str
+    qname: str
+    agent: str
+    session: str | None = None
+    depth: int = 2
+    max_output_tokens: int | None = None
+
+
+class GraphOutlineRequest(BaseModel):
+    project_id: str
+    path: str
+    agent: str
+    session: str | None = None
+    cursor: int = 0
+    max_output_tokens: int | None = None
+
+
+class GraphSnippetRequest(BaseModel):
+    project_id: str
+    path: str
+    start_line: int
+    end_line: int
+    agent: str
+    session: str | None = None
+    max_output_tokens: int | None = None
+
+
+class GraphCoverageRequest(BaseModel):
+    project_id: str
+    paths: list[str]
+    agent: str
+    session: str | None = None
+
+
+class GraphDeleteRequest(BaseModel):
+    agent: str
+    session: str | None = None
+    reason: str | None = None
+
+
+def _graph_error_status(exc: Exception) -> int:
+    """Map service refusals to HTTP codes: disabled → 503 (operator gate),
+    confinement → 403 (policy), limit breach → 413, everything else the
+    caller caused → 400."""
+    from vesmaro.codegraph.indexer import IndexLimitError
+    from vesmaro.codegraph.service import (
+        GraphBudgetError,
+        GraphConfinementError,
+        GraphDisabledError,
+    )
+
+    if isinstance(exc, GraphDisabledError):
+        return 503
+    if isinstance(exc, GraphConfinementError):
+        return 403
+    if isinstance(exc, IndexLimitError):
+        return 413
+    if isinstance(exc, GraphBudgetError):
+        return 400
+    return 400
+
+
+def _graph_call(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Run one graph operation, mapping service refusals to HTTP errors."""
+    from vesmaro.codegraph.indexer import IndexLimitError
+    from vesmaro.codegraph.service import GraphToolError
+
+    try:
+        return fn()
+    except GraphToolError as exc:
+        raise HTTPException(status_code=_graph_error_status(exc), detail=str(exc)) from exc
+    except IndexLimitError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+
+def _graph_service() -> Any:
+    from vesmaro.codegraph.service import get_graph_service
+
+    return get_graph_service(get_manager())
+
+
+@app.post("/graph/index")
+async def graph_index(req: GraphIndexRequest) -> dict[str, Any]:
+    """Twin of mnemos_index_project."""
+    return _graph_call(
+        lambda: _graph_service().index_project(
+            req.project_id,
+            agent=req.agent,
+            session=req.session,
+            incremental=req.incremental,
+            reason=req.reason,
+        )
+    )
+
+
+@app.get("/graph/status/{project_id}")
+async def graph_status(project_id: str, agent: str, session: str | None = None) -> dict[str, Any]:
+    """Twin of mnemos_project_graph_status."""
+    return _graph_call(lambda: _graph_service().status(project_id, agent=agent, session=session))
+
+
+@app.post("/graph/search")
+async def graph_search(req: GraphSearchRequest) -> dict[str, Any]:
+    """Twin of mnemos_search_graph."""
+    return _graph_call(
+        lambda: _graph_service().search_graph(
+            req.project_id,
+            req.query,
+            agent=req.agent,
+            session=req.session,
+            kind=req.kind,
+            limit=req.limit,
+            cursor=req.cursor,
+            max_output_tokens=req.max_output_tokens,
+            include_signature=req.include_signature,
+        )
+    )
+
+
+@app.post("/graph/trace")
+async def graph_trace(req: GraphTraceRequest) -> dict[str, Any]:
+    """Twin of mnemos_trace_path."""
+    return _graph_call(
+        lambda: _graph_service().trace_path(
+            req.project_id,
+            req.qname,
+            agent=req.agent,
+            session=req.session,
+            depth=req.depth,
+            max_output_tokens=req.max_output_tokens,
+        )
+    )
+
+
+@app.post("/graph/outline")
+async def graph_outline(req: GraphOutlineRequest) -> dict[str, Any]:
+    """Twin of mnemos_get_file_outline."""
+    return _graph_call(
+        lambda: _graph_service().get_file_outline(
+            req.project_id,
+            req.path,
+            agent=req.agent,
+            session=req.session,
+            cursor=req.cursor,
+            max_output_tokens=req.max_output_tokens,
+        )
+    )
+
+
+@app.post("/graph/snippet")
+async def graph_snippet(req: GraphSnippetRequest) -> dict[str, Any]:
+    """Twin of mnemos_get_code_snippet."""
+    return _graph_call(
+        lambda: _graph_service().get_code_snippet(
+            req.project_id,
+            req.path,
+            req.start_line,
+            req.end_line,
+            agent=req.agent,
+            session=req.session,
+            max_output_tokens=req.max_output_tokens,
+        )
+    )
+
+
+@app.post("/graph/coverage")
+async def graph_coverage(req: GraphCoverageRequest) -> dict[str, Any]:
+    """Twin of mnemos_check_graph_coverage."""
+    return _graph_call(
+        lambda: _graph_service().check_coverage(
+            req.project_id, req.paths, agent=req.agent, session=req.session
+        )
+    )
+
+
+@app.get("/graph/schema")
+async def graph_schema(
+    agent: str, project_id: str | None = None, session: str | None = None
+) -> dict[str, Any]:
+    """Twin of mnemos_get_graph_schema."""
+    return _graph_call(
+        lambda: _graph_service().get_graph_schema(project_id, agent=agent, session=session)
+    )
+
+
+@app.get("/graph/projects")
+async def graph_projects(agent: str, session: str | None = None) -> dict[str, Any]:
+    """Twin of mnemos_list_graph_projects."""
+    return _graph_call(lambda: _graph_service().list_graph_projects(agent=agent, session=session))
+
+
+@app.delete("/graph/projects/{project_id}")
+async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict[str, Any]:
+    """Twin of mnemos_delete_graph_project (the sidecar index, never the project)."""
+    return _graph_call(
+        lambda: _graph_service().delete_graph_project(
+            project_id, agent=req.agent, session=req.session, reason=req.reason
+        )
+    )
 
 
 # ── A2A Sessions API (M16) ──────────────────────────────────────────────────
