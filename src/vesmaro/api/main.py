@@ -1536,56 +1536,53 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
     }
 
 
-# ── File watcher (M8) ─────────────────────────────────────────────────────────
+# ── File watcher (project-graph poll, ADR-0032 §3.2) ─────────────────────────
 
 
 class WatchStartRequest(BaseModel):
     """Request body for POST /watch/start — mirrors ``mnemos_watch_start``."""
 
-    paths: list[str] = []
-    scan: bool = True
-    include_rules: bool = False
+    project_id: str
+    agent: str
+    session: str | None = None
 
 
 @app.post("/watch/start")
 async def watch_start(req: WatchStartRequest) -> dict[str, Any]:
-    """Start the background vault watcher.
+    """Register a project's code graph for the in-process watch poll.
 
-    Mirrors the ``mnemos_watch_start`` MCP tool. When ``paths`` is empty the
-    current working directory is watched. When ``include_rules`` is true the
-    watcher also ingests ``*.instructions.md`` rule files found under the
-    watched paths.
+    Mirrors the ``mnemos_watch_start`` MCP tool (ADR-0032 §3.2): checks the
+    project's indexed files by mtime+size on an adaptive interval and
+    reindexes on ACTUAL changes — audited with reason ``watch``. Requires the
+    operator flags ``code_graph.enabled`` and ``code_graph.watch``; refuses
+    without an existing index. The former directory-watcher form was an
+    unimplemented stub and is gone.
     """
     _track_http_call()
     mgr = get_manager()
-    paths = req.paths or [str(Path.cwd())]
-    mgr.watch_start(paths=paths, scan=req.scan, include_rules=req.include_rules)
-    return {
-        "status": "started",
-        "paths": paths,
-        "scan": req.scan,
-        "include_rules": req.include_rules,
-    }
+    return _graph_call(
+        lambda: mgr.watch_start(req.project_id, agent=req.agent, session=req.session)
+    )
 
 
 @app.post("/watch/stop")
-async def watch_stop() -> dict[str, str]:
-    """Stop the background vault watcher.
+async def watch_stop(project_id: str | None = None) -> dict[str, Any]:
+    """Stop one watch registration (by project_id) or ALL of them.
 
-    Mirrors the ``mnemos_watch_stop`` MCP tool. Idempotent — returns
-    ``{"status": "stopped"}`` whether or not a watcher was running.
+    Mirrors the ``mnemos_watch_stop`` MCP tool. Idempotent.
     """
     _track_http_call()
     mgr = get_manager()
-    mgr.watch_stop()
-    return {"status": "stopped"}
+    stopped = mgr.watch_stop(project_id)
+    return {"status": "stopped", **stopped}
 
 
 @app.get("/watch/status")
 async def watch_status() -> dict[str, Any]:
-    """Return the current watcher status.
+    """Return watch registrations and the last poll outcome per project.
 
-    Mirrors the ``mnemos_watch_status`` MCP tool. Returns ``{"running": bool}``.
+    Mirrors the ``mnemos_watch_status`` MCP tool; ``running`` stays
+    top-level for existing consumers.
     """
     _track_http_call()
     mgr = get_manager()
@@ -1968,9 +1965,7 @@ async def graph_projects(agent: str, session: str | None = None) -> dict[str, An
 
 
 @app.delete("/graph/projects/{project_id}")
-async def graph_delete_project(
-    project_id: str, req: GraphDeleteRequest
-) -> dict[str, Any]:
+async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict[str, Any]:
     """Twin of mnemos_delete_graph_project (the sidecar index, never the project)."""
     return _graph_call(
         lambda: _graph_service().delete_graph_project(

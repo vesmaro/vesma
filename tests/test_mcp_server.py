@@ -45,7 +45,7 @@ _TOOL_ARGS: dict[str, dict] = {
     "mnemos_save_context": {"project": "smoke", "goals": "smoke goals"},
     "mnemos_search": {"query": "smoke test"},
     "mnemos_stats": {},
-    "mnemos_watch_start": {},
+    "mnemos_watch_start": {"project_id": "smoke", "agent": "qa-agent"},
     "mnemos_watch_status": {},
     "mnemos_watch_stop": {},
     "mnemos_align_prefix": {"text": "Session sess-abc123 at 2026-07-17T10:00:00Z"},

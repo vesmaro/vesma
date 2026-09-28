@@ -879,34 +879,51 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_watch_start",
             description=(
-                "Start watching directories for file changes and auto-index into memory. "
-                "Runs in background."
+                "Register a project's code graph for the in-process watch poll "
+                "(ADR-0032 §3.2): checks indexed files by mtime+size on an "
+                "adaptive interval and reindexes on actual changes. Requires the "
+                "operator flags code_graph.enabled and code_graph.watch, an "
+                "existing index, and agent attribution. The former "
+                "directory-watcher form was an unimplemented stub and is gone."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Directories to watch (defaults to cwd)",
+                    "project_id": {
+                        "type": "string",
+                        "description": "Registered project id to watch",
                     },
-                    "scan": {"type": "boolean", "default": True},
-                    "include_rules": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Also watch .github/instructions/*.instructions.md (M8)",
+                    "agent": {
+                        "type": "string",
+                        "description": "Caller identity (PG7 per-agent attribution)",
+                    },
+                    "session": {
+                        "type": "string",
+                        "description": "Optional session id for the audit trail",
                     },
                 },
+                "required": ["project_id", "agent"],
             },
         ),
         Tool(
             name="mnemos_watch_stop",
-            description="Stop the background file watcher.",
-            input_schema={"type": "object", "properties": {}},
+            description=(
+                "Stop one watch registration (by project_id) or ALL of them when "
+                "omitted. Idempotent."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project to stop watching"}
+                },
+            },
         ),
         Tool(
             name="mnemos_watch_status",
-            description="Report background watcher status.",
+            description=(
+                "Report active watch registrations and the last poll outcome per "
+                "project (ADR-0032 watch poll)."
+            ),
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -1747,7 +1764,7 @@ async def _canonical_tools() -> list[Tool]:
                     },
                     "agent": _GRAPH_AGENT_PROP,
                     "session": _GRAPH_SESSION_PROP,
-                     "depth": {
+                    "depth": {
                         "type": "integer",
                         "default": 2,
                         "description": "BFS depth, 1-2.",
@@ -2683,18 +2700,51 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             "truncated": result.truncated,
         }
 
-    # ── mnemos_watch_* ──────────────────────────────────────────────────────
+    # ── mnemos_watch_* (project-graph poll, ADR-0032 §3.2) ──────────────────
     if name == "mnemos_watch_start":
-        paths = args.get("paths") or [os.getcwd()]
-        include_rules = args.get("include_rules", False)
-        mgr.watch_start(paths=paths, scan=args.get("scan", True), include_rules=include_rules)
-        return f"✅ Watcher started on {paths}" + (
-            " (including .instructions.md rules)" if include_rules else ""
+        from vesmaro.codegraph.service import (
+            GraphDisabledError,
+            GraphToolError,
         )
 
+        legacy = [key for key in ("paths", "scan", "include_rules") if key in args]
+        if legacy:
+            return {
+                "error": "watch_start is the project-graph poll registrar (ADR-0032 §3.2): "
+                "pass project_id and agent. The M8 vault-watcher form "
+                "(paths=/scan=/include_rules=) was never implemented and the "
+                "stub it targeted is gone.",
+                "code": "bad-request",
+            }
+        project_id = _graph_req_str(args, "project_id")
+        if project_id is None:
+            return {
+                "error": "project_id is required and must be a non-empty string",
+                "code": "bad-request",
+            }
+        agent = _graph_req_str(args, "agent")
+        if agent is None:
+            return {
+                "error": "agent is required and must be a non-empty string "
+                "(PG7 per-agent attribution is a binding)",
+                "code": "attribution-required",
+            }
+        session = args.get("session")
+        if session is not None and not isinstance(session, str):
+            return {"error": "session must be a string when provided", "code": "bad-request"}
+        try:
+            return mgr.watch_start(project_id, agent=agent.strip(), session=session)
+        except GraphToolError as exc:
+            payload = {"error": str(exc)}
+            payload["code"] = "disabled" if isinstance(exc, GraphDisabledError) else "bad-request"
+            return payload
+
     if name == "mnemos_watch_stop":
-        mgr.watch_stop()
-        return "✅ Watcher stopped."
+        project_id = args.get("project_id")
+        if project_id is not None and not isinstance(project_id, str):
+            return {"error": "project_id must be a string when provided", "code": "bad-request"}
+        mgr.watch_stop(project_id.strip() if isinstance(project_id, str) else None)
+        return "✅ Watch stopped."
 
     if name == "mnemos_watch_status":
         return mgr.watch_status()
@@ -3038,8 +3088,10 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         if name == "mnemos_check_graph_coverage":
             project_id = _graph_req_str(args, "project_id")
             paths = args.get("paths")
-            if project_id is None or not isinstance(paths, list) or not all(
-                isinstance(p, str) for p in paths
+            if (
+                project_id is None
+                or not isinstance(paths, list)
+                or not all(isinstance(p, str) for p in paths)
             ):
                 return bad("project_id, paths", "a string and a list of strings")
             return get_graph_service(mgr).check_coverage(project_id, paths, **common)
