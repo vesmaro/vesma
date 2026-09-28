@@ -16,8 +16,9 @@ Extraction contract (ArchCom 2026-09-28 §3.2):
   (USAGE-honesty: an unproven call is NEVER CALLS), INHERITS,
   TESTS (test-file name heuristic).
 * Python import resolution: relative imports plus a sys.path-style
-  repo-root heuristic; an unresolved import produces NO edge,
-  silently — garbage edges are worse than absent ones.
+  repo-root heuristic with a dotted-tail fallback for roots that are
+  not the sys.path entry (src-layout); an unresolved import produces
+  NO edge, silently — garbage edges are worse than absent ones.
 
 Limits (PG7, fail-closed): ``index_max_files``/``index_max_source_mb``
 are checked BEFORE the publish transaction; a breach raises
@@ -35,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -388,7 +390,12 @@ class PythonFileParser:
         return None
 
 
-def _resolve_import(imported: str, rel_path: str, path_index: dict[str, str]) -> str | None:
+def _resolve_import(
+    imported: str,
+    rel_path: str,
+    path_index: dict[str, str],
+    fallback: _ImportFallbackIndex | None = None,
+) -> str | None:
     """Resolve ONE import to a repo-relative path, or ``None``.
 
     Wave-1 Python heuristics (contract §3.2):
@@ -398,7 +405,12 @@ def _resolve_import(imported: str, rel_path: str, path_index: dict[str, str]) ->
       ``a.b``) — the project root is the single sys.path entry;
     * relative ``.mod`` / ``..pkg`` resolve against the importing
       file's package directory (one dot = current package, each
-      extra dot climbs one level).
+      extra dot climbs one level);
+    * dotted-tail fallback (root NOT the sys.path entry — a
+      src-layout indexed at the package dir or at the repo root):
+      the alias is matched against known module qnames as a dotted
+      suffix in both directions. Only modules that exist in the
+      project can match; anything unproven still gets NO edge.
     """
     if imported.startswith("."):
         dots = len(imported) - len(imported.lstrip("."))
@@ -432,7 +444,64 @@ def _resolve_import(imported: str, rel_path: str, path_index: dict[str, str]) ->
             prefix = "/".join(parts) + suffix
             if prefix in path_index:
                 return path_index[prefix]
+    if fallback is not None:
+        return fallback.resolve(imported)
     return None
+
+
+class _ImportFallbackIndex:
+    """Dotted-tail import fallback for roots that are not the sys.path entry.
+
+    The wave-1 resolver assumes the indexing root IS the only sys.path
+    entry. When it is not (a src-layout indexed at the package dir
+    ``src/vesmaro``, or at the repo root above ``src/``), the dotted
+    import path (``vesmaro.util``) and the module's dotted path from
+    the root (``util`` / ``src.vesmaro.util``) differ by a constant
+    dotted prefix. The fallback matches the two on dotted tails —
+    built in one pass over the module index, O(alias segments) per
+    lookup:
+
+    * the alias is a dotted suffix of exactly ONE module qname (root
+      indexed ABOVE the package top);
+    * a module qname is a dotted suffix of the alias AND the stripped
+      alias head is exactly the indexing root's own basename (root
+      indexed AT the package top: alias ``vesmaro.util`` vs qname
+      ``util`` with root ``.../src/vesmaro``).
+
+    Honesty limits: only modules that exist in the project can match;
+    an ambiguous dotted tail (two modules share it) matches nothing;
+    stdlib-topped aliases (``os.path``) never fall back — a project
+    module may share the tail name and that edge would be fiction.
+    """
+
+    def __init__(self, module_index: dict[str, str], root_name: str) -> None:
+        self._modules = module_index
+        self._root_name = root_name
+        tails: dict[str, list[str]] = {}
+        for qname in module_index:
+            parts = qname.split(".")
+            for i in range(len(parts)):
+                tails.setdefault(".".join(parts[i:]), []).append(qname)
+        # A dotted tail shared by 2+ modules is ambiguous: refuse it.
+        self._by_tail = {t: q[0] for t, q in tails.items() if len(q) == 1}
+
+    def resolve(self, alias: str) -> str | None:
+        if alias.partition(".")[0] in sys.stdlib_module_names:
+            return None
+        # Root above the package top: the alias is a dotted suffix of
+        # exactly one known module qname.
+        qname = self._by_tail.get(alias)
+        if qname is not None:
+            return self._modules[qname]
+        # Root at/below the package top: a known module qname is a
+        # dotted suffix of the alias and the stripped head names the
+        # indexing root itself.
+        parts = alias.split(".")
+        for i in range(1, len(parts)):
+            rel = self._modules.get(".".join(parts[i:]))
+            if rel is not None and ".".join(parts[:i]) == self._root_name:
+                return rel
+        return None
 
 
 def _tested_module_name(test_rel: str) -> str:
@@ -523,7 +592,7 @@ class ProjectIndexer:
         self.check_limits(surface, root)
         result = IndexResult()
         _, extractions, records = self._parse_all(project, surface, result)
-        nodes, edges = self._resolve(project, surface, extractions)
+        nodes, edges = self._resolve(project, surface, extractions, root)
         nodes.append(
             CodeGraphNode(
                 id=_node_id(project, "", "", 0),
@@ -648,10 +717,13 @@ class ProjectIndexer:
         project: str,
         surface: list[SurfaceFile],
         extractions: dict[str, _FileExtraction],
+        root: str,
     ) -> tuple[list[CodeGraphNode], list[CodeGraphEdge]]:
         """Project-wide passes after every file is parsed.
 
-        1. path/module indexes — the sys.path-root heuristic base.
+        1. path/module indexes — the sys.path-root heuristic base, plus
+           the dotted-tail fallback index for roots that are NOT the
+           sys.path entry (src-layout).
         2. IMPORTS: dotted/relative imports resolved against the path
            index; unresolved → NO edge (silent, no garbage edges).
         3. INHERITS: base-name lookup against known classes (dotted
@@ -666,6 +738,7 @@ class ProjectIndexer:
         """
         path_index: dict[str, str] = {sf.rel_path: sf.rel_path for sf in surface}
         module_index: dict[str, str] = {_module_qname(sf.rel_path): sf.rel_path for sf in surface}
+        fallback = _ImportFallbackIndex(module_index, os.path.basename(os.path.abspath(root)))
         qname_index: dict[str, CodeGraphNode] = {}
         for ex in extractions.values():
             for qname, node in ex.qname_to_node.items():
@@ -681,7 +754,7 @@ class ProjectIndexer:
         for rel, ex in extractions.items():
             mid = _module_id(project, rel)
             for imported in ex.imports:
-                target = _resolve_import(imported, rel, path_index)
+                target = _resolve_import(imported, rel, path_index, fallback)
                 if target is None or target == rel:
                     continue  # unresolved or self-import: NO edge
                 edges.append(
@@ -729,7 +802,7 @@ class ProjectIndexer:
             imported_modules = {imp for imp in ex.imports if not imp.startswith(".")}
             imported_top: set[str] = set()
             for imp in imported_modules:
-                target_rel = _resolve_import(imp, rel, path_index)
+                target_rel = _resolve_import(imp, rel, path_index, fallback)
                 if target_rel is not None:
                     imported_top |= extractions[target_rel].top_level_defs
             for head, enclosing in ex.call_refs:
@@ -743,7 +816,7 @@ class ProjectIndexer:
                     continue
                 # (b) proven: top-level def of an IMPORTED module
                 target_id = self._imported_def_id(
-                    project, rel, imported_modules, tail, path_index, extractions
+                    project, rel, imported_modules, tail, path_index, extractions, fallback
                 )
                 if target_id is not None and target_id != caller:
                     edges.append(CodeGraphEdge(from_id=caller, to_id=target_id, kind="CALLS"))
@@ -830,11 +903,12 @@ class ProjectIndexer:
         symbol: str,
         path_index: dict[str, str],
         extractions: dict[str, _FileExtraction],
+        fallback: _ImportFallbackIndex,
     ) -> str | None:
         """Id of ``symbol`` defined at top level of an imported module
         (the ``from x import helper`` + ``helper()`` case)."""
         for imp in imported_modules:
-            target_rel = _resolve_import(imp, rel, path_index)
+            target_rel = _resolve_import(imp, rel, path_index, fallback)
             if target_rel is None:
                 continue
             target_ex = extractions.get(target_rel)
