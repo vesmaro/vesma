@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canon.vesmaro.dev/schemas/envelope.schema.json",
+  "title": "Canon envelope v1 (metadata.canon)",
+  "description": "Envelope of a canon record v1, stored at metadata.canon of the record. The envelope never duplicates server-owned fields: title, tags, agent, project and dates live on the record itself; links between records live in server edges, not in the envelope. Unknown properties inside the envelope are forbidden — a typo (e.g. 'affets' instead of 'affects') must fail validation loudly. Per-type extras are required for their own type and rejected for every other type (conditional composition on 'type'). Canon §7 reserves status 'resolved' for task and report records; checkpoint and decision envelopes must not use it.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Envelope format version; the string '1' for v1."
+    },
+    "type": {
+      "enum": ["checkpoint", "task", "decision", "report"],
+      "description": "Artifact type. Selects the per-type extras below and the record-level schema."
+    },
+    "status": {
+      "enum": ["draft", "active", "superseded", "deprecated", "resolved"],
+      "description": "Lifecycle status of the record. 'resolved' is valid only when type is task or report (canon §7); for checkpoint and decision it must be draft, active, superseded or deprecated."
+    },
+    "language": {
+      "enum": ["ru", "en"],
+      "description": "Primary language of the record body. Fixed section headers are always EN regardless of this value."
+    }
+  },
+  "required": ["schema_version", "type", "status", "language"],
+  "unevaluatedProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "checkpoint" } }, "required": ["type"] },
+      "then": { "$ref": "#/$defs/checkpoint-extras" }
+    },
+    {
+      "if": { "properties": { "type": { "const": "task" } }, "required": ["type"] },
+      "then": { "$ref": "#/$defs/task-extras" }
+    },
+    {
+      "if": { "properties": { "type": { "const": "decision" } }, "required": ["type"] },
+      "then": { "$ref": "#/$defs/decision-extras" }
+    },
+    {
+      "if": { "properties": { "type": { "const": "report" } }, "required": ["type"] },
+      "then": { "$ref": "#/$defs/report-extras" }
+    },
+    {
+      "if": {
+        "properties": { "type": { "enum": ["checkpoint", "decision"] } },
+        "required": ["type"]
+      },
+      "then": { "$ref": "#/$defs/status-excluding-resolved" }
+    }
+  ],
+  "$defs": {
+    "checkpoint-extras": {
+      "type": "object",
+      "properties": {
+        "session_ref": {
+          "type": ["string", "null"],
+          "description": "Reference to the source session, or null when the checkpoint is not tied to a session."
+        }
+      },
+      "required": ["session_ref"]
+    },
+    "task-extras": {
+      "type": "object",
+      "properties": {
+        "owner_slug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Slug of the responsible owner (e.g. 'tech-lead')."
+        },
+        "priority": {
+          "enum": ["P0", "P1", "P2", "P3"],
+          "description": "Task priority."
+        },
+        "size": {
+          "enum": ["XS", "S", "M", "L"],
+          "description": "Task size class."
+        }
+      },
+      "required": ["owner_slug", "priority", "size"]
+    },
+    "decision-extras": {
+      "type": "object",
+      "properties": {
+        "reversible": {
+          "type": "boolean",
+          "description": "Whether the decision can be reversed without disproportionate cost."
+        }
+      },
+      "required": ["reversible"]
+    },
+    "report-extras": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": ["string", "null"],
+          "description": "Reporting period (e.g. '2026-W38'), or null when the report is not period-bound."
+        }
+      },
+      "required": ["period"]
+    },
+    "status-excluding-resolved": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": ["draft", "active", "superseded", "deprecated"],
+          "description": "Canon §7: status 'resolved' is reserved for task and report types; checkpoint and decision records close via superseded/deprecated instead."
+        }
+      }
+    }
+  }
+}

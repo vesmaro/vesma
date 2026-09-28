@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canon.vesmaro.dev/schemas/report.schema.json",
+  "title": "Canon record — report",
+  "description": "Full record model for a canon report: title, tags, metadata.canon (the envelope) and body. The body must contain the fixed EN H2 sections listed in x-canon-sections, each as an exact '^## <name>$' line — enforced by tools/validate.py, which reads the annotation. Unknown properties inside metadata.canon are forbidden by the envelope; unknown record-level fields are tolerated (server-owned fields such as agent, project and dates may live on the record). The title must be a non-empty single line of at most 80 characters.",
+  "x-canon-sections": ["Summary", "Done", "Verification", "Awaiting owner"],
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "not": { "pattern": "[\\n\\r]" },
+      "description": "Non-empty single-line title, max 80 chars. For a report: what period or slice it covers, in plain language."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, mnemos:session (or mnemos:checkpoint)."
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "canon": {
+          "allOf": [
+            { "$ref": "https://canon.vesmaro.dev/schemas/envelope.schema.json" },
+            { "properties": { "type": { "const": "report" } } }
+          ]
+        }
+      },
+      "required": ["canon"],
+      "description": "Record metadata. The canon envelope lives at metadata.canon."
+    },
+    "body": {
+      "type": "string",
+      "description": "Free-form body in the record language; must contain every x-canon-sections H2 header on its own line."
+    }
+  },
+  "required": ["title", "tags", "metadata", "body"]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canon.vesmaro.dev/schemas/task.schema.json",
+  "title": "Canon record — task",
+  "description": "Full record model for a canon task card: title, tags, metadata.canon (the envelope) and body. The title must be an imperative deliverable phrase (start with a verb, name the result) — this rule is prose guidance, deliberately not a regex. The body must contain the fixed EN H2 sections listed in x-canon-sections, each as an exact '^## <name>$' line — enforced by tools/validate.py, which reads the annotation. Unknown properties inside metadata.canon are forbidden by the envelope; unknown record-level fields are tolerated (server-owned fields such as agent, project and dates may live on the record). The title must be a non-empty single line of at most 80 characters.",
+  "x-canon-sections": ["Why", "Acceptance", "Out of scope", "References"],
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "not": { "pattern": "[\\n\\r]" },
+      "description": "Non-empty single-line title, max 80 chars. Imperative deliverable phrase: start with a verb, name the concrete result (guidance, not regex)."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, mnemos:open-question + task:queue."
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "canon": {
+          "allOf": [
+            { "$ref": "https://canon.vesmaro.dev/schemas/envelope.schema.json" },
+            { "properties": { "type": { "const": "task" } } }
+          ]
+        }
+      },
+      "required": ["canon"],
+      "description": "Record metadata. The canon envelope lives at metadata.canon."
+    },
+    "body": {
+      "type": "string",
+      "description": "Free-form body in the record language; must contain every x-canon-sections H2 header on its own line."
+    }
+  },
+  "required": ["title", "tags", "metadata", "body"]
+}
