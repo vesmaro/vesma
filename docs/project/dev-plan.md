@@ -109,7 +109,9 @@ flowchart TD
     D2S["#328 · D2-хвост: каскад цитирований<br/>+ CCR-индекс (после A1)"]
     LB["#326 · Later-B · sidecar default-OFF<br/>+ gap detection (за телеметрией A0/A1)"]
     LC["#327 · Later-C · консолидация + авто-supersedes<br/>БЛОК: threat-model сессия (egress)"]
-    M440{{"МАЖОР 4.4.0 · линия графа"}}
+    M440{{"МАЖОР 4.4.0 · линия графа<br/>(граф воспоминаний ADR-0030)"}}
+    OWNPG{{"ЖДЁТ ВЛАДЕЛЬЦА:<br/>green-light PG-0<br/>(ADR-0032)"}}
+    PG["Граф проектов · PG-0..PG-3 · ADR-0032<br/>sidecar code_graph.db (memory-first)<br/>— линия ОТДЕЛЬНАЯ от 4.4.0-графа<br/>воспоминаний; линия 4.4.x/4.5 — за владельцем"]
     NM["#197 · NM-трек остаток: NM-3a #223<br/>(LLM-stack rebase, 682 теста зелёные)<br/>+ NM-3b · ADR-0021 · свой гейт качества"]
     REN["vesmaro-переименование · волна 5.0.0<br/>#331 (после регистраций; GWS card)"]
     SIDE["ФОН · #368 линза-гейт (pre default-enablement) ·<br/>#357 sweep-5.0.0 · #382/#383 F1-хвосты ·<br/>#316/#329 поиск P3 · #278 awareness ·<br/>mesh-notes #353–#376 · Cache-Phase-2 M1 (vitals) ·<br/>D-behavioral нейро-эксперимент"]
@@ -130,6 +132,7 @@ flowchart TD
     M440 --> REN
     OWN3 -.-> REN
     SIDE -.-> M440
+    OWNPG --> PG
     classDef owner fill:#fff3c4,stroke:#b8860b
     classDef wave fill:#daf5da,stroke:#3d8b3d
     classDef gate fill:#fde4cf,stroke:#c46210
@@ -140,6 +143,8 @@ flowchart TD
     class A1,SW,F1REC,F2,F3 wave
     class XF,NM,D2S,LB,LC,REN later
     class SIDE side
+    class OWNPG gate
+    class PG later
 ```
 
 Пояснения:
@@ -178,6 +183,11 @@ flowchart TD
 - **Мажорные маркеры** (политика v2 5a5ac447): 4.4.0 = линия графа;
   5.0.0 = окно переименования vesmaro (регистрации по runbook, GWS card,
   ADR — все за «да» владельца).
+- **Граф проектов (ADR-0032, узел PG)** — линия ОТДЕЛЬНАЯ от 4.4.0
+  (граф воспоминаний ADR-0030): sidecar `code_graph.db`, memory-first,
+  волны PG-0..PG-3 за green-light'ом владельца; линия версий
+  (4.4.x-минор vs 4.5) — открытый вопрос владельцу. Не блокирует
+  критический путь. План — §4d.
 
 ## 4a. Мета-уровень памяти — план реализации (цикл АрхКома 2026-09-08/09)
 
@@ -633,6 +643,62 @@ default-OFF.
 merged-into); dev-plan = derived state из issues/ADR с сохранением
 wave-аннотаций (S/M/L, зависимости); сверка «рекомендации ↔ трекер» при
 онбординге task-manager.
+
+
+## 4d. Граф проектов как память (АрхКом 2026-09-28)
+
+> **Источник:** АрхКом 2026-09-28 (вердикт accept-staged; ADR-0032
+> `docs/project/adr/0032-project-graph.md`; mnemos-решение `266aa582`,
+> контракт `b7572c97`). Инициатива владельца: агенты жгут токены на
+> перечитывание файлов проекта; решение — memory-first проектный граф
+> (sidecar-БД `code_graph.db` по прецеденту vectors.db, tree-sitter,
+> волна 1 = только Python), общий для всех агентов сервера, с
+> инвариантами PG1–PG7. НЕ клон DeusData codebase-memory-mcp: переносим
+> их токен-контракт и честность coverage, а не демон/Cypher/3D/163
+> грамматики. Линия ОТДЕЛЬНАЯ от 4.4.0-графа воспоминаний (ADR-0030);
+> запуск волн — за green-light'ом владельца. Канон отвергнутого —
+> ADR-0032 «Alternatives considered» (без нового АрхКома не
+> пересматривать).
+
+### Дорожная карта (accept-staged: волны за гейтами, всё default-off)
+
+```mermaid
+flowchart TD
+    OWN{{"ВЛАДЕЛЕЦ:<br/>green-light PG-0"}}
+    PG0["PG-0 · ФУНДАМЕНТ (M) · всё default-off<br/>code_graph_store.py + схема (4 таблицы)<br/>tree-sitter-python индексатор + инкрементальность<br/>инструменты 1–10 (MCP+REST) + токен-контракт<br/>PG1–PG7 механизмами + тесты PGT-1..7<br/>маячок в recall + watch_start poll<br/>acceptance: индекс собственного репо (~2–3k узлов)"]
+    HR{{"ГЕЙТ headroom:<br/>headroom-redesign закрыт<br/>(A1-блокер; guard #299;<br/>токены/продуктивный контекст ≥ baseline)"}}
+    PG1["PG-1 · RECALL (M)<br/>repo-map секция assemble_context<br/>(200–400 токенов, PageRank)<br/>с PG6-обёрткой (origin: project-graph<br/>+ injection-детектор)"]
+    S5{{"ГЕЙТ S5-прогон:<br/>стенд с графом vs без<br/>(PG-0/PG-1 зелёные)"}}
+    PG2["PG-2 · ЭКОСИСТЕМА (M)<br/>vitals-метрики (staleness %, hit-rate,<br/>деградация индекса) + eyes-подразделы<br/>(агрегаты-выборки, НЕ lanes — ADR-0025)<br/>+ GCW-скилл потребления"]
+    JT{{"ГЕЙТ JTBD:<br/>сигнал по TS/Go<br/>(PG-2 зелёная)"}}
+    PG3["PG-3 · ЯЗЫКИ+ (M+)<br/>TS (+Go по сигналу):<br/>резолюция импортов per-language<br/>(2–4 недели/язык)"]
+    OWN --> PG0 --> HR --> PG1 --> S5 --> PG2 --> JT --> PG3
+    classDef phase fill:#daf5da,stroke:#3d8b3d
+    classDef gate fill:#fff3c4,stroke:#b8860b
+    class PG0,PG1,PG2,PG3 phase
+    class OWN,HR,S5,JT gate
+```
+
+Статусы: все волны — **planned**, запуск только за green-light'ом
+владельца; каждый механизм — **default-off** до валидации. Открытые
+вопросы владельцу: green-light PG-0 (порядок с Ф1-раннером/A1-S2);
+экосистемное позиционирование экспорта графов; линия версий (4.4.x-минор
+vs отдельная 4.5); приоритет eyes внутри PG-2.
+
+### Инварианты (связывающие, канон — ADR-0032 §Invariants)
+
+PG1 ноль байтов исходника (имена/qnames/пути/ранги/рёбра — ДА;
+докстринги/литералы/default'ы/байты — НИКОГДА) · PG2 конфайнмент корня
+(только зарегистрированный корень, симлинки не следуем) · PG3
+поверхность по умолчанию (denylist → allowlist; секрет = poisoned
+навсегда) · PG4 скан на выдаче (сниппет с диска + хэш-сверка +
+scan_issuance, fail-closed, кэш запрещён) · PG5 born-no-federate
+(class-level, экспорт = отдельный ADR с threat model) · PG6
+недоверенное происхождение (origin-обёртка + prompt-injection детектор)
+· PG7 лимиты default-ON + аудит с причиной + per-agent атрибуция
+чтений (без атрибуции мульти-агентный режим блокируется). Тест-канон:
+PGT-1..7 (dump-тест, конфайнмент, poisoned, выдача, экспорт, лимиты,
+токен-контракт).
 
 
 ## 5. Лог проблем

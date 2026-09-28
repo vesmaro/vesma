@@ -60,6 +60,7 @@ documented elsewhere, or anything that fits in a code comment.
 | [0029](0029-search-v2-query-semantics.md) | Search v2 query semantics: per-token prefix AND, soft project fallback, graph leg, embedding_id stamp | Accepted | 2026-09-15 |
 | [0030](0030-memory-graph-self-fueling.md) | Memory Graph — the self-fueling graph (search graph line continuation) | Accepted; A0-review appended 2026-09-28 (gate re-baseline edges/post-A0-write ≥ 0.5 + S1/S2 — addendum §B) | 2026-09-15 |
 | [0031](0031-rebrand-mnemos-to-vesmaro.md) | Rebrand — mnemos → vesmaro (additive dual-prefix; legacy retires in 6.0) | Accepted | 2026-09-15 |
+| [0032](0032-project-graph.md) | Project graph as memory — sidecar `code_graph.db`, memory-first, waves PG-0..PG-3 behind gates | Accepted (with conditions — owner green-light per wave) | 2026-09-28 |
 
 ## Themes
 
