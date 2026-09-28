@@ -372,6 +372,29 @@ def normalize_project_slug(value: str) -> str:
     return value.strip().lower().replace(" ", "-")
 
 
+def normalize_task_slug(value: str) -> str:
+    """Normalize a bare task slug to the canonical ``TASK_SLUG_RE`` form.
+
+    Ф2 (epic #308, ADR-0027 Phase 2): the task twin of
+    :func:`normalize_project_slug` — the SAME #400/#407 single-authority
+    doctrine applied to the task dimension. The normalization is
+    byte-identical (lowercase, strip, spaces→hyphens) so a task slug can
+    never normalize differently from a project slug of the same shape;
+    the task alphabet (``TASK_SLUG_RE``) shares its pattern source with
+    the ``task:`` tag regex, so a salvaged slug always matches what the
+    tag contract would mint for ``task:<slug>``.
+
+    Returns ``""`` for empty/whitespace-only input — callers decide
+    whether absence is valid (the ``task`` parameter is optional on
+    every Ф2 surface). A non-empty result either matches
+    ``TASK_SLUG_RE`` or the input is NOT salvageable and the caller
+    must reject it fail-loud — this helper never mints a
+    silently-different task namespace (a dead ``task:`` tag would be
+    unreachable at query time exactly like the #368 dead-tag case).
+    """
+    return value.strip().lower().replace(" ", "-")
+
+
 class TagContractError(ValueError):
     """Raised when a tag set violates the Mnemos tag contract in strict mode."""
 
@@ -872,6 +895,12 @@ class SearchQuery(BaseModel):
     status: MemoryStatus | None = None
     project: str | None = None
     agent: str | None = None  # M3: per-agent filter
+    # Ф2 (epic #308, ADR-0027 Phase 2): the first-class task-scope
+    # switcher — the bare slug, byte-identical to appending
+    # ``"task:<slug>"`` to ``tags`` (the F1 arm-C surface). Normalized /
+    # fail-loud at the ``MemoryManager.search`` boundary (the #407
+    # canon); composes with ``tags`` by intersection.
+    task: str | None = None
     current_file_path: str | None = None  # M8: file-context boost
     limit: int = 20
     hybrid_alpha: float | None = None  # override config default
@@ -888,11 +917,18 @@ class SearchQuery(BaseModel):
 
 
 class AgentRecallQuery(BaseModel):
-    """M3 — first-class per-agent recall query."""
+    """M3 — first-class per-agent recall query.
+
+    Ф2 (epic #308, ADR-0027 Phase 2): ``task`` is the optional task
+    scope — the bare slug, byte-identical semantics to filtering by the
+    ``task:<slug>`` tag (the F1 arm-C surface). Normalized/fail-loud at
+    the ``MemoryManager.agent_recall`` boundary (the #407 canon).
+    """
 
     agent: str
     project: str | None = None
     query: str | None = None  # if None: return most recent N entries for agent
+    task: str | None = None
     limit: int = 20
     include_raw: bool = False
 

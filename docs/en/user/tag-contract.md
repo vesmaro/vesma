@@ -99,6 +99,27 @@ invariant 1). The result echoes `task` (and `stats.recall.task_scoped`)
 only when the parameter was given; without it the output is
 byte-identical to the pre-Phase-0 shape.
 
+**Task-switcher parity (ADR-0027 Phase 2, epic #308).** The bare-slug
+`task=` parameter now rides EVERY task-scoped surface as a first-class
+switcher, byte-identical to the raw `task:<slug>` tag filter (the F1
+experiment's arm-C surface — the A==C equivalence doctrine, pinned by
+tests on every surface):
+
+- **Reads:** `search(task=)`, `recall_context(task=)`,
+  `list_recent(task=)` (REST `GET /memories?task=`), `agent_recall`
+  (`task` on `AgentRecallQuery`). Combined with `tags=` the two
+  intersect (both must hold).
+- **Writes:** `save_checkpoint(task=)` (MCP `mnemos_save_context` /
+  REST `POST /context/save`) mints the `task:<slug>` tag at the single
+  save boundary — at most one task per record (zero-or-one invariant).
+- **Boundary:** the slug is normalized with the same canon as `project`
+  (`My Task` → `my-task`); an unsalvageable slug fails loud (MCP error
+  string / REST 400 — never a silently-different task namespace).
+- **Telemetry:** `search_stats()` exposes `task_param_queries_total`
+  vs `task_tag_queries_total` — the owner's standing comparative metric
+  watching which switcher form callers use (the F1 doctrine makes the
+  two forms semantically identical; the counters watch adoption).
+
 ---
 ## `mnemos:no-federate` — federation exclusion marker
 

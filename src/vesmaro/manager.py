@@ -496,6 +496,21 @@ class MemoryManager:
             # page (a request enriched by both legs counts in both).
             "graph_supersedes_enriched_requests_total": 0,
             "graph_walk_enriched_requests_total": 0,
+            # Ф2 (epic #308, ADR-0027 Phase 2) — the owner's standing
+            # comparative metric: task-scoped queries SPLIT BY SWITCHER
+            # FORM on the search surface. ``task_param`` counts the
+            # first-class ``task=`` parameter; ``task_tag`` counts the
+            # raw ``tags=["task:…"]`` form (a task= call mints the tag
+            # through the same filter and therefore also lands in the
+            # tag counter — the PARAM counter is the param-form share,
+            # the TAG counter is the total task-scoped volume, and
+            # task_tag - task_param is the tag-only share). The F1
+            # A==C doctrine pins the two forms equivalent; these
+            # counters watch ADOPTION drift between them (which form
+            # callers prefer), not semantic drift. Same in-memory
+            # trade-off as the graph-leg counters above.
+            "task_param_queries_total": 0,
+            "task_tag_queries_total": 0,
             "latency_samples_ms": [],
             "results_counts": [],
         }
@@ -581,6 +596,35 @@ class MemoryManager:
             vitals.close()
 
     # ── helpers ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _normalize_task_boundary(task: str) -> str:
+        """Normalize + validate a bare task slug, minting ``task:<slug>``.
+
+        Ф2 (epic #308, ADR-0027 Phase 2) — the ONE boundary authority
+        shared by every ``task=`` surface (``search`` / ``recall_context``
+        / ``list_recent`` / ``agent_recall`` reads and the
+        ``save_checkpoint`` write): the ``task:`` prefix is minted HERE,
+        never by the caller, and the slug is normalized through
+        :func:`vesmaro.models.normalize_task_slug` (the #407 canon —
+        the same normalization the project boundary applies). Fail-loud
+        on an unsalvageable slug (a dead ``task:`` tag would be
+        unreachable at query time, the #368 class) and on a
+        prefix-carrying value (an actionable message points at the bare
+        slug, mirroring ``assemble_context``'s Ф0 boundary).
+        """
+        from vesmaro.models import TASK_SLUG_RE, normalize_task_slug
+
+        if task.startswith("task:"):
+            raise ValueError(
+                f"task must be the bare slug (got {task!r} — pass {task[len('task:') :]!r})"
+            )
+        normalized = normalize_task_slug(task)
+        if not TASK_SLUG_RE.match(normalized):
+            raise ValueError(
+                f"task must match [a-z0-9_-]{{1,64}} after normalization (got {task!r})"
+            )
+        return f"task:{normalized}"
 
     @staticmethod
     def _embedding_text(memory: Memory) -> str:
@@ -1693,6 +1737,7 @@ class MemoryManager:
         tags: list[str] | None = None,
         project: str | None = None,
         agent: str | None = None,
+        task: str | None = None,
         status: MemoryStatus | None = None,
         limit: int = 20,
         hybrid_alpha: float | None = None,
@@ -1700,6 +1745,27 @@ class MemoryManager:
         refined_only: bool = False,
     ) -> list[SearchResult]:
         """Hybrid search: FTS5 + vector + Reciprocal Rank Fusion + graph leg.
+
+        Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
+        task-scope switcher, the bare slug (the ``task:`` prefix is
+        minted HERE, at the boundary — a value already carrying it is
+        rejected with an actionable message). Semantics are BYTE-IDENTICAL
+        to ``tags=["task:<slug>"]`` (the F1 arm-C surface, the A==C
+        equivalence doctrine the F1 experiment measured and this wave
+        pins): both forms thread the SAME ``tags`` filter through every
+        leg, so ``task="x"`` ≡ ``tags=["task:x"]`` on every axis
+        (soft-fallback exemption included). Normalized at the boundary
+        via :func:`vesmaro.models.normalize_task_slug` (the #407 canon —
+        one normalization shared with the save path); an unsalvageable
+        slug raises ``ValueError`` fail-loud, never a silently-different
+        task scope. Combined with ``tags=`` the two INTERSECT (both must
+        hold — the scope-hierarchy doctrine; passing ``task="x"`` and a
+        ``tags`` list already carrying ``task:x`` is the identity, any
+        OTHER ``task:`` tag in ``tags`` is a strict-AND no row can
+        satisfy — a SILENT EMPTY result on this READ path: reads run no
+        tag-contract validation; the always-fatal multiple-``task:``
+        check binds to the WRITE paths only, where the contract
+        validates).
 
         A9 (ArchCom 2026-08-27) — project scoping is PRE-RRF on BOTH legs:
         the FTS leg passes ``project`` to ``fts_search`` as before, and the
@@ -1803,6 +1869,44 @@ class MemoryManager:
 
             project = normalize_project_slug(project)
 
+        # Ф2 (epic #308): mint the task tag at the boundary — the SAME
+        # ``tags`` filter the F1 arm-C call used, so task= ≡ tags=["task:x"]
+        # holds by construction (one code path, not two). The shared
+        # boundary helper normalizes (the #407 canon) and fails loud on
+        # an unsalvageable slug: it never becomes a dead ``task:`` tag
+        # (unreachable at query time, #368 class).
+        task_tag: str | None = None
+        if task is not None:
+            task_tag = self._normalize_task_boundary(task)
+            # Intersection semantics (both must hold): the minted tag
+            # joins the caller's tags list; a duplicate of the SAME tag
+            # is the identity (all(...) membership). A DIFFERENT task:
+            # tag there makes the filter a strict-AND no row can
+            # satisfy — a silent EMPTY result on this READ path (reads
+            # run no tag-contract validation); the always-fatal
+            # multiple-task: check binds to the write paths only,
+            # where the contract validates. Never silently resolved
+            # here either way.
+            tags = [*(tags or []), task_tag]
+
+        # Ф2 comparative telemetry (the owner's standing metric): split
+        # by switcher FORM on this surface — the task= parameter vs the
+        # raw task-tag-in-tags= form. Same _search_stats pattern as the
+        # graph-leg counters (in-memory, resets on restart); the
+        # counters watch the two forms' usage share for drift between
+        # them (the F1 A==C doctrine makes semantic drift impossible,
+        # so what remains observable is ADOPTION drift).
+        task_scoped = tags is not None and any(t.startswith("task:") for t in tags)
+        with self._search_stats_lock:
+            if task is not None:
+                self._search_stats["task_param_queries_total"] = (
+                    int(self._search_stats["task_param_queries_total"]) + 1
+                )
+            if task_scoped:
+                self._search_stats["task_tag_queries_total"] = (
+                    int(self._search_stats["task_tag_queries_total"]) + 1
+                )
+
         scoped = self._search_core(
             query,
             tags=tags,
@@ -1827,8 +1931,9 @@ class MemoryManager:
         # (#308): also not for task-scoped queries — the retry would keep
         # the task tag while dropping the project scope, widening a task
         # view across projects (intersection doctrine: a task tag only
-        # NARROWS, never widens).
-        task_scoped = tags is not None and any(t.startswith("task:") for t in tags)
+        # NARROWS, never widens). ``task_scoped`` is computed at the Ф2
+        # boundary above — it covers BOTH switcher forms (task= and
+        # tags=["task:..."]) identically, the equivalence doctrine.
         if project and not results and status is None and not task_scoped:
             logger.info(
                 "search: project=%s scoped search returned 0 rows — "
@@ -2648,25 +2753,48 @@ class MemoryManager:
         (single authority): the search leg inherits ``search``'s own
         normalization, the recency leg normalizes here so
         ``list_recent_for_agent`` predicates on the canonical slug.
+
+        Ф2 (epic #308, ADR-0027 Phase 2) — ``query.task``: the optional
+        task scope, byte-identical to filtering by ``task:<slug>``
+        (the F1 arm-C surface). On the search leg the minted tag rides
+        the SAME ``tags`` filter ``search`` applies (one code path, the
+        equivalence doctrine); on the recency leg it post-filters the
+        agent's feed by exact tag membership. Normalized/fail-loud at
+        this boundary via the shared ``_normalize_task_boundary`` helper
+        (the #407 canon).
         """
         from vesmaro.models import normalize_project_slug
 
         if query.project:
             query = query.model_copy(update={"project": normalize_project_slug(query.project)})
+        task_tag: str | None = None
+        if query.task is not None:
+            task_tag = self._normalize_task_boundary(query.task)
         if query.query:
             return self.search(
                 query.query,
                 agent=query.agent,
                 project=query.project,
+                task=query.task,
                 limit=query.limit,
                 include_raw=True,
             )
-        # No query → return most recent N for agent
+        # No query → return most recent N for agent. Ф2: a task scope
+        # post-filters the recency feed by exact tag membership (the
+        # same predicate the search legs apply; list_recent_for_agent
+        # has no tags parameter and widening its signature is a store
+        # change this wave does not make).
         memories = self.sqlite.list_recent_for_agent(
             query.agent,
             project=query.project,
             limit=query.limit,
         )
+        if task_tag is not None:
+            # A modest over-fetch would be guesswork; the feed is
+            # recency-capped by the caller's limit either way, so the
+            # filter runs on what the feed returned — zero rows in a
+            # task scope is information, not drift (slice 1).
+            memories = [m for m in memories if task_tag in m.tags]
         # ADR-0019 §5 — this is an agent-context issuance path, so the
         # quarantine exclusion applies here as well: the agent's own
         # recency feed must not carry terminally quarantined content.
@@ -2679,7 +2807,7 @@ class MemoryManager:
         ]
 
     def recall_context(
-        self, *, project: str, query: str | None = None, limit: int = 5
+        self, *, project: str, query: str | None = None, task: str | None = None, limit: int = 5
     ) -> list[Memory]:
         """Return most recent checkpoint memories for a project.
 
@@ -2700,6 +2828,17 @@ class MemoryManager:
         with no ``--project`` on an empty vault relies on it; the MCP
         tool always passes a concrete project via the ``_detect_project``
         fallback).
+
+        Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
+        task-scope switcher, byte-identical to ``tags=["task:<slug>"]``
+        composed with the checkpoint scope (the F1 arm-C surface): the
+        minted tag JOINS the ``mnemos:checkpoint`` tag on both legs
+        (query and recency), so ``task="x"`` ≡ ``["mnemos:checkpoint",
+        "task:x"]`` by construction — the equivalence doctrine pinned by
+        tests. Normalized/fail-loud at this boundary exactly like
+        ``project`` (the #407 canon); task-scoped recall returns only
+        checkpoints of that task — zero rows is information ("no
+        checkpoint in this task yet"), not drift.
         """
         from vesmaro.models import _PROJECT_RE, normalize_project_slug
 
@@ -2709,11 +2848,29 @@ class MemoryManager:
                 f"project must be 1-64 characters of [a-z0-9_-] after normalization "
                 f"(got {project!r})"
             )
+        tags: list[str] = ["mnemos:checkpoint"]
+        if task is not None:
+            task_tag = self._normalize_task_boundary(task)
+            tags.append(task_tag)
         if query:
+            # Ф2 review fix 2 (P2, TL decision — attribute at
+            # CALLER-INTENT): the query leg threads the PARAM form
+            # (``task=``), not the minted tags list, so the comparative
+            # counters attribute uniformly — a caller who used the
+            # first-class parameter on recall_context(query=, task=)
+            # increments task_param_queries_total exactly like the same
+            # call on search/agent_recall. The internal translation
+            # (minting the tag into ``tags``) must NOT leak into the
+            # owner's standing metric: ``task_tag - task_param`` stays
+            # the genuine tag-only share, not an implementation shape.
+            # The recency leg below keeps the tags form (list_all has no
+            # task parameter — the disclosed slice-1 trade-off; list_all
+            # paths run no counters, so attribution is unaffected).
             results = self.search(
                 query=query,
-                tags=["mnemos:checkpoint"],
+                tags=tags,
                 project=project,
+                task=task,
                 limit=limit,
             )
             return [r.memory for r in results]
@@ -2721,7 +2878,7 @@ class MemoryManager:
         memories = self.sqlite.list_all(
             limit=limit * 3,
             project=project,
-            tags=["mnemos:checkpoint"],
+            tags=tags,
         )
         # Invariant: archived checkpoints are retired and must not resurface as fresh context.
         # ADR-0019 §5 — quarantined entries are excluded here too (the
@@ -2744,6 +2901,7 @@ class MemoryManager:
         project: str,
         agent: str | None = None,
         session: str | None = None,
+        task: str | None = None,
         memory_type: MemoryType = MemoryType.NOTE,
         language: str | None = None,
     ) -> tuple[Memory, bool]:
@@ -2772,6 +2930,10 @@ class MemoryManager:
            include ``language`` — a dedup hit returns the first-minted
            row with its own envelope, the new call's language never
            rewrites a stored record (canon §10, new-records-only).
+           Ф2 (epic #308): the payload does NOT include ``task`` either —
+           same canon §10 logic: a dedup hit returns the first-minted row
+           with ITS task scope; the new call's task never rewrites a
+           stored record.
         5. Store with server-controlled metadata stamps
            (``checkpoint_agent`` / ``checkpoint_session`` /
            ``checkpoint_dedup_key``) PLUS the canon v1.0.0 envelope
@@ -2787,9 +2949,24 @@ class MemoryManager:
            source of truth (the awareness read surface arrives with
            #254).
 
+        ``task`` (Ф2, epic #308, ADR-0027 Phase 2) is the WRITE-side
+        switcher: the bare slug, normalized at this boundary via the
+        shared ``_normalize_task_boundary`` helper (the #407 canon —
+        the SAME normalization the read surfaces apply, so a checkpoint
+        saved under ``task="My_Task"`` is found by ``search(task="my-task")``
+        and by ``tags=["task:my-task"]`` alike). The minted
+        ``task:<slug>`` tag joins the record's tags at this ONE save
+        boundary — not per-tool. The zero-or-one-per-record invariant
+        (ADR-0027) is enforced here: the checkpoint channel mints its
+        own tags (the caller never supplies them), so the only way a
+        second ``task:`` tag could appear is a caller threading BOTH
+        ``task=`` and a task tag — impossible by construction; the tag
+        contract's always-fatal multiple-``task:`` check remains the
+        invariant's last line of defense on every other write path.
+
         ``language`` (vesmaro-canon v1.0.0, ADR-0003 obligation 4):
-        primary language of the record body — canon §2 enum ``"ru"``/
-        ``"en"``, NO heuristics. ``None`` (the default) falls back to the
+        primary language of the record body — canon §2 enum ``"ru"``
+        /``"en"``, NO heuristics. ``None`` (the default) falls back to the
         ``mnemos.checkpoint_language`` config value. Every call MUST land
         on a concrete language: the envelope mint raises ``ValueError``
         on anything outside the canon enum, fail-loud.
@@ -2799,9 +2976,9 @@ class MemoryManager:
         ADR-0003 verdict B); an empty field gets the deterministic
         per-language placeholder line from
         :data:`CHECKPOINT_PLACEHOLDERS`. Section H2 titles come from the
-        explicit map :data:`CHECKPOINT_SECTION_TITLES` (never
-        ``str.title()``, ADR-0003 obligation 2) and are pinned against
-        the schemas' ``x-canon-sections`` by a drift test.
+        explicit map :data:`CHECKPOINT_SECTION_TITLES` (ADR-0003
+        obligation 2 — never ``str.title()``) and are pinned against the
+        schemas' ``x-canon-sections`` by a drift test.
 
         Returns ``(memory, duplicate)``.
         """
@@ -2843,6 +3020,15 @@ class MemoryManager:
                 f"project must be 1-64 characters of [a-z0-9_-] after normalization "
                 f"(got {project!r})"
             )
+
+        # Ф2 (epic #308) — task slug: normalize at the SAVE boundary via
+        # the shared helper (single authority, the #407 canon applied to
+        # the task dimension — the SAME normalization every read surface
+        # applies, so a saved task scope is always reachable by either
+        # switcher form). Fail-loud on an unsalvageable slug.
+        task_tag: str | None = None
+        if task is not None:
+            task_tag = self._normalize_task_boundary(task)
 
         # 2. Trivial-reject before any store side effect.
         normalized = {f: (fields.get(f) or "") for f in CHECKPOINT_FIELDS}
@@ -2916,9 +3102,20 @@ class MemoryManager:
         }
         if session is not None:
             metadata["checkpoint_session"] = session
+        # Ф2 (epic #308): the minted task tag rides the tags list at the
+        # ONE save boundary (never per-tool). The checkpoint channel
+        # mints its own tags, so the zero-or-one task invariant holds by
+        # construction — exactly one task tag can ever reach this list.
+        checkpoint_tags: list[str] = [
+            f"project:{project}",
+            f"agent:{resolved_agent}",
+            "mnemos:checkpoint",
+        ]
+        if task_tag is not None:
+            checkpoint_tags.append(task_tag)
         data = MemoryCreate(
             content="\n".join(parts),
-            tags=[f"project:{project}", f"agent:{resolved_agent}", "mnemos:checkpoint"],
+            tags=checkpoint_tags,
             source=MemorySource.MCP,
             memory_type=memory_type,
             metadata=metadata,
@@ -2940,6 +3137,7 @@ class MemoryManager:
         tags: list[str] | None = None,
         project: str | None = None,
         agent: str | None = None,
+        task: str | None = None,
         status: MemoryStatus | None = None,
         since: str | None = None,
         until: str | None = None,
@@ -2949,11 +3147,22 @@ class MemoryManager:
         mnemos #400 — the QUERY boundary normalizes a non-empty
         ``project`` (single authority, same as ``search`` /
         ``recall_context``); ``None``/empty stays the unscoped listing.
+
+        Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
+        task-scope switcher, byte-identical to appending
+        ``"task:<slug>"`` to ``tags`` (the F1 arm-C surface): the
+        minted tag joins the caller's tags list, so both switcher forms
+        thread the SAME ``tags`` predicate into ``sqlite.list_all``
+        (exact-membership ``json_each`` match). Normalized/fail-loud at
+        this boundary exactly like ``project`` (the #407 canon).
         """
         if project:
             from vesmaro.models import normalize_project_slug
 
             project = normalize_project_slug(project)
+        if task is not None:
+            task_tag = self._normalize_task_boundary(task)
+            tags = [*(tags or []), task_tag]
         memories = self.sqlite.list_all(
             limit=limit,
             offset=offset,
@@ -3518,6 +3727,13 @@ class MemoryManager:
             "graph_walk_enriched_requests_total": int(
                 self._search_stats["graph_walk_enriched_requests_total"]
             ),
+            # Ф2 (epic #308, ADR-0027 Phase 2) — the owner's standing
+            # comparative metric: task-scoped queries split by switcher
+            # form (the first-class task= parameter vs the raw
+            # tags=["task:…"] form). See the _search_stats init comment
+            # for the share arithmetic (a task= call lands in BOTH).
+            "task_param_queries_total": int(self._search_stats["task_param_queries_total"]),
+            "task_tag_queries_total": int(self._search_stats["task_tag_queries_total"]),
             # ADR-0030 A1-S1 (#325): per-project edge-write generations —
             # the meta-counter any ranking consumer can key on to
             # invalidate graph-derived state (no in-repo cache key

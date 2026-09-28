@@ -395,6 +395,16 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Restrict search to a project (optional)",
                     },
+                    "task": {
+                        "type": "string",
+                        "description": (
+                            "ADR-0027 Phase 2 (epic #308): optional task scope — "
+                            "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
+                            "Byte-identical to tags=['task:<slug>'] (the F1 arm-C "
+                            "surface): narrows results to entries of that task; "
+                            "composes with tags= by intersection (both must hold)."
+                        ),
+                    },
                     "limit": {
                         "type": "integer",
                         "description": "Maximum results (default: 10)",
@@ -515,6 +525,16 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional project scope",
                     },
+                    "task": {
+                        "type": "string",
+                        "description": (
+                            "ADR-0027 Phase 2 (epic #308): optional task scope — "
+                            "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
+                            "Byte-identical to a task:<slug> tag filter (the F1 "
+                            "arm-C surface): narrows the agent's entries to one "
+                            "task scope."
+                        ),
+                    },
                     "query": {
                         "type": "string",
                         "description": "Optional FTS/vector query within agent scope",
@@ -567,6 +587,17 @@ async def _canonical_tools() -> list[Tool]:
                             "the same session but a different agent are rejected."
                         ),
                     },
+                    "task": {
+                        "type": "string",
+                        "description": (
+                            "ADR-0027 Phase 2 (epic #308): optional task scope — "
+                            "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
+                            "Mints the task:<slug> tag on this checkpoint at the "
+                            "save boundary (one mint point, at most one task per "
+                            "record); recall it with task= on mnemos_recall_context "
+                            "/ mnemos_search / mnemos_list_recent."
+                        ),
+                    },
                     "language": {
                         "type": "string",
                         "enum": ["ru", "en"],
@@ -593,6 +624,16 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional: specific aspect to focus on",
                     },
+                    "task": {
+                        "type": "string",
+                        "description": (
+                            "ADR-0027 Phase 2 (epic #308): optional task scope — "
+                            "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
+                            "Byte-identical to the checkpoint tag filter plus "
+                            "task:<slug> (the F1 arm-C surface): returns only "
+                            "checkpoints saved under that task."
+                        ),
+                    },
                 },
             },
         ),
@@ -609,6 +650,15 @@ async def _canonical_tools() -> list[Tool]:
                         "description": "Filter by tags (optional)",
                     },
                     "project": {"type": "string", "description": "Filter by project"},
+                    "task": {
+                        "type": "string",
+                        "description": (
+                            "ADR-0027 Phase 2 (epic #308): optional task scope — "
+                            "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
+                            "Byte-identical to appending task:<slug> to tags (the "
+                            "F1 arm-C surface); composes with tags= by intersection."
+                        ),
+                    },
                 },
             },
         ),
@@ -1895,6 +1945,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             query=args["query"],
             tags=args.get("tags"),
             project=args.get("project"),
+            task=args.get("task"),
             limit=args.get("limit", 10),
             include_raw=args.get("include_raw", False),
             status=status,
@@ -1937,6 +1988,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             agent=args["agent"],
             project=args.get("project"),
             query=args.get("query"),
+            task=args.get("task"),
             limit=args.get("limit", 20),
         )
         results = mgr.agent_recall(recall_query)
@@ -1981,6 +2033,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             project=project,
             agent=args.get("agent"),
             session=args.get("session"),
+            task=args.get("task"),
             language=args.get("language"),
         )
         _track_call(is_save=True)
@@ -1995,7 +2048,14 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     # ── mnemos_recall_context ───────────────────────────────────────────────
     if name == "mnemos_recall_context":
         project = args.get("project") or _detect_project()
-        memories = mgr.recall_context(project=project, query=args.get("query"), limit=5)
+        # Ф2 (epic #308): ValueError from the task boundary (unsalvageable
+        # slug / prefix-carrying value) rides the SAME generic exception
+        # path as every other manager boundary error on this surface —
+        # the "❌ Error: ..." mapping below (the dispatch wrapper); do
+        # not intercept it or the surface gains a second error contract.
+        memories = mgr.recall_context(
+            project=project, query=args.get("query"), task=args.get("task"), limit=5
+        )
         if not memories:
             instructions = (
                 _auto_collect_instructions(project) if _auto_collect_state["enabled"] else ""
@@ -2026,6 +2086,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             limit=args.get("limit", 10),
             tags=args.get("tags"),
             project=args.get("project"),
+            task=args.get("task"),
         )
         # ADR-0018 P1-b review (F1): this channel echoes titles
         # (auto_title() derives from raw content) and no content — the

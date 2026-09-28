@@ -472,6 +472,7 @@ async def list_memories(
     project: str | None = None,
     agent: str | None = None,
     tags: str | None = None,
+    task: str | None = None,
     since: str | None = None,
     until: str | None = None,
     limit: int = Query(default=20, le=500),
@@ -490,16 +491,24 @@ async def list_memories(
     tag_list: list[str] | None = None
     if tags:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    return mgr.list_recent(
-        limit=limit,
-        offset=offset,
-        project=project,
-        agent=agent,
-        status=status_enum,
-        tags=tag_list,
-        since=since,
-        until=until,
-    )
+    # Ф2 (epic #308): the task boundary's ValueError (unsalvageable
+    # slug / prefix-carrying value) maps to 400 like the recall twin —
+    # the #407 twin discipline: the SAME error string, never a raw
+    # traceback to the REST caller.
+    try:
+        return mgr.list_recent(
+            limit=limit,
+            offset=offset,
+            project=project,
+            agent=agent,
+            task=task,
+            status=status_enum,
+            tags=tag_list,
+            since=since,
+            until=until,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ── Workflow lifecycle — nested under /memories/{id}/workflow (#96) ────────────
@@ -611,15 +620,22 @@ async def withdraw_workflow(
 @app.post("/search")
 async def search(query: SearchQuery) -> list[dict[str, Any]]:
     mgr = get_manager()
-    results = mgr.search(
-        query=query.query,
-        tags=query.tags,
-        project=query.project,
-        status=query.status,
-        limit=query.limit,
-        include_raw=query.include_raw,
-        refined_only=query.refined_only,
-    )
+    # Ф2 (epic #308): the task boundary's ValueError (unsalvageable slug /
+    # prefix-carrying value) maps to 400 like the recall/save twins — the
+    # #407 twin discipline: the SAME error string, never a raw traceback.
+    try:
+        results = mgr.search(
+            query=query.query,
+            tags=query.tags,
+            project=query.project,
+            task=query.task,
+            status=query.status,
+            limit=query.limit,
+            include_raw=query.include_raw,
+            refined_only=query.refined_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     out = []
     for r in results:
         mem = r.memory
@@ -659,11 +675,20 @@ async def agent_recall(
     name: str,
     project: str | None = None,
     q: str | None = None,
+    task: str | None = None,
     limit: int = Query(default=20, le=100),
 ) -> list[dict[str, Any]]:
     mgr = get_manager()
-    query = AgentRecallQuery(agent=name, project=project, query=q, limit=limit)
-    results = mgr.agent_recall(query)
+    # Ф2 review fix 1 (P1): the task boundary's ValueError (unsalvageable
+    # slug / prefix-carrying value) maps to 400 like every other REST
+    # twin of this wave — the #407 twin discipline; without the handler
+    # the probe GET /recall/agent/x?task=my/task surfaced as a 500,
+    # contradicting the documented 400.
+    try:
+        query = AgentRecallQuery(agent=name, project=project, query=q, task=task, limit=limit)
+        results = mgr.agent_recall(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # ADR-0018 P1-b (M1 + review F1/F3): scan-at-issuance on BOTH echoed
     # strings (content and title) — same policy and per-item notes as
     # /search.
@@ -998,6 +1023,11 @@ class SaveContextRequest(BaseModel):
     context: str | list[str] | None = None
     agent: str | None = None
     session: str | None = None
+    # Ф2 (epic #308, ADR-0027 Phase 2) — the write-side task switcher:
+    # the bare slug, minted as the ``task:<slug>`` tag on the checkpoint
+    # at the single manager save boundary (at most one task per record).
+    # Normalized / fail-loud there (the #407 canon); ValueError → 400.
+    task: str | None = None
     # vesmaro-canon v1.0.0 (ADR-0003 obligation 4) — the per-call
     # override of the server-configured checkpoint body language
     # (``mnemos.checkpoint_language``); validated at the manager
@@ -1010,6 +1040,10 @@ class RecallContextRequest(BaseModel):
 
     project: str
     query: str | None = None
+    # Ф2 (epic #308): the read-side task switcher — byte-identical to the
+    # checkpoint tag filter plus ``task:<slug>`` (the F1 arm-C surface);
+    # normalized / fail-loud at the manager boundary (ValueError → 400).
+    task: str | None = None
     limit: int = 5
 
 
@@ -1057,6 +1091,7 @@ async def save_context(req: SaveContextRequest) -> dict[str, Any]:
             project=req.project,
             agent=req.agent,
             session=req.session,
+            task=req.task,
             memory_type=MemoryType.SESSION_CONTEXT,
             language=req.language,
         )
@@ -1086,7 +1121,9 @@ async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
     _track_http_call()
     mgr = get_manager()
     try:
-        memories = mgr.recall_context(project=req.project, query=req.query, limit=req.limit)
+        memories = mgr.recall_context(
+            project=req.project, query=req.query, task=req.task, limit=req.limit
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not memories:
