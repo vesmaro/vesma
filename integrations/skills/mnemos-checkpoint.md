@@ -69,4 +69,6 @@ compaction to recover state.
 ## See also
 
 - Skill `mnemos-session-init` — recall at session start
+- Skill `mnemos-canon-write` — canon-compliant task / decision / report records
+- Instruction `canon-records.instructions.md` — canon record standards
 - Instruction `mnemos-session-lifecycle.instructions.md`

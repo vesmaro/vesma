@@ -116,5 +116,6 @@ mnemos_add(
 
 - `mnemos-session-lifecycle.instructions.md` — when to recall and checkpoint
 - `mnemos-memory-ops.instructions.md` — when to search and add
+- `canon-records.instructions.md` — canon record standards (envelope + body sections)
 - Skill `mnemos-tag-contract` — full tag schema reference
 - [Tag Contract (user docs)](../../docs/en/user/tag-contract.md)

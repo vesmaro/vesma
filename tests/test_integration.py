@@ -2131,3 +2131,156 @@ class TestSkillPack:
             fm = text.split("\n---\n", 1)[0]
             assert "name: " in fm, f"{path.name}: frontmatter missing name:"
             assert "description: " in fm, f"{path.name}: frontmatter missing description:"
+
+
+class TestCanonPack:
+    """W3a canon pack (vesmaro-canon v1.0.0) ships and deploys round-trip.
+
+    The two W3a artefacts — ``instructions/canon-records.instructions.md``
+    and ``skills/mnemos-canon-write.md`` — must (a) exist in the shipped
+    pack with canon-accurate content, (b) pass the full deploy → verify →
+    update → uninstall lifecycle through the real IntegrationManager against
+    a fake home (zcode target, nested skills layout — the production path),
+    and (c) pin literals the engine validator enforces (section titles, warn
+    codes, envelope extras) so the pack cannot drift from ``canon_validate``
+    silently.
+    """
+
+    @pytest.fixture
+    def canon_home(self, tmp_path: Path) -> Path:
+        """Fake home whose ~/.zcode marker makes the zcode target detected."""
+        home = tmp_path / "canon-home"
+        (home / ".zcode").mkdir(parents=True)
+        return home
+
+    @pytest.fixture
+    def canon_manager(self, canon_home: Path) -> IntegrationManager:
+        """Manager over the REAL shipped pack, deployed into the fake home.
+
+        Uses the shipped targets.yaml (``load_targets(home=...)``) so the
+        test exercises the production deploy map and the nested skills
+        layout exactly like a real ``mnemos integration setup`` run.
+        """
+        cfg = load_targets(home=canon_home)
+        return IntegrationManager(
+            version="9.9.9", pack_root=None, targets_config=cfg, home=canon_home
+        )
+
+    def _pack_file(self, *parts: str) -> Path:
+        return self._repo_root().joinpath("integrations", *parts)
+
+    @staticmethod
+    def _repo_root() -> Path:
+        return Path(__file__).resolve().parent.parent
+
+    # ── Shipped pack presence + content ──────────────────────────────────────
+
+    def test_canon_instruction_present_and_wellformed(self) -> None:
+        path = self._pack_file("instructions", "canon-records.instructions.md")
+        assert path.is_file(), "canon-records.instructions.md must ship in the pack"
+        text = path.read_text(encoding="utf-8")
+        assert text.startswith("---\n"), "instruction must start with a frontmatter block"
+        fm = text.split("\n---\n", 1)[0]
+        assert "applyTo: '**'" in fm, "instruction frontmatter must carry applyTo"
+        assert "description: " in fm, "instruction frontmatter must carry description"
+        # Canon §9 scope rule, warn semantics and the SSOT pointer must be stated.
+        assert "metadata.canon" in text
+        assert "canon_warnings" in text
+        assert "vesmaro-canon" in text
+
+    def test_canon_skill_present_and_wellformed(self) -> None:
+        path = self._pack_file("skills", "mnemos-canon-write.md")
+        assert path.is_file(), "mnemos-canon-write.md must ship in the skill pack"
+        text = path.read_text(encoding="utf-8")
+        assert text.startswith("---\n"), "skill must start with a frontmatter block"
+        fm = text.split("\n---\n", 1)[0]
+        assert fm.startswith("---\nname: mnemos-canon-write")
+        assert "description:" in fm
+        body = text.partition("\n---\n")[2]
+        for section in ("## WHEN", "## STEPS", "## DISCIPLINE", "## See also"):
+            assert section in body, f"missing standard section {section}"
+
+    def test_pack_literals_match_validator(self) -> None:
+        """The pack's pinned literals equal the engine validator's — drift fails here."""
+        from vesmaro.canon_validate import (
+            CANON_REQUIRED_SECTIONS as ENGINE_SECTIONS,
+        )
+        from vesmaro.canon_validate import (
+            CANON_WARN_CODES as ENGINE_CODES,
+        )
+        from vesmaro.canon_validate import (
+            ENVELOPE_REQUIRED_EXTRAS,
+            TASK_PRIORITIES,
+            TASK_SIZES,
+        )
+
+        instruction = self._pack_file("instructions", "canon-records.instructions.md").read_text(
+            encoding="utf-8"
+        )
+        skill = self._pack_file("skills", "mnemos-canon-write.md").read_text(encoding="utf-8")
+        for code in ENGINE_CODES:
+            assert code in instruction, f"instruction misses warn code {code}"
+            assert code in skill, f"skill misses warn code {code}"
+        for ctype, sections in ENGINE_SECTIONS.items():
+            if ctype == "checkpoint":  # checkpoint sections are server-rendered
+                continue
+            for name in sections:
+                header = f"## {name}"
+                assert header in instruction, f"instruction misses {header} for {ctype}"
+                assert header in skill, f"skill misses {header} for {ctype}"
+        # Envelope extras and enums as taught in the skill.
+        assert "owner_slug" in skill and "priority" in skill and "size" in skill
+        assert "reversible" in skill and "period" in skill
+        assert sorted(TASK_PRIORITIES) == ["P0", "P1", "P2", "P3"]
+        assert sorted(TASK_SIZES) == ["L", "M", "S", "XS"]
+        assert ENVELOPE_REQUIRED_EXTRAS["report"] == ("period",)
+
+    # ── Round-trip: deploy → verify → stale/update → uninstall ───────────────
+
+    def test_roundtrip_deploy_verify_update_uninstall(
+        self, canon_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        target = "zcode"
+        skills_dir = canon_home / ".zcode" / "skills"
+        canon_skill_dir = skills_dir / "mnemos-canon-write"
+        canon_skill_dest = canon_skill_dir / "SKILL.md"
+
+        # -- deploy: real shipped pack, nested skills layout --------------------
+        deploy = canon_manager.deploy(target)
+        assert deploy.deployed_count >= 2, "the shipped skill pack deploys"
+        assert canon_skill_dest.is_file(), "mnemos-canon-write deployed as <name>/SKILL.md"
+        stamped = canon_skill_dest.read_text(encoding="utf-8")
+        assert stamped.startswith("---\nname: mnemos-canon-write"), "frontmatter preserved"
+        assert "mnemos-integration: v9.9.9" in stamped, "stamp injected after frontmatter"
+        assert (skills_dir / "mnemos-recall" / "SKILL.md").is_file(), (
+            "existing pack skills deploy alongside"
+        )
+
+        # -- verify: everything current -----------------------------------------
+        verify = canon_manager.verify(target)
+        assert verify.all_current, f"verify not current: {[f.status for f in verify.files]}"
+        canon_rows = [f for f in verify.files if f.destination == canon_skill_dest]
+        assert canon_rows and canon_rows[0].status is DeployStatus.CURRENT
+
+        # -- stale version detected, update refreshes in place ------------------
+        stale_cfg = load_targets(home=canon_home)
+        stale_mgr = IntegrationManager(
+            version="9.9.8", pack_root=None, targets_config=stale_cfg, home=canon_home
+        )
+        stale_mgr.deploy(target)
+        assert canon_manager.verify(target).stale_count > 0, (
+            "the current-version manager sees the 9.9.8 deployment as stale"
+        )
+        update = canon_manager.update(target)
+        assert any(
+            f.destination == canon_skill_dest and f.status is DeployStatus.UPDATED
+            for f in update.files
+        ), "update refreshes the canon skill in place"
+
+        # -- uninstall: only stamped files go, user files never touched ---------
+        user_note = skills_dir / "user-own-note.md"
+        user_note.write_text("# mine\n", encoding="utf-8")
+        uninstall = canon_manager.uninstall(target)
+        assert canon_skill_dest in uninstall.removed, "stamped canon skill removed"
+        assert not canon_skill_dir.exists(), "empty nested dir cleaned up"
+        assert user_note.is_file(), "user files are never deleted"

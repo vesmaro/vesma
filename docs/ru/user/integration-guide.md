@@ -39,12 +39,14 @@ integrations/
 ├── instructions/
 │   ├── mnemos-session-lifecycle.instructions.md   # recall / checkpoint / save
 │   ├── mnemos-memory-ops.instructions.md          # search / add / agent-recall
-│   └── mnemos-tag-contract.instructions.md        # обязательный состав тегов
+│   ├── mnemos-tag-contract.instructions.md        # обязательный состав тегов
+│   └── canon-records.instructions.md              # канон-стандарты записей (конверт + секции)
 ├── skills/
 │   ├── mnemos-session-init.md                     # recall в начале сессии
 │   ├── mnemos-checkpoint.md                       # save в середине / при компакции
 │   ├── mnemos-recall.md                           # эффективный поиск (узко → широко)
 │   ├── mnemos-write.md                            # написание хороших записей
+│   ├── mnemos-canon-write.md                      # канон-записи (task / decision / report)
 │   └── mnemos-tag-contract.md                     # справочник схемы тегов
 └── prompts/
     └── mnemos-memory.prompt.md                    # активный режим памяти

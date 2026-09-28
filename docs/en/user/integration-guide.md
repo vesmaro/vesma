@@ -38,12 +38,14 @@ integrations/
 ├── instructions/
 │   ├── mnemos-session-lifecycle.instructions.md   # recall / checkpoint / save
 │   ├── mnemos-memory-ops.instructions.md          # search / add / agent-recall
-│   └── mnemos-tag-contract.instructions.md        # required tag composition
+│   ├── mnemos-tag-contract.instructions.md        # required tag composition
+│   └── canon-records.instructions.md              # canon record standards (envelope + sections)
 ├── skills/
 │   ├── mnemos-session-init.md                     # recall at session start
 │   ├── mnemos-checkpoint.md                       # save mid-session / on compaction
 │   ├── mnemos-recall.md                           # effective search (narrow → broaden)
 │   ├── mnemos-write.md                            # write good entries
+│   ├── mnemos-canon-write.md                      # canon-compliant records (task / decision / report)
 │   └── mnemos-tag-contract.md                     # tag schema reference
 └── prompts/
     └── mnemos-memory.prompt.md                    # active memory mode
