@@ -20,13 +20,12 @@ Incrementality contract (ArchCom 2026-09-28 §3.2):
   ``in-progress`` status immediately (contract §3.2 trigger (c)).
 
 Wave-1 note: when the classification finds changes, the publish
-re-parses the whole surface — the slice-1 store has no node READ
-API, so an unchanged file's nodes cannot be carried from the store
-into the new transaction. The classification itself stays honest
-and cheap (mtime+size, zero re-parse on a fresh tree), the rebuild
-is idempotent (same bytes → same ids), and ``files_indexed`` /
-``IndexResult`` report the true shape. Narrowing the re-parse to the
-stale subset lands with the slice-4 node-read surface.
+re-parses the whole surface — the atomic publish is a full rebuild
+(same bytes → same deterministic ids, so the rebuild is idempotent),
+and ``files_indexed`` / ``IndexResult`` report the true shape.
+Narrowing the re-parse to the stale subset is future work; the
+classification itself stays honest and cheap (mtime+size, zero
+re-parse on a fresh tree).
 """
 
 from __future__ import annotations

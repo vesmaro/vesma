@@ -59,6 +59,35 @@ EDGE_KINDS = (
 #: as ``graph_epoch`` (manager.py, issue #415 review finding).
 _PROJECT_GRAPH_EPOCH_PREFIX = "project_graph_epoch:"
 
+#: Sidecar ``graph_meta`` key prefix for the per-project POISONED set
+#: (PG3/PGT-3): paths whose indexing ever hit the secrets detector.
+#: The set LIVES THROUGH REINDEXATION — a poisoned file stays poisoned
+#: even when a later scan misses (pattern drift). It is cleared ONLY by
+#: the operator's explicit fresh start: :meth:`CodeGraphStore.purge_project`
+#: (tool 10 ``delete_graph_project``). The atomic publish path
+#: (:meth:`CodeGraphStore.publish_project_graph`) deliberately does NOT
+#: touch it — a reindex must never launder a poisoned file.
+_POISONED_PREFIX = "poisoned:"
+
+#: Sidecar ``graph_meta`` key prefix: last successful (re)index stamp.
+#: Key layout owned HERE (with the poisoned key) so
+#: :meth:`CodeGraphStore.purge_project` can clear exactly the project's
+#: keys without the storage layer importing the codegraph package.
+_LAST_INDEXED_PREFIX = "last_indexed:"
+
+
+def poisoned_key(project: str) -> str:
+    """Sidecar ``graph_meta`` key for the project's poisoned-path set
+    (length-prefixed, the same colon-safety as the epoch key)."""
+    return f"{_POISONED_PREFIX}{len(project)}:{project}"
+
+
+def last_indexed_key(project: str) -> str:
+    """Sidecar ``graph_meta`` key for the last (re)index ISO stamp
+    (length-prefixed, the same colon-safety as the epoch key)."""
+    return f"{_LAST_INDEXED_PREFIX}{len(project)}:{project}"
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS project_nodes (
     id          TEXT PRIMARY KEY,   -- <project>#<rel_path>#<symbol>#<line>
@@ -98,6 +127,16 @@ CREATE TABLE IF NOT EXISTS graph_files (
 CREATE TABLE IF NOT EXISTS graph_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS graph_audit (   -- PG7 append-only audit trail
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    project   TEXT NOT NULL,
+    action    TEXT NOT NULL,   -- index/reindex/delete/snippet-read/graph-read
+    actor     TEXT NOT NULL,   -- agent_id (per-agent attribution, PG7)
+    session   TEXT,
+    reason    TEXT,
+    details   TEXT NOT NULL DEFAULT '{}',  -- JSON, never source bytes
+    ts        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_project ON project_nodes(project, kind);
 CREATE INDEX IF NOT EXISTS idx_nodes_qname ON project_nodes(qname);
@@ -225,6 +264,13 @@ class CodeGraphStore:
         self._bootstrap_lock = threading.Lock()
         self.create_schema()
 
+    @property
+    def db_path(self) -> str:
+        """Absolute path of the sidecar file (the audit trail opens its
+        own connection to the SAME database — one sidecar, two writers,
+        WAL-mediated)."""
+        return self._db_path
+
     def _conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
         if conn is None:
@@ -349,6 +395,291 @@ class CodeGraphStore:
             raise
         return deleted
 
+    # ── node / edge reads (tools, wave PG-0 slice 4) ────────────────────────
+
+    @staticmethod
+    def _node_from_row(r: sqlite3.Row) -> CodeGraphNode:
+        return CodeGraphNode(
+            id=str(r["id"]),
+            project=str(r["project"]),
+            kind=str(r["kind"]),
+            name=str(r["name"]),
+            qname=str(r["qname"]),
+            path=r["path"],
+            start_line=r["start_line"],
+            end_line=r["end_line"],
+            lang=r["lang"],
+            signature=r["signature"],
+            metadata=json.loads(r["metadata"]) if r["metadata"] else {},
+        )
+
+    def get_node(self, node_id: str) -> CodeGraphNode | None:
+        """Fetch ONE node by canonical id (None if absent)."""
+        row = (
+            self._conn()
+            .execute(
+                "SELECT id, project, kind, name, qname, path, start_line, end_line, "
+                "lang, signature, metadata FROM project_nodes WHERE id=?",
+                (node_id,),
+            )
+            .fetchone()
+        )
+        return self._node_from_row(row) if row is not None else None
+
+    def get_nodes(
+        self,
+        project: str,
+        *,
+        kind: str | None = None,
+        path: str | None = None,
+        qname: str | None = None,
+        limit: int = 200,
+    ) -> list[CodeGraphNode]:
+        """Nodes of one project filtered by exact kind/path/qname.
+
+        All filters hit the slice-1 indexes (``idx_nodes_project``,
+        ``idx_nodes_qname``, ``idx_nodes_path``) — no table scan, no
+        FTS5 (the contract keeps the sidecar free of a fourth table).
+        """
+        if kind is not None and kind not in NODE_KINDS:
+            raise ValueError(f"unknown node kind: {kind!r}")
+        sql = (
+            "SELECT id, project, kind, name, qname, path, start_line, end_line, "
+            "lang, signature, metadata FROM project_nodes WHERE project=?"
+        )
+        params: list[Any] = [project]
+        if kind is not None:
+            sql += " AND kind=?"
+            params.append(kind)
+        if path is not None:
+            sql += " AND path=?"
+            params.append(path)
+        if qname is not None:
+            sql += " AND qname=?"
+            params.append(qname)
+        sql += " ORDER BY path, start_line, qname LIMIT ?"
+        params.append(max(1, int(limit)))
+        rows = self._conn().execute(sql, params).fetchall()
+        return [self._node_from_row(r) for r in rows]
+
+    @staticmethod
+    def _like_pattern(query: str) -> str:
+        """Escape the caller query into a LIKE pattern (``%``/``_``
+        are literals in a search box, never wildcards)."""
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return f"%{escaped}%"
+
+    def search_nodes(
+        self,
+        project: str,
+        query: str,
+        *,
+        kind: str | None = None,
+        limit: int = 50,
+    ) -> list[CodeGraphNode]:
+        """Substring search over name/qname/path (LIKE, escaped).
+
+        The query matches ANY of the three columns — name hits, dotted
+        qname hits and repo-relative path hits all surface. Ranked
+        ordering (exact > prefix > substring) is the SERVICE layer's
+        job; the store returns the raw matches deterministically
+        (kind, then name) so ranking never depends on row order.
+        """
+        if not query.strip():
+            return []
+        if kind is not None and kind not in NODE_KINDS:
+            raise ValueError(f"unknown node kind: {kind!r}")
+        pattern = self._like_pattern(query.strip())
+        sql = (
+            "SELECT id, project, kind, name, qname, path, start_line, end_line, "
+            "lang, signature, metadata FROM project_nodes "
+            "WHERE project=? AND (name LIKE ? ESCAPE '\\' "
+            "OR qname LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\')"
+        )
+        params: list[Any] = [project, pattern, pattern, pattern]
+        if kind is not None:
+            sql += " AND kind=?"
+            params.append(kind)
+        sql += " ORDER BY kind, name, qname LIMIT ?"
+        params.append(max(1, int(limit)))
+        rows = self._conn().execute(sql, params).fetchall()
+        return [self._node_from_row(r) for r in rows]
+
+    def get_edges(
+        self,
+        project: str,
+        *,
+        from_id: str | None = None,
+        to_id: str | None = None,
+        kind: str | None = None,
+        limit: int = 200,
+    ) -> list[CodeGraphEdge]:
+        """Edges of one project filtered by endpoint / kind.
+
+        Endpoint filters hit ``idx_edges_from``/``idx_edges_to``; the
+        project scope comes via the node join (edges carry no project
+        column — the endpoints' project IS the edge's project).
+        """
+        if kind is not None and kind not in EDGE_KINDS:
+            raise ValueError(f"unknown edge kind: {kind!r}")
+        sql = (
+            "SELECT e.from_id, e.to_id, e.kind, e.weight, e.provenance "
+            "FROM project_edges e JOIN project_nodes n ON e.from_id = n.id "
+            "WHERE n.project=?"
+        )
+        params: list[Any] = [project]
+        if from_id is not None:
+            sql += " AND e.from_id=?"
+            params.append(from_id)
+        if to_id is not None:
+            sql += " AND e.to_id=?"
+            params.append(to_id)
+        if kind is not None:
+            sql += " AND e.kind=?"
+            params.append(kind)
+        sql += " ORDER BY e.from_id, e.kind, e.to_id LIMIT ?"
+        params.append(max(1, int(limit)))
+        return [
+            CodeGraphEdge(
+                from_id=str(r["from_id"]),
+                to_id=str(r["to_id"]),
+                kind=str(r["kind"]),
+                weight=float(r["weight"]),
+                provenance=str(r["provenance"]),
+            )
+            for r in self._conn().execute(sql, params).fetchall()
+        ]
+
+    # ── atomic publish (reindexation, ADR-0032 §3.2) ───────────────────────
+
+    def publish_project_graph(
+        self,
+        project: str,
+        nodes: list[CodeGraphNode],
+        edges: list[CodeGraphEdge],
+        file_records: list[GraphFileRecord],
+    ) -> None:
+        """Atomic (re)publish: DELETE the project subtree + insert the
+        new nodes/edges/file records in ONE transaction.
+
+        The single entry point the indexer uses — the previous
+        three-step (delete + upserts) path let a crash between steps
+        strand a half-updated project. A failure anywhere (bad kind,
+        FK-less edge, limit breach upstream) rolls back to the
+        PREVIOUS graph untouched. The poisoned set is deliberately
+        NOT touched here — a reindex must never launder it (see
+        :meth:`add_poisoned_paths`).
+        """
+        if not nodes:
+            raise ValueError("publish_project_graph: refusing to publish an empty node set")
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM project_nodes WHERE project=?", (project,))
+            conn.execute("DELETE FROM graph_files WHERE project=?", (project,))
+            conn.executemany(
+                """INSERT INTO project_nodes
+                   (id, project, kind, name, qname, path,
+                    start_line, end_line, lang, signature, metadata)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                [
+                    (
+                        n.id,
+                        n.project,
+                        n.kind,
+                        n.name,
+                        n.qname,
+                        n.path,
+                        n.start_line,
+                        n.end_line,
+                        n.lang,
+                        n.signature,
+                        json.dumps(n.metadata or {}),
+                    )
+                    for n in nodes
+                ],
+            )
+            conn.executemany(
+                """INSERT OR REPLACE INTO project_edges
+                   (from_id, to_id, kind, weight, provenance)
+                   VALUES (?,?,?,?,?)""",
+                [(e.from_id, e.to_id, e.kind, e.weight, e.provenance) for e in edges],
+            )
+            stamp = datetime.now(UTC).isoformat()
+            conn.executemany(
+                """INSERT OR REPLACE INTO graph_files
+                   (project, path, mtime, size, hash, parse_ok, parse_error, indexed_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                [
+                    (
+                        project,
+                        rec.path,
+                        rec.mtime,
+                        rec.size,
+                        rec.hash,
+                        rec.parse_ok,
+                        rec.parse_error,
+                        rec.indexed_at or stamp,
+                    )
+                    for rec in file_records
+                ],
+            )
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+
+    # ── poisoned set (PG3, lives through reindexation) ──────────────────────
+
+    def get_poisoned_paths(self, project: str) -> set[str]:
+        """The project's poisoned-path set (JSON list under the
+        ``poisoned:`` meta key; empty set when absent)."""
+        raw = self.get_meta(poisoned_key(project))
+        if not raw:
+            return set()
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return set()
+        return {str(p) for p in loaded} if isinstance(loaded, list) else set()
+
+    def add_poisoned_paths(self, project: str, paths: list[str] | set[str]) -> None:
+        """Union ``paths`` INTO the poisoned set (read-modify-write).
+
+        Union semantics IS the «навсегда» contract: once a path hit the
+        secrets detector it stays poisoned across reindexations, even
+        when a later scan misses (pattern drift) or the file is gone.
+        Cleared only by :meth:`purge_project` (tool 10).
+        """
+        if not paths:
+            return
+        merged = self.get_poisoned_paths(project) | {str(p) for p in paths}
+        self.set_meta(poisoned_key(project), json.dumps(sorted(merged)))
+
+    # ── operator fresh start (tool 10) ──────────────────────────────────────
+
+    def purge_project(self, project: str) -> int:
+        """The operator's FRESH START (tool 10 ``delete_graph_project``).
+
+        Deletes the subtree AND clears exactly this project's sidecar
+        meta keys — the poisoned set (the ONLY operation that may ever
+        clear it) and the ``last_indexed`` stamp — in ONE transaction.
+        Returns the number of deleted NODE rows.
+        """
+        conn = self._conn()
+        try:
+            cur = conn.execute("DELETE FROM project_nodes WHERE project=?", (project,))
+            deleted = cur.rowcount if cur.rowcount >= 0 else 0
+            conn.execute("DELETE FROM graph_files WHERE project=?", (project,))
+            conn.execute(
+                "DELETE FROM graph_meta WHERE key IN (?,?)",
+                (poisoned_key(project), last_indexed_key(project)),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        return deleted
+
     # ── file records (incrementality) ─────────────────────────────────────
 
     def upsert_file_record(self, record: GraphFileRecord) -> None:
@@ -423,6 +754,43 @@ class CodeGraphStore:
         except sqlite3.Error:
             conn.rollback()
             raise
+
+    def get_parse_failures(self, project: str) -> dict[str, str]:
+        """``path -> parse_error`` for files whose record says parse_ok=0
+        («clean ≠ proof»: status surfaces them, secrets included as
+        ``secret-detected`` without any content)."""
+        rows = (
+            self._conn()
+            .execute(
+                "SELECT path, parse_error FROM graph_files "
+                "WHERE project=? AND parse_ok=0 ORDER BY path",
+                (project,),
+            )
+            .fetchall()
+        )
+        return {str(r["path"]): str(r["parse_error"] or "parse-error") for r in rows}
+
+    def list_graph_projects(self) -> list[dict[str, Any]]:
+        """Distinct indexed projects with volume counts (tool 9 base)."""
+        rows = (
+            self._conn()
+            .execute(
+                "SELECT project, COUNT(*) AS nodes FROM project_nodes "
+                "GROUP BY project ORDER BY project"
+            )
+            .fetchall()
+        )
+        return [
+            {
+                "project": str(r["project"]),
+                "nodes": int(r["nodes"]),
+                "edges": self.count_edges(str(r["project"])),
+                "files": self.count_files(str(r["project"])),
+                "poisoned": len(self.get_poisoned_paths(str(r["project"]))),
+                "last_indexed_at": self.get_meta(last_indexed_key(str(r["project"]))),
+            }
+            for r in rows
+        ]
 
     # ── counts (status tool, wave PG-0/1) ──────────────────────────────────
 

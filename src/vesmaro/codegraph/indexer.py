@@ -534,6 +534,10 @@ class ProjectIndexer:
             )
         )
         self._publish(project, surface, nodes, edges, records)
+        # PG3 «навсегда»: newly-detected poisoned paths are UNIONED into
+        # the sidecar set — a reindex must never launder a poisoned file
+        # (the store refuses to touch the set on the publish path).
+        self.store.add_poisoned_paths(project, result.poisoned)
         result.nodes = len(nodes)
         result.edges = len(edges)
         result.files_indexed = len(records)
@@ -600,9 +604,10 @@ class ProjectIndexer:
         edges: list[CodeGraphEdge],
         records: list[GraphFileRecord],
     ) -> None:
-        """Atomic publish: CONTAINS_FILE edges for the surface, then
-        DELETE the project subtree and bulk insert everything (the
-        slice-1 store surface: delete + upserts, each transactional)."""
+        """Atomic publish: CONTAINS_FILE edges for the surface, then the
+        slice-4 ONE-TRANSACTION publish (delete subtree + insert nodes,
+        edges and file records together — the previous graph survives
+        any failure)."""
         project_node_id = _node_id(project, "", "", 0)
         edges.extend(
             CodeGraphEdge(
@@ -615,11 +620,7 @@ class ProjectIndexer:
         # Self-loop guard (store CHECK from_id <> to_id): a recursive
         # call inside its own definition would otherwise fail the batch.
         edges = [e for e in edges if e.from_id != e.to_id]
-        self.store.delete_project(project)
-        self.store.upsert_nodes(nodes)
-        self.store.upsert_edges(edges)
-        for rec in records:
-            self.store.upsert_file_record(rec)
+        self.store.publish_project_graph(project, nodes, edges, records)
 
     def _finish(
         self,

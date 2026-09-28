@@ -22,6 +22,7 @@ from vesmaro.storage.code_graph_store import (
     CodeGraphStore,
     GraphFileRecord,
     bump_project_graph_epoch,
+    last_indexed_key,
     project_graph_epoch_key,
     read_project_graph_epoch,
 )
@@ -383,3 +384,118 @@ class TestContextManager:
         # the committed row (WAL + same file).
         with CodeGraphStore(data_dir) as store2:
             assert store2.count_nodes("p") == 1
+
+
+# ── slice-4 read surface + atomic publish + poisoned set ────────────────────
+
+
+class TestReadSurface:
+    def test_get_nodes_filters_by_kind_path_qname(self, store: CodeGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                _node("p", "alpha", kind="Function", path="pkg/a.py"),
+                _node("p", "Beta", kind="Class", path="pkg/a.py", line=9),
+                _node("p", "gamma", kind="Function", path="pkg/b.py"),
+                _node("q", "alpha", kind="Function", path="other/x.py"),
+            ]
+        )
+        kinds = {n.name for n in store.get_nodes("p", kind="Function")}
+        assert kinds == {"alpha", "gamma"}
+        by_path = {n.name for n in store.get_nodes("p", path="pkg/a.py")}
+        assert by_path == {"alpha", "Beta"}
+        by_qname = store.get_nodes("p", qname="pkg.gamma")
+        assert [n.name for n in by_qname] == ["gamma"]
+        # project scoping: q's nodes never leak into p's reads
+        assert len(store.get_nodes("p")) == 3
+        assert len(store.get_nodes("p", limit=2)) == 2
+
+    def test_get_nodes_rejects_unknown_kind(self, store: CodeGraphStore) -> None:
+        with pytest.raises(ValueError, match="unknown node kind"):
+            store.get_nodes("p", kind="Sorcery")
+
+    def test_get_node_roundtrip_and_missing(self, store: CodeGraphStore) -> None:
+        node = _node("p", "alpha")
+        store.upsert_nodes([node])
+        got = store.get_node(node.id)
+        assert got is not None and got.name == "alpha" and got.project == "p"
+        assert store.get_node("p#nowhere#x#0") is None
+
+    def test_search_nodes_matches_name_qname_path_escaped(self, store: CodeGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                _node("p", "handler", path="pkg/handler.py"),
+                _node("p", "other", path="pkg/plain.py"),
+            ]
+        )
+        # a node matching on several columns is still ONE row (name,
+        # qname and path all hit for "handler")
+        assert [n.name for n in store.search_nodes("p", "handler")] == ["handler"]
+        # a path-only hit: "plain" appears in the path, never in a name
+        assert [n.name for n in store.search_nodes("p", "plain")] == ["other"]
+        assert [n.name for n in store.search_nodes("p", "pkg.other")] == ["other"]
+        # % / _ are LITERALS in a search box, never wildcards
+        assert store.search_nodes("p", "handl%") == []
+        assert store.search_nodes("p", "handl_r") == []
+
+    def test_get_edges_by_endpoint_and_kind(self, store: CodeGraphStore) -> None:
+        a, b = _node("p", "a"), _node("p", "b")
+        c = _node("q", "c")
+        store.upsert_nodes([a, b, c])
+        store.upsert_edges([CodeGraphEdge(from_id=a.id, to_id=b.id, kind="CALLS")])
+        assert len(store.get_edges("p", from_id=a.id)) == 1
+        assert store.get_edges("p", kind="CALLS")[0].to_id == b.id
+        assert store.get_edges("q", from_id=c.id) == []
+
+
+class TestPublishProjectGraph:
+    def test_publish_replaces_subtree_atomically(self, store: CodeGraphStore) -> None:
+        old = _node("p", "old")
+        store.upsert_nodes([old])
+        new = _node("p", "new")
+        rec = GraphFileRecord(project="p", path="pkg/a.py", mtime=1.0, size=2, hash="h")
+        store.publish_project_graph("p", [new], [], [rec])
+        assert store.count_nodes("p") == 1
+        assert store.get_nodes("p")[0].name == "new"
+        assert len(store.get_file_records("p")) == 1
+
+    def test_publish_failure_rolls_back_previous_graph(self, store: CodeGraphStore) -> None:
+        """A bad edge (missing endpoint) fails the WHOLE publish — the
+        previous graph survives (ADR-0032 §3.2 atomicity)."""
+        keeper = _node("p", "keeper")
+        store.publish_project_graph("p", [keeper], [], [])
+        ghost = _node("p", "ghost")
+        broken_edge = CodeGraphEdge(from_id=ghost.id, to_id="p#x#y#1", kind="CALLS")
+        with pytest.raises(sqlite3.Error):
+            store.publish_project_graph("p", [keeper, ghost], [broken_edge], [])
+        names = {n.name for n in store.get_nodes("p")}
+        assert names == {"keeper"}  # pre-publish graph untouched
+
+    def test_publish_refuses_empty_node_set(self, store: CodeGraphStore) -> None:
+        with pytest.raises(ValueError, match="empty node set"):
+            store.publish_project_graph("p", [], [], [])
+
+
+class TestPoisonedSet:
+    def test_add_union_and_get_roundtrip(self, store: CodeGraphStore) -> None:
+        store.add_poisoned_paths("p", ["pkg/a.py"])
+        store.add_poisoned_paths("p", {"pkg/b.py", "pkg/a.py"})  # union, no dupes
+        assert store.get_poisoned_paths("p") == {"pkg/a.py", "pkg/b.py"}
+        assert store.get_poisoned_paths("q") == set()
+
+    def test_poisoned_survives_reindex_publish(self, store: CodeGraphStore) -> None:
+        """«Навсегда»: publish (the reindex path) must NEVER touch the
+        poisoned set — only purge_project clears it."""
+        store.add_poisoned_paths("p", ["pkg/leak.py"])
+        store.publish_project_graph("p", [_node("p", "a")], [], [])
+        assert store.get_poisoned_paths("p") == {"pkg/leak.py"}
+
+    def test_purge_clears_subtree_poisoned_and_stamp(self, store: CodeGraphStore) -> None:
+        node = _node("p", "a")
+        store.publish_project_graph("p", [node], [], [])
+        store.add_poisoned_paths("p", ["pkg/a.py"])
+        store.set_meta(last_indexed_key("p"), "2026-09-28T00:00:00+00:00")
+        deleted = store.purge_project("p")
+        assert deleted == 1
+        assert store.count_nodes("p") == 0
+        assert store.get_poisoned_paths("p") == set()
+        assert store.get_meta(last_indexed_key("p")) is None
