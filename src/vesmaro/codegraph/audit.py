@@ -28,12 +28,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 #: Audit ``action`` values (the closed vocabulary of §3.6).
+#: ``auto-register`` joined in PG-0.5 (owner directive 2026-09-29): the
+#: native auto-indexer's marker-gated project registration is its own
+#: audited verb — recorded with the triggering agent as the actor.
 AUDIT_ACTIONS = (
     "index",
     "reindex",
     "delete",
     "snippet-read",
     "graph-read",
+    "auto-register",
 )
 
 

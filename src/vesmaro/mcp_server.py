@@ -160,6 +160,35 @@ def _detect_project() -> str:
     return normalize_project_slug(Path(os.getcwd()).name)
 
 
+def _emit_codegraph_hint(mgr: Any, args: dict[str, Any]) -> None:
+    """PG-0.5 native auto-index hint — the ONE MCP cut-in point.
+
+    Fires on every dispatched tool call (the explicit ``project`` /
+    ``project_id`` argument when the tool carries one, the cwd slug
+    otherwise) and hands it to ``MemoryManager.codegraph_activity_hint``:
+    a non-blocking queue put that may auto-register + background-index
+    the project (ADR-0032 wave PG-0.5, owner directive 2026-09-29 —
+    zero explicit calls, zero instructions). The hint NEVER raises and
+    never blocks the tool call; REST is deliberately not a hint surface
+    (no cwd to gate a registration on).
+    """
+    try:
+        project = args.get("project") or args.get("project_id")
+        if not isinstance(project, str) or not project.strip():
+            project = _detect_project()
+        agent = args.get("agent")
+        if not isinstance(agent, str) or not agent.strip():
+            agent = None
+        session = args.get("session")
+        if not isinstance(session, str) or not session.strip():
+            session = None
+        mgr.codegraph_activity_hint(
+            project.strip(), cwd=os.getcwd(), agent=agent, session=session
+        )
+    except Exception:
+        logger.debug("mcp: codegraph auto-index hint skipped", exc_info=True)
+
+
 def _checkpoint_reminder() -> str | None:
     """Return a reminder string if it's time to save a checkpoint, else None."""
     calls = _checkpoint_tracker["calls_since_save"]
@@ -2241,6 +2270,9 @@ def _parse_iso_arg(value: str) -> datetime | None:
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     mgr = get_manager()
     settings = mgr.settings
+    # PG-0.5: the native auto-index hint rides EVERY dispatch — one
+    # cut-in point, cheap (flag + queue put), failure-isolated below.
+    _emit_codegraph_hint(mgr, args)
 
     # ── mnemos_add ──────────────────────────────────────────────────────────
     if name == "mnemos_add":

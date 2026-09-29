@@ -225,6 +225,19 @@ class CodeGraphService:
     def config(self) -> CodeGraphConfig:
         return self._config
 
+    @property
+    def main(self) -> ProjectDirectory:
+        """The main-store project directory (read surface for the PG-0.5
+        auto-indexer's registration step — a separate accessor keeps
+        ``_main`` private everywhere else)."""
+        return self._main
+
+    @property
+    def audit(self) -> GraphAudit:
+        """The PG7 audit writer (the auto-indexer's registration event
+        is an audit-first-class action, ``auto-register``)."""
+        return self._audit
+
     def close(self) -> None:
         self._store.close()
         self._audit.close()
