@@ -337,10 +337,14 @@ class TestFlagOff:
         assert stats["events_total"] == 0
         assert stats["since_restart"]["reports_total"] == 0
 
-    def test_config_default_is_off(self) -> None:
+    def test_config_default_is_on(self) -> None:
+        # Owner decision 2026-09-28 «graphs on by default»: the whole
+        # feedback loop ships enabled (apply without capture would be
+        # decorative); the flag-off contract is pinned in this class's
+        # explicit-off tests.
         from vesmaro.config import SearchConfig
 
-        assert SearchConfig().feedback_capture_enabled is False
+        assert SearchConfig().feedback_capture_enabled is True
 
 
 class TestCaptureHappyPath:
