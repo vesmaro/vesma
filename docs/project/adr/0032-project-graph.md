@@ -61,7 +61,11 @@ DONE (the beacon rides outside budget blocks); ADR-0025 — the lanes leg
 falsified (E3); ADR-0016 — the federation threat model and the
 separate-ADR-before-egress pattern; ADR-0014 — TOTP for the eyes
 remote; the verified DeusData research of 2026-09-28; the live code
-audit at main=`3ed97e6`.
+audit at main=`3ed97e6`. A v1 boundary is deliberate: a surface without agent attribution
+ever triggers the auto path (PG7 binding over coverage) — `mnemos_recall_context`
+carries no `agent` argument, so the native path fires from the first
+`pre_llm_call` hook (agent known), `add`/`save`/`assemble`/`context_rewrite`
+call, or explicit graph tool.
 
 ## Context
 
