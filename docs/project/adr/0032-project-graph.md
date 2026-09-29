@@ -17,6 +17,27 @@ s1 gate PASS (recall@5 = 0.9484 vs the 0.9121 walk-on guard floor),
 and the graph remains inert until an explicit `index_project` /
 `watch_start`. The operator can still hide the surface with
 `code_graph.enabled: false`. Decision mnemos id `8457c635`.
+
+**Update 2026-09-29 (owner):** native auto-indexing (wave PG-0.5,
+directive mnemos `3359b0f8`) — indexation happens BY ITSELF and
+NATIVELY, with no explicit agent/harness call and no instruction or
+skill. Mechanism: every dispatched MCP tool call and every
+`pre_llm_call` hook emits a non-blocking activity hint; a project
+missing from the projects table whose cwd carries a project marker
+(`.git` / `pyproject.toml` / `package.json` / `go.mod` /
+`Cargo.toml`) is auto-registered (attribution in the description, new
+audit action `auto-register`), then the first index (reason
+`auto-first`) or a stale reindex (reason `auto-stale`) runs in the
+background on the SAME cooperative scheduler thread as the watch
+poll, behind a per-project throttle
+(`code_graph.auto_reindex_min_interval_sec`, default 300s, sidecar
+`last_auto_action` stamp, reserve-then-act). PG1–PG7 are unchanged:
+the auto path rides the identical `index_project` serialization,
+fail-closed limits and per-agent audit (the hinting agent is the
+actor — no agent, no auto action). v1 limitation: a multi-path
+registration indexes `paths[0]` only. REST is not an auto surface;
+`code_graph.auto_index: false` restores the manual-only trigger
+model, which remains fully available either way.
 **Deciders:** Tech Lead (chair), Product Architect, Senior System Engineer,
 Senior Security Engineer — all four entered conditional positions; the
 challenge phase converged every one (Python-only wave 1, beacon before

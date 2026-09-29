@@ -1035,7 +1035,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 The `/graph/` namespace mirrors the ten [`mnemos_*graph*` MCP tools](mcp-tools.md#project-graph-tools-adr-0032) over a registered project's code graph (symbols, outlines, snippets — [ADR-0032](../../project/adr/0032-project-graph.md)).
 
-> **Default off — operator flag.** Every endpoint answers `503` until the operator sets `code_graph.enabled: true`.
+> **On by default (owner decision 2026-09-28).** Set `code_graph.enabled: false` and every endpoint answers `503`. The REST surface stays fully manual — indexing fires only on `POST /graph/index`; the native auto-indexing of wave PG-0.5 (auto-registration + background index on the first MCP/hook contact) is an MCP/hooks-side path and never triggers through HTTP.
 
 **Error codes for the whole namespace** — `503` disabled (operator gate), `403` confinement (unregistered project or a path escaping the registered root, PG2), `413` index limit breach (fail-closed, PG7), `400` bad request (budget cannot fit one row, malformed arguments). Every call — read or write — is audited per agent (PG7); the `agent` field is therefore required everywhere.
 
