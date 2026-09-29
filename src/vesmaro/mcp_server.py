@@ -2385,6 +2385,11 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             agent=args.get("agent"),
             session=args.get("session"),
             task=args.get("task"),
+            # cascade QA P3-4 twin parity: REST /context/save stamps
+            # SESSION_CONTEXT; the MCP twin now does the same (was the
+            # NOTE default). Dedup is unaffected (hash = fields + agent
+            # + project, no memory_type).
+            memory_type=MemoryType.SESSION_CONTEXT,
             language=args.get("language"),
         )
         _track_call(is_save=True)

@@ -50,6 +50,8 @@ from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import CHECKPOINT_SECTION_TITLES, MemoryCreate, MemoryUpdate
 
+from ._canon_sibling import canon_sibling_file
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -717,13 +719,14 @@ def test_strict_reject_leaves_no_vault_trace(mgr: MemoryManager) -> None:
 
 def _canon_repo_sections() -> dict[str, list[str]] | None:
     """Read x-canon-sections from the pinned canon schemas when the sibling
-    checkout exists (same pin protocol as the S1 drift test)."""
-    candidate = Path(__file__).resolve().parents[2] / "vesmaro-canon" / "schemas"
-    if not candidate.is_dir():
+    checkout exists (same pin protocol as the S1 drift test). Worktree-safe
+    resolution (cascade QA P2-2 — shared helper, issue #433 class)."""
+    schemas_dir = canon_sibling_file("schemas")
+    if schemas_dir is None or not schemas_dir.is_dir():
         return None
     out: dict[str, list[str]] = {}
     for rtype in ("checkpoint", "task", "decision", "report"):
-        schema = candidate / f"{rtype}.schema.json"
+        schema = schemas_dir / f"{rtype}.schema.json"
         if not schema.is_file():
             return None
 
@@ -747,3 +750,231 @@ def test_required_sections_match_x_canon_sections() -> None:
 def test_violation_as_dict_shape() -> None:
     v = CanonViolation(code="CANON-E-TITLE", rule="canon §3", detail="d")
     assert v.as_dict() == {"code": "CANON-E-TITLE", "rule": "canon §3", "detail": "d"}
+
+
+# ---------------------------------------------------------------------------
+_SNAPSHOT_PATH = Path(__file__).parent / "data" / "w4b_corpus_snapshot.json"
+
+# 6. Date-rule table (cascade fix-b B1 — issue #437 + QA P2-1 + SEC P3-2):
+# dotted fragments flag only as UNAMBIGUOUS RU day-first dates; standalone
+# relative words/phrases are case-insensitive; decimals and versions pass.
+# ---------------------------------------------------------------------------
+
+_DATE_CASES = [
+    # (body fragment, expected: True = CANON-E-DATE flagged)
+    ("сделано 27.09", True),
+    ("сделано 27.09.2026", True),
+    ("сделано 15.07", True),
+    ("версия 3.14.3", False),
+    ("версия 0.0.31", False),
+    ("бамп 1.5", False),
+    ("vesmaro 6.0", False),
+    ("vesmaro 3.0", False),
+    ("десятичная 12.05", False),
+    ("откат вчера", True),
+    ("Откат Вчера", True),
+    ("done Today", True),
+    ("review Yesterday", True),
+    ("встреча на следующей неделе", True),
+    ("sync Last Week", True),
+    ("дата 2026-09-28", False),
+    ("неделя 2026-W39", False),
+]
+
+
+@pytest.mark.parametrize(("fragment", "expected_flag"), _DATE_CASES)
+def test_date_rule_table(fragment: str, expected_flag: bool) -> None:
+    """Table-driven §5 pin (issue #437 + cascade QA P2-1)."""
+    violations = validate_canon_record(
+        content=f"- {fragment}",
+        title="t",
+        metadata={
+            "canon": {
+                "schema_version": "1",
+                "type": "report",
+                "status": "active",
+                "language": "ru",
+                "period": None,
+            }
+        },
+    )
+    codes = {v.code for v in violations}
+    if expected_flag:
+        assert "CANON-E-DATE" in codes, (fragment, codes)
+    else:
+        assert "CANON-E-DATE" not in codes, (fragment, codes)
+
+
+# ---------------------------------------------------------------------------
+# 7. Intake conformance (cascade fix-b B2 — QA P1-2): the engine validator
+# against the canon-repo intake corpus (sibling live leg) and the committed
+# snapshot (CI fallback leg). The checker asymmetry (§5 dates are
+# engine-only) is pinned rather than just documented.
+# ---------------------------------------------------------------------------
+
+
+#: Edge fixtures carry INDIVIDUAL expected verdicts (canon-repo intake
+#: README table): «edge» means tricky-to-classify, not «must pass». The
+#: date entries also pin the checker asymmetry (§5 is engine-only).
+_EDGE_EXPECTED: dict[str, object] = {
+    "edge-date-relative-word.json": "CANON-E-DATE",
+    "edge-date-version-lookalike.json": None,
+    "edge-placeholder-heavy.json": None,
+    "edge-resolved-checkpoint.json": "CANON-E-STATUS",
+    "edge-resolved-report.json": None,
+    "edge-title-exactly-80.json": None,
+    "edge-title-multiline-crlf.json": "CANON-E-TITLE",
+}
+
+
+def _intake_expected_code(name: str) -> str | None:
+    """bad-intake-e-<code-lower>.json → 'CANON-E-<CODE UPPER>'; others None."""
+    if not name.startswith("bad-intake-e-"):
+        return None
+    return "CANON-E-" + name.removeprefix("bad-intake-e-").removesuffix(".json").upper()
+
+
+def test_intake_fixtures_conform_to_engine_validator() -> None:
+    """Live leg: every canon-repo intake fixture gets its expected engine
+    verdict — positives/edges-clean pass, negatives fail with the code
+    their filename names (AGW-20 contract, vesmaro-agent v0.5)."""
+    sibling = canon_sibling_file("schemas", "envelope.schema.json")
+    intake = sibling.parent.parent / "examples" / "intake" if sibling else None
+    if intake is None or not intake.is_dir():
+        pytest.skip("canon sibling checkout not available")
+    checked = 0
+    for sub in ("fixtures-positive", "fixtures-negative", "fixtures-edge"):
+        for path in sorted((intake / sub).glob("*.json")):
+            record = json.loads(path.read_text(encoding="utf-8"))
+            violations = validate_canon_record(
+                content=record.get("body") or "",
+                title=record.get("title"),
+                metadata=record.get("metadata") or {},
+            )
+            codes = sorted({v.code for v in violations})
+            expected = _EDGE_EXPECTED.get(path.name, _intake_expected_code(path.name))
+            if expected is None:
+                assert not codes, f"{path.name}: unexpected {codes}"
+            elif isinstance(expected, str):
+                assert expected in codes, f"{path.name}: expected {expected}, got {codes}"
+            else:
+                assert codes == set(expected), f"{path.name}: expected {expected}, got {codes}"
+            checked += 1
+    assert checked >= 17, "the intake corpus must stay substantive"
+
+
+def test_snapshot_date_edges_match_engine_validator() -> None:
+    """CI fallback leg (no sibling): the snapshot's date edges get the same
+    engine verdicts the intake README documents — the checker asymmetry is
+    a PIN, not prose."""
+    snapshot = json.loads(_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    expectations = {
+        "edge-date-relative-word.json": {"CANON-E-DATE"},
+        "edge-date-version-lookalike.json": set(),
+    }
+    for entry in snapshot["files"]:
+        name = entry["path"].rsplit("/", 1)[-1]
+        if name not in expectations:
+            continue
+        record = entry["record"]
+        record_type = record.get("record_type") or "report"
+        canon = {
+            "schema_version": "1",
+            "type": record_type,
+            "status": "active" if record_type != "task" else "draft",
+            "language": record.get("language") or "ru",
+        }
+        if record_type == "task":
+            canon.update({"owner_slug": "tech-lead", "priority": "P2", "size": "S"})
+        if record_type == "report":
+            canon["period"] = None
+        codes = {
+            v.code
+            for v in validate_canon_record(
+                content=record.get("body") or "",
+                title=record.get("title"),
+                metadata={"canon": canon},
+            )
+        }
+        assert codes == expectations[name], (name, codes)
+
+
+# ---------------------------------------------------------------------------
+# 8. Vendored-schema literal pin (cascade fix-b B4 — QA P2-3): the
+# validator literals stay in lockstep with the vendored canon schemas
+# (in-repo bytes — works in CI without the sibling).
+# ---------------------------------------------------------------------------
+
+
+def test_validator_literals_pinned_to_vendored_schemas() -> None:
+    from vesmaro.canon_validate import (
+        ENVELOPE_STATUSES,
+        ENVELOPE_TYPES,
+        RESOLVED_ALLOWED_TYPES,
+    )
+
+    envelope = json.loads(
+        (
+            Path(__file__).parent.parent / "integrations" / "schemas" / "envelope.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    props = envelope["properties"]
+    assert set(props["type"]["enum"]) == ENVELOPE_TYPES
+    assert set(props["status"]["enum"]) == ENVELOPE_STATUSES
+    assert set(props["language"]["enum"]) == {"ru", "en"}
+    # resolved restricted to task/report: the conditional branch for
+    # checkpoint/decision excludes it.
+    branches = [
+        conditional
+        for conditional in envelope["allOf"]
+        if conditional.get("if", {}).get("properties", {}).get("type", {}).get("enum")
+        == ["checkpoint", "decision"]
+    ]
+    assert branches, "checkpoint/decision status if/then branch must exist"
+    refs = [branch.get("then", {}).get("$ref") for branch in branches]
+    assert refs == ["#/$defs/status-excluding-resolved"]
+    excluded_statuses = set(
+        envelope["$defs"]["status-excluding-resolved"]["properties"]["status"]["enum"]
+    )
+    assert "resolved" not in excluded_statuses
+    task_extras = envelope["$defs"]["task-extras"]["properties"]
+    assert set(task_extras["priority"]["enum"]) == {"P0", "P1", "P2", "P3"}
+    assert set(task_extras["size"]["enum"]) == {"XS", "S", "M", "L"}
+    assert "resolved" in ENVELOPE_STATUSES
+    for not_resolved in ENVELOPE_TYPES - RESOLVED_ALLOWED_TYPES:
+        assert not_resolved in {"checkpoint", "decision"}
+
+
+# ---------------------------------------------------------------------------
+# 9. SDK real-channel echo (cascade fix-b B5 — QA P3-3): the sdk.remember
+# canon-warnings echo asserted through the REAL channel, not a trusted-add
+# proxy.
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_remember_echoes_codes_through_real_channel(
+    mgr: MemoryManager, caplog: pytest.LogCaptureFixture
+) -> None:
+    from vesmaro.sdk import MnemosSDK
+
+    sdk = MnemosSDK(manager=mgr)
+    with caplog.at_level(logging.WARNING):
+        memory = sdk.remember(
+            "встреча вчера",
+            project="canonproj",
+            agent="sdk-agent",
+            tags=["project:canonproj", "agent:sdk-agent", "mnemos:learning"],
+            metadata={
+                "canon": {
+                    "schema_version": "1",
+                    "type": "report",
+                    "status": "active",
+                    "language": "ru",
+                    "period": None,
+                }
+            },
+        )
+    codes = [w["code"] for w in memory.metadata.get("canon_warnings", [])]
+    assert "CANON-E-DATE" in codes
+    assert "sdk.remember: canon warnings" in caplog.text
+    assert "CANON-E-DATE" in caplog.text
