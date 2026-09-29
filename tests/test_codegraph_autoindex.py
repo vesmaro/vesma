@@ -19,7 +19,14 @@ Pins the manager+dispatcher level contract of
   scheduler — coalescing pinned on the same double);
 * PG7 fail-closed limits hold on the AUTO path exactly as on the
   manual one: a limit breach aborts the whole index (audit with the
-  cause, zero nodes, nothing partial).
+  cause, zero nodes, nothing partial);
+* PR #443 fix-slice: one root = one graph (a second NAME over the same
+  marker-root reuses the existing project, audit
+  ``auto-register-reused``), the ``auto_register_max_projects`` cap
+  silently skips + audits ``auto-register-capped``, a bare ``.git``
+  directory and ``$HOME``/filesystem-root cwds never auto-register,
+  and a FAILED first auto index suspends the auto path (no disk walk
+  on further hints) until a successful manual ``index_project``.
 
 Throttle windows are injected as 0 (or a wide 60s for the throttle
 test) — no test sleeps on production numbers; scheduler joins go
@@ -339,5 +346,153 @@ def test_limit_breach_fails_whole_auto_index(tmp_path: Path, repo: Path) -> None
         # The registration itself survived (it precedes the index and is
         # not part of the graph) — the operator sees the project listed.
         assert mgr.sqlite.get_project_by_name(PROJECT) is not None
+    finally:
+        mgr.close()
+
+
+# ── (fix-slice, PR #443 review P2-1/P2-2): flood + server-cwd guards ────────
+
+
+def test_two_names_one_root_reuse_existing_project(tmp_path: Path, repo: Path) -> None:
+    """One root = one graph (P2-1): a second NAME over the same
+    marker-root reuses the existing project — ONE projects row, ONE
+    graph, audit ``auto-register-reused`` instead of a duplicate
+    registration + full re-indexation of the same tree."""
+    mgr = _make_manager(tmp_path)
+    try:
+        assert mgr.codegraph_activity_hint("p1", cwd=str(repo), agent=AGENT, session=SESSION)
+        _idle(mgr)
+        service = _service(mgr)
+        assert service.store.count_nodes("p1") > 0
+
+        assert mgr.codegraph_activity_hint("p2", cwd=str(repo), agent=AGENT, session=SESSION)
+        _idle(mgr)
+
+        assert mgr.sqlite.get_project_by_name("p2") is None  # no duplicate row
+        same_root = [p for p in mgr.sqlite.list_projects() if str(repo) in (p.paths or [])]
+        assert len(same_root) == 1
+        assert service.store.count_nodes("p2") == 0  # no second graph
+        rows = GraphAudit(service.store.db_path).recent(project="p1", limit=100)
+        assert any(r["action"] == "auto-register" for r in rows)
+        assert any(r["action"] == "auto-register-reused" for r in rows)
+        # Exactly ONE full indexation of the tree ever happened.
+        assert sum(1 for r in rows if r["reason"] == "auto-first") == 1
+    finally:
+        mgr.close()
+
+
+def test_git_only_directory_never_auto_registers(tmp_path: Path) -> None:
+    """A bare ``.git`` is NOT an auto-registration trigger (P2-2: the
+    dotfiles-$HOME shape) — only packaging manifests qualify."""
+    git_only = tmp_path / "gitonly"
+    (git_only / ".git").mkdir(parents=True)
+    (git_only / "loose.py").write_text("x = 1\n", encoding="utf-8")
+    mgr = _make_manager(tmp_path)
+    try:
+        assert project_marker(str(git_only)) is None
+        assert _hint(mgr, git_only) is True  # queued…
+        _idle(mgr)  # …and silently classified as not-a-project
+        assert mgr.sqlite.get_project_by_name(PROJECT) is None
+        service = _service(mgr)
+        assert service.store.count_nodes(PROJECT) == 0
+        assert all(r["action"] != "auto-register" for r in _audit(service))
+    finally:
+        mgr.close()
+
+
+def test_home_cwd_is_refused_even_with_manifest(
+    tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``$HOME`` and the filesystem root never auto-register (P2-2) —
+    even when a manifest sits right in them (a dotfiles repo exporting
+    a ``package.json`` into ``$HOME``)."""
+    monkeypatch.setattr("vesmaro.codegraph.autoindex.Path.home", classmethod(lambda cls: repo))
+    mgr = _make_manager(tmp_path)
+    try:
+        assert project_marker(str(repo)) == "pyproject.toml"  # marker present…
+        assert _hint(mgr, repo) is True  # …but root == $HOME → refused
+        _idle(mgr)
+        assert mgr.sqlite.get_project_by_name(PROJECT) is None
+        service = _service(mgr)
+        assert service.store.count_nodes(PROJECT) == 0
+        assert all(r["action"] != "auto-register" for r in _audit(service))
+    finally:
+        mgr.close()
+
+
+def test_auto_register_cap_skips_silently(tmp_path: Path) -> None:
+    """``auto_register_max_projects=1`` (P2-1): the SECOND distinct
+    root is a silent skip with audit ``auto-register-capped``; reusing
+    an EXISTING root is not a registration and never hits the cap."""
+    repo_a = tmp_path / "repo-a"
+    repo_b = tmp_path / "repo-b"
+    _write_repo(repo_a)
+    _write_repo(repo_b)
+    mgr = _make_manager(tmp_path, auto_register_max_projects=1)
+    try:
+        assert mgr.codegraph_activity_hint("first", cwd=str(repo_a), agent=AGENT, session=SESSION)
+        _idle(mgr)
+        service = _service(mgr)
+        assert mgr.sqlite.get_project_by_name("first") is not None
+
+        # A DIFFERENT root past the cap: skipped, audited, never an error.
+        assert mgr.codegraph_activity_hint("second", cwd=str(repo_b), agent=AGENT, session=SESSION)
+        _idle(mgr)
+        assert mgr.sqlite.get_project_by_name("second") is None
+        assert service.store.count_nodes("second") == 0
+        capped = GraphAudit(service.store.db_path).recent(project="second", limit=100)
+        assert any(r["action"] == "auto-register-capped" for r in capped)
+
+        # Root-REUSE of the already-registered project: cap not consumed.
+        assert mgr.codegraph_activity_hint("alias", cwd=str(repo_a), agent=AGENT, session=SESSION)
+        _idle(mgr)
+        assert mgr.sqlite.get_project_by_name("alias") is None
+        reused = GraphAudit(service.store.db_path).recent(project="first", limit=100)
+        assert any(r["action"] == "auto-register-reused" for r in reused)
+    finally:
+        mgr.close()
+
+
+def test_failed_first_index_suspends_auto_until_manual(
+    tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed FIRST auto index suspends the auto path (P2-2): further
+    hints (throttle window 0!) never walk the tree again — a spy on the
+    incremental index entry proves it — until a successful MANUAL
+    ``index_project`` lifts the flag."""
+    from vesmaro.codegraph import incremental
+    from vesmaro.codegraph.service import auto_suspended_key
+
+    walks: list[int] = []
+    real_index = incremental.index_project
+
+    def counting_index(*args: Any, **kwargs: Any) -> Any:
+        walks.append(1)
+        return real_index(*args, **kwargs)
+
+    monkeypatch.setattr(incremental, "index_project", counting_index)
+
+    mgr = _make_manager(tmp_path, index_max_files=1)  # the repo has 2 source files
+    try:
+        service = _service(mgr)
+        assert _hint(mgr, repo) is True
+        _idle(mgr)
+        assert sum(walks) == 1  # the failing walk — and nothing partial
+        assert service.store.count_nodes(PROJECT) == 0
+        assert service.store.get_meta(auto_suspended_key(PROJECT)) == "1"
+
+        # Repeated hints (window 0 → the throttle alone would not save
+        # us) must NOT touch the disk again while suspended.
+        for _ in range(3):
+            assert _hint(mgr, repo) is True
+        _idle(mgr)
+        assert sum(walks) == 1
+
+        # A successful MANUAL index lifts the suspension and works.
+        mgr.settings.code_graph.index_max_files = 100
+        service.index_project(PROJECT, agent=AGENT, session=SESSION)
+        assert service.store.count_nodes(PROJECT) > 0
+        assert service.store.get_meta(auto_suspended_key(PROJECT)) == "0"
+        assert sum(walks) == 2
     finally:
         mgr.close()

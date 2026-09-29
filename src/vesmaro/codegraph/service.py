@@ -78,6 +78,21 @@ SEARCH_ROW_CAP = 200
 #: Sidecar schema version reported by ``get_graph_schema``.
 GRAPH_SCHEMA_VERSION = 1
 
+#: Sidecar ``graph_meta`` key prefix for the auto-path suspension flag
+#: (PG-0.5 fix-slice, PR #443 review P2-2): set to ``1`` when a FIRST
+#: auto index fails, so a failing tree is not re-walked on every hint;
+#: cleared (``0``) by a successful ``index_project`` publish (manual or
+#: watch — the watch poll rides the same method) or by
+#: ``delete_graph_project``. The ``{len}`` segment keeps the key
+#: colon-safe, the same discipline as every other graph_meta key.
+_AUTO_SUSPENDED_PREFIX = "auto_suspended:"
+
+
+def auto_suspended_key(project: str) -> str:
+    """The sidecar ``graph_meta`` key of the auto-path suspension flag
+    for one project (graph key)."""
+    return f"{_AUTO_SUSPENDED_PREFIX}{len(project)}:{project}"
+
 
 class GraphToolError(ValueError):
     """Base for refused graph operations (mapped to tool errors, never
@@ -107,6 +122,7 @@ class ProjectRecord(Protocol):
 
     id: str
     name: str
+    description: str
     paths: list[str]
 
 
@@ -328,6 +344,27 @@ class CodeGraphService:
             raise GraphConfinementError("path escapes the registered project root (PG2)")
         return rel
 
+    # ── PG2 root lookup (PG-0.5 fix-slice: one root = one graph) ────────────
+
+    def find_project_by_root(self, root: str) -> ProjectRecord | None:
+        """The ONE-root-ONE-graph lookup (PG-0.5 fix-slice, PR #443
+        review P2-1): the registered project whose ``paths`` contain
+        this absolute root, or ``None``. The projects table is small
+        and operator-shaped, so a full scan is fine — but it lives in
+        THIS one method (the auto path never grows per-hint blind SQL);
+        path comparison is ``normpath``-normalized on both sides so a
+        trailing-slash or ``.`` spelling still matches."""
+        wanted = os.path.normpath(os.path.abspath(root))
+        for project in self._main.list_projects():
+            for registered in project.paths or []:
+                if (
+                    isinstance(registered, str)
+                    and registered.strip()
+                    and os.path.normpath(os.path.abspath(registered)) == wanted
+                ):
+                    return project
+        return None
+
     # ── tool 1: index_project ───────────────────────────────────────────────
 
     def index_project(
@@ -393,6 +430,10 @@ class CodeGraphService:
                 "incremental": result.incremental,
             },
         )
+        # A successful publish lifts the auto-path suspension (PG-0.5
+        # fix-slice): manual runs and the watch poll both ride this
+        # method, and an auto-stale run implies a working tree anyway.
+        self._store.set_meta(auto_suspended_key(registered.graph_key), "0")
         payload["staleness"] = self._staleness_payload(registered.graph_key, registered.root)
         return payload
 
@@ -1042,6 +1083,10 @@ class CodeGraphService:
         registered = self._resolve_root(project_id)
         key = registered.graph_key
         deleted = self._store.purge_project(key)
+        # The purge clears only the poisoned set + last_indexed stamp;
+        # the auto-path suspension flag is this operation's to lift too
+        # (fresh start — the next hint may auto-index from scratch).
+        self._store.set_meta(auto_suspended_key(key), "0")
         bump_project_graph_epoch(self._main, key)
         self._audit.record(
             key,

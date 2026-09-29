@@ -12,11 +12,21 @@ instruction, no skill. Design invariants (PG1-PG7 unchanged):
   fail because of a hint (the manager wiring additionally wraps it in
   a silent try/except).
 * **Marker-gated auto-registration** — an UNREGISTERED project is
-  auto-registered only when its cwd carries a cheap project marker
-  (``.git`` / ``pyproject.toml`` / ``package.json`` / ``go.mod`` /
-  ``Cargo.toml``). A bare directory never enters the ``projects``
-  table through the auto path (PG2 stays operator-shaped, the marker
-  IS the operator's footprint).
+  auto-registered only when its cwd carries a packaging MANIFEST
+  (``pyproject.toml`` / ``setup.py`` / ``package.json`` / ``go.mod`` /
+  ``Cargo.toml``; lockfiles do not count). A bare ``.git`` is NOT a
+  trigger (PR #443 review P2-2: a dotfiles ``$HOME`` is a git repo —
+  the auto path must not swallow it), and ``$HOME``/the filesystem
+  root are refused even when a manifest sits there.
+* **One root = one graph** (PR #443 review P2-1) — before any
+  auto-registration the existing projects are searched for one whose
+  ``paths`` contain the resolved root (:meth:`CodeGraphService.
+  find_project_by_root`); a hit means the hint's graph operations run
+  under the EXISTING project (audit ``auto-register-reused``), never a
+  duplicate ``projects`` row. A global cap
+  (``auto_register_max_projects``) bounds how many projects the auto
+  path may ever create — past it, a silent skip with audit
+  ``auto-register-capped``, never an error to the caller.
 * **The manual paths keep their contracts** — auto work goes through
   the same :meth:`CodeGraphService.index_project` serialization,
   PG7 limits and audit trail as manual runs; only the ``reason``
@@ -28,6 +38,13 @@ instruction, no skill. Design invariants (PG1-PG7 unchanged):
   the action runs (reserve-then-act): a failing auto index is not
   retried on every subsequent hint — the failure is audited, the
   operator investigates, the manual tools remain available.
+* **A failed first index suspends the auto path** (PR #443 review
+  P2-2) — any failure of an ``auto-first`` run writes the sidecar
+  stamp ``auto_suspended:{len}:{project}=1``: further hints skip the
+  tree entirely (no disk walk) until a SUCCESSFUL manual
+  ``index_project`` (the watch poll rides the same method) or a
+  ``delete_graph_project`` lifts the flag. An ``auto-stale`` run over
+  an existing valid index never suspends anything.
 * **v1 limitation** — a multi-path registration indexes ``paths[0]``
   only (the ``_resolve_root`` rule); pinned here until PG-1 revisits
   multi-root projects.
@@ -42,25 +59,37 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from vesmaro.codegraph.incremental import staleness_check
-from vesmaro.codegraph.service import CodeGraphService, GraphToolError
+from vesmaro.codegraph.service import (
+    CodeGraphService,
+    GraphToolError,
+    auto_suspended_key,
+)
 from vesmaro.codegraph.watch import GraphWatchScheduler
 from vesmaro.config import CodeGraphConfig
 from vesmaro.models import Project
 
 logger = logging.getLogger(__name__)
 
-#: Cheap project markers (PG-0.5 auto-registration gate): the operator's
-#: footprint on disk. ``.git`` covers non-packaged repos; the rest are
-#: the canonical packaging manifests of the supported ecosystems.
+#: Packaging manifests accepted as auto-registration markers (PR #443
+#: review P2-2): the operator's footprint on disk, the canonical
+#: manifests of the supported ecosystems. A bare ``.git`` deliberately
+#: does NOT qualify — a dotfiles ``$HOME`` is a repo, not a project —
+#: and neither do lockfiles (generated artifacts, not declarations).
 PROJECT_MARKERS: tuple[str, ...] = (
-    ".git",
     "pyproject.toml",
+    "setup.py",
     "package.json",
     "go.mod",
     "Cargo.toml",
 )
+
+#: Stable description prefix marking an AUTO-registered ``projects`` row
+#: (the table has no ``registered_by`` column — the marker IS the
+#: provenance, and ``auto_register_max_projects`` counts it).
+AUTO_REGISTER_DESCRIPTION_PREFIX = "auto-registered by "
 
 #: Hard bound on the hint queue — auto-indexing is best-effort, a hint
 #: flood must never grow memory (drops are silent by the same logic as
@@ -77,15 +106,30 @@ def _throttle_key(project: str) -> str:
 
 
 def project_marker(cwd: str) -> str | None:
-    """The FIRST project marker found in ``cwd`` (a stat per candidate —
-    cheap by contract), or ``None`` when the directory is not a project
-    root. A non-directory ``cwd`` never registers."""
+    """The FIRST packaging manifest found in ``cwd`` (a stat per
+    candidate — cheap by contract), or ``None`` when the directory is
+    not a project root. A non-directory ``cwd`` never registers; a bare
+    ``.git`` is not a marker (P2-2)."""
     if not os.path.isdir(cwd):
         return None
     for marker in PROJECT_MARKERS:
         if os.path.exists(os.path.join(cwd, marker)):
             return marker
     return None
+
+
+def _is_forbidden_root(cwd: str) -> bool:
+    """``$HOME`` and the filesystem root are NEVER auto-registered
+    (PR #443 review P2-2): even a manifest sitting there (a dotfiles
+    repo exporting a ``package.json`` into ``$HOME``) must not turn the
+    server's own home into a graph project."""
+    root = Path(cwd)
+    if str(root) == root.anchor:  # "/" on POSIX, "C:\\" on Windows
+        return True
+    try:
+        return root == Path.home()
+    except RuntimeError:  # no resolvable home — the manifest gate decides
+        return False
 
 
 @dataclass(slots=True, frozen=True)
@@ -214,72 +258,157 @@ class AutoIndexer:
                 )
 
     def _process(self, hint: _Hint) -> None:
-        """One hint: auto-register (marker-gated) → first index or stale
-        reindex, behind the per-project throttle. A concurrent index on
+        """One hint: auto-register (manifest-gated, one-root-one-graph,
+        capped) → first index or stale reindex, behind the per-project
+        throttle and the failed-first suspension. A concurrent index on
         the same project is NOT waited for: ``index_project`` returns
         ``in-progress`` immediately — for the auto path that is a silent
         skip, never a queued retry."""
         main = self._service.main
         project = main.get_project(hint.project_id) or main.get_project_by_name(hint.project_id)
+        target = hint.project_id
         if project is None:
             marker = project_marker(hint.cwd)
             if marker is None:
                 logger.debug(
-                    "codegraph-autoindex: %s not registered, cwd %s has no marker — skip",
+                    "codegraph-autoindex: %s not registered, cwd %s has no manifest — skip",
                     hint.project_id,
                     hint.cwd,
                 )
                 return
-            registered_at = datetime.now(UTC).isoformat()
-            project = Project(
-                name=hint.project_id,
-                paths=[hint.cwd],
-                description=(
-                    f"auto-registered by {hint.agent} at {registered_at} "
-                    f"(marker {marker}; PG-0.5 native auto-index)"
-                ),
-            )
-            main.save_project(project)
-            self._service.audit.record(
-                hint.project_id,
-                "auto-register",
-                hint.agent,
-                session=hint.session,
-                reason=f"auto-register (marker {marker})",
-                details={"root": hint.cwd},
-            )
-            logger.info(
-                "codegraph-autoindex: auto-registered %s from %s (marker %s)",
-                hint.project_id,
-                hint.cwd,
-                marker,
-            )
+            if _is_forbidden_root(hint.cwd):
+                logger.debug(
+                    "codegraph-autoindex: %s cwd %s is $HOME or the filesystem root — "
+                    "auto-registration refused",
+                    hint.project_id,
+                    hint.cwd,
+                )
+                return
+            existing = self._service.find_project_by_root(hint.cwd)
+            if existing is not None:
+                # One root = one graph (P2-1): no duplicate projects row,
+                # no second full indexation — the hint rides the existing
+                # project under its registered name.
+                self._service.audit.record(
+                    existing.name,
+                    "auto-register-reused",
+                    hint.agent,
+                    session=hint.session,
+                    reason="auto-register-reused (root already registered)",
+                    details={"root": hint.cwd, "hint": hint.project_id},
+                )
+                logger.info(
+                    "codegraph-autoindex: hint %s reuses registered root %s (project %s)",
+                    hint.project_id,
+                    hint.cwd,
+                    existing.name,
+                )
+                project = existing
+            elif self._auto_registered_count() >= self._config.auto_register_max_projects:
+                self._service.audit.record(
+                    hint.project_id,
+                    "auto-register-capped",
+                    hint.agent,
+                    session=hint.session,
+                    reason=(
+                        "auto-register-capped "
+                        f"(auto_register_max_projects={self._config.auto_register_max_projects})"
+                    ),
+                    details={"root": hint.cwd},
+                )
+                logger.info(
+                    "codegraph-autoindex: auto-registration of %s skipped — cap %d reached",
+                    hint.project_id,
+                    self._config.auto_register_max_projects,
+                )
+                return
+            else:
+                registered_at = datetime.now(UTC).isoformat()
+                project = Project(
+                    name=hint.project_id,
+                    paths=[hint.cwd],
+                    description=(
+                        f"{AUTO_REGISTER_DESCRIPTION_PREFIX}{hint.agent} at {registered_at} "
+                        f"(marker {marker}; PG-0.5 native auto-index)"
+                    ),
+                )
+                main.save_project(project)
+                self._service.audit.record(
+                    hint.project_id,
+                    "auto-register",
+                    hint.agent,
+                    session=hint.session,
+                    reason=f"auto-register (marker {marker})",
+                    details={"root": hint.cwd},
+                )
+                logger.info(
+                    "codegraph-autoindex: auto-registered %s from %s (marker %s)",
+                    hint.project_id,
+                    hint.cwd,
+                    marker,
+                )
+        target = project.name
         try:
-            graph_key, root = self._service.watch_probe(hint.project_id)
+            graph_key, root = self._service.watch_probe(target)
         except GraphToolError as exc:
-            logger.info("codegraph-autoindex: %s unresolvable (%s) — skip", hint.project_id, exc)
+            logger.info("codegraph-autoindex: %s unresolvable (%s) — skip", target, exc)
+            return
+        if self._suspended(graph_key):
+            logger.debug(
+                "codegraph-autoindex: %s auto path suspended (failed first index) — skip",
+                graph_key,
+            )
             return
         if self._throttled(graph_key):
             return
         if self._service.store.count_files(graph_key) == 0:
-            self._service.index_project(
-                hint.project_id,
-                agent=hint.agent,
-                session=hint.session,
-                incremental=True,
-                reason="auto-first",
-            )
+            try:
+                self._service.index_project(
+                    target,
+                    agent=hint.agent,
+                    session=hint.session,
+                    incremental=True,
+                    reason="auto-first",
+                )
+            except Exception:
+                # A failed FIRST auto index suspends the auto path (P2-2):
+                # the tree is not re-walked on every hint until a manual
+                # index / delete / watch succeeds. The failure itself is
+                # already audited by ``index_project`` (limit-refused) or
+                # carried by this log line.
+                self._service.store.set_meta(auto_suspended_key(graph_key), "1")
+                logger.info(
+                    "codegraph-autoindex: first auto index of %s failed — auto path "
+                    "suspended until a successful manual index/delete/watch",
+                    graph_key,
+                    exc_info=True,
+                )
             return
         report = staleness_check(graph_key, root, self._service.store)
         if not report.changed_files:
             return  # fresh — the beacon already says so; nothing to do
         self._service.index_project(
-            hint.project_id,
+            target,
             agent=hint.agent,
             session=hint.session,
             incremental=True,
             reason="auto-stale",
         )
+
+    def _auto_registered_count(self) -> int:
+        """Projects created by the AUTO path, counted through the
+        description marker (the ``projects`` table's only provenance
+        column; operator registrations never match it)."""
+        return sum(
+            1
+            for project in self._service.main.list_projects()
+            if (project.description or "").startswith(AUTO_REGISTER_DESCRIPTION_PREFIX)
+        )
+
+    def _suspended(self, graph_key: str) -> bool:
+        """Whether the auto path is suspended for this project (a failed
+        first auto index; lifted by a successful publish or a delete)."""
+        return self._service.store.get_meta(auto_suspended_key(graph_key)) == "1"
 
     def _throttled(self, graph_key: str) -> bool:
         """Reserve-then-act throttle: read the ``last_auto_action`` stamp,
