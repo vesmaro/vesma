@@ -7,6 +7,8 @@ Host contract (the ONLY integration surface Vesma touches):
   - ``MetricsStore(path)`` — opens (and creates) the sidecar;
   - ``record_assemble(result, *, latency_ms)`` — one call after
     ``assemble_context`` built its result, at the hook/MCP boundary;
+  - ``record_usage(metrics_id, *, block_ids_touched, ...)`` — phase C:
+    one call after the model answered, closing the usage loop;
   - ``close()`` — idempotent shutdown.
 
 Hard rules carried from the ArchCom decisions (7ec9dda3 + 061398fe):
@@ -25,9 +27,10 @@ Hard rules carried from the ArchCom decisions (7ec9dda3 + 061398fe):
 """
 
 # ── PROVENANCE ────────────────────────────────────────────────────────
-# Vendored from mnemos-vitals main (phase A2, 2026-09-22). Master copy
-# + methodology: ~/LABs/Projects/Project-Mnemos/mnemos-vitals. Sync rule:
-# changes land there first, then are ported in the same wave
+# Vendored from mnemos-vitals main (phase A2, 2026-09-22; phase C
+# record_usage + overflow hardening ported 2026-09-29, master 698a650).
+# Master copy + methodology: ~/LABs/Projects/Project-Mnemos/mnemos-vitals.
+# Sync rule: changes land there first, then are ported in the same wave
 # (drift-guard tests on both sides must stay green).
 
 from __future__ import annotations
@@ -118,6 +121,13 @@ _STAGE_STATS_ALLOWLIST = frozenset(
 _STR_VALUE_LIMIT = 32
 _LIST_VALUE_LIMIT = 16
 _ENUM_STR_PATHS = frozenset({"recall.query_source", "recall.lens.name"})
+
+#: Phase C usage-loop limits (docs/architecture.md §2 ``usage_reports``).
+#: The usage report is the ONLY client-supplied write into the plane —
+#: every harness may call it — so its inputs are validated like hostile
+#: input: refuse the WHOLE write on any non-conforming shape, loudly.
+_BLOCK_ID_LIMIT = 128  # chars per opaque block id
+_BLOCK_ID_MAX_ENTRIES = 256  # entries per report (before dedup)
 
 
 def _project_stage_stats(stats: dict[str, Any]) -> dict[str, Any]:
@@ -384,7 +394,15 @@ class MetricsStore(VerbLedgerMixin):
             self._record_blocks(conn, metrics_id, blocks)
             conn.commit()
             return metrics_id
-        except (sqlite3.Error, ValueError, TypeError, AttributeError, OSError) as exc:
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            AttributeError,
+            OSError,
+            OverflowError,
+            ArithmeticError,
+        ) as exc:
             self._fail("record_assemble", exc)
             # Roll the partial write back NOW: an open transaction would
             # commit a phantom assemble row on the NEXT successful call
@@ -467,6 +485,135 @@ class MetricsStore(VerbLedgerMixin):
             return int(cur.lastrowid or 0)
         except (sqlite3.Error, ValueError, TypeError, AttributeError, OSError) as exc:
             self._fail("record_awareness_event", exc)
+
+    # ── Phase C write path: the usage loop (post_llm_call annex) ──────────
+
+    def record_usage(
+        self,
+        metrics_id: int,
+        *,
+        block_ids_touched: list[str],
+        tokens_out: int | None = None,
+        wrong_tool_flag: bool = False,
+        ts: float | None = None,
+    ) -> int | None:
+        """Record one harness response for a previous assemble call. Non-fatal.
+
+        Phase C loop closure (docs/architecture.md §2 ``usage_reports``):
+        after the model call built on an assembled window, the harness
+        reports which injected blocks it actually used (opaque block
+        ordinals ``"<metrics_id>:<i>"`` as written by :meth:`_record_blocks`),
+        the output token count, and whether the call went to the wrong
+        tool. ``block_ids_touched`` is the ONLY client-supplied payload
+        that ever enters the plane, so it is validated like hostile
+        input — a non-conforming shape refuses the WHOLE write with a
+        loud warning (never a silent partial drop, never a raise into
+        the host):
+
+          - ``block_ids_touched`` must be a ``list`` of non-empty strings,
+            each <= 128 chars, no newlines, at most 256 entries (before
+            dedup); duplicates are collapsed preserving first-seen order;
+            an empty list is legitimate (the call used nothing);
+          - ``tokens_out``: ``int >= 0`` or ``None`` (bools refused);
+          - ``wrong_tool_flag``: strictly ``bool``;
+          - ``metrics_id`` must reference an existing ``assemble_metrics``
+            row — an unknown id is a loud refusal, not a silent orphan;
+          - ``ts`` is accepted for call-site symmetry but NOT stored
+            (same precedent as ``latency_ms`` in :meth:`record_assemble`):
+            ``usage_reports`` is born-final without a ts column — the
+            time anchor is the parent assemble row.
+
+        Privacy by structure: the stored ids are opaque positional
+        ordinals, never content; no text column exists to leak into.
+
+        Returns the new ``usage_reports.id`` or ``None`` on refusal/failure.
+        """
+        try:
+            if (
+                not isinstance(metrics_id, int)
+                or isinstance(metrics_id, bool)
+                or metrics_id <= 0
+                or metrics_id > 2**63 - 1
+            ):
+                # range bound included: a 2**64-scale int survives this check
+                # only to die as OverflowError at bind — the client-supplied
+                # boundary must degrade, never raise (review MAJOR)
+                raise ValueError(f"metrics_id must be a positive int, got {metrics_id!r}")
+            if ts is not None and not math.isfinite(float(ts)):
+                raise ValueError(f"ts must be a finite number, got {ts!r}")
+            if tokens_out is not None and (
+                not isinstance(tokens_out, int)
+                or isinstance(tokens_out, bool)
+                or tokens_out < 0
+                or tokens_out > 10**12
+            ):
+                # cap mirrors the counters limit in validate_meta — a sane
+                # report never carries more; larger = garbage shape
+                raise ValueError(f"tokens_out must be an int >= 0 or None, got {tokens_out!r}")
+            if not isinstance(wrong_tool_flag, bool):
+                raise ValueError(f"wrong_tool_flag must be strictly bool, got {wrong_tool_flag!r}")
+            if not isinstance(block_ids_touched, list):
+                raise ValueError("block_ids_touched must be a list of opaque strings")
+            if len(block_ids_touched) > _BLOCK_ID_MAX_ENTRIES:
+                raise ValueError(
+                    f"block_ids_touched has {len(block_ids_touched)} entries"
+                    f" (max {_BLOCK_ID_MAX_ENTRIES})"
+                )
+            for bid in block_ids_touched:
+                # "" is refused: an empty string identifies no block and is
+                # a drifted shape, not a legitimate "touched nothing" report.
+                if not isinstance(bid, str) or not bid or len(bid) > _BLOCK_ID_LIMIT:
+                    raise ValueError(
+                        f"block id must be a non-empty string <= {_BLOCK_ID_LIMIT} chars,"
+                        f" got {bid!r}"
+                    )
+                if "\n" in bid or "\r" in bid:
+                    raise ValueError("block id must be a single line")
+            unique_ids = list(dict.fromkeys(block_ids_touched))  # dedup, order preserved
+
+            conn = self._conn()
+            if conn is None:
+                return None
+            # FK validation by hand AND atomically: the sidecar does not
+            # enable the foreign_keys pragma, and a check-then-insert race
+            # against the retention job could strand an immortal orphan
+            # (check and insert are NOT in one snapshot). The conditional
+            # INSERT ... SELECT ... WHERE EXISTS makes validation and write
+            # a single statement under one write lock; rowcount 0 = the
+            # parent vanished between validation passes = loud refusal.
+            cur = conn.execute(
+                "INSERT INTO usage_reports (metrics_id, block_ids_touched_json,"
+                " tokens_out, wrong_tool_flag)"
+                " SELECT ?,?,?,? WHERE EXISTS"
+                " (SELECT 1 FROM assemble_metrics WHERE id = ?)",
+                (
+                    metrics_id,
+                    json.dumps(unique_ids, separators=(",", ":")),
+                    tokens_out,
+                    int(wrong_tool_flag),
+                    metrics_id,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise ValueError(
+                    f"metrics_id {metrics_id} unknown — no assemble_metrics parent;"
+                    " usage report refused"
+                )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            AttributeError,
+            OSError,
+            OverflowError,
+            ArithmeticError,
+        ) as exc:
+            self._fail("record_usage", exc)
+            # Same rollback discipline as record_assemble/record_verb: a
+            # partial write must never linger for the next commit.
+
             conn = getattr(self._local, "conn", None)
             if conn is not None:
                 with suppress(sqlite3.Error):
