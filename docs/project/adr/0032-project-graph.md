@@ -38,6 +38,19 @@ actor — no agent, no auto action). v1 limitation: a multi-path
 registration indexes `paths[0]` only. REST is not an auto surface;
 `code_graph.auto_index: false` restores the manual-only trigger
 model, which remains fully available either way.
+**Update 2026-09-29 (fix-slice, PR #443 review):** the auto-registration
+gate tightened — a packaging MANIFEST is now required (`pyproject.toml`
+/ `setup.py` / `package.json` / `go.mod` / `Cargo.toml`; a bare `.git`
+is not enough, and `$HOME`/the filesystem root never auto-register),
+and one root = one graph: a name hint over an already-registered root
+reuses the EXISTING project (audit `auto-register-reused`) instead of
+duplicating the row, under a global `auto_register_max_projects` cap
+(silent skip with an `auto-register-capped` audit row). A failed FIRST
+auto index now sets the sidecar flag `auto_suspended` — further hints
+skip the tree with no disk walk until a successful manual
+`index_project` (or a watch reindex, which rides the same method) or a
+`delete_graph_project` lifts it; `auto-stale` over a valid index never
+suspends.
 **Deciders:** Tech Lead (chair), Product Architect, Senior System Engineer,
 Senior Security Engineer — all four entered conditional positions; the
 challenge phase converged every one (Python-only wave 1, beacon before
