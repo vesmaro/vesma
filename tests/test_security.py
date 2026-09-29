@@ -590,9 +590,13 @@ class TestSsrfBlocklist:
         """
         import inspect
 
-        from vesmaro.manager import MemoryManager
+        # W4c: the guard body moved verbatim to vesmaro.http_guard (one
+        # guard, two outbound legs — the manager method delegates); the
+        # nosec invariant pins the guard's NEW single home, while every
+        # behavioral test in this class still exercises the delegate.
+        from vesmaro.http_guard import validate_url_ssrf
 
-        source = inspect.getsource(MemoryManager._validate_url)
+        source = inspect.getsource(validate_url_ssrf)
         # The blocklist must still contain "0.0.0.0".
         assert '"0.0.0.0"' in source
         # The site must be annotated as a nosec, with a justification.

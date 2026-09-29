@@ -4718,106 +4718,16 @@ class MemoryManager:
     def _validate_url(url: str) -> str:
         """Validate URL for SSRF safety. Raises ValueError on blocked schemes or hosts.
 
-        Covers (ADR-0009, ADR-0012):
-        - Schemes: only http, https
-        - DNS names: resolved and the *resolved* IP is checked
-        - IPv4: loopback, RFC1918 private, link-local (169.254/16), 0.0.0.0
-        - IPv6: loopback (::1), link-local (fe80::/10), unique-local (fc00::/7
-          which includes AWS IPv6 metadata fd00:ec2::254), IPv4-mapped IPv6
-        - Any IP flagged by ``ipaddress`` as private/loopback/link-local/
-          reserved/multicast is rejected
+        W4c extraction: the guard body moved verbatim to
+        :func:`vesmaro.http_guard.validate_url_ssrf` — the Jev decision
+        adapter (``vesmaro.decision_jev``) is the engine's second outbound
+        HTTP leg, and the guard must be one function, not a per-caller
+        copy that drifts. Behavior is byte-identical; the SSRF pin tests
+        (``test_security``, ``test_ssrf_redirect``) are unchanged.
         """
-        import ipaddress
-        from urllib.parse import urlparse
+        from vesmaro.http_guard import validate_url_ssrf
 
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            raise ValueError(f"URL scheme must be http(s), got {parsed.scheme}")
-        host = (parsed.hostname or "").lower()
-        if not host:
-            raise ValueError("URL must have a host")
-
-        # The "0.0.0.0" entry is a blocklist literal, NOT a socket bind.
-        # nosec B104 — see ADR-0009 §"B104 false positive".
-        blocked_v4_literals: set[str] = {
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",  # nosec B104 — blocklist entry
-            "::1",
-            "169.254.169.254",  # AWS IPv4 metadata
-        }
-
-        if host in blocked_v4_literals:
-            raise ValueError(f"URL host blocked for SSRF safety: {host}")
-
-        # 1) If host is a literal IP (v4 or v6), use ipaddress to classify it.
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            ip = None  # not a literal IP; it's a DNS name — resolve below
-
-        if ip is not None:
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-                or ip.is_unspecified
-            ):
-                raise ValueError(f"URL host blocked for SSRF safety: {host}")
-            return url
-
-        # 2) DNS name. Check IPv4-prefix heuristics first (cheap, fast-fail).
-        if host.startswith("127."):
-            raise ValueError(f"URL host blocked for SSRF safety: {host}")
-        if host.startswith("10."):
-            raise ValueError(f"URL host blocked for SSRF safety: {host}")
-        if host.startswith("192.168."):
-            raise ValueError(f"URL host blocked for SSRF safety: {host}")
-        if host.startswith("172."):
-            second_octet = host[4:].split(".")[0]
-            if second_octet.isdigit() and 16 <= int(second_octet) <= 31:
-                raise ValueError(f"URL host blocked for SSRF safety: {host}")
-
-        # 3) Resolve the DNS name. If any resolved address is private/loopback/
-        # link-local, reject. This closes DNS rebinding at the boundary: even
-        # if the resolver returns a public IP at check time and a private IP
-        # at TCP time, we re-checked at the *resolve* step and the httpx
-        # Client below will be the one making the actual connection. The
-        # boundary check still raises the bar.
-        import socket
-
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise ValueError(f"URL host could not be resolved: {host} ({exc})") from exc
-
-        for info in infos:
-            sockaddr = info[4]
-            # ``sockaddr[0]`` is typed as ``str | int`` by ``typeshed``
-            # (on some platforms it can be a 4-byte packed int); force
-            # a ``str`` so downstream ``startswith`` / ``ip_address`` work
-            # uniformly and mypy can narrow the type.
-            resolved = str(sockaddr[0])
-            # Strip IPv4-mapped IPv6 prefix (e.g. "::ffff:127.0.0.1" → "127.0.0.1")
-            if resolved.startswith("::ffff:"):
-                resolved = resolved[len("::ffff:") :]
-            try:
-                rip = ipaddress.ip_address(resolved)
-            except ValueError:
-                continue
-            if (
-                rip.is_private
-                or rip.is_loopback
-                or rip.is_link_local
-                or rip.is_reserved
-                or rip.is_multicast
-                or rip.is_unspecified
-            ):
-                raise ValueError(f"URL host resolves to blocked address: {host} → {resolved}")
-
-        return url
+        return validate_url_ssrf(url)
 
     def ingest_url(self, url: str, *, tags: list[str], project: str, agent: str) -> Memory:
         """Fetch a URL, extract main text, save as RAW memory.

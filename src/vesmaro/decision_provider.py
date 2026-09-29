@@ -252,8 +252,12 @@ class DecisionProvider(Protocol):
     """The «semantic if»: prepared state in, typed decision out."""
 
     #: Implementation identity for telemetry (primitive, implementation,
-    #: confidence per answer — ADR-0004 Consequences).
-    name: str
+    #: confidence per answer — ADR-0004 Consequences). Read-only by
+    #: contract: an identity is assigned by the implementation, never
+    #: rewritten by a call site (W4c — property form; structural type
+    #: refinement only, runtime isinstance semantics unchanged).
+    @property
+    def name(self) -> str: ...
 
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive: ...
 

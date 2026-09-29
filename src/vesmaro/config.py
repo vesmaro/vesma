@@ -153,6 +153,30 @@ class MnemosConfig(BaseModel):
     # warn telemetry decides the strict default, owner directive).
     # Canonical env override: VESMARO_MNEMOS__CANON_MODE=strict.
     canon_mode: Literal["off", "warn", "strict"] = "warn"
+    # ADR-0004 implementation (c) — decision-provider selection for the
+    # «semantic if» seam (``vesmaro.decision_provider``). One interface,
+    # three implementations; this picks which one call sites get from
+    # ``vesmaro.decision_jev.resolve_decision_provider``.
+    #   * "deterministic" (default) — the local baseline heuristics, zero
+    #     I/O. The DEFAULT-OFF posture of the external leg: no flag, no
+    #     key, no network attempt, ever.
+    #   * "jev" — the EXTERNAL OpenRouter router (``typesafe/jev-router``).
+    #     Opt-in: outbound HTTP + per-call cost + the privacy gate runs
+    #     BEFORE any call (secrets/danger/no-federate → typed refusal).
+    #     Not wired into product decisions until calibrated under the
+    #     pre-registered methodology (canon repo,
+    #     docs/experiments/provider-calibration.md).
+    #   * "off" — the seam is disabled entirely (call sites get None).
+    # Canonical env override: VESMARO_MNEMOS__DECISION_PROVIDER=jev.
+    decision_provider: Literal["off", "deterministic", "jev"] = "deterministic"
+    # NAME indirection for the Jev adapter's API key: the OpenRouter key
+    # is read AT PROVIDER CONSTRUCTION from the environment variable
+    # NAMED here (see ``resolve_decision_provider``). The secret itself
+    # never enters config files, git or logs — config carries the NAME
+    # of the env var, nothing else.
+    decision_jev_api_key_env: str = Field(
+        default="VESMARO_OPENROUTER_API_KEY", min_length=1, max_length=256
+    )
 
 
 class LoggingConfig(BaseModel):
