@@ -182,9 +182,7 @@ def _emit_codegraph_hint(mgr: Any, args: dict[str, Any]) -> None:
         session = args.get("session")
         if not isinstance(session, str) or not session.strip():
             session = None
-        mgr.codegraph_activity_hint(
-            project.strip(), cwd=os.getcwd(), agent=agent, session=session
-        )
+        mgr.codegraph_activity_hint(project.strip(), cwd=os.getcwd(), agent=agent, session=session)
     except Exception:
         logger.debug("mcp: codegraph auto-index hint skipped", exc_info=True)
 
