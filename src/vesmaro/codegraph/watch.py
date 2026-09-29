@@ -93,11 +93,19 @@ class WatchRegistration:
 
 
 class GraphWatchScheduler:
-    """The single-thread cooperative poll over watch registrations.
+    """The single-thread cooperative scheduler over watch registrations.
 
     Owned by the ``MemoryManager`` (slice 6 wiring) and built over the
     per-manager ``CodeGraphService``; the poll interval model and the
     registration cap come from ``CodeGraphConfig`` via the manager.
+
+    PG-0.5 generalization: besides the recurring poll registrations the
+    SAME thread now drains ONE-SHOT jobs (:meth:`submit`) — the native
+    auto-indexer (ADR-0032 wave PG-0.5) rides it instead of growing a
+    second executor. Invariants kept: still exactly one thread (never
+    thread-per-job), ``submit`` never blocks the caller, a crashing job
+    is logged and dropped (the loop survives), and a full ``stop()``
+    discards queued jobs (close-path semantics).
     """
 
     def __init__(
@@ -115,6 +123,8 @@ class GraphWatchScheduler:
         self._cap_interval = max_interval_sec
         self._clock = clock
         self._registrations: dict[str, WatchRegistration] = {}  # by graph_key
+        self._jobs: list[Callable[[], None]] = []  # one-shot queue (PG-0.5)
+        self._job_running = False
         self._lock = threading.Lock()
         self._wake = threading.Event()
         self._stop_flag = threading.Event()
@@ -175,12 +185,15 @@ class GraphWatchScheduler:
 
     def stop(self, project_id: str | None = None) -> int:
         """Drop one registration (by project id or graph key) or ALL of
-        them when no argument is given; the poll thread exits once the
-        registry empties. Returns the number of dropped registrations."""
+        them when no argument is given; the poll thread exits once no
+        work remains (no registrations, no queued jobs). A full stop
+        also discards queued one-shot jobs (close-path semantics).
+        Returns the number of dropped registrations."""
         with self._lock:
             if project_id is None:
                 dropped = len(self._registrations)
                 self._registrations.clear()
+                self._jobs.clear()
             else:
                 dropped = 0
                 for key in [
@@ -190,7 +203,7 @@ class GraphWatchScheduler:
                 ]:
                     del self._registrations[key]
                     dropped += 1
-            if not self._registrations:
+            if not self._registrations and not self._jobs:
                 self._stop_flag.set()
             self._wake.set()
         if project_id is None and dropped:
@@ -214,6 +227,38 @@ class GraphWatchScheduler:
         """Full stop (manager ``close`` path)."""
         self.stop()
 
+    # ── one-shot jobs (PG-0.5: the native auto-indexer rides this) ────────
+
+    def submit(self, job: Callable[[], None]) -> None:
+        """Queue a ONE-SHOT job on the single scheduler thread.
+
+        Never blocks the caller (lock + append + wake — that is all);
+        a job is run at most once, exceptions are contained inside
+        :meth:`_run_job` (a crashing job never kills the loop). Jobs
+        run BEFORE poll ticks of the same iteration: they carry a
+        user-visible activity hint, the poll is housekeeping.
+        """
+        with self._lock:
+            self._jobs.append(job)
+            self._ensure_thread_locked()
+        self._wake.set()
+
+    def wait_for_idle(self, timeout: float = 5.0) -> bool:
+        """Deterministic join for tests: block until no one-shot job is
+        queued or running (the poll side is unaffected — registrations
+        keep their schedule). Returns whether idle was reached before
+        the timeout."""
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                if not self._jobs and not self._job_running:
+                    return True
+            if time.monotonic() >= deadline:
+                with self._lock:
+                    return not self._jobs and not self._job_running
+            self._wake.set()  # nudge a sleeping loop into the job drain
+            time.sleep(0.01)
+
     # ── poll loop ──────────────────────────────────────────────────────────
 
     def _interval(self, graph_key: str) -> float:
@@ -224,8 +269,10 @@ class GraphWatchScheduler:
         return min(raw, self._cap_interval)
 
     def _ensure_thread_locked(self) -> None:
-        """Start the single poll thread if it is not running (the lock
-        is already held)."""
+        """Start the single scheduler thread if it is not running (the
+        lock is already held). ``self._thread`` is None exactly when the
+        loop self-exited (it forgets itself under the lock) or was
+        fully stopped — both restart here."""
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_flag.clear()
@@ -233,26 +280,54 @@ class GraphWatchScheduler:
         self._thread.start()
 
     def _run_loop(self) -> None:
-        """The cooperative loop: poll everything due, sleep until the
-        next due registration (or until ``register``/``stop`` wakes us
-        to recompute). The wake event is consumed at the TOP of each
-        iteration, so a registration that lands mid-poll or mid-sleep
-        can never lose its wake-up (no bounded-delay miss)."""
+        """The cooperative loop: drain one-shot jobs, poll everything
+        due, sleep until the next due registration (or until ``register``
+        /``submit``/``stop`` wakes us to recompute). The wake event is
+        consumed at the TOP of each iteration, so a registration or job
+        that lands mid-poll or mid-sleep can never lose its wake-up (no
+        bounded-delay miss)."""
         while not self._stop_flag.is_set():
             self._wake.clear()
             now = self._clock()
             with self._lock:
+                jobs = self._jobs
+                self._jobs = []
                 due = [r for r in self._registrations.values() if r.next_run <= now]
+            for job in jobs:
+                if self._stop_flag.is_set():
+                    return  # full stop discards undelivered jobs (close path)
+                self._run_job(job)
             for reg in due:
                 if self._stop_flag.is_set():
                     return
                 self._poll_registration(reg)
             with self._lock:
-                if not self._registrations:
-                    return  # registry emptied — thread exits (restart on register)
+                if not self._registrations and not self._jobs and not self._job_running:
+                    # No work of either kind — exit, and atomically forget
+                    # ourselves so a concurrent submit/register (blocked on
+                    # this very lock) restarts a fresh thread instead of
+                    # trusting a dying is_alive().
+                    self._thread = None
+                    return
+                if self._jobs:
+                    continue  # jobs landed mid-iteration — drain them now
                 next_due = min(r.next_run for r in self._registrations.values())
             sleep = max(0.01, min(next_due - self._clock(), self._cap_interval))
             self._wake.wait(timeout=sleep)
+
+    def _run_job(self, job: Callable[[], None]) -> None:
+        """Run one one-shot job with the in-flight flag held for
+        :meth:`wait_for_idle`; a crash is logged and dropped — the
+        loop (and the poll schedule) always survives."""
+        with self._lock:
+            self._job_running = True
+        try:
+            job()
+        except Exception:
+            logger.warning("codegraph-watch: one-shot job crashed", exc_info=True)
+        finally:
+            with self._lock:
+                self._job_running = False
 
     def _poll_registration(self, reg: WatchRegistration) -> None:
         """One poll tick for one registration: the cheap classification
