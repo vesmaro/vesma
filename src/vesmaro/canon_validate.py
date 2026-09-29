@@ -383,11 +383,22 @@ _ISO_WEEK_RE = re.compile(r"^\d{4}-W\d{2}$")
 # Relative/truncated forms that must never appear in a canon body (canon §5):
 # dotted day.month(/year) dates like "27.09"/"27.09.2026", month names with
 # a bare day like "27 сентября", and the words "вчера"/"сегодня"/"позавчера"
-# plus their English equivalents as STANDALONE words.
+# plus their English equivalents and week phrases as STANDALONE words
+# (case-insensitive: «Вчера» at sentence start is the same §5 violation).
+# The dotted third component allows {1,4} digits so the truncated
+# «27.9.2026» (no zero padding) is caught too.
 _RELATIVE_DATE_RE = re.compile(
-    r"\b\d{1,2}\.\d{1,2}(\.\d{2,4})?\b"
+    r"\b\d{1,2}\.\d{1,2}(?:\.\d{1,4})?\b"
     r"|\b(?:вчера|сегодня|позавчера|на прошлой неделе|на следующей неделе)\b"
     r"|\b(?:yesterday|today|tomorrow|last week|next week)\b",
+    re.IGNORECASE,
+)
+# Standalone relative words/phrases, flagged with a detail that names the
+# exact token. Case-insensitive (cascade review QA P2-1/SEC P3-2: «Вчера»
+# with a capital letter is the same violation, not sentence-start luck).
+_STANDALONE_RELATIVE_RE = re.compile(
+    r"\b(?:вчера|сегодня|позавчера|на прошлой неделе|на следующей неделе"
+    r"|yesterday|today|tomorrow|last week|next week)\b",
     re.IGNORECASE,
 )
 
@@ -397,9 +408,17 @@ def _date_violations(content: Any) -> list[CanonViolation]:
     stamp or ISO week); relative and truncated forms are forbidden.
 
     Deliberately NARROW (a false rejection is worse than a pass-through):
-    dotted fragments are flagged only when they are plausible day.month
-    pairs (``27.09``); software version literals (``3.14.3``, ``0.0.31``,
-    ``100.2``) are excluded by _is_version_literal.
+    dotted fragments are flagged only when they are UNAMBIGUOUS dates —
+
+    * two components: RU day-first with a month that cannot be a decimal
+      fraction (``27.09`` flags; ``1.5``/``6.0``/``12.05``-style ambiguous
+      decimals pass);
+    * three components: a year component makes it a dotted date
+      (``27.09.2026`` flags; ``3.14.3``/``0.0.31`` versions pass);
+    * four or more components: always version-like (dotted quads).
+
+    Standalone relative words/phrases (case-insensitive) are flagged with
+    a detail naming the exact token.
     """
     if not isinstance(content, str):
         return []
@@ -412,19 +431,17 @@ def _date_violations(content: Any) -> list[CanonViolation]:
             continue
         if _is_version_literal(fragment, content, match.start(), match.end()):
             continue
-        day, month = fragment.split(".")[:2]
-        if int(day) <= 31 and int(month) <= 12:
-            out.append(
-                CanonViolation(
-                    code="CANON-E-DATE",
-                    rule="canon §5",
-                    detail=f"non-ISO date {fragment!r} in body — use YYYY-MM-DD "
-                    "(full date) or a full UTC stamp",
-                )
+        out.append(
+            CanonViolation(
+                code="CANON-E-DATE",
+                rule="canon §5",
+                detail=f"non-ISO date {fragment!r} in body — use YYYY-MM-DD "
+                "(full date) or a full UTC stamp",
             )
+        )
     # Standalone relative words carry no digits — the version filter does
     # not apply; flagged separately so the detail names the exact word.
-    for match in re.finditer(r"\b(?:вчера|сегодня|позавчера|yesterday|today|tomorrow)\b", content):
+    for match in _STANDALONE_RELATIVE_RE.finditer(content):
         out.append(
             CanonViolation(
                 code="CANON-E-DATE",
@@ -439,26 +456,31 @@ def _date_violations(content: Any) -> list[CanonViolation]:
 def _is_version_literal(fragment: str, content: str, start: int, end: int) -> bool:
     """True when a dotted fragment is a software version, not a date.
 
-    Conservative disambiguation:
+    Conservative disambiguation (cascade review QA P2-1 / issue #437):
 
     * embedded in a longer dotted/digit chain (``10.0.0.1``, ``1.2.3.4``)
       → version-like, never a date;
-    * three or more components: a version (``3.14.3``) UNLESS the first
-      component is a plausible year (``2026.09.25`` — dotted dates are
-      still non-ISO per §5 and must be flagged);
-    * two components: plausible day.month (``27.09``) → a DATE violation,
-      anything else (``100.2``) → version-like.
+    * four or more components: a version (dotted quad / long version);
+    * three components: a version (``3.14.3``, ``0.0.31``) UNLESS any
+      component is a plausible year (``27.09.2026`` — day-first-with-year
+      is a dotted date and stays a §5 violation);
+    * two components: a DATE only when UNAMBIGUOUSLY RU day-first —
+      first ∈ 13..31 AND second ∈ 1..12 (``27.09``). Everything else
+      (``1.5``, ``3.0``, ``6.0``, ``12.05``) is treated as a decimal or
+      ambiguous — passes (a false rejection is worse than a pass-through;
+      issue #437: ``6.0``/``1.5`` are versions/decimals, not dates).
     """
     parts = fragment.split(".")
     before = content[start - 1 : start] if start > 0 else ""
     after = content[end : end + 1] if end < len(content) else ""
     if before.isdigit() or after.isdigit() or before == "." or after == ".":
         return True
-    if len(parts) >= 3:
-        first = int(parts[0])
-        return not (1900 <= first <= 2099)
+    if len(parts) >= 4:
+        return True
+    if len(parts) == 3:
+        return not any(1900 <= int(part) <= 2099 for part in parts)
     first, second = int(parts[0]), int(parts[1])
-    return first > 31 or second > 12
+    return not (13 <= first <= 31 and 1 <= second <= 12)
 
 
 def validate_canon_record(

@@ -54,6 +54,8 @@ from vesmaro.embeddings import NanoProvider
 from vesmaro.manager import MemoryManager
 from vesmaro.models import Memory
 
+from ._canon_sibling import canon_sibling_repo as _canon_sibling_repo
+
 # ── Frozen corpus pins (the canon repo owns the corpus; W4b freezes it) ──────
 
 #: Fixed 21-record corpus: the canon example corpus — examples/after (4),
@@ -245,9 +247,9 @@ _SNAPSHOT_PATH: Final[Path] = Path(__file__).parent / "data" / "w4b_corpus_snaps
 
 
 def _canon_root() -> Path | None:
-    """Sibling canon checkout (same lookup as the S1/canon-warn drift pins)."""
-    candidate = Path(__file__).resolve().parents[2] / "vesmaro-canon"
-    return candidate if candidate.is_dir() else None
+    """Sibling canon checkout (same lookup as the S1/canon-warn drift pins).
+    Worktree-safe (cascade QA P2-2 — shared helper, issue #433 class)."""
+    return _canon_sibling_repo()
 
 
 def _view_from_record(data: dict[str, Any]) -> CanonRecordView:
@@ -469,13 +471,23 @@ def test_view_from_memory_projects_envelope_only() -> None:
     assert "quality_score" not in dumped and "embedding_id" not in dumped
 
 
-def test_view_embedding_text_mirrors_engine_composition() -> None:
+@pytest.mark.parametrize(
+    ("title", "body"),
+    [
+        pytest.param("the title", "body text", id="short"),
+        pytest.param(None, "body text", id="no-title"),
+        pytest.param("t", "x" * 5000, id="over-cap"),
+    ],
+)
+def test_view_embedding_text_mirrors_engine_composition(title: str | None, body: str) -> None:
     """The view's embedding text is byte-identical to the engine's
     ``MemoryManager._embedding_text`` — the calibration cosine is measured
-    over the SAME text the vector leg embeds. Drift here = re-baseline."""
+    over the SAME text the vector leg embeds. Parametrized over short,
+    title-less and over-cap bodies (cascade QA P3-2: a cap/shape change in
+    the manager must break this pin LOUDLY, not silently)."""
     memory = Memory(
-        content="body text",
-        title="the title",
+        content=body,
+        title=title,
         tags=["project:p", "agent:a"],
     )
     view = CanonRecordView.from_memory(memory)
