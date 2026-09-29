@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
+
 from vesmaro.codegraph.incremental import index_project
 from vesmaro.storage.code_graph_store import CodeGraphStore
 

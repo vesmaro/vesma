@@ -33,6 +33,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
+
 from vesmaro.codegraph.audit import GraphAudit
 from vesmaro.codegraph.service import (
     GraphConfinementError,

@@ -208,7 +208,10 @@ CHECKPOINT_FIELDS: tuple[str, ...] = (
 # attacker's row satisfy a later genuine ``save_checkpoint`` dedup and
 # serve their content as the victim's checkpoint (CWE-346/345 spoofed
 # source). ``MemoryManager.add``/``update`` strip them from client
-# metadata; only ``save_checkpoint`` mints them (trusted flag).
+# metadata; only ``save_checkpoint`` mints them (trusted flag). The
+# ``canon`` member strips TYPE-CONDITIONALLY (see the canon block
+# below — cascade review SEC P2-2): checkpoint-type and malformed
+# values strip, client task/decision/report envelopes persist.
 CHECKPOINT_STAMP_KEYS: frozenset[str] = frozenset(
     {"checkpoint_agent", "checkpoint_session", "checkpoint_dedup_key", "canon"}
 )
@@ -221,11 +224,20 @@ CHECKPOINT_STAMP_KEYS: frozenset[str] = frozenset(
 # server stamps a canon envelope at ``metadata.canon`` and the body
 # always carries all five EN sections (``CHECKPOINT_SECTION_TITLES``,
 # pinned to the schemas' ``x-canon-sections`` annotation; empty fields
-# get a deterministic per-language placeholder line). ``metadata.canon``
-# is SERVER-MINTED like the identity stamps above — clients never set
-# it: ``save_checkpoint`` mints it behind ``trusted_checkpoint_stamps``,
-# every other create/update path strips client-supplied copies (the
-# key joined CHECKPOINT_STAMP_KEYS, so the existing strips apply).
+# get a deterministic per-language placeholder line). A CHECKPOINT-type
+# ``metadata.canon`` is SERVER-MINTED like the identity stamps above —
+# clients never set it: ``save_checkpoint`` mints it behind
+# ``trusted_checkpoint_stamps``, every other create/update path strips
+# client-supplied copies. Cascade review SEC P2-2 (TL ruling): the
+# strip over the ``canon`` key is TYPE-CONDITIONAL at the call sites
+# (``MemoryManager.add``/``update``) — canon §2 ratifies CLIENT-authored
+# envelopes for the non-checkpoint types (task/decision/report carry
+# extras like owner_slug/priority/size the server cannot know), so those
+# PERSIST through the generic paths and flow into the canon gate. The
+# key stays in this set for the checkpoint case and the malformed
+# (non-dict) case: «ADR-0003 obligation 3 read over-broad in W2-S1;
+# canon §2 ratified client envelopes for non-checkpoint types —
+# corrected by cascade review SEC P2-2».
 # Transitional rule (canon §9): a record WITHOUT ``metadata.canon`` is
 # outside canon scope — pre-W2 checkpoint rows and imported/benchmark
 # rows are legacy, not violations.

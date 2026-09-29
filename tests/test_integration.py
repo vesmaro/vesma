@@ -2614,6 +2614,92 @@ class TestSchemasPack:
         assert result.removed, "dry-run still reports what WOULD be removed"
         assert sorted(p.name for p in schemas_dir.iterdir()) == before, "dry-run writes nothing"
 
+    def test_uninstall_ignores_forged_manifest_ownership(
+        self, schemas_manager: IntegrationManager, canon_home: Path
+    ) -> None:
+        """Cascade review SEC P3-3: manifest checksums may NOT prove
+        ownership of the files they sit next to. A co-writer of the deploy
+        directory forges ``mnemos-schemas.manifest.json`` naming foreign
+        ``*.schema.json`` files (one wearing a PACK NAME, one arbitrary) —
+        uninstall must leave BOTH; only the inline stamp or byte-identity
+        with the current pack proves ownership."""
+        target = "zcode"
+        schemas_dir = canon_home / ".zcode" / "schemas"
+        schemas_manager.deploy(target)
+
+        # Foreign file wearing a PACK file name (old rule matched by name
+        # AND by the forged manifest digest → deleted).
+        pack_named = schemas_dir / "task.schema.json"
+        pack_named.write_text('{"not": "ours"}\n', encoding="utf-8")
+        # Foreign file with an arbitrary name, named ONLY by the forged
+        # manifest digest (old rule: digest in manifest values → deleted).
+        arbitrary = schemas_dir / "totally-foreign.schema.json"
+        arbitrary.write_text('{"also": "not ours"}\n', encoding="utf-8")
+
+        # The forged manifest: properly stamped, lists the foreign files
+        # with their TRUE checksums.
+        forged_files = {
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (pack_named, arbitrary)
+        }
+        manifest_dest = schemas_dir / SCHEMAS_MANIFEST_NAME
+        manifest_dest.write_text(
+            schemas_manifest(schemas_manager.version, forged_files), encoding="utf-8"
+        )
+
+        uninstall = schemas_manager.uninstall(target)
+        assert pack_named.is_file(), "foreign file wearing a pack name must survive"
+        assert arbitrary.is_file(), "foreign file named by a forged manifest must survive"
+        assert pack_named in uninstall.skipped_user_files
+        assert arbitrary in uninstall.skipped_user_files
+        # The genuine byte-identical schemas still go, the forged stamped
+        # manifest goes with the kind.
+        removed_names = {p.name for p in uninstall.removed if p.parent == schemas_dir}
+        assert removed_names == (set(self.CANON_SCHEMA_NAMES) - {"task.schema.json"}) | {
+            SCHEMAS_MANIFEST_NAME
+        }, "only byte-identical pack schemas + manifest removed"
+
+    def test_deploy_refuses_tampered_pack_schema(self, tmp_path: Path) -> None:
+        """Cascade review SEC P3-4: the schemas deploy verifies pack file
+        checksums against SCHEMAS_SOURCE_PIN and fails LOUD — a tampered
+        pack file (or an unpinned/stale pin table) must never deploy wrong
+        bytes under a clean-pin manifest."""
+        import shutil
+
+        pack = tmp_path / "integrations"
+        (pack / "schemas").mkdir(parents=True)
+        for name in self.CANON_SCHEMA_NAMES:
+            shutil.copyfile(self._pack_file("schemas", name), pack / "schemas" / name)
+        # Tamper ONE schema after vendoring.
+        (pack / "schemas" / "envelope.schema.json").write_text(
+            '{"tampered": true}\n', encoding="utf-8"
+        )
+
+        marker = tmp_path / "marker"
+        marker.mkdir()
+        deploy_dir = tmp_path / "deploy" / "schemas"
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "pincheck": {
+                            "detect": [{"path": str(marker)}],
+                            "deploy": {"schemas": str(deploy_dir) + "/"},
+                            "format": "copy",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+
+        with pytest.raises(ValueError, match="SCHEMAS_SOURCE_PIN"):
+            mgr.deploy("pincheck")
+        assert not deploy_dir.exists() or not any(deploy_dir.rglob("*")), (
+            "a pin mismatch must leave the deploy dir untouched"
+        )
+
     def test_schemas_kind_without_deploy_map_is_skipped(self, tmp_path: Path) -> None:
         """A target without a ``schemas`` deploy key ignores the kind silently."""
         pack = tmp_path / "integrations"

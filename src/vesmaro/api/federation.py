@@ -113,7 +113,7 @@ async def federation_pull(
 
     response, http_status = handle_pull(
         payload,
-        settings=settings,  # type: ignore[arg-type]
+        settings=settings,
         manager=manager,
         access_log=access_log,
         presented_token=presented_token,

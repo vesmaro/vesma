@@ -57,6 +57,8 @@ from vesmaro.models import (
     checkpoint_canon_envelope,
 )
 
+from ._canon_sibling import canon_sibling_file
+
 # The pinned canon sections annotation of vesmaro-canon/schemas/
 # checkpoint.schema.json (x-canon-sections). The drift test compares the
 # live constants against THIS list; when the pinned repo is absent the
@@ -77,11 +79,12 @@ def _canon_sections() -> list[str]:
     The canon repo is a sibling checkout in this workspace; the drift
     test prefers the LIVE annotation over an in-repo copy so a canon-side
     change breaks the engine test LOUDLY (the pin protocol, canon §9).
+    Resolution is worktree-independent (cascade QA P2-2): the sibling is
+    looked up next to the PRIMARY worktree via git, with the legacy
+    ``__file__``-relative location as fallback.
     """
-    candidate = (
-        Path(__file__).resolve().parents[2] / "vesmaro-canon" / "schemas" / "checkpoint.schema.json"
-    )
-    if candidate.is_file():
+    candidate = canon_sibling_file("schemas", "checkpoint.schema.json")
+    if candidate is not None:
         annotation: Any = json.loads(candidate.read_text(encoding="utf-8"))["x-canon-sections"]
         return list(annotation)
     return list(_CANON_REPO_SECTIONS_FALLBACK)

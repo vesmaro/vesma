@@ -337,11 +337,10 @@ class TestFlagOff:
         assert stats["events_total"] == 0
         assert stats["since_restart"]["reports_total"] == 0
 
-    def test_config_default_is_on(self) -> None:
-        # Owner decision 2026-09-28 «graphs on by default»: the whole
-        # feedback loop ships enabled (apply without capture would be
-        # decorative); the flag-off contract is pinned in this class's
-        # explicit-off tests.
+    def test_config_default_follows_owner_decision(self) -> None:
+        """#440 «graphs on by default» flipped the default to True; the
+        flag-off behavior itself is covered by the explicit-flag tests
+        above. This pin follows the owner decision of 2026-09-28."""
         from vesmaro.config import SearchConfig
 
         assert SearchConfig().feedback_capture_enabled is True

@@ -52,6 +52,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from vesmaro.canon_validate import canon_envelope_is_client_authored
 from vesmaro.cli.export import (
     CompressMode,
     ExportFormat,
@@ -65,7 +66,12 @@ from vesmaro.cli.export import (
 from vesmaro.danger_detectors import (
     PROMPT_INJECTION_PATTERNS as _PROMPT_INJECTION_PATTERNS,
 )
-from vesmaro.models import Memory, MemoryStatus, PipelineState
+from vesmaro.models import (
+    CHECKPOINT_STAMP_KEYS,
+    Memory,
+    MemoryStatus,
+    PipelineState,
+)
 
 if TYPE_CHECKING:
     from vesmaro.manager import MemoryManager
@@ -387,6 +393,36 @@ def _memory_from_export(entry: dict[str, Any]) -> Memory:
     return Memory.model_validate(payload)
 
 
+def _strip_imported_canon_line_keys(memory: Memory) -> list[str]:
+    """Strip canon-line SERVER-MINTED keys from an imported row's metadata
+    (cascade review SEC P3-5) — in place; returns the stripped key names.
+
+    An export file is client-supplied data: rows arrive with their
+    ``metadata`` verbatim, so checkpoint stamps (``checkpoint_agent`` /
+    ``checkpoint_session`` / ``checkpoint_dedup_key``), a CHECKPOINT-type
+    ``canon`` envelope and ``canon_warnings`` (gate-owned) would land as
+    if the server had minted them — a forged ``checkpoint_dedup_key``
+    could then satisfy a later genuine ``save_checkpoint`` dedup, and a
+    forged envelope puts a row inside canon scope it never earned.
+
+    Kept deliberately: a client-authored task/decision/report envelope
+    (canon §2, cascade review SEC P2-2 — same type rule as the manager
+    create/update strips) — that is peer/client data, not a stamp.
+
+    Bypassed only by ``--trusted-restore`` (operator asserts the export
+    is a trusted self-backup).
+    """
+    meta = memory.metadata
+    drop: set[str] = {k for k in CHECKPOINT_STAMP_KEYS if k in meta and k != "canon"}
+    if "canon" in meta and not canon_envelope_is_client_authored(meta["canon"]):
+        drop.add("canon")
+    if "canon_warnings" in meta:
+        drop.add("canon_warnings")
+    if drop:
+        memory.metadata = {k: v for k, v in meta.items() if k not in drop}
+    return sorted(drop)
+
+
 # ── Federation-import danger gate (#166, ADR-0019 Phase D) ────────────────────
 
 
@@ -448,6 +484,7 @@ def _import_json(
     mode: str,
     overwrite: bool,
     dry_run: bool,
+    trusted_restore: bool = False,
 ) -> ImportResult:
     result = ImportResult(mode=mode, dry_run=dry_run)
     result.format_version = payload.get("format_version")
@@ -535,6 +572,21 @@ def _import_json(
             continue
         if stamp_federated and not dry_run:
             memory.metadata = {**memory.metadata, "federated_origin": "json-import"}
+        # ── Cascade review SEC P3-5: strip canon-line server-minted ──────
+        # keys (checkpoint stamps, checkpoint-type canon envelope,
+        # gate-owned canon_warnings) from imported metadata — the export
+        # is client-supplied data and must not land stamps the server
+        # never minted. Client task/decision/report envelopes persist
+        # (canon §2). ``trusted_restore`` (the --trusted-restore flag)
+        # bypasses the strip: the operator asserts a trusted self-backup.
+        if not trusted_restore and not dry_run:
+            stripped_keys = _strip_imported_canon_line_keys(memory)
+            if stripped_keys:
+                result.warnings.append(
+                    f"memory {memory.id}: stripped canon-line server-minted keys "
+                    f"(import is untrusted by default; --trusted-restore keeps them): "
+                    f"keys={stripped_keys}"
+                )
 
         existing_mem = mgr.sqlite.get(memory.id)
         if existing_mem is not None:
@@ -857,6 +909,7 @@ def run_import(
     passphrase_file: Path | None = None,
     compress: CompressMode | None = None,
     backup_dir: Path | None = None,
+    trusted_restore: bool = False,
 ) -> ImportResult:
     """Import an export file. See module docstring for mode semantics."""
     if mode not in (ImportMode.MERGE, ImportMode.RESTORE):
@@ -914,4 +967,11 @@ def run_import(
         result.errors.append(f"Invalid JSON export: {exc}")
         return result
 
-    return _import_json(mgr, payload, mode=mode, overwrite=overwrite, dry_run=dry_run)
+    return _import_json(
+        mgr,
+        payload,
+        mode=mode,
+        overwrite=overwrite,
+        dry_run=dry_run,
+        trusted_restore=trusted_restore,
+    )

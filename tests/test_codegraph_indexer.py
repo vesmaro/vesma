@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
+
 from vesmaro.codegraph.file_surface import FileSurface
 from vesmaro.codegraph.incremental import (
     STATUS_FRESH,

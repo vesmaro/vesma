@@ -29,6 +29,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 from fastapi.testclient import TestClient
 
 from vesmaro.codegraph.audit import GraphAudit
