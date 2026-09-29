@@ -225,7 +225,7 @@ class AutoIndexer:
             marker = project_marker(hint.cwd)
             if marker is None:
                 logger.debug(
-                    "codegraph-autoindex: %s not registered and cwd %s has no project marker — skip",
+                    "codegraph-autoindex: %s not registered, cwd %s has no marker — skip",
                     hint.project_id,
                     hint.cwd,
                 )

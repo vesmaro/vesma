@@ -36,8 +36,8 @@ from unittest.mock import patch
 
 import pytest
 
-from vesmaro.codegraph.autoindex import AutoIndexer, project_marker
 from vesmaro.codegraph.audit import GraphAudit
+from vesmaro.codegraph.autoindex import AutoIndexer, project_marker
 from vesmaro.codegraph.service import CodeGraphService
 from vesmaro.config import CodeGraphConfig, Settings
 from vesmaro.manager import MemoryManager
@@ -59,9 +59,7 @@ def _write_repo(root: Path, *, marker: bool = True) -> None:
     )
     (pkg / "extra.py").write_text("def extra_fn():\n    return 2\n", encoding="utf-8")
     if marker:
-        (root / "pyproject.toml").write_text(
-            "[project]\nname = 'markerrepo'\n", encoding="utf-8"
-        )
+        (root / "pyproject.toml").write_text("[project]\nname = 'markerrepo'\n", encoding="utf-8")
 
 
 def _settings(tmp: Path, **code_graph: Any) -> Settings:
@@ -120,7 +118,7 @@ def _audit(service: CodeGraphService) -> list[dict[str, Any]]:
     return GraphAudit(service.store.db_path).recent(project=PROJECT, limit=100)
 
 
-# ── (а) native e2e: first contact registers + indexes + beacons ─────────────
+# ── (a) native e2e: first contact registers + indexes + beacons ─────────────
 
 
 def test_first_hint_registers_and_indexes(manager: MemoryManager, repo: Path) -> None:
@@ -192,9 +190,7 @@ def test_hint_via_pre_llm_call_hook(tmp_path: Path, repo: Path) -> None:
         prev = _os.getcwd()
         _os.chdir(repo)
         try:
-            out = hooks.pre_llm_call(
-                mgr, session=SESSION, project=PROJECT, agent=AGENT, budget=64
-            )
+            out = hooks.pre_llm_call(mgr, session=SESSION, project=PROJECT, agent=AGENT, budget=64)
         finally:
             _os.chdir(prev)
         assert out["hook"] == "pre_llm_call"
@@ -205,7 +201,7 @@ def test_hint_via_pre_llm_call_hook(tmp_path: Path, repo: Path) -> None:
         mgr.close()
 
 
-# ── (б) stale: change + post-window hint → auto-stale reindex ───────────────
+# ── (b) stale: change + post-window hint → auto-stale reindex ───────────────
 
 
 def test_stale_file_reindexes_after_window(manager: MemoryManager, repo: Path) -> None:
@@ -233,7 +229,7 @@ def test_stale_file_reindexes_after_window(manager: MemoryManager, repo: Path) -
     )
 
 
-# ── (в) no marker → no registration, no index ───────────────────────────────
+# ── (v) no marker → no registration, no index ───────────────────────────────
 
 
 def test_cwd_without_marker_is_ignored(tmp_path: Path) -> None:
@@ -252,7 +248,7 @@ def test_cwd_without_marker_is_ignored(tmp_path: Path) -> None:
         mgr.close()
 
 
-# ── (г) auto_index=False → hints are a no-op ────────────────────────────────
+# ── (g) auto_index=False → hints are a no-op ────────────────────────────────
 
 
 def test_auto_index_disabled_makes_hints_noop(tmp_path: Path, repo: Path) -> None:
@@ -281,7 +277,7 @@ def test_flag_off_inside_indexer_drops_hint(repo: Path) -> None:
     assert submitted == []
 
 
-# ── (д) throttle: two hints back-to-back → ONE task ────────────────────────
+# ── (d) throttle: two hints back-to-back → ONE task ────────────────────────
 
 
 def test_two_rapid_hints_run_one_task(tmp_path: Path, repo: Path) -> None:
@@ -298,7 +294,7 @@ def test_two_rapid_hints_run_one_task(tmp_path: Path, repo: Path) -> None:
         mgr.close()
 
 
-# ── (е) hint() never joins the scheduler ───────────────────────────────────
+# ── (e) hint() never joins the scheduler ───────────────────────────────────
 
 
 def test_hint_returns_without_scheduler_join(repo: Path) -> None:
@@ -318,7 +314,7 @@ def test_hint_returns_without_scheduler_join(repo: Path) -> None:
     assert indexer.pending_hints() == 2  # nothing consumed — no join happened
 
 
-# ── (ж) PG7 fail-closed limits hold on the auto path ───────────────────────
+# ── (zh) PG7 fail-closed limits hold on the auto path ───────────────────────
 
 
 def test_limit_breach_fails_whole_auto_index(tmp_path: Path, repo: Path) -> None:

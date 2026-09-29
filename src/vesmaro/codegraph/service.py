@@ -38,7 +38,7 @@ import os
 import weakref
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from vesmaro.codegraph import incremental as incremental_mod
 from vesmaro.codegraph.audit import GraphAudit
@@ -51,6 +51,10 @@ from vesmaro.storage.code_graph_store import (
     CodeGraphStore,
     bump_project_graph_epoch,
 )
+
+if TYPE_CHECKING:
+    # Annotation-only (the protocol below names the concrete model).
+    from vesmaro.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +112,17 @@ class ProjectRecord(Protocol):
 
 class ProjectDirectory(Protocol):
     """Main-store surface the service is allowed to see: project
-    registration (PG2) plus the meta surface the epoch helpers use."""
+    registration (PG2) plus the meta surface the epoch helpers use.
+    ``save_project`` joined in PG-0.5 — the auto-indexer's marker-gated
+    auto-registration writes through the same boundary (never raw SQL)."""
 
     def get_project(self, project_id: str) -> ProjectRecord | None: ...
 
     def get_project_by_name(self, name: str) -> ProjectRecord | None: ...
 
     def list_projects(self) -> list[ProjectRecord]: ...
+
+    def save_project(self, project: Project) -> None: ...
 
     def get_meta(self, key: str) -> str | None: ...
 

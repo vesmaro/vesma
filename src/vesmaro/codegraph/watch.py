@@ -206,7 +206,10 @@ class GraphWatchScheduler:
             if not self._registrations and not self._jobs:
                 self._stop_flag.set()
             self._wake.set()
-        if project_id is None and dropped:
+        if project_id is None:
+            # Full stop: join the thread even when it only ever ran
+            # one-shot jobs (dropped==0) — an in-flight job finishes
+            # first, the close path must not race a live index run.
             thread = self._thread
             if thread is not None and thread.is_alive():
                 thread.join(timeout=5.0)
