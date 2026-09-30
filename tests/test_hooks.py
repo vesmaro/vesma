@@ -73,6 +73,11 @@ def _settings(
         },
         ccr={"min_size_chars": 100, **ccr},  # type: ignore[arg-type]
         hooks=hooks,  # type: ignore[arg-type]
+        # PG-0.5: the hook now emits an auto-index hint; the hooks suite
+        # tests hook contracts, not the graph — and the hint would otherwise
+        # auto-register the TEST RUNNER's cwd (the mnemos repo itself, a
+        # marker repo) and background-index it into the throwaway data dir.
+        code_graph={"enabled": True, "auto_index": False},
     )
     settings.resolve_paths()
     return settings

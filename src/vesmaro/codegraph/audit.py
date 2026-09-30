@@ -28,12 +28,23 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 #: Audit ``action`` values (the closed vocabulary of §3.6).
+#: ``auto-register`` joined in PG-0.5 (owner directive 2026-09-29): the
+#: native auto-indexer's marker-gated project registration is its own
+#: audited verb — recorded with the triggering agent as the actor.
+#: ``auto-register-reused`` / ``auto-register-capped`` joined in the
+#: PG-0.5 fix-slice (PR #443 review P2-1): one root = one graph (a name
+#: hint over an already-registered root reuses the project instead of
+#: duplicating it) and the ``auto_register_max_projects`` cap refuse —
+#: both silent skips on the auto path, both audit-first-class.
 AUDIT_ACTIONS = (
     "index",
     "reindex",
     "delete",
     "snippet-read",
     "graph-read",
+    "auto-register",
+    "auto-register-reused",
+    "auto-register-capped",
 )
 
 

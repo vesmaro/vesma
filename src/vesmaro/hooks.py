@@ -80,6 +80,7 @@ it — flagged for ratification in the #125 report.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
@@ -154,6 +155,14 @@ def pre_llm_call(
     _require_identity(session, project, agent)
     if context_hint is not None and not context_hint.strip():
         raise ValueError("context_hint must be a non-empty string when provided")
+
+    # PG-0.5 (owner directive 2026-09-29): native auto-index hint — the
+    # hook mirror of the MCP dispatcher cut-in. Non-blocking, never
+    # raises: a hint must never break the model-call assembly.
+    try:
+        mgr.codegraph_activity_hint(project, cwd=os.getcwd(), agent=agent, session=session)
+    except Exception:
+        logger.debug("hooks.pre_llm_call: codegraph hint skipped", exc_info=True)
 
     result = mgr.assemble_context(
         session=session,

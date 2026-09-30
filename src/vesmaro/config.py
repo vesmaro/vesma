@@ -1011,7 +1011,9 @@ class CodeGraphConfig(BaseModel):
     root cannot balloon the sidecar store.
 
     Canonical env override: ``VESMARO_CODE_GRAPH__INDEX_MAX_FILES`` /
-    ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB``.
+    ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`` / ``VESMARO_CODE_GRAPH__AUTO_INDEX`` /
+    ``VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
+    ``VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1052,6 +1054,31 @@ class CodeGraphConfig(BaseModel):
             — 5s base, +1s per 500 files, 60s cap. Exposed as config
             fields so tests can shrink them (injection) and operators
             can widen them; the DEFAULTS are the contract's numbers.
+        auto_index: Native auto-indexing (PG-0.5, owner directive
+            2026-09-29): the first contact with a project through the
+            MCP dispatcher or the ``pre_llm_call`` hook emits an
+            activity HINT that (a) auto-registers the project when its
+            cwd carries a project marker (.git / pyproject.toml /
+            package.json / go.mod / Cargo.toml) and (b) runs the
+            first index / a stale reindex in the BACKGROUND on the
+            shared scheduler thread — zero explicit calls, zero
+            instructions. DEFAULT ON (the whole point of the
+            directive); set ``false`` to fall back to the manual
+            ``mnemos_index_project`` / ``watch_start`` triggers only.
+        auto_reindex_min_interval_sec: Per-project throttle for the
+            auto path: the sidecar ``graph_meta`` stamp
+            ``last_auto_action`` gates consecutive auto actions on the
+            same project. Default 300s; 0 disables the throttle (test
+            injection — the same discipline as the watch interval
+            fields).
+        auto_register_max_projects: Global cap on AUTO-registered
+            projects (PG-0.5 fix-slice, PR #443 review P2-1): counted
+            through the ``auto-registered by`` description marker (the
+            projects table has no ``registered_by`` column — the marker
+            IS the provenance). A hint past the cap is a silent skip
+            with an ``auto-register-capped`` audit row, never an error
+            to the caller; operator-registered projects and root-reuse
+            of an existing project never count against the cap.
     """
 
     enabled: bool = True
@@ -1059,6 +1086,9 @@ class CodeGraphConfig(BaseModel):
     index_max_source_mb: int = Field(default=500, ge=1)
     beacon: bool = True
     watch: bool = True
+    auto_index: bool = True
+    auto_reindex_min_interval_sec: float = Field(default=300.0, ge=0.0)
+    auto_register_max_projects: int = Field(default=64, ge=1)
     watch_max_registrations: int = Field(default=8, ge=1)
     watch_base_interval_sec: float = Field(default=5.0, ge=0.01)
     watch_interval_per_500_files: float = Field(default=1.0, ge=0.0)

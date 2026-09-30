@@ -871,12 +871,25 @@ Ten tools over the **project code graph**: symbols and file outlines parsed by t
 | `enabled` | `true` | Master flag for the 10 tools and the `/graph/` REST namespace — ON by default (owner decision 2026-09-28); `false` hides the whole surface. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness (effective only when `enabled`). |
 | `watch` | `true` | The watch poll (`mnemos_watch_start`) is armed by default but INERT until an explicit registration; the master gate applies on top. |
+| `auto_index` | `true` | Native auto-indexing (see below) — first contact through MCP/hooks auto-registers and background-indexes; `false` leaves only the manual triggers. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project. Fail-closed: a breach refuses the WHOLE index — no partial graph is ever published (PG7). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (same fail-closed discipline). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1s per 500 indexed files, capped. |
+| `auto_reindex_min_interval_sec` | `300.0` | Per-project throttle between consecutive AUTO index actions (the manual path is never throttled). |
+| `auto_register_max_projects` | `64` | Global cap on projects the AUTO path may ever create (counted by the `auto-registered by` description marker). Past the cap a hint is a silent skip with an `auto-register-capped` audit row — never an error; root-reuse and operator registrations never count. |
 
-Env overrides follow the canonical settings pattern: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`.
+Env overrides follow the canonical settings pattern: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`, `VESMARO_CODE_GRAPH__AUTO_INDEX`, `VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`, `VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`.
+
+### Native auto-indexing (zero-touch)
+
+Since wave PG-0.5 (owner directive 2026-09-29) the graph indexes itself — **no explicit call, no instruction, no skill**:
+
+- **First contact auto-registers.** Every dispatched MCP tool call and every `pre_llm_call` hook emits a cheap activity hint. When the project is not yet in the projects table and its cwd carries a packaging manifest (`pyproject.toml`, `setup.py`, `package.json`, `go.mod`, `Cargo.toml` — **auto-registration requires a manifest marker; a bare `.git` is not enough**, and `$HOME`/the filesystem root never auto-register even with a manifest present), the project is auto-registered with that cwd as its root — attribution (agent, timestamp) lands in the project description and a PG7 `auto-register` audit row. **One root = one graph**: a name hint over an already-registered root reuses the EXISTING project (`auto-register-reused` audit) instead of creating a duplicate row and re-indexing the same tree; the global cap `auto_register_max_projects` (default 64) bounds how many projects the auto path may ever create, past it a silent skip with an `auto-register-capped` audit row.
+- **Then the background work runs.** No index yet → a background first index (audit reason `auto-first`); an existing index → a cheap mtime+size staleness check and, on actual changes, an incremental reindex (audit reason `auto-stale`). All of it rides the same single cooperative scheduler thread as the watch poll; the hinting tool call is never blocked and never fails because of a hint.
+- **The beacon appears by itself.** Once an index exists, the `assemble_context` tail line shows up with no action from the agent.
+- **Guardrails.** Auto actions are throttled per project (`auto_reindex_min_interval_sec`, default 300s), attributed to the hinting agent (no `agent` → no auto action, PG7), and pass through the same fail-closed PG7 limits as manual runs — a limit breach aborts the whole auto index with an audit row, never a partial graph. A FAILED first auto index suspends the auto path for that project (sidecar flag `auto_suspended`): further hints skip the tree entirely — no disk walk — until a successful manual `mnemos_index_project`, a `mnemos_delete_graph_project`, or a watch reindex lifts the flag; `auto-stale` runs over a valid existing index never suspend. A multi-path registration indexes `paths[0]` only (v1 limitation).
+- **REST is not an auto surface** (no cwd to gate a registration on) — `/graph/*` stays exactly as documented. The manual tools (`mnemos_index_project`, `mnemos_watch_start`) remain the explicit-control path; `code_graph.auto_index: false` turns the auto path off entirely.
 
 ### Token contract
 

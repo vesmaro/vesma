@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     # Annotation-only (the dataclass fields are lazy strings under
     # ``from __future__ import annotations``); the scanner is imported
     # lazily at the call sites to keep the module import light.
+    from vesmaro.codegraph.autoindex import AutoIndexer
     from vesmaro.codegraph.service import CodeGraphService
     from vesmaro.codegraph.watch import GraphWatchScheduler
     from vesmaro.secrets_detector import SecretFinding
@@ -557,7 +559,10 @@ class MemoryManager:
         # behind the master ``code_graph.enabled`` flag) and the watch
         # poll scheduler on the first ``watch_start`` (behind the
         # ``code_graph.watch`` flag — default OFF, contract §3.2).
+        # PG-0.5: the SAME scheduler hosts the native auto-indexer's
+        # one-shot drain jobs (one cooperative thread for both).
         self._graph_watch: GraphWatchScheduler | None = None
+        self._graph_autoindex: AutoIndexer | None = None
         # In-memory search instrumentation (resets on restart).
         # Accepted trade-off for the dashboard: not persisted, no history.
         self._search_stats: dict[str, Any] = {
@@ -681,6 +686,9 @@ class MemoryManager:
 
     def close(self) -> None:
         self.stop_background_processor()
+        autoindex = self._graph_autoindex
+        if autoindex is not None:
+            autoindex.close()  # drop queued hints before the scheduler stops
         watch = self._graph_watch
         if watch is not None:
             watch.close()  # stops the poll thread BEFORE the stores close
@@ -4873,6 +4881,71 @@ class MemoryManager:
 
         return get_graph_service(self)
 
+    def codegraph_activity_hint(
+        self,
+        project: str | None,
+        *,
+        cwd: str | None = None,
+        agent: str | None = None,
+        session: str | None = None,
+    ) -> bool:
+        """Native auto-index hint (PG-0.5, owner directive 2026-09-29).
+
+        One cheap entry for the MCP dispatcher and the ``pre_llm_call``
+        hook: flag-check here, then a NON-BLOCKING queue put on the
+        shared-scheduler auto-indexer (marker-gated auto-registration +
+        background first-index / stale-reindex, per-project throttled —
+        see ``vesmaro.codegraph.autoindex``). The hint NEVER raises and
+        never breaks the caller's tool call; returns whether it was
+        queued. ``agent`` attribution is mandatory on the auto path
+        (PG7 — no agent, no auto action).
+        """
+        cfg = self.settings.code_graph
+        if not (cfg.enabled and cfg.auto_index):
+            return False
+        if not isinstance(project, str) or not project.strip():
+            return False
+        if agent is not None and (not isinstance(agent, str) or not agent.strip()):
+            agent = None
+        if session is not None and (not isinstance(session, str) or not session.strip()):
+            session = None
+        try:
+            service = self.get_codegraph_service()
+            if service is None:
+                return False
+            if self._graph_autoindex is None:
+                from vesmaro.codegraph.autoindex import AutoIndexer
+
+                self._graph_autoindex = AutoIndexer(
+                    service,
+                    self._get_graph_scheduler(service),
+                    config=cfg,
+                )
+            return self._graph_autoindex.hint(
+                project.strip(),
+                cwd=cwd or os.getcwd(),
+                agent=agent,
+                session=session,
+            )
+        except Exception:
+            logger.debug("codegraph activity hint skipped (wiring error)", exc_info=True)
+            return False
+
+    def _get_graph_scheduler(self, service: CodeGraphService) -> GraphWatchScheduler:
+        """The ONE cooperative scheduler thread shared by the watch poll
+        and the auto-indexer (built lazily, once per manager)."""
+        if self._graph_watch is None:
+            from vesmaro.codegraph.watch import GraphWatchScheduler
+
+            cfg = self.settings.code_graph
+            self._graph_watch = GraphWatchScheduler(
+                service,
+                base_interval_sec=cfg.watch_base_interval_sec,
+                interval_per_500_files=cfg.watch_interval_per_500_files,
+                max_interval_sec=cfg.watch_max_interval_sec,
+            )
+        return self._graph_watch
+
     # ── Watchers (project-graph poll, contract §3.2 trigger (b)) ────────────
 
     def watch_start(
@@ -4931,16 +5004,7 @@ class MemoryManager:
             raise GraphToolError("agent attribution is required (PG7): pass the caller's agent id")
         service = self.get_codegraph_service()
         assert service is not None  # enabled ⇒ the lazy build always yields one
-        if self._graph_watch is None:
-            from vesmaro.codegraph.watch import GraphWatchScheduler
-
-            self._graph_watch = GraphWatchScheduler(
-                service,
-                base_interval_sec=cfg.watch_base_interval_sec,
-                interval_per_500_files=cfg.watch_interval_per_500_files,
-                max_interval_sec=cfg.watch_max_interval_sec,
-            )
-        return self._graph_watch.register(
+        return self._get_graph_scheduler(service).register(
             project_id.strip(),
             agent=agent.strip(),
             session=session.strip() if isinstance(session, str) else None,

@@ -23,6 +23,7 @@ coverage.xml
 
 # Virtual environments
 .venv/
+.venv
 venv/
 
 # IDE

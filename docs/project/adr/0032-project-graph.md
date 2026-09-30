@@ -20,6 +20,40 @@ s1 gate PASS (recall@5 = 0.9484 vs the 0.9121 walk-on guard floor),
 and the graph remains inert until an explicit `index_project` /
 `watch_start`. The operator can still hide the surface with
 `code_graph.enabled: false`. Decision mnemos id `8457c635`.
+
+**Update 2026-09-29 (owner):** native auto-indexing (wave PG-0.5,
+directive mnemos `3359b0f8`) — indexation happens BY ITSELF and
+NATIVELY, with no explicit agent/harness call and no instruction or
+skill. Mechanism: every dispatched MCP tool call and every
+`pre_llm_call` hook emits a non-blocking activity hint; a project
+missing from the projects table whose cwd carries a project marker
+(`.git` / `pyproject.toml` / `package.json` / `go.mod` /
+`Cargo.toml`) is auto-registered (attribution in the description, new
+audit action `auto-register`), then the first index (reason
+`auto-first`) or a stale reindex (reason `auto-stale`) runs in the
+background on the SAME cooperative scheduler thread as the watch
+poll, behind a per-project throttle
+(`code_graph.auto_reindex_min_interval_sec`, default 300s, sidecar
+`last_auto_action` stamp, reserve-then-act). PG1–PG7 are unchanged:
+the auto path rides the identical `index_project` serialization,
+fail-closed limits and per-agent audit (the hinting agent is the
+actor — no agent, no auto action). v1 limitation: a multi-path
+registration indexes `paths[0]` only. REST is not an auto surface;
+`code_graph.auto_index: false` restores the manual-only trigger
+model, which remains fully available either way.
+**Update 2026-09-29 (fix-slice, PR #443 review):** the auto-registration
+gate tightened — a packaging MANIFEST is now required (`pyproject.toml`
+/ `setup.py` / `package.json` / `go.mod` / `Cargo.toml`; a bare `.git`
+is not enough, and `$HOME`/the filesystem root never auto-register),
+and one root = one graph: a name hint over an already-registered root
+reuses the EXISTING project (audit `auto-register-reused`) instead of
+duplicating the row, under a global `auto_register_max_projects` cap
+(silent skip with an `auto-register-capped` audit row). A failed FIRST
+auto index now sets the sidecar flag `auto_suspended` — further hints
+skip the tree with no disk walk until a successful manual
+`index_project` (or a watch reindex, which rides the same method) or a
+`delete_graph_project` lifts it; `auto-stale` over a valid index never
+suspends.
 **Deciders:** Tech Lead (chair), Product Architect, Senior System Engineer,
 Senior Security Engineer — all four entered conditional positions; the
 challenge phase converged every one (Python-only wave 1, beacon before
@@ -43,7 +77,11 @@ DONE (the beacon rides outside budget blocks); ADR-0025 — the lanes leg
 falsified (E3); ADR-0016 — the federation threat model and the
 separate-ADR-before-egress pattern; ADR-0014 — TOTP for the eyes
 remote; the verified DeusData research of 2026-09-28; the live code
-audit at main=`3ed97e6`.
+audit at main=`3ed97e6`. A v1 boundary is deliberate: a surface without agent attribution
+ever triggers the auto path (PG7 binding over coverage) — `mnemos_recall_context`
+carries no `agent` argument, so the native path fires from the first
+`pre_llm_call` hook (agent known), `add`/`save`/`assemble`/`context_rewrite`
+call, or explicit graph tool.
 
 ## Context
 
