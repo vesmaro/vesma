@@ -654,8 +654,9 @@ flowchart TD
 
 > **Статус 2026-09-28: A0 + A1 доставлены** (карточка #325 COMPLETE, всё
 > за флагами `mnemos.graph_walk` / `mnemos.feedback_apply`; 2026-09-28 — владелец включил по умолчанию ВСЮ граф-семью, mnemos 8457c635).
-> Включение флагов — решение владельца по capture-телеметрии;
-> фазы B/C (Later) и D2-слайс — без изменений, за телеметрией A0/A1.
+> Включение СОСТОЯЛОСЬ (решение владельца, 2026-09-28, зарезервированное
+> default-on решение исполнено); фазы B/C (Later) и D2-слайс — без
+> изменений, за телеметрией A0/A1.
 
 ### Чеклист эпика
 
@@ -688,13 +689,14 @@ flowchart TD
       с обоснованием) + статический `w_edge`-ранж внутри walked-блока.
       S2 = APPLY (насыщающий f(used)=1+min(used,10)×0.1, rank-only, I6
       10k-флуд мутационный тест; `feedback_epoch` bump-on-capture
-      идемпотентный; **свой default-off флаг** `mnemos.feedback_apply`;
-      `feedback_boosted_queries_total` = enablement-observable). Ревью S1
-      поймало два дефекта до мерджа (краш starved-fused, дыра backfill
-      tags-фильтра) — оба killer-пины. **Всё за default-off флагами;
-      enablement = отдельное решение по capture-телеметрии** (окно
-      меряло минтинг, не feedback — механика без топлива = собственный
-      анти-паттерн ADR-0030).
+      идемпотентный; **свой флаг** `mnemos.feedback_apply` (сдан
+      default-off); `feedback_boosted_queries_total` =
+      enablement-observable). Ревью S1 поймало два дефекта до мерджа
+      (краш starved-fused, дыра backfill tags-фильтра) — оба killer-пины.
+      **Сдано за default-off флагами; 2026-09-28 владелец включил всю
+      граф-семью default-ON** (mnemos `8457c635`; решение по
+      capture-телеметрии — окно меряло минтинг, не feedback — механика
+      без топлива = собственный анти-паттерн ADR-0030).
 - [ ] **Later:** фаза B (sidecar-верификация default-OFF + gap detection — после
       телеметрии A0/A1); фаза C (Contradicts/DerivedFrom, write-time консолидация,
       авто-supersedes за флагом) — блокируется отдельной threat-model сессией.

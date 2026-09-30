@@ -359,12 +359,14 @@ flowchart LR
 
 ## 11. Module layout (Python)
 
-> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from `src/mnemos/`; one-line purposes come from the module docstrings.
+> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from the filesystem at `src/vesmaro/` (Vesma 5.0.0 rebrand — `src/mnemos/` is now a compatibility shim, ADR-0031 dual-import window); one-line purposes come from the module docstrings.
 
 ```
 pyproject.toml
 src/
-  mnemos/
+  mnemos/                # compat shim → vesmaro (dual-import window, ADR-0031)
+    __init__.py
+  vesmaro/
     __init__.py
     config.py            # env + YAML settings; legacy env-name aliases (#139)
     models.py            # Memory, TagContract, Trace data models
@@ -378,7 +380,7 @@ src/
     train_entry.py       # `mnemos-train` console entry point (ADR-0021 NM track)
 
     api/                 # FastAPI HTTP API
-      main.py            #   app + routes
+      main.py            #   app + routes (+ /graph/ project-graph namespace, ADR-0032)
       auth.py            #   auth router (T-AUTH, ADR-0014)
       auth_store.py      #   tokens / sessions / challenges storage
       middleware.py      #   ASGI auth middleware
@@ -391,6 +393,7 @@ src/
       completion.py      #   `mnemos completion` shell completion installer
       integration.py     #   `mnemos integration` deployment layer
       agent_wiring.py    #   agent MCP wiring helpers
+      agent_token_cmd.py #   `agent-token` issue/rotate/revoke/list (W3-v1, ADR-0018-T §5)
       export.py / export_cmd.py    # export logic + Typer wrapper
       import_.py / import_cmd.py   # import logic + Typer wrapper
       sync.py / sync_cmd.py        # federation batch sync + Typer wrapper
@@ -400,10 +403,19 @@ src/
       _manager.py        #   shared get_manager() helper
       util.py            #   shared CLI utilities
 
+    codegraph/           # project code graph (ADR-0032, PG-0)
+      languages.py       #   language registry (wave 1: Python)
+      file_surface.py    #   PG3 denylist→allowlist file surface
+      indexer.py         #   tree-sitter indexer core
+      incremental.py     #   mtime+size incremental indexing
+      service.py         #   CodeGraphService control layer (10 tools)
+      audit.py           #   PG7 audit trail
+      watch.py           #   in-process watch poll (`watch_start`)
     storage/             # SQLite, vector store, Obsidian vault
       sqlite_store.py    #   SQLite FTS5 + traces + pipeline state
       vector_store.py    #   SQLite + NumPy vectors, published-only
       vault.py           #   Obsidian markdown mirror
+      code_graph_store.py #  sidecar `code_graph.db` store (ADR-0032 PG-0)
     pipeline/            # knowledge pipeline (M4)
       cluster.py         #   embedding-similarity clustering
       synthesize.py      #   LLM draft synthesis (idempotent by hash)
@@ -423,6 +435,12 @@ src/
       mnema-embed-v1/    # bundled ONNX embedding model (model.onnx, tokenizer.json, manifest.json)
     llm/                 # LLM provider abstraction
       base.py            #   provider interface
+    metrics/             # vitals metrics sidecar (phase A2: ledger + exposition)
+      schema.py          #   born-final sidecar schema (allowlist = contract)
+      sink.py            #   MetricsStore write path into metrics.sqlite
+      ledger.py          #   universal verb ledger + hourly rollup
+      exposer.py         #   Prometheus hybrid exposition
+      boundary.py        #   config→store wiring + collection points
     sessions/            # A2A Sessions API (M16)
       api.py             #   FastAPI router
       store.py           #   SQLite-backed session store
@@ -438,6 +456,14 @@ src/
     hooks.py             # server-side lifecycle hooks (#125)
     ccr.py               # P1-4 CCR reversible compression (compress-cache-retrieve)
     cache_aligner.py     # P1-5 CacheAligner — prefix stabilization for KV caches
+    lens.py              # code-defined lens presets (ADR-0027 Ф0, invariant 6)
+    lanes.py             # deterministic retrieval lanes (ADR-0025 E1, default-off)
+    awareness.py         # Awareness v0 — presence + delta + conflict-hints (#254)
+    docs_ingest.py       # docs-as-memory ingest, born-quarantine (ADR-0027 Ф3)
+    decision_provider.py # decision-provider seam (ADR-0004)
+    decision_jev.py      # external Jev adapter (ADR-0004 (c), default-off)
+    canon_validate.py    # write-path canon validator, warn/strict (canon §9)
+    graph_minting.py     # relates_to auto-minting on write (ADR-0030 A0)
     danger_detectors.py  # danger detectors — positive-signal set (ADR-0019 Phase A)
     secrets_detector.py  # secret pattern detection (federation Layer 1)
     scanner.py           # background secrets scanner (federation Layer 2)
@@ -446,12 +472,16 @@ src/
     compact.py           # compact federation exchange format (Phase 0, #85)
     audit.py             # federation sync audit log (append-only JSONL)
     trigger_codes.py     # federation mediated-pull trigger codes
+    http_guard.py        # SSRF guard for outbound HTTP legs (ADR-0009/0012)
+    lazy_fetch.py        # S2 lazy fetch — operator-confirmed content fetch
+    meta_poller.py       # S2 phase-2 background federation metadata poller
     federation_client.py # federation client (A-side) — mediated pull transport
     federation_server.py # federation server (B-side) — mediated pull endpoint
     federation_a2a.py    # federation A2A handler — mediated pull over A2A
     federation_access_log.py  # federation access log (B-side audit)
     mesh_client.py       # mnemos-mesh gRPC client (Unix-socket transport, #105)
     mesh_server.py       # MnemosCore gRPC server on Unix socket (#105)
+    agent_tokens.py      # W3-v1 agent-token scheme, Ed25519 (ADR-0018-T)
     _mesh_gen.py         # import shim for gRPC-generated stubs
 ```
 

@@ -5,22 +5,6 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.0.0] — 2026-10-01 — VESMA rebrand
-
-### Changed (breaking)
-- **Product name: Mnemos → Vesma.** PyPI: naked `vesma` (canonical install) + full legacy-compatible name `vesma-memory-server`; npm: naked `vesma` + scoped `@vesma/*`; GH org stays `vesmaro`, repo renamed `vesmaro/vesma` in the release window.
-- **CLI:** canonical command `vesma` (aliases `vesmaro`, legacy `mnemos` — deprecated, retire no earlier than 6.0 per dual-import contract ADR-0031).
-- **MCP brand env:** `VESMA_MCP_BRAND` is canonical; `VESMARO_MCP_BRAND` kept as deprecated alias (dual-read); `mnemos_*` tool names and `mnemos:` tag namespace stay live wire contracts until 6.0.
-- **Version chain:** `vesma` → `vesmaro` → `mnemos-memory-server` (importlib lookup order, both in `vesmaro.__init__` and the version guard).
-
-### Changed
-- src legend: 54 files (docstrings/comments/help, no code-channel changes); tests legend: 8 files; docs EN/RU: 91 files (README h1/badges/banner-alt; env tables use the `VESMARO_*` code truth with a deprecated `MNEMOS_*` note block; EN/RU parity 28↔28).
-- dev-plan: Vesma 5.0.0 wave row (commit `3697e45`).
-
-### Fixed
-- stray tracked `.venv` symlink removed from the tree (regression surfaced by PR #441) and ignored.
-- version drift guard (#204): VERSION==pyproject==metadata enforced synchronously.
-
 ## [Unreleased]
 
 ### Added
@@ -68,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Canon-line engine integrity A6 — schemas deploy verifies the canon pin before writing (cascade review SEC P3-4)** (`src/vesmaro/cli/integration.py`, `tests/test_integration.py`) — `_deploy_schemas` wrote pack checksums straight into the manifest without checking them: a tampered pack file (edited on disk, unpinned addition, stale pin entry) deployed wrong bytes while the manifest claimed the clean canon pin, silently defeating the ADR-0003 pin protocol. Every pack schema checksum is now verified against `SCHEMAS_SOURCE_PIN["sha256"]` in both directions BEFORE any write; any mismatch raises `ValueError` naming the offending files per class (drifted / unpinned / stale_pin) and nothing deploys.
 
 - **W3 review nits — `INTERNAL` mapping for mid-validation store failures at both `validate_agent_token` call sites + a `bad_signature` data-path test (PR #398 review, P3-1/P3-2)** (`src/vesmaro/mesh_server.py`, `tests/test_mesh_server.py`) — a runtime crash of the validator itself (e.g. a locked/corrupt SQLite hit during the jti denylist lookup inside `validate_agent_token`) escaped the servicer as gRPC `UNKNOWN` with the raw exception repr in the wire details (leaking store paths to the mesh caller); both call sites — `_agent_data_gate` (the W3 part 3 per-request data gate) and the `ValidateAgentToken` RPC (part 2) — now wrap the call and map any such failure to `INTERNAL` with a FIXED details string ("agent token validation failed" / "token validation failed"), the cause going to `logger.error` only (mirroring the existing `_token_validation_deps` init-failure mapping). New test `test_bad_signature_unauthenticated` on the DATA path: a structurally valid envelope signed by a FOREIGN Ed25519 key (freshly generated in the test; jti genuinely registered, agent id / `aud` / scope genuine and matching the request metadata, so the signature is the ONLY failing check) with `x-mnemos-agent-id` present → `ListMemories` → `UNAUTHENTICATED` with the coarse `bad_signature` reason in details.
+
+## [5.0.0] — 2026-10-01 — VESMA rebrand
+
+### Changed (breaking)
+- **Product name: Mnemos → Vesma.** PyPI: naked `vesma` (canonical install) + full legacy-compatible name `vesma-memory-server`; npm: naked `vesma` + scoped `@vesma/*`; GH org stays `vesmaro`, repo renamed `vesmaro/vesma` in the release window.
+- **CLI:** canonical command `vesma` (aliases `vesmaro`, legacy `mnemos` — deprecated, retire no earlier than 6.0 per dual-import contract ADR-0031).
+- **MCP brand env:** `VESMA_MCP_BRAND` is canonical; `VESMARO_MCP_BRAND` kept as deprecated alias (dual-read); `mnemos_*` tool names and `mnemos:` tag namespace stay live wire contracts until 6.0.
+- **Version chain:** `vesma` → `vesmaro` → `mnemos-memory-server` (importlib lookup order, both in `vesmaro.__init__` and the version guard).
+
+### Changed
+- src legend: 54 files (docstrings/comments/help, no code-channel changes); tests legend: 8 files; docs EN/RU: 91 files (README h1/badges/banner-alt; env tables use the `VESMARO_*` code truth with a deprecated `MNEMOS_*` note block; EN/RU parity 28↔28).
+- dev-plan: Vesma 5.0.0 wave row (commit `3697e45`).
+
+### Fixed
+- stray tracked `.venv` symlink removed from the tree (regression surfaced by PR #441) and ignored.
+- version drift guard (#204): VERSION==pyproject==metadata enforced synchronously.
 
 ## [4.3.0] - 2026-09-16
 

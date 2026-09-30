@@ -3,7 +3,10 @@
 **Status:** Accepted (with conditions) — ArchCom 2026-09-28, accept-staged:
 each wave PG-0..PG-3 launches only on an explicit owner green-light;
 the owner-only questions are listed in «Open questions». Decision
-mnemos id `266aa582`; contract mnemos id `b7572c97`.
+mnemos id `266aa582`; contract mnemos id `b7572c97` (short mnemos id
+prefixes — the full UUIDs of the same records live in the mnemos store;
+the committee protocol files keep the mnemonic names
+`archcom-2026-09-28-project-graph` / `archcom-contract-2026-09-28-project-graph`).
 
 **Update 2026-09-28 (owner, same day):** «graphs on by default» — the
 owner exercised the reserved default-on decision for BOTH graph
@@ -416,7 +419,15 @@ flowchart LR
   `~/.gcw/architectural-committee/2026-09-28-project-graph.md` and
   `2026-09-28-project-graph-contract.md` (committee-local, not part of
   this repository); mnemos decision id `266aa582`, contract id
-  `b7572c97`.
+  `b7572c97` — short id prefixes; the full UUIDs of the same records
+  live in the mnemos store (unlike ADR-0030, whose primary ids are
+  quoted in full — the committee files record only the mnemonic names,
+  so the prefixes are reproduced as-is, not invented).
+- Owner decision «graphs on by default» (2026-09-28) — both graph
+  families flip to default-on, `tree-sitter` promoted to a core
+  dependency (the Update block above) — mnemos `8457c635`.
+- Owner decision on native shipping of the graph stack — mnemos
+  `3359b0f8`.
 - Research (verified, primary sources only):
   DeusData/codebase-memory-mcp —
   `~/.gcw/architectural-committee/2026-09-28-project-codebase-graph/research-codebase-memory-mcp.md`
