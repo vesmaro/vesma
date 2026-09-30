@@ -37,9 +37,11 @@ pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed
 
 from vesmaro.codegraph.audit import GraphAudit
 from vesmaro.codegraph.service import (
+    CodeGraphService,
     GraphConfinementError,
     GraphDisabledError,
     GraphToolError,
+    close_graph_service,
 )
 from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
@@ -369,3 +371,34 @@ def test_manager_close_stops_poll(indexed_manager: MemoryManager) -> None:
     assert indexed_manager.watch_status()["running"] is True
     indexed_manager.close()
     assert indexed_manager.watch_status()["running"] is False
+
+
+def test_manager_close_closes_graph_service(
+    indexed_manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 10173a2a-2: the lazily built sidecar service (store +
+    audit connections) must be closed BY manager.close() — not left to
+    GC. Observable: service.close() is called exactly once with the
+    registered instance and is idempotent."""
+    service = indexed_manager.get_codegraph_service()
+    assert service is not None
+    closed: list[CodeGraphService] = []
+    original = CodeGraphService.close
+
+    def _spy(self: CodeGraphService) -> None:
+        closed.append(self)
+        original(self)
+
+    monkeypatch.setattr(CodeGraphService, "close", _spy)
+    indexed_manager.close()
+    assert closed == [service]
+    # Idempotent: the store/audit close paths tolerate a repeat.
+    service.close()
+
+
+def test_close_graph_service_never_builds(tmp_path: Path) -> None:
+    mgr = _make_manager(tmp_path)  # graph enabled, service never built
+    try:
+        assert close_graph_service(mgr) is False
+    finally:
+        mgr.close()

@@ -684,6 +684,12 @@ class MemoryManager:
         watch = self._graph_watch
         if watch is not None:
             watch.close()  # stops the poll thread BEFORE the stores close
+        from vesmaro.codegraph.service import close_graph_service
+
+        # Close the (lazily built, weak-keyed) graph service WITHOUT
+        # building one: its sidecar store + audit connections must not
+        # live on GC after the manager is closed (review 10173a2a-2).
+        close_graph_service(self)
         self.sqlite.close()
         self.vectors.close()
         vitals = self._vitals_store

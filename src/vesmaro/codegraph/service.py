@@ -1079,3 +1079,20 @@ def get_graph_service(manager: Any) -> CodeGraphService:
         )
         _SERVICE_REGISTRY[manager] = service
     return service
+
+
+def close_graph_service(manager: Any) -> bool:
+    """Close the manager's graph service IF one was built — never builds
+    one (unlike :func:`get_graph_service`), so it is safe on every
+    ``MemoryManager.close()`` path.
+
+    Returns whether a service existed and was closed. The weak-keyed
+    registry drops the entry too: a later ``get_graph_service`` on the
+    same manager builds a FRESH service instead of handing out a closed
+    one. ``CodeGraphService.close`` itself is idempotent (store and
+    audit tolerates a second call) — review 10173a2a-2."""
+    service = _SERVICE_REGISTRY.pop(manager, None)
+    if service is None:
+        return False
+    service.close()
+    return True
