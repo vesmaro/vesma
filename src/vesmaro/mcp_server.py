@@ -73,15 +73,21 @@ _auto_collect_state = {
 _BRAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 # Rebrand 5.0.0 (vesma): canonical env is VESMA_MCP_BRAND; VESMARO_MCP_BRAND
 # stays as a deprecated alias (dual-period until 6.0, ADR-0031 class).
-_raw_brand = (
-    os.environ.get("VESMA_MCP_BRAND") or os.environ.get("VESMARO_MCP_BRAND") or ""
-).strip().lower()
+_BRAND_ENV_CANON = "VESMA_MCP_BRAND"
+_brand_canon_val = os.environ.get(_BRAND_ENV_CANON, "").strip().lower()
+_brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
+if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
+    logger.warning(
+        "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
+        _BRAND_ENV_CANON, _brand_canon_val, _brand_depr_val,
+    )
+_raw_brand = (_brand_canon_val or _brand_depr_val).lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
 _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand) else ""
 if _raw_brand and not _MCP_BRAND:
     logger.warning(
-        "VESMARO_MCP_BRAND=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _raw_brand,
+        "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
+        _BRAND_ENV_CANON, _raw_brand,
     )
 
 
