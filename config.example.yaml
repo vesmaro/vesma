@@ -109,6 +109,17 @@ code_graph:
   watch_base_interval_sec: 5.0
   watch_interval_per_500_files: 1.0
   watch_max_interval_sec: 60.0
+  # NATIVE auto-indexing (zero-touch): every MCP call / pre_llm_call hook
+  # emits an activity hint; a project whose cwd carries a packaging
+  # manifest (pyproject.toml / setup.py / package.json / go.mod /
+  # Cargo.toml — a bare .git does NOT count) auto-registers and indexes
+  # itself in the background. See docs/*/user/project-graph.md.
+  auto_index: true
+  # Global cap on AUTO-registrations (manual registrations never count);
+  # further auto-registrations are skipped with an audit row.
+  auto_register_max_projects: 64
+  # Minimum seconds between background auto (re)index runs per project.
+  auto_reindex_min_interval_sec: 300.0
 
 # ── Federation (Phase 0 batch sync, issue #85) ───────────────────────────────
 # Operator-curated, OFFLINE, cron-triggered batch sync between two mnemos
