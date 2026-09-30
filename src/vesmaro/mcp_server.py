@@ -71,7 +71,11 @@ _auto_collect_state = {
 # calls are normalised to the canonical mnemos_ name before dispatch, so the
 # handler bodies below keep the canonical spellings untouched.
 _BRAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
-_raw_brand = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
+# Rebrand 5.0.0 (vesma): canonical env is VESMA_MCP_BRAND; VESMARO_MCP_BRAND
+# stays as a deprecated alias (dual-period until 6.0, ADR-0031 class).
+_raw_brand = (
+    os.environ.get("VESMA_MCP_BRAND") or os.environ.get("VESMARO_MCP_BRAND") or ""
+).strip().lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
 _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand) else ""
 if _raw_brand and not _MCP_BRAND:
