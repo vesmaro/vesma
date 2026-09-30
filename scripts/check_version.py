@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """check-version gate: __version__ must match the installed dist metadata.
 
-Tries the current distribution name first (`mnemos-memory-server`, #122),
-falls back to the legacy `mnemos` name for pre-rename environments. A
-missing metadata is a hard error — the gate is meaningless without an
-editable/installed dist.
+Tries the canonical distribution name first (`vesma`, 5.0.0 rebrand #333),
+falls back to the legacy `vesmaro` / `mnemos-memory-server` names for
+pre-rename environments — the same lookup chain as `vesmaro.__init__`
+and `tests/test_version.py`. A missing metadata is a hard error — the
+gate is meaningless without an editable/installed dist.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ def _installed(name: str) -> str | None:
 
 
 def main() -> None:
-    v = _installed("vesmaro") or _installed("mnemos-memory-server") or _installed("mnemos")
+    v = _installed("vesma") or _installed("vesmaro") or _installed("mnemos-memory-server")
     if v is None:
         raise SystemExit(
             "check-version: no distribution metadata found for "
