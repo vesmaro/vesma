@@ -118,6 +118,7 @@ class GraphWatchScheduler:
         self._lock = threading.Lock()
         self._wake = threading.Event()
         self._stop_flag = threading.Event()
+        self._closed = False  # set once by close(); late registers refused
         self._thread: threading.Thread | None = None
 
     # ── registration surface (manager.watch_* call these) ────────────────
@@ -143,6 +144,14 @@ class GraphWatchScheduler:
             raise GraphToolError(
                 f"project {project_id!r} has no index yet — call mnemos_index_project "
                 "first (the watch poll reindexes; it never seeds a first index)"
+            )
+        if self._closed:
+            # Review 57ae9a66-2: after close() (manager shutdown) a late
+            # registration is an honest REFUSAL — never a silent
+            # resurrection of the poll thread that close() joined.
+            raise GraphToolError(
+                "watch scheduler is closed (manager shutdown) — registration refused; "
+                "the poll thread is not resurrected after close"
             )
         with self._lock:
             existing = self._registrations.get(graph_key)
@@ -215,7 +224,13 @@ class GraphWatchScheduler:
         }
 
     def close(self) -> None:
-        """Full stop (manager ``close`` path)."""
+        """Full stop (manager ``close`` path) — and FINAL: the closed
+        flag survives every later call, so a ``register`` that lands
+        after a long running job outlived the 5s join is refused
+        outright instead of resurrecting the poll thread (review
+        57ae9a66-2)."""
+        with self._lock:
+            self._closed = True
         self.stop()
 
     # ── poll loop ──────────────────────────────────────────────────────────
@@ -240,6 +255,8 @@ class GraphWatchScheduler:
         before leaving, so the new registration is guaranteed a poller;
         a fresh thread starts only after the previous one committed
         (``_thread is None``)."""
+        if self._closed:
+            return  # final (review 57ae9a66-2): close() survives late registers
         self._stop_flag.clear()
         if self._thread is not None and self._thread.is_alive():
             return

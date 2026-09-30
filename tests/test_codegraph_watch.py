@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from vesmaro.codegraph.service import GraphToolError
 from vesmaro.codegraph.watch import GraphWatchScheduler
 
 #: Deadline for a poll to show up with the shrunk intervals below.
@@ -112,3 +113,19 @@ def test_full_stop_commits_thread_exit() -> None:
         assert scheduler.status()["running"] is False
     finally:
         scheduler.close()
+
+
+def test_register_after_close_is_refused_never_resurrects() -> None:
+    """Review 57ae9a66-2: close() is FINAL. A late registration after a
+    long running job outlived the 5s join must be an honest refusal —
+    the poll thread must not come back to life."""
+    service = _StubService()
+    scheduler = _scheduler(service)
+    scheduler.register("proj", agent="t")
+    _wait_polled(service, 1)
+    scheduler.close()
+    with pytest.raises(GraphToolError, match="closed"):
+        scheduler.register("proj", agent="t")
+    assert scheduler._thread is None
+    assert scheduler.status()["running"] is False
+    assert service.calls, "sanity: the pre-close registration WAS polled"
