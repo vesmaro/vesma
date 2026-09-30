@@ -490,6 +490,27 @@ class TestPGMechanics:
         assert any(r["details"].get("outcome") == "limit-refused" for r in rows)
         service.close()
 
+    def test_pg7_limit_breach_audit_carries_no_absolute_root(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        # Review 10173a2a-4: the audit trail leaves the process (sidecar
+        # DB), so the absolute registered root must not ride it — the
+        # basename stays; the RAISED message keeps the full root for the
+        # process log.
+        service, _ = make_service(tmp_path, mini_repo, index_max_files=1)
+        try:
+            with pytest.raises(IndexLimitError) as excinfo:
+                service.index_project(PROJECT, agent=AGENT)
+            assert str(mini_repo) in str(excinfo.value)  # log stays informative
+            rows = service._audit.recent(PROJECT)
+            breach = [r for r in rows if r["details"].get("outcome") == "limit-refused"]
+            assert breach, "expected the limit-refused audit row"
+            dumped = json.dumps([r["reason"] for r in breach] + [str(r["details"]) for r in breach])
+            assert str(mini_repo) not in dumped  # no absolute prefix anywhere
+            assert mini_repo.name in dumped  # basename keeps it actionable
+        finally:
+            service.close()
+
 
 # ── MCP layer ────────────────────────────────────────────────────────────────
 

@@ -339,14 +339,25 @@ class CodeGraphService:
             )
         except IndexLimitError as exc:
             # A limit breach is a REFUSAL, not a publish — the previous
-            # graph survives; audit the attempt as a failed index.
+            # graph survives; audit the attempt as a failed index. The
+            # audit reason carries the root BASENAME only (review
+            # 10173a2a-4): the sidecar trail leaves the process, so an
+            # absolute path must not ride it; the RAISED message keeps
+            # the full root — that one stays in the process log.
+            audit_reason = str(exc).replace(
+                registered.root, os.path.basename(registered.root)
+            )
             self._audit.record(
                 registered.graph_key,
                 "index" if pre_files == 0 else "reindex",
                 actor,
                 session=sess,
-                reason=str(exc),
-                details={"outcome": "limit-refused", "trigger": reason},
+                reason=audit_reason,
+                details={
+                    "outcome": "limit-refused",
+                    "trigger": reason,
+                    "root": os.path.basename(registered.root),
+                },
             )
             raise
         payload = self._index_payload(result)
