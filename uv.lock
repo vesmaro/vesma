@@ -4485,7 +4485,7 @@ wheels = [
 ]
 
 [[package]]
-name = "vesmaro"
+name = "vesma"
 version = "4.3.0"
 source = { editable = "." }
 dependencies = [
@@ -4526,22 +4526,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "anthropic" },
-    { name = "bandit" },
-    { name = "google-generativeai" },
-    { name = "mypy" },
-    { name = "ollama" },
-    { name = "openai" },
-    { name = "pip" },
-    { name = "pip-audit" },
-    { name = "pymupdf" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "python-docx" },
-    { name = "ruff" },
-    { name = "setuptools" },
-    { name = "types-pyyaml" },
+    { name = "vesmaro" },
 ]
 anthropic = [
     { name = "anthropic" },
@@ -4591,7 +4576,7 @@ training = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "vesmaro", extra = ["dev"] },
+    { name = "vesma", extra = ["dev"] },
 ]
 
 [package.metadata]
@@ -4657,7 +4642,16 @@ requires-dist = [
 provides-extras = ["anthropic", "openai", "gemini", "azure", "ollama", "sentence-transformers", "training", "openvino", "mcp", "pdf", "docx", "dev", "all"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "vesmaro", extras = ["dev"] }]
+dev = [{ name = "vesma", extras = ["dev"] }]
+
+[[package]]
+name = "vesmaro"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fa/0f/4df796d328df85d56ff89301d2c0290201fd51b669519575dd0a891c88ab/vesmaro-0.0.1.tar.gz", hash = "sha256:ba1e2f4e46bbd3d94539dabd35d1528085149e97a70c1fd06297c70934b14a48", size = 815, upload-time = "2026-09-15T12:22:18.971Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/c3/269d548cf47b0b9050277359b8a17d8da6989417c8eedabdc531bff4eac4/vesmaro-0.0.1-py3-none-any.whl", hash = "sha256:0f3207b4eabbe60997e6df4322ac05c33b931bc6be0c27dd016c8d73bee22c42", size = 1269, upload-time = "2026-09-15T12:22:17.805Z" },
+]
 
 [[package]]
 name = "watchdog"
