@@ -14,10 +14,10 @@
   <a href="https://pypi.org/project/vesma/"><img src="https://img.shields.io/pypi/v/vesma?label=pypi&color=3776ab" alt="PyPI"></a>
   <!-- deprecated-note: legacy PyPI package mnemos-memory-server (published until deprecation) -->
   <!-- <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a> -->
-  <a href="https://www.npmjs.com/package/pi-mnemos"><img src="https://img.shields.io/npm/v/pi-mnemos?label=npm&color=cb3837" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@vesmaro/vesma"><img src="https://img.shields.io/npm/v/@vesmaro%2Fvesma?label=npm&color=cb3837" alt="npm"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache-2.0"></a>
-  <a href="https://github.com/vesmaro/vesmaro/releases"><img src="https://img.shields.io/github/v/release/vesmaro/vesmaro?label=version&color=blueviolet" alt="Version"></a>
+  <a href="https://github.com/vesmaro/vesma/releases"><img src="https://img.shields.io/github/v/release/vesmaro/vesma?label=version&color=blueviolet" alt="Version"></a>
 </p>
 
 <p align="center">
@@ -41,6 +41,7 @@ closing of a window.
 
 - **Local-first.** One process on your machine. SQLite + a bundled embedding model; nothing leaves the host, no API keys, works offline.
 - **One server, any harness.** VS Code Copilot, Claude Code, Cursor, OpenCode, Codex, Windsurf, ZCode, pi, Hermes — the same MCP wire, one line each.
+- **The codebase becomes memory.** A project graph — files, symbols, call/import edges — indexes **itself** in the background on first contact; the agent navigates structure instead of re-reading files.
 - **The agent learns to *use* it.** Not just tools: always-on instructions, a skill pack, and a memory-first prompt mode, deployed into your harness in one command.
 
 ---
@@ -106,7 +107,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesmaro.env (both env spellings), then:
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0
+podman pull ghcr.io/vesmaro/vesmaro:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet derives the unit name from the file name — the unit is mnemos.service for now
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
@@ -369,7 +370,7 @@ gods' benefit. They were for the songs.
 
 ## ⚖️ License &amp; contributing
 
-Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Source: [github.com/vesmaro/vesmaro](https://github.com/vesmaro/vesmaro).
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Source: [github.com/vesmaro/vesma](https://github.com/vesmaro/vesma).
 
 Contributions are welcome — [CONTRIBUTING.md](CONTRIBUTING.md) has the development setup, the branch
 and commit conventions, and the quality gate a change must pass.
