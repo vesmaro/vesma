@@ -4,7 +4,7 @@
 
 ## Обзор
 
-Перенос данных из ai-brain (SQLite DB + vault) в формат Mnemos.
+Перенос данных из ai-brain (SQLite DB + vault) в формат Vesma.
 
 ## Перед началом
 
@@ -14,14 +14,14 @@
    cp -r ~/brain-vault ~/brain-vault.backup-$(date +%Y%m%d)
    ```
 
-2. **Установите Mnemos** (см. `install.md`).
+2. **Установите Vesma** (см. `install.md`).
 
 ## Тестовый прогон
 
 Всегда запускайте dry-run первым, чтобы увидеть, что будет перенесено:
 
 ```bash
-mnemos migrate from-ai-brain --dry-run
+vesma migrate from-ai-brain --dry-run
 ```
 
 Вывод показывает:
@@ -32,18 +32,18 @@ mnemos migrate from-ai-brain --dry-run
 ## Полная миграция
 
 ```bash
-mnemos migrate from-ai-brain
+vesma migrate from-ai-brain
 ```
 
 Действия:
-1. Резервное копирование существующей БД Mnemos (при наличии)
-2. Миграция всех записей с применением контракта тегов Mnemos в **lax mode**
+1. Резервное копирование существующей БД Vesma (при наличии)
+2. Миграция всех записей с применением контракта тегов Vesma в **lax mode**
 3. Копирование файлов vault с сохранением структуры каталогов
-4. Маппинг источников ai-brain → источники Mnemos (telegram → mcp)
+4. Маппинг источников ai-brain → источники Vesma (telegram → mcp)
 
 ## Обработка контракта тегов
 
-Унаследованные записи ai-brain без тегов `project:` / `agent:` / `mnemos:` получают:
+Унаследованные записи ai-brain без тегов `project:` / `agent:` / `vesma:` получают:
 - `project:legacy`
 - `agent:unknown`
 - `mnemos:legacy`
@@ -51,39 +51,39 @@ mnemos migrate from-ai-brain
 После миграции просмотрите и перетегируйте важные записи:
 
 ```bash
-mnemos search legacy --tags project:legacy --limit 50
+vesma search legacy --tags project:legacy --limit 50
 ```
 
-## Миграция тегов `gcw:` → `mnemos:`
+## Миграция тегов `gcw:` → `vesma:`
 
 Если в хранилище есть записи с устаревшим префиксом тегов `gcw:<subtype>`
 (от семейства агентов GCW до версии 2.7.8), переименуйте их массово в
-канонический префикс `mnemos:<subtype>` безопасной командой `tags rename`:
+канонический префикс `vesma:<subtype>` безопасной командой `tags rename`:
 
 ```bash
 # Сначала dry-run — предпросмотр, ничего не записывается (по умолчанию)
-mnemos tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to mnemos: --dry-run
 
 # Применить переименование
-mnemos tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --no-dry-run
 ```
 
 Замечания:
 - `validate_tag_contract()` уже автоматически мигрирует валидные
-  `gcw:<subtype>` → `mnemos:<subtype>` при чтении, поэтому теги `gcw:`
+  `gcw:<subtype>` → `vesma:<subtype>` при чтении, поэтому теги `gcw:`
   принимаются как alias. Массовое переименование — разовая операция для
   канонизации хранящихся тегов.
 - Неверные подтипы `gcw:` (не из whitelist) по умолчанию пропускаются и
   учитываются в `skipped_invalid`. Передайте `--invalid-to-legacy`, чтобы
   переименовать их в `mnemos:legacy` вместо пропуска.
 - Операция **идемпотентна** — повторный запуск вернёт `renamed=0`.
-- Устаревшая команда `mnemos migrate tags` теперь делегирует на этот
-  безопасный путь и выдаёт предупреждение. Предпочитайте `mnemos tags rename`.
+- Устаревшая команда `vesma migrate tags` теперь делегирует на этот
+  безопасный путь и выдаёт предупреждение. Предпочитайте `vesma tags rename`.
 
 ## Чеклист после миграции
 
-- [ ] `mnemos stats` показывает ожидаемое количество записей
-- [ ] `mnemos search "hello"` возвращает результаты
+- [ ] `vesma stats` показывает ожидаемое количество записей
+- [ ] `vesma search "hello"` возвращает результаты
 - [ ] Файлы vault видны в `~/.mnemos/vault/`
 - [ ] MCP-команда `mnemos_recall_context` работает
 
@@ -96,17 +96,17 @@ round-3 для `mnema-embed-v1`, `weights_sha256 3b752e06…`), существу
 1. После апгрейда фоновый heal-свипер находит каждый вектор, чей
    сохранённый отпечаток эмбеддера больше не совпадает с текущим, и
    переэмбеддит такие записи ограниченными батчами — миграция идёт
-   постепенно и автоматически (запустите процессор: `mnemos processor start`).
-2. `mnemos doctor` показывает прогресс в строке **Vector store**
+   постепенно и автоматически (запустите процессор: `vesma processor start`).
+2. `vesma doctor` показывает прогресс в строке **Vector store**
    («N cut by another embedder»); счётчик уходит в ноль по мере
    дренирования записей `refined`. Осиротевшие векторные строки удалённых
    или не доведённых до refine записей могут удерживать счётчик выше
-   нуля — это чистая диагностика (doctor их показывает; `mnemos reindex`
+   нуля — это чистая диагностика (doctor их показывает; `vesma reindex`
    их не удаляет).
 3. Чтобы перестроить индекс за один проход, не дожидаясь фоновых циклов:
 
    ```bash
-   mnemos reindex
+   vesma reindex
    ```
 
 Пока миграция не завершилась, векторный поиск смешивает два
@@ -118,7 +118,7 @@ embedding-пространства — семантическое ранжиро
 Если что-то пошло не так:
 
 ```bash
-# Восстановление из резервной копии Mnemos
+# Восстановление из резервной копии Vesma
 ls ~/.mnemos/data/*.backup-*
 cp ~/.mnemos/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.mnemos/data/mnemos.db
 

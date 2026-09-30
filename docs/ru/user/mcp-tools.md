@@ -2,9 +2,9 @@
 
 **🌐 Language / Язык:** [English](../../en/user/mcp-tools.md) · Русский
 
-> Полная справка по инструментам `mnemos_*`, экспортируемым MCP-сервером Mnemos (`mnemos mcp-server`).
+> Полная справка по инструментам `vesma_*`, экспортируемым MCP-сервером Vesma (`vesma mcp-server`).
 
-Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) поверх **stdio JSON-RPC 2.0**. VS Code Copilot и любой MCP-совместимый клиент могут вызывать инструменты, перечисленные здесь.
+Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) поверх **stdio JSON-RPC 2.0**. VS Code Copilot и любой MCP-совместимый клиент могут вызывать инструменты, перечисленные здесь.
 
 Сервер определён в `src/vesmaro/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
 
@@ -17,9 +17,9 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 | Свойство | Значение |
 |----------|--------- |
 | Протокол | MCP (JSON-RPC 2.0 поверх stdio) |
-| Имя сервера | `mnemos` |
+| Имя сервера | `vesma` |
 | Транспорт по умолчанию | stdio (без TCP) |
-| Префикс инструментов | `mnemos_` |
+| Префикс инструментов | `vesma_` |
 | Кодировка | UTF-8, JSON |
 
 Сервер не занимает никакой порт. Остановить через `Ctrl+C` или отправкой EOF на stdin.
@@ -38,7 +38,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 | [`mnemos_list_recent`](#mnemos_list_recent) | Список последних записей | нет |
 | [`mnemos_list_tags`](#mnemos_list_tags) | Список всех тегов с количеством | нет |
 | [`mnemos_tags`](#mnemos_tags) *(пилот #97)* | Сгруппированные операции над тегами: rename / remove / add (`action: enum`) | нет |
-| [`mnemos_tags_rename`](#mnemos_tags_rename) | Массовое переименование префиксов тегов (напр. `gcw:` → `mnemos:`); по умолчанию dry-run | нет |
+| [`mnemos_tags_rename`](#mnemos_tags_rename) | Массовое переименование префиксов тегов (напр. `gcw:` → `vesma:`); по умолчанию dry-run | нет |
 | [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Жизненный цикл workflow: set / get / history (`action: enum`) | нет |
 | [`mnemos_ingest_url`](#mnemos_ingest_url) | Загрузить и сохранить веб-страницу | да |
 | [`mnemos_ingest_document`](#mnemos_ingest_document) | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) | да |
@@ -73,7 +73,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 
 ## `mnemos_add`
 
-Создать новую запись в памяти. MCP-слой применяет контракт тегов Mnemos ([M2](tag-contract.md)) перед записью.
+Создать новую запись в памяти. MCP-слой применяет контракт тегов Vesma ([M2](tag-contract.md)) перед записью.
 
 ### Входные параметры
 
@@ -81,7 +81,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Текст для запоминания. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>` (неймспейс подтипов — контракт данных, ребрендингом не изменяемый). |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | нет | авто | Одно из `log`, `terminal`, `code`, `docs`, `web`, `default`. Управляет контекстным фильтром M10. |
 | `verbosity` | string | нет | из конфига | Одно из `default`, `terse`, `minimal`. Вставляет подсказку по стилю вывода во framing результата. См. [Сокращение токенов вывода (P1-7)](#сокращение-токенов-вывода-p1-7). |
@@ -108,7 +108,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
     "name": "mnemos_add",
     "arguments": {
       "content": "Use uv, not pip",
-      "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"]
+      "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
     }
   }
 }
@@ -125,7 +125,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 
 - Схема тегов: [tag-contract.md](tag-contract.md)
 - HTTP-эквивалент: [`POST /memories`](http-api.md#post-memories--создать-запись-create-memory)
-- CLI-эквивалент: [`mnemos add`](cli-reference.md#add)
+- CLI-эквивалент: [`vesma add`](cli-reference.md#add)
 
 ---
 
@@ -156,7 +156,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it's faster and resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "score": 0.812,
     "search_type": "hybrid",
     "status": "published"
@@ -176,7 +176,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
     "arguments": {
       "query": "how to manage Python dependencies",
       "limit": 5,
-      "project": "mnemos"
+      "project": "vesma"
     }
   }
 }
@@ -189,7 +189,7 @@ Mnemos говорит на [Model Context Protocol](https://modelcontextprotocol
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`POST /search`](http-api.md#post-search--гибридный-поиск)
-- CLI-эквивалент: [`mnemos search`](cli-reference.md#search)
+- CLI-эквивалент: [`vesma search`](cli-reference.md#search)
 
 ---
 
@@ -217,7 +217,7 @@ Per-agent recall (M3). Возвращает последние записи од
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Bandit B608 hardcoded SQL — flag for triage",
     "content": "Found hardcoded SQL in src/legacy/loader.py:42 ...",
-    "tags": ["project:mnemos", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
+    "tags": ["project:vesma", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
     "created_at": "2026-06-15T10:42:00+00:00",
     "status": "published"
   }
@@ -235,7 +235,7 @@ Per-agent recall (M3). Возвращает последние записи од
     "name": "mnemos_agent_recall",
     "arguments": {
       "agent": "cr-security-reviewer",
-      "project": "mnemos",
+      "project": "vesma",
       "query": "bandit SQL injection",
       "limit": 10
     }
@@ -250,7 +250,7 @@ Per-agent recall (M3). Возвращает последние записи од
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`GET /recall/agent/{name}`](http-api.md#get-recallagentname--отзыв-агента)
-- CLI-эквивалент: [`mnemos recall --agent <slug>`](cli-reference.md#recall)
+- CLI-эквивалент: [`vesma recall --agent <slug>`](cli-reference.md#recall)
 
 ---
 
@@ -273,7 +273,7 @@ Per-agent recall (M3). Возвращает последние записи од
 Блок простого текста в формате Markdown:
 
 ```text
-# Context for project 'mnemos'
+# Context for project 'vesma'
 
 ---
 # Session checkpoint — 2026-06-15T10:42:00+00:00
@@ -287,13 +287,13 @@ pip-audit CVE-2026-45829 ignore
 ## Decisions
 Pin chromadb 1.5.9 with audit
 ## Context
-Active files: src/mnemos/manager.py, src/mnemos/api/main.py
+Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
 ```
 
 Если контрольная точка не найдена:
 
 ```text
-No context found for project 'mnemos'. Start by saving context with mnemos_save_context.
+No context found for project 'vesma'. Start by saving context with mnemos_save_context.
 ```
 
 В **режиме auto-collect** (`MNEMOS_AUTO_COLLECT=1`) к выводу добавляется блок `## 🔄 Auto-Collect Mode Active` с обязательными правилами сессии.
@@ -307,7 +307,7 @@ No context found for project 'mnemos'. Start by saving context with mnemos_save_
   "method": "tools/call",
   "params": {
     "name": "mnemos_recall_context",
-    "arguments": { "project": "mnemos" }
+    "arguments": { "project": "vesma" }
   }
 }
 ```
@@ -338,7 +338,7 @@ No context found for project 'mnemos'. Start by saving context with mnemos_save_
 | `session` | string | нет | — | Идентификатор сессии, привязывающий чекпойнт к разговору. Первое предъявление фиксирует привязку session→agent на сервере; последующие вызовы с той же сессией, но другим агентом отклоняются. |
 | `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Штампует тег `task:<slug>` на этом чекпойнте на границе сохранения (одна точка минта, максимум одна задача на запись); отзывается через `task=` в `mnemos_recall_context` / `mnemos_search` / `mnemos_list_recent`. Дедуп-попадание возвращает первую запись с ЕЁ областью задачи (task нового вызова никогда не перезаписывает сохранённую запись). |
 
-Mnemos синтезирует части в единую запись Markdown с тегами `project:<slug>`, `agent:<валидированный агент>` (`agent:user`, если не указан) и `mnemos:checkpoint` — плюс опциональный `task:<slug>`, если передан `task`. Валидированная идентичность дополнительно штампуется в серверные метаданные (`checkpoint_agent`, `checkpoint_session`) — именно они являются источником истины для атрибуции по агентам; теги носят демонстрационный характер.
+Vesma синтезирует части в единую запись Markdown с тегами `project:<slug>`, `agent:<валидированный агент>` (`agent:user`, если не указан) и `mnemos:checkpoint` — плюс опциональный `task:<slug>`, если передан `task`. Валидированная идентичность дополнительно штампуется в серверные метаданные (`checkpoint_agent`, `checkpoint_session`) — именно они являются источником истины для атрибуции по агентам; теги носят демонстрационный характер.
 
 Чекпойнт с пятью пустыми полями тривиально отклоняется до любого сохранения (zero-loss: вызывающий получает отказ, ничего не отбрасывается молча). Повторная отправка идентичной полезной нагрузки того же `(project, agent)` идемпотентна: возвращается id существующей записи с `duplicate=true`, ничего нового не создаётся.
 
@@ -359,7 +359,7 @@ Mnemos синтезирует части в единую запись Markdown �
   "params": {
     "name": "mnemos_save_context",
     "arguments": {
-      "project": "mnemos",
+      "project": "vesma",
       "goals": "Finish M15.1 mypy --strict",
       "completed": "Added None checks in 12 functions",
       "in_progress": "tests/test_api.py:241 type narrowing",
@@ -397,7 +397,7 @@ Mnemos синтезирует части в единую запись Markdown �
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "status": "raw",
     "created_at": "2026-06-15T10:42:00+00:00"
   }
@@ -413,7 +413,7 @@ Mnemos синтезирует части в единую запись Markdown �
   "method": "tools/call",
   "params": {
     "name": "mnemos_list_recent",
-    "arguments": { "limit": 20, "project": "mnemos" }
+    "arguments": { "limit": 20, "project": "vesma" }
   }
 }
 ```
@@ -421,7 +421,7 @@ Mnemos синтезирует части в единую запись Markdown �
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`GET /memories`](http-api.md#get-memories--список-последних)
-- CLI-эквивалент: [`mnemos recall`](cli-reference.md#recall)
+- CLI-эквивалент: [`vesma recall`](cli-reference.md#recall)
 
 ---
 
@@ -437,7 +437,7 @@ Mnemos синтезирует части в единую запись Markdown �
 
 ```json
 {
-  "project:mnemos": 142,
+  "project:vesma": 142,
   "agent:tech-writer": 23,
   "agent:sre": 41,
   "mnemos:learning": 67,
@@ -474,7 +474,7 @@ Mnemos синтезирует части в единую запись Markdown �
 |------|-----|--------------|--------------|---------- |
 | `action` | string | **да** | — | `rename`, `remove` или `add`. |
 | `from_prefix` | string | для `rename` | — | Исходный префикс, напр. `gcw:`. Должен заканчиваться на `:`. |
-| `to_prefix` | string | для `rename` | — | Целевой префикс, напр. `mnemos:`. Должен заканчиваться на `:`. |
+| `to_prefix` | string | для `rename` | — | Целевой префикс, напр. `vesma:`. Должен заканчиваться на `:`. |
 | `tags` | string[] | для `remove` / `add` | — | Теги для удаления или добавления. Обязательны для этих двух действий. |
 | `subtypes` | string[] | нет | — | Опциональный белый список подтипов для переименования (только `rename`). |
 | `wildcard` | boolean | нет | `false` | Только `remove`: считать каждый элемент `tags` префиксом и снимать все совпадающие теги `prefix*` вместо точного совпадения. `rename` построен на префиксах по своей природе. |
@@ -483,7 +483,7 @@ Mnemos синтезирует части в единую запись Markdown �
 | `agent` | string | нет | — | Ограничить сканирование slug агента. |
 | `invalid_subtypes_to_legacy` | boolean | нет | `false` | Только `rename`: переименовывать невалидные подтипы в `<to_prefix>legacy` вместо пропуска. |
 
-> **Безопасность контракта.** Итоговый набор тегов повторно валидируется в strict-режиме для каждой записи: снятие последнего тега `project:` / `agent:` / `mnemos:` (или иное нарушение контракта) отклоняется по конкретной записи с записью в `errors`, а не портит хранилище.
+> **Безопасность контракта.** Итоговый набор тегов повторно валидируется в strict-режиме для каждой записи: снятие последнего тега `project:` / `agent:` / `vesma:` (или иное нарушение контракта) отклоняется по конкретной записи с записью в `errors`, а не портит хранилище.
 
 ### Вывод
 
@@ -545,7 +545,7 @@ Mnemos синтезирует части в единую запись Markdown �
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|--------------|---------- |
 | `from_prefix` | string | **да** | — | Исходный префикс, напр. `gcw:`. Должен заканчиваться на `:`. |
-| `to_prefix` | string | **да** | — | Целевой префикс, напр. `mnemos:`. Должен заканчиваться на `:`. |
+| `to_prefix` | string | **да** | — | Целевой префикс, напр. `vesma:`. Должен заканчиваться на `:`. |
 | `subtypes` | string[] | нет | — | Опциональный белый список подтипов для переименования. |
 | `dry_run` | boolean | нет | `true` | Предпросмотр без записи. |
 | `project` | string | нет | — | Ограничить slug проекта. |
@@ -557,7 +557,7 @@ Mnemos синтезирует части в единую запись Markdown �
 ```json
 {
   "from_prefix": "gcw:",
-  "to_prefix": "mnemos:",
+  "to_prefix": "vesma:",
   "scanned": 142,
   "renamed": 0,
   "changed": 0,
@@ -640,7 +640,7 @@ Mnemos синтезирует части в единую запись Markdown �
 
 ### Связанные ресурсы
 
-- CLI-эквивалент: [`mnemos add --url <URL>`](cli-reference.md#add)
+- CLI-эквивалент: [`vesma add --url <URL>`](cli-reference.md#add)
 - HTTP-эквивалент: [`POST /memories` с ручным контентом](http-api.md#post-memories--создать-запись-create-memory)
 - HTTP-эквивалент: [`POST /ingest-url`](http-api.md#post-ingest-url--получить-и-сохранить-веб-страницу)
 - Безопасность: [security.md](../admin/security.md#2-защита-от-ssrf-memorymanager_validate_url)
@@ -745,9 +745,9 @@ Mnemos синтезирует части в единую запись Markdown �
 ```json
 {
   "status": "registered",
-  "project": "mnemos",
-  "project_id": "mnemos",
-  "root": "/home/you/mnemos",
+  "project": "vesma",
+  "project_id": "vesma",
+  "root": "/home/you/vesma",
   "agent": "tech-writer",
   "session": null,
   "registered_at": "2026-09-28T12:00:00+00:00",
@@ -771,7 +771,7 @@ Mnemos синтезирует части в единую запись Markdown �
   "method": "tools/call",
   "params": {
     "name": "mnemos_watch_start",
-    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+    "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
 ```
@@ -831,9 +831,9 @@ Mnemos синтезирует части в единую запись Markdown �
   "cap": 8,
   "registrations": [
     {
-      "project": "mnemos",
-      "project_id": "mnemos",
-      "root": "/home/you/mnemos",
+      "project": "vesma",
+      "project_id": "vesma",
+      "root": "/home/you/vesma",
       "agent": "tech-writer",
       "session": null,
       "registered_at": "2026-09-28T12:00:00+00:00",
@@ -935,7 +935,7 @@ Mnemos синтезирует части в единую запись Markdown �
   "method": "tools/call",
   "params": {
     "name": "mnemos_index_project",
-    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+    "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
 ```
@@ -963,7 +963,7 @@ Mnemos синтезирует части в единую запись Markdown �
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "nodes": 2143,
   "edges": 5107,
   "files": 400,
@@ -1007,13 +1007,13 @@ Mnemos синтезирует части в единую запись Markdown �
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "query_kind": null,
   "results": [
     {
       "score": 3,
       "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
-      "project": "mnemos",
+      "project": "vesma",
       "kind": "Function",
       "name": "window_rows",
       "qname": "vesmaro.codegraph.service.window_rows",
@@ -1057,7 +1057,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [
@@ -1108,7 +1108,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "lang": "python",
   "outline": [
@@ -1154,7 +1154,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
@@ -1192,7 +1192,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "coverage": [
     { "path": "src/vesmaro/manager.py", "verdict": "stale" },
     { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
@@ -1261,7 +1261,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 {
   "projects": [
     {
-      "project": "mnemos",
+      "project": "vesma",
       "registered": true,
       "has_root": true,
       "nodes": 2143,
@@ -1298,7 +1298,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ### Вывод
 
 ```json
-{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
 ```
 
 ### Связанные ресурсы
@@ -1375,7 +1375,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ## `mnemos_stats`
 
-Вернуть счётчики состояния Mnemos.
+Вернуть счётчики состояния Vesma.
 
 ### Входные параметры
 
@@ -1383,14 +1383,14 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ### Вывод
 
-Та же структура, что и у команды CLI `mnemos stats` — см. [cli-reference.md#stats](cli-reference.md#stats).
+Та же структура, что и у команды CLI `vesma stats` — см. [cli-reference.md#stats](cli-reference.md#stats).
 
 ```json
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -1400,7 +1400,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`GET /metrics`](http-api.md#get-metrics)
-- CLI-эквивалент: [`mnemos stats`](cli-reference.md#stats)
+- CLI-эквивалент: [`vesma stats`](cli-reference.md#stats)
 
 ---
 
@@ -1447,7 +1447,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
   "method": "tools/call",
   "params": {
     "name": "mnemos_reprocess",
-    "arguments": { "project": "mnemos", "limit": 200 }
+    "arguments": { "project": "vesma", "limit": 200 }
   }
 }
 ```
@@ -1455,7 +1455,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`POST /process`](http-api.md#post-process--запустить-end-to-end-пайплайн)
-- CLI-эквивалент: [`mnemos processor run`](cli-reference.md#processor)
+- CLI-эквивалент: [`vesma processor run`](cli-reference.md#processor)
 
 ---
 
@@ -1717,7 +1717,7 @@ cache_aligner:
 
 - [context-filter.md](context-filter.md) — профили, этапы конвейера, поведение автофильтра (список профилей живёт там — здесь не дублируется)
 - HTTP-эквивалент: [`POST /filter/{memory_id}`](http-api.md#post-filtermemory_id--применить-5-этапный-контекстный-фильтр)
-- CLI-эквивалент: [`mnemos filter`](cli-reference.md#filter)
+- CLI-эквивалент: [`vesma filter`](cli-reference.md#filter)
 
 ---
 
@@ -1728,10 +1728,10 @@ cache_aligner:
 ```text
 ... normal result ...
 
-⚠️ [mnemos] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
+⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
 ```
 
-Это информационное сообщение; ничто в Mnemos не блокирует вызов. Отключить, установив `MNEMOS_AUTO_COLLECT=0` (по умолчанию).
+Это информационное сообщение; ничто в Vesma не блокирует вызов. Отключить, установив `MNEMOS_AUTO_COLLECT=0` (по умолчанию).
 
 ---
 
@@ -1743,7 +1743,7 @@ cache_aligner:
 |-----|--------|----------------|------------ |
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | ровно 1 | Привязывает к кодовой базе / инициативе |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | ровно 1 | Агент-автор |
-| `mnemos:<subtype>` | `[a-z][a-z0-9\-]*` | не менее 1 | Когнитивная категория |
+| `vesma:<subtype>` | `[a-z][a-z0-9\-]*` | не менее 1 | Когнитивная категория |
 
 Допустимые подтипы `mnemos:`: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
 
@@ -1755,7 +1755,7 @@ cache_aligner:
 
 ## Сокращение токенов вывода (P1-7)
 
-`mnemos_add`, `mnemos_search` и `mnemos_recall_context` принимают два опциональных параметра, которые управляют стилем вывода вызывающей стороны, не меняя того, что Mnemos хранит или возвращает:
+`mnemos_add`, `mnemos_search` и `mnemos_recall_context` принимают два опциональных параметра, которые управляют стилем вывода вызывающей стороны, не меняя того, что Vesma хранит или возвращает:
 
 | Параметр | Значения | Что делает |
 |----------|----------|------------|
@@ -2055,7 +2055,7 @@ output_style:
 
 ## `mnemos_export`
 
-Экспорт записей в файл на диске. Тонкая обёртка над логикой CLI `mnemos export`. Возвращает только метаданные — содержимое экспорта **никогда** не возвращается в теле ответа (stdio-транспорт не может передать бинарный SQLite-tarball или большой JSON-блок через канал JSON-RPC поверх stdout).
+Экспорт записей в файл на диске. Тонкая обёртка над логикой CLI `vesma export`. Возвращает только метаданные — содержимое экспорта **никогда** не возвращается в теле ответа (stdio-транспорт не может передать бинарный SQLite-tarball или большой JSON-блок через канал JSON-RPC поверх stdout).
 
 Защита federation defense-in-depth (#86) наследуется автоматически, так как инструмент вызывает ту же функцию `run_export`, что и CLI/HTTP: записи с тегом `mnemos:no-federate` исключаются из экспорта, а обнаруженные секреты в проходящих записях заменяются на `<REDACTED:<pattern_name>>`.
 
@@ -2106,7 +2106,7 @@ output_style:
     "arguments": {
       "output_path": "/tmp/mnemos-backup.json",
       "format": "json",
-      "project": "mnemos",
+      "project": "vesma",
       "compress": "gzip"
     }
   }
@@ -2132,7 +2132,7 @@ output_style:
 
 ## `mnemos_import`
 
-Импорт записей из файла экспорта. Тонкая обёртка над логикой CLI `mnemos import`. Два режима: **merge** (вставка новых, пропуск или перезапись существующих) и **restore** (полная очистка и импорт — деструктивный, требует `confirm=true`).
+Импорт записей из файла экспорта. Тонкая обёртка над логикой CLI `vesma import`. Два режима: **merge** (вставка новых, пропуск или перезапись существующих) и **restore** (полная очистка и импорт — деструктивный, требует `confirm=true`).
 
 Валидация импорта (#86) наследуется автоматически: дрейф схемы, слишком большой контент, невалидные теги и prompt-injection-паттерны обрабатываются той же функцией `run_import`, что и в CLI/HTTP.
 

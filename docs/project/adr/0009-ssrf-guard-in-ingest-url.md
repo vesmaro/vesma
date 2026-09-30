@@ -78,7 +78,7 @@ See `docs/security.md` §2 and `tests/test_ssrf_redirect.py` (23 tests).
 
 ## Alternatives considered
 
-- **DNS-level sandboxing (running Mnemos in a network namespace with no route to
+- **DNS-level sandboxing (running Vesma in a network namespace with no route to
   private IPs).** Rejected: requires root and a complex systemd setup; too heavy
   for v1.
 - **Allow private IPs by default, require opt-out.** Rejected: SSRF risk is too
@@ -91,7 +91,7 @@ See `docs/security.md` §2 and `tests/test_ssrf_redirect.py` (23 tests).
 - `tasks/senior-security-engineer/M15.2-bandit-cleanup.md` §"B104 (false positive
   for container networking)"
 - `docs/security.md` § SSRF
-- `src/mnemos/manager.py::_validate_url` — implementation
+- `src/vesma/manager.py::_validate_url` — implementation
 - `tests/test_security.py` — 11 baseline tests + updated redirect test
 - `tests/test_ssrf_redirect.py` — 23 per-hop redirect tests (T5-SSRF)
 - ADR-0012 (IPv6 SSRF gap fix, M15)

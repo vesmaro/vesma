@@ -6,7 +6,7 @@
 The Context Filter is a five-stage pipeline that strips noise from raw
 content **before** it reaches a model. It runs automatically on every
 `mnemos_add` (when `auto_filter: true`) and can be re-run explicitly on
-existing memories via the `mnemos_filter` MCP tool or the `mnemos filter`
+existing memories via the `mnemos_filter` MCP tool or the `vesma filter`
 CLI command.
 
 ---
@@ -88,7 +88,7 @@ stored before filtering was enabled.
 ### CLI — single memory
 
 ```bash
-mnemos filter <memory-id>
+vesma filter <memory-id>
 ```
 
 Re-runs the filter on an existing memory. Auto-detects the profile unless
@@ -96,8 +96,8 @@ Re-runs the filter on an existing memory. Auto-detects the profile unless
 the resulting `clean_content`.
 
 ```bash
-mnemos filter abc123 --profile terminal
-mnemos filter abc123 --budget 2000
+vesma filter abc123 --profile terminal
+vesma filter abc123 --budget 2000
 ```
 
 | Flag | Description |
@@ -110,7 +110,7 @@ mnemos filter abc123 --budget 2000
 ### CLI — all memories
 
 ```bash
-mnemos filter --all
+vesma filter --all
 ```
 
 Iterates every memory in batches and re-applies the filter. Useful after
@@ -155,7 +155,7 @@ Returns:
 - **Wrong auto-profile** — a log was detected as `default`; re-run with
   `--profile log` to get timestamp stripping and signal extraction.
 - **Old unfiltered records** — memories added before `auto_filter` was
-  enabled have no `clean_content`. Run `mnemos filter --all` to backfill.
+  enabled have no `clean_content`. Run `vesma filter --all` to backfill.
 - **New profile** — after a pipeline upgrade adds a new profile, re-filter
   to take advantage of improved heuristics.
 - **Budget change** — re-run with `--budget` to enforce a tighter token
@@ -163,9 +163,9 @@ Returns:
 
 ---
 
-## Filter stats in `mnemos stats`
+## Filter stats in `vesma stats`
 
-`mnemos stats` includes a filter section showing vault-wide health:
+`vesma stats` includes a filter section showing vault-wide health:
 
 ```text
 auto_filter: True
@@ -184,7 +184,7 @@ by_profile: {'log': 48, 'terminal': 52, 'code': 22, 'default': 20}
 | `by_profile` | Count of memories per detected profile |
 
 A high `unfiltered_count` relative to `filtered_count` suggests running
-`mnemos filter --all` to backfill.
+`vesma filter --all` to backfill.
 
 ---
 
@@ -266,5 +266,5 @@ argument (MCP `mnemos_filter`).
 ## See also
 
 - [Integration Guide](integration-guide.md) — behavioural instructions that tell agents *when* to filter.
-- [MCP Tools Reference](mcp-tools.md) — full `mnemos_*` tool catalogue.
-- [CLI Reference](cli-reference.md) — every `mnemos` subcommand.
+- [MCP Tools Reference](mcp-tools.md) — full `vesma_*` tool catalogue.
+- [CLI Reference](cli-reference.md) — every `vesma` subcommand.

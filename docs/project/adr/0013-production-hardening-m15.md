@@ -8,7 +8,7 @@
 
 ## Context
 
-Mnemos v0.1.0 (CHANGELOG) claims "M1–M15 complete" and README claims
+Vesma v0.1.0 (CHANGELOG) claims "M1–M15 complete" and README claims
 "production-ready". The reality (audit 2026-06-15):
 
 - 209 tests pass ✅
@@ -31,7 +31,7 @@ M15 production hardening is the **gating milestone** for v1. v1 is "done" when
 2. `bandit -r src/` reports 0 issues, with `pyproject.toml` `[tool.bandit].skips`
    removed (M15.2).
 3. `pytest tests/ -q` reports ≥ 209 passed (no regression).
-4. `pytest --cov=src/mnemos --cov-fail-under=80` passes (M18, coverage gate).
+4. `pytest --cov=src/vesma --cov-fail-under=80` passes (M18, coverage gate).
 5. README and CHANGELOG reflect the actual M1-M14 + M15-in-progress state (M15.4).
 6. Working tree is clean — pending changes are committed via `feat/m15-...` PR
    (M15.5).

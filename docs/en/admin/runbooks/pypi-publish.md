@@ -17,27 +17,27 @@ manual step.
 ## Package name — DECIDED: `mnemos-memory-server` (2026-09-01)
 
 The distribution name was decided 2026-09-01 and set in `pyproject.toml`
-(`name = "mnemos-memory-server"`). The import package stays `mnemos` and
-the CLI stays `mnemos` — only the installable/PyPI name changed. The
+(`name = "mnemos-memory-server"`). The import package stays `vesma` and
+the CLI stays `vesma` — only the installable/PyPI name changed. The
 matrix below is kept as decision history; it was last re-checked
 2026-09-01 (statuses unchanged since 2026-08-21).
 
 | Name | PyPI status | Occupied by |
 | --- | --- | --- |
-| `mnemos` | ❌ taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
+| `vesma` | ❌ taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
 | `mnemos-memory` | ❌ taken (v0.6.0) | "Biomimetic memory architectures for LLMs" |
 | `mnemos-memory-server` | ✅ free | — |
 | `mnemos-server` | ✅ free | — |
-| `mnemos-mcp` | ✅ free | — |
-| `mnemos-ai` | ✅ free | — |
-| `mnemos-agent-memory` | ✅ free | — |
+| `vesma-mcp` | ✅ free | — |
+| `vesma-ai` | ✅ free | — |
+| `vesma-agent-memory` | ✅ free | — |
 
 Both taken names are **AI-memory projects in the same domain** — a third
 similar name maximizes user confusion, so the fallback should be
 self-descriptive rather than minimal.
 
 **Chosen: `mnemos-memory-server`** — states exactly what the
-package is ("a memory server named mnemos"), matches the project
+package is ("a memory server named vesma"), matches the project
 description, and is unambiguous against both taken neighbors.
 
 How to re-check (no auth needed):
@@ -80,7 +80,7 @@ afterwards the name is fixed forever.
 | Mode | What it does |
 | --- | --- |
 | default (check) | G0–G4 gates, wheel/sdist build, `twine check`, offline metadata smoke |
-| `--full-smoke` | additionally installs the wheel WITH deps into a throwaway venv, runs `mnemos --version` (needs pypi.org) |
+| `--full-smoke` | additionally installs the wheel WITH deps into a throwaway venv, runs `vesma --version` (needs pypi.org) |
 | `--publish` | all checks, then `twine upload` (release tag + credentials required) |
 | `--publish --full-smoke` | recommended pre-upload combination |
 | `--i-own-name` | required to upload when the PyPI project already exists (updates of our own project only) |
@@ -133,7 +133,7 @@ Once the name is decided and a release is cut (`release/X.Y.Z` →
    ```bash
    pip index versions <final-name>            # our version must appear
    curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/simple/<final-name>/   # 200
-   pip install <final-name> && mnemos --version
+   pip install <final-name> && vesma --version
    ```
 
 4. **Close the loop** — update `docs/en/admin/runbooks/install.md` (+ RU

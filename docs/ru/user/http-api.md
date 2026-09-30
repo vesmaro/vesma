@@ -2,12 +2,12 @@
 
 **🌐 Language / Язык:** [English](../../en/user/http-api.md) · Русский
 
-> Полная справка по HTTP API Mnemos — CRUD записей, поиск, пайплайн, DLQ, контекстный фильтр, трассировки, path-scoped rules, граф проектов (ADR-0032) и A2A Sessions API (M16).
+> Полная справка по HTTP API Vesma — CRUD записей, поиск, пайплайн, DLQ, контекстный фильтр, трассировки, path-scoped rules, граф проектов (ADR-0032) и A2A Sessions API (M16).
 
 HTTP-сервер — FastAPI-приложение, обслуживаемое Uvicorn. Запуск:
 
 ```bash
-mnemos serve --host 127.0.0.1 --port 8000
+vesma serve --host 127.0.0.1 --port 8000
 ```
 
 | Ресурс | URL |
@@ -58,7 +58,7 @@ mnemos serve --host 127.0.0.1 --port 8000
 
 > **Управляется `api.auth_enabled`.** Все четыре эндпоинта смонтированы на `/auth`. При `api.auth_enabled=false` (по умолчанию) эти маршруты существуют, но middleware не применяет проверку на других маршрутах.
 
-Модель аутентификации использует **непрозрачные bearer-токены** (префикс `mnk_`) с опциональным TOTP 2FA. Токены хранятся как PBKDF2-HMAC-SHA256 дайджесты; plaintext показывается один раз при `mnemos auth token create` и больше никогда. Сессии выдаются после успешного логина (+ TOTP verify при `api.totp_enabled=true`) и имеют тот же формат `Authorization: Bearer <session>`.
+Модель аутентификации использует **непрозрачные bearer-токены** (префикс `mnk_`) с опциональным TOTP 2FA. Токены хранятся как PBKDF2-HMAC-SHA256 дайджесты; plaintext показывается один раз при `vesma auth token create` и больше никогда. Сессии выдаются после успешного логина (+ TOTP verify при `api.totp_enabled=true`) и имеют тот же формат `Authorization: Bearer <session>`.
 
 ### `POST /auth/login` — начать сессию
 
@@ -168,8 +168,8 @@ Liveness probe.
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -188,7 +188,7 @@ Liveness probe.
 
 | Поле | Тип | Описание |
 |------|-----|---------- |
-| `tag` | string | Полная строка тега (напр. `project:mnemos`). |
+| `tag` | string | Полная строка тега (напр. `project:vesma`). |
 | `count` | int | Количество записей с этим тегом. |
 
 Отсортировано по `count` убывающе; при равенстве — по `tag` возрастающе (алфавитно).
@@ -201,7 +201,7 @@ curl -s http://127.0.0.1:8000/tags
 
 ```json
 [
-  {"tag": "project:mnemos", "count": 142},
+  {"tag": "project:vesma", "count": 142},
   {"tag": "agent:tech-writer", "count": 58},
   {"tag": "mnemos:learning", "count": 41}
 ]
@@ -209,14 +209,14 @@ curl -s http://127.0.0.1:8000/tags
 
 ### `POST /tags/rename` — массовое переименование префикса тегов
 
-Переименовывает все теги вида `from_prefix:<subtype>` → `to_prefix:<subtype>` (кейс миграции GCW → mnemos). Зеркалирует MCP-инструмент `mnemos_tags_rename` и CLI-команду `mnemos tags rename`. Безопасно по построению: обычный `UPDATE` (FTS5-индекс external content остаётся консистентным), и `dry_run` по умолчанию `true` — ничего не пишется, пока вызывающий явно не передаст `dry_run: false`.
+Переименовывает все теги вида `from_prefix:<subtype>` → `to_prefix:<subtype>` (кейс миграции GCW → mnemos). Зеркалирует MCP-инструмент `mnemos_tags_rename` и CLI-команду `vesma tags rename`. Безопасно по построению: обычный `UPDATE` (FTS5-индекс external content остаётся консистентным), и `dry_run` по умолчанию `true` — ничего не пишется, пока вызывающий явно не передаст `dry_run: false`.
 
 **Тело запроса**
 
 | Поле | Тип | По умолчанию | Описание |
 |------|-----|--------------|----------|
 | `from_prefix` | string | — | Исходный префикс (напр. `gcw`). |
-| `to_prefix` | string | — | Целевой префикс (напр. `mnemos`). |
+| `to_prefix` | string | — | Целевой префикс (напр. `vesma`). |
 | `subtypes` | string[] \| null | `null` | Опциональный whitelist подтипов для переименования. |
 | `dry_run` | bool | `true` | Предпросмотр без записи. |
 | `project` / `agent` | string \| null | `null` | Ограничить переименование одним проектом / агентом. |
@@ -238,7 +238,7 @@ curl -s http://127.0.0.1:8000/tags
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Основной текст. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
 | `source` | string | нет | `manual` | Одно из `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | нет | — | URL происхождения. |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -256,7 +256,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
   }'
 ```
 
@@ -265,11 +265,11 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
   "title": "Use uv, not pip",
-  "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+  "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
   "source": "manual",
   "memory_type": "note",
   "status": "raw",
-  "project": "mnemos",
+  "project": "vesma",
   "agent": "tech-writer",
   "created_at": "2026-06-15T10:42:00+00:00",
   "updated_at": "2026-06-15T10:42:00+00:00",
@@ -282,7 +282,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 
 | Код | Причина |
 |-----|-------- |
-| `422` | Отсутствует обязательный тег (`project:`, `agent:` или `mnemos:`) |
+| `422` | Отсутствует обязательный тег (`project:`, `agent:` или `vesma:`) |
 | `500` | Сбой записи SQLite / vault |
 
 ### `GET /memories/{memory_id}` — получить одну запись
@@ -325,7 +325,7 @@ curl -s http://127.0.0.1:8000/memories/550e8400-e29b-41d4-a716-446655440000
 **Пример**
 
 ```bash
-curl -s "http://127.0.0.1:8000/memories?project=mnemos&limit=10"
+curl -s "http://127.0.0.1:8000/memories?project=vesma&limit=10"
 ```
 
 ---
@@ -371,7 +371,7 @@ RRF-слияние FTS5 и векторной ветки. По умолчани�
 
 **Семантика запроса:** FTS5-ветка трактует ВСЮ строку `query` как одну цитированную фразу (токены подряд, в порядке следования — `_build_fts_query` заключает весь ввод в кавычки). Запрос из набора ключевых слов вида `postgres migration` найдёт только точную фразу; чтобы найти отдельные ключевые слова, делайте отдельные запросы по одному термину.
 
-**Тело запроса** — см. `SearchQuery` в `src/mnemos/models.py`
+**Тело запроса** — см. `SearchQuery` в `src/vesmaro/models.py`
 
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|-------------|---------- |
@@ -398,7 +398,7 @@ RRF-слияние FTS5 и векторной ветки. По умолчани�
 ```bash
 curl -s -X POST http://127.0.0.1:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "embedding model", "project": "mnemos", "limit": 5}'
+  -d '{"query": "embedding model", "project": "vesma", "limit": 5}'
 ```
 
 ```json
@@ -407,7 +407,7 @@ curl -s -X POST http://127.0.0.1:8000/search \
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "score": 0.812,
     "search_type": "hybrid"
   }
@@ -450,7 +450,7 @@ curl -s -X POST http://127.0.0.1:8000/search \
 **Пример**
 
 ```bash
-curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=mnemos&limit=5"
+curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=vesma&limit=5"
 ```
 
 ---
@@ -501,7 +501,7 @@ curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=mnemos&
 curl -s -X POST http://127.0.0.1:8000/context/save \
   -H "Content-Type: application/json" \
   -d '{
-    "project": "mnemos",
+    "project": "vesma",
     "goals": "Закончить HTTP API доки для всех 15 инструментов",
     "completed": "- Обновлён plugin.yaml\n- Обновлён prompt mode",
     "in_progress": "Документировать /context/save и /context/recall",
@@ -537,13 +537,13 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "checkpoints": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Session checkpoint — 2026-07-07T12:00:00+00:00",
       "content": "# Session checkpoint — 2026-07-07T12:00:00+00:00\n\n## Goals\nЗакончить HTTP API доки для всех 15 инструментов\n",
-      "tags": ["project:mnemos", "agent:user", "mnemos:checkpoint"],
+      "tags": ["project:vesma", "agent:user", "mnemos:checkpoint"],
       "created_at": "2026-07-07T12:00:00+00:00"
     }
   ]
@@ -554,7 +554,7 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "checkpoints": [],
   "message": "No context found. Start by saving context with POST /context/save."
 }
@@ -565,7 +565,7 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/recall \
   -H "Content-Type: application/json" \
-  -d '{"project": "mnemos", "limit": 3}'
+  -d '{"project": "vesma", "limit": 3}'
 ```
 
 ---
@@ -618,7 +618,7 @@ curl -s -X POST http://127.0.0.1:8000/context/recall \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/assemble \
   -H "Content-Type: application/json" \
-  -d '{"session": "sess-42", "project": "mnemos", "file": "src/manager.py", "budget": 1024}'
+  -d '{"session": "sess-42", "project": "vesma", "file": "src/manager.py", "budget": 1024}'
 ```
 
 Полная документация по полям: [`mcp-tools.md` → `mnemos_assemble_context`](mcp-tools.md#mnemos_assemble_context).
@@ -667,7 +667,7 @@ knowledge-конвейер (входит как `raw`, в контексте д�
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/rewrite \
   -H "Content-Type: application/json" \
-  -d '{"content": "<текст оригинального блока>", "project": "mnemos", "agent": "zcode",
+  -d '{"content": "<текст оригинального блока>", "project": "vesma", "agent": "zcode",
        "session": "sess-42", "supersedes": "3f2a…", "diff": "was: v1 → became: v2",
        "include_marker": true}'
 ```
@@ -718,7 +718,7 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/hooks/post_tool_call \
   -H "Content-Type: application/json" \
-  -d '{"session": "sess-42", "project": "mnemos", "agent": "zcode",
+  -d '{"session": "sess-42", "project": "vesma", "agent": "zcode",
        "tool_name": "bash", "output_text": "<60+ строк build-лога>",
        "auto_compress": true}'
 ```
@@ -784,7 +784,7 @@ curl -s -X POST http://127.0.0.1:8000/hooks/post_tool_call \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/compress \
   -H "Content-Type: application/json" \
-  -d '{"text": "<8KB логов>", "profile": "log", "project": "mnemos"}'
+  -d '{"text": "<8KB логов>", "profile": "log", "project": "vesma"}'
 ```
 
 ### `POST /retrieve` — извлечь оригинал из CCR-кэша
@@ -927,7 +927,7 @@ curl -s http://127.0.0.1:8000/auto-collect
 | Поле | Тип | Обязательное | Описание |
 |------|-----|--------------|---------- |
 | `url` | string | **да** | HTTP/HTTPS URL для загрузки. |
-| `tags` | string[] | **да** | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
+| `tags` | string[] | **да** | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
 
 **Ответ 201**
 
@@ -946,7 +946,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
-    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
   }'
 ```
 
@@ -954,7 +954,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Код | Причина |
 |-----|-------- |
-| `422` | Отсутствует обязательный тег (`project:`, `agent:` или `mnemos:`) или отсутствует `url` |
+| `422` | Отсутствует обязательный тег (`project:`, `agent:` или `vesma:`) или отсутствует `url` |
 | `500` | Сбой загрузки, сбой извлечения или сбой записи SQLite / vault |
 
 ---
@@ -996,7 +996,7 @@ danger-детектор прогоняется по всем чанкам (чи�
 |-------|-----|-----------|----------|
 | `text` | string | **да** | Полный текст документа. |
 | `doc_id` | string | **да** | Логическая идентичность документа; стабильна при повторном ингесте. |
-| `tags` | string[] | **да** | Обязательны `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
+| `tags` | string[] | **да** | Обязательны `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
 | `title` | string | нет | Необязательный заголовок. |
 | `source_url` | string | нет | Необязательный URL-источник. |
 
@@ -1024,7 +1024,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document \
     "text": "# Деплой\n\nЗапусти раскатку.\n\n# Откат\n\nВерни предыдущий релиз.",
     "doc_id": "dep-guide",
     "title": "Гайд по деплою",
-    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
   }'
 ```
 
@@ -1039,7 +1039,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document \
 
 ## Граф проектов (ADR-0032)
 
-Namespace `/graph/` зеркалит десять MCP-инструментов [`mnemos_*graph*`](mcp-tools.md#инструменты-графа-проектов-adr-0032) над графом кода зарегистрированного проекта (символы, схемы файлов, сниппеты — [ADR-0032](../../project/adr/0032-project-graph.md)).
+Namespace `/graph/` зеркалит десять MCP-инструментов [`vesma_*graph*`](mcp-tools.md#инструменты-графа-проектов-adr-0032) над графом кода зарегистрированного проекта (символы, схемы файлов, сниппеты — [ADR-0032](../../project/adr/0032-project-graph.md)).
 
 > **Default-off — операторский флаг.** Каждый эндпоинт отвечает `503`, пока оператор не включит `code_graph.enabled: true`.
 
@@ -1081,7 +1081,7 @@ Namespace `/graph/` зеркалит десять MCP-инструментов [
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/index \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/status/{project_id}` — статус графа проекта
@@ -1092,7 +1092,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/index \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "nodes": 2143,
   "edges": 5107,
   "files": 400,
@@ -1106,7 +1106,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/index \
 **Пример**
 
 ```bash
-curl -s "http://127.0.0.1:8000/graph/status/mnemos?agent=ci-runner"
+curl -s "http://127.0.0.1:8000/graph/status/vesma?agent=ci-runner"
 ```
 
 ### `POST /graph/search` — поиск по графу проектов
@@ -1131,10 +1131,10 @@ curl -s "http://127.0.0.1:8000/graph/status/mnemos?agent=ci-runner"
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "mnemos", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1148,7 +1148,7 @@ curl -s "http://127.0.0.1:8000/graph/status/mnemos?agent=ci-runner"
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/search \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "query": "window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "query": "window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/trace` — обход пути от символа
@@ -1170,7 +1170,7 @@ BFS по рёбрам графа от одного символа (разреш�
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [ { "id": "mnemos#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
@@ -1187,7 +1187,7 @@ BFS по рёбрам графа от одного символа (разреш�
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/trace \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/outline` — схема символов одного файла
@@ -1209,7 +1209,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/trace \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "lang": "python",
   "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
@@ -1225,7 +1225,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/trace \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/outline \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/snippet` — секрет-сканированный диапазон строк с диска
@@ -1248,7 +1248,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/outline \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
@@ -1266,7 +1266,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/outline \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/snippet \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/coverage` — пакетная проверка покрытия
@@ -1286,7 +1286,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "coverage": [
     { "path": "src/vesmaro/manager.py", "verdict": "stale" },
     { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" }
@@ -1299,7 +1299,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/coverage \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/schema` — карта контракта графа
@@ -1322,7 +1322,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/coverage \
 **Пример**
 
 ```bash
-curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=mnemos"
+curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=vesma"
 ```
 
 ### `GET /graph/projects` — список проектов графа
@@ -1334,7 +1334,7 @@ curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=mnemos"
 ```json
 {
   "projects": [
-    { "project": "mnemos", "registered": true, "has_root": true, "nodes": 2143, "edges": 5107, "files": 400, "poisoned": 0, "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+    { "project": "vesma", "registered": true, "has_root": true, "nodes": 2143, "edges": 5107, "files": 400, "poisoned": 0, "last_indexed_at": "2026-09-28T12:00:04+00:00" }
   ],
   "has_more": false,
   "cursor": 0
@@ -1354,13 +1354,13 @@ curl -s "http://127.0.0.1:8000/graph/projects?agent=ci-runner"
 **Ответ 200**
 
 ```json
-{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
 ```
 
 **Пример**
 
 ```bash
-curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
+curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/vesma?agent=operator" \
   -H "Content-Type: application/json" \
   -d '{"reason": "reindex from scratch"}'
 ```
@@ -1388,9 +1388,9 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
 ```json
 {
   "status": "registered",
-  "project": "mnemos",
-  "project_id": "mnemos",
-  "root": "/home/you/projects/mnemos",
+  "project": "vesma",
+  "project_id": "vesma",
+  "root": "/home/you/projects/vesma",
   "agent": "ci-runner",
   "session": null,
   "registered_at": "2026-09-28T12:00:00+00:00",
@@ -1408,7 +1408,7 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/watch/start \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "agent": "ci-runner"}'
 ```
 
 ### `POST /watch/stop` — остановить регистрации watch
@@ -1424,7 +1424,7 @@ curl -s -X POST http://127.0.0.1:8000/watch/start \
 **Пример**
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=mnemos"
+curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=vesma"
 ```
 
 ### `GET /watch/status` — статус watch-опроса
@@ -1439,7 +1439,7 @@ curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=mnemos"
   "watch_enabled": true,
   "cap": 8,
   "registrations": [
-    { "project": "mnemos", "project_id": "mnemos", "root": "/home/you/projects/mnemos", "agent": "ci-runner", "session": null, "registered_at": "2026-09-28T12:00:00+00:00", "interval_sec": 5.0, "runs": 3, "reindexes": 1, "last_run_at": "2026-09-28T12:00:15+00:00", "last_result": "fresh", "last_error": null }
+    { "project": "vesma", "project_id": "vesma", "root": "/home/you/projects/vesma", "agent": "ci-runner", "session": null, "registered_at": "2026-09-28T12:00:00+00:00", "interval_sec": 5.0, "runs": 3, "reindexes": 1, "last_run_at": "2026-09-28T12:00:15+00:00", "last_result": "fresh", "last_error": null }
   ]
 }
 ```
@@ -1482,7 +1482,7 @@ curl -s http://127.0.0.1:8000/watch/status
 **Пример**
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/process?project=mnemos&limit=200"
+curl -s -X POST "http://127.0.0.1:8000/process?project=vesma&limit=200"
 ```
 
 ### `POST /synthesize` — синтезировать один кластер
@@ -1581,7 +1581,7 @@ DLQ хранит задачи, которые автоматизация не с
 |-----|-----|---------- |
 | `memory_id` | UUID | Целевая запись. |
 
-**Тело запроса** — см. `FilterRequest` в `src/mnemos/models.py`
+**Тело запроса** — см. `FilterRequest` в `src/vesmaro/models.py`
 
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|-------------|---------- |
@@ -1643,8 +1643,8 @@ DLQ хранит задачи, которые автоматизация не с
 curl -s -X POST http://127.0.0.1:8000/rules/ingest \
   -H "Content-Type: application/json" \
   -d '{
-    "rules_dir": "/home/you/mnemos/.github/instructions",
-    "project": "mnemos",
+    "rules_dir": "/home/you/vesma/.github/instructions",
+    "project": "vesma",
     "agent": "tech-writer"
   }'
 ```
@@ -1733,7 +1733,7 @@ curl -s -X POST http://127.0.0.1:8000/rules/ingest \
   "to": null,
   "summary": null,
   "key_decisions": [],
-  "content": "Hello, Mnemos.",
+  "content": "Hello, Vesma.",
   "outcome": null,
   "tags": [],
   "context_pointer": "ctx-...",
@@ -1778,7 +1778,7 @@ curl -s -X POST http://127.0.0.1:8000/rules/ingest \
 
 ## Схема Memory {#memory-schema}
 
-Pydantic-модель `Memory` (определена в `src/mnemos/models.py`) возвращается из `POST /memories`, `GET /memories/{id}` и `GET /memories`.
+Pydantic-модель `Memory` (определена в `src/vesmaro/models.py`) возвращается из `POST /memories`, `GET /memories/{id}` и `GET /memories`.
 
 | Поле | Тип | Примечания |
 |------|-----|----------- |
@@ -1808,7 +1808,7 @@ Pydantic-модель `Memory` (определена в `src/mnemos/models.py`) 
 
 ## OpenAPI / Swagger
 
-Полная машиночитаемая схема доступна на `/openapi.json` (3.1.0) и рендерится как UI на `/docs` (Swagger) и `/redoc` (ReDoc). Они генерируются FastAPI из декораторов маршрутов в `src/mnemos/api/main.py` и `src/mnemos/sessions/api.py`, поэтому схема никогда не расходится с работающим кодом.
+Полная машиночитаемая схема доступна на `/openapi.json` (3.1.0) и рендерится как UI на `/docs` (Swagger) и `/redoc` (ReDoc). Они генерируются FastAPI из декораторов маршрутов в `src/vesmaro/api/main.py` и `src/vesmaro/sessions/api.py`, поэтому схема никогда не расходится с работающим кодом.
 
 Для генерации статического клиента — скачайте схему и выполните [`openapi-generator`](https://openapi-generator.tech/):
 

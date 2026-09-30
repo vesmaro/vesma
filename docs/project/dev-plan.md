@@ -454,7 +454,7 @@ fail-closed, never-pinnable + born no-federate, федеративное иск�
 ## 4b. Многоконтекстная память — план реализации (АрхКом 2026-09-14)
 
 > **Источник:** АрхКом 2026-09-14 (вердикт accept-staged; ADR-0027, эпик
-> [#308](https://github.com/vesmaro/vesmaro/issues/308); mnemos-решение
+> [#308](https://github.com/vesmaro/vesmaro/issues/308); vesma-решение
 > `bb7aa6be`, суперпрессировало идею `a4b846c7`). Формулировка владельца
 > 2026-09-14 после конкурентного среза (10 проектов: multi-context = ~80%
 > маркетинга; пустые зоны рынка — task-скоуп первого класса, пересечение
@@ -620,7 +620,7 @@ ADR-0027 §A.2–§A.3; mnemos `2b3ae42f`. Зарегистрированный 
 ## 4c. Memory Graph — самозаправляющийся граф (АрхКом 2026-09-15)
 
 > **Источник:** АрхКом 2026-09-15 (вердикт accept-staged; ADR-0030
-> `docs/project/adr/0030-memory-graph-self-fueling.md`; mnemos-решение
+> `docs/project/adr/0030-memory-graph-self-fueling.md`; vesma-решение
 > `d11debf8`, контракт `1d4bf66e`). Ревизия вскрыла потерю инициативы
 > «Memory Graph + Learning Loop» (очередь с 2026-08-21, P1-рекомендация;
 > слилась в очередь при вычистке 31.08 без disposition). Решающий
@@ -719,7 +719,7 @@ wave-аннотаций (S/M/L, зависимости); сверка «реко
 ## 4d. Граф проектов как память (АрхКом 2026-09-28)
 
 > **Источник:** АрхКом 2026-09-28 (вердикт accept-staged; ADR-0032
-> `docs/project/adr/0032-project-graph.md`; mnemos-решение `266aa582`,
+> `docs/project/adr/0032-project-graph.md`; vesma-решение `266aa582`,
 > контракт `b7572c97`). Инициатива владельца: агенты жгут токены на
 > перечитывание файлов проекта; решение — memory-first проектный граф
 > (sidecar-БД `code_graph.db` по прецеденту vectors.db, tree-sitter,
@@ -870,4 +870,4 @@ PGT-1..7 (dump-тест, конфайнмент, poisoned, выдача, экс�
 
 *Источник снимка: данные председателя Архитектурного комитета от
 2026-08-31 (проценты посчитаны председателем); main@`7c56b7f`. Артефакты
-волн — PR и issues репозитория Korrnals/mnemos.*
+волн — PR и issues репозитория Korrnals/vesma.*

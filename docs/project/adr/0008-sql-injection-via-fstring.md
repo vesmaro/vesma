@@ -11,11 +11,11 @@
 Bandit (run with `skips = ["B104", "B608", "B615"]` in the legacy `pyproject.toml`)
 identified three B608 findings in v0.1.0:
 
-- `src/mnemos/storage/sqlite_store.py:419` — `update_fields` builds `setters` via
+- `src/vesma/storage/sqlite_store.py:419` — `update_fields` builds `setters` via
   `f"{k}=?"` for `k` in `updates.keys()`.
-- `src/mnemos/storage/sqlite_store.py:523` — `fts_search` builds the SQL query via
+- `src/vesma/storage/sqlite_store.py:523` — `fts_search` builds the SQL query via
   a multi-line f-string with five interpolated conditions.
-- `src/mnemos/storage/vector_store.py:150` — same pattern, smaller scale.
+- `src/vesma/storage/vector_store.py:150` — same pattern, smaller scale.
 
 The current code is **safe in practice** because `updates` is filtered through a
 static `allowed` set before the f-string is built. Bandit, however, does not
@@ -94,5 +94,5 @@ is the only inline suppression added; it is documented in `docs/security.md`.
 - `tasks/senior-security-engineer/M15.2-bandit-cleanup.md` — full task
 - `tasks/senior-dba/M15.3-sql-injection-refactor.md` — coordinated refactor
 - `docs/security.md` — threat model + B104 justification
-- `src/mnemos/storage/sqlite_store.py` — `_FIELD_UPDATERS`, `_escape_fts_query`
-- `src/mnemos/storage/vector_store.py` — same pattern
+- `src/vesma/storage/sqlite_store.py` — `_FIELD_UPDATERS`, `_escape_fts_query`
+- `src/vesma/storage/vector_store.py` — same pattern

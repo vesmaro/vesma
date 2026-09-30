@@ -2,11 +2,11 @@
 
 **🌐 Language / Язык:** [English](../../en/user/cli-reference.md) · Русский
 
-> Полная справка по командной строке `mnemos`.
+> Полная справка по командной строке `vesma`.
 
-CLI — тонкая обёртка на Typer вокруг [`MemoryManager`](../architecture/overview.md#memorymanager). Использует Rich для вывода таблиц с цветами и является наиболее удобным способом работы с Mnemos из оболочки.
+CLI — тонкая обёртка на Typer вокруг [`MemoryManager`](../architecture/overview.md#memorymanager). Использует Rich для вывода таблиц с цветами и является наиболее удобным способом работы с Vesma из оболочки.
 
-Полный набор субкоманд определён в `src/mnemos/cli/main.py`. Эта страница отражает то, что реально экспортирует источник — каждый пример здесь можно выполнить на чистой установке.
+Полный набор субкоманд определён в `src/vesmaro/cli/main.py`. Эта страница отражает то, что реально экспортирует источник — каждый пример здесь можно выполнить на чистой установке.
 
 Пошаговое первое использование — в [getting-started.md](getting-started.md). Для программного доступа — [mcp-tools.md](mcp-tools.md) и [http-api.md](http-api.md).
 
@@ -15,7 +15,7 @@ CLI — тонкая обёртка на Typer вокруг [`MemoryManager`](..
 ## Синопсис
 
 ```text
-mnemos [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
+vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 ```
 
 | Субкоманда | Назначение |
@@ -44,7 +44,7 @@ mnemos [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`meta-poll`](#meta-poll) | Опрос метаданных федерации: один проход поллера вручную (S2 фаза 2) |
 | [`scanner`](#scanner) | Фоновый сканер секретов: `run` / `status` |
 
-> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `mnemos tags rename --from gcw: --to mnemos: --no-dry-run`.
+> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают.
 
 ---
 
@@ -53,45 +53,46 @@ mnemos [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Большинство субкоманд принимают флаг `--config / -c` с путём к YAML-файлу. Порядок поиска:
 
 1. Аргумент `--config` (если указан)
-2. Переменная окружения `$MNEMOS_CONFIG`
+2. Переменная окружения `$VESMARO_CONFIG` (5.x канон; написание 4.x `MNEMOS_CONFIG` устарело)
 3. `./config.yaml` в текущей рабочей директории
 4. `~/.mnemos/config.yaml`
 
 ```bash
-mnemos --help
-mnemos add --help
+vesma --help
+vesma add --help
 ```
 
-Остальные глобальные флаги — только `--version / -V` (показать версию) и `--verbose / -v` (DEBUG-логирование для `mnemos serve` и `mnemos mcp-server`). Чтобы изменить уровень логирования на постоянной основе, задайте `logging.level` в конфиге или переменную окружения:
+Остальные глобальные флаги — только `--version / -V` (показать версию) и `--verbose / -v` (DEBUG-логирование для `vesma serve` и `vesma mcp-server`). Чтобы изменить уровень логирования на постоянной основе, задайте `logging.level` в конфиге или переменную окружения:
 
 ```bash
-MNEMOS_LOGGING__LEVEL=DEBUG mnemos serve
+VESMARO_LOGGING__LEVEL=DEBUG vesma serve      # 5.x канон
+# образы 4.x всё ещё читают написание MNEMOS_LOGGING__LEVEL (deprecated)
 ```
 
 ---
 
 ## Переменные окружения
 
-Все настройки переопределяются через переменные окружения с префиксом `MNEMOS_`. Вложенные ключи разделяются `__`.
+Все настройки переопределяются через переменные окружения с префиксом `VESMARO_` (канон 5.x). Вложенные ключи разделяются `__`.
 
-| Переменная | По умолчанию | Назначение |
+| Переменная (канон 5.x) | По умолчанию | Назначение |
 |------------|-------------|------------ |
-| `MNEMOS_CONFIG` | — | Путь к `config.yaml` |
-| `MNEMOS_MNEMOS__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
-| `MNEMOS_DATA_DIR` *(устаревший алиас)* | `~/.mnemos/data` | Устаревший алиас `MNEMOS_MNEMOS__DATA_DIR` |
-| `MNEMOS_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
-| `MNEMOS_VAULT__VAULT_PATH` *(устаревший алиас)* | `~/.mnemos/vault` | Устаревший алиас `MNEMOS_MNEMOS__VAULT_PATH` |
-| `MNEMOS_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
-| `MNEMOS_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `mnemos serve` |
-| `MNEMOS_API__PORT` | `8787` | Порт по умолчанию для `mnemos serve` |
-| `MNEMOS_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |
-| `MNEMOS_EMBEDDING__PROVIDER` | `nano` | `nano` (mnema-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
-| `MNEMOS_LLM__PROVIDER` | `ollama` | LLM для синтеза и контекстного фильтра |
-| `MNEMOS_LLM__MODEL` | `qwen2.5:3b` | Имя LLM-модели |
-| `MNEMOS_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |
-| `MNEMOS_LOGGING__LEVEL` | `INFO` | Уровень логирования Python |
+| `VESMARO_CONFIG` | — | Путь к `config.yaml` |
+| `VESMARO_MNEMOS__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
+| `VESMARO_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
+| `VESMARO_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
+| `VESMARO_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
+| `VESMARO_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
+| `VESMARO_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |
+| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (mnema-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
+| `VESMARO_LLM__PROVIDER` | `ollama` | LLM для синтеза и контекстного фильтра |
+| `VESMARO_LLM__MODEL` | `qwen2.5:3b` | Имя LLM-модели |
+| `VESMARO_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |
+| `VESMARO_LOGGING__LEVEL` | `INFO` | Уровень логирования Python |
 
-> **Устаревшие алиасы.** `MNEMOS_DATA_DIR` и `MNEMOS_VAULT__VAULT_PATH` появились до вложенного именования `MNEMOS_MNEMOS__*` и сохранены для совместимости (#139). Работают обе формы. При конфликте каноническое имя переменной — как и явное значение в конфиг-файле — имеет приоритет над алиасом; алиас лишь заполняет пробел, который иначе достался бы значению по умолчанию.
+> **Deprecated: написание MNEMOS_\*.** Таблица выше перечисляет канон для 5.x — имена `VESMARO_*` (контракт двойного префикса ADR-0031; образы 5.x читают `VESMARO_*`). Те же переменные на образах 4.x отгружались как `MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL` и остаются принятыми там до deprecation. Короткие формы `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` — это совместимые алиасы #139 для вложенных канонических имён; при конфликте канон env побеждает.
+
+> **Устаревшие алиасы.** Короткие формы появились до вложенного именования и сохранены для совместимости (#139). Работают обе формы. При конфликте каноническое имя переменной — как и явное значение в конфиг-файле — имеет приоритет над алиасом; алиас лишь заполняет пробел, который иначе достался бы значению по умолчанию.
 
 ---
 
@@ -100,7 +101,7 @@ MNEMOS_LOGGING__LEVEL=DEBUG mnemos serve
 Создать новую запись в памяти.
 
 ```text
-mnemos add [CONTENT] [OPTIONS]
+vesma add [CONTENT] [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -115,28 +116,28 @@ mnemos add [CONTENT] [OPTIONS]
 | `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. |
 | `--config / -c` | — | Путь к `config.yaml`. |
 
-> **Контракт тегов.** Каждая запись должна иметь `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. CLI соблюдает это в strict-режиме (по умолчанию). Полная схема — в [tag-contract.md](tag-contract.md).
+> **Контракт тегов.** Каждая запись должна иметь `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. CLI соблюдает это в strict-режиме (по умолчанию). Полная схема — в [tag-contract.md](tag-contract.md).
 
 ### Примеры
 
 ```bash
 # Встроенный контент
-mnemos add "Use uv, not pip" --tags project:mnemos agent:tech-writer mnemos:learning
+vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer mnemos:learning
 
 # С заголовком
-mnemos add "Always validate SQL with parameterized queries" \
+vesma add "Always validate SQL with parameterized queries" \
   --title "SQL safety rule" \
-  --tags "project:mnemos,agent:security,mnemos:rule,severity:high"
+  --tags "project:vesma,agent:security,mnemos:rule,severity:high"
 
 # Из файла
-mnemos add --file ~/notes/architecture.md --tags project:mnemos agent:tech-lead mnemos:decision
+vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
 
 # Из URL (загружает, извлекает, сохраняет)
-mnemos add --url https://example.com/article --tags project:research agent:user mnemos:learning
+vesma add --url https://example.com/article --tags project:research agent:user mnemos:learning
 
 # Из stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
-  | mnemos add --tags project:mnemos agent:sre mnemos:bug-pattern,severity:medium
+  | vesma add --tags project:vesma agent:sre mnemos:bug-pattern,severity:medium
 ```
 
 ---
@@ -146,7 +147,7 @@ echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
 Гибридный поиск: FTS5 + вектор + Reciprocal Rank Fusion.
 
 ```text
-mnemos search QUERY [OPTIONS]
+vesma search QUERY [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -165,13 +166,13 @@ Score — это слитый RRF-скор: 0.0 = нет совпадений, 1
 
 ```bash
 # Простой поиск
-mnemos search "embedding model"
+vesma search "embedding model"
 
 # С фильтром по проекту
-mnemos search "CVE" --project mnemos --limit 20
+vesma search "CVE" --project vesma --limit 20
 
 # Широкий поиск
-mnemos search "decision" --limit 50
+vesma search "decision" --limit 50
 ```
 
 Для более широких возможностей запросов используйте HTTP API `POST /search` (см. [http-api.md#search](http-api.md#post-search--гибридный-поиск)).
@@ -183,7 +184,7 @@ mnemos search "decision" --limit 50
 Список последних записей, опционально ограниченный агентом (M3) и/или проектом.
 
 ```text
-mnemos recall [OPTIONS]
+vesma recall [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -199,35 +200,35 @@ mnemos recall [OPTIONS]
 
 ```bash
 # 10 последних записей для любого агента
-mnemos recall
+vesma recall
 
 # Per-agent recall (M3)
-mnemos recall --agent tech-writer
+vesma recall --agent tech-writer
 
 # Комбинированный
-mnemos recall --agent sre --project mnemos --limit 25
+vesma recall --agent sre --project vesma --limit 25
 ```
 
 ---
 
 ## `tags validate`
 
-Проверить контракт тегов Mnemos по всей существующей директории Mnemos vault. Сообщает о записях, нарушающих схему M2.
+Проверить контракт тегов Vesma по всей существующей директории Vesma vault. Сообщает о записях, нарушающих схему M2.
 
 ```text
-mnemos tags validate VAULT_PATH
+vesma tags validate VAULT_PATH
 ```
 
 | Аргумент | Описание |
 |----------|---------- |
-| `VAULT_PATH` (позиционный) | Путь к директории Mnemos vault (зеркало в markdown). |
+| `VAULT_PATH` (позиционный) | Путь к директории Vesma vault (зеркало в markdown). |
 
-> **Статус.** Полная реализация сканирования vault ещё не подключена (`# TODO (M2): scan SQLite + vault markdown files`). Пока команда выводит заглушку. Для проверки тегов через SQLite используйте `mnemos stats` и HTTP API `GET /memories?project=...`.
+> **Статус.** Полная реализация сканирования vault ещё не подключена (`# TODO (M2): scan SQLite + vault markdown files`). Пока команда выводит заглушку. Для проверки тегов через SQLite используйте `vesma stats` и HTTP API `GET /memories?project=...`.
 
 ### Пример
 
 ```bash
-mnemos tags validate ~/.mnemos/vault
+vesma tags validate ~/.mnemos/vault
 ```
 
 ---
@@ -241,7 +242,7 @@ mnemos tags validate ~/.mnemos/vault
 Показать текущий статус workflow и владельца блокировки для записи.
 
 ```text
-mnemos workflow get MEMORY_ID
+vesma workflow get MEMORY_ID
 ```
 
 ### `workflow set`
@@ -249,7 +250,7 @@ mnemos workflow get MEMORY_ID
 Перевести запись в новый статус workflow.
 
 ```text
-mnemos workflow set MEMORY_ID --to STATUS --actor ACTOR [OPTIONS]
+vesma workflow set MEMORY_ID --to STATUS --actor ACTOR [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -266,7 +267,7 @@ mnemos workflow set MEMORY_ID --to STATUS --actor ACTOR [OPTIONS]
 Показать журнал переходов workflow для записи (новые сверху).
 
 ```text
-mnemos workflow history MEMORY_ID [OPTIONS]
+vesma workflow history MEMORY_ID [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -280,9 +281,9 @@ mnemos workflow history MEMORY_ID [OPTIONS]
 ```bash
 ID=550e8400-e29b-41d4-a716-446655440000
 
-mnemos workflow set "$ID" --to in-progress --actor tech-writer
-mnemos workflow get "$ID"
-mnemos workflow history "$ID" --limit 20
+vesma workflow set "$ID" --to in-progress --actor tech-writer
+vesma workflow get "$ID"
+vesma workflow history "$ID" --limit 20
 ```
 
 ### Связанные ресурсы
@@ -293,10 +294,10 @@ mnemos workflow history "$ID" --limit 20
 
 ## `stats`
 
-Показать счётчики состояния Mnemos и ключевые пути.
+Показать счётчики состояния Vesma и ключевые пути.
 
 ```text
-mnemos stats [OPTIONS]
+vesma stats [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -308,7 +309,7 @@ mnemos stats [OPTIONS]
 | Ключ | Значение |
 |------|--------- |
 | `status` | Всегда `ok` (сигнал живости) |
-| `version` | Версия Mnemos (сейчас `4.0.0`) |
+| `version` | Версия Vesma (сейчас `4.0.0`) |
 | `data_dir` | Разрешённая директория данных |
 | `vault_path` | Разрешённая директория vault |
 | `total` | Общее количество записей (любой статус) |
@@ -318,11 +319,11 @@ mnemos stats [OPTIONS]
 ### Пример
 
 ```bash
-mnemos stats
+vesma stats
 # status: ok
 # version: 4.0.0
-# data_dir: /home/you/.mnemos/data
-# vault_path: /home/you/.mnemos/vault
+# data_dir: /home/you/.vesma/data
+# vault_path: /home/you/.vesma/vault
 # total: 142
 # by_status: {'raw': 5, 'processing': 0, 'processed': 12, 'published': 120, 'archived': 5}
 # vectors: 120
@@ -335,7 +336,7 @@ mnemos stats
 Управление FTS5-индексом. Сейчас определено одно действие: `rebuild`.
 
 ```text
-mnemos fts ACTION
+vesma fts ACTION
 ```
 
 | Аргумент | Описание |
@@ -345,7 +346,7 @@ mnemos fts ACTION
 ### Пример
 
 ```bash
-mnemos fts rebuild
+vesma fts rebuild
 # ✓ FTS5 index rebuilt: 142 rows indexed
 ```
 
@@ -356,7 +357,7 @@ mnemos fts rebuild
 Управление фоновым процессором (конвейером знаний): просмотр очереди, ручной проход, запуск и остановка фонового цикла.
 
 ```text
-mnemos processor ACTION
+vesma processor ACTION
 ```
 
 | Аргумент | Описание |
@@ -368,7 +369,7 @@ mnemos processor ACTION
 ### Пример
 
 ```bash
-mnemos processor run
+vesma processor run
 #   clusters: 3
 #   synthesized: 3
 #   published: 2
@@ -386,7 +387,7 @@ mnemos processor run
 Пересобрать векторный индекс для всех published-записей — каждая запись `published` заново векторизуется и обновляется в `vectors.db`. Используйте после включения эмбеддингов или смены модели.
 
 ```text
-mnemos reindex [OPTIONS]
+vesma reindex [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -397,7 +398,7 @@ mnemos reindex [OPTIONS]
 ### Пример
 
 ```bash
-mnemos reindex --batch-size 50
+vesma reindex --batch-size 50
 #   total: 120
 #   indexed: 120
 #   failed: 0
@@ -410,7 +411,7 @@ mnemos reindex --batch-size 50
 Запустить контекстный фильтр (M10) для записи и показать очищенный контент со статистикой сокращения. С `--all` фильтр перезапускается для всех записей с агрегированной сводкой.
 
 ```text
-mnemos filter [MEMORY_ID] [OPTIONS]
+vesma filter [MEMORY_ID] [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -426,7 +427,7 @@ mnemos filter [MEMORY_ID] [OPTIONS]
 ### Пример
 
 ```bash
-mnemos filter 550e8400-e29b-41d4-a716-446655440000 --profile terminal
+vesma filter 550e8400-e29b-41d4-a716-446655440000 --profile terminal
 # ✓ Filtered: 550e8400-e29b-41d4-a716-446655440000
 #   profile: terminal
 #   clean_content:
@@ -442,10 +443,10 @@ mnemos filter 550e8400-e29b-41d4-a716-446655440000 --profile terminal
 
 ## `serve`
 
-Запустить HTTP API-сервер Mnemos (FastAPI / Uvicorn).
+Запустить HTTP API-сервер Vesma (FastAPI / Uvicorn).
 
 ```text
-mnemos serve [OPTIONS]
+vesma serve [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -461,12 +462,12 @@ mnemos serve [OPTIONS]
 
 ### Mesh-сервер (нативный wiring)
 
-При `mesh.enabled: true` в конфиге `mnemos serve` дополнительно поднимает gRPC-сервер `MnemosCore` на настроенном Unix-сокете **в том же процессе**, рядом с HTTP API — бинарий `mnemos-mesh` диалит этот сокет. На старте пишется одна строка: `mesh server listening on <path>`. По `SIGINT`/`SIGTERM` uvicorn сначала дрейнит HTTP, затем gRPC-сервер дрейнит (grace 2 с) и удаляет файл сокета.
+При `mesh.enabled: true` в конфиге `vesma serve` дополнительно поднимает gRPC-сервер `MnemosCore` на настроенном Unix-сокете **в том же процессе**, рядом с HTTP API — бинарий `mnemos-mesh` диалит этот сокет. На старте пишется одна строка: `mesh server listening on <path>`. По `SIGINT`/`SIGTERM` uvicorn сначала дрейнит HTTP, затем gRPC-сервер дрейнит (grace 2 с) и удаляет файл сокета.
 
 ```yaml
 mesh:
   enabled: true
-  socket_path: /run/mnemos/core.sock
+  socket_path: /run/vesma/core.sock
   # Групповой доступ для shared-volume деплоев (Kubernetes fsGroup,
   # compose `user: <uid>:<gid>`): сокет 0660 / каталог 0770 вместо
   # owner-only 0600 / 0700 — mesh-бинарий может диалить сокет под другим
@@ -493,9 +494,9 @@ mesh:
       # Для самого процесса информационное — читаются только файлы ниже.
       existing_secret: mnemos-core-grpc-tls
       # Смонтированные PEM-пути (из этого Secret) — контракт деплоя:
-      cert_file: /etc/mnemos/mesh-tls/tls.crt   # лист идентичности mnemos-core
-      key_file: /etc/mnemos/mesh-tls/tls.key
-      ca_file: /etc/mnemos/mesh-tls/ca.crt      # mesh CA — trust root клиентских серт
+      cert_file: /etc/vesma/mesh-tls/tls.crt   # лист идентичности mnemos-core
+      key_file: /etc/vesma/mesh-tls/tls.key
+      ca_file: /etc/vesma/mesh-tls/ca.crt      # mesh CA — trust root клиентских серт
 ```
 
 Опционально пинится fingerprint клиентского серта mesh-ноды на пира (`federation.peers.<id>.mtls_cert_fingerprint`, формат `sha256:<hex>` от DER-листа) — симметрично peer-ноге mesh; валидный mesh-CA серт от другой ноды тогда отклоняется с `PERMISSION_DENIED`.
@@ -504,16 +505,16 @@ mesh:
 
 ```bash
 # Привязка по умолчанию
-mnemos serve
+vesma serve
 
 # Привязка к локальной сети (dev-машина в домашней сети)
-mnemos serve --host 0.0.0.0 --port 8000
+vesma serve --host 0.0.0.0 --port 8000
 
 # С кастомным конфигом
-mnemos serve --host 127.0.0.1 --port 9000 --config /etc/mnemos/config.yaml
+vesma serve --host 127.0.0.1 --port 9000 --config /etc/vesma/config.yaml
 
 # Включить файловое логирование без правки конфига
-mnemos serve --log-file ~/.mnemos/logs/serve.log
+vesma serve --log-file ~/.mnemos/logs/serve.log
 ```
 
 Полная поверхность HTTP API документирована в [http-api.md](http-api.md). Swagger UI доступен по адресу `http://HOST:PORT/docs`.
@@ -525,7 +526,7 @@ mnemos serve --log-file ~/.mnemos/logs/serve.log
 Один проход опроса метаданных федерации (S2 фаза 2, poll-first). Это тот же путь, который фоновый цикл выполняет на каждом тике — но один раз, в foreground, со сводкой по пирам: для ручных запусков и диагностики.
 
 ```text
-mnemos meta-poll [OPTIONS]
+vesma meta-poll [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -543,7 +544,7 @@ mnemos meta-poll [OPTIONS]
 
 ### Фоновый цикл (`federation.meta_poll`)
 
-Фоновый поллер работает внутри `mnemos serve` как asyncio-задача и **выключен по умолчанию** — конфиг без ключа `meta_poll` парсится без изменений, поведение процесса бит-в-бит как раньше (S1 / S2 фаза 1).
+Фоновый поллер работает внутри `vesma serve` как asyncio-задача и **выключен по умолчанию** — конфиг без ключа `meta_poll` парсится без изменений, поведение процесса бит-в-бит как раньше (S1 / S2 фаза 1).
 
 ```yaml
 federation:
@@ -551,7 +552,7 @@ federation:
     enabled: true                      # по умолчанию false — явный opt-in
     interval_seconds: 300              # по умолчанию 300; клэмпится в [60, 86400]
     peers: all                         # "all" (все ключи federation.peers) или явный список
-    mesh_config_path: /etc/mnemos/mesh.yaml  # ОБЯЗАТЕЛЕН при enabled (передаётся CLI как --config)
+    mesh_config_path: /etc/vesmaro/mesh.yaml  # ОБЯЗАТЕЛЕН при enabled (передаётся CLI как --config)
     mesh_bin: mnemos-mesh              # имя бинарника (PATH) или абсолютный путь
 ```
 
@@ -566,10 +567,10 @@ federation:
 
 ## `mcp-server`
 
-Запустить MCP-сервер Mnemos через **stdio** для VS Code Copilot (или любого MCP-совместимого клиента).
+Запустить MCP-сервер Vesma через **stdio** для VS Code Copilot (или любого MCP-совместимого клиента).
 
 ```text
-mnemos mcp-server [OPTIONS]
+vesma mcp-server [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -582,10 +583,10 @@ mnemos mcp-server [OPTIONS]
 
 ```bash
 # Прямой вызов (для отладки)
-mnemos mcp-server
+vesma mcp-server
 
-# С режимом auto-collect
-MNEMOS_AUTO_COLLECT=1 mnemos mcp-server
+# С режимом auto-collect (4.x-написание env; 5.x: VESMARO_AUTO_COLLECT)
+MNEMOS_AUTO_COLLECT=1 vesma mcp-server
 
 # Из VS Code (сниппет mcp.json)
 ```
@@ -593,9 +594,9 @@ MNEMOS_AUTO_COLLECT=1 mnemos mcp-server
 ```jsonc
 {
   "servers": {
-    "mnemos": {
+    "vesma": {
       "type": "stdio",
-      "command": "mnemos",
+      "command": "vesma",
       "args": ["mcp-server"]
     }
   }
@@ -611,7 +612,7 @@ MNEMOS_AUTO_COLLECT=1 mnemos mcp-server
 Однократная миграция с устаревшей установки `ai-brain` (M13).
 
 ```text
-mnemos migrate from-ai-brain [OPTIONS]
+vesma migrate from-ai-brain [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -633,13 +634,13 @@ mnemos migrate from-ai-brain [OPTIONS]
 
 ```bash
 # Сначала dry run (рекомендуется)
-mnemos migrate from-ai-brain --dry-run
+vesma migrate from-ai-brain --dry-run
 
 # Реальный запуск с путями по умолчанию
-mnemos migrate from-ai-brain
+vesma migrate from-ai-brain
 
 # Из восстановления архива
-mnemos migrate from-ai-brain --source /tmp/restore/.ai-brain --vault /tmp/restore/brain-vault
+vesma migrate from-ai-brain --source /tmp/restore/.ai-brain --vault /tmp/restore/brain-vault
 ```
 
 Вывод — однострочная сводка:
@@ -687,7 +688,7 @@ mnemos migrate from-ai-brain --source /tmp/restore/.ai-brain --vault /tmp/restor
 ### Пример
 
 ```bash
-mnemos auth token create --name "laptop" --expires 2027-01-01
+vesma auth token create --name "laptop" --expires 2027-01-01
 # ✓ Token created:
 #   token_id : 7c9e6679-7425-40de-944b-e07fc1f90ae7
 #   bearer   : <открытый токен — сохраните сейчас, повторно он не показывается>
@@ -697,10 +698,10 @@ mnemos auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Установить shell-автодополнение для CLI `mnemos`. Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/mnemos.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc`; fish автоматически подхватывает свою директорию дополнений). Идемпотентно — повторный запуск не дублирует строку source и мигрирует со старого формата на `eval`.
+Установить shell-автодополнение для CLI `vesma`. Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/mnemos.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc`; fish автоматически подхватывает свою директорию дополнений). Идемпотентно — повторный запуск не дублирует строку source и мигрирует со старого формата на `eval`.
 
 ```text
-mnemos completion [SHELL] [OPTIONS]
+vesma completion [SHELL] [OPTIONS]
 ```
 
 | Аргумент / опция | По умолчанию | Описание |
@@ -711,8 +712,8 @@ mnemos completion [SHELL] [OPTIONS]
 ### Пример
 
 ```bash
-mnemos completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/mnemos.bash
+vesma completion bash
+# ✓ Installed bash completion → /home/you/.mnemos/completion/vesmaro.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```
@@ -721,10 +722,10 @@ mnemos completion bash
 
 ## `doctor`
 
-Проверки состояния Mnemos: конфигурация, директория данных, vault, БД SQLite, векторное хранилище, MCP-сервер, слой интеграции, подключение агентов, контракт тегов.
+Проверки состояния Vesma: конфигурация, директория данных, vault, БД SQLite, векторное хранилище, MCP-сервер, слой интеграции, подключение агентов, контракт тегов.
 
 ```text
-mnemos doctor [OPTIONS]
+vesma doctor [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -736,20 +737,20 @@ mnemos doctor [OPTIONS]
 
 Коды выхода: `0` — все проверки пройдены, `1` — одна или несколько провалены, `2` — только предупреждения.
 
-> У `doctor` нет опции `--config`; конфиг читается из `$MNEMOS_CONFIG` или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
+> У `doctor` нет опции `--config`; конфиг читается из `$VESMARO_CONFIG` (написание 4.x: `MNEMOS_CONFIG`, устарело) или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
 
 ### `doctor --paths`
 
-Показывает все пути, которые использует Mnemos, разрешённые из конфига и окружения:
+Показывает все пути, которые использует Vesma, разрешённые из конфига и окружения:
 
 ```bash
-mnemos doctor --paths
-# data_dir:      /home/you/.mnemos/data
-# vault_path:    /home/you/.mnemos/vault
+vesma doctor --paths
+# data_dir:      /home/you/.vesma/data
+# vault_path:    /home/you/.vesma/vault
 # log_file:      /home/you/.mnemos/logs/mnemos.log
-# cache_dir:     /home/you/.mnemos/cache
-# completion:    /home/you/.mnemos/completion
-# config_file:   /home/you/.mnemos/config.yaml
+# cache_dir:     /home/you/.vesma/cache
+# completion:    /home/you/.vesma/completion
+# config_file:   /home/you/.vesma/config.yaml
 ```
 
 Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции.
@@ -760,13 +761,13 @@ mnemos doctor --paths
 
 ```bash
 # Только предпросмотр
-mnemos doctor --fix --dry-run
+vesma doctor --fix --dry-run
 
 # Применить исправления
-mnemos doctor --fix
+vesma doctor --fix
 
 # CI: машиночитаемый вердикт, без исправлений
-mnemos doctor --json
+vesma doctor --json
 ```
 
 ---
@@ -776,7 +777,7 @@ mnemos doctor --json
 Просмотр трассировок пайплайна (M6, слой объяснимости) — компактная таблица поверх append-only таблицы `traces`.
 
 ```text
-mnemos logs [OPTIONS]
+vesma logs [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -791,10 +792,10 @@ mnemos logs [OPTIONS]
 ### Пример
 
 ```bash
-mnemos logs --task cluster --project mnemos --limit 20
+vesma logs --task cluster --project vesma --limit 20
 
 # Наблюдать конвейер вживую
-mnemos logs --follow
+vesma logs --follow
 ```
 
 ### Связанные ресурсы
@@ -825,7 +826,7 @@ mnemos logs --follow
 ### Пример
 
 ```bash
-mnemos scanner run --full
+vesma scanner run --full
 # ✓ Scan complete (full)
 #   records_scanned: 142
 #   records_tagged:   0
@@ -837,7 +838,7 @@ mnemos scanner run --full
 
 ### Связанные ресурсы
 
-- [sync.md](sync.md#исключение-mnemosno-federate) — что исключает `mnemos:no-federate`
+- [sync.md](sync.md#исключение-vesmano-federate) — что исключает `mnemos:no-federate`
 
 ---
 
@@ -847,9 +848,9 @@ mnemos scanner run --full
 |-----|--------- |
 | 0 | Успех |
 | 1 | Ошибка пользователя (отсутствующий аргумент, неверный тег и т.п.) |
-| 2 | `mnemos doctor`: предупреждения, ничего не сломано |
+| 2 | `vesma doctor`: предупреждения, ничего не сломано |
 
-CLI не возвращает ненулевой код при «нет результатов» — `mnemos search` завершается с кодом 0 и пустой таблицей.
+CLI не возвращает ненулевой код при «нет результатов» — `vesma search` завершается с кодом 0 и пустой таблицей.
 
 ---
 

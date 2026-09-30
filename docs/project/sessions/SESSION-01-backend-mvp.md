@@ -7,8 +7,8 @@
 > The agent (acting as `@GCW: Tech Lead`) reads this file, restores context,
 > and dispatches the tasks below to the named specialists.
 
-- **Project:** `mnemos` (`git@github.com:Korrnals/mnemos.git`)
-- **Repo path:** `/var/home/abyss/LABs/AI/mnemos`
+- **Project:** `vesma` (`git@github.com:Korrnals/mnemos.git`)
+- **Repo path:** `/var/home/abyss/LABs/AI/vesma`
 - **Session owner / orchestrator:** `@GCW: Tech Lead`
 - **Specialists:** `@GCW: Senior Security Engineer`, `@GCW: Senior System Engineer`, `@GCW: Senior QA Engineer`
 - **Status:** � **Complete** — all tasks delivered to `main` (HEAD `d2f2025`), CI green. See §10 Outcome.
@@ -42,7 +42,7 @@ M15 hardening AND the M19 code-review fixes.** Specifically:
 - PR #5 **was merged**, but its base was **`feat/m15-production-hardening`**,
   not `main`. That branch never reached `main`.
 - Therefore `origin/main` **still has the High-severity SSRF**:
-  `src/mnemos/manager.py` uses `follow_redirects=True` (line ~490). It also
+  `src/vesma/manager.py` uses `follow_redirects=True` (line ~490). It also
   lacks `VectorStore.close()`.
 - Divergence is clean: `origin/feat/m15-production-hardening` is **exactly 2
   commits ahead of `origin/main`**, and `main` has **0** commits the branch
@@ -59,9 +59,9 @@ posture. After merge: tag `v0.2.1`, and retarget the 9 dependabot PRs to `main`.
 
 | File | Why |
 | --- | --- |
-| `src/mnemos/api/main.py` | The FastAPI app — where CORS + auth middleware + `/tags` go |
-| `src/mnemos/manager.py` | `ingest_url` + `_validate_url` (SSRF v2 target) |
-| `src/mnemos/mcp_server.py` | 0% coverage — needs a dispatch smoke-test |
+| `src/vesma/api/main.py` | The FastAPI app — where CORS + auth middleware + `/tags` go |
+| `src/vesma/manager.py` | `ingest_url` + `_validate_url` (SSRF v2 target) |
+| `src/vesma/mcp_server.py` | 0% coverage — needs a dispatch smoke-test |
 | `docs/security.md` | Existing security posture (SSRF §2, loopback binding) |
 | `docs/adr/0009-ssrf-guard-in-ingest-url.md` | SSRF v1 rationale |
 | `docs/code-review-2026-06.md` | M19 review (origin of T4/T5) |

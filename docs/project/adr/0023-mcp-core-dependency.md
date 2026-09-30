@@ -15,8 +15,8 @@ primary product surface.
 
 State at decision time: `mcp[cli]>=2.0,<3.0` lives in
 `[project.optional-dependencies]`, so `pip install mnemos-memory-server`
-cannot run `mnemos mcp-server` — the primary agent-harness surface. The
-first-run sequence for a harness user is: install → `mnemos doctor` FAIL
+cannot run `vesma mcp-server` — the primary agent-harness surface. The
+first-run sequence for a harness user is: install → `vesma doctor` FAIL
 (100% of harness users) → re-install with extra syntax → doctor again. With
 switching cost ≈ 0 (mem0, letta, engram are one pip command away), this is a
 churn event at the most sensitive point of the funnel.
@@ -31,7 +31,7 @@ transitive dependencies were predicted as `httpx-sse`, `jsonschema` (+ `referenc
 `rpds-py`), `sse-starlette` — roughly 1 MiB total; the wheel itself does not
 grow. Post-resolve erratum (actual `uv.lock`): the mcp 2.1.1 tree pulls
 `httpx2`, `httpcore2`, `truststore`, `mcp-types`, `jsonschema`, `sse-starlette`
-— same order of magnitude. Verified: `mcp` is imported only in `src/mnemos/mcp_server.py`, so
+— same order of magnitude. Verified: `mcp` is imported only in `src/vesma/mcp_server.py`, so
 lazy-import isolation is preservable by construction.
 
 ### Committee positions
@@ -78,7 +78,7 @@ Gate: guard test green plus a full `make verify`.
 ## Consequences
 
 - **Positive:** a fresh install runs the primary agent scenario out of the
-  box; `mnemos doctor` is green on a fresh base install; the funnel loses
+  box; `vesma doctor` is green on a fresh base install; the funnel loses
   the reinstall step; artisanal installs with drifting SDK versions end;
   pip-audit and SBOM cover a single profile.
 - **Negative / costs:** the install footprint grows by ~1 MiB of net-new

@@ -12,7 +12,7 @@
 
 ## Overview
 
-Mnemos exposes three metrics endpoints for the `mnemos-eyes` frontend and
+Vesma exposes three metrics endpoints for the `mnemos-eyes` frontend and
 for external observability tools (Grafana, Prometheus, dashboards):
 
 | Endpoint | Format | Purpose |
@@ -42,7 +42,7 @@ dashboard.
   "volume": {
     "memories_total": 1248,
     "by_status": {"published": 980, "processed": 210, "raw": 58},
-    "by_project": {"mnemos": 540, "umbra": 708},
+    "by_project": {"vesma": 540, "umbra": 708},
     "by_agent": {"tech-lead": 620, "code-reviewer": 628},
     "by_type": {"note": 900, "decision": 200, "trace": 148}
   },
@@ -188,7 +188,7 @@ mnemos_memories_by_status{status="processed"} 210
 
 ```yaml
 scrape_configs:
-  - job_name: mnemos
+  - job_name: vesma
     static_configs:
       - targets: ["localhost:8787"]
     metrics_path: /api/v1/metrics
@@ -205,7 +205,7 @@ with a bearer header:
 
 ```yaml
 scrape_configs:
-  - job_name: mnemos
+  - job_name: vesma
     static_configs:
       - targets: ["mnemos.example.internal:8787"]
     metrics_path: /api/v1/metrics
@@ -243,7 +243,7 @@ paginated browsing.
 **Example**:
 
 ```http
-GET /memories?project=mnemos&status=published&tags=mnemos:decision&limit=10&offset=20
+GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offset=20
 ```
 
 **Errors**:
@@ -275,5 +275,5 @@ endpoints as follows:
 ## See also
 
 - [HTTP API Reference](http-api.md) — every endpoint.
-- [CLI Reference](cli-reference.md) — `mnemos stats`, `mnemos logs`.
+- [CLI Reference](cli-reference.md) — `vesma stats`, `vesma logs`.
 - [Context Filter](context-filter.md) — the `filter` section in stats.

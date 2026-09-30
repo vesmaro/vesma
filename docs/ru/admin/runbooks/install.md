@@ -1,4 +1,4 @@
-# Runbook: Установка Mnemos
+# Runbook: Установка Vesma
 
 **🌐 Language / Язык:** [English](../../../en/admin/runbooks/install.md) · Русский
 
@@ -11,18 +11,18 @@
 ## Быстрая установка (PyPI)
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
-- MCP-сервер входит в базовый пакет — `mnemos mcp-server` работает из коробки (ADR-0023).
+- MCP-сервер входит в базовый пакет — `vesma mcp-server` работает из коробки (ADR-0023).
 - Модель эмбеддингов (`mnema-embed-v1`) встроена: без скачиваний, работает офлайн.
 
-Изолированный вариант (кладёт CLI `mnemos` в `PATH`, проектные окружения не затрагиваются):
+Изолированный вариант (кладёт CLI `vesma` в `PATH`, проектные окружения не затрагиваются):
 
 ```bash
-uv tool install mnemos-memory-server
+uv tool install vesma
 # или
-pipx install mnemos-memory-server
+pipx install vesma
 ```
 
 Скриптовый вариант (venv в `~/.mnemos/venv` + лаунчер в `~/.local/bin` +
@@ -32,8 +32,9 @@ pipx install mnemos-memory-server
 curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
 ```
 
-> ⚠️ Имя пакета на PyPI — `mnemos-memory-server`: `pip install mnemos` устанавливает
-> не связанный проект.
+> ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш). Доребрендинговый
+> `mnemos-memory-server` живёт до deprecation; голый `pip install vesma` —
+> посторонний сторонний проект.
 
 ## Конфигурация
 
@@ -59,9 +60,9 @@ embedding:
 ```jsonc
 {
   "servers": {
-    "mnemos": {
+    "vesma": {
       "type": "stdio",
-      "command": "mnemos",
+      "command": "vesma",
       "args": ["mcp-server"]
     }
   }
@@ -70,12 +71,12 @@ embedding:
 
 Пресеты по харнесам (Claude Code, Cursor, OpenCode, Codex, Windsurf, ZCode, pi,
 Hermes): [`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md).
-Поведенческий пакет (инструкции / скиллы / промпты): `mnemos integration setup`.
+Поведенческий пакет (инструкции / скиллы / промпты): `vesma integration setup`.
 
 ## Запуск HTTP API
 
 ```bash
-mnemos serve  # uvicorn на 127.0.0.1:8787
+vesma serve  # uvicorn на 127.0.0.1:8787
 ```
 
 ## Контейнер
@@ -86,7 +87,7 @@ mnemos serve  # uvicorn на 127.0.0.1:8787
 Быстрый запуск одиночного контейнера из выпущенного образа:
 
 ```bash
-podman run -d -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 \
+podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
   --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0
 ```
 
@@ -99,7 +100,7 @@ podman-compose up -d
 ## Обновление
 
 ```bash
-pip install --upgrade mnemos-memory-server
+pip install --upgrade vesma
 ```
 
 Схема хранилища мигрирует автоматически при первом запуске новой версии.
@@ -109,7 +110,7 @@ pip install --upgrade mnemos-memory-server
 ## Проверка
 
 ```bash
-mnemos add "Hello Mnemos" --tags "project:test,agent:manual,mnemos:learning"
-mnemos search "Hello"
-mnemos recall --agent manual --project test
+vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
+vesma search "Hello"
+vesma recall --agent manual --project test
 ```

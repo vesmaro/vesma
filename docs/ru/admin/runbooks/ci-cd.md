@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** [English](../../../en/admin/runbooks/ci-cd.md) · Русский
 
 > **Область**: Работа, отладка и расширение pipeline GitHub Actions CI для
-> Mnemos. Источник истины: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> Vesma. Источник истины: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
 
 ---
 
@@ -16,7 +16,7 @@ CI workflow (`.github/workflows/ci.yml`) запускается при кажд�
 | Job | Runner | Назначение |
 |---|---|---|
 | `verify` | `ubuntu-latest`, матрица Python 3.11 / 3.12 / 3.13 | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы `mnemos --help` внутри образа |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы `vesma --help` внутри образа |
 
 Job `verify` является **обязательной status check** для `main` (см.
 [Защита веток](#защита-веток)).
@@ -28,16 +28,16 @@ Job `verify` является **обязательной status check** для `
 Запускайте те же проверки локально перед push, чтобы не тратить минуты CI:
 
 ```bash
-cd /path/to/mnemos   # корень репозитория
+cd /path/to/vesma   # корень репозитория
 source .venv/bin/activate
 
 ruff check src/ tests/                                # lint
 ruff format --check src/ tests/                       # format
-mypy --strict src/mnemos/                             # типы
+mypy --strict src/vesmaro/                             # типы
 bandit -r src/ -f json -o bandit-report.json          # безопасность (статическая)
 pip-audit --ignore-vuln CVE-2026-45829                # безопасность (зависимости)
 pytest tests/ -q --tb=short                           # тесты
-pytest --cov=src/mnemos --cov-fail-under=80 tests/ -q # gate по покрытию
+pytest --cov=src/vesma --cov-fail-under=80 tests/ -q # gate по покрытию
 ```
 
 Эквивалент одной командой:
@@ -70,7 +70,7 @@ act -j verify --matrix python-version:3.12
 
 Если `act` падает на job'е `build-container`, запустите те же шаги вручную —
 `buildah` доступен из `apt` на большинстве дистрибутивов, а smoke-тест — просто
-`mnemos --help` внутри собранного образа.
+`vesma --help` внутри собранного образа.
 
 ---
 
@@ -127,12 +127,12 @@ release blocker и исправляем до следующего релиза, 
 
 Оставшийся разрыв сосредоточен в:
 
-1. `src/mnemos/llm/*.py` — адаптеры провайдеров с тонким pass-through к
+1. `src/vesmaro/llm/*.py` — адаптеры провайдеров с тонким pass-through к
    vendor SDK (anthropic / openai / gemini / ollama). Высокая связанность с
    форматами HTTP-ошибок vendor делает полноценный e2e-тест дорогим.
-2. `src/mnemos/watchers/` — обработчики событий файловой системы; покрыты
+2. `src/vesmaro/watchers/` — обработчики событий файловой системы; покрыты
    юнит-тестами, но не в-процессными end-to-end потоками.
-3. `src/mnemos/auto_collect.py` — путь auto-collect cron запускается вручную,
+3. `src/vesmaro/auto_collect.py` — путь auto-collect cron запускается вручную,
    не в CI.
 
 Для каждого есть follow-up issue. До их закрытия gate 80% — намеренный пол.
@@ -169,10 +169,10 @@ Docker, чтобы избежать привилегированного кон�
 
 1. `apt-get install buildah`
 2. `buildah bud -t mnemos:test .` — сборка `Containerfile`
-3. `buildah from --name mnemos-test mnemos:test` — запуск контейнера
-4. `buildah run mnemos-test -- mnemos --help` — smoke-тест (плюс вывод версии Python)
+3. `buildah from --name vesma-test mnemos:test` — запуск контейнера
+4. `buildah run vesma-test -- vesma --help` — smoke-тест (плюс вывод версии Python)
 
-> Smoke-шаг запускает `mnemos --help` внутри собранного образа, поэтому проверяет
+> Smoke-шаг запускает `vesma --help` внутри собранного образа, поэтому проверяет
 > CLI-точку входа, а не только базовый образ.
 
 При падении контейнерного job'а проверьте лог на:
@@ -241,7 +241,7 @@ python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 - **CD / deploy** — release-pipeline живёт в
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
   тег `v*.*.*` собирает wheel/sdist и прикрепляет их к GitHub Release, а также
-  пушит `ghcr.io/korrnals/mnemos:$VERSION` + `:latest`. Заливка на PyPI —
+  пушит `ghcr.io/korrnals/vesma:$VERSION` + `:latest`. Заливка на PyPI —
   отдельный шаг по [`pypi-publish.md`](pypi-publish.md); использование
   контейнера — в [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — не нужен в текущем масштабе. GitHub-hosted

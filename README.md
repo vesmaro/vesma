@@ -1,17 +1,19 @@
 <!-- markdownlint-disable MD041 MD033 -->
 <p align="center">
-  <img src="docs/assets/mnemos-banner.svg" alt="Mnemos — memory &amp; knowledge server for AI agents" width="100%">
+  <img src="docs/assets/mnemos-banner.svg" alt="Vesma — memory &amp; knowledge server for AI agents" width="100%">
 </p>
 
-<h1 align="center">Mnemos</h1>
+<h1 align="center">Vesma</h1>
 
 <p align="center">
   <strong>A memory &amp; knowledge server for AI agents</strong><br>
-  <em>named after the Titaness of memory, built for AI agents that need to remember</em>
+  <em>named after the Vesper of memory, built for AI agents that need to remember</em>
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vesma/"><img src="https://img.shields.io/pypi/v/vesma?label=pypi&color=3776ab" alt="PyPI"></a>
+  <!-- deprecated-note: legacy PyPI package mnemos-memory-server (published until deprecation) -->
+  <!-- <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a> -->
   <a href="https://www.npmjs.com/package/pi-mnemos"><img src="https://img.shields.io/npm/v/pi-mnemos?label=npm&color=cb3837" alt="npm"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache-2.0"></a>
@@ -25,7 +27,7 @@
 <p align="center">
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-features">Features</a> ·
-  <a href="#-what-mnemos-is">What it is</a> ·
+  <a href="#-what-vesma-is">What it is</a> ·
   <a href="#-connect-any-harness">Connect a harness</a> ·
   <a href="#%EF%B8%8F-architecture">Architecture</a> ·
   <a href="#-documentation">Docs</a>
@@ -33,7 +35,7 @@
 
 ---
 
-AI agents forget everything when a session ends. Mnemos gives them a place to lay it down —
+AI agents forget everything when a session ends. Vesma gives them a place to lay it down —
 structured, searchable, governed by contract — so what they learn does not vanish with the
 closing of a window.
 
@@ -50,14 +52,17 @@ Three commands from an empty machine to an agent that remembers — and knows wh
 ### 1 · Install the server
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
-One package, everything included: the memory server, the `mnemos` CLI, the REST API, and the
+One package, everything included: the memory server, the `vesma` CLI, the REST API, and the
 MCP server your agent harness talks to. The embedding model ships inside — search works fully
 offline, no API keys, nothing downloaded.
 
-> ⚠️ Mind the name: `pip install mnemos` (without `-memory-server`) is an unrelated project.
+> ⚠️ **Names.** The product and the CLI are `vesma` (`pip install vesma`, PyPI slot `project/vesma`).
+> The pre-rebrand packages remain live until deprecation: `pip install mnemos-memory-server`
+> installs the same server under the legacy name (its legacy CLI spelling was `mnemos`, now an
+> alias). The bare `pip install mnemos` is an unrelated project — do not use it.
 
 #### Or take the prebuilt image — Docker, Podman, or a Kubernetes cluster
 
@@ -72,7 +77,7 @@ helm install vesmaro deploy/helm/vesmaro \
   --namespace vesmaro --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 kubectl -n vesmaro rollout status deploy/vesmaro
 ```
 
@@ -98,9 +103,11 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 
 ```bash
 # systemd user service (preferred for a long-running host)
+# legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesmaro.env (both env spellings), then:
 podman pull ghcr.io/vesmaro/vesmaro:4.3.0
+# quadlet derives the unit name from the file name — the unit is mnemos.service for now
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
 ```
@@ -113,10 +120,10 @@ Both Podman recipes (quadlet + `podman kube play`):
 ### 2 · Connect your harness — and teach it to use memory
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
-One pass: detects the agent harnesses on your machine, registers the Mnemos MCP server in each
+One pass: detects the agent harnesses on your machine, registers the Vesma MCP server in each
 supported one (VS Code Copilot, Cursor, ZCode, OpenCode, pi, Hermes, and everything reading the
 `~/.agents` standard — Claude Code, Codex and friends), and deploys the **behavioral pack** —
 always-on instructions and memory skills, so the agent recalls at session start, checkpoints
@@ -124,21 +131,21 @@ before its context gets compacted, and treats memory as a priority instead of fo
 tools exist.
 
 Running a harness that reads nothing standard? One paste block per harness:
-[Connect Mnemos to any harness](integrations/mcp-presets.md).
+[Connect Vesma to any harness](integrations/mcp-presets.md).
 
 ### 3 · Verify — then try it
 
 ```bash
-mnemos doctor
+vesma doctor
 ```
 
 PASS / WARN / FAIL per check: store, config, MCP transport, harness registration (`--fix`
 repairs the common warnings). Then give it a memory:
 
 ```bash
-mnemos add "First memory — Mnemos remembers across sessions" \
-  --tags project:mnemos,agent:me,mnemos:learning
-mnemos search "remembers across sessions"
+vesma add "First memory — Vesma remembers across sessions" \
+  --tags project:vesma,agent:me,vesma:learning
+vesma search "remembers across sessions"
 ```
 
 That is the whole loop: **write, find, never lose it — and the agent knows when to look.**
@@ -157,7 +164,7 @@ One local server — and a connected agent harness gets the full memory stack.
 | Area | What you get |
 |------|--------------|
 | **Universal connectivity** | MCP server (38 tools, stdio) + REST API — any MCP-capable harness connects in one line ([tools](docs/en/user/mcp-tools.md) · [HTTP](docs/en/user/http-api.md)) |
-| **Ready integrations** | VS Code Copilot, Claude Code, Cursor, Codex, Windsurf, OpenCode, ZCode, pi, Hermes Agent — one-line MCP presets for all of them, [native deploy targets](docs/en/user/integration-guide.md) for most, multi-harness doctor (`mnemos doctor`) |
+| **Ready integrations** | VS Code Copilot, Claude Code, Cursor, Codex, Windsurf, OpenCode, ZCode, pi, Hermes Agent — one-line MCP presets for all of them, [native deploy targets](docs/en/user/integration-guide.md) for most, multi-harness doctor (`vesma doctor`) |
 | **Skill pack** | 14+ memory skills deployed into your harnesses |
 | **Flexible memory** | Hybrid search (full-text + vector, rank fusion) over the bundled offline model `mnema-embed-v1`, [tag contract](docs/en/user/tag-contract.md), per-agent / per-project memory, [context-filter](docs/en/user/context-filter.md) profiles, CCR compression — 70–90% token savings, originals kept |
 | **Context assembly** | `assemble_context`: search → compress → filter → secret scan → cache align → token budget, per-block provenance |
@@ -165,14 +172,14 @@ One local server — and a connected agent harness gets the full memory stack.
 | **Lifecycle hooks** | `pre_llm_call` context injection, `on_session_start`, `post_tool_call` auto-compression of tool outputs |
 | **Publication v3.0.0** | Entries visible immediately after save, background refinement with seamless swap, quarantine with neutral retraction |
 | **Self-protection** | Injection / secret detectors on input and publication, every output scanned, full per-entry audit |
-| **Auto-pipeline** | Background processor: clustering, deduplication, quality gate, publication. Entries awaiting refinement sit at `pipeline_state=pending` until the processor runs — in CLI-only deployments (no daemon) start it with `mnemos processor start`; `mnemos doctor` reports the pending-queue depth |
+| **Auto-pipeline** | Background processor: clustering, deduplication, quality gate, publication. Entries awaiting refinement sit at `pipeline_state=pending` until the processor runs — in CLI-only deployments (no daemon) start it with `vesma processor start`; `vesma doctor` reports the pending-queue depth |
 
 Autonomy for an arbitrary harness and LLM-driven enrichment are partial — the
 full, honest map lives in [docs/en/features.md](docs/en/features.md).
 
 ---
 
-## 🧩 What Mnemos is
+## 🧩 What Vesma is
 
 A **single-tenant, local-first memory server** for AI agents. One in-process core, three equivalent
 control surfaces, and a storage layer you can read with your own eyes.
@@ -186,7 +193,7 @@ control surfaces, and a storage layer you can read with your own eyes.
 | 🧹 | **Context filter** | Five-stage noise stripper for logs / stdout before anything hits a model |
 | 🗜️ | **Reversible compression (CCR)** | Compress large content with zero data loss — originals cached in SQLite, retrievable via hash marker |
 | 🧷 | **CacheAligner** | Relocate dynamic content (timestamps, UUIDs, session ids, tokens) to the tail so provider KV caches (Anthropic `cache_control`, OpenAI prefix caching) hit across requests |
-| 🪶 | **Output token reduction** | Optional `verbosity` / `effort` params on `mnemos_add` / `mnemos_search` / `mnemos_recall_context` steer the caller's output style — backward compatible, defaults are a no-op |
+| 🪶 | **Output token reduction** | Optional `verbosity` / `effort` params on `mnemos_add` / `mnemos_search` / `mnemos_recall_context` (MCP tool names — unchanged wire contract) steer the caller's output style — backward compatible, defaults are a no-op |
 | 📂 | **Path-scoped rules** | Ingest project rules and apply them by file path |
 | 🗂️ | **Obsidian vault** | A markdown mirror humans can browse, edit, and grep |
 
@@ -206,7 +213,7 @@ moment, never one that conducts the agent.
 
 ## 🤝 Connect any harness
 
-Mnemos works with every MCP-capable agent harness. Three integration levels —
+Vesma works with every MCP-capable agent harness. Three integration levels —
 pick the strongest one your harness supports:
 
 | Harness | Native deploy target | One-line MCP preset | Adapter template |
@@ -222,17 +229,17 @@ pick the strongest one your harness supports:
 | pi | `pi` (bridge extension, also on npm as [`pi-mnemos`](https://www.npmjs.com/package/pi-mnemos)) | [preset](integrations/mcp-presets.md#pi) | ✓ |
 | [Hermes Agent](https://hermes-agent.nousresearch.com/) | `hermes` (native in-process `MemoryProvider` plugin) | — | — |
 
-- **Native targets** — `mnemos integration setup --target <name>` deploys the behavioral pack and
+- **Native targets** — `vesma integration setup --target <name>` deploys the behavioral pack and
   registers the MCP server in one pass ([integration guide](docs/en/user/integration-guide.md)).
 - **One-line presets** — [`integrations/mcp-presets.md`](integrations/mcp-presets.md): every harness
   above, copy-paste ready.
 - **Adapter template** — [`integrations/adapter-template.md`](integrations/adapter-template.md):
   Connect / Expose / Configure + acceptance checklist for any harness that speaks MCP stdio.
-- **Hermes Agent** runs Mnemos in-process: `pip install mnemos-memory-server` in the Hermes environment,
-  then `mnemos integration setup --target hermes` ([details](docs/en/user/integration-guide.md#hermes-agent)).
+- **Hermes Agent** runs Vesma in-process: `pip install vesma` in the Hermes environment,
+  then `vesma integration setup --target hermes` ([details](docs/en/user/integration-guide.md#hermes-agent)).
 
 The shared contract is the [tag schema](docs/en/user/tag-contract.md) — `project:<slug>`, `agent:<slug>`,
-and at least one `mnemos:<subtype>` — that every memory entry must carry.
+and at least one `mnemos:<subtype>` (tag namespace — unchanged wire contract) — that every memory entry must carry.
 
 ---
 
@@ -247,7 +254,7 @@ and at least one `mnemos:<subtype>` — that every memory entry must carry.
 flowchart TB
     subgraph CLIENTS["Clients"]
         C1(["Agent harness\nstdio MCP"])
-        C2(["CLI — mnemos …"])
+        C2(["CLI — vesma …"])
         C3(["HTTP API client"])
     end
 
@@ -312,9 +319,9 @@ The same `MemoryManager` powers all three interfaces. Pick the one that fits you
 
 | Surface | Use it when… | Reference |
 |---------|--------------|-----------|
-| **MCP** — `mnemos mcp-server` | You are an agent harness — the path every connected agent takes | [mcp-tools.md](docs/en/user/mcp-tools.md) |
-| **CLI** — `mnemos …` | You live in a shell, want fast ad-hoc add / search, or are scripting cron jobs | [cli-reference.md](docs/en/user/cli-reference.md) |
-| **HTTP** — `mnemos serve` | You have a non-MCP client — a web dashboard, a mobile app, a CI runner | [http-api.md](docs/en/user/http-api.md) |
+| **MCP** — `vesma mcp-server` | You are an agent harness — the path every connected agent takes | [mcp-tools.md](docs/en/user/mcp-tools.md) |
+| **CLI** — `vesma …` | You live in a shell, want fast ad-hoc add / search, or are scripting cron jobs | [cli-reference.md](docs/en/user/cli-reference.md) |
+| **HTTP** — `vesma serve` | You have a non-MCP client — a web dashboard, a mobile app, a CI runner | [http-api.md](docs/en/user/http-api.md) |
 
 The HTTP surface also exposes the **A2A Sessions API** — a persistent backend for multi-step agent
 conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/a2a-sessions.md).
@@ -327,14 +334,14 @@ conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/
 |------|----------------|
 | [docs/README.md](docs/README.md) | Documentation landing — language picker (EN / RU) |
 | [getting-started.md](docs/en/user/getting-started.md) | First run: install → first memory → first search → connect your harness |
-| [mcp-presets.md](integrations/mcp-presets.md) | Connect Mnemos to any harness — one-line MCP presets (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes) |
+| [mcp-presets.md](integrations/mcp-presets.md) | Connect Vesma to any harness — one-line MCP presets (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes) |
 | [integration-guide.md](docs/en/user/integration-guide.md) | The behavioral pack: instructions, skills, prompt mode, deploy targets, agent wiring, Hermes plugin |
 | [features.md](docs/en/features.md) | What works out of the box, what is partial, what is planned |
 | [architecture/overview.md](docs/en/architecture/overview.md) | System shape, data model, state machines, security boundaries |
-| [cli-reference.md](docs/en/user/cli-reference.md) | Every `mnemos` subcommand with flags, defaults, examples |
-| [mcp-tools.md](docs/en/user/mcp-tools.md) | Every `mnemos_*` tool exposed to agent harnesses |
+| [cli-reference.md](docs/en/user/cli-reference.md) | Every `vesma` subcommand with flags, defaults, examples |
+| [mcp-tools.md](docs/en/user/mcp-tools.md) | Every `mnemos_*` tool exposed to agent harnesses (tool names — unchanged MCP wire contract) |
 | [http-api.md](docs/en/user/http-api.md) | Every HTTP endpoint (memory CRUD, workflow, hooks, A2A Sessions) |
-| [tag-contract.md](docs/en/user/tag-contract.md) | The `project:` / `agent:` / `mnemos:` schema enforced on every memory |
+| [tag-contract.md](docs/en/user/tag-contract.md) | The `project:` / `agent:` / `mnemos:` tag schema (namespace — unchanged data contract) enforced on every memory |
 | [security.md](docs/en/admin/security.md) | Threat model, SSRF guard, FTS5 escape, auth model |
 | [kubernetes-deployment.md](docs/en/admin/kubernetes-deployment.md) | Helm chart for K8s/K3s clusters: ingress, storage, TLS, TOTP secret |
 | [contrib/node-install/](contrib/node-install/) | `vesmaro-node` — one-command bare-metal node bundle: venv + mesh binary + units, with adopt / atomic pair upgrade / uninstall |
@@ -351,9 +358,10 @@ conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/
 > birth to the nine Muses and through them made the world's remembering possible. Her name is the root of
 > *mnemonic*, and she is what every singer, poet, and philosopher prays to before they begin.
 
-This software carries her name because it is built for the same task: **to make remembering possible for
+The lore section below preserves the memory of the pre-rebrand name — the product itself now sails
+under **Vesma**, carrying the same task: **to make remembering possible for
 the things that think.** AI agents, unmoored from any single conversation, lose everything that came
-before. Mnemos gives them a place to lay it down — structured, searchable, governed by contract — so that
+before. Vesma gives them a place to lay it down — structured, searchable, governed by contract — so that
 what they learn does not vanish with the closing of a session. The Muses, after all, were not for the
 gods' benefit. They were for the songs.
 

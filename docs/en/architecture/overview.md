@@ -1,10 +1,10 @@
-# Mnemos — System Architecture
+# Vesma — System Architecture
 
 **🌐 Language / Язык:** English · [Русский](../../ru/architecture/overview.md)
 
 ## Overview
 
-Mnemos is a hybrid long-term memory system: a personal knowledge base and
+Vesma is a hybrid long-term memory system: a personal knowledge base and
 RAG store for AI agents. Primary access surfaces: CLI, HTTP API, MCP server,
 and an Obsidian-compatible vault. A Web UI is planned as a separate project
 (mnemos-eyes).
@@ -75,7 +75,7 @@ and an Obsidian-compatible vault. A Web UI is planned as a separate project
 
 - **Default**: `mnema-embed-v1` — bundled local model (~30 MB, int8 ONNX, RU+EN, 384d), works offline
 - Current weights (round 3, 2026-09-09): distilled from **Qwen/Qwen3-Embedding-0.6B** (Apache-2.0), `weights_sha256 3b752e06…`, MRL dimensions 64/128/256/384, opset 15; training corpus ~100k text→teacher-vector pairs including 8086 real store entries (RU 41.9%)
-- **Embedder swaps are vintage-tracked**: every vector stores the fingerprint of the embedder that produced it (`weights_sha256` for the bundled model); vectors cut by a different fingerprint are re-embedded automatically by the background heal sweeper, and `mnemos doctor` reports the remaining vintage-mismatch count
+- **Embedder swaps are vintage-tracked**: every vector stores the fingerprint of the embedder that produced it (`weights_sha256` for the bundled model); vectors cut by a different fingerprint are re-embedded automatically by the background heal sweeper, and `vesma doctor` reports the remaining vintage-mismatch count
 - **External providers still available**: `onnx` (any HF model), Ollama, `sentence-transformers`
 - Embedding provider configured via config file
 - Embedding caching to avoid repeated computation
@@ -220,7 +220,7 @@ When `cache_aligner.enabled` is `false`, `align_prefix()` returns the text uncha
 
 ### Output token reduction (P1-7)
 
-Output token reduction steers the caller's output style without changing what Mnemos stores or returns. Three tools — `mnemos_add`, `mnemos_search`, `mnemos_recall_context` — accept two optional parameters:
+Output token reduction steers the caller's output style without changing what Vesma stores or returns. Three tools — `mnemos_add`, `mnemos_search`, `mnemos_recall_context` — accept two optional parameters:
 
 | Parameter | Values | Effect |
 |-----------|--------|--------|
@@ -262,15 +262,15 @@ See [mcp-tools.md#output-token-reduction-p1-7](../user/mcp-tools.md#output-token
 
 #### CLI (Typer)
 ```bash
-mnemos add "Note about something important" --tags project:mnemos agent:user mnemos:learning   # quick add
-mnemos add --file ./document.pdf --tags project:mnemos agent:user mnemos:learning              # from a file
-mnemos add --url https://example.com --tags project:research agent:user mnemos:learning        # ingest a URL
-mnemos search "how to configure nginx"             # hybrid search (FTS5 + vector + RRF)
-mnemos search "CVE" --project mnemos --limit 20    # project-scoped search
-mnemos recall --agent tech-writer --limit 20       # recent entries for an agent (M3)
-mnemos stats                                       # store statistics
-mnemos serve                                       # start the HTTP API
-mnemos mcp-server                                  # start the MCP server (stdio)
+vesma add "Note about something important" --tags project:vesma agent:user mnemos:learning   # quick add
+vesma add --file ./document.pdf --tags project:vesma agent:user mnemos:learning              # from a file
+vesma add --url https://example.com --tags project:research agent:user mnemos:learning        # ingest a URL
+vesma search "how to configure nginx"             # hybrid search (FTS5 + vector + RRF)
+vesma search "CVE" --project vesma --limit 20    # project-scoped search
+vesma recall --agent tech-writer --limit 20       # recent entries for an agent (M3)
+vesma stats                                       # store statistics
+vesma serve                                       # start the HTTP API
+vesma mcp-server                                  # start the MCP server (stdio)
 ```
 
 #### REST API (FastAPI)
@@ -373,7 +373,7 @@ mcp:
 ## Roadmap
 
 > Snapshot of the original plan. Phases 1–2 (except PDF/DOCX parsing) have
-> shipped; Mnemos is at 4.0.0. The authoritative current plan lives in
+> shipped; Vesma is at 4.0.0. The authoritative current plan lives in
 > [PLAN.md](../../../PLAN.md).
 
 ### Phase 1 — MVP (shipped)

@@ -11,7 +11,7 @@ true: the direct-pin policy for vulnerable transitives and the weekly audit chec
 
 ## Pinning policy (M15.5.1)
 
-Mnemos uses **direct pins** for vulnerable transitives rather than bumping parent packages:
+Vesma uses **direct pins** for vulnerable transitives rather than bumping parent packages:
 
 - **`aiohttp>=3.14.1,<4.0`** — direct pin, fixes CVE-2026-34993, 47265, 50269, 54273-54280.
   Originally pulled in transitively by `chromadb → kubernetes` (historical: chromadb is gone);
@@ -34,7 +34,7 @@ the fix version, as in the entries above. Pins must use a range with an upper bo
 ## Daily/weekly quick check
 
 ```bash
-cd /path/to/mnemos   # repo root
+cd /path/to/vesma   # repo root
 source .venv/bin/activate
 make security
 ```
@@ -47,7 +47,7 @@ Expected outcomes:
 ## Full dependency refresh
 
 ```bash
-cd /path/to/mnemos   # repo root
+cd /path/to/vesma   # repo root
 source .venv/bin/activate
 make update-deps
 ```

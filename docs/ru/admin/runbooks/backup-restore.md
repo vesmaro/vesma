@@ -7,7 +7,7 @@
 ### Полная резервная копия
 
 ```bash
-# Данные Mnemos + vault
+# Данные Vesma + vault
 tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
   ~/.mnemos/data \
   ~/.mnemos/vault
@@ -17,7 +17,7 @@ tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
 
 ```bash
 # Ежедневное резервное копирование в 02:00
-0 2 * * * tar czf ~/backups/mnemos-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
+0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
 ```
 
 ## Восстановление
@@ -35,7 +35,7 @@ rsync -a mnemos-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
 
 ## Восстановление на момент времени
 
-Mnemos автоматически создаёт резервные копии БД перед миграциями:
+Vesma автоматически создаёт резервные копии БД перед миграциями:
 
 ```bash
 ls ~/.mnemos/data/*.backup-*
@@ -59,4 +59,4 @@ print(json.dumps([dict(r) for r in rows], indent=2, default=str))
 
 ### Импорт из JSON
 
-Используйте `mnemos add --file` или API `POST /memories` для массового импорта.
+Используйте `vesma add --file` или API `POST /memories` для массового импорта.

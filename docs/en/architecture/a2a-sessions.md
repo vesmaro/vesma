@@ -2,18 +2,18 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/architecture/a2a-sessions.md)
 
-> **Status**: Implemented in Mnemos M16
+> **Status**: Implemented in Vesma M16
 > **Audience**: AI agents / MCP orchestrator
 > **Base URL**: `http://localhost:8787/v1/` (loopback by default)
 > **Source spec**: [ADR-0007 — A2A Sessions API v1](../../project/adr/0007-a2a-sessions-api-v1.md)
 
-Mnemos exposes 5 HTTP endpoints for the A2A routing layer. They give
+Vesma exposes 5 HTTP endpoints for the A2A routing layer. They give
 agents a persistent backend for conversation sessions and per-step turn
 history, so multi-step agent chains survive restarts and cross-session
 context is searchable.
 
-If Mnemos is unavailable, the MCP layer falls back to a file-based log
-(`~/.gcw/a2a-messages.jsonl`) — Mnemos is **not** a single point of
+If Vesma is unavailable, the MCP layer falls back to a file-based log
+(`~/.gcw/a2a-messages.jsonl`) — Vesma is **not** a single point of
 failure for agents.
 
 ---
@@ -284,7 +284,7 @@ not an error.
 
 ## Storage model
 
-Mnemos uses the same SQLite file as the rest of the project. WAL mode is
+Vesma uses the same SQLite file as the rest of the project. WAL mode is
 enabled, so the A2A store and the main memory store can both read while
 one of them writes. Two new tables live alongside the existing ones:
 
@@ -334,14 +334,14 @@ ones. Up to 5 decisions are returned, in the order they appear.
 
 ## Failure modes (agent perspective)
 
-| Mnemos behaviour  | What the agent should do |
+| Vesma behaviour  | What the agent should do |
 |-------------------|--------------------|
 | `5xx` response    | Retry up to 3 times with exponential backoff, then fall back to file-based log. |
 | Connection refused / timeout > 2s | Skip persistence — continue processing without `context_pointer`. |
 | `4xx` (validation)| Do NOT retry. Log the error and continue. |
 | Successful `2xx`  | Use the returned `context_pointer` to address the turn in later steps. |
 
-Mnemos itself does not implement these retries — that's the MCP
+Vesma itself does not implement these retries — that's the MCP
 layer's job. See [ADR-0007 — A2A Sessions API v1](../../project/adr/0007-a2a-sessions-api-v1.md) for the full contract.
 
 ---
@@ -396,7 +396,7 @@ assert r1.json()["turn_id"] == r2.json()["turn_id"]   # same turn returned
 
 ## Migration notes
 
-If you are upgrading from a Mnemos build that lacks the A2A tables, no
+If you are upgrading from a Vesma build that lacks the A2A tables, no
 manual migration step is required: the schema is `CREATE TABLE IF NOT
 EXISTS …` and is applied automatically the first time the main
 `SQLiteStore` opens the database (which happens on FastAPI startup).

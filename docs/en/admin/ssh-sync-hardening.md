@@ -1,26 +1,26 @@
-# Mnemos — SSH Sync Hardening Checklist
+# Vesma — SSH Sync Hardening Checklist
 
 Auto-cron federation bridge (#104) — host/SSH layer hardening for the
-`mnemos-sync` automation between two mnemos instances (A = source, B = target).
+`mnemos-sync` automation between two vesma instances (A = source, B = target).
 
 ## Scope, audience, related
 
 - **Scope:** the host/SSH layer that `scripts/sync-peers.sh` and the
   `contrib/systemd/mnemos-sync.{service,timer}` units run on. This is NOT
-  mnemos application code — mnemos itself stays offline.
+  vesma application code — vesma itself stays offline.
 - **Audience:** operators deploying the Phase 0 batch sync as an automated
   cron bridge. Assumes root on both A and B, both running Linux with systemd.
 - **Related:**
-  - ArchCom 2026-07-20 — automated channel decision (mnemos memory
+  - ArchCom 2026-07-20 — automated channel decision (vesma memory
     `4dc7d96e`, protocol `.archcom/sessions/2026-07-20-automated-channel.md`).
-  - Federation contract 2026-07-17 §3.1 (mnemos memory `c64b0c37`,
+  - Federation contract 2026-07-17 §3.1 (vesma memory `c64b0c37`,
     `.archcom/sessions/2026-07-17-federation-contract.md`).
-  - Senior Security Engineer assessment — 7 hardening points (mnemos memory
+  - Senior Security Engineer assessment — 7 hardening points (vesma memory
     `ed38f162`).
 
 ## Key invariant
 
-**mnemos stays offline.** There is no inbound endpoint on mnemos — no
+**vesma stays offline.** There is no inbound endpoint on vesma — no
 listening port, no API exposed to A. All automation is at the host/SSH layer:
 A pushes a payload over rsync+ssh and triggers an import over ssh. A stolen
 SSH key only gives the attacker `command=""`-restricted operations
@@ -70,7 +70,7 @@ Concrete implementations:
   non-rsync invocations, locks the destination to `INCOMING_DIR`, appends an
   audit line, then re-execs `rsync --server`.
 - `contrib/systemd/mnemos-import-wrapper.sh` — parses `SSH_ORIGINAL_COMMAND`,
-  rejects anything other than `mnemos sync import`, rewrites the source path
+  rejects anything other than `vesma sync import`, rewrites the source path
   under `INCOMING_DIR`, **pins `--passphrase-env` to the configured name**
   (even a compromised A cannot redirect the passphrase read), appends an
   audit line, then execs the import.
@@ -83,9 +83,9 @@ compromised you rotate only it, leaving the trigger key intact (and vice
 versa). A single shared key would force a full rotation on any compromise.
 
 ```bash
-sudo install -d -o root -g root -m 0750 /etc/mnemos
-sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-push-key    -N "" -C "mnemos-sync-push@A"
-sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
+sudo install -d -o root -g root -m 0750 /etc/vesma
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "mnemos-sync-push@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
 ```
 
 | Option | Two keys (chosen) | One shared key |
@@ -95,11 +95,11 @@ sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-trigger-key -N "" -C "mnemos-sync
 | Operational surface | two key files to provision | one key file |
 
 Copy each `.pub` to B and add it to `authorized_keys` under its `command=""`
-line (§2). The private keys stay on A at `/etc/mnemos/` (§4).
+line (§2). The private keys stay on A at `/etc/vesma/` (§4).
 
 ### 4. Key storage on A
 
-Private keys live at `/etc/mnemos/` with `chmod 600`, owner `root:root`.
+Private keys live at `/etc/vesma/` with `chmod 600`, owner `root:root`.
 The `mnemos-sync.service` unit runs as `mnemos-sync` but reads the keys via
 the systemd unit's `User=` — adjust if your policy requires the service
 user to own the keys. Alternatively store keys in an OS keyring or a
@@ -107,8 +107,8 @@ secrets manager (Vault, systemd-creds) and reference the path in
 `sync.env`.
 
 ```bash
-sudo chmod 600 /etc/mnemos/sync-push-key /etc/mnemos/sync-trigger-key
-sudo chown root:root /etc/mnemos/sync-push-key /etc/mnemos/sync-trigger-key
+sudo chmod 600 /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
+sudo chown root:root /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
 ```
 
 Never commit private keys to VCS. `sync.env.example` references the paths
@@ -120,14 +120,14 @@ Rotate quarterly, or immediately on any suspected compromise.
 
 ```text
 1. Generate a new Ed25519 key on A (§3):
-     sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
+     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
 2. Add the new .pub to authorized_keys on B (§2) — keep the OLD line in place
    during the cutover so a failed rotation does not break the cron.
 3. Test: run sync-peers.sh manually with MNEMOS_SYNC_DRY_RUN=1 against the
    new key, then a real run.
 4. Update sync.env on A to point at the new key path.
 5. Remove the old .pub line from authorized_keys on B.
-6. Shred the old private key on A:  sudo shred -u /etc/mnemos/sync-push-key-old
+6. Shred the old private key on A:  sudo shred -u /etc/vesma/sync-push-key-old
 ```
 
 ### 6. Audit log on B
@@ -216,7 +216,7 @@ Ordered steps, A → B.
 4. Copy the two .pub files to B and add them to authorized_keys (step B5).
 5. Install scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-6. Provision /etc/mnemos/sync.env from contrib/systemd/sync.env.example
+6. Provision /etc/vesma/sync.env from contrib/systemd/sync.env.example
    (replace every RFC-reserved dummy). Provision the passphrase via a
    systemd drop-in or LoadCredential — NOT in sync.env.
 7. Install the systemd units:
@@ -237,8 +237,8 @@ How to confirm the hardening holds.
 | `ssh -i sync-push-key mnemos-sync@B` (no command) | rejected — "no command provided — interactive shell refused." (exit 2) | `command=""` not set in authorized_keys |
 | `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | rejected — "non-rsync command refused" (exit 2) | rsync-wrapper.sh not the `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | rejected — "destination outside INCOMING_DIR" (exit 2) | rsync-wrapper.sh path check broken |
-| `ssh -i sync-trigger-key mnemos-sync@B "mnemos sync export ..."` | rejected — "non-import command refused" (exit 2) | mnemos-import-wrapper.sh guard broken |
-| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `mnemos sync export`, `rsync`, `ssh` | script env-var contract drift |
+| `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | rejected — "non-import command refused" (exit 2) | mnemos-import-wrapper.sh guard broken |
+| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
 | `tail /var/log/mnemos-sync.log` after a real run | ACCEPT lines with src IP + timestamp | audit helper not writing |
 
 Run the dry-run first on every new install — it exercises the full
@@ -246,11 +246,11 @@ env-var validation and command construction without touching the network.
 
 ## See also
 
-- ArchCom 2026-07-20 — automated channel decision (mnemos memory
+- ArchCom 2026-07-20 — automated channel decision (vesma memory
   `4dc7d96e`, protocol `.archcom/sessions/2026-07-20-automated-channel.md`).
-- Federation contract 2026-07-17 §3.1 (mnemos memory `c64b0c37`,
+- Federation contract 2026-07-17 §3.1 (vesma memory `c64b0c37`,
   `.archcom/sessions/2026-07-17-federation-contract.md`).
-- Senior Security Engineer assessment — 7 hardening points (mnemos memory
+- Senior Security Engineer assessment — 7 hardening points (vesma memory
   `ed38f162`).
 - `contrib/systemd/rsync-wrapper.sh` — concrete rsync-push guard (§2, §6).
 - `contrib/systemd/mnemos-import-wrapper.sh` — concrete import-trigger guard

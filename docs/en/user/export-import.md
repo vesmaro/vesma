@@ -3,7 +3,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/export-import.md)
 
-> Backup, migrate, and restore Mnemos memories via the CLI or HTTP API.
+> Backup, migrate, and restore Vesma memories via the CLI or HTTP API.
 > JSON exports carry metadata (vectors regenerate on import); SQLite
 > exports are complete snapshots. Traces are never exported — they are
 > audit logs, not memory data.
@@ -15,14 +15,14 @@
 The export/import subsystem lets you:
 
 - **Back up** the memory store to a portable file (JSON or SQLite).
-- **Migrate** memories between Mnemos instances.
+- **Migrate** memories between Vesma instances.
 - **Restore** a previous state after data loss or a bad import.
 - **Filter** what gets exported (by project, agent, status, tags, date range).
 - **Encrypt** exports with a passphrase (AES-256-GCM, PBKDF2 key derivation).
 - **Compress** exports with gzip to save space.
 - **Run incremental** backups with `--since` for periodic snapshots.
 
-Two surfaces are available: the `mnemos export` / `mnemos import` CLI
+Two surfaces are available: the `vesma export` / `vesma import` CLI
 commands, and the `POST /api/v1/export` / `POST /api/v1/import` HTTP
 endpoints. Both share the same underlying logic.
 
@@ -73,12 +73,12 @@ snapshots.
 | Since | `--since 2026-06-01` | Memories created/updated after this ISO date |
 | Until | `--until 2026-06-20` | Memories created/updated before this ISO date |
 
-Example — export only published memories from the `mnemos` project:
+Example — export only published memories from the `vesma` project:
 
 ```bash
-mnemos export \
+vesma export \
   --format json \
-  --project mnemos \
+  --project vesma \
   --status published \
   --output mnemos-published.json
 ```
@@ -88,7 +88,7 @@ mnemos export \
 ## Compression
 
 ```bash
-mnemos export --format json --compress gzip --output backup.json.gz
+vesma export --format json --compress gzip --output backup.json.gz
 ```
 
 | Mode | Flag | Notes |
@@ -102,7 +102,7 @@ mnemos export --format json --compress gzip --output backup.json.gz
 ## Encryption
 
 ```bash
-mnemos export --format json --encrypt --output backup.enc
+vesma export --format json --encrypt --output backup.enc
 # Passphrase: ******** (prompted, hidden, confirmed)
 ```
 
@@ -115,7 +115,7 @@ prepended to the ciphertext so the file is self-contained for decryption.
 | Interactive prompt | (default when `--encrypt` is set) | Manual backups |
 | File | `--passphrase-file /path/to/key` | CI / scripting |
 
-For the HTTP API, the passphrase is sent in the `X-Mnemos-Passphrase`
+For the HTTP API, the passphrase is sent in the `X-Vesma-Passphrase`
 header — never in the request body — so it is not logged as a request
 parameter.
 
@@ -128,7 +128,7 @@ timestamp. This is the building block for periodic backups:
 
 ```bash
 # Daily incremental — only memories touched since yesterday
-mnemos export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
+vesma export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
   --output daily-$(date -u +%Y-%m-%d).json
 ```
 
@@ -148,7 +148,7 @@ daily snapshot.
 ### merge — idempotent
 
 ```bash
-mnemos import backup.json --mode merge
+vesma import backup.json --mode merge
 ```
 
 Memories whose ID already exists in the target store are **skipped** by
@@ -159,7 +159,7 @@ updated if they changed.
 ### restore — destructive
 
 ```bash
-mnemos import backup.json --mode restore --confirm
+vesma import backup.json --mode restore --confirm
 ```
 
 Restore mode **deletes all existing memories, vectors, and projects**
@@ -169,14 +169,14 @@ without `--confirm` and prints a warning explaining what will be lost.
 For SQLite restore, you can back up the current DB first:
 
 ```bash
-mnemos import snapshot.tar.gz --mode restore --confirm --backup-dir ./pre-restore
+vesma import snapshot.tar.gz --mode restore --confirm --backup-dir ./pre-restore
 ```
 
 ### dry-run — validate first
 
 ```bash
-mnemos import backup.json --mode merge --dry-run
-mnemos import backup.json --mode restore --dry-run
+vesma import backup.json --mode merge --dry-run
+vesma import backup.json --mode restore --dry-run
 ```
 
 Validates the export file (format, schema, readability) and reports how
@@ -192,20 +192,20 @@ Every JSON export carries two version markers in its metadata:
 | Field | Meaning |
 |-------|---------|
 | `format_version` | The export schema version (currently `1.0`). Bumped when the JSON structure changes in a breaking way. |
-| `mnemos_version` | The Mnemos version that produced the export. |
+| `mnemos_version` | The Vesma version that produced the export. |
 
-On import, Mnemos checks `format_version` and warns if it does not
+On import, Vesma checks `format_version` and warns if it does not
 recognise the schema. This provides forward compatibility — a future
-Mnemos can import a `1.0` export even after the schema evolves.
+Vesma can import a `1.0` export even after the schema evolves.
 
 ---
 
 ## CLI reference
 
-### `mnemos export`
+### `vesma export`
 
 ```bash
-mnemos export [OPTIONS]
+vesma export [OPTIONS]
 ```
 
 | Option | Default | Description |
@@ -224,10 +224,10 @@ mnemos export [OPTIONS]
 | `--dry-run` | off | Validate inputs without writing |
 | `--config`, `-c` | (auto) | Path to config.yaml |
 
-### `mnemos import`
+### `vesma import`
 
 ```bash
-mnemos import SOURCE [OPTIONS]
+vesma import SOURCE [OPTIONS]
 ```
 
 | Option | Default | Description |
@@ -256,7 +256,7 @@ Stream an export as a file download.
   "format": "json",
   "compress": "gzip",
   "encrypt": false,
-  "project": "mnemos",
+  "project": "vesma",
   "agent": null,
   "status": null,
   "tags": null,
@@ -277,9 +277,9 @@ Stream an export as a file download.
 | `since` | string\|null | `null` | ISO date lower bound |
 | `until` | string\|null | `null` | ISO date upper bound |
 
-**Encryption passphrase** — pass via the `X-Mnemos-Passphrase` header.
+**Encryption passphrase** — pass via the `X-Vesma-Passphrase` header.
 If `encrypt: true` and the header is missing, the endpoint returns
-`400` with `{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
+`400` with `{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Response** — `StreamingResponse` with `Content-Disposition:
 attachment; filename="mnemos-export.<suffix>"`. The suffix depends on
@@ -296,7 +296,7 @@ Upload an export file as multipart form data and import it.
 | `overwrite` | query | bool | `false` | Update existing in merge mode |
 | `confirm` | query | bool | `false` | Required for `restore` |
 | `dry_run` | query | bool | `false` | Validate without writing |
-| `X-Mnemos-Passphrase` | header | string | (none) | Decryption passphrase |
+| `X-Vesma-Passphrase` | header | string | (none) | Decryption passphrase |
 
 **Response** (`200 OK`):
 
@@ -319,7 +319,7 @@ Upload an export file as multipart form data and import it.
 ### Full encrypted backup (CLI)
 
 ```bash
-mnemos export --format sqlite --compress gzip --encrypt \
+vesma export --format sqlite --compress gzip --encrypt \
   --output backup-$(date -u +%Y%m%d).tar.gz.enc
 ```
 
@@ -327,10 +327,10 @@ mnemos export --format sqlite --compress gzip --encrypt \
 
 ```bash
 # 1. Validate first
-mnemos import backup-20260620.tar.gz.enc --mode restore --dry-run
+vesma import backup-20260620.tar.gz.enc --mode restore --dry-run
 
 # 2. Back up current state, then restore
-mnemos import backup-20260620.tar.gz.enc --mode restore --confirm \
+vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
   --backup-dir ./pre-restore-$(date -u +%Y%m%d)
 ```
 
@@ -338,22 +338,22 @@ mnemos import backup-20260620.tar.gz.enc --mode restore --confirm \
 
 ```bash
 # Source instance
-mnemos export --format json --project mnemos --output mnemos-project.json
+vesma export --format json --project vesma --output mnemos-project.json
 
 # Target instance
-mnemos import mnemos-project.json --mode merge
+vesma import mnemos-project.json --mode merge
 ```
 
 ### Periodic incremental backup (cron)
 
 ```cron
-15 3 * * *  mnemos export --format json --compress gzip --since "$(date -u -d 'yesterday' +%Y-%m-%d)" --output /backups/mnemos-$(date +\%Y\%m\%d).json.gz
+15 3 * * *  vesma export --format json --compress gzip --since "$(date -u -d 'yesterday' +%Y-%m-%d)" --output /backups/vesma-$(date +\%Y\%m\%d).json.gz
 ```
 
 ---
 
 ## See also
 
-- [CLI Reference](cli-reference.md) — all `mnemos` subcommands.
+- [CLI Reference](cli-reference.md) — all `vesma` subcommands.
 - [HTTP API Reference](http-api.md) — every endpoint.
 - [Security Model](../admin/security.md) — encryption, secrets hygiene.

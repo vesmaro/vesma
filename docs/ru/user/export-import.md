@@ -3,7 +3,7 @@
 
 **🌐 Language / Язык:** [English](../../en/user/export-import.md) · Русский
 
-> Резервное копирование, миграция и восстановление памятей Mnemos через
+> Резервное копирование, миграция и восстановление памятей Vesma через
 > CLI или HTTP API. JSON-экспорт содержит метаданные (векторы
 > регенерируются при импорте); SQLite-экспорт — полный снимок. Трассы
 > никогда не экспортируются — это журналы аудита, а не данные памяти.
@@ -16,7 +16,7 @@
 
 - **Создавать резервные копии** хранилища памятей в портативный файл
   (JSON или SQLite).
-- **Мигрировать** памяти между инстансами Mnemos.
+- **Мигрировать** памяти между инстансами Vesma.
 - **Восстанавливать** предыдущее состояние после потери данных или
   неудачного импорта.
 - **Фильтровать** экспортируемые памяти (по проекту, агенту, статусу,
@@ -27,7 +27,7 @@
 - **Запускать инкрементальные** бэкапы через `--since` для периодических
   снимков.
 
-Доступны две поверхности: CLI-команды `mnemos export` / `mnemos import`
+Доступны две поверхности: CLI-команды `vesma export` / `vesma import`
 и HTTP-эндпоинты `POST /api/v1/export` / `POST /api/v1/import`. Обе
 используют общую логику.
 
@@ -79,12 +79,12 @@ SQLite-экспорт копирует сырые файлы `mnemos.db` и `vec
 | С | `--since 2026-06-01` | Памяти, созданные/обновлённые после этой ISO-даты |
 | По | `--until 2026-06-20` | Памяти, созданные/обновлённые до этой ISO-даты |
 
-Пример — экспорт только опубликованных памятей проекта `mnemos`:
+Пример — экспорт только опубликованных памятей проекта `vesma`:
 
 ```bash
-mnemos export \
+vesma export \
   --format json \
-  --project mnemos \
+  --project vesma \
   --status published \
   --output mnemos-published.json
 ```
@@ -94,7 +94,7 @@ mnemos export \
 ## Сжатие
 
 ```bash
-mnemos export --format json --compress gzip --output backup.json.gz
+vesma export --format json --compress gzip --output backup.json.gz
 ```
 
 | Режим | Флаг | Примечания |
@@ -108,7 +108,7 @@ mnemos export --format json --compress gzip --output backup.json.gz
 ## Шифрование
 
 ```bash
-mnemos export --format json --encrypt --output backup.enc
+vesma export --format json --encrypt --output backup.enc
 # Passphrase: ******** (запрашивается, скрыт, с подтверждением)
 ```
 
@@ -122,7 +122,7 @@ mnemos export --format json --encrypt --output backup.enc
 | Интерактивный ввод | (по умолчанию при `--encrypt`) | Ручные бэкапы |
 | Файл | `--passphrase-file /path/to/key` | CI / скрипты |
 
-Для HTTP API пароль передаётся в заголовке `X-Mnemos-Passphrase` —
+Для HTTP API пароль передаётся в заголовке `X-Vesma-Passphrase` —
 никогда в теле запроса — поэтому он не попадает в логи как параметр
 запроса.
 
@@ -136,7 +136,7 @@ mnemos export --format json --encrypt --output backup.enc
 
 ```bash
 # Ежедневный инкремент — только памяти, затронутые со вчера
-mnemos export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
+vesma export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
   --output daily-$(date -u +%Y-%m-%d).json
 ```
 
@@ -156,7 +156,7 @@ mnemos export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
 ### merge — идемпотентный
 
 ```bash
-mnemos import backup.json --mode merge
+vesma import backup.json --mode merge
 ```
 
 Памяти, чей ID уже существует в целевом хранилище, **пропускаются** по
@@ -167,7 +167,7 @@ mnemos import backup.json --mode merge
 ### restore — деструктивный
 
 ```bash
-mnemos import backup.json --mode restore --confirm
+vesma import backup.json --mode restore --confirm
 ```
 
 Режим restore **удаляет все существующие памяти, векторы и проекты**
@@ -178,14 +178,14 @@ mnemos import backup.json --mode restore --confirm
 БД:
 
 ```bash
-mnemos import snapshot.tar.gz --mode restore --confirm --backup-dir ./pre-restore
+vesma import snapshot.tar.gz --mode restore --confirm --backup-dir ./pre-restore
 ```
 
 ### dry-run — сначала валидация
 
 ```bash
-mnemos import backup.json --mode merge --dry-run
-mnemos import backup.json --mode restore --dry-run
+vesma import backup.json --mode merge --dry-run
+vesma import backup.json --mode restore --dry-run
 ```
 
 Валидирует файл экспорта (формат, схема, читаемость) и сообщает, сколько
@@ -201,20 +201,20 @@ mnemos import backup.json --mode restore --dry-run
 | Поле | Значение |
 |------|----------|
 | `format_version` | Версия схемы экспорта (currently `1.0`). Увеличивается при ломающем изменении JSON-структуры. |
-| `mnemos_version` | Версия Mnemos, создавшей экспорт. |
+| `mnemos_version` | Версия Vesma, создавшей экспорт. |
 
-При импорте Mnemos проверяет `format_version` и предупреждает, если
+При импорте Vesma проверяет `format_version` и предупреждает, если
 схема не распознана. Это обеспечивает прямую совместимость — будущий
-Mnemos сможет импортировать экспорт `1.0` даже после эволюции схемы.
+Vesma сможет импортировать экспорт `1.0` даже после эволюции схемы.
 
 ---
 
 ## Справочник CLI
 
-### `mnemos export`
+### `vesma export`
 
 ```bash
-mnemos export [OPTIONS]
+vesma export [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -233,10 +233,10 @@ mnemos export [OPTIONS]
 | `--dry-run` | выкл | Валидировать ввод без записи |
 | `--config`, `-c` | (авто) | Путь к config.yaml |
 
-### `mnemos import`
+### `vesma import`
 
 ```bash
-mnemos import SOURCE [OPTIONS]
+vesma import SOURCE [OPTIONS]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -265,7 +265,7 @@ mnemos import SOURCE [OPTIONS]
   "format": "json",
   "compress": "gzip",
   "encrypt": false,
-  "project": "mnemos",
+  "project": "vesma",
   "agent": null,
   "status": null,
   "tags": null,
@@ -286,9 +286,9 @@ mnemos import SOURCE [OPTIONS]
 | `since` | string\|null | `null` | Нижняя граница ISO-даты |
 | `until` | string\|null | `null` | Верхняя граница ISO-даты |
 
-**Пароль шифрования** — передавайте через заголовок `X-Mnemos-Passphrase`.
+**Пароль шифрования** — передавайте через заголовок `X-Vesma-Passphrase`.
 Если `encrypt: true` и заголовок отсутствует, эндпоинт вернёт `400` с
-`{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
+`{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Ответ** — `StreamingResponse` с `Content-Disposition:
 attachment; filename="mnemos-export.<suffix>"`. Суффикс зависит от
@@ -305,7 +305,7 @@ attachment; filename="mnemos-export.<suffix>"`. Суффикс зависит о
 | `overwrite` | query | bool | `false` | Обновлять существующие в merge |
 | `confirm` | query | bool | `false` | Обязательно для `restore` |
 | `dry_run` | query | bool | `false` | Валидировать без записи |
-| `X-Mnemos-Passphrase` | header | string | (нет) | Пароль расшифровки |
+| `X-Vesma-Passphrase` | header | string | (нет) | Пароль расшифровки |
 
 **Ответ** (`200 OK`):
 
@@ -328,7 +328,7 @@ attachment; filename="mnemos-export.<suffix>"`. Суффикс зависит о
 ### Полный зашифрованный бэкап (CLI)
 
 ```bash
-mnemos export --format sqlite --compress gzip --encrypt \
+vesma export --format sqlite --compress gzip --encrypt \
   --output backup-$(date -u +%Y%m%d).tar.gz.enc
 ```
 
@@ -336,10 +336,10 @@ mnemos export --format sqlite --compress gzip --encrypt \
 
 ```bash
 # 1. Сначала валидация
-mnemos import backup-20260620.tar.gz.enc --mode restore --dry-run
+vesma import backup-20260620.tar.gz.enc --mode restore --dry-run
 
 # 2. Бэкап текущего состояния, затем восстановление
-mnemos import backup-20260620.tar.gz.enc --mode restore --confirm \
+vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
   --backup-dir ./pre-restore-$(date -u +%Y%m%d)
 ```
 
@@ -347,22 +347,22 @@ mnemos import backup-20260620.tar.gz.enc --mode restore --confirm \
 
 ```bash
 # Исходный инстанс
-mnemos export --format json --project mnemos --output mnemos-project.json
+vesma export --format json --project vesma --output mnemos-project.json
 
 # Целевой инстанс
-mnemos import mnemos-project.json --mode merge
+vesma import mnemos-project.json --mode merge
 ```
 
 ### Периодический инкрементальный бэкап (cron)
 
 ```cron
-15 3 * * *  mnemos export --format json --compress gzip --since "$(date -u -d 'yesterday' +%Y-%m-%d)" --output /backups/mnemos-$(date +\%Y\%m\%d).json.gz
+15 3 * * *  vesma export --format json --compress gzip --since "$(date -u -d 'yesterday' +%Y-%m-%d)" --output /backups/vesma-$(date +\%Y\%m\%d).json.gz
 ```
 
 ---
 
 ## См. также
 
-- [Справочник CLI](cli-reference.md) — все подкоманды `mnemos`.
+- [Справочник CLI](cli-reference.md) — все подкоманды `vesma`.
 - [Справочник HTTP API](http-api.md) — все эндпоинты.
 - [Модель безопасности](../admin/security.md) — шифрование, гигиена секретов.
