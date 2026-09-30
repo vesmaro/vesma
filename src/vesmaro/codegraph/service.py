@@ -504,7 +504,11 @@ class CodeGraphService:
     ) -> dict[str, Any]:
         """Substring search over name/qname/path; ranked rows under the
         token contract (exact name/qname hits outrank prefix hits,
-        prefix outranks substring — ranking BEFORE the budget cut)."""
+        prefix outranks substring — ranking BEFORE the budget cut).
+
+        ``total_matches`` is the HONEST count of the predicate over the
+        whole graph (``CodeGraphStore.count_search_nodes``); the cursor
+        pages the top-``limit`` ranked slice (review 10173a2a-5)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -515,6 +519,7 @@ class CodeGraphService:
             raise GraphToolError(f"kind must be one of: {', '.join(NODE_KINDS)}")
         if not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0:
             raise GraphToolError("cursor must be a non-negative integer")
+        total = self._store.count_search_nodes(key, query, kind=kind)
         matches = self._store.search_nodes(
             key, query, kind=kind, limit=min(max(int(limit), 1), SEARCH_ROW_CAP) * 2
         )
@@ -532,13 +537,13 @@ class CodeGraphService:
             actor,
             session=sess,
             reason="search",
-            details={"matches": len(rows), "returned": len(page)},
+            details={"matches": len(rows), "returned": len(page), "total": total},
         )
         return {
             "project": key,
             "query_kind": kind,
             "results": page,
-            "total_matches": len(rows),
+            "total_matches": total,
             "cursor": next_cursor,
             "has_more": has_more,
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),

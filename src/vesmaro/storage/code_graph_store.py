@@ -505,6 +505,35 @@ class CodeGraphStore:
         rows = self._conn().execute(sql, params).fetchall()
         return [self._node_from_row(r) for r in rows]
 
+    def count_search_nodes(
+        self,
+        project: str,
+        query: str,
+        *,
+        kind: str | None = None,
+    ) -> int:
+        """Honest COUNT over the :meth:`search_nodes` predicate — the
+        SAME WHERE, no LIMIT. ``search_graph`` reports it as
+        ``total_matches``: the cursor pages the top-``limit`` ranked
+        slice, so deriving the total from that slice undercounts
+        whenever the graph holds more than 2x ``limit`` matches
+        (review 10173a2a-5). One cheap indexed count per search."""
+        if not query.strip():
+            return 0
+        if kind is not None and kind not in NODE_KINDS:
+            raise ValueError(f"unknown node kind: {kind!r}")
+        pattern = self._like_pattern(query.strip())
+        sql = (
+            "SELECT COUNT(*) FROM project_nodes "
+            "WHERE project=? AND (name LIKE ? ESCAPE '\\' "
+            "OR qname LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\')"
+        )
+        params: list[Any] = [project, pattern, pattern, pattern]
+        if kind is not None:
+            sql += " AND kind=?"
+            params.append(kind)
+        return int(self._conn().execute(sql, params).fetchone()[0])
+
     def get_edges(
         self,
         project: str,

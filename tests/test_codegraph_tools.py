@@ -270,6 +270,25 @@ class TestTokenContractSearch:
         with pytest.raises(GraphBudgetError, match="bigger budget"):
             indexed.search_graph(PROJECT, long_name, agent=AGENT, max_output_tokens=128)
 
+    def test_total_matches_is_the_honest_count_not_the_page_slice(
+        self, tmp_path: Path
+    ) -> None:
+        # Review 10173a2a-5: with >2x limit matches the cursor pages the
+        # top-limit slice; total_matches derived from that slice
+        # undercounted (60 matches, limit 10 → reported 10).
+        repo = tmp_path / "many"
+        repo.mkdir()
+        lines = [f"def batch_target_{i:02d}():\n    return {i}\n\n" for i in range(60)]
+        (repo / "batch.py").write_text("".join(lines), encoding="utf-8")
+        service, _ = make_service(tmp_path, repo)
+        try:
+            service.index_project(PROJECT, agent=AGENT)
+            result = service.search_graph(PROJECT, "batch_target", agent=AGENT, limit=10)
+            assert len(result["results"]) == 10
+            assert result["total_matches"] == 60
+        finally:
+            service.close()
+
 
 # ── tool happy paths ─────────────────────────────────────────────────────────
 
