@@ -185,17 +185,33 @@ vesma search "hello"
 Кроме сессий, Vesma умеет индексировать **структуру кода** проекта: схемы
 файлов, поиск по символам, трассировку вызовов, сниппеты со сканом на
 секреты — без единого байта исходника в хранилище. Это
-[граф проектов](project-graph.md): включён по умолчанию, но инертен, пока вы
-не укажете ему проект:
+[граф проектов](project-graph.md), включённый по умолчанию, — и с волны
+PG-0.5 **ваш проект индексируется сам**: первый MCP-вызов (или хук
+`pre_llm_call`), который агент делает внутри каталога с packaging-манифестом
+(`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `setup.py`),
+авторегистрирует и индексирует его в фоне. Ни явного вызова, ни инструкций,
+ни скиллов.
 
-1. Зарегистрируйте корень (шаг оператора, Python SDK):
-   `mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`.
-2. Проиндексируйте: `mnemos_index_project` с `project_id` и `agent`.
-3. Проверьте: `mnemos_project_graph_status` — объёмы, свежесть, poisoned-файлы.
+Что происходит, по шагам:
 
-Не нужна вся поверхность? Один флаг её выключает: `code_graph.enabled: false`
-в `config.yaml` — каждый вызов графа отвечает `code: "disabled"`. Полный
-гид: [project-graph.md](project-graph.md).
+1. Работайте в проекте как обычно — агент вызывает там любой MCP-инструмент.
+2. Первый индекс идёт в фоне (`auto-first`); дальше строка-маячок в выводе
+   `assemble_context` сообщает свежесть графа.
+3. Проверьте: `mnemos_project_graph_status` — объёмы, свежесть,
+   poisoned-файлы. (Ему нужен `project_id` проекта — см.
+   `mnemos_list_graph_projects`.)
+
+Предпочитаете явный путь? Зарегистрируйте корень вручную
+(`mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`)
+и вызовите `mnemos_index_project` с `project_id` и `agent` — ручной поток
+доступен всегда, а успешный ручной индекс к тому же снимает приостановку
+авто-пути.
+
+Не хотите этого? Два выключателя в `config.yaml`: `code_graph.auto_index:
+false` останавливает только фоновый авто-путь (ручные инструменты
+работают); `code_graph.enabled: false` выключает всю поверхность — каждый
+вызов графа отвечает `code: "disabled"`. Полный гид:
+[project-graph.md](project-graph.md).
 
 ---
 

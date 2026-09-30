@@ -163,16 +163,32 @@ For programmatic access with more options (vector weight, raw content, tag filte
 Besides sessions, Vesma can index a project's **code structure**: file
 outlines, symbol search, call tracing, secret-scanned snippets — with zero
 source bytes stored. This is the [project graph](project-graph.md), on by
-default but inert until you point it at a project:
+default — and since PG-0.5 **your project indexes itself**: the first MCP
+call (or `pre_llm_call` hook) an agent makes inside a directory carrying a
+packaging manifest (`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`,
+`setup.py`) auto-registers and indexes it in the background. No explicit
+call, no instruction, no skill.
 
-1. Register a root (operator step, Python SDK):
-   `mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`.
-2. Index it: `mnemos_index_project` with `project_id` and `agent`.
-3. Check it: `mnemos_project_graph_status` — volumes, freshness, poisoned count.
+What happens, in order:
 
-Don't want the surface at all? One flag turns it off: `code_graph.enabled: false`
-in `config.yaml` — every graph call then answers `code: "disabled"`. Full
-walkthrough: [project-graph.md](project-graph.md).
+1. Work in your project as usual — an agent calls any MCP tool there.
+2. The first index runs in the background (`auto-first`); from then on a
+   beacon line in `assemble_context` output reports graph freshness.
+3. Check it: `mnemos_project_graph_status` — volumes, freshness, poisoned
+   count. (It needs the project's `project_id` — see
+   `mnemos_list_graph_projects`.)
+
+Prefer the explicit path? Register a root by hand
+(`mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`)
+and call `mnemos_index_project` with `project_id` and `agent` — that manual
+flow always stays available, and a successful manual index also lifts a
+suspended auto path.
+
+Don't want it? Two switches in `config.yaml`: `code_graph.auto_index: false`
+stops only the background auto path (manual tools keep working);
+`code_graph.enabled: false` turns the whole surface off — every graph call
+then answers `code: "disabled"`. Full walkthrough:
+[project-graph.md](project-graph.md).
 
 ---
 

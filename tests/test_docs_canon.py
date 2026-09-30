@@ -13,7 +13,10 @@ dedicated user guide was missing (the owner's complaint: «whole new mechanics
 - internal doc links resolve on disk (no dead .md targets);
 - config.example.yaml's code_graph block stays in lockstep with the real
   ``CodeGraphConfig`` fields — every field documented, no phantom keys
-  (a phantom auto_index key would be a docs-lie this test catches).
+  (a phantom auto_index key would be a docs-lie this test catches);
+- the user docs DESCRIBE the PG-0.5 native auto-indexing (guide section,
+  getting-started auto step, integration-guide zero-harness note) and the
+  stale 5.1.0-era claim «nothing indexes itself» never returns.
 
 Offline by construction: only local file reads.
 """
@@ -112,6 +115,49 @@ def test_refererring_pages_md_links_resolve() -> None:
                 continue
             resolved = (page.parent / rel).resolve()
             assert resolved.exists(), f"{page.name}: dead link target {target!r}"
+
+
+# ── PG-0.5 native auto-indexing is described, not denied ────────────────────
+
+
+#: (file, needle) pairs — the docs must carry the auto-indexing mechanics.
+#: Keys mirror ``CodeGraphConfig`` (src/vesmaro/config.py) and the audit
+#: reasons in ``src/vesmaro/codegraph/autoindex.py``.
+AUTO_INDEX_NEEDLES = [
+    ("docs/en/user/project-graph.md", "auto_index"),
+    ("docs/ru/user/project-graph.md", "auto_index"),
+    ("docs/en/user/project-graph.md", "Native auto-indexing"),
+    ("docs/ru/user/project-graph.md", "Нативная авто-индексация"),
+    ("docs/en/user/project-graph.md", "auto-register-reused"),
+    ("docs/ru/user/project-graph.md", "auto-register-reused"),
+    ("docs/en/user/getting-started.md", "indexes itself"),
+    ("docs/ru/user/getting-started.md", "индексируется сам"),
+    ("docs/en/user/getting-started.md", "auto_index"),
+    ("docs/ru/user/getting-started.md", "auto_index"),
+    ("docs/en/user/integration-guide.md", "auto-register"),
+    ("docs/ru/user/integration-guide.md", "авторегистрировать"),
+]
+
+#: Claims that were honest for 5.1.0 and became lies when PG-0.5 landed —
+#: they must not return to the guides.
+STALE_NO_AUTO_CLAIMS = {
+    "docs/en/user/project-graph.md": ["nothing indexes itself"],
+    "docs/ru/user/project-graph.md": ["ничего не индексируется само"],
+}
+
+
+def test_user_docs_describe_native_auto_indexing() -> None:
+    for rel, needle in AUTO_INDEX_NEEDLES:
+        assert needle in _read(rel), (
+            f"{rel}: no mention of {needle!r} — PG-0.5 auto-indexing docs regressed"
+        )
+
+
+def test_user_docs_do_not_pin_absence_of_auto_indexing() -> None:
+    for rel, claims in STALE_NO_AUTO_CLAIMS.items():
+        text = _read(rel)
+        for claim in claims:
+            assert claim not in text, f"{rel}: stale pre-PG-0.5 claim {claim!r} returned"
 
 
 # ── config.example.yaml ↔ CodeGraphConfig lockstep ──────────────────────────

@@ -488,9 +488,12 @@ package tell the agent *when* and *how* to call those tools.
 The [project graph](project-graph.md) is server-side by design: once the MCP
 server is connected, its ten tools are ordinary `vesma_*` tools, and the
 recall beacon rides inside the regular `assemble_context` output on its own —
-no extra instructions, skills, hooks or config on the harness side. The only
-per-call requirement is server-side: graph calls must carry an `agent` id
-(attribution), which well-behaved harnesses already pass.
+no extra instructions, skills, hooks or config on the harness side. Since
+PG-0.5 this extends to indexing itself: a harness needs **nothing** — zero
+wrapper scripts, zero scheduled jobs, zero skills. The first agent call
+inside a manifest-bearing directory makes the server auto-register and index
+the project in the background (the call must carry an `agent` id — the
+attribution PG7 requires, which well-behaved harnesses already pass).
 
 ---
 

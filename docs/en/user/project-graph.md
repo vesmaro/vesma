@@ -67,10 +67,51 @@ Then the flow is three tool calls (every one needs an `agent` — see
    `mnemos_get_file_outline` for a file's shape, `mnemos_trace_path` for
    call/navigation walks, `mnemos_get_code_snippet` for line ranges.
 
-> **Nothing indexes itself in the current release.** The first index is always
-> an explicit call. There is no background auto-registration and no
-> first-touch indexing — a registered watch keeps an indexed project fresh,
-> but never seeds the first index.
+Prefer zero-touch? The next section describes the native auto path — the
+manual flow above keeps its full contract either way.
+
+---
+
+## Native auto-indexing (zero-touch)
+
+Since PG-0.5 the graph indexes **by itself**: every MCP tool call and every
+`pre_llm_call` hook fires a background *hint*, and a hint can auto-register
+and index the project — no `mnemos_index_project` call, no instruction, no
+skill. Auto work goes through the same serialization, PG7 limits and audit
+trail as manual runs; only the audit `reason` (`auto-first` / `auto-stale`)
+and the actor (the hinting agent) differ.
+
+How the first contact plays out:
+
+1. An agent — with an `agent` id; **no agent, no auto action** (PG7) — calls
+   any MCP tool inside the project's directory. The dispatcher emits one
+   hint: project slug + current working directory. The hint never blocks and
+   never breaks the caller; the work runs on a background scheduler thread.
+2. If the project is **not yet registered**, the auto path checks the cwd
+   for a packaging **manifest**: `pyproject.toml`, `setup.py`, `package.json`,
+   `go.mod` or `Cargo.toml` (lockfiles do not count). No manifest, no
+   auto-registration: a bare `.git` checkout is deliberately not a marker,
+   and `$HOME`/the filesystem root are refused even when a manifest sits
+   there.
+3. Manifest present → the project is auto-registered on its resolved root
+   and the first index runs (`auto-first`). From then on the beacon line
+   appears in `assemble_context` output on its own.
+4. Already registered and stale → the hint becomes an incremental reindex
+   (`auto-stale`), throttled per project (see below).
+
+Guardrails specific to the auto path:
+
+| Guardrail | What you experience |
+|-----------|---------------------|
+| **One root = one graph** | Before registering anything, the auto path looks for an existing project holding the same resolved root and reuses it (audit `auto-register-reused`) — never a duplicate project row, never a second full index. |
+| **Registration cap** | `auto_register_max_projects` (64) bounds how many projects the auto path may ever create; past it, hints are silently skipped with an `auto-register-capped` audit row — never an error to the caller. |
+| **Throttle** | `auto_reindex_min_interval_sec` (300 s) gates consecutive auto actions per project. The stamp is written *before* the action (reserve-then-act): a failing auto index is not retried on every subsequent hint. |
+| **Suspension** | A failed *first* auto index suspends the auto path for that project: further hints skip it entirely — until a successful manual `mnemos_index_project` (the watch poll rides the same method) or a `mnemos_delete_graph_project` lifts the flag. A failed *stale* reindex never suspends anything. |
+
+v1 boundaries: a call without an `agent` never triggers the auto path; REST
+is deliberately not a hint surface; a multi-path registration still indexes
+`paths[0]` only. Turn the auto path off alone with
+`code_graph.auto_index: false` — the manual tools keep working.
 
 ---
 
@@ -150,6 +191,9 @@ The surface is **on by default** (owner decision 2026-09-28).
 |---------------------|---------|---------|
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
+| `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
+| `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
+| `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |
 | `watch` | `true` | Arms the watch poll (`mnemos_watch_start`); inert until an explicit registration. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
@@ -167,15 +211,17 @@ Environment overrides follow the canonical settings pattern:
 - **Why does every call demand `agent`?** PG7 attribution: audit trails and
   per-agent accountability. `mnemos_recall_context` carries no `agent`, so the
   graph surface never rides on it — pass the caller's identity explicitly.
-- **My project is a bare `.git` checkout / has no packaging manifest.** Fine —
-  registration is by project record, not by manifest detection. Give the
-  project an absolute `paths[0]` and index it.
+- **My project is a bare `.git` checkout / has no packaging manifest.** For
+  the *manual* path that is fine — registration is by project record, not by
+  manifest detection: give the project an absolute `paths[0]` and index it.
+  The *auto* path is stricter: no manifest in the cwd, no auto-registration.
 - **Multiple paths on one project?** The graph indexes the first registered
   path (`paths[0]`) — one root, one graph per project.
 - **A file changed after indexing.** Snippets come back with a `stale` marker
   instead of content; reindex (or let the watch poll do it) to refresh.
 - **How do I turn it all off?** `code_graph.enabled: false` — tools answer
-  `disabled`, the beacon hides, nothing indexes.
+  `disabled`, the beacon hides, nothing indexes. Want to keep the manual
+  tools but stop the background auto path? `code_graph.auto_index: false`.
 - **Do I need to back up `code_graph.db`?** No. It is a rebuildable sidecar
   in the data dir; `mnemos_delete_graph_project` drops only the index, never
   the project entity or its memories.
@@ -193,7 +239,9 @@ Environment overrides follow the canonical settings pattern:
 
 _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 (Project graph tools), `src/vesmaro/config.py` (`CodeGraphConfig`),
-`src/vesmaro/codegraph/`; landed in PG-0 wave (#438), graphs-on-by-default
-(#440). Feature map: [features.md](../features.md)._
+`src/vesmaro/codegraph/` (auto path: `autoindex.py`,
+`tests/test_codegraph_autoindex.py`); landed in PG-0 wave (#438),
+graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
+150cdfe). Feature map: [features.md](../features.md)._
 
 _Last updated: 2026-09-30_
