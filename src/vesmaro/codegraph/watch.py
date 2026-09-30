@@ -194,10 +194,14 @@ class GraphWatchScheduler:
                 self._stop_flag.set()
             self._wake.set()
         if project_id is None and dropped:
+            # Best-effort bounded wait for the exit to be noticed: the
+            # thread COMMITS its own exit (clears ``_thread`` under the
+            # lock, see ``_run_loop``) — stop() must not null the slot
+            # of a still-running thread, or a concurrent register would
+            # start a SECOND poller over the same registry.
             thread = self._thread
             if thread is not None and thread.is_alive():
                 thread.join(timeout=5.0)
-            self._thread = None
         return dropped
 
     def status(self) -> dict[str, Any]:
@@ -224,11 +228,21 @@ class GraphWatchScheduler:
         return min(raw, self._cap_interval)
 
     def _ensure_thread_locked(self) -> None:
-        """Start the single poll thread if it is not running (the lock
-        is already held)."""
+        """Make sure a poll thread owns the loop (the lock is already
+        held; called only from ``register``).
+
+        The caller just added (or confirmed) a registration, so the loop
+        MUST keep running: any pending exit flag is cleared whether we
+        reuse the live thread or start a fresh one. ``_thread`` is
+        non-``None`` only while some thread owns the loop and has NOT
+        yet committed its exit (see ``_run_loop``) — a live handle here
+        means that thread WILL re-evaluate the flag and the registry
+        before leaving, so the new registration is guaranteed a poller;
+        a fresh thread starts only after the previous one committed
+        (``_thread is None``)."""
+        self._stop_flag.clear()
         if self._thread is not None and self._thread.is_alive():
             return
-        self._stop_flag.clear()
         self._thread = threading.Thread(target=self._run_loop, name=WATCH_THREAD_NAME, daemon=True)
         self._thread.start()
 
@@ -237,22 +251,42 @@ class GraphWatchScheduler:
         next due registration (or until ``register``/``stop`` wakes us
         to recompute). The wake event is consumed at the TOP of each
         iteration, so a registration that lands mid-poll or mid-sleep
-        can never lose its wake-up (no bounded-delay miss)."""
-        while not self._stop_flag.is_set():
-            self._wake.clear()
-            now = self._clock()
+        can never lose its wake-up (no bounded-delay miss).
+
+        Exit protocol (review 10173a2a-3): the decision to leave and
+        its observable commit — ``self._thread = None`` — happen in ONE
+        lock-held critical section, and ``register`` decides under the
+        same lock. A registration can therefore NEVER sit unpolled:
+        either it lands before the decision (the flag was cleared and
+        the registry is non-empty — the loop keeps running and polls
+        it) or after the commit (a fresh thread starts). The old shape
+        — ``register`` observing a live thread that had already decided
+        to exit — was exactly the window where a registration was
+        silently registered and never polled."""
+        try:
+            while True:
+                self._wake.clear()
+                with self._lock:
+                    if self._stop_flag.is_set() or not self._registrations:
+                        self._thread = None  # the exit commit — under the lock
+                        return
+                    now = self._clock()
+                    due = [r for r in self._registrations.values() if r.next_run <= now]
+                    next_due = min(r.next_run for r in self._registrations.values())
+                for reg in due:
+                    if self._stop_flag.is_set():
+                        break  # the loop top commits the exit under the lock
+                    self._poll_registration(reg)
+                sleep = max(0.01, min(next_due - self._clock(), self._cap_interval))
+                self._wake.wait(timeout=sleep)
+        finally:
+            # Crash insurance: a loop that died mid-iteration (outside
+            # the lock) still releases the thread slot so a later
+            # ``register`` restarts polling instead of trusting a dead
+            # thread handle.
             with self._lock:
-                due = [r for r in self._registrations.values() if r.next_run <= now]
-            for reg in due:
-                if self._stop_flag.is_set():
-                    return
-                self._poll_registration(reg)
-            with self._lock:
-                if not self._registrations:
-                    return  # registry emptied — thread exits (restart on register)
-                next_due = min(r.next_run for r in self._registrations.values())
-            sleep = max(0.01, min(next_due - self._clock(), self._cap_interval))
-            self._wake.wait(timeout=sleep)
+                if self._thread is threading.current_thread():
+                    self._thread = None
 
     def _poll_registration(self, reg: WatchRegistration) -> None:
         """One poll tick for one registration: the cheap classification
