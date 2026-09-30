@@ -158,6 +158,24 @@ For programmatic access with more options (vector weight, raw content, tag filte
 
 ---
 
+## Your codebase can become memory (project graph)
+
+Besides sessions, Vesma can index a project's **code structure**: file
+outlines, symbol search, call tracing, secret-scanned snippets — with zero
+source bytes stored. This is the [project graph](project-graph.md), on by
+default but inert until you point it at a project:
+
+1. Register a root (operator step, Python SDK):
+   `mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`.
+2. Index it: `mnemos_index_project` with `project_id` and `agent`.
+3. Check it: `mnemos_project_graph_status` — volumes, freshness, poisoned count.
+
+Don't want the surface at all? One flag turns it off: `code_graph.enabled: false`
+in `config.yaml` — every graph call then answers `code: "disabled"`. Full
+walkthrough: [project-graph.md](project-graph.md).
+
+---
+
 ## Connect your harness (MCP)
 
 The MCP server is the primary integration surface: your agent harness spawns `vesma mcp-server` over stdio and gets the full `vesma_*` tool set. Pick your harness:

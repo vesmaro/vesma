@@ -84,11 +84,12 @@ watcher:
 
 # ── Project code graph (ADR-0032 PG-0) ───────────────────────────────────────
 # Symbol graph over REGISTERED project roots: 10 MCP tools + the /graph/ REST
-# namespace. DEFAULT OFF — every call answers a disabled error until the
-# operator opts in. The graph persists names, qnames, line ranges and
+# namespace. ON by default (owner decision 2026-09-28) — set enabled: false to
+# hide the whole surface. The graph persists names, qnames, line ranges and
 # signature shapes only (zero bytes of source, PG1); limits are fail-closed —
-# a breach refuses the WHOLE index (PG7). See docs/en/user/mcp-tools.md
-# ("Project graph tools") and docs/project/adr/0032-project-graph.md.
+# a breach refuses the WHOLE index (PG7). See docs/en/user/project-graph.md
+# (full guide), docs/en/user/mcp-tools.md ("Project graph tools")
+# and docs/project/adr/0032-project-graph.md.
 code_graph:
   # Master flag for the graph tool surface (MCP + REST).
   # ON by default (owner decision 2026-09-28 — graphs are first-class).

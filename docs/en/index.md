@@ -4,6 +4,8 @@
 
 > Vesma is a standalone memory & knowledge server for AI agents. It gives every agent real long-term memory — structured, searchable, governed by a strict tag contract — that persists across sessions, restarts, and context compression. One local server, three control surfaces (MCP / CLI / HTTP), and any MCP-capable harness connects in one line.
 
+The codebase becomes memory too: the **[project graph](user/project-graph.md)** (ADR-0032, on by default) turns a registered project into a searchable symbol map — file outlines, ranked symbol search, call tracing, secret-scanned line snippets — with zero source bytes stored on the server.
+
 ---
 
 ## Install (one command)
@@ -114,6 +116,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 | Connecting a specific harness | [Connect Vesma to any harness](../../integrations/mcp-presets.md) |
 | Looking for a specific command / flag | [user/cli-reference.md](user/cli-reference.md) |
 | Looking for a specific MCP tool | [user/mcp-tools.md](user/mcp-tools.md) |
+| Making a codebase navigable for agents | [user/project-graph.md](user/project-graph.md) |
 | Building an HTTP client | [user/http-api.md](user/http-api.md) |
 | Trying to understand the system shape | [architecture/overview.md](architecture/overview.md) |
 | Diagnosing a problem | [user/getting-started.md#troubleshooting](user/getting-started.md#troubleshooting) |
@@ -126,6 +129,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 - [Getting Started](user/getting-started.md) — install → first memory → first search → connect your harness.
 - [Integration Guide](user/integration-guide.md) — behavioral layer, deploy targets, agent MCP wiring, Hermes plugin.
 - [MCP Tools Reference](user/mcp-tools.md) — every `vesma_*` tool.
+- [Project Graph](user/project-graph.md) — the codebase as memory: indexing, the ten tools, security guardrails, configuration.
 - [HTTP API Reference](user/http-api.md) — every endpoint, request / response shape, error code.
 - [CLI Reference](user/cli-reference.md) — every `vesma` subcommand with flags, defaults, and examples.
 - [Tag Contract](user/tag-contract.md) — the M2 schema enforced on every memory (`project:`, `agent:`, `vesma:`).

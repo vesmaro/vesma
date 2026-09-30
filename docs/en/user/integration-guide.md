@@ -483,6 +483,15 @@ For VS Code Copilot Chat, see [getting-started.md](getting-started.md#connect-yo
 for MCP server setup. Once connected, the instructions and skills in this
 package tell the agent *when* and *how* to call those tools.
 
+### The project graph needs no harness work
+
+The [project graph](project-graph.md) is server-side by design: once the MCP
+server is connected, its ten tools are ordinary `vesma_*` tools, and the
+recall beacon rides inside the regular `assemble_context` output on its own —
+no extra instructions, skills, hooks or config on the harness side. The only
+per-call requirement is server-side: graph calls must carry an `agent` id
+(attribution), which well-behaved harnesses already pass.
+
 ---
 
 ## One-line MCP presets

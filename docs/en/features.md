@@ -31,6 +31,18 @@ Connect — and it is there. No extra wiring required for anything in this table
 | **Bundled embedding model** | `mnema-embed-v1` (~30 MB int8 ONNX) ships inside the wheel — hybrid vector search works fully offline, on CPU, with no downloads and no API keys |
 | **Packaging & delivery** | PyPI [`vesma`](https://pypi.org/project/vesma/) — pre-rebrand wheel `mnemos-memory-server` stays live until deprecation; (wheel bundles the integration pack and the model), npm `pi-vesma` + aliases, GHCR image `ghcr.io/vesmaro/vesmaro`, one-line installer script, benchmark framework S1–S4 in-repo |
 
+### Project graph — the codebase becomes memory (5.1.0)
+
+The **project graph** (ADR-0032, on by default) maps a registered project
+root into a symbol graph: file outlines, ranked symbol search, call tracing
+and line-range snippets, with a deterministic token budget on every answer.
+Ten MCP tools + a `/graph/` REST namespace + a watch poll that reindexes on
+real changes. Security is built in: zero source bytes stored, secrets
+poison a file's snippets forever, snippets are re-scanned from disk at every
+issue, limits fail closed, the map never leaves the server via export or
+federation, every call is audited per agent. Full guide:
+[project-graph.md](user/project-graph.md).
+
 ## Partial — core exists, completeness in progress
 
 | Area | Status |
@@ -63,6 +75,7 @@ its loss is visible in a report; each rung above opens only after measurements c
 | Context rewrite and the LTM bridge (`on_context_rewrite`) | [ADR-0018](../project/adr/0018-context-rewrite-ltm-bridge.md) |
 | Publication model v3.0.0 (optimistic publication, async refinement) | [ADR-0019](../project/adr/0019-optimistic-publication-async-refinement.md) |
 | Benchmark framework (S1–S4) | [ADR-0020](../project/adr/0020-benchmark-framework.md) |
+| Project graph: design, PG1–PG7 invariants | [ADR-0032](../project/adr/0032-project-graph.md) · user guide: [project-graph.md](user/project-graph.md) |
 | Wiring a specific harness | [integration-guide.md](user/integration-guide.md) |
 | All ADRs | [adr/](../project/adr/README.md) |
 
