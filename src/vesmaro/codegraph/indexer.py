@@ -169,8 +169,10 @@ def _sig_part_text(src: bytes, part: Any) -> str:
             type_node = part.child_by_field_name("type")
             if type_node is not None:
                 annotation = _sig_part_text(src, type_node)
-        return f"{name}: {annotation}={_SIG_DEFAULT_MARKER}" if annotation else (
-            f"{name}={_SIG_DEFAULT_MARKER}"
+        return (
+            f"{name}: {annotation}={_SIG_DEFAULT_MARKER}"
+            if annotation
+            else (f"{name}={_SIG_DEFAULT_MARKER}")
         )
     if part.type in ("identifier", "type_identifier"):
         return _text(src, part)

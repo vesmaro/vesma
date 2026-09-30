@@ -311,14 +311,13 @@ class TestZeroSourceBytes:
         root = tmp_path / "repo"
         root.mkdir()
         (root / "defaults.py").write_text(
-            "def fn(x=SOME_NAME, y=5, z=make_default(), name: str = 'lit'):\n"
-            "    return x\n",
+            "def fn(x=SOME_NAME, y=5, z=make_default(), name: str = 'lit'):\n    return x\n",
             encoding="utf-8",
         )
         index_project("proj", root, store, _FakeMainStore())
-        row = store._conn().execute(
-            "SELECT signature FROM project_nodes WHERE qname='fn'"
-        ).fetchone()
+        row = (
+            store._conn().execute("SELECT signature FROM project_nodes WHERE qname='fn'").fetchone()
+        )
         assert row is not None
         sig = str(row["signature"])
         for marker in ("SOME_NAME", "make_default", "lit", "5"):

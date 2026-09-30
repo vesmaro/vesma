@@ -270,9 +270,7 @@ class TestTokenContractSearch:
         with pytest.raises(GraphBudgetError, match="bigger budget"):
             indexed.search_graph(PROJECT, long_name, agent=AGENT, max_output_tokens=128)
 
-    def test_total_matches_is_the_honest_count_not_the_page_slice(
-        self, tmp_path: Path
-    ) -> None:
+    def test_total_matches_is_the_honest_count_not_the_page_slice(self, tmp_path: Path) -> None:
         # Review 10173a2a-5: with >2x limit matches the cursor pages the
         # top-limit slice; total_matches derived from that slice
         # undercounted (60 matches, limit 10 → reported 10).
