@@ -3,7 +3,7 @@
 
 **🌐 Language / Язык:** [English](../../en/user/integration-guide.md) · Русский
 
-Слой интеграции Mnemos — это набор **поведенческих триггеров**, которые
+Слой интеграции Vesma — это набор **поведенческих триггеров**, которые
 заставляют агентов реально *использовать* инструменты памяти, а не просто
 иметь их доступными. Без этих триггеров агенты забывают вызвать recall в
 начале сессии, пропускают checkpoint перед компакцией и не указывают
@@ -24,7 +24,7 @@
 ### Инструкции vs скиллы vs промпты
 
 - **Инструкции** — всегда включённые правила. Они говорят *когда* действовать.
-  Каждый агент с инструментами `mnemos/*` получает их.
+  Каждый агент с инструментами `vesma/*` получает их.
 - **Скиллы** — процедуры по требованию. Они говорят *как* действовать. Агент
   загружает их, когда нужна процедура.
 - **Промпт-режим** — опциональный контракт. Он говорит *теперь ты агент с
@@ -59,7 +59,7 @@ integrations/
 ### Одна команда (все цели)
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
 Развёртывает инструкции, скиллы и промпт-режим на цель по умолчанию
@@ -69,14 +69,14 @@ mnemos integration setup
 ### По цели
 
 ```bash
-mnemos integration setup --target copilot           # VS Code Copilot ~/.copilot/ (по умолчанию)
-mnemos integration setup --target generic-copilot   # промпт-режим VS Code ~/.config/Code/User/prompts/
-mnemos integration setup --target cursor            # Cursor ~/.cursor/
-mnemos integration setup --target zcode             # ZCode (нативные скиллы + конфиг MCP)
-mnemos integration setup --target agents            # стандарт ~/.agents — Claude Code, Codex, Cursor, …
-mnemos integration setup --target pi                # агент Pi (бридж-расширение)
-mnemos integration setup --target hermes            # Hermes Agent (нативный плагин)
-mnemos integration setup --target all               # все обнаруженные цели
+vesma integration setup --target copilot           # VS Code Copilot ~/.copilot/ (по умолчанию)
+vesma integration setup --target generic-copilot   # промпт-режим VS Code ~/.config/Code/User/prompts/
+vesma integration setup --target cursor            # Cursor ~/.cursor/
+vesma integration setup --target zcode             # ZCode (нативные скиллы + конфиг MCP)
+vesma integration setup --target agents            # стандарт ~/.agents — Claude Code, Codex, Cursor, …
+vesma integration setup --target pi                # агент Pi (бридж-расширение)
+vesma integration setup --target hermes            # Hermes Agent (нативный плагин)
+vesma integration setup --target all               # все обнаруженные цели
 ```
 
 Имена целей берутся из `integrations/targets.yaml`; `--help` выводит список для
@@ -97,7 +97,7 @@ mnemos integration setup --target all               # все обнаружен�
 Цель `agents` работает в **любом харнессе**, читающем стандартные
 расположения AGENTS.md (ZCode, Claude Code, Codex, Cursor, …) — одна
 установка на все инструменты. Слияние MCP аддитивное: существующие серверы,
-плагины и пользовательски настроенный `env` у записи `mnemos` никогда не
+плагины и пользовательски настроенный `env` у записи `vesma` никогда не
 перезаписываются.
 
 ### Агент Pi
@@ -108,18 +108,18 @@ mnemos integration setup --target all               # все обнаружен�
 это файл: поставляемый бридж `integrations/extensions/mnemos-mcp.ts`
 развёртывается (со штампом версии) в `~/.pi/agent/extensions/`, откуда Pi
 загружает его автоматически. При старте сессии бридж поднимает
-`mnemos mcp-server` по stdio и нативно регистрирует все инструменты
-`mnemos_*`; `/reload` перезагружает расширение, `/mnemos` переподключает
+`vesma mcp-server` по stdio и нативно регистрирует все инструменты
+`vesma_*`; `/reload` перезагружает расширение, `/vesma` переподключает
 бридж.
 
 ```bash
-mnemos integration setup --target pi
+vesma integration setup --target pi
 ```
 
 Скиллы развёртываются во вложенной раскладке, которую Pi читает нативно
 (`~/.pi/agent/skills/<имя>/SKILL.md`). Поскольку Pi также читает
 `~/.agents/skills/`, предпочитайте `--target pi` вместо развёртывания обеих
-целей — чтобы не дублировать скиллы. `mnemos integration uninstall
+целей — чтобы не дублировать скиллы. `vesma integration uninstall
 --target pi` удаляет только штампованные бридж и скиллы — пользовательские
 расширения не затрагиваются.
 
@@ -129,14 +129,14 @@ mnemos integration setup --target pi
 правки targets.yaml:
 
 ```bash
-mnemos integration setup --target zcode \
+vesma integration setup --target zcode \
   --home /var/home/you/.distrobox/other-box/home \
-  --mnemos-bin /path/to/mnemos-wrapper \
+  --vesma-bin /path/to/mnemos-wrapper \
   --no-wire-agents
 ```
 
 `~` в targets.yaml резолвится относительно `--home`. Передавайте
-`--mnemos-bin`, если целевое окружение запускает mnemos через враппер или по
+`--vesma-bin`, если целевое окружение запускает vesma через враппер или по
 другому пути.
 
 ### Куда что развёртывается
@@ -146,7 +146,7 @@ mnemos integration setup --target zcode \
 | `copilot` | `~/.copilot/instructions/` | `~/.copilot/skills/` | — |
 | `generic-copilot` | — | — | `~/.config/Code/User/prompts/` |
 | `cursor` | `~/.cursor/rules/` | — | — |
-| `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ плагин в `~/.hermes/plugins/mnemos/`) | — |
+| `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ плагин в `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<имя>/SKILL.md` | MCP в `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<имя>/SKILL.md` | MCP в `~/.agents/mcp.json` |
 | `pi` | — | `~/.pi/agent/skills/<имя>/SKILL.md` | бридж: `~/.pi/agent/extensions/mnemos-mcp.ts` |
@@ -158,7 +158,7 @@ mnemos integration setup --target zcode \
 После развёртывания проверьте, что все файлы на месте:
 
 ```bash
-mnemos integration verify
+vesma integration verify
 ```
 
 Проверяет:
@@ -176,27 +176,27 @@ mnemos integration verify
 
 ## Обновление
 
-Когда новая версия Mnemos поставляет обновлённый контент интеграции:
+Когда новая версия Vesma поставляет обновлённый контент интеграции:
 
 ```bash
-mnemos integration update
+vesma integration update
 ```
 
 Обновляет только изменённые файлы. Сохраняет локальные настройки (файлы, не
-управляемые Mnemos, не трогаются). После обновления запустите
-`mnemos integration verify`.
+управляемые Vesma, не трогаются). После обновления запустите
+`vesma integration verify`.
 
 ---
 
 ## Удаление
 
-Чтобы удалить все файлы интеграции Mnemos:
+Чтобы удалить все файлы интеграции Vesma:
 
 ```bash
-mnemos integration uninstall
+vesma integration uninstall
 ```
 
-Удаляет только файлы, развёрнутые `mnemos integration setup`. Локальные настройки
+Удаляет только файлы, развёрнутые `vesma integration setup`. Локальные настройки
 сохраняются. **Это деструктивная операция** — она удаляет файлы. Подтвердите
 при запросе.
 
@@ -206,48 +206,48 @@ mnemos integration uninstall
 
 Развёртывание инструкций и скиллов говорит агентам *когда* вызывать
 инструменты памяти. **Подключение MCP-инструментов к агентам** (agent MCP
-wiring) идёт дальше: добавляет `mnemos/*` во фронтматтер `tools:` файлов
+wiring) идёт дальше: добавляет `vesma/*` во фронтматтер `tools:` файлов
 Copilot-агентов (`~/.copilot/agents/*.agent.md`), чтобы инструменты реально
 выдавались агенту при запросе.
 
 Без wiring у агента могут быть поведенческие инструкции, но не быть
-инструментов `mnemos_*` во фронтматтере — харнес не передаст их модели.
+инструментов `vesma_*` во фронтматтере — харнес не передаст их модели.
 Wiring закрывает этот разрыв.
 
 ### Что он делает
 
 - Сканирует `~/.copilot/agents/` на наличие файлов `*.agent.md`.
-- Разбирает YAML-фронтматтер и добавляет `mnemos/*` (wildcard) или
-  индивидуальные ссылки `mnemos/mnemos_*` в массив `tools:`.
+- Разбирает YAML-фронтматтер и добавляет `vesma/*` (wildcard) или
+  индивидуальные ссылки `vesma/vesma_*` в массив `tools:`.
 - **Меняется только `tools:`** — `model:`, `model_tier:`, `agents:` и
   другие ключи никогда не затрагиваются.
-- Идемпотентно — повторный запуск не дублирует записи `mnemos/*`.
+- Идемпотентно — повторный запуск не дублирует записи `vesma/*`.
 
 ### Что пропускается
 
 | Условие | Причина |
 |---------|---------|
-| У агента уже есть `mnemos/*` или `mnemos/mnemos_*` в `tools:` | Уже подключён — изменений не требуется. |
+| У агента уже есть `vesma/*` или `vesma/vesma_*` в `tools:` | Уже подключён — изменений не требуется. |
 | Агент использует `tool_profile:` вместо `tools:` | Разрешается Copilot-инсталлером (`make install-all`); изменение будет перезаписано при следующей установке. |
 | У агента нет разбираемого фронтматтера | Нельзя безопасно редактировать — помечается как пропущенный. |
 
 ### Использование
 
-`mnemos integration setup` подключает агентов в том же проходе, что и
+`vesma integration setup` подключает агентов в том же проходе, что и
 развёртывание файлов и регистрацию MCP. Флаги wiring управляют поведением:
 
 ```bash
 # Подключить все неподключённые агенты (без промпта)
-mnemos integration setup --wire-agents --all
+vesma integration setup --wire-agents --all
 
 # Подключить конкретных агентов по имени или стеблю файла
-mnemos integration setup --wire-agents --select tech-lead,code-reviewer
+vesma integration setup --wire-agents --select tech-lead,code-reviewer
 
 # Пропустить wiring агентов полностью (без промпта)
-mnemos integration setup --no-wire-agents
+vesma integration setup --no-wire-agents
 
 # Предпросмотр изменений без модификации файлов
-mnemos integration setup --wire-agents --dry-run
+vesma integration setup --wire-agents --dry-run
 ```
 
 Если не передан ни `--wire-agents`, ни `--no-wire-agents`, команда
@@ -261,38 +261,38 @@ mnemos integration setup --wire-agents --dry-run
 | `--wire-agents --all` | Подключить все неподключённые агенты без промпта |
 | `--wire-agents --select name1,name2` | Подключить только указанных агентов (совпадение по `name`, стеблю или имени файла) |
 | `--no-wire-agents` | Пропустить wiring агентов полностью (явный opt-out) |
-| `--precise` | Использовать индивидуальные имена `mnemos/mnemos_*` вместо wildcard `mnemos/*` |
+| `--precise` | Использовать индивидуальные имена `vesma/vesma_*` вместо wildcard `vesma/*` |
 | `--dry-run` | Показать изменения без модификации файлов |
 
 ### Wildcard vs precise mode
 
-- **Wildcard** (по умолчанию): добавляет одну запись `mnemos/*`, выдающую
-  все mnemos-инструменты. Компактный фронтматтер, выдаёт всё.
+- **Wildcard** (по умолчанию): добавляет одну запись `vesma/*`, выдающую
+  все vesma-инструменты. Компактный фронтматтер, выдаёт всё.
 - **Precise** (`--precise`): добавляет индивидуальные записи
-  `mnemos/mnemos_*` (add, search, recall_context, agent_recall,
+  `vesma/vesma_*` (add, search, recall_context, agent_recall,
   save_context, list_recent, list_tags, ingest_url, stats,
   auto_collect_status). Явный список выдачи — админ-инструменты
   `watch_*` намеренно исключены.
 
 Используйте precise mode, когда нужен детальный контроль над тем, какие
 инструменты получает каждый агент. Используйте wildcard mode для удобства,
-когда все агенты должны иметь полный набор инструментов mnemos.
+когда все агенты должны иметь полный набор инструментов vesma.
 
 ### Проверка wiring
 
 После wiring проверьте состояние:
 
 ```bash
-mnemos integration verify
+vesma integration verify
 ```
 
 Секция агентов в отчёте verify показывает:
 
-- **Wired** — агенты с `mnemos/*` или `mnemos/mnemos_*` в `tools:`.
-- **Unwired** — агенты без mnemos-инструментов (кандидаты на wiring).
+- **Wired** — агенты с `vesma/*` или `vesma/vesma_*` в `tools:`.
+- **Unwired** — агенты без vesma-инструментов (кандидаты на wiring).
 - **Skipped** — агенты с `tool_profile:` (управляются Copilot-инсталлером).
 
-`mnemos doctor` также включает проверку wiring агентов (9-я проверка),
+`vesma doctor` также включает проверку wiring агентов (9-я проверка),
 которая выводит ту же сводку и предупреждает, если обнаружены
 неподключённые агенты.
 
@@ -312,9 +312,9 @@ compress, tokens), который очищает сырой контент от 
   `clean_content`, если он есть.
 - **MCP-инструмент `mnemos_filter`** — явная перефильтрация существующей
   записи (переопределение профиля, задание бюджета токенов).
-- **CLI `mnemos filter`** — `mnemos filter <id>` для одной записи,
-  `mnemos filter --all` для бэкфилла нефильтрованных записей.
-- **Метрики фильтра в `mnemos stats`** — счётчики filtered/unfiltered,
+- **CLI `vesma filter`** — `vesma filter <id>` для одной записи,
+  `vesma filter --all` для бэкфилла нефильтрованных записей.
+- **Метрики фильтра в `vesma stats`** — счётчики filtered/unfiltered,
   среднее сокращение, разбивка по профилям.
 - **Профили** — `log | terminal | code | docs | web | default`,
   автоопределяются по эвристикам содержимого.
@@ -326,7 +326,7 @@ compress, tokens), который очищает сырой контент от 
 
 ## Хуки и SDK для автоматизации
 
-В mnemos есть две выделенные поверхности для интеграции харнессов и
+В vesma есть две выделенные поверхности для интеграции харнессов и
 автоматизации (ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3):
 
 - **Хуки жизненного цикла** — групповой MCP-инструмент `mnemos_hooks` и
@@ -359,18 +359,18 @@ compress, tokens), который очищает сырой контент от 
 
 ---
 
-## `mnemos integration setup` — поток по умолчанию
+## `vesma integration setup` — поток по умолчанию
 
-По умолчанию `mnemos integration setup` теперь **запрашивает подключение
+По умолчанию `vesma integration setup` теперь **запрашивает подключение
 агентов** в том же проходе, что и развёртывание файлов и регистрацию
 MCP. Это закрывает пробел, когда инструкции развёрнуты, но у агентов
-нет `mnemos/*` в фронтматтере `tools:`.
+нет `vesma/*` в фронтматтере `tools:`.
 
 ```bash
-mnemos integration setup
+vesma integration setup
 # → Развёртывает инструкции + скиллы + промпты
 # → Регистрирует MCP-сервер
-# → Запрашивает: "Wire mnemos/* into Copilot agents? [Y/n]"
+# → Запрашивает: "Wire vesma/* into Copilot agents? [Y/n]"
 ```
 
 | Флаг | Поведение |
@@ -379,7 +379,7 @@ mnemos integration setup
 | `--wire-agents --all` | Подключить всех неподключённых агентов без запроса |
 | `--wire-agents --select name1,name2` | Подключить только указанных агентов |
 | `--no-wire-agents` | Пропустить подключение агентов |
-| `--precise` | Использовать индивидуальные имена `mnemos/mnemos_*` вместо wildcard |
+| `--precise` | Использовать индивидуальные имена `vesma/vesma_*` вместо wildcard |
 | `--dry-run` | Предпросмотр без изменения файлов |
 
 В неинтерактивном терминале (CI / pipe) команда по умолчанию подключает
@@ -389,14 +389,14 @@ mnemos integration setup
 
 ---
 
-## `mnemos add --dry-run` — предпросмотр фильтра
+## `vesma add --dry-run` — предпросмотр фильтра
 
 Предпросмотр того, как контекстный фильтр преобразует контент **перед
 сохранением**. Валидирует контракт тегов, запускает пятиступенчатый
 фильтр-пайплайн и выводит статистику — без записи в хранилище.
 
 ```bash
-mnemos add "long log output..." --tags "project:mnemos,agent:tech-lead,mnemos:trace" --dry-run
+vesma add "long log output..." --tags "project:vesma,agent:tech-lead,mnemos:trace" --dry-run
 ```
 
 Вывод:
@@ -425,22 +425,22 @@ mnemos add "long log output..." --tags "project:mnemos,agent:tech-lead,mnemos:tr
 
 ---
 
-## `mnemos doctor --fix` — автоисправление предупреждений
+## `vesma doctor --fix` — автоисправление предупреждений
 
-`mnemos doctor` запускает проверки здоровья и сообщает статус. С `--fix`
+`vesma doctor` запускает проверки здоровья и сообщает статус. С `--fix`
 он **автоматически исправляет WARN-уровневые проверки** — ручное
 вмешательство не нужно для типовых случаев.
 
 ```bash
-mnemos doctor          # только отчёт
-mnemos doctor --fix    # исправить предупреждения, затем перепроверить
-mnemos doctor --fix --dry-run   # предпросмотр исправлений
+vesma doctor          # только отчёт
+vesma doctor --fix    # исправить предупреждения, затем перепроверить
+vesma doctor --fix --dry-run   # предпросмотр исправлений
 ```
 
 | Предупреждение | Действие автоисправления |
 |----------------|--------------------------|
-| Integration stale | `mnemos integration update` — обновить устаревшие файлы до текущей версии |
-| Agent wiring — неподключённые агенты | `mnemos integration setup --wire-agents --all` |
+| Integration stale | `vesma integration update` — обновить устаревшие файлы до текущей версии |
+| Agent wiring — неподключённые агенты | `vesma integration setup --wire-agents --all` |
 | MCP server не зарегистрирован | Регистрация MCP через `mcp-setup.sh` |
 
 **FAIL-уровневые проверки не автоисправимы** — они требуют ручной
@@ -453,19 +453,19 @@ mnemos doctor --fix --dry-run   # предпросмотр исправлени�
 
 ---
 
-## `mnemos logs` — трассы пайплайна
+## `vesma logs` — трассы пайплайна
 
 Просмотр журнала трасс пайплайна (таблица `traces`) прямо из CLI.
 Показывает шаги cluster, synthesize, publish и recall с задержкой,
 LLM-флагами, кэшем и fallback.
 
 ```bash
-mnemos logs                       # последние 50 трасс
-mnemos logs --task cluster        # только cluster-трассы
-mnemos logs --project mnemos      # фильтр по проекту
-mnemos logs --limit 100           # больше строк
-mnemos logs --since 2026-06-01    # только трассы после этой даты
-mnemos logs --follow              # опрос новых трасс (tail -f)
+vesma logs                       # последние 50 трасс
+vesma logs --task cluster        # только cluster-трассы
+vesma logs --project vesma      # фильтр по проекту
+vesma logs --limit 100           # больше строк
+vesma logs --since 2026-06-01    # только трассы после этой даты
+vesma logs --follow              # опрос новых трасс (tail -f)
 ```
 
 | Флаг | Описание |
@@ -486,8 +486,8 @@ mnemos logs --follow              # опрос новых трасс (tail -f)
 
 ## Как агенты обнаруживают инструменты
 
-Слой интеграции предполагает, что MCP-сервер Mnemos уже подключён. Инструменты
-(`mnemos_*`) появляются в списке инструментов агента после регистрации
+Слой интеграции предполагает, что MCP-сервер Vesma уже подключён. Инструменты
+(`vesma_*`) появляются в списке инструментов агента после регистрации
 MCP-сервера в конфигурации клиента. Подключение MCP-инструментов к агентам
 (выше) гарантирует, что фронтматтер `tools:` реально выдаёт эти инструменты
 каждому агенту.
@@ -500,27 +500,27 @@ MCP-сервера в конфигурации клиента. Подключе�
 
 ## Однострочные MCP-пресеты
 
-Для харнессов без нативной цели развёртывания Mnemos поставляет готовые
+Для харнессов без нативной цели развёртывания Vesma поставляет готовые
 однострочные MCP-пресеты — всё подключение это одна строка (или один блок)
 на харнесс, всегда один и тот же stdio-провод (ADR-0017 D1):
-`command "mnemos", args ["mcp-server"]`.
+`command "vesma", args ["mcp-server"]`.
 
 | Харнесс | Конфиг | Пресет |
 |---------|--------|--------|
-| Cursor | `~/.cursor/mcp.json` | `"mnemos": { "type": "stdio", "command": "mnemos", "args": ["mcp-server"] }` |
-| Claude Code | `claude mcp add` | `claude mcp add --scope user mnemos -- mnemos mcp-server` |
-| Codex | `~/.codex/config.toml` | TOML-блок `[mcp_servers.mnemos]` |
+| Cursor | `~/.cursor/mcp.json` | `"vesma": { "type": "stdio", "command": "vesma", "args": ["mcp-server"] }` |
+| Claude Code | `claude mcp add` | `claude mcp add --scope user vesma -- vesma mcp-server` |
+| Codex | `~/.codex/config.toml` | TOML-блок `[mcp_servers.vesma]` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | та же JSON-строка, что для Cursor |
-| OpenCode | `~/.config/opencode/opencode.json` | `"mnemos": { "type": "local", "command": ["mnemos", "mcp-server"] }` внутри `mcp` |
+| OpenCode | `~/.config/opencode/opencode.json` | `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` внутри `mcp` |
 | VS Code Copilot | `mcp.json` уровня user/workspace | `mcp-setup.sh` или JSON-блок `servers` |
-| ZCode / инструменты `~/.agents` | `mnemos integration setup --target zcode` / `--target agents` | скриптово, аддитивное слияние |
+| ZCode / инструменты `~/.agents` | `vesma integration setup --target zcode` / `--target agents` | скриптово, аддитивное слияние |
 
 Для OpenCode файл можно создать целиком одной shell-строкой (перезапишет существующий
 конфиг; иначе вставьте строку из таблицы в объект `mcp` — обратите внимание на тип
 `"local"` и команду-**массив**, это диалект самого OpenCode):
 
 ```bash
-mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json","mcp":{"mnemos":{"type":"local","command":["mnemos","mcp-server"]}}}' > ~/.config/opencode/opencode.json
+mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json","mcp":{"vesma":{"type":"local","command":["vesma","mcp-server"]}}}' > ~/.config/opencode/opencode.json
 ```
 
 Полные строки для копирования (плюс shell-однострочники для чистой установки
@@ -533,7 +533,7 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 Для любого харнесса, не покрытого нативной целью или пресетом, скопируйте
 опубликованный шаблон адаптера —
 [`integrations/adapter-template.md`](../../../integrations/adapter-template.md):
-три секции (**Connect** — MCP-провод → **Expose** — инструменты `mnemos_*` →
+три секции (**Connect** — MCP-провод → **Expose** — инструменты `vesma_*` →
 **Configure** — слаги project/agent и контракт тегов) плюс чеклист приёмки,
 который сам шаблон проходит. Если ваш харнесс говорит по MCP stdio — шаблон
 и есть вся интеграция.
@@ -546,7 +546,7 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 
 - **ровно один** `project:<slug>`
 - **ровно один** `agent:<slug>` (или `agent:user`)
-- **минимум один** `mnemos:<subtype>`
+- **минимум один** `vesma:<subtype>`
 
 Полная схема — в [tag-contract.md](tag-contract.md). Слой интеграции
 подкрепляет это в трёх местах: инструкция `mnemos-tag-contract`, скилл
@@ -556,35 +556,35 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 
 ## Hermes Agent
 
-Mnemos предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `mnemos.adapters.hermes.HermesMemoryAdapter` — фасад `MnemosSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
+Vesma предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `mnemos.adapters.hermes.HermesMemoryAdapter` — фасад `MnemosSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
 
 ### Установка
 
-1. Сделайте пакет `mnemos` импортируемым в Python-окружении Hermes:
+1. Сделайте пакет `vesma` импортируемым в Python-окружении Hermes:
    ```bash
-   pip install mnemos-memory-server
+   pip install vesma   # до-ребрендинговое написание: mnemos-memory-server (устарело)
    ```
-   Отдельный процесс `mnemos serve` больше не нужен.
+   Отдельный процесс `vesma serve` больше не нужен.
 
 2. Разверните интеграцию:
    ```bash
-   mnemos integration setup --target hermes
+   vesma integration setup --target hermes
    ```
-   Это копирует плагин в `~/.hermes/plugins/mnemos/` и развёртывает скиллы/инструкции в `~/.hermes/skills/`.
+   Это копирует плагин в `~/.hermes/plugins/vesma/` и развёртывает скиллы/инструкции в `~/.hermes/skills/`.
 
 3. Активируйте через мастер:
    ```bash
    hermes memory setup
    ```
-   Выберите "mnemos" из списка провайдеров и настройте slug'и project/agent и пути к хранилищу.
+   Выберите "vesma" из списка провайдеров и настройте slug'и project/agent и пути к хранилищу.
 
 4. Перезапустите сессию Hermes (`/restart` в гейтвее или перезапуск CLI).
 
-> **Один владелец на хранилище:** плагин встраивает сервер памяти — указывайте `data_dir`/`vault_path`, на которые больше никто не пишет (SQLite single-writer). Чтобы разделить память с `mnemos serve` или другими харнессами, выделяйте каждому свой data dir.
+> **Один владелец на хранилище:** плагин встраивает сервер памяти — указывайте `data_dir`/`vault_path`, на которые больше никто не пишет (SQLite single-writer). Чтобы разделить память с `vesma serve` или другими харнессами, выделяйте каждому свой data dir.
 
 ### Инструменты
 
-Плагин экспонирует инструменты `mnemos_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`MnemosSDK.remember` / `recall`, хуки) вместо сырого HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
+Плагин экспонирует инструменты `vesma_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`MnemosSDK.remember` / `recall`, хуки) вместо сырого HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
 
 | Инструмент | Поверхность контракта |
 |------------|----------------------|
@@ -606,11 +606,11 @@ Mnemos предоставляет нативный плагин `MemoryProvider`
 
 ### Конфигурация
 
-Конфиг хранится в `~/.hermes/config.yaml` в секции `memory.mnemos`:
+Конфиг хранится в `~/.hermes/config.yaml` в секции `memory.vesma`:
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
-| `data_dir` | (пусто) | Каталог данных Mnemos (пусто = значение по умолчанию) |
+| `data_dir` | (пусто) | Каталог данных Vesma (пусто = значение по умолчанию) |
 | `vault_path` | (пусто) | Путь к vault Obsidian (пусто = по умолчанию) |
 | `project` | `hermes` | Slug проекта по умолчанию для контракта тегов |
 | `agent` | `hermes-default` | Slug агента по умолчанию для контракта тегов |
@@ -644,6 +644,6 @@ Mnemos предоставляет нативный плагин `MemoryProvider`
 <!-- mnemos-integration: v2.0.0 -->
 ```
 
-Это позволяет `mnemos integration verify` обнаруживать устаревшие файлы после
-обновления. Если штамп не совпадает с установленной версией Mnemos, файл
+Это позволяет `vesma integration verify` обнаруживать устаревшие файлы после
+обновления. Если штамп не совпадает с установленной версией Vesma, файл
 помечается к обновлению.

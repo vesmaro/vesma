@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/ci-cd.md)
 
 > **Scope**: How to operate, debug, and extend the GitHub Actions CI pipeline
-> for Mnemos. Source of truth: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> for Vesma. Source of truth: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
 
 ---
 
@@ -16,7 +16,7 @@ every pull request targeting `main`, and on a weekly drift check
 | Job | Runner | Purpose |
 |---|---|---|
 | `verify` | `ubuntu-latest`, Python 3.11 / 3.12 / 3.13 matrix | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and `mnemos --help` works in-image |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and `vesma --help` works in-image |
 
 The `verify` job is the **required status check** for `main` (see
 [Branch protection](#branch-protection)).
@@ -28,16 +28,16 @@ The `verify` job is the **required status check** for `main` (see
 Run the same gates locally before pushing to save CI minutes:
 
 ```bash
-cd /path/to/mnemos   # repo root
+cd /path/to/vesma   # repo root
 source .venv/bin/activate
 
 ruff check src/ tests/                                # lint
 ruff format --check src/ tests/                       # format
-mypy --strict src/mnemos/                             # types
+mypy --strict src/vesmaro/                             # types
 bandit -r src/ -f json -o bandit-report.json          # security (static)
 pip-audit --ignore-vuln CVE-2026-45829                # security (deps)
 pytest tests/ -q --tb=short                           # tests
-pytest --cov=src/mnemos --cov-fail-under=80 tests/ -q # coverage gate
+pytest --cov=src/vesma --cov-fail-under=80 tests/ -q # coverage gate
 ```
 
 The single-shot equivalent:
@@ -70,7 +70,7 @@ act -j verify --matrix python-version:3.12
 
 If `act` fails on the `build-container` job, run the same steps
 manually — `buildah` is available from `apt` on most distros and the
-smoke test is just `mnemos --help` inside a built image.
+smoke test is just `vesma --help` inside a built image.
 
 ---
 
@@ -129,13 +129,13 @@ before the next release, but we don't block day-to-day work on it.
 
 The remaining gap is concentrated in:
 
-1. `src/mnemos/llm/*.py` — provider adapters with thin pass-through
+1. `src/vesmaro/llm/*.py` — provider adapters with thin pass-through
    to vendor SDKs (anthropic / openai / gemini / ollama). High
    coupling to vendor HTTP error shapes makes a real e2e test
    expensive.
-2. `src/mnemos/watchers/` — filesystem event handlers; covered by
+2. `src/vesmaro/watchers/` — filesystem event handlers; covered by
    unit tests but not by in-process end-to-end flows.
-3. `src/mnemos/auto_collect.py` — the auto-collect cron path is
+3. `src/vesmaro/auto_collect.py` — the auto-collect cron path is
    exercised manually, not in CI.
 
 Each of these has a follow-up issue. Until they're closed, the
@@ -173,10 +173,10 @@ runners. Steps:
 
 1. `apt-get install buildah`
 2. `buildah bud -t mnemos:test .` — builds the `Containerfile`
-3. `buildah from --name mnemos-test mnemos:test` — starts a container
-4. `buildah run mnemos-test -- python --version` — smoke test
+3. `buildah from --name vesma-test mnemos:test` — starts a container
+4. `buildah run vesma-test -- python --version` — smoke test
 
-> The smoke step runs `mnemos --help` (plus a Python version print) inside
+> The smoke step runs `vesma --help` (plus a Python version print) inside
 > the built image, so it validates the CLI entrypoint, not just the base image.
 
 If the container job fails, inspect the log for:
@@ -251,7 +251,7 @@ before merging.
 - **CD / deploy** — the release pipeline lives in
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
   a `v*.*.*` tag builds the wheel/sdist and attaches them to the GitHub
-  Release, and pushes `ghcr.io/korrnals/mnemos:$VERSION` + `:latest`.
+  Release, and pushes `ghcr.io/korrnals/vesma:$VERSION` + `:latest`.
   PyPI upload is run separately per [`pypi-publish.md`](pypi-publish.md);
   container use is covered by [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — not needed at this scale. GitHub-hosted

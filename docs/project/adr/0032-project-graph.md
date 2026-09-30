@@ -48,7 +48,7 @@ The owner initiative (2026-09-28) starts from token economics: agents
 burn tokens re-deriving project state — what changed since the last
 session, what depends on what, where things live. The proposal: a
 separate memory section holding a graph of projects, running through
-the whole vesmaro/mnemos ecosystem — each component in self-mode plus
+the whole vesmaro/vesma ecosystem — each component in self-mode plus
 ecosystem amplification — with visualization subsections in mnemos-eyes
 (Projects / Sessions / Agents / Tasks).
 

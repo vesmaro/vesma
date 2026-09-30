@@ -105,7 +105,7 @@ peer identity.
   different peer (the attacker would also need the peer's private key).
 - **Lifecycle**: tokens have an optional `expires_at`; unset = no expiry.
   Operator-driven rotation on a cadence (default 90 days, same as cert).
-- **Revocation**: `mnemos fed token revoke <peer_id>` deletes the row; next
+- **Revocation**: `vesma fed token revoke <peer_id>` deletes the row; next
   request with that bearer returns 401. Immediate, no denylist.
 
 ### 2. mTLS client cert pinned per peer
@@ -216,7 +216,7 @@ residual risk (Q3 confirmed session 3, §0.п.13).
 
 ### 7. Moderation pipeline — three-layer defence-in-depth
 
-The same pipeline built once in Phase 0 (`mnemos/src/mnemos/moderation.py`)
+The same pipeline built once in Phase 0 (`vesma/src/vesma/moderation.py`)
 and reused for both batch export and live pull. No verdict cache (КП-3
 cancelled) — B checks the current version on every request.
 
@@ -421,8 +421,8 @@ Re-open this decision if any of the following becomes true:
 
 ### Cross-references
 
-- **mnemos decision `82a3608b`** — full committee rationale (mnemos
-  `mnemos:decision`, `project:mnemos`, `committee`). The open question
+- **vesma decision `82a3608b`** — full committee rationale (mnemos
+  `mnemos:decision`, `project:vesma`, `committee`). The open question
   `c3fd3fbc` is superseded by this decision (`committee:queue` removed).
 - **GitHub issue #88** point #4 — the design task this decision closes.
 - **F10** (threat table above) — the residual risk this decision confirms.
@@ -432,15 +432,15 @@ Re-open this decision if any of the following becomes true:
 
 ## References
 
-- **ADR-0014** — `mnemos/docs/project/adr/0014-api-auth-threat-model.md` — operator API auth (bearer + TOTP 2FA), federation explicitly excluded. This ADR extends it.
+- **ADR-0014** — `vesma/docs/project/adr/0014-api-auth-threat-model.md` — operator API auth (bearer + TOTP 2FA), federation explicitly excluded. This ADR extends it.
 - **ADR-0017** — `mnemos-mesh/docs/adr/0017-mnemos-mesh-architecture.md` — mnemos-mesh architecture (trust boundaries §3, key management §4, mTLS §7, per-peer ACL §8). ADR-0017 references this ADR as the formal residual risk record.
 - **ArchCom contract 2026-07-17** — `.archcom/sessions/2026-07-17-federation-contract.md` — §3.2 mediated pull contract, §7.1 safe channel (Q1), §8 risks, §9 trigger codes, §10 `federation_access_log`.
 - **ArchCom 2026-07-20** — `.archcom/sessions/2026-07-20-automated-channel.md` — ADR-0016 scope explicitly defined (§3.2): per-peer bearer `mnk_fed_<peer_id>_` + mTLS client cert pinned per peer.
 - **Peer API proto** — `mnemos/federation/proto/federation.proto` (`package mnemos.federation.v1`; RPCs `Pull`, `SyncMetadata`, `Subscribe`; enum `TriggerCodes`).
 - **mnemos-mesh architecture** — `mnemos-mesh/docs/architecture.md` — trust boundaries §3, key management §4, mTLS §7, per-peer ACL §8.
-- **Compact format source of truth** — `mnemos/src/mnemos/compact.py` (`CompactRecord` Pydantic model; proto mirrors it field-by-field).
-- **Moderation pipeline** — `mnemos/src/mnemos/moderation.py` (secrets detector + PII scrubber + neutral-value replacement).
-- **GitHub issue #105** — <https://github.com/Korrnals/mnemos/issues/105> (Phase 3 contract design).
+- **Compact format source of truth** — `vesma/src/vesma/compact.py` (`CompactRecord` Pydantic model; proto mirrors it field-by-field).
+- **Moderation pipeline** — `vesma/src/vesma/moderation.py` (secrets detector + PII scrubber + neutral-value replacement).
+- **GitHub issue #105** — <https://github.com/Korrnals/vesma/issues/105> (Phase 3 contract design).
 - **OWASP ASVS** — baseline for the secrets / PII / transport controls cited in F3, F4, F9.
 - **CWE** — `CWE-522` (insufficiently protected credentials) for the at-rest hashing requirement; `CWE-295` (improper certificate validation) for the mTLS pinning requirement.
 

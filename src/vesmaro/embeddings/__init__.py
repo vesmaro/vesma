@@ -1,4 +1,4 @@
-"""Embeddings layer for Mnemos.
+"""Embeddings layer for Vesma.
 
 Uses local ONNX models by default (privacy + offline).
 

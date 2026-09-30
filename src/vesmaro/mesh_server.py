@@ -5,7 +5,7 @@ Implements the ``MnemosCore`` service defined in
 to :mod:`vesmaro.mesh_client` (the client that talks to the mesh binary).
 
 Architectural role (ArchCom 2026-07-17 federation contract):
-    * **mnemos is the source of truth** for storage AND moderation. This
+    * **Vesma is the source of truth** for storage AND moderation. This
       server owns the SQLite store and runs the moderation pipeline on
       both export (:rpc:`ListMemories`) and import (:rpc:`WriteMemory`).
     * **The mesh is a dumb carrier** (criterion 1). It forwards
@@ -26,7 +26,7 @@ Transport:
     Unix socket + gRPC (criterion 8). The socket path comes from
     :attr:`vesmaro.config.MeshConfig.socket_path`. The server creates
     the socket (unlike :class:`~vesmaro.mesh_client.MeshClient`, which
-    connects to it); it is the listener for the mesh↔mnemos channel.
+    connects to it); it is the listener for the mesh↔Vesma channel.
 
     W2.5 dual-mode (ADR-0019 option 1, ratified archcom 2026-09-20):
     when :attr:`vesmaro.config.MeshConfig.tcp` is enabled, the SAME
@@ -116,7 +116,7 @@ Fail-closed contract (ACL hardening, vesmaro#371/#369 family):
 
 Security notes:
     * The server binds a Unix socket with filesystem permissions.
-      Default modes are ``0600`` socket / ``0700`` dir (mnemos user
+      Default modes are ``0600`` socket / ``0700`` dir (vesma user
       only); ``mesh.socket_group_access: true`` switches to ``0660`` /
       ``0770`` for shared-volume deployments (fsGroup / compose
       ``user:``) where the mesh binary dials as a different uid in the
@@ -325,7 +325,7 @@ def _narrow_by_agent_scope(allowed_projects: list[str], agent_scope: Sequence[st
     """Intersect a peer's effective allowed set with the token's project grants.
 
     TM §3: the effective scope on the gateway path is ``token scope ∩
-    transport-peer ACL``, resolved ONLY in mnemos (criterion 5). The
+    transport-peer ACL``, resolved ONLY in Vesma (criterion 5). The
     transport-peer ACL here is the existing fail-closed
     :attr:`vesmaro.config.PeerConfig.allowed_projects` gate — the agent
     rides the same core leg the federation peer uses, so it is bounded by
@@ -621,7 +621,7 @@ def _acl_allows(peer: PeerConfig, project_scope: str) -> bool:
     """Return ``True`` if ``project_scope`` is allowed for ``peer``.
 
     Mirrors :func:`vesmaro.federation_server._acl_allows` so the mesh↔
-    mnemos ACL uses the same semantics as the HTTP federation pull path:
+    Vesma ACL uses the same semantics as the HTTP federation pull path:
     ``["*"]`` is the explicit wildcard; empty list = none (fail-closed).
     """
     if not peer.allowed_projects:
@@ -848,7 +848,7 @@ class MnemosCoreServicer:
         """Re-validate the agent bearer token on the DATA path (per request).
 
         ADR-0018-T §3 (criterion 5): the gateway validated the token
-        before translating the RPC, but mnemos RE-VALIDATES on every data
+        before translating the RPC, but Vesma RE-VALIDATES on every data
         request — the mesh is transport, not an ACL authority, and a
         compromised node must not be able to skip the gate by calling the
         data RPCs directly. Checks (fail-closed at each step):
@@ -964,7 +964,7 @@ class MnemosCoreServicer:
         """Export moderation-processed :class:`CompactRecord` bodies.
 
         The mesh calls this on startup/refresh to materialise the local
-        view of what mnemos is willing to federate. Steps (contract §3.1,
+        view of what Vesma is willing to federate. Steps (contract §3.1,
         ADR-0020 cursor contract):
 
         1. Resolve the caller's peer. Enforce the ACL on every request,
@@ -1306,7 +1306,7 @@ class MnemosCoreServicer:
 
         The verdict (not a bare bool) is returned so the gateway can
         rate-limit per agent and log a precise reject reason to its
-        ``gateway_query`` category — mnemos keeps sole authority over
+        ``gateway_query`` category — Vesma keeps sole authority over
         signature verification, revocation, and (per data RPC) the
         effective-scope gate (criterion 5).
 
@@ -1381,7 +1381,7 @@ class MnemosCoreServicer:
         (``agent_tokens`` table, ``CREATE TABLE IF NOT EXISTS`` — safe
         next to the main schema) and the key lives at
         ``<data_dir>/agent-token-signing.key`` (config override wins),
-        minted on first use at mode 0600. Lazy on purpose: a mnemos host
+        minted on first use at mode 0600. Lazy on purpose: a Vesma host
         that never serves agent RPCs never mints a key and never opens
         the registry — "first use" semantics per ADR-0018-T §3.
 
@@ -1444,7 +1444,7 @@ class MnemosCoreServicer:
            ``metadata.last_fed_at`` (when present) and reports
            :attr:`CompactImportStatus.DUPLICATE` with the EXISTING
            storage id — no re-write, so replays stay idempotent.
-        3. mnemos's own moderation on the record's ``summary`` (#86
+        3. Vesma's own moderation on the record's ``summary`` (#86
            defence-in-depth).
         4. Persist via :meth:`MemoryManager.add` → WRITTEN.
 
@@ -1526,8 +1526,8 @@ class MnemosCoreServicer:
                 status=CompactImportStatus.DUPLICATE,
                 written_id=duplicate.id,
             )
-        # mnemos's own moderation on the compact summary (#86 import
-        # validation). The peer already moderated, but mnemos re-checks
+        # Vesma's own moderation on the compact summary (#86 import
+        # validation). The peer already moderated, but Vesma re-checks
         # on import — defence-in-depth.
         mod_result = moderate(
             compact.summary,
@@ -1543,7 +1543,7 @@ class MnemosCoreServicer:
             )
         content = mod_result.sanitized_content or compact.summary
         # Persist. MemoryManager.add runs the Layer 1 secrets scanner.
-        # The compact id is NOT reused as the storage id — mnemos
+        # The compact id is NOT reused as the storage id — Vesma
         # generates its own id (the compact id is a federation envelope
         # id). The compact id is stored in metadata for traceability.
         data = MemoryCreate(
@@ -1624,20 +1624,20 @@ class MnemosCoreServicer:
                 mode_applied=_mesh_gen.core_pb2.ImportMode.MERGE,
                 trigger_code=_trigger_code_to_proto(TriggerCode.REFUSED),
             )
-        # Downgrade RESTORE→MERGE on the mesh↔mnemos path: the mesh is
+        # Downgrade RESTORE→MERGE on the mesh↔Vesma path: the mesh is
         # transport, not an operator disaster-recovery tool. The applied
         # mode is recorded in the response so the mesh surfaces it to
         # the operator.
         mode_applied = _mesh_gen.core_pb2.ImportMode.MERGE
         if import_mode == int(_mesh_gen.core_pb2.ImportMode.RESTORE):
-            logger.info("mesh_server: downgrading RESTORE→MERGE on mesh↔mnemos path")
+            logger.info("mesh_server: downgrading RESTORE→MERGE on mesh↔Vesma path")
 
         pb_record = request.record
         compact = _compact_from_proto(pb_record)
         # ACL: the caller is the mesh peer, identified via gRPC metadata
         # in production. For the single-peer unit-test path we fall back
         # to the only configured peer (same as ListMemories). The record's
-        # ``source_agent`` is the *origin* agent on the remote mnemos — it
+        # ``source_agent`` is the *origin* agent on the remote Vesma node — it
         # is NOT a federation peer and must not be used as the ACL identity.
         peer_id = self._peer_id_from_context(context) or self._single_peer_id()
         if peer_id is None:
@@ -1934,7 +1934,7 @@ class MnemosCoreServicer:
         """Serve a metadata-only page of the ``federation_index`` (S2 export).
 
         Chairman ruling 2026-09-20 (ADR-0021 Q10.2 poll-first): the
-        mesh↔mnemos export leg. The mesh relays the FederationPeer wire
+        mesh↔Vesma export leg. The mesh relays the FederationPeer wire
         messages to its peer leg verbatim — metadata only, no content.
 
         Steps (mirrors :rpc:`ListMemories`):
@@ -2256,7 +2256,7 @@ class MeshServer:
     is set — an additional mTLS TCP port on the SAME grpcio server
     (W2.5, ADR-0019 option 1). Registers the :class:`MnemosCoreServicer`
     and exposes :meth:`start` / :meth:`stop` for clean lifecycle control.
-    Designed to be owned by the mnemos process (or a test fixture) and
+    Designed to be owned by the Vesma process (or a test fixture) and
     stopped on shutdown.
 
     A failed TCP bind raises :class:`MeshTCPLegError` from :meth:`start`
@@ -2271,7 +2271,7 @@ class MeshServer:
         manager: The :class:`MemoryManager` backing storage + moderation.
         settings: The full :class:`Settings` (for ACL + federation
             thresholds).
-        max_workers: gRPC thread pool size. Default 4 — the mesh↔mnemos
+        max_workers: gRPC thread pool size. Default 4 — the mesh↔Vesma
             channel is low-traffic (local Unix socket, batch sync); a
             large pool is wasteful.
 
@@ -2333,7 +2333,7 @@ class MeshServer:
 
         Removes any stale socket file at :attr:`socket_path` first
         (otherwise gRPC gets ``EADDRINUSE`` on restart). Creates the
-        parent directory so the socket is only accessible to the mnemos
+        parent directory so the socket is only accessible to the vesma
         user by default (mode ``0700`` dir / ``0600`` socket), or — when
         ``settings.mesh.socket_group_access`` is set — group-accessible
         modes (``0770`` dir / ``0660`` socket) for shared-volume
@@ -2409,7 +2409,7 @@ class MeshServer:
             logger.info("mesh tcp leg listening on %s:%d", tcp.bind, self._tcp_bound_port)
         self._server.start()
         # Restrict the socket file perms (defence-in-depth: the socket
-        # should only be accessible to the mnemos user + the mesh).
+        # should only be accessible to the vesma user + the mesh).
         try:
             os.chmod(self._socket_path, sock_mode)
         except (PermissionError, FileNotFoundError):

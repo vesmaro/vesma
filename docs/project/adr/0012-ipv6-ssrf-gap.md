@@ -106,6 +106,6 @@ connection-time check.
 
 - `tasks/senior-security-engineer/M15.2-bandit-cleanup.md`
 - ADR-0009 (parent SSRF guard)
-- `src/mnemos/manager.py::_validate_url` — implementation
+- `src/vesma/manager.py::_validate_url` — implementation
 - `tests/test_security.py::test_cloud_metadata_endpoints_blocked` — test
 - AWS docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html

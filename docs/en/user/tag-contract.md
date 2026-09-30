@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/tag-contract.md)
 
-Mnemos enforces a structured tag schema on every memory entry. This document
+Vesma enforces a structured tag schema on every memory entry. This document
 describes the contract, the set of valid values, and migration guidance.
 
 ---
@@ -14,7 +14,7 @@ The tag contract:
 
 - Pins every entry to exactly **one project** and **one agent**
 - Optionally narrows the entry to **one task scope** (`task:`, ADR-0027)
-- Classifies the entry with at least **one Mnemos subtype** (cognitive category)
+- Classifies the entry with at least **one Vesma subtype** (cognitive category)
 - Enables per-agent recall (M3) and project-scoped cleanup
 - Prevents ambiguous dual-project entries (a common source of context pollution)
 
@@ -26,9 +26,9 @@ The tag contract:
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory |
-| `mnemos:<subtype>` | see table below | **at least 1** | Cognitive category |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category |
 
-### Mnemos subtypes
+### Vesma subtypes
 
 | Subtype | When to use |
 |---------|-------------|
@@ -124,7 +124,7 @@ tests on every surface):
 ## `mnemos:no-federate` — federation exclusion marker
 
 `mnemos:no-federate` is an **exclusion marker**, not a cognitive category.
-It lives in the `mnemos:` subtype namespace (so it passes tag-contract
+It lives in the `vesma:` subtype namespace (so it passes tag-contract
 validation without a new prefix) but its semantics are operational, not
 cognitive: a record carrying this tag is **excluded from all external
 exchange** — both batch export and mediated pull (federation).
@@ -184,7 +184,7 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 - An invalid `task:` slug is normalized when salvageable (case, spaces);
   an unsalvageable one is **dropped** — lax mode never mints a fake
   `task:unknown` scope.
-- Used by `mnemos migrate from-ai-brain` CLI command.
+- Used by `vesma migrate from-ai-brain` CLI command.
 
 ---
 
@@ -215,8 +215,8 @@ print(tc.task)          # "refactor-auth" ("" when the entry carries no task:)
 from mnemos.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
-    tags=["project:mnemos", "agent:tech-lead", "mnemos:decision"],
-    project="mnemos",
+    tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],
+    project="vesma",
     agent="tech-lead",
 )
 ```
@@ -228,36 +228,36 @@ m = Memory(
 ```
 mnemos_add(
     content="Discovered timing issue in FTS5 query planner.",
-    tags=["project:mnemos", "agent:copilot", "mnemos:bug-pattern"],
-    project="mnemos",
+    tags=["project:vesma", "agent:copilot", "mnemos:bug-pattern"],
+    project="vesma",
     agent="copilot",
 )
 ```
 
 ---
 
-## Bulk tag rename (`gcw:` → `mnemos:` and other prefix changes)
+## Bulk tag rename (`gcw:` → `vesma:` and other prefix changes)
 
-The `mnemos tags rename` command (and the equivalent `mnemos_tags_rename`
+The `vesma tags rename` command (and the equivalent `mnemos_tags_rename`
 MCP tool / `POST /tags/rename` HTTP endpoint) bulk-renames tags matching a
 source prefix to a target prefix across existing memories. It is the safe
-replacement for the deprecated `mnemos migrate tags` subcommand.
+replacement for the deprecated `vesma migrate tags` subcommand.
 
 ```bash
 # Dry-run first — preview only, nothing written (default)
-mnemos tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to mnemos: --dry-run
 
 # Apply the rename
-mnemos tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --no-dry-run
 
 # Restrict to specific subtypes
-mnemos tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
 
 # Scope to a single project / agent
-mnemos tags rename --from gcw: --to mnemos: --project mnemos --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --project vesma --no-dry-run
 
 # Send invalid subtypes to <to_prefix>legacy instead of skipping them
-mnemos tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
 ```
 
 **Why this is safe:** the rename goes through `SQLiteStore.update_fields`
@@ -274,7 +274,7 @@ contribution is small relative to content. The rename deliberately does
 **not** re-embed — semantic search continues to work because the stored
 vectors still point to the same memory ids and the FTS5 leg (which reflects
 the new tags via the trigger) carries tag-filtered queries. If exact
-tag-vector alignment is required, run `mnemos reindex` afterwards.
+tag-vector alignment is required, run `vesma reindex` afterwards.
 
 **Audit trail:** each call writes a single row to the trace table with
 `step="tags_rename"` recording the prefixes, dry-run flag, and counts.
@@ -317,19 +317,19 @@ FTS5-safe `UPDATE` (the `memories_au` trigger fires), so the external-content
 index stays consistent. The contract gate differs by action:
 
 - `rename` validates in **lax** mode — it is a prefix swap (e.g.
-  `gcw:` → `mnemos:`) that preserves required tags, so lax is the
+  `gcw:` → `vesma:`) that preserves required tags, so lax is the
   non-corrupting mode there.
 - `remove` / `add` validate the resulting tag set in **strict** mode — a
   contract-breaking result (e.g. removing the last `project:` tag, or adding
-  an invalid `mnemos:` subtype / a malformed slug) is rejected per memory with
+  an invalid `vesma:` subtype / a malformed slug) is rejected per memory with
   an entry in `errors` and the write is **skipped** for that memory, rather
   than corrupting the store.
 
 ```
-mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
+mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
 mnemos_tags(action="remove", tags=["severity:high"], dry_run=False)
 mnemos_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
-mnemos_tags(action="add", tags=["severity:high"], project="mnemos", dry_run=False)
+mnemos_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
 ```
 
 **Reports:** `rename` returns the same shape as `mnemos_tags_rename`
@@ -348,8 +348,8 @@ notice is added yet (that follows one release after the pilot lands).
 empty target as "magic". Because both validate the resulting set in strict
 mode, any contract-breaking result is rejected per memory with an entry in
 `errors` and the write is skipped for that memory: removing the last
-`project:`/`agent:`/`mnemos:` tag, adding a second `project:` tag, adding an
-invalid `mnemos:` subtype, adding a malformed slug, or adding a tag without a
+`project:`/`agent:`/`vesma:` tag, adding a second `project:` tag, adding an
+invalid `vesma:` subtype, adding a malformed slug, or adding a tag without a
 `:` prefix. `rename` stays lax (prefix swaps preserve required tags).
 
 ---
@@ -358,11 +358,11 @@ invalid `mnemos:` subtype, adding a malformed slug, or adding a tag without a
 
 ai-brain had no required tag schema. Migrating:
 
-1. Run `mnemos migrate from-ai-brain` — copies ai-brain SQLite to Mnemos store.
+1. Run `vesma migrate from-ai-brain` — copies ai-brain SQLite to Vesma store.
 2. Existing entries without `project:` / `agent:` get tag `mnemos:legacy` appended
    and are stored with `strict_tags=False`.
-3. Check the contract with `mnemos tags validate` (the full vault scan is
-   not yet wired in — inspect entries via `mnemos stats` or `GET /memories`
+3. Check the contract with `vesma tags validate` (the full vault scan is
+   not yet wired in — inspect entries via `vesma stats` or `GET /memories`
    meanwhile, see [cli-reference.md](cli-reference.md#tags-validate)).
 4. Edit entries manually to apply best-effort defaults
    (`project:unknown`, `agent:unknown`).
@@ -384,7 +384,7 @@ Common messages:
 |-----------------|-------|
 | `exactly one project:` | 0 or ≥2 `project:` tags |
 | `exactly one agent:` | 0 or ≥2 `agent:` tags |
-| `at least one mnemos:` | No `mnemos:` tag present |
+| `at least one vesma:` | No `vesma:` tag present |
 | `invalid mnemos: subtype` | Subtype not in allowed set |
 | `invalid slug for project:` | Slug contains uppercase or special chars |
 | `invalid slug for agent:` | Slug contains uppercase or special chars |

@@ -85,7 +85,7 @@ def agents_dir(tmp_path: Path) -> Path:
     directory = tmp_path / "agents"
     directory.mkdir()
 
-    # Agent with tools, no mnemos — needs wiring.
+    # Agent with tools, no memory tools — needs wiring.
     _write_agent(
         directory,
         "agent-architect.agent.md",
@@ -93,7 +93,7 @@ def agents_dir(tmp_path: Path) -> Path:
         tools=["read", "search", "execute", "edit"],
     )
 
-    # Agent already wired with mnemos wildcard.
+    # Agent already wired with a wildcard tool token.
     _write_agent(
         directory,
         "tech-lead.agent.md",
@@ -269,7 +269,7 @@ class TestDetectAgents:
 
         # wire_agent must not crash. The frontmatter parses successfully
         # (preprocessing quotes the description), so wiring proceeds and
-        # adds the mnemos wildcard tool.
+        # adds the memory-tool wildcard token.
         result = wire_agent(path, mode="wildcard")
         assert result.status == WireStatus.WIRED
         assert result.tools_added == ["mnemos/*"]
@@ -441,7 +441,7 @@ class TestVerifyAgents:
         summary = verify_agents(agents_dir)
 
         assert summary.total == 5
-        # tech-lead (wildcard) + mnemos-curator (precise) = 2 wired.
+        # tech-lead (wildcard) + curator (precise) = 2 wired.
         assert summary.wired == 2
         # cr-critic uses tool_profile.
         assert summary.skipped_tool_profile == 1

@@ -18,7 +18,7 @@ to v2**.
 
 ## Decision
 
-Cache Center is **not** a v1 feature. Mnemos v1 ships **without** a generic LLM call
+Cache Center is **not** a v1 feature. Vesma v1 ships **without** a generic LLM call
 cache. The v1-equivalent benefit is achieved by **per-pipeline idempotency keys** in
 M5 (policy engine):
 
@@ -60,5 +60,5 @@ M5 (policy engine):
 
 - `PLAN.md` §"Phase M11 — Cache Center (DEFERRED to v2)"
 - `ai-brain/docs/knowledge-pipeline-concept.md` (origin of the Cache Center sketch)
-- `src/mnemos/policy/` — idempotency implementation in M5
+- `src/vesma/policy/` — idempotency implementation in M5
 - `CHANGELOG.md` 0.1.0 — M11 marked `⏳ v2`

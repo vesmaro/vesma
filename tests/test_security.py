@@ -584,7 +584,7 @@ class TestSsrfBlocklist:
         """The `"0.0.0.0"` blocklist entry must carry a `# nosec B104` comment.
 
         B104 (bandit) flags the *string* "0.0.0.0" anywhere it appears. In
-        Mnemos the string is part of the SSRF blocklist — it is the address
+        Vesma the string is part of the SSRF blocklist — it is the address
         being REJECTED, not bound. The suppression is a confirmed false
         positive and is documented inline.
         """

@@ -1,6 +1,6 @@
 """S2 phase 2 — the background federation metadata poller (ADR-0021 Q10.2).
 
-ArchCom ruling Q10.1 (2026-09-20): ORCHESTRATION lives in the mnemos
+ArchCom ruling Q10.1 (2026-09-20): ORCHESTRATION lives in the Vesma
 process; the mesh is TRANSPORT. This module is the orchestration side
 of the poll-first metadata sync: a asyncio background task that, every
 tick, asks each configured peer for the next page of its

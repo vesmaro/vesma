@@ -1,4 +1,4 @@
-"""Slowapi rate-limiter singleton for Mnemos API (T-AUTH, ADR-0014).
+"""Slowapi rate-limiter singleton for Vesma API (T-AUTH, ADR-0014).
 
 Imported by both ``vesmaro.api.auth`` (for endpoint decorators) and
 ``vesmaro.api.main`` (to set ``app.state.limiter`` and register the

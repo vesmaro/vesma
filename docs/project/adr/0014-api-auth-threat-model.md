@@ -8,8 +8,8 @@
 
 ## Context
 
-Today the Mnemos HTTP API (`src/mnemos/api/main.py`) is loopback-bound
-(`api.host = "127.0.0.1"`, see `src/mnemos/config.py::ApiConfig`) with **no
+Today the Vesma HTTP API (`src/vesma/api/main.py`) is loopback-bound
+(`api.host = "127.0.0.1"`, see `src/vesma/config.py::ApiConfig`) with **no
 authentication**, **no CORS**, and **no rate limiting**. The implicit trust
 boundary is the OS user — anyone with a shell on the host can `curl` it.
 
@@ -17,9 +17,9 @@ A new client, **`mnemos-eyes`** (a browser/React SPA today, Tauri desktop +
 mobile later), needs to read and mutate the same API. Three deployment
 scenarios are now in play:
 
-1. **Local desktop** — operator runs both `mnemos serve` and `mnemos-eyes` on
+1. **Local desktop** — operator runs both `vesma serve` and `mnemos-eyes` on
    the same host. The browser hits `http://127.0.0.1:8787`.
-2. **Remote (LAN / VPN / tunnel)** — operator runs `mnemos serve` on a home
+2. **Remote (LAN / VPN / tunnel)** — operator runs `vesma serve` on a home
    server / VPS; a browser or mobile app reaches it from another device over
    the network.
 3. **Mobile** (future Tauri build) — same as remote, but from a phone that
@@ -34,7 +34,7 @@ allow-list).
 
 ## Decision
 
-Mnemos v1.x adds an opt-in authentication layer with two trust zones and
+Vesma v1.x adds an opt-in authentication layer with two trust zones and
 mandatory 2FA on the higher-trust zone. **The implementer (T-AUTH) builds
 exactly the contract in the "Implementation contract" subsection below.**
 
@@ -48,7 +48,7 @@ exactly the contract in the "Implementation contract" subsection below.**
 Enforcement is **server-side at startup**, not advisory:
 
 - If `api.host` resolves to a non-loopback address **and** (`api.auth_enabled
-  is False` **or** `api.totp_enabled is False`), `mnemos serve` exits non-zero
+  is False` **or** `api.totp_enabled is False`), `vesma serve` exits non-zero
   with a clear error. No flag bypasses this. Rationale: a misconfigured
   "I'll add auth later" deploy is exactly how memory servers leak in the wild.
 - Loopback may stay plain for the local-desktop scenario because the trust
@@ -77,7 +77,7 @@ Generation, storage, rotation:
   scanners (gitleaks-style detection).
 - **At rest**: only the **SHA-256 hash** of the token is persisted (config
   file or sqlite `auth_tokens` table). The plaintext is shown **once** on
-  creation (`mnemos auth token create`) and never again. Reason: a config-file
+  creation (`vesma auth token create`) and never again. Reason: a config-file
   read or a stolen DB does not yield a usable credential.
 - **Transport**: `Authorization: Bearer <token>` header only. Never accept
   the token in a query string (would be logged in proxies and browser
@@ -85,7 +85,7 @@ Generation, storage, rotation:
 - **Lifecycle**: tokens have an optional `expires_at`; unset = no expiry.
   Operator-driven rotation: create new token, distribute, revoke old. No
   auto-rotation in v1 (single-operator deployments do not benefit).
-- **Revocation**: `mnemos auth token revoke <token_id>` deletes the row;
+- **Revocation**: `vesma auth token revoke <token_id>` deletes the row;
   next request with that bearer returns 401.
 
 ### TOTP enrollment & verify flow
@@ -93,7 +93,7 @@ Generation, storage, rotation:
 TOTP secret per token (or per user, equivalent in the single-user model).
 Library: **`pyotp`** (RFC 6238, mature, no deps).
 
-1. **Enrollment** — `mnemos auth totp enroll [--token-id <id>]`:
+1. **Enrollment** — `vesma auth totp enroll [--token-id <id>]`:
    - Server generates a 160-bit secret (`pyotp.random_base32(length=32)`).
    - Returns the `otpauth://` URI + an ASCII QR (use `qrcode[pil]` only at CLI
      time; do not pull it into the server runtime).
@@ -146,7 +146,7 @@ the "rate-limit bypass via forged header" class.
 
 - **Loopback**: plain HTTP is acceptable. The kernel boundary is the trust
   boundary.
-- **Remote**: TLS is **mandatory**. Mnemos itself does **not** terminate TLS
+- **Remote**: TLS is **mandatory**. Vesma itself does **not** terminate TLS
   in v1 — it expects a reverse proxy (Caddy, Nginx, Traefik) in front. The
   server refuses to bind non-loopback if `api.behind_tls_proxy` is not set
   to `true` in config; this is an explicit operator acknowledgement, not a
@@ -240,7 +240,7 @@ table (T7).
 
 ### CLI environment propagation
 
-`mnemos serve` sets `MNEMOS_API__HOST` and `MNEMOS_API__PORT` in the OS
+`vesma serve` sets `MNEMOS_API__HOST` and `MNEMOS_API__PORT` in the OS
 environment before `uvicorn.run(...)` (or the equivalent subprocess exec).
 The worker's `@app.on_event("startup")` guard reads these values and calls
 `sys.exit(1)` with an explanatory message if the bind address is non-loopback
@@ -253,7 +253,7 @@ rather than relying solely on in-process config validation.
 The implementer of T-AUTH **must** ship exactly the surface below. Anything
 not on this list is out of scope for T-AUTH and requires a follow-up ADR.
 
-### Endpoints (new router: `src/mnemos/api/auth.py`, mounted at `/auth`)
+### Endpoints (new router: `src/vesma/api/auth.py`, mounted at `/auth`)
 
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
@@ -274,7 +274,7 @@ not on this list is out of scope for T-AUTH and requires a follow-up ADR.
   **Reject** with 401 if `auth_enabled is False` but client is not loopback
   (defense-in-depth against future misconfig).
 
-### CLI (extend `src/mnemos/cli.py`)
+### CLI (extend `src/vesma/cli.py`)
 
 ```text
 mnemos auth token create [--name <label>] [--expires <iso8601>]
@@ -285,7 +285,7 @@ mnemos auth totp disable --token-id <id>
 mnemos auth totp test    --token-id <id> --code <123456>
 ```
 
-### Config additions (`src/mnemos/config.py::ApiConfig`)
+### Config additions (`src/vesma/config.py::ApiConfig`)
 
 ```python
 class ApiConfig(BaseModel):
@@ -366,7 +366,7 @@ No new runtime services (no Redis, no separate process).
 
 **Positive**
 
-- Mnemos can be safely exposed on the LAN / over a tunnel without becoming
+- Vesma can be safely exposed on the LAN / over a tunnel without becoming
   the next "open Elasticsearch on the internet" story.
 - The browser SPA (`mnemos-eyes`) has a clear contract: bearer for headless,
   cookie + bearer for browser, CSRF-resistant by construction.
@@ -402,7 +402,7 @@ No new runtime services (no Redis, no separate process).
 - **JWT (HS256 or RS256)**. Rejected for a single-user/few-user
   self-hosted server: no audience for "stateless verify", revocation is
   worse, and the historical CVE surface (alg confusion, `kid` injection,
-  weak HMAC keys) is larger than opaque tokens. Reconsider only if Mnemos
+  weak HMAC keys) is larger than opaque tokens. Reconsider only if Vesma
   ever federates with another service.
 - **Basic auth + TOTP**. Rejected: forces the password into every request,
   doubles the credential-rotation pain, no clean revocation.
@@ -426,8 +426,8 @@ No new runtime services (no Redis, no separate process).
 - ADR-0013 — Production hardening gate (sets the standard this work
   upholds).
 - `docs/security.md` — operator-facing summary; update under T-AUTH.
-- `src/mnemos/api/main.py` — current loopback-only API.
-- `src/mnemos/config.py::ApiConfig` — config surface to extend.
+- `src/vesma/api/main.py` — current loopback-only API.
+- `src/vesma/config.py::ApiConfig` — config surface to extend.
 - RFC 6238 — TOTP.
 - OWASP ASVS 4.0 — V2 (Authentication), V3 (Session Management), V4
   (Access Control), V11 (BOLA / brute force). Findings tagged accordingly.

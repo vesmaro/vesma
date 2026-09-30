@@ -1,4 +1,4 @@
-"""Storage layer for Mnemos.
+"""Storage layer for Vesma.
 
 Submodules:
   - sqlite_store: SQLite FTS5 for raw/processing/processed/traces

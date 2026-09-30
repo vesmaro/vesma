@@ -1,4 +1,4 @@
-# ADR 0024: Unify Harness Connection behind `mnemos connect` and a Harness-Profile Registry
+# ADR 0024: Unify Harness Connection behind `vesma connect` and a Harness-Profile Registry
 
 **Status:** Accepted (Architectural Committee, 2026-09-06) — phased, 4.1.0 → 4.3
 **Deciders:** Tech Lead (chair), Product Architect, Analytics Lead,
@@ -16,7 +16,7 @@ users and loyalty. Today a harness is connected through any of:
 
 1. `install.sh --mcp`
 2. `scripts/mcp-setup.sh`
-3. `mnemos integration setup` over `integrations/targets.yaml`
+3. `vesma integration setup` over `integrations/targets.yaml`
 4. `integrations/mcp-presets.md` — manual copy-paste instructions
 5. `integrations/adapter-template.md` — for unknown harnesses
 
@@ -31,7 +31,7 @@ wrapper that turns the pieces into one command.
 
 ## Decision
 
-All harness-connection paths consolidate into one entry: **`mnemos connect
+All harness-connection paths consolidate into one entry: **`vesma connect
 [harness]`** — bare, it prints a detect-all listing and offers an
 interactive pick. It is a thin layer over the existing `IntegrationManager`;
 `integration setup` becomes an alias, so no parallel subsystem appears.
@@ -58,7 +58,7 @@ harnesses, complemented by a print-config mode.
 ```mermaid
 flowchart TB
     subgraph ENTRY["Single entry"]
-        C["mnemos connect [harness]<br/>bare = detect-all listing + interactive pick"]
+        C["vesma connect [harness]<br/>bare = detect-all listing + interactive pick"]
     end
     subgraph REG["Harness-profile registry (targets.yaml, shipped with the package)"]
         P["profile per harness:<br/>detect / deploy / layout /<br/>mcp / standing_instructions / post_steps"]
@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 **Definition of connect success** (fixed before merge, per Analytics):
-detect → register MCP → behavioral pack deployed → `mnemos doctor` green
+detect → register MCP → behavioral pack deployed → `vesma doctor` green
 (WARN allowed) for that harness. Metrics without telemetry (trust-first):
 time-to-connected ≤ 3 commands, PyPI extra split before/after, GitHub
 `connection`/`doctor` labels as a support-load proxy, and structured
@@ -96,13 +96,13 @@ time-to-connected ≤ 3 commands, PyPI extra split before/after, GitHub
 
 | Phase | Scope | Size | Release | Gate |
 |---|---|---|---|---|
-| P-B.1 | `mnemos connect` as an alias of `integration setup` + read-only detect-all listing | S | 4.1.0 | time-to-connected ≤ 3 commands |
+| P-B.1 | `vesma connect` as an alias of `integration setup` + read-only detect-all listing | S | 4.1.0 | time-to-connected ≤ 3 commands |
 | P-B.2 | registry fields `weight`/`post_steps`/`standing_instructions`; targets cursor/windsurf/claude-code (JSON-merge); `doctor` reads the registry | M | 4.2 | connect success per new target |
 | P-B.3 | Codex TOML-merge; deprecate `scripts/mcp-setup.sh`, `install.sh --mcp`, `integrations/mcp-presets.md` with warning pointers to `connect` | M | 4.3 | deprecation warnings live; presets move to history |
 
 Open points for implementation (non-blocking, from the committee contract):
-the final command-name pin (`mnemos connect` is the working consensus;
-`mnemos harness connect` may be revisited at P-B.1), and whether the
+the final command-name pin (`vesma connect` is the working consensus;
+`vesma harness connect` may be revisited at P-B.1), and whether the
 detect-all listing shows weights (top match vs full list) — decided at
 P-B.1 by a UX trial.
 

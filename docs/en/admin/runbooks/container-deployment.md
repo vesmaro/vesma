@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/container-deployment.md)
 
-> Admin-tier runbook for running Mnemos in a container. **The published image
+> Admin-tier runbook for running Vesma in a container. **The published image
 > is the primary path — pulling it is all you need; no local build required.**
 > Building from source is a fallback for development, custom patches, or
 > air-gapped environments. For real Kubernetes/K3s clusters use the Helm
@@ -23,8 +23,8 @@ One published image — `ghcr.io/vesmaro/vesmaro` — covers every path. Pick by
 | systemd quadlet | podman + systemd | Long-running user service with automatic restart |
 | Build from source | podman / buildah | Fallback: development, patches, air-gapped |
 
-The container exposes **port 8787** and uses two named volumes — `mnemos-data` (SQLite + vector index)
-and `mnemos-vault` (Obsidian markdown mirror); the compose path names them `vesmaro-data`/`vesmaro-vault`.
+The container exposes **port 8787** and uses two named volumes — `vesma-data` (SQLite + vector index)
+and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesmaro-data`/`vesmaro-vault`.
 
 ---
 
@@ -44,8 +44,8 @@ Pull the released image and start it directly — nothing to build:
 
 ```bash
 podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest tracks the newest release
-podman run -d --name mnemos \
-  -v mnemos-data:/data -v mnemos-vault:/vault \
+podman run -d --name vesma \
+  -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
   ghcr.io/vesmaro/vesmaro:4.3.0
@@ -92,7 +92,7 @@ To activate Ollama as the embedding provider, set `embedding.provider: ollama`
 in the container config (see [Configuration](#configuration)).
 
 > The repo-root [`compose.yaml`](../../../../compose.yaml) also uses the published image —
-> it keeps the historic `mnemos-*` resource names for existing podman-compose users.
+> it keeps the historic `vesma-*` resource names for existing podman-compose users.
 > The build-from-source flow is described in
 > [Build from source](#build-from-source-fallback).
 
@@ -118,7 +118,7 @@ Full guide with values, TLS and troubleshooting:
 
 ## Run — Kubernetes-style pod (podman kube play)
 
-Mnemos ships a Kubernetes-style pod manifest (`deploy/podman/kube/mnemos-pod.yaml`) compatible
+Vesma ships a Kubernetes-style pod manifest (`deploy/podman/kube/mnemos-pod.yaml`) compatible
 with `podman kube play`. The manifest pulls the published image, injects the TOTP key from a
 podman secret, and defines health probes.
 
@@ -127,8 +127,8 @@ podman secret, and defines health probes.
 ```bash
 printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesmaro-totp -
-podman volume create mnemos-data
-podman volume create mnemos-vault
+podman volume create vesma-data
+podman volume create vesma-vault
 podman kube play deploy/podman/kube/mnemos-pod.yaml
 ```
 
@@ -182,14 +182,14 @@ This copies `deploy/podman/quadlet/mnemos.container` to `~/.config/containers/sy
 ### Start and enable
 
 ```bash
-systemctl --user start mnemos
-systemctl --user enable mnemos   # autostart on login
+systemctl --user start vesma
+systemctl --user enable vesma   # autostart on login
 ```
 
 ### Check status
 
 ```bash
-systemctl --user status mnemos
+systemctl --user status vesma
 ```
 
 ---
@@ -201,7 +201,7 @@ systemctl --user status mnemos
 > need this section.
 
 ```bash
-podman build -t localhost/mnemos:4.3.0 -f Containerfile .
+podman build -t localhost/vesma:4.3.0 -f Containerfile .
 ```
 
 The `Containerfile` uses `python:3.12-slim` as the base, installs the package (the MCP SDK rides in core),
@@ -222,13 +222,13 @@ The deploy helper does the same:
 **Pushing to ghcr.io (maintainers):** the release pipeline (`scripts/local-release.sh`)
 pushes the versioned tag and `:latest` on every release — GitHub Actions are disabled, and
 this script is the canonical path (see [ci-cd.md](ci-cd.md)). The pipeline currently targets
-the legacy `ghcr.io/korrnals/mnemos` name (the flip is part of the 5.0.0 phase-g, GWS card
+the legacy `ghcr.io/korrnals/vesma` name (the flip is part of the 5.0.0 phase-g, GWS card
 #331); new releases are backfilled to the org namespace `ghcr.io/vesmaro/vesmaro` manually.
 Manual push, if ever needed (PAT with `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/mnemos:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
+podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
 podman push ghcr.io/vesmaro/vesmaro:4.3.0
 podman push ghcr.io/vesmaro/vesmaro:latest
 ```
@@ -237,7 +237,7 @@ podman push ghcr.io/vesmaro/vesmaro:latest
 
 ## Configuration
 
-Mnemos uses `config.container.yaml` as the container config. It is:
+Vesma uses `config.container.yaml` as the container config. It is:
 
 - Embedded in the image at build time as `/app/config.yaml`
 - Overridden by mounting your own config at the same path (read-only)
@@ -246,8 +246,8 @@ Key settings:
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| `mnemos.data_dir` | `/data` | Mapped to the `mnemos-data` named volume |
-| `mnemos.vault_path` | `/vault` | Mapped to the `mnemos-vault` named volume |
+| `mnemos.data_dir` | `/data` | Mapped to the `vesma-data` named volume |
+| `mnemos.vault_path` | `/vault` | Mapped to the `vesma-vault` named volume |
 | `api.host` | `0.0.0.0` | Binds to all interfaces — **requires auth** |
 | `api.port` | `8787` | Container-internal port; host mapping set in compose/run |
 | `api.auth_enabled` | `true` | Must stay `true` when `host` is `0.0.0.0` |
@@ -261,7 +261,7 @@ Binding to `0.0.0.0` **requires** both `auth_enabled: true` and `totp_enabled: t
 The TOTP master key must be supplied via the env spelling — it must never appear
 in the config file or in any committed file.
 
-Place Mnemos behind a TLS-terminating reverse proxy (Caddy, nginx, ingress, etc.).
+Place Vesma behind a TLS-terminating reverse proxy (Caddy, nginx, ingress, etc.).
 Set `trusted_proxies` to the CIDR of your proxy so that `X-Forwarded-For` headers are trusted.
 
 For the full threat model and auth configuration details, see [../security.md](../security.md).
@@ -282,7 +282,7 @@ Healthchecks probe the unauthenticated `/health` HTTP endpoint (compose and
 quadlet alike) — no CLI dependency. Check the current health state:
 
 ```bash
-podman inspect --format '{{.State.Health.Status}}' mnemos
+podman inspect --format '{{.State.Health.Status}}' vesma
 ```
 
 ### Status overview
@@ -297,14 +297,14 @@ Prints running containers (name, status, ports) and named volumes.
 
 ```bash
 ./scripts/deploy.sh shell
-# equivalent to: podman exec -it mnemos /bin/bash
+# equivalent to: podman exec -it vesma /bin/bash
 ```
 
 ### Run CLI inside the container
 
 ```bash
 ./scripts/deploy.sh cli search "hello"
-# equivalent to: podman exec mnemos mnemos search "hello"
+# equivalent to: podman exec vesma vesma search "hello"
 ```
 
 ---

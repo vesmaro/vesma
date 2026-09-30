@@ -2,7 +2,7 @@
 
 *Historical artifact — English only.*
 
-This directory contains the architectural decisions for Mnemos, recorded as
+This directory contains the architectural decisions for Vesma, recorded as
 ADRs (Architecture Decision Records) following the
 [Michael Nygard lightweight template](https://github.com/joelparkerhenderson/architecture_decision_records).
 
@@ -30,8 +30,8 @@ documented elsewhere, or anything that fits in a code comment.
 
 | ADR | Title | Status | Date |
 |---|---|---|---|
-| [0001](0001-fork-from-ai-brain.md) | Fork ai-brain into a standalone Mnemos product | Accepted | 2026-05-15 |
-| [0002](0002-gcw-tag-contract-strict-by-default.md) | Mnemos tag contract is strict by default at the MCP layer | Accepted | 2026-05-15 |
+| [0001](0001-fork-from-ai-brain.md) | Fork ai-brain into a standalone Vesma product | Accepted | 2026-05-15 |
+| [0002](0002-gcw-tag-contract-strict-by-default.md) | Vesma tag contract is strict by default at the MCP layer | Accepted | 2026-05-15 |
 | [0003](0003-knowledge-pipeline-vector-gating.md) | Knowledge Pipeline: gate vector indexing on `status="published"` | Accepted | 2026-05-15 |
 | [0004](0004-context-filter-mandatory-v1.md) | Context Filter is a mandatory v1 feature (raw + clean dual storage) | Accepted | 2026-05-15 |
 | [0005](0005-cache-center-deferred-to-v2.md) | Cache Center is deferred to v2 (idempotency from M5 covers v1) | Accepted | 2026-05-15 |
@@ -52,30 +52,30 @@ documented elsewhere, or anything that fits in a code comment.
 | [0021](0021-nano-model-track.md) | Nano-Model Track (bundled embedder and refiner) | Accepted | 2026-08-31 |
 | [0022](0022-licensing-foundation.md) | Licensing Foundation (Apache-2.0 core, open-core monetization, FSL triggers) | Accepted | 2026-09-03 |
 | [0023](0023-mcp-core-dependency.md) | MCP SDK moves into core dependencies (`mcp>=2.0,<3.0`) | Accepted | 2026-09-06 |
-| [0024](0024-unified-harness-connection.md) | Unified harness connection via `mnemos connect` over a harness-profile registry | Accepted | 2026-09-06 |
+| [0024](0024-unified-harness-connection.md) | Unified harness connection via `vesma connect` over a harness-profile registry | Accepted | 2026-09-06 |
 | [0025](0025-memory-meta-level-lanes.md) | Memory meta-level: retrieval lanes and area manifests (experiment precedes implementation; brain metaphor = narrative only) | Lanes leg FALSIFIED (ratified 2026-09-14); acceptance superseded for the lanes leg | 2026-09-08 |
 | [0026](0026-memory-value-observability.md) | Memory-value observability: passive metrics sidecar + S5 replay stand + F8 metric family | Accepted (with conditions) | 2026-09-09 |
 | [0027](0027-multi-context-memory.md) | Multi-context memory: compose existing context levels now; task primitive behind a pre-registered experiment gate | Accepted; Phase-2 decision appended 2026-09-28 (F1 PASS + owner arbitration — addendum §A) | 2026-09-14 |
 | [0028](0028-cache-contract.md) | Cache contract: prefix-stable content supply, tail discipline, and the harness boundary | Accepted | 2026-09-14 |
 | [0029](0029-search-v2-query-semantics.md) | Search v2 query semantics: per-token prefix AND, soft project fallback, graph leg, embedding_id stamp | Accepted | 2026-09-15 |
 | [0030](0030-memory-graph-self-fueling.md) | Memory Graph — the self-fueling graph (search graph line continuation) | Accepted; A0-review appended 2026-09-28 (gate re-baseline edges/post-A0-write ≥ 0.5 + S1/S2 — addendum §B) | 2026-09-15 |
-| [0031](0031-rebrand-mnemos-to-vesmaro.md) | Rebrand — mnemos → vesmaro (additive dual-prefix; legacy retires in 6.0) | Accepted | 2026-09-15 |
+| [0031](0031-rebrand-vesma-to-vesmaro.md) | Rebrand — mnemos → vesmaro (additive dual-prefix; legacy retires in 6.0) | Accepted | 2026-09-15 |
 | [0032](0032-project-graph.md) | Project graph as memory — sidecar `code_graph.db`, memory-first, waves PG-0..PG-3 behind gates | Accepted (with conditions — owner green-light per wave) | 2026-09-28 |
 
 ## Themes
 
-**Process / fork** (0001): how Mnemos came to be.
+**Process / fork** (0001): how Vesma came to be.
 
-**Contract / schema** (0002): how Mnemos and GCW agree on data shape.
+**Contract / schema** (0002): how Vesma and GCW agree on data shape.
 
 **Pipeline / data flow** (0003, 0004, 0005, 0006): how knowledge moves through
-Mnemos — vector gating, context filter, cache deferral, embedding choice.
+Vesma — vector gating, context filter, cache deferral, embedding choice.
 
-**External surface** (0007, 0009, 0010, 0012): what Mnemos exposes to GCW
+**External surface** (0007, 0009, 0010, 0012): what Vesma exposes to GCW
 (A2A API), to URL ingestion (SSRF guard), and how it tolerates being down
 (fallback isolation). 0012 is a tightening of 0009 discovered during M15.
 
-**Quality / hardening** (0008, 0011, 0013): how Mnemos earns "production-ready"
+**Quality / hardening** (0008, 0011, 0013): how Vesma earns "production-ready"
 — SQL safety, type strictness, M15 as a gate.
 
 ## Conventions

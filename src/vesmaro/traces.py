@@ -1,4 +1,4 @@
-"""Explainability / trace layer for Mnemos. (M6)
+"""Explainability / trace layer for Vesma. (M6)
 
 Records per-pipeline-step audit rows in SQLite traces table.
 

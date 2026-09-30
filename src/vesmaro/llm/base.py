@@ -1,4 +1,4 @@
-"""LLM provider interface for Mnemos.
+"""LLM provider interface for Vesma.
 
 All providers must implement this interface for use in the synthesis
 pipeline (M4) and context filter (M10).

@@ -12,7 +12,7 @@
 
 ## Обзор
 
-Mnemos предоставляет три метрических эндпоинта для фронтенда
+Vesma предоставляет три метрических эндпоинта для фронтенда
 `mnemos-eyes` и внешних инструментов наблюдаемости (Grafana, Prometheus,
 дашборды):
 
@@ -42,7 +42,7 @@ Mnemos предоставляет три метрических эндпоинт
   "volume": {
     "memories_total": 1248,
     "by_status": {"published": 980, "processed": 210, "raw": 58},
-    "by_project": {"mnemos": 540, "umbra": 708},
+    "by_project": {"vesma": 540, "umbra": 708},
     "by_agent": {"tech-lead": 620, "code-reviewer": 628},
     "by_type": {"note": 900, "decision": 200, "trace": 148}
   },
@@ -189,7 +189,7 @@ mnemos_memories_by_status{status="processed"} 210
 
 ```yaml
 scrape_configs:
-  - job_name: mnemos
+  - job_name: vesma
     static_configs:
       - targets: ["localhost:8787"]
     metrics_path: /api/v1/metrics
@@ -206,7 +206,7 @@ loopback-биндах** (локальному Prometheus-агенту, скре�
 
 ```yaml
 scrape_configs:
-  - job_name: mnemos
+  - job_name: vesma
     static_configs:
       - targets: ["mnemos.example.internal:8787"]
     metrics_path: /api/v1/metrics
@@ -244,7 +244,7 @@ Prometheus используйте `GET /api/v1/metrics`.
 **Пример**:
 
 ```http
-GET /memories?project=mnemos&status=published&tags=mnemos:decision&limit=10&offset=20
+GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offset=20
 ```
 
 **Ошибки**:
@@ -276,5 +276,5 @@ GET /memories?project=mnemos&status=published&tags=mnemos:decision&limit=10&offs
 ## См. также
 
 - [Справочник HTTP API](http-api.md) — все эндпоинты.
-- [Справочник CLI](cli-reference.md) — `mnemos stats`, `mnemos logs`.
+- [Справочник CLI](cli-reference.md) — `vesma stats`, `vesma logs`.
 - [Контекстный фильтр](context-filter.md) — секция `filter` в статистике.

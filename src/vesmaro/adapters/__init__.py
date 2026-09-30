@@ -1,4 +1,4 @@
-"""In-process harness adapters over the Mnemos provider contract.
+"""In-process harness adapters over the Vesma provider contract.
 
 ADR-0017 D1: adapters consume the memory server through the MnemosSDK
 facade and the lifecycle hooks — never through bespoke transport. The

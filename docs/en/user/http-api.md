@@ -2,12 +2,12 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/http-api.md)
 
-> Complete reference for the Mnemos HTTP API — memory CRUD, search, pipeline, DLQ, context filter, traces, path-scoped rules, the project graph (ADR-0032), and the A2A Sessions API (M16).
+> Complete reference for the Vesma HTTP API — memory CRUD, search, pipeline, DLQ, context filter, traces, path-scoped rules, the project graph (ADR-0032), and the A2A Sessions API (M16).
 
 The HTTP server is a FastAPI app served by Uvicorn. Start it with:
 
 ```bash
-mnemos serve --host 127.0.0.1 --port 8000
+vesma serve --host 127.0.0.1 --port 8000
 ```
 
 | Resource | URL |
@@ -58,7 +58,7 @@ For the same capabilities over other transports, see [mcp-tools.md](mcp-tools.md
 
 > **Gated by `api.auth_enabled`.** All four endpoints are mounted at `/auth`. When `api.auth_enabled=false` (default) these routes still exist but the middleware does not enforce credentials on other routes.
 
-The auth model uses **opaque bearer tokens** (prefix `mnk_`) with optional TOTP 2FA. Tokens are stored as PBKDF2-HMAC-SHA256 digests; the plaintext is shown once at `mnemos auth token create` and never again. Sessions are issued after a successful login (+ TOTP verify when `api.totp_enabled=true`) and carry the same `Authorization: Bearer <session>` shape.
+The auth model uses **opaque bearer tokens** (prefix `mnk_`) with optional TOTP 2FA. Tokens are stored as PBKDF2-HMAC-SHA256 digests; the plaintext is shown once at `vesma auth token create` and never again. Sessions are issued after a successful login (+ TOTP verify when `api.totp_enabled=true`) and carry the same `Authorization: Bearer <session>` shape.
 
 ### `POST /auth/login` — begin session
 
@@ -168,8 +168,8 @@ Prometheus-style metrics (M5 observability). Currently returns the same shape as
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -188,7 +188,7 @@ Returns every distinct tag in the memories store with its usage count.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tag` | string | Full tag string (e.g. `project:mnemos`). |
+| `tag` | string | Full tag string (e.g. `project:vesma`). |
 | `count` | int | Number of memories carrying this tag. |
 
 Sorted by `count` descending; ties are broken by `tag` ascending (alphabetical).
@@ -201,7 +201,7 @@ curl -s http://127.0.0.1:8000/tags
 
 ```json
 [
-  {"tag": "project:mnemos", "count": 142},
+  {"tag": "project:vesma", "count": 142},
   {"tag": "agent:tech-writer", "count": 58},
   {"tag": "mnemos:learning", "count": 41}
 ]
@@ -209,14 +209,14 @@ curl -s http://127.0.0.1:8000/tags
 
 ### `POST /tags/rename` — bulk rename a tag prefix
 
-Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → mnemos migration case). Mirrors the `mnemos_tags_rename` MCP tool and `mnemos tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
+Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → mnemos migration case). Mirrors the `mnemos_tags_rename` MCP tool and `vesma tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
 
 **Request body**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `from_prefix` | string | — | Source prefix (e.g. `gcw`). |
-| `to_prefix` | string | — | Target prefix (e.g. `mnemos`). |
+| `to_prefix` | string | — | Target prefix (e.g. `vesma`). |
 | `subtypes` | string[] \| null | `null` | Optional whitelist of subtypes to rename. |
 | `dry_run` | bool | `true` | Preview without writing. |
 | `project` / `agent` | string \| null | `null` | Scope the rename to one project / agent. |
@@ -238,7 +238,7 @@ M2 tag contract is enforced server-side. The endpoint derives `project` and `age
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Primary text. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 | `source` | string | no | `manual` | One of `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | no | — | Origin URL. |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -256,7 +256,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
   }'
 ```
 
@@ -265,11 +265,11 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
   "title": "Use uv, not pip",
-  "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+  "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
   "source": "manual",
   "memory_type": "note",
   "status": "raw",
-  "project": "mnemos",
+  "project": "vesma",
   "agent": "tech-writer",
   "created_at": "2026-06-15T10:42:00+00:00",
   "updated_at": "2026-06-15T10:42:00+00:00",
@@ -282,7 +282,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `mnemos:`) |
+| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) |
 | `500` | SQLite / vault write failure |
 
 ### `GET /memories/{memory_id}` — read one
@@ -325,7 +325,7 @@ curl -s http://127.0.0.1:8000/memories/550e8400-e29b-41d4-a716-446655440000
 **Example**
 
 ```bash
-curl -s "http://127.0.0.1:8000/memories?project=mnemos&limit=10"
+curl -s "http://127.0.0.1:8000/memories?project=vesma&limit=10"
 ```
 
 ---
@@ -369,7 +369,7 @@ RRF fusion of FTS5 and vector legs. Only `published` memories are searched by de
 
 **Query semantics:** the FTS5 leg treats the WHOLE `query` string as one quoted phrase (adjacent tokens, in order — `_build_fts_query` quotes the entire input). A keyword-set query like `postgres migration` matches only that exact phrase; to find individual keywords, issue separate single-term queries.
 
-**Request body** — see `SearchQuery` in `src/mnemos/models.py`
+**Request body** — see `SearchQuery` in `src/vesmaro/models.py`
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -396,7 +396,7 @@ RRF fusion of FTS5 and vector legs. Only `published` memories are searched by de
 ```bash
 curl -s -X POST http://127.0.0.1:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "embedding model", "project": "mnemos", "limit": 5}'
+  -d '{"query": "embedding model", "project": "vesma", "limit": 5}'
 ```
 
 ```json
@@ -405,7 +405,7 @@ curl -s -X POST http://127.0.0.1:8000/search \
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "score": 0.812,
     "search_type": "hybrid"
   }
@@ -448,7 +448,7 @@ Returns the most recent entries for a single agent, optionally filtered by proje
 **Example**
 
 ```bash
-curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=mnemos&limit=5"
+curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=vesma&limit=5"
 ```
 
 ---
@@ -499,7 +499,7 @@ Builds structured Markdown from the supplied fields and stores it as a
 curl -s -X POST http://127.0.0.1:8000/context/save \
   -H "Content-Type: application/json" \
   -d '{
-    "project": "mnemos",
+    "project": "vesma",
     "goals": "Finish HTTP API docs for all 15 tools",
     "completed": "- Updated plugin.yaml\n- Updated prompt mode",
     "in_progress": "Document /context/save and /context/recall",
@@ -535,13 +535,13 @@ filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "checkpoints": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Session checkpoint — 2026-07-07T12:00:00+00:00",
       "content": "# Session checkpoint — 2026-07-07T12:00:00+00:00\n\n## Goals\nFinish HTTP API docs for all 15 tools\n",
-      "tags": ["project:mnemos", "agent:user", "mnemos:checkpoint"],
+      "tags": ["project:vesma", "agent:user", "mnemos:checkpoint"],
       "created_at": "2026-07-07T12:00:00+00:00"
     }
   ]
@@ -552,7 +552,7 @@ filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "checkpoints": [],
   "message": "No context found. Start by saving context with POST /context/save."
 }
@@ -563,7 +563,7 @@ filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/recall \
   -H "Content-Type: application/json" \
-  -d '{"project": "mnemos", "limit": 3}'
+  -d '{"project": "vesma", "limit": 3}'
 ```
 
 ---
@@ -615,7 +615,7 @@ the block prefix is byte-stable for harness-side KV caching.
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/assemble \
   -H "Content-Type: application/json" \
-  -d '{"session": "sess-42", "project": "mnemos", "file": "src/manager.py", "budget": 1024}'
+  -d '{"session": "sess-42", "project": "vesma", "file": "src/manager.py", "budget": 1024}'
 ```
 
 Full field-by-field documentation: [`mcp-tools.md` → `mnemos_assemble_context`](mcp-tools.md#mnemos_assemble_context).
@@ -664,7 +664,7 @@ version-less (replacement lineage is an optional `supersedes` edge).
 ```bash
 curl -s -X POST http://127.0.0.1:8000/context/rewrite \
   -H "Content-Type: application/json" \
-  -d '{"content": "<original block text>", "project": "mnemos", "agent": "zcode",
+  -d '{"content": "<original block text>", "project": "vesma", "agent": "zcode",
        "session": "sess-42", "supersedes": "3f2a…", "diff": "was: v1 → became: v2",
        "include_marker": true}'
 ```
@@ -715,7 +715,7 @@ validation can later prove provenance.
 ```bash
 curl -s -X POST http://127.0.0.1:8000/hooks/post_tool_call \
   -H "Content-Type: application/json" \
-  -d '{"session": "sess-42", "project": "mnemos", "agent": "zcode",
+  -d '{"session": "sess-42", "project": "vesma", "agent": "zcode",
        "tool_name": "bash", "output_text": "<60+ lines of build log>",
        "auto_compress": true}'
 ```
@@ -781,7 +781,7 @@ When `cached` is `false` (content < ~500 chars), `hash` is empty and
 ```bash
 curl -s -X POST http://127.0.0.1:8000/compress \
   -H "Content-Type: application/json" \
-  -d '{"text": "<8KB of log output>", "profile": "log", "project": "mnemos"}'
+  -d '{"text": "<8KB of log output>", "profile": "log", "project": "vesma"}'
 ```
 
 ### `POST /retrieve` — retrieve a CCR-cached original
@@ -924,7 +924,7 @@ Mirrors the `mnemos_ingest_url` plugin tool.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | **yes** | HTTP/HTTPS URL to fetch. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 
 **Response 201**
 
@@ -943,7 +943,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
-    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
   }'
 ```
 
@@ -951,7 +951,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `mnemos:`) or missing `url` |
+| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) or missing `url` |
 | `500` | Fetch failure, extraction failure, or SQLite / vault write failure |
 
 ---
@@ -992,7 +992,7 @@ keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Full document text to chunk and ingest. |
 | `doc_id` | string | **yes** | Logical document identity; stable across re-ingest. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 | `title` | string | no | Optional document title. |
 | `source_url` | string | no | Optional provenance URL. |
 
@@ -1018,7 +1018,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
     "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
     "doc_id": "dep-guide",
     "title": "Deployment Guide",
-    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
   }'
 ```
 
@@ -1033,7 +1033,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 ## Project graph (ADR-0032)
 
-The `/graph/` namespace mirrors the ten [`mnemos_*graph*` MCP tools](mcp-tools.md#project-graph-tools-adr-0032) over a registered project's code graph (symbols, outlines, snippets — [ADR-0032](../../project/adr/0032-project-graph.md)).
+The `/graph/` namespace mirrors the ten [`vesma_*graph*` MCP tools](mcp-tools.md#project-graph-tools-adr-0032) over a registered project's code graph (symbols, outlines, snippets — [ADR-0032](../../project/adr/0032-project-graph.md)).
 
 > **Default off — operator flag.** Every endpoint answers `503` until the operator sets `code_graph.enabled: true`.
 
@@ -1075,7 +1075,7 @@ Full or incremental indexation of the registered project root. Serialized per pr
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/index \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/status/{project_id}` — project graph status
@@ -1086,7 +1086,7 @@ Volumes, freshness, parse failures and the poisoned count. `agent` is a required
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "nodes": 2143,
   "edges": 5107,
   "files": 400,
@@ -1100,7 +1100,7 @@ Volumes, freshness, parse failures and the poisoned count. `agent` is a required
 **Example**
 
 ```bash
-curl -s "http://127.0.0.1:8000/graph/status/mnemos?agent=ci-runner"
+curl -s "http://127.0.0.1:8000/graph/status/vesma?agent=ci-runner"
 ```
 
 ### `POST /graph/search` — search the project graph
@@ -1125,10 +1125,10 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "mnemos", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1142,7 +1142,7 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/search \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "query": "window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "query": "window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/trace` — trace the path from a symbol
@@ -1164,7 +1164,7 @@ BFS over project edges from one symbol (resolve by qname; ambiguous refusals nam
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [ { "id": "mnemos#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
@@ -1181,7 +1181,7 @@ BFS over project edges from one symbol (resolve by qname; ambiguous refusals nam
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/trace \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/outline` — symbol outline of one file
@@ -1203,7 +1203,7 @@ Symbol outline of one indexed file — shapes, never bodies (PG1). Repo-relative
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "lang": "python",
   "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
@@ -1219,7 +1219,7 @@ Symbol outline of one indexed file — shapes, never bodies (PG1). Repo-relative
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/outline \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/snippet` — secret-scanned line range from disk
@@ -1242,7 +1242,7 @@ Read a line range FROM DISK (PG4): poisoned refusal (permanent) → confinement 
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
@@ -1260,7 +1260,7 @@ Read a line range FROM DISK (PG4): poisoned refusal (permanent) → confinement 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/snippet \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/coverage` — batch coverage check
@@ -1280,7 +1280,7 @@ Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "coverage": [
     { "path": "src/vesmaro/manager.py", "verdict": "stale" },
     { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" }
@@ -1293,7 +1293,7 @@ Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/coverage \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/schema` — graph contract card
@@ -1316,7 +1316,7 @@ Node/edge kinds, token contract, limits, schema version; an optional `project_id
 **Example**
 
 ```bash
-curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=mnemos"
+curl -s "http://127.0.0.1:8000/graph/schema?agent=ci-runner&project_id=vesma"
 ```
 
 ### `GET /graph/projects` — list graph projects
@@ -1328,7 +1328,7 @@ Registered projects joined with their index status; registered-but-never-indexed
 ```json
 {
   "projects": [
-    { "project": "mnemos", "registered": true, "has_root": true, "nodes": 2143, "edges": 5107, "files": 400, "poisoned": 0, "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+    { "project": "vesma", "registered": true, "has_root": true, "nodes": 2143, "edges": 5107, "files": 400, "poisoned": 0, "last_indexed_at": "2026-09-28T12:00:04+00:00" }
   ],
   "has_more": false,
   "cursor": 0
@@ -1348,13 +1348,13 @@ Drop the project's graph INDEX (sidecar data only — never the project entity).
 **Response 200**
 
 ```json
-{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
 ```
 
 **Example**
 
 ```bash
-curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/mnemos?agent=operator" \
+curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/vesma?agent=operator" \
   -H "Content-Type: application/json" \
   -d '{"reason": "reindex from scratch"}'
 ```
@@ -1382,9 +1382,9 @@ These endpoints manage the in-process watch poll: a single cooperative thread ch
 ```json
 {
   "status": "registered",
-  "project": "mnemos",
-  "project_id": "mnemos",
-  "root": "/home/you/projects/mnemos",
+  "project": "vesma",
+  "project_id": "vesma",
+  "root": "/home/you/projects/vesma",
   "agent": "ci-runner",
   "session": null,
   "registered_at": "2026-09-28T12:00:00+00:00",
@@ -1402,7 +1402,7 @@ These endpoints manage the in-process watch poll: a single cooperative thread ch
 ```bash
 curl -s -X POST http://127.0.0.1:8000/watch/start \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "mnemos", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "agent": "ci-runner"}'
 ```
 
 ### `POST /watch/stop` — stop watch registrations
@@ -1418,7 +1418,7 @@ Idempotent. The optional `project_id` query parameter stops one registration; wi
 **Example**
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=mnemos"
+curl -s -X POST "http://127.0.0.1:8000/watch/stop?project_id=vesma"
 ```
 
 ### `GET /watch/status` — watch poll status
@@ -1433,7 +1433,7 @@ Active registrations and the last poll outcome per project.
   "watch_enabled": true,
   "cap": 8,
   "registrations": [
-    { "project": "mnemos", "project_id": "mnemos", "root": "/home/you/projects/mnemos", "agent": "ci-runner", "session": null, "registered_at": "2026-09-28T12:00:00+00:00", "interval_sec": 5.0, "runs": 3, "reindexes": 1, "last_run_at": "2026-09-28T12:00:15+00:00", "last_result": "fresh", "last_error": null }
+    { "project": "vesma", "project_id": "vesma", "root": "/home/you/projects/vesma", "agent": "ci-runner", "session": null, "registered_at": "2026-09-28T12:00:00+00:00", "interval_sec": 5.0, "runs": 3, "reindexes": 1, "last_run_at": "2026-09-28T12:00:15+00:00", "last_result": "fresh", "last_error": null }
   ]
 }
 ```
@@ -1476,7 +1476,7 @@ Cluster → synthesize → quality gate → publish. Heavy operation; can take s
 **Example**
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/process?project=mnemos&limit=200"
+curl -s -X POST "http://127.0.0.1:8000/process?project=vesma&limit=200"
 ```
 
 ### `POST /synthesize` — synthesize one cluster
@@ -1575,7 +1575,7 @@ refuse mode → 403 with no content).
 |------|------|-------------|
 | `memory_id` | UUID | Target memory. |
 
-**Request body** — see `FilterRequest` in `src/mnemos/models.py`
+**Request body** — see `FilterRequest` in `src/vesmaro/models.py`
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -1637,8 +1637,8 @@ The trace layer is the explainability hook. Every pipeline step writes a trace r
 curl -s -X POST http://127.0.0.1:8000/rules/ingest \
   -H "Content-Type: application/json" \
   -d '{
-    "rules_dir": "/home/you/mnemos/.github/instructions",
-    "project": "mnemos",
+    "rules_dir": "/home/you/vesma/.github/instructions",
+    "project": "vesma",
     "agent": "tech-writer"
   }'
 ```
@@ -1727,7 +1727,7 @@ Idempotent on `message_id`: a repeat POST with the same `message_id` returns the
   "to": null,
   "summary": null,
   "key_decisions": [],
-  "content": "Hello, Mnemos.",
+  "content": "Hello, Vesma.",
   "outcome": null,
   "tags": [],
   "context_pointer": "ctx-...",
@@ -1772,7 +1772,7 @@ Result is sorted by `step_number` ascending. `total` is the number of turns actu
 
 ## Memory schema
 
-The `Memory` Pydantic model (defined in `src/mnemos/models.py`) is returned by `POST /memories`, `GET /memories/{id}`, and `GET /memories`.
+The `Memory` Pydantic model (defined in `src/vesmaro/models.py`) is returned by `POST /memories`, `GET /memories/{id}`, and `GET /memories`.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -1802,7 +1802,7 @@ The `Memory` Pydantic model (defined in `src/mnemos/models.py`) is returned by `
 
 ## OpenAPI / Swagger
 
-The full machine-readable schema is available at `/openapi.json` (3.1.0) and rendered as a UI at `/docs` (Swagger) and `/redoc` (ReDoc). These are generated by FastAPI from the route decorators in `src/mnemos/api/main.py` and `src/mnemos/sessions/api.py`, so the schema never drifts from the running code.
+The full machine-readable schema is available at `/openapi.json` (3.1.0) and rendered as a UI at `/docs` (Swagger) and `/redoc` (ReDoc). These are generated by FastAPI from the route decorators in `src/vesmaro/api/main.py` and `src/vesmaro/sessions/api.py`, so the schema never drifts from the running code.
 
 If you need to generate a static client, fetch the schema and run [`openapi-generator`](https://openapi-generator.tech/) against it:
 

@@ -7,7 +7,7 @@
 ### Full backup
 
 ```bash
-# Mnemos data + vault
+# Vesma data + vault
 tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
   ~/.mnemos/data \
   ~/.mnemos/vault
@@ -17,7 +17,7 @@ tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
 
 ```bash
 # Daily backup at 02:00
-0 2 * * * tar czf ~/backups/mnemos-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
+0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
 ```
 
 ## Restore
@@ -35,7 +35,7 @@ rsync -a mnemos-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
 
 ## Point-in-time recovery
 
-Mnemos creates automatic DB backups before migrations:
+Vesma creates automatic DB backups before migrations:
 
 ```bash
 ls ~/.mnemos/data/*.backup-*
@@ -59,4 +59,4 @@ print(json.dumps([dict(r) for r in rows], indent=2, default=str))
 
 ### Import from JSON
 
-Use `mnemos add --file` or API `POST /memories` for bulk import.
+Use `vesma add --file` or API `POST /memories` for bulk import.

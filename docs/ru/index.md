@@ -1,8 +1,8 @@
-# Документация Mnemos (Русский)
+# Документация Vesma (Русский)
 
 **🌐 Language / Язык:** [English](../en/index.md) · Русский
 
-> Mnemos — автономный сервер памяти и знаний для AI-агентов. Даёт каждому агенту
+> Vesma — автономный сервер памяти и знаний для AI-агентов. Даёт каждому агенту
 > настоящую долгосрочную память — структурированную, доступную для поиска,
 > управляемую строгим контрактом тегов, — которая переживает сессии, рестарты
 > и сжатие контекста. Один локальный сервер, три поверхности управления
@@ -12,49 +12,49 @@
 
 ## Установка (одна команда)
 
-Mnemos опубликован на **PyPI**:
+Vesma опубликован на **PyPI** (голый слот — наш, со времён ребрендинга):
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
 Модель эмбеддингов по умолчанию (`mnema-embed-v1`, ~30 МБ) встроена в wheel —
 поиск работает полностью офлайн, на CPU, без API-ключей и без скачиваний.
-Изолированный вариант: `uv tool install mnemos-memory-server` или
-`pipx install mnemos-memory-server`.
+Изолированный вариант: `uv tool install vesma` или `pipx install vesma`.
 
-> ⚠️ Имя пакета на PyPI — **`mnemos-memory-server`**: `pip install mnemos`
-> устанавливает не связанный проект.
+> ⚠️ **Имена.** Пакет на PyPI — **`vesma`**. Доребрендинговый пакет
+> `mnemos-memory-server` остаётся живым до deprecation (`pip install mnemos-memory-server`
+> ставит тот же сервер). Голый `pip install vesma` — посторонний сторонний проект.
 
-npm (расширение pi): `pi-mnemos` · `mnemos-pi` · `@korrlabs/mnemospi` ·
-`@korrlabs/mnemos-pi`. Контейнер: `ghcr.io/vesmaro/vesmaro`.
+npm (расширение pi): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` ·
+`@korrlabs/vesma-pi`. Контейнер: `ghcr.io/vesmaro/vesmaro`.
 
 ---
 
 ## Подключите ваш харнес
 
 **MCP — основная поверхность интеграции.** Любой харнесс с поддержкой MCP
-говорит с Mnemos по одному и тому же stdio-проводу. Полные инструкции для
+говорит с Vesma по одному и тому же stdio-проводу. Полные инструкции для
 копирования для каждого харнесса собраны на одной странице:
-**[Подключите Mnemos к любому харнесу](../../integrations/mcp-presets.md)**.
+**[Подключите Vesma к любому харнесу](../../integrations/mcp-presets.md)**.
 
 | Харнесс | Самый быстрый путь |
 |---------|--------------------|
 | VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash` — или блок `mcp.json` в одно действие со страницы пресетов |
-| Claude Code | `claude mcp add --scope user mnemos -- mnemos mcp-server` |
+| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
 | Cursor | одна строка в `~/.cursor/mcp.json` |
 | OpenCode | один блок в `~/.config/opencode/opencode.json` |
 | Codex | один TOML-блок в `~/.codex/config.toml` |
 | Windsurf | та же JSON-строка, что для Cursor, в `~/.codeium/windsurf/mcp_config.json` |
-| ZCode / pi | `mnemos integration setup --target zcode` / `--target pi` |
-| Hermes Agent | нативный in-process плагин — `mnemos integration setup --target hermes` |
+| ZCode / pi | `vesma integration setup --target zcode` / `--target pi` |
+| Hermes Agent | нативный in-process плагин — `vesma integration setup --target hermes` |
 | Всё остальное | [adapter-template.md](../../integrations/adapter-template.md) — Connect / Expose / Configure |
 
 Чтобы заодно развернуть **поведенческий слой** (инструкции памяти, 14+ скиллов,
 режим промпта, wiring агентов), чтобы агенты *знали когда и как* пользоваться памятью:
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
 Таргеты, флаги и полная карта развёртывания: [integration-guide.md](user/integration-guide.md).
@@ -64,24 +64,25 @@ mnemos integration setup
 | Свойство | Значение |
 |----------|---------|
 | Протокол | MCP поверх **stdio JSON-RPC 2.0** |
-| Имя сервера | `mnemos` |
+| Имя сервера | `vesma` (ключ реестра в конфигах харнесов: `vesma` — контракт двойного префикса) |
 | Транспорт | stdio — без TCP-порта |
-| Префикс инструментов | `mnemos_` |
-| Запуск | `mnemos mcp-server` |
+| Префикс инструментов | `vesma_` |
+| Запуск | `vesma mcp-server` |
 
 ### Режим автосбора
 
-Установите `MNEMOS_AUTO_COLLECT=1` в блоке `env` сервера, чтобы Mnemos предлагал
+Установите `VESMARO_AUTO_COLLECT=1` (легаси-написание `MNEMOS_AUTO_COLLECT`, устарело)
+в блоке `env` сервера, чтобы Vesma предлагал
 агенту вызывать `mnemos_save_context` каждые ~6 вызовов инструментов
 (проактивные напоминания о чекпоинтах). О компромиссах:
 [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#режим-auto-collect).
 
-### 38 MCP-инструментов (префикс `mnemos_`)
+### 38 MCP-инструментов (префикс `vesma_`)
 
 | Инструмент | Назначение |
 |-----------|-----------|
 | `mnemos_search` | Гибридный поиск FTS5 + вектор со слиянием ранжирования RRF (по умолчанию — опубликованные записи) |
-| `mnemos_add` | Создать запись — **соблюдает контракт тегов Mnemos** |
+| `mnemos_add` | Создать запись — **соблюдает контракт тегов Vesma** |
 | `mnemos_filter` | Прогнать или обновить контекстный фильтр на существующей записи (например, с другим профилем) |
 | `mnemos_agent_recall` | Recall по агенту (M3) — последние записи одного агента |
 | `mnemos_save_context` | Сохранить чекпоинт сессии |
@@ -127,8 +128,8 @@ mnemos integration setup
 
 | Если вы… | Читайте |
 |----------|---------|
-| Устанавливаете Mnemos впервые | [user/getting-started.md](user/getting-started.md) |
-| Подключаете конкретный харнес | [Подключите Mnemos к любому харнесу](../../integrations/mcp-presets.md) |
+| Устанавливаете Vesma впервые | [user/getting-started.md](user/getting-started.md) |
+| Подключаете конкретный харнес | [Подключите Vesma к любому харнесу](../../integrations/mcp-presets.md) |
 | Ищете конкретную команду / флаг | [user/cli-reference.md](user/cli-reference.md) |
 | Ищете конкретный MCP-инструмент | [user/mcp-tools.md](user/mcp-tools.md) |
 | Разрабатываете HTTP-клиент | [user/http-api.md](user/http-api.md) |
@@ -142,10 +143,10 @@ mnemos integration setup
 - [Карта функционала](features.md) — что работает из коробки, что частично, что в плане (v4.0.0).
 - [Начало работы](user/getting-started.md) — установка → первая запись → первый поиск → подключение харнеса.
 - [Руководство по интеграции](user/integration-guide.md) — поведенческий слой, таргеты развёртывания, wiring MCP-инструментов к агентам, плагин Hermes.
-- [Справочник MCP-инструментов](user/mcp-tools.md) — все инструменты `mnemos_*`.
+- [Справочник MCP-инструментов](user/mcp-tools.md) — все инструменты `vesma_*`.
 - [Справочник HTTP API](user/http-api.md) — все эндпоинты, форматы запросов и ответов, коды ошибок.
-- [Справочник CLI](user/cli-reference.md) — все подкоманды `mnemos` с флагами, значениями по умолчанию и примерами.
-- [Контракт тегов](user/tag-contract.md) — схема M2, обязательная для каждой записи (`project:`, `agent:`, `mnemos:`).
+- [Справочник CLI](user/cli-reference.md) — все подкоманды `vesma` с флагами, значениями по умолчанию и примерами.
+- [Контракт тегов](user/tag-contract.md) — схема M2, обязательная для каждой записи (`project:`, `agent:`, `vesma:`).
 - [Контекстный фильтр](user/context-filter.md) — пятиступенчатый очиститель шума (dedup, noise, extract, compress, tokens) с профилями и автофильтром.
 
 ---

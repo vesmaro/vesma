@@ -1,10 +1,10 @@
 # Federation — Phase 1 prerequisites (per-peer ACL + trigger codes + access log)
 
-This page documents the federation prerequisites on the **mnemos**
+This page documents the federation prerequisites on the **vesma**
 side — per-peer ACL, the trigger-codes enum, and the federation access
 log — and remains the reference for the `PeerConfig` field set and the
 trigger-code contract. The mediated-pull request path itself is live:
-`handle_pull` in `src/mnemos/federation_server.py` serves
+`handle_pull` in `src/vesmaro/federation_server.py` serves
 `POST /api/v1/federation/pull`, and the end-to-end verification guide is
 [`federation-testing.md`](federation-testing.md). The original rollout
 was staged (Phase 1: config + enums + log; Phase 2: the server), so
@@ -12,8 +12,8 @@ some sections below keep the Phase 1/Phase 2 wording.
 
 - **Config + contract (this page):** per-peer ACL config, trigger codes
   enum, federation access log.
-- **Live request path:** `src/mnemos/federation_server.py` (B side) and
-  `src/mnemos/api/federation.py` (route adapter). The external Go peer
+- **Live request path:** `src/vesmaro/federation_server.py` (B side) and
+  `src/vesmaro/api/federation.py` (route adapter). The external Go peer
   binary lives in a separate repo, `mnemos-mesh`.
 - **References:** ArchCom contract 2026-07-17
   (`.archcom/sessions/2026-07-17-federation-contract.md` §3.2, §6, §9,
@@ -21,7 +21,7 @@ some sections below keep the Phase 1/Phase 2 wording.
 
 ## 1. Per-peer ACL — `federation.peers`
 
-Phase 1 extends `FederationConfig` (`src/mnemos/config.py`) with a
+Phase 1 extends `FederationConfig` (`src/vesmaro/config.py`) with a
 `peers: dict[str, PeerConfig]` map. Each peer is keyed by its A2A id
 (for example `mnemos-A`) and describes what that peer is allowed to
 pull. The global `federation.shared_projects` whitelist stays as the
@@ -58,13 +58,13 @@ All values below are RFC-reserved dummies — never real tokens.
 ```yaml
 federation:
   shared_projects:
-    - mnemos
+    - vesma
     - project-umbra
   peers:
     mnemos-A:
       bearer_token_env: MNEMOS_FED_PEER_A_TOKEN
       allowed_projects:
-        - mnemos
+        - vesma
       allowed_types:
         - decision
         - learning
@@ -78,7 +78,7 @@ The token value lives in the named env var (here
 `MNEMOS_FED_PEER_A_TOKEN`), set in the operator's environment or
 secret manager — never committed to the config file.
 
-## 2. Trigger codes — `src/mnemos/trigger_codes.py`
+## 2. Trigger codes — `src/vesmaro/trigger_codes.py`
 
 Contract §9 replaces a per-session query budget with an
 **exhaustive response** plus a trigger code. The B side (Phase 2
@@ -105,7 +105,7 @@ Phase 1 defines the enum and the two helpers. Phase 2 wires the codes
 into the server (returned in the payload) and the client (dispatched on
 receive).
 
-## 3. Federation access log — `src/mnemos/federation_access_log.py`
+## 3. Federation access log — `src/vesmaro/federation_access_log.py`
 
 Contract §10. A B-side append-only JSONL audit log at
 `~/.mnemos/logs/federation-access.jsonl` that records who queried
@@ -147,7 +147,7 @@ Module helper: `hash_topic(topic: str) -> str` — `SHA-256(topic)` hex.
 ### Not replicated — B-side only
 
 The access log lives **only on B**. It is never exported, never synced
-to peers, never included in `mnemos export`. Like the moderation
+to peers, never included in `vesma export`. Like the moderation
 mapping table, it is a leak surface — replicating it would let a peer
 reconstruct another peer's query history.
 

@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/admin/kubernetes-deployment.md)
 
-> Admin-tier guide for deploying the full Vesmaro (Mnemos) server into any
+> Admin-tier guide for deploying the full Vesmaro (Vesma) server into any
 > Kubernetes 1.25+ cluster — vanilla K8s, K3s, kind, k0s — with the bundled
 > Helm chart (`deploy/helm/vesmaro/`): Deployment, Service, **Ingress**,
 > two PersistentVolumeClaims and the TOTP secret.
@@ -39,7 +39,7 @@ helm install vesmaro deploy/helm/vesmaro \
   --namespace vesmaro --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 ```
 
 K3s (Traefik + local-path are the defaults, so nothing extra is needed):
@@ -97,14 +97,14 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # long agent calls
     cert-manager.io/cluster-issuer: letsencrypt-prod         # if cert-manager installed
   hosts:
-    - host: mnemos.example.com
+    - host: vesma.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: vesmaro-tls
       hosts:
-        - mnemos.example.com
+        - vesma.example.com
 ```
 
 The server runs with `behind_tls_proxy: true` by default and trusts
@@ -138,7 +138,7 @@ backfilled from the legacy user namespace in the 4.3.0 wave) and are
 remains available for private-registry setups or rate limits, but is not
 needed for this image.
 
-The release pipeline still targets the legacy `ghcr.io/korrnals/mnemos` name
+The release pipeline still targets the legacy `ghcr.io/korrnals/vesma` name
 until the 5.0.0 registry migration (ADR-0031 / GWS card #331, phase g); new
 releases are backfilled to the org namespace manually in the meantime.
 

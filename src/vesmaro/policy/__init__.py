@@ -1,4 +1,4 @@
-"""Policy engine and automation layer for Mnemos. (M5)
+"""Policy engine and automation layer for Vesma. (M5)
 
 Submodules:
   scheduler — APScheduler periodic tasks (cluster every 1h, synthesize every 6h, …)

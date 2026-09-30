@@ -91,7 +91,7 @@ def hash_token(token: str) -> str:
 
 
 class AuthStore:
-    """Thread-safe auth storage backed by the shared mnemos SQLite database."""
+    """Thread-safe auth storage backed by the shared Vesma SQLite database."""
 
     def __init__(self, db_path: Path) -> None:
         self._lock = threading.RLock()

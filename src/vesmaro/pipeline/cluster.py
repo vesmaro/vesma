@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def _seed_uuid(seed: str) -> str:
-    """Deterministic UUID v5 in the mnemos namespace."""
+    """Deterministic UUID v5 in the Vesma namespace."""
     ns = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # UUID namespace OID
     return str(uuid.uuid5(ns, seed))
 

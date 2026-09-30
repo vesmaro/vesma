@@ -1,4 +1,4 @@
-"""ASGI auth middleware for Mnemos API (T-AUTH, ADR-0014).
+"""ASGI auth middleware for Vesma API (T-AUTH, ADR-0014).
 
 Sits after CORS, before routes.  Logic:
 

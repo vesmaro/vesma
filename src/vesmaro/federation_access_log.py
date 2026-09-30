@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 from vesmaro.trigger_codes import TriggerCode
 
 # Default log location — under ~/.mnemos/logs/ alongside the other
-# mnemos logs (sync-audit.jsonl, vesmaro.log). Resolved lazily so the
+# logs (sync-audit.jsonl, vesmaro.log). Resolved lazily so the
 # module import never touches the filesystem.
 DEFAULT_LOG_PATH = Path("~/.mnemos/logs/federation-access.jsonl")
 
@@ -91,7 +91,7 @@ class FederationAccessLog:
     interleave lines, not corrupt individual entries.
 
     The log is **never** exported, **never** synced to peers, and
-    **never** included in ``mnemos export``. It is a leak surface
+    **never** included in ``vesma export`` (CLI legacy: ``mnemos export``). It is a leak surface
     (contract §10 "Где хранится").
     """
 

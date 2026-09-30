@@ -1,4 +1,4 @@
-"""Knowledge pipeline for Mnemos.
+"""Knowledge pipeline for Vesma.
 
 Stages: raw → [cluster] → processing → [synthesize + quality_gate]
         → processed → [publish] → published

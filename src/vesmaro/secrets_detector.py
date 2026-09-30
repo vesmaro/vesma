@@ -1,4 +1,4 @@
-"""Secrets detection scanner for the mnemos federation defence-in-depth.
+"""Secrets detection scanner for the Vesma federation defence-in-depth.
 
 This module is the **single source of truth** for secret-pattern detection
 across vesmaro. It is consumed by three defence-in-depth layers
@@ -175,7 +175,7 @@ class SecretFinding:
     logged. Use ``pattern_name`` and counts in log messages.
     Programmatic consumers (redaction, masking) may read ``matched_value``
     to perform the replacement, but it must never enter log records, chat
-    output, mnemos memory content, or commits.
+    output, Vesma memory content, or commits.
     """
 
     pattern_name: str

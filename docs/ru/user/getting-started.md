@@ -2,10 +2,10 @@
 
 **🌐 Language / Язык:** [English](../../en/user/getting-started.md) · Русский
 
-> Полное руководство первого запуска Mnemos — от установки одной командой до
+> Полное руководство первого запуска Vesma — от установки одной командой до
 > первой записи, первого поиска и подключённого агентского харнеса.
 
-Mnemos опубликован на PyPI — без клонирования, сборки и знания venv. Эта страница
+Vesma опубликован на PyPI — без клонирования, сборки и знания venv. Эта страница
 проводит вас через весь первый запуск. Каждая команда выполнима на чистой Linux /
 macOS / WSL2-машине.
 
@@ -18,13 +18,13 @@ MCP-инструменту — [mcp-tools.md](mcp-tools.md). По каждому
 
 ## Установка
 
-Mnemos опубликован на PyPI как **`mnemos-memory-server`**. Выберите строку под ваш сценарий:
+Vesma опубликован на PyPI пакетом **`vesma`** (голый слот — наш, со времён ребрендинга). Выберите строку под ваш сценарий:
 
 | Вы хотите… | Команда | Что получите |
 |-----------|---------|--------------|
-| **Всё сразу** — обычный случай: сервер плюс MCP-поверхность, с которой разговаривает харнес | `pip install mnemos-memory-server` | сервер + CLI `mnemos` + REST API + MCP-сервер |
-| Команда `mnemos` в `PATH`, проектные окружения не тронуты | `uv tool install mnemos-memory-server` — или `pipx install mnemos-memory-server` | то же самое, изолированно |
-| Плюс внешнее LLM-дообогащение | `pip install "mnemos-memory-server[ollama]"` — также `openai`, `anthropic`, `gemini` | + SDK выбранного провайдера |
+| **Всё сразу** — обычный случай: сервер плюс MCP-поверхность, с которой разговаривает харнес | `pip install vesma` | сервер + CLI `vesma` + REST API + MCP-сервер |
+| Команда `vesma` в `PATH`, проектные окружения не тронуты | `uv tool install vesma` — или `pipx install vesma` | то же самое, изолированно |
+| Плюс внешнее LLM-дообогащение | `pip install "vesma[ollama]"` — также `openai`, `anthropic`, `gemini` | + SDK выбранного провайдера |
 
 > **Один пакет, без экстры.** Начиная с 4.1.0 MCP SDK — основная зависимость (ADR-0023):
 > базовая установка обслуживает агентские харнесы из коробки, а легасная экстра `[mcp]`
@@ -32,12 +32,14 @@ Mnemos опубликован на PyPI как **`mnemos-memory-server`**. Вы�
 > Модель эмбеддингов `mnema-embed-v1` (~30 МБ) встроена в wheel: поиск работает полностью
 > офлайн, на CPU, без загрузок и без API-ключей.
 
-> ⚠️ **Не перепутайте имя.** `pip install mnemos` (без `-memory-server`) устанавливает
-> посторонний проект, которому принадлежит это имя на PyPI.
+> ⚠️ **Имена.** Продукт и CLI — `vesma` (`pip install vesma`). Доребрендинговый пакет
+> `mnemos-memory-server` живёт до deprecation и ставит тот же сервер
+> (`pip install "mnemos-memory-server[ollama]"` работает весь двойной период). Голый
+> `pip install vesma` — посторонний сторонний проект, не используйте его.
 
 ### Скриптовый вариант (без решений)
 
-Установщик создаёт изолированный venv в `~/.mnemos/venv`, кладёт лаунчер `mnemos`
+Установщик создаёт изолированный venv в `~/.mnemos/venv`, кладёт лаунчер `vesma`
 в `~/.local/bin` и в том же запуске предлагает настроить VS Code MCP и развернуть
 integration-пак:
 
@@ -49,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 
 | Метод | Команда |
 |-------|---------|
-| Зафиксировать версию | `pip install mnemos-memory-server==4.1.0` |
+| Зафиксировать версию | `pip install vesma==4.3.0` (*пин до ребрендинга: `mnemos-memory-server==4.1.0` ставится до deprecation*) |
 | Контейнер одной командой | `… install.sh \| bash -s -- --container` — см. [container-deployment.md](../admin/runbooks/container-deployment.md) |
 | Из исходников (контрибьюторам) | `git clone https://github.com/vesmaro/vesmaro && cd vesmaro && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — см. [CONTRIBUTING.ru.md](../../../CONTRIBUTING.ru.md) |
 
@@ -64,15 +66,19 @@ pip install https://github.com/vesmaro/vesmaro/releases/download/v4.3.0/mnemos_m
 ```
 <!-- /version:pip -->
 
+<!-- deprecated-note: релизы 5.x идут wheel'ом `vesma` (голый слот PyPI); имя артефакта
+mnemos_memory_server-*.whl покрывает линейку 4.x до deprecation. -->
+
 **Готовый образ** (публикуется в `ghcr.io/vesmaro/vesmaro`; работает и `docker` — замените `podman` на `docker`):
 
 ```bash
-export MNEMOS_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-podman run -d --name mnemos \
+export VESMARO_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+# образы 4.x дополнительно принимают легаси-написание MNEMOS_API__TOTP_MASTER_KEY (deprecated)
+podman run -d --name vesma \
   -p 8787:8787 \
-  -v mnemos-data:/data \
-  -v mnemos-vault:/vault \
-  -e MNEMOS_API__TOTP_MASTER_KEY="${MNEMOS_API__TOTP_MASTER_KEY}" \
+  -v vesma-data:/data \
+  -v vesma-vault:/vault \
+  -e VESMARO_API__TOTP_MASTER_KEY="${VESMARO_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
   ghcr.io/vesmaro/vesmaro:4.3.0
 <!-- /version:image -->
@@ -91,14 +97,14 @@ curl -s http://localhost:8787/health | jq
 <details>
 <summary><strong>Опциональные экстры</strong> — внешние LLM-провайдеры, только если нужны</summary>
 
-Mnemos вызывает внешние LLM для синтеза в конвейере (M4) и дообработки — никогда
+Vesma вызывает внешние LLM для синтеза в конвейере (M4) и дообработки — никогда
 для хранения или поиска. Устанавливайте только нужное:
 
 ```bash
-uv pip install "mnemos-memory-server[ollama]"      # локальный Ollama (провайдер по умолчанию)
-uv pip install "mnemos-memory-server[openai]"      # OpenAI / Azure OpenAI
-uv pip install "mnemos-memory-server[anthropic]"   # Anthropic Claude
-uv pip install "mnemos-memory-server[gemini]"      # Google Gemini
+uv pip install "vesma[ollama]"      # локальный Ollama (провайдер по умолчанию)
+uv pip install "vesma[openai]"      # OpenAI / Azure OpenAI
+uv pip install "vesma[anthropic]"   # Anthropic Claude
+uv pip install "vesma[gemini]"      # Google Gemini
 ```
 
 Провайдер по умолчанию — `ollama`, указывающий на `http://localhost:11434`.
@@ -113,7 +119,7 @@ uv pip install "mnemos-memory-server[gemini]"      # Google Gemini
 | Python | ≥ 3.11 | Минимальная среда выполнения (решается через `pip` — ручной venv не нужен) |
 | `uv` или `pipx` | последняя | Опционально, для изолированной tool-установки |
 
-> **Замечание об ОС.** Mnemos разрабатывается на Linux (Arch, Fedora, Ubuntu 22.04+)
+> **Замечание об ОС.** Vesma разрабатывается на Linux (Arch, Fedora, Ubuntu 22.04+)
 > и регулярно проходит smoke-тест на macOS. Windows работает через WSL2. Юнит systemd
 > в `contrib/systemd/` — только для Linux.
 
@@ -125,7 +131,7 @@ uv pip install "mnemos-memory-server[gemini]"      # Google Gemini
 ## Первая запись (CLI)
 
 ```bash
-mnemos add "Hello world" --tags project:test agent:getting-started mnemos:learning
+vesma add "Hello world" --tags project:test agent:getting-started mnemos:learning
 ```
 
 Ожидаемый вывод:
@@ -134,7 +140,7 @@ mnemos add "Hello world" --tags project:test agent:getting-started mnemos:learni
 ✓ Saved: Hello world (550e8400-e29b-41d4-a716-446655440000)
 ```
 
-Mnemos автоматически:
+Vesma автоматически:
 
 1. **Записал запись в SQLite** по пути `~/.mnemos/data/mnemos.db` (создаётся при первом запуске).
 2. **Отразил её в Obsidian-vault** `~/.mnemos/vault/` как markdown-файл с YAML-фронтматтером.
@@ -144,12 +150,12 @@ Mnemos автоматически:
 
 Контракт тегов описан в [tag-contract.md](tag-contract.md). Коротко: каждая запись требует
 **ровно одного** `project:<slug>`, **ровно одного** `agent:<slug>` и **хотя бы одного**
-`mnemos:<subtype>` (например, `mnemos:learning`, `mnemos:bug-pattern`, `mnemos:decision`).
+`vesma:<subtype>` (например, `mnemos:learning`, `mnemos:bug-pattern`, `mnemos:decision`).
 
 > **Замечание.** Только что добавленные записи получают статус `raw`. Фоновый процессор
 > (работает в режимах MCP и HTTP API) автоматически кластеризует, синтезирует, проверяет
 > качество и публикует их. Индекс векторного поиска включает только записи в статусе
-> `published`. Перестроить его вручную: `mnemos reindex` (CLI) или `POST /reindex` (HTTP API).
+> `published`. Перестроить его вручную: `vesma reindex` (CLI) или `POST /reindex` (HTTP API).
 
 ---
 
@@ -159,7 +165,7 @@ Mnemos автоматически:
 и сливает ранжирования через Reciprocal Rank Fusion (RRF):
 
 ```bash
-mnemos search "hello"
+vesma search "hello"
 ```
 
 Полезные флаги:
@@ -177,26 +183,26 @@ mnemos search "hello"
 ## Подключите ваш харнес (MCP)
 
 MCP-сервер — основная поверхность интеграции: ваш агентский харнес порождает
-`mnemos mcp-server` по stdio и получает полный набор инструментов `mnemos_*`.
+`vesma mcp-server` по stdio и получает полный набор инструментов `vesma_*`.
 Выберите свой харнес:
 
 | Харнесс | Самый быстрый путь |
 |---------|--------------------|
 | VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash`, затем перезагрузить окно |
-| Claude Code | `claude mcp add --scope user mnemos -- mnemos mcp-server` |
+| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
 | Cursor | вставить одну строку в `~/.cursor/mcp.json` |
 | OpenCode | вставить один блок в `~/.config/opencode/opencode.json` |
 | Codex / Windsurf | по одному TOML / JSON блоку |
-| ZCode, pi, Hermes Agent | `mnemos integration setup --target zcode` / `--target pi` / `--target hermes` |
+| ZCode, pi, Hermes Agent | `vesma integration setup --target zcode` / `--target pi` / `--target hermes` |
 | Всё остальное | [adapter-template.md](../../../integrations/adapter-template.md) |
 
 **Полные инструкции для копирования для каждого харнесса собраны на одной странице:
-[Подключите Mnemos к любому харнесу](../../../integrations/mcp-presets.md).** Поведенческий
+[Подключите Vesma к любому харнесу](../../../integrations/mcp-presets.md).** Поведенческий
 слой — инструкции, скиллы и режим промпта, из-за которых агенты реально *пользуются*
 памятью, — отдельный шаг в один проход:
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
 Таргеты и флаги — в [руководстве по интеграции](integration-guide.md).
@@ -206,17 +212,22 @@ mnemos integration setup
 ```jsonc
 {
   "servers": {
-    "mnemos": {
+    "vesma": {
       "type": "stdio",
-      "command": "mnemos",
+      "command": "vesma",
       "args": ["mcp-server"]
     }
   }
 }
 ```
 
-> **Подсказка — режим автосбора.** Установите `MNEMOS_AUTO_COLLECT=1` в блоке `env`
-> сервера, чтобы Mnemos предлагал агенту вызывать `mnemos_save_context` каждые ~6
+> **Примечание о ключе реестра.** Ключ `"vesma"` в MCP-конфигах — это *регистрационное имя*
+> сервера, которое integration-слой читает и ведёт (`servers["vesma"]`); ребрендингом оно не
+> тронуто. *Команда* — `vesma mcp-server`.
+
+> **Подсказка — режим автосбора.** Установите `VESMARO_AUTO_COLLECT=1` (легаси-написание:
+> `MNEMOS_AUTO_COLLECT`, устарело) в блоке `env`
+> сервера, чтобы Vesma предлагал агенту вызывать `mnemos_save_context` каждые ~6
 > вызовов инструментов. О компромиссах см. [mcp-tools.md#auto-collect-mode](mcp-tools.md#режим-auto-collect).
 
 ---
@@ -226,7 +237,7 @@ mnemos integration setup
 Для не-MCP клиентов, дашбордов и A2A-трафика:
 
 ```bash
-mnemos serve --host 127.0.0.1 --port 8787
+vesma serve --host 127.0.0.1 --port 8787
 ```
 
 | Эндпоинт | Назначение |
@@ -251,12 +262,12 @@ curl -s http://127.0.0.1:8787/health | jq
 ## Проверьте установку
 
 ```bash
-mnemos doctor
+vesma doctor
 ```
 
 прогоняет проверки здоровья по хранилищу, конфигу, MCP-транспорту и известным
 регистрациям харнесов — и печатает по строке PASS/WARN/FAIL на каждую проверку.
-`mnemos doctor --fix` автоматически устраняет типовые предупреждения (устаревшие
+`vesma doctor --fix` автоматически устраняет типовые предупреждения (устаревшие
 файлы интеграции, неподключённые агенты, отсутствующая регистрация MCP).
 
 Полный девелоперский гейт (только для контрибьюторов): клонируйте репозиторий,
@@ -269,16 +280,16 @@ bandit + pip-audit + набор тестов. Если `pip-audit` жалует�
 ## Миграция с legacy ai-brain
 
 Если у вас есть старая установка `ai-brain` (`~/.ai-brain/ai_brain.db` +
-`~/brain-vault/`), Mnemos импортирует её одной командой. Сначала dry-run:
+`~/brain-vault/`), Vesma импортирует её одной командой. Сначала dry-run:
 
 ```bash
-mnemos migrate from-ai-brain --dry-run
+vesma migrate from-ai-brain --dry-run
 ```
 
 Прочитайте сводку, затем запускайте по-настоящему:
 
 ```bash
-mnemos migrate from-ai-brain
+vesma migrate from-ai-brain
 ```
 
 Мигратор переводит легаси-типы источников, исправляет контракт тегов
@@ -290,7 +301,7 @@ mnemos migrate from-ai-brain
 
 ## Конфигурация
 
-Mnemos читает `config.yaml` из текущего каталога или `~/.mnemos/config.yaml`.
+Vesma читает `config.yaml` из текущего каталога или `~/.mnemos/config.yaml`.
 Полная схема — в [config.example.yaml](../../../config.example.yaml). Самые полезные ручки:
 
 | Параметр | По умолчанию | Назначение |
@@ -300,18 +311,18 @@ Mnemos читает `config.yaml` из текущего каталога или 
 | `mnemos.strict_tag_contract` | `true` | Принуждать контракт тегов (`false` — только для легаси-импортов) |
 | `embedding.provider` | `nano` | `nano` (mnema-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Вес векторной ноги в RRF (0.0 = чистый FTS, 1.0 = чистый вектор). Дефолт перенастроен 0.7 → 0.5: баланс ног не даёт доминированию векторной ноги топить FTS-совпадения ранга 1 (issue #300) |
-| `api.host` / `api.port` | `127.0.0.1` / `8787` | Значения по умолчанию для `mnemos serve` |
+| `api.host` / `api.port` | `127.0.0.1` / `8787` | Значения по умолчанию для `vesma serve` |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Синтез конвейера и контекстный фильтр |
 
-Любой из них переопределяется переменными окружения (`MNEMOS_*`, `__` — разделитель вложенности):
+Любой из них переопределяется переменными окружения (`VESMARO_*`, `__` — разделитель вложенности; написание 4.x `MNEMOS_*` устарело):
 
 ```bash
-MNEMOS_SEARCH__HYBRID_ALPHA=0.7 mnemos search "deployment"
+VESMARO_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 ```
 
 ### Логирование
 
-Mnemos пишет логи в `~/.mnemos/logs/mnemos.log` по умолчанию (ротация, 10 МБ × 3 файла):
+Vesma пишет логи в `~/.mnemos/logs/mnemos.log` по умолчанию (ротация, 10 МБ × 3 файла):
 
 ```yaml
 logging:
@@ -321,25 +332,25 @@ logging:
   backup_count: 3
 ```
 
-CLI: `mnemos --verbose serve` для уровня DEBUG, `mnemos serve --log-file /path/to/log`
+CLI: `vesma --verbose serve` для уровня DEBUG, `vesma serve --log-file /path/to/log`
 для переопределения пути.
 
 ---
 
 ## Устранение неполадок
 
-### Команда `mnemos` не найдена
+### Команда `vesma` не найдена
 
 Если ставили обычным `pip` в venv — venv должен быть активирован. Предпочитайте
-изолированную установку (`uv tool` / `pipx` / `install.sh`) — она кладёт `mnemos`
+изолированную установку (`uv tool` / `pipx` / `install.sh`) — она кладёт `vesma`
 в `PATH` в каждом шелле (`~/.local/bin`; добавьте каталог в `PATH`, если ваш
 дистрибутив этого не делает).
 
-### `mnemos mcp-server` падает с ошибкой импорта `mcp`
+### `vesma mcp-server` падает с ошибкой импорта `mcp`
 
 Установка сломана либо поверх основного SDK лёг чужой `mcp` 1.x:
 `pip install --force-reinstall mnemos-memory-server` (SDK — основная зависимость с 4.1.0 —
-ADR-0023; после переустановки транспорт подтверждает `mnemos doctor`).
+ADR-0023; после переустановки транспорт подтверждает `vesma doctor`).
 
 ### Поиск возвращает только «raw» записи
 
@@ -350,7 +361,7 @@ ADR-0023; после переустановки транспорт подтве�
 
 ### `sqlite3.OperationalError: database is locked`
 
-Другой процесс `mnemos` (CLI, MCP или HTTP) держит блокировку записи. SQLite
+Другой процесс `vesma` (CLI, MCP или HTTP) держит блокировку записи. SQLite
 использует WAL-режим, но писатель в каждый момент один. Закройте другой процесс
 или дождитесь коммита его транзакции (таймаут по умолчанию — 5 с). Для
 мульти-харнесных установок выдайте каждому харнесу свой data dir — см. замечание
@@ -360,8 +371,8 @@ ADR-0023; после переустановки транспорт подтве�
 
 1. Проверьте, что конфиг харнеса парсится (валидный JSONC / TOML, без висячих запятых).
 2. Перезапустите харнес после правки конфига.
-3. Проверьте провод напрямую: `printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | mnemos mcp-server` — JSON-RPC-ответ с `"serverInfo":{"name":"mnemos"...}` означает, что серверная сторона в порядке.
-4. Запустите `mnemos doctor` — проверки MCP-транспорта и регистраций укажут на сломанное звено.
+3. Проверьте провод напрямую: `printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | vesma mcp-server` — JSON-RPC-ответ с `"serverInfo":{"name":"vesma"...}` означает, что серверная сторона в порядке. (Имя в serverInfo остаётся `vesma` весь двойной период — часть контракта MCP-регистрации.)
+4. Запустите `vesma doctor` — проверки MCP-транспорта и регистраций укажут на сломанное звено.
 
 ---
 
@@ -369,7 +380,7 @@ ADR-0023; после переустановки транспорт подтве�
 
 | Если хотите… | Читайте |
 |--------------|---------|
-| Подключить конкретный харнес (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes…) | [Подключите Mnemos к любому харнесу](../../../integrations/mcp-presets.md) |
+| Подключить конкретный харнес (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes…) | [Подключите Vesma к любому харнесу](../../../integrations/mcp-presets.md) |
 | Развернуть поведенческий пакет (инструкции / скиллы / промпты / wiring агентов) | [integration-guide.md](integration-guide.md) |
 | Посмотреть все подкоманды CLI | [cli-reference.md](cli-reference.md) |
 | Посмотреть все MCP-инструменты | [mcp-tools.md](mcp-tools.md) |

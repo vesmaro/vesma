@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/admin/kubernetes-deployment.md) · Русский
 
-> Admin-руководство по развёртыванию полноценного сервера Vesmaro (Mnemos)
+> Admin-руководство по развёртыванию полноценного сервера Vesmaro (Vesma)
 > в любом кластере Kubernetes 1.25+ — ванильный K8s, K3s, kind, k0s — с помощью
 > helm-чарта (`deploy/helm/vesmaro/`): Deployment, Service, **Ingress**,
 > два PersistentVolumeClaim и секрет с TOTP-ключом.
@@ -39,7 +39,7 @@ helm install vesmaro deploy/helm/vesmaro \
   --namespace vesmaro --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 ```
 
 K3s (Traefik и local-path — дефолты, ничего дополнительно не нужно):
@@ -97,14 +97,14 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # длинные агентские вызовы
     cert-manager.io/cluster-issuer: letsencrypt-prod         # если установлен cert-manager
   hosts:
-    - host: mnemos.example.com
+    - host: vesma.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: vesmaro-tls
       hosts:
-        - mnemos.example.com
+        - vesma.example.com
 ```
 
 Сервер по умолчанию работает с `behind_tls_proxy: true` и доверяет
@@ -136,7 +136,7 @@ helm upgrade vesmaro deploy/helm/vesmaro -n vesmaro --reuse-values \
 pull работает без всяких креденшелов. `image.pullSecrets` остаётся доступным
 для приватных реестров и rate-limit'ов, но для этого образа не нужен.
 
-Релизный конвейер пока таргетит легаси-имя `ghcr.io/korrnals/mnemos` до
+Релизный конвейер пока таргетит легаси-имя `ghcr.io/korrnals/vesma` до
 миграции реестра в 5.0.0 (ADR-0031 / GWS card #331, фаза g); новые релизы
 в это время дотягиваются в org-неймспейс вручную.
 

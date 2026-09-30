@@ -7,7 +7,7 @@
 контент от шума **до** того, как он попадёт к модели. Фильтр запускается
 автоматически при каждом `mnemos_add` (когда `auto_filter: true`) и может
 быть повторно применён к существующим записям через MCP-инструмент
-`mnemos_filter` или CLI-команду `mnemos filter`.
+`mnemos_filter` или CLI-команду `vesma filter`.
 
 ---
 
@@ -88,7 +88,7 @@ mnemos:
 ### CLI — одна запись
 
 ```bash
-mnemos filter <memory-id>
+vesma filter <memory-id>
 ```
 
 Перезапускает фильтр на существующей записи. Автоопределяет профиль, если
@@ -96,8 +96,8 @@ mnemos filter <memory-id>
 результирующий `clean_content`.
 
 ```bash
-mnemos filter abc123 --profile terminal
-mnemos filter abc123 --budget 2000
+vesma filter abc123 --profile terminal
+vesma filter abc123 --budget 2000
 ```
 
 | Флаг | Описание |
@@ -110,7 +110,7 @@ mnemos filter abc123 --budget 2000
 ### CLI — все записи
 
 ```bash
-mnemos filter --all
+vesma filter --all
 ```
 
 Итерирует все записи батчами и пере применяет фильтр. Полезно после
@@ -155,7 +155,7 @@ mnemos filter --all
 - **Неверный авто-профиль** — лог определён как `default`; перезапустите с
   `--profile log`, чтобы убрать временные метки и извлечь сигналы.
 - **Старые нефильтрованные записи** — записи, добавленные до включения
-  `auto_filter`, не имеют `clean_content`. Запустите `mnemos filter --all`
+  `auto_filter`, не имеют `clean_content`. Запустите `vesma filter --all`
   для бэкфилла.
 - **Новый профиль** — после обновления конвейера с новым профилем,
   перефильтруйте, чтобы воспользоваться улучшенными эвристиками.
@@ -164,9 +164,9 @@ mnemos filter --all
 
 ---
 
-## Метрики фильтра в `mnemos stats`
+## Метрики фильтра в `vesma stats`
 
-`mnemos stats` включает секцию фильтра со здоровьем хранилища:
+`vesma stats` включает секцию фильтра со здоровьем хранилища:
 
 ```text
 auto_filter: True
@@ -185,7 +185,7 @@ by_profile: {'log': 48, 'terminal': 52, 'code': 22, 'default': 20}
 | `by_profile` | Количество записей по определённым профилям |
 
 Высокий `unfiltered_count` относительно `filtered_count` — повод запустить
-`mnemos filter --all` для бэкфилла.
+`vesma filter --all` для бэкфилла.
 
 ---
 
@@ -269,5 +269,5 @@ mnemos:
 ## См. также
 
 - [Руководство по интеграции](integration-guide.md) — поведенческие инструкции, говорящие агентам *когда* фильтровать.
-- [Справочник MCP-инструментов](mcp-tools.md) — полный каталог инструментов `mnemos_*`.
-- [Справочник CLI](cli-reference.md) — все подкоманды `mnemos`.
+- [Справочник MCP-инструментов](mcp-tools.md) — полный каталог инструментов `vesma_*`.
+- [Справочник CLI](cli-reference.md) — все подкоманды `vesma`.

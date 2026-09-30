@@ -576,7 +576,7 @@ CREATE TABLE IF NOT EXISTS memories (
     metadata         TEXT NOT NULL DEFAULT '{}',
     file_path        TEXT,
     category         TEXT,
-    -- Mnemos tag contract denormalisations (M2)
+    -- Vesma tag contract denormalisations (M2)
     project          TEXT NOT NULL DEFAULT '',
     agent            TEXT NOT NULL DEFAULT '',
     -- Knowledge pipeline (M4)
@@ -835,7 +835,7 @@ CREATE TABLE IF NOT EXISTS meta (
 -- The compressed representation embeds a marker referencing this hash;
 -- mnemos_retrieve fetches the original back with zero data loss.
 -- Inspired by headroom's CCR (https://github.com/headroomlabs-ai/headroom),
--- Apache 2.0 — we integrate into the existing mnemos store (one DB).
+-- Apache 2.0 — we integrate into the existing Vesma store (one DB).
 -- A1 (ArchCom 2026-08-27): composite PK (project, hash) — the same content
 -- hash cached by two projects is TWO rows (the first-writer-squatting
 -- cross-project DoS edge of the hash-only PK dissolves). Legacy DBs are
@@ -2519,7 +2519,7 @@ class SQLiteStore:
     def wipe_all(self) -> int:
         """Delete every memory row (and FTS shadow rows via triggers).
 
-        Used by ``mnemos import --mode restore``. Returns the number of
+        Used by ``mnemos import --mode restore`` (CLI legacy name). Returns the number of
         deleted memory rows. Schema, indexes, projects, traces, and DLQ
         are preserved — only the ``memories`` table is cleared.
         """
@@ -3450,7 +3450,7 @@ class SQLiteStore:
         ``--id`` list the operator asked for, return the mirrored
         metadata rows keyed by ``id``. Ids with no row are simply
         absent from the result — the CALLER decides whether a miss is
-        an error (``mnemos fetch`` treats it as one: the command is
+        an error (the ``mnemos fetch`` CLI treats it as one: the command is
         driven by ids the mirror advertised, so an unknown id means
         the operator and the index disagree).
 
@@ -3927,7 +3927,7 @@ class SQLiteStore:
         return [{"snippet": str(r["snip"]), "rank": float(r["rank"])} for r in rows]
 
     def ccr_delete_all(self) -> int:
-        """Drop every CCR cache entry. Used by tests and `mnemos ccr purge`."""
+        """Drop every CCR cache entry. Used by tests and `mnemos ccr purge` (CLI legacy name)."""
         conn = self._get_conn()
         cur = conn.execute("DELETE FROM ccr_cache")
         conn.commit()

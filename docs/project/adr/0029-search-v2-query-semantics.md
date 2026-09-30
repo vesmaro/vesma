@@ -96,7 +96,7 @@ runtime meaning.** `upsert_embedding` (the single embedding write
 point) stamps `memories.embedding_id = memory.id` after the vector
 write succeeds (the VectorStore keys embeddings BY memory id — the
 stamp records "a live vector row exists"). Existing rows are closed by
-`mnemos backfill-embedding-ids` (dry-run default, `--apply` to write;
+`vesma backfill-embedding-ids` (dry-run default, `--apply` to write;
 idempotent; rows whose vector is gone stay NULL — the column must never
 lie). The stamp failure is non-fatal: the column is diagnostics; the
 vector leg resolves by id and does not consult it. The backfill was

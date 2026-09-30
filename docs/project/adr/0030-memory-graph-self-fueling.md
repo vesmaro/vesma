@@ -26,7 +26,7 @@ the post-guard reference baseline recall@5 0.9409), the live probe of
 The initiative is not new — it was lost. It entered the ArchCom queue on
 2026-08-21 with a Tech Lead recommendation P1, backed by the jcode
 mechanics research (§3a/§8.4): the only researched path to qualitatively
-beat both competitors. The graph alone does not differentiate (mnemosyne
+beat both competitors. The graph alone does not differentiate (vesmayne
 ships a temporal KG, jcode a BFS citation cascade); the differentiator is
 the graph combined with server autonomy — which is precisely the
 "universal pluggable autonomous memory for any harness" bar. On 2026-08-31
@@ -230,7 +230,7 @@ flowchart TB
   I4 guards no-federate at both generation and export.
 - Determinism survives enrichment: a pure-function ranking formula, the
   untouched id tiebreak, and `graph_epoch` keeping cache and feedback
-  coherent (the ADR-0028 boundary — invalidation is mnemos's side).
+  coherent (the ADR-0028 boundary — invalidation is vesma's side).
 - The one-shot migration window is spent while it is free: the final
   schema lands before the first edge exists.
 - The 2026-08-31 loss mode is structurally closed: recommendations
@@ -275,7 +275,7 @@ flowchart TB
 | Full A→B→C in one shot (the 2026-08-21 phasing) | Builds mechanics before fuel; production proved the fuel theory empty. The sidecar also adds friction in a permissive-led niche where adoption velocity is the binding constraint. |
 | near-dup → auto-supersedes in the first slice | Security veto: a visibility mutation from content proximity, and a no-federate laundering path (a scanner-positive replaced by a clean duplicate sheds the tag before export — CWE-200). Similarity does not prove replacement; `relates_to` is the honest weaker claim. |
 | Harness-supplied fuel (explicit linking events) | Disproved by production: the live `context_rewrite` channel minted 0 edges on 1662 memories. Betting the differentiator on N external ecosystems cooperating contradicts the "universal" position. |
-| Keep only D2 #172 | Same starvation — 0 `supersedes` edges to cascade over; the differentiation window against mnemosyne closes while waiting for harnesses. |
+| Keep only D2 #172 | Same starvation — 0 `supersedes` edges to cascade over; the differentiation window against vesmayne closes while waiting for harnesses. |
 | Fold the graph into multicontext Phase 0 (ADR-0027) | Different risk pools; Phase 0 is frozen staged and schema-free by design — coupling delays both lines. |
 | `has_tag` edges | Duplicate the first-class tags column and create hubs whose fanout equals tag size. |
 | Recursive CTE as the traversal primitive | Does not naturally express «first anchor wins» determinism, per-edge weights, or work caps; justified from depth ≥ 3, which this design does not have. App-level layered BFS-2 is 4 indexed queries. |
@@ -299,7 +299,7 @@ flowchart TB
   rule and gates F1/F2 A0 extends; the #314 guard that set the reference
   recall@5 0.9409 baseline this ADR's guard cites.
 - PR #315 (graph leg v1); issue #314 → PR #317 (short-token guard).
-- Research: `docs/project/research/mnemosyne-vs-mnemos-competitor-analysis.md`
+- Research: `docs/project/research/vesmayne-vs-vesma-competitor-analysis.md`
   §3a/§8.4 (jcode mechanics — the differentiation argument behind the P1
   recommendation of 2026-08-21).
 - Live probe (2026-09-15): 1662 memories in the `context_rewrite` channel /

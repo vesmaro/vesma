@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../../en/admin/runbooks/container-deployment.md) · Русский
 
-> Runbook уровня администратора для запуска Mnemos в контейнере. **Опубликованный
+> Runbook уровня администратора для запуска Vesma в контейнере. **Опубликованный
 > образ — основной путь: достаточно его скачать, локальная сборка не нужна.**
 > Сборка из исходников — фолбэк для разработки, собственных патчей или
 > air-gapped-сред. Для настоящих кластеров K8s/K3s используйте helm-чарт —
@@ -23,8 +23,8 @@
 | systemd quadlet | podman + systemd | Постоянный user-сервис с автоматическим перезапуском |
 | Сборка из исходников | podman / buildah | Фолбэк: разработка, патчи, air-gapped |
 
-Контейнер открывает **порт 8787** и использует два named volume — `mnemos-data` (SQLite + векторный
-индекс) и `mnemos-vault` (Obsidian markdown mirror); путь compose называет их `vesmaro-data`/`vesmaro-vault`.
+Контейнер открывает **порт 8787** и использует два named volume — `vesma-data` (SQLite + векторный
+индекс) и `vesma-vault` (Obsidian markdown mirror); путь compose называет их `vesmaro-data`/`vesmaro-vault`.
 
 ---
 
@@ -44,8 +44,8 @@
 
 ```bash
 podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest указывает на свежий релиз
-podman run -d --name mnemos \
-  -v mnemos-data:/data -v mnemos-vault:/vault \
+podman run -d --name vesma \
+  -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
   ghcr.io/vesmaro/vesmaro:4.3.0
@@ -91,7 +91,7 @@ docker exec vesmaro-ollama ollama pull nomic-embed-text
 в конфиге контейнера (см. [Конфигурация](#конфигурация)).
 
 > Корневой [`compose.yaml`](../../../../compose.yaml) тоже использует опубликованный образ —
-> он сохраняет исторические имена ресурсов `mnemos-*` для существующих пользователей
+> он сохраняет исторические имена ресурсов `vesma-*` для существующих пользователей
 > podman-compose. Про сборку из исходников см.
 > [Сборка из исходников](#сборка-из-исходников-фолбэк).
 
@@ -117,7 +117,7 @@ helm install vesmaro deploy/helm/vesmaro \
 
 ## Запуск — Kubernetes-подобный pod (podman kube play)
 
-Mnemos поставляется с Kubernetes-подобным манифестом pod'а (`deploy/podman/kube/mnemos-pod.yaml`)
+Vesma поставляется с Kubernetes-подобным манифестом pod'а (`deploy/podman/kube/mnemos-pod.yaml`)
 для `podman kube play`. Манифест скачивает опубликованный образ, инжектит TOTP-ключ из
 podman-секрета и определяет пробы здоровья.
 
@@ -126,8 +126,8 @@ podman-секрета и определяет пробы здоровья.
 ```bash
 printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesmaro-totp -
-podman volume create mnemos-data
-podman volume create mnemos-vault
+podman volume create vesma-data
+podman volume create vesma-vault
 podman kube play deploy/podman/kube/mnemos-pod.yaml
 ```
 
@@ -182,14 +182,14 @@ printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\n' "$KEY
 ### Запуск и автозапуск
 
 ```bash
-systemctl --user start mnemos
-systemctl --user enable mnemos   # автозапуск при входе в систему
+systemctl --user start vesma
+systemctl --user enable vesma   # автозапуск при входе в систему
 ```
 
 ### Проверка статуса
 
 ```bash
-systemctl --user status mnemos
+systemctl --user status vesma
 ```
 
 ---
@@ -201,7 +201,7 @@ systemctl --user status mnemos
 > пользователям этот раздел не нужен.
 
 ```bash
-podman build -t localhost/mnemos:4.3.0 -f Containerfile .
+podman build -t localhost/vesma:4.3.0 -f Containerfile .
 ```
 
 `Containerfile` использует `python:3.12-slim` в качестве базового образа, устанавливает пакет (MCP SDK едет в core),
@@ -223,13 +223,13 @@ make build-image
 **Залитие в ghcr.io (мейнтейнеры):** релизный конвейер (`scripts/local-release.sh`)
 при каждом релизе пушит версионный тег и `:latest` — GitHub Actions отключены, и этот
 скрипт является каноническим путём (см. [ci-cd.md](ci-cd.md)). Конвейер пока таргетит
-легаси-имя `ghcr.io/korrnals/mnemos` (переезд — часть 5.0.0 phase-g, GWS card #331);
+легаси-имя `ghcr.io/korrnals/vesma` (переезд — часть 5.0.0 phase-g, GWS card #331);
 новые релизы в это время дотягиваются в org-неймспейс `ghcr.io/vesmaro/vesmaro` вручную.
 Ручное залитие, если когда-нибудь понадобится (PAT с правом `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/mnemos:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
+podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
 podman push ghcr.io/vesmaro/vesmaro:4.3.0
 podman push ghcr.io/vesmaro/vesmaro:latest
 ```
@@ -238,7 +238,7 @@ podman push ghcr.io/vesmaro/vesmaro:latest
 
 ## Конфигурация
 
-Mnemos использует `config.container.yaml` в качестве конфига контейнера. Файл:
+Vesma использует `config.container.yaml` в качестве конфига контейнера. Файл:
 
 - Встроен в образ при сборке как `/app/config.yaml`
 - Перекрывается монтированием своего конфига по тому же пути (read-only)
@@ -247,8 +247,8 @@ Mnemos использует `config.container.yaml` в качестве конф
 
 | Параметр | Значение | Примечания |
 |---------|---------|-----------|
-| `mnemos.data_dir` | `/data` | Маппится на named volume `mnemos-data` |
-| `mnemos.vault_path` | `/vault` | Маппится на named volume `mnemos-vault` |
+| `mnemos.data_dir` | `/data` | Маппится на named volume `vesma-data` |
+| `mnemos.vault_path` | `/vault` | Маппится на named volume `vesma-vault` |
 | `api.host` | `0.0.0.0` | Привязка ко всем интерфейсам — **требует auth** |
 | `api.port` | `8787` | Внутренний порт контейнера; маппинг задаётся в compose/run |
 | `api.auth_enabled` | `true` | Обязательно `true` при `host: 0.0.0.0` |
@@ -262,7 +262,7 @@ Mnemos использует `config.container.yaml` в качестве конф
 TOTP-мастер-ключ должен передаваться через env-переменную — он никогда не должен
 присутствовать в файле конфигурации или в любом коммитируемом файле.
 
-Размещайте Mnemos за TLS-терминирующим реверс-прокси (Caddy, nginx, ingress и т.п.).
+Размещайте Vesma за TLS-терминирующим реверс-прокси (Caddy, nginx, ingress и т.п.).
 Задайте `trusted_proxies` с CIDR-диапазоном вашего прокси, чтобы заголовки `X-Forwarded-For`
 доверялись корректно.
 
@@ -284,7 +284,7 @@ Healthcheck'и опрашивают неаутентифицированный H
 и quadlet) — без зависимости от CLI. Проверить текущее состояние:
 
 ```bash
-podman inspect --format '{{.State.Health.Status}}' mnemos
+podman inspect --format '{{.State.Health.Status}}' vesma
 ```
 
 ### Обзор статуса
@@ -299,14 +299,14 @@ podman inspect --format '{{.State.Health.Status}}' mnemos
 
 ```bash
 ./scripts/deploy.sh shell
-# эквивалентно: podman exec -it mnemos /bin/bash
+# эквивалентно: podman exec -it vesma /bin/bash
 ```
 
 ### Запуск CLI внутри контейнера
 
 ```bash
 ./scripts/deploy.sh cli search "hello"
-# эквивалентно: podman exec mnemos mnemos search "hello"
+# эквивалентно: podman exec vesma vesma search "hello"
 ```
 
 ---

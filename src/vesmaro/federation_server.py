@@ -186,7 +186,7 @@ def verify_mtls_fingerprint(
     When both are present, the comparison is constant-time via
     :func:`hmac.compare_digest` to avoid a timing oracle.
 
-    TODO: when mnemos terminates mTLS itself (ASGI middleware + an
+    TODO: when Vesma terminates mTLS itself (ASGI middleware + an
     ssl context), read the client cert from the request connection
     and compute its SHA-256 fingerprint. Until then, the proxy MUST
     inject the fingerprint as a header (e.g. ``X-Client-Cert-Fingerprint``)

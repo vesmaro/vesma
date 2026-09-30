@@ -1,47 +1,47 @@
-# Mnemos Documentation (English)
+# Vesma Documentation (English)
 
 **🌐 Language / Язык:** English · [Русский](../ru/index.md)
 
-> Mnemos is a standalone memory & knowledge server for AI agents. It gives every agent real long-term memory — structured, searchable, governed by a strict tag contract — that persists across sessions, restarts, and context compression. One local server, three control surfaces (MCP / CLI / HTTP), and any MCP-capable harness connects in one line.
+> Vesma is a standalone memory & knowledge server for AI agents. It gives every agent real long-term memory — structured, searchable, governed by a strict tag contract — that persists across sessions, restarts, and context compression. One local server, three control surfaces (MCP / CLI / HTTP), and any MCP-capable harness connects in one line.
 
 ---
 
 ## Install (one command)
 
-Mnemos is on **PyPI**:
+Vesma is on **PyPI** (bare slot, ours as of the rebrand):
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
-The default embedding model (`mnema-embed-v1`, ~30 MB) is bundled in the wheel — search works fully offline, on CPU, no API keys, nothing downloaded. Isolated variant: `uv tool install mnemos-memory-server` or `pipx install mnemos-memory-server`.
+The default embedding model (`mnema-embed-v1`, ~30 MB) is bundled in the wheel — search works fully offline, on CPU, no API keys, nothing downloaded. Isolated variant: `uv tool install vesma` or `pipx install vesma`.
 
-> ⚠️ The PyPI name is **`mnemos-memory-server`** — `pip install mnemos` installs an unrelated project.
+> ⚠️ **Names.** The PyPI package is **`vesma`**. The pre-rebrand package `mnemos-memory-server` stays live until deprecation (`pip install mnemos-memory-server` installs the same server). The bare `pip install vesma` is an unrelated third-party project.
 
-npm (pi extension): `pi-mnemos` · `mnemos-pi` · `@korrlabs/mnemospi` · `@korrlabs/mnemos-pi`. Container: `ghcr.io/vesmaro/vesmaro`.
+npm (pi extension): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` · `@korrlabs/vesma-pi`. Container: `ghcr.io/vesmaro/vesmaro`.
 
 ---
 
 ## Connect your harness
 
-**MCP is the primary integration surface.** Any MCP-capable harness talks to Mnemos over the same stdio wire. The full copy-paste instructions for every harness live on one page: **[Connect Mnemos to any harness](../../integrations/mcp-presets.md)**.
+**MCP is the primary integration surface.** Any MCP-capable harness talks to Vesma over the same stdio wire. The full copy-paste instructions for every harness live on one page: **[Connect Vesma to any harness](../../integrations/mcp-presets.md)**.
 
 | Harness | Fastest path |
 |---------|--------------|
 | VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash` — or the one-paste `mcp.json` block on the presets page |
-| Claude Code | `claude mcp add --scope user mnemos -- mnemos mcp-server` |
+| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
 | Cursor | one line into `~/.cursor/mcp.json` |
 | OpenCode | one block into `~/.config/opencode/opencode.json` |
 | Codex | one TOML block into `~/.codex/config.toml` |
 | Windsurf | same JSON line as Cursor, in `~/.codeium/windsurf/mcp_config.json` |
-| ZCode / pi | `mnemos integration setup --target zcode` / `--target pi` |
-| Hermes Agent | native in-process plugin — `mnemos integration setup --target hermes` |
+| ZCode / pi | `vesma integration setup --target zcode` / `--target pi` |
+| Hermes Agent | native in-process plugin — `vesma integration setup --target hermes` |
 | Anything else | [adapter-template.md](../../integrations/adapter-template.md) — Connect / Expose / Configure |
 
 To also deploy the **behavioral layer** (memory instructions, 14+ skills, prompt mode, agent wiring) so agents *know when and how* to use memory:
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
 Targets, flags, and the full deploy map: [integration-guide.md](user/integration-guide.md).
@@ -51,21 +51,21 @@ Targets, flags, and the full deploy map: [integration-guide.md](user/integration
 | Property | Value |
 |----------|-------|
 | Protocol | MCP over **stdio JSON-RPC 2.0** |
-| Server name | `mnemos` |
+| Server name | `vesma` (registry key in harness configs: `vesma` — dual-prefix contract) |
 | Transport | stdio — no TCP port |
-| Tool prefix | `mnemos_` |
-| Start it | `mnemos mcp-server` |
+| Tool prefix | `vesma_` |
+| Start it | `vesma mcp-server` |
 
 ### Auto-collect mode
 
-Set `MNEMOS_AUTO_COLLECT=1` in the server's `env` block to make Mnemos prompt your agent to call `mnemos_save_context` after every ~6 tool calls (proactive checkpoint nagging). See [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#auto-collect-mode) for trade-offs.
+Set `VESMARO_AUTO_COLLECT=1` (legacy spelling `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma prompt your agent to call `mnemos_save_context` after every ~6 tool calls (proactive checkpoint nagging). See [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#auto-collect-mode) for trade-offs.
 
-### 38 MCP tools (`mnemos_` prefix)
+### 38 MCP tools (`vesma_` prefix)
 
 | Tool | Purpose |
 |------|---------|
 | `mnemos_search` | Hybrid FTS5 + vector search with Reciprocal Rank Fusion (published memories by default) |
-| `mnemos_add` | Create a memory — **enforces the Mnemos tag contract** |
+| `mnemos_add` | Create a memory — **enforces the Vesma tag contract** |
 | `mnemos_filter` | Run or refresh the context filter on an existing memory (e.g. with another profile) |
 | `mnemos_agent_recall` | Per-agent recall (M3) — most recent entries for a single agent |
 | `mnemos_save_context` | Persist a session checkpoint |
@@ -110,8 +110,8 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 
 | If you are… | Read |
 |-------------|------|
-| Setting Mnemos up for the first time | [user/getting-started.md](user/getting-started.md) |
-| Connecting a specific harness | [Connect Mnemos to any harness](../../integrations/mcp-presets.md) |
+| Setting Vesma up for the first time | [user/getting-started.md](user/getting-started.md) |
+| Connecting a specific harness | [Connect Vesma to any harness](../../integrations/mcp-presets.md) |
 | Looking for a specific command / flag | [user/cli-reference.md](user/cli-reference.md) |
 | Looking for a specific MCP tool | [user/mcp-tools.md](user/mcp-tools.md) |
 | Building an HTTP client | [user/http-api.md](user/http-api.md) |
@@ -125,10 +125,10 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 - [Feature Map](features.md) — what works out of the box, what is partial, what is planned (v4.0.0).
 - [Getting Started](user/getting-started.md) — install → first memory → first search → connect your harness.
 - [Integration Guide](user/integration-guide.md) — behavioral layer, deploy targets, agent MCP wiring, Hermes plugin.
-- [MCP Tools Reference](user/mcp-tools.md) — every `mnemos_*` tool.
+- [MCP Tools Reference](user/mcp-tools.md) — every `vesma_*` tool.
 - [HTTP API Reference](user/http-api.md) — every endpoint, request / response shape, error code.
-- [CLI Reference](user/cli-reference.md) — every `mnemos` subcommand with flags, defaults, and examples.
-- [Tag Contract](user/tag-contract.md) — the M2 schema enforced on every memory (`project:`, `agent:`, `mnemos:`).
+- [CLI Reference](user/cli-reference.md) — every `vesma` subcommand with flags, defaults, and examples.
+- [Tag Contract](user/tag-contract.md) — the M2 schema enforced on every memory (`project:`, `agent:`, `vesma:`).
 - [Context Filter](user/context-filter.md) — the five-stage noise stripper (dedup, noise, extract, compress, tokens) with profiles and auto-filter.
 
 ---

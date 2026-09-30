@@ -1,4 +1,4 @@
-"""MemoryManager — core CRUD and search orchestrator for Mnemos.
+"""MemoryManager — core CRUD and search orchestrator for Vesma.
 
 Backed by:
   - SQLiteStore  : all memories (raw/processing/processed/published) + traces
@@ -966,7 +966,7 @@ class MemoryManager:
         task/decision/report envelope (canon §2) persisting through the
         generic path.
 
-        Modes (``mnemos.canon_mode``):
+        Modes (``vesmaro.mnemos.canon_mode`` section):
 
         * ``"warn"`` (default) — every violation is logged as ONE
           machine-parseable warning line (``canon_violation:`` + memory id
@@ -1618,7 +1618,7 @@ class MemoryManager:
     # ── Workflow lifecycle (mnemos #96) ────────────────────────────────────
     #
     # Server-side enforcement of the workflow state machine. The MCP tool
-    # (mnemos_workflow) and the REST endpoints (/memories/{id}/workflow) are
+    # (mnemos_workflow tool route) and the REST endpoints (/memories/{id}/workflow) are
     # thin wrappers over these three methods — the validation MUST live here
     # so no caller can bypass the state machine or the 5 guardrails:
     #   1. Audit log       — every transition recorded in memory_workflow_history
@@ -2021,7 +2021,7 @@ class MemoryManager:
                 (ADR-0019 §5) and refined_only (§4). Headroom-gated: the expansion runs only when
                 the fused legs left room (a full fused page needs no
                 enrichment); no edges → the leg is a no-op. ADR-0030 A0 (issue
-                #324): with ``mnemos.graph_walk`` ON (default ON since the owner
+                #324): with ``vesmaro.mnemos.graph_walk`` ON (default ON since the owner
         decision of 2026-09-28) the walk
                 additionally expands ``relates_to`` neighbours under the
                 identical gates and decay — invariants I1-I3 are pinned by
@@ -2429,7 +2429,7 @@ class MemoryManager:
         # ── Graph leg (v1 issue #313; relates_to walk issue #324; A1-S1 #325) ─
         # Expansion along memory_edges from the fused ids. Kinds walked:
         # ``supersedes`` BOTH directions (v1, the unconditional leg) and,
-        # when ``mnemos.graph_walk`` is ON, ``relates_to`` both directions
+        # when ``vesmaro.mnemos.graph_walk`` is ON, ``relates_to`` both directions
         # (ADR-0030 A0, issue #324; invariants I1-I3 are pinned by
         # tests/test_graph_walk_invariants.py).
         #
@@ -2500,7 +2500,7 @@ class MemoryManager:
                 # reservation).
                 # A1-S2 (ADR-0030 §3 APPLY, #325; ArchCom 2026-09-27,
                 # I6 — THE Security residual): when the
-                # ``mnemos.feedback_apply`` flag is ON, the captured
+                # ``vesmaro.mnemos.feedback_apply`` flag is ON, the captured
                 # edge_stats ``used`` counters multiply each walked
                 # row's weight by the SATURATING factor
                 # ``f(used) = 1 + min(used, CAP) x SLOPE`` (bounded at
@@ -2716,7 +2716,7 @@ class MemoryManager:
         ``kind`` is the extension point (ADR-0030): issue #324's walk
         consults ``relates_to`` through the SAME primitive — the walk
         loop in ``_search_core`` holds the flag policy (supersedes
-        always; relates_to only behind ``mnemos.graph_walk``) and tags
+        always; relates_to only behind ``vesmaro.mnemos.graph_walk``) and tags
         each appended row with its first-anchor discovery kind.
         """
         neighbours: set[str] = set()
@@ -3089,7 +3089,7 @@ class MemoryManager:
         never diverge from the write surface. Fail-loud on an
         unsalvageable slug: a contract-invalid project means the caller
         asked for a namespace that cannot exist. An empty project stays
-        the pre-existing global recency listing (CLI ``mnemos recall``
+        the pre-existing global recency listing (CLI ``mnemos recall`` — legacy CLI name
         with no ``--project`` on an empty vault relies on it; the MCP
         tool always passes a concrete project via the ``_detect_project``
         fallback).
@@ -3173,7 +3173,7 @@ class MemoryManager:
         """Store a session checkpoint with validated agent identity (#251 D0).
 
         Single authority for the checkpoint channel — the MCP tool
-        (``mnemos_save_context``) and the REST twin (``POST /context/save``)
+        (``mnemos_save_context`` MCP tool) and the REST twin (``POST /context/save``)
         are thin wrappers over this method. Order of operations:
 
         1. Identity validation (``_require_identity`` semantics: non-empty
@@ -3232,7 +3232,7 @@ class MemoryManager:
         ``language`` (vesmaro-canon v1.0.0, ADR-0003 obligation 4):
         primary language of the record body — canon §2 enum ``"ru"``
         /``"en"``, NO heuristics. ``None`` (the default) falls back to the
-        ``mnemos.checkpoint_language`` config value. Every call MUST land
+        ``vesmaro.mnemos.checkpoint_language`` config value. Every call MUST land
         on a concrete language: the envelope mint raises ``ValueError``
         on anything outside the canon enum, fail-loud.
 
@@ -3270,7 +3270,7 @@ class MemoryManager:
         # mnemos #400 — project slug: normalize at the SAVE boundary (the
         # single-authority doctrine of #263, applied to slugs). The MCP tool
         # and the REST twin pass ``project`` directly (NOT through the tag
-        # contract like ``mnemos_add`` does), so without this gate a
+        # contract like the ``mnemos_add`` tool does), so without this gate a
         # ``MyProject`` checkpoint persisted under a different store key than
         # the ``myproject`` rows written via the tag-contract path — a silent
         # namespace island. ``normalize_project_slug`` is the SAME
@@ -3624,7 +3624,7 @@ class MemoryManager:
     ) -> dict[str, Any]:
         """Bulk rename tags matching ``from_prefix:<subtype>`` → ``to_prefix:<subtype>``.
 
-        Replaces the unsafe ``mnemos migrate tags`` path (which used raw
+        Replaces the unsafe legacy ``mnemos migrate tags`` path (which used raw
         ``sqlite3`` writes and bypassed the FTS5 ``AFTER UPDATE`` trigger).
         This method goes through ``SQLiteStore.update_fields`` (a plain
         ``UPDATE``), so the FTS5 external-content index stays consistent —
@@ -3671,7 +3671,7 @@ class MemoryManager:
             the stored vectors still point to the same memory ids and the
             FTS5 leg (which DOES reflect the new tags via the AFTER UPDATE
             trigger) carries tag-filtered queries. If exact tag-vector
-            alignment is required, run ``mnemos reindex`` afterwards.
+            alignment is required, run ``mnemos reindex`` (CLI legacy name) afterwards.
         """
         from vesmaro.models import VESMARO_TAG_SUBTYPES
         from vesmaro.traces import TraceRecorder

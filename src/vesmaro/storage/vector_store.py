@@ -107,7 +107,7 @@ class VectorStore:
         conn.commit()
 
     def wipe(self) -> int:
-        """Delete every embedding row. Used by ``mnemos import --mode restore``.
+        """Delete every embedding row. Used by ``mnemos import --mode restore`` (CLI legacy name).
 
         Returns the number of deleted rows. The table schema is preserved.
         """

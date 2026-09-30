@@ -25,7 +25,7 @@ Import strategy for generated stubs
 The gRPC Python plugin emits flat top-level imports
 (``import mnemos_core_api_pb2``) inside the generated ``*_pb2_grpc.py``
 files, and the generated directory (``federation/gen/python/``) is
-gitignored and lives outside the ``mnemos`` package tree. The shim
+gitignored and lives outside the ``vesmaro`` package tree. The shim
 :mod:`vesmaro._mesh_gen` inserts the generated directory on ``sys.path``
 once and re-exports the four generated modules under stable names
 (``core_pb2``, ``core_pb2_grpc``, ``fed_pb2``). This module imports from
@@ -203,12 +203,12 @@ class MeshClient:
 
         Args mirror :class:`ListMemoriesRequest`. ``include_no_federate``
         defaults to ``False`` — records tagged ``mnemos:no-federate`` are
-        excluded by mnemos before returning; the mesh never sees them
+        excluded by Vesma before returning; the mesh never sees them
         (contract §2.2.1 layer 3).
 
         Returns:
             List of :class:`CompactRecord` (already moderation-processed).
-            Empty list if mnemos has nothing to federate matching the filter.
+            Empty list if Vesma has nothing to federate matching the filter.
 
         Raises:
             MeshUnavailableError: socket down / peer not running.
@@ -245,23 +245,23 @@ class MeshClient:
 
         Args:
             record: The :class:`CompactRecord` to write. Already
-                moderation-processed by the peer of origin; mnemos may
+                moderation-processed by the peer of origin; Vesma may
                 apply its own import validation (#86) on top.
             import_mode: ``"MERGE"`` (default) or ``"RESTORE"``. Mirrors
                 the :func:`mnemos_import` MCP tool modes. ``"RESTORE"`` is
                 destructive and requires ``confirm=True`` (hard gate).
             confirm: Required ``True`` when ``import_mode="RESTORE"``,
-                ignored otherwise. mnemos rejects ``RESTORE`` without
+                ignored otherwise. Vesma rejects ``RESTORE`` without
                 ``confirm=True``.
 
         Returns:
-            The written record id (echoed by mnemos for correlation with
+            The written record id (echoed by Vesma for correlation with
             the mesh's pending queue). Same as ``record.id`` on success.
 
         Raises:
             MeshUnavailableError: socket down / peer not running.
             MeshUnimplementedError: RPC not yet wired on the mesh (M2 stub).
-            MeshError: any other gRPC failure (e.g. mnemos refused the
+            MeshError: any other gRPC failure (e.g. Vesma refused the
                 record via import validation).
         """
         mode_enum = self._import_mode_to_enum(import_mode)

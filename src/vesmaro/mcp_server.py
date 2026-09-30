@@ -1,6 +1,6 @@
-"""MCP server for Mnemos — exposes mnemos_* memory tools to Copilot/LLM agents.
+"""MCP server for Vesma — exposes mnemos_* memory tools to Copilot/LLM agents.
 
-Tools: mnemos_add (enforces Mnemos TagContract), mnemos_search, mnemos_recall,
+Tools: mnemos_add (enforces Vesma TagContract), mnemos_search, mnemos_recall,
 mnemos_agent_recall (M3), mnemos_auto_collect_status (per-signal compaction
 vector, M7), and others. Auto-collect driven by VESMARO_AUTO_COLLECT env var.
 
@@ -71,13 +71,23 @@ _auto_collect_state = {
 # calls are normalised to the canonical mnemos_ name before dispatch, so the
 # handler bodies below keep the canonical spellings untouched.
 _BRAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
-_raw_brand = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
+# Rebrand 5.0.0 (vesma): canonical env is VESMA_MCP_BRAND; VESMARO_MCP_BRAND
+# stays as a deprecated alias (dual-period until 6.0, ADR-0031 class).
+_BRAND_ENV_CANON = "VESMA_MCP_BRAND"
+_brand_canon_val = os.environ.get(_BRAND_ENV_CANON, "").strip().lower()
+_brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
+if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
+    logger.warning(
+        "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
+        _BRAND_ENV_CANON, _brand_canon_val, _brand_depr_val,
+    )
+_raw_brand = (_brand_canon_val or _brand_depr_val).lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
 _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand) else ""
 if _raw_brand and not _MCP_BRAND:
     logger.warning(
-        "VESMARO_MCP_BRAND=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _raw_brand,
+        "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
+        _BRAND_ENV_CANON, _raw_brand,
     )
 
 
@@ -385,7 +395,7 @@ async def _canonical_tools() -> list[Tool]:
         else (
             "Add a new entry to long-term memory. "
             "Tags MUST include: project:<slug>, agent:<slug>, and mnemos:<subtype>. "
-            "Valid mnemos subtypes: session, bug-pattern, learning, decision, rule, "
+            "Valid vesma: subtypes: session, bug-pattern, learning, decision, rule, "
             "open-question, checkpoint, legacy."
         )
     )
@@ -936,7 +946,7 @@ async def _canonical_tools() -> list[Tool]:
         ),
         Tool(
             name="mnemos_stats",
-            description="Get Mnemos health statistics and memory counts.",
+            description="Get Vesma health statistics and memory counts.",
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -3170,7 +3180,7 @@ server = Server(
 
 
 async def main() -> None:
-    """Run the Mnemos MCP server over stdio."""
+    """Run the Vesma MCP server over stdio."""
     from vesmaro.logging_setup import setup_logging
 
     settings = load_settings()

@@ -90,3 +90,4 @@ benchmarks/experiments/e3_d/runs/
 # runs/) — same discipline: --record artifacts stay on disk, the F1
 # report wave commits them deliberately when citing.
 benchmarks/experiments/f1_task_scope/runs/
+.venv

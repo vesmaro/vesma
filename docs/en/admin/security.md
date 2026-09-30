@@ -1,13 +1,13 @@
-# Mnemos — Security Posture (M15.2)
+# Vesma — Security Posture (M15.2)
 
 **🌐 Language / Язык:** English · [Русский](../../ru/admin/security.md)
 
-> **Owner**: Mnemos Security Engineer
+> **Owner**: Vesma Security Engineer
 > **Status**: Active — last reviewed 2026-06-15
-> **Scope**: Mnemos memory & knowledge server (forked from ai-brain)
+> **Scope**: Vesma memory & knowledge server (forked from ai-brain)
 > **Out of scope**: M16 A2A Sessions API (new module, separate threat model)
 
-This document captures the security-relevant design decisions of the Mnemos
+This document captures the security-relevant design decisions of the Vesma
 codebase. It is the authoritative reference when triaging findings, writing
 new tests, or reviewing pull requests that touch trust boundaries.
 
@@ -15,7 +15,7 @@ new tests, or reviewing pull requests that touch trust boundaries.
 
 ## 1. Threat model summary
 
-Mnemos is a **local-first, single-tenant, file-backed** memory server
+Vesma is a **local-first, single-tenant, file-backed** memory server
 deployed as either a CLI tool, a stdio MCP server, or a loopback HTTP API
 (defaults to `127.0.0.1`). It exposes:
 
@@ -29,13 +29,13 @@ deployed as either a CLI tool, a stdio MCP server, or a loopback HTTP API
 
 | Boundary | Trust side | Untrusted side | Mitigations |
 |----------|------------|----------------|-------------|
-| `ingest_url` (HTTP fetch) | Mnemos process | Public Internet (any URL the user passes) | SSRF blocklist — see §2 |
-| HF Hub download (`ONNXHubProvider`) | Mnemos process | HuggingFace Hub | Pinned `revision=` (CWE-494) — see §3 |
-| MCP stdio | Mnemos process | Local AI agent | Unix permission boundary, no auth needed (loopback) |
-| FastAPI HTTP API | Mnemos process | Local processes (loopback) | Loopback bind by default; no remote surface in v1 |
-| FTS5 search (`fts_search`) | Mnemos process | End-user query string | FTS5 escape — see §4 |
-| `update_fields` dynamic SQL | Mnemos process | `**kwargs` from callers | Whitelisted column dispatch — see §5 |
-| `0.0.0.0` listener string | Mnemos process | bandit B104 (false positive) | `# nosec B104` with justification — see §6 |
+| `ingest_url` (HTTP fetch) | Vesma process | Public Internet (any URL the user passes) | SSRF blocklist — see §2 |
+| HF Hub download (`ONNXHubProvider`) | Vesma process | HuggingFace Hub | Pinned `revision=` (CWE-494) — see §3 |
+| MCP stdio | Vesma process | Local AI agent | Unix permission boundary, no auth needed (loopback) |
+| FastAPI HTTP API | Vesma process | Local processes (loopback) | Loopback bind by default; no remote surface in v1 |
+| FTS5 search (`fts_search`) | Vesma process | End-user query string | FTS5 escape — see §4 |
+| `update_fields` dynamic SQL | Vesma process | `**kwargs` from callers | Whitelisted column dispatch — see §5 |
+| `0.0.0.0` listener string | Vesma process | bandit B104 (false positive) | `# nosec B104` with justification — see §6 |
 
 ### Out of scope for v1
 
@@ -49,7 +49,7 @@ deployed as either a CLI tool, a stdio MCP server, or a loopback HTTP API
 ## 2. SSRF prevention (`MemoryManager._validate_url`)
 
 The `ingest_url` method can fetch any URL the user supplies. Without
-controls, an attacker can pivot through Mnemos to reach loopback or
+controls, an attacker can pivot through Vesma to reach loopback or
 cloud-metadata endpoints.
 
 **Blocklist** (must stay current — see advisory list below):
@@ -166,7 +166,7 @@ are silently dropped and the table is never corrupted.
 ## 6. Network binding — `0.0.0.0` (M15.2, B104)
 
 Bandit B104 flags the string literal `"0.0.0.0"` anywhere in code, on
-the assumption that it is a socket bind. In Mnemos the string appears
+the assumption that it is a socket bind. In Vesma the string appears
 **only inside an SSRF blocklist** (`MemoryManager._validate_url`) — it
 is the *thing being rejected*, not a bind target. The actual API server
 (`cli/main.py:serve`) defaults to `127.0.0.1`; an operator who
@@ -194,7 +194,7 @@ completeness — they are **not** part of M15.2.
   and `..` segments in vault filenames. `path_scoped.py` uses
   `Path.resolve()` to keep watchers inside the watched root.
 - **M2 tag contract** — `models.py::validate_tag_contract` enforces
-  the `project:` / `agent:` / `mnemos:` prefix taxonomy at the MCP layer.
+  the `project:` / `agent:` / `vesma:` prefix taxonomy at the MCP layer.
 - **M9 SSRF guard** — `_validate_url` (covered in §2).
 - **M6 traces** — every LLM-bound step is recorded with latency, token
   counts, and a `rationale_summary`. This is the audit log; no separate
@@ -231,7 +231,7 @@ contract from `.copilot/instructions/lint-and-validate.instructions.md`:
 
 ### 9.1 Token model
 
-Mnemos uses **opaque bearer tokens** (prefix `mnk_`, 256-bit random via
+Vesma uses **opaque bearer tokens** (prefix `mnk_`, 256-bit random via
 `secrets.token_urlsafe(32)`). Only the PBKDF2-HMAC-SHA256 digest of each
 token is written to disk or SQLite (600 000 iterations, fixed salt
 `mnemos.api.auth.fernet.v1`). The plaintext is shown once at creation and
@@ -257,7 +257,7 @@ captured code cannot be replayed even within its validity window.
   full login → TOTP verify → session flow.
 - `totp_required=false` — API token for machine-to-machine (M2M) access. The
   bearer token is accepted directly by the middleware, skipping session
-  validation. Created via `mnemos auth token create --no-totp`.
+  validation. Created via `vesma auth token create --no-totp`.
 
 This enables clean separation of human and machine auth without TOTP code
 reuse issues. The middleware checks: `mnk_`-prefixed tokens with
@@ -293,7 +293,7 @@ reuse issues. The middleware checks: `mnk_`-prefixed tokens with
 
 ### 9.5 CLI startup guard
 
-`mnemos serve` exports `MNEMOS_API__HOST` and `MNEMOS_API__PORT` into the
+`vesma serve` exports `MNEMOS_API__HOST` and `MNEMOS_API__PORT` into the
 environment before launching uvicorn. The worker's startup guard checks the
 exported host: a non-loopback bind is refused with a non-zero exit unless
 `api.auth_enabled=true`. This prevents a misconfigured "auth later" deploy
@@ -330,7 +330,7 @@ This prevents accidental leakage through:
   `SecretStr('**********')`, not the raw value. Use
   `model_dump(mode="json", secrets=True)` only when the plaintext is
   explicitly needed.
-- **Config dumps** — `mnemos doctor` and debug prints no longer expose
+- **Config dumps** — `vesma doctor` and debug prints no longer expose
   keys.
 
 **Recommended practice** — pass keys via environment variables, never
@@ -391,16 +391,16 @@ These controls are documented in §9 and remain in force:
 
 ```bash
 # Confirm no API keys in config dumps
-mnemos doctor --json | grep -i api_key   # should show SecretStr('**********')
+vesma doctor --json | grep -i api_key   # should show SecretStr('**********')
 
 # Confirm SSRF rejection
-mnemos add --url http://169.254.169.254/  # rejected, not stored
+vesma add --url http://169.254.169.254/  # rejected, not stored
 
 # Confirm .gitignore covers secrets
 git check-ignore -v config.yaml .env     # should list .gitignore:line
 
 # Confirm tag exact match
-mnemos search --tags mnemos:decision         # does not match mnemos:decision-review
+vesma search --tags mnemos:decision         # does not match mnemos:decision-review
 ```
 
 ---
@@ -409,13 +409,13 @@ mnemos search --tags mnemos:decision         # does not match mnemos:decision-re
 
 Federation (batch sync + mediated pull) introduces a new trust boundary:
 records that leave the local node can leak secrets that were never meant
-to be shared. mnemos implements a **three-layer defence-in-depth**
+to be shared. vesma implements a **three-layer defence-in-depth**
 (ArchCom 2026-07-17 federation contract §2.2.1) so that a single missed
 layer does not expose a secret.
 
 ```mermaid
 flowchart TB
-    L1[1. Write-path scanner\nruns on every mnemos_add] -->|tag mnemos:no-federate| DB[(mnemos store)]
+    L1[1. Write-path scanner\nruns on every mnemos_add] -->|tag mnemos:no-federate| DB[(vesma store)]
     DB -->|configurable interval| L2[2. Background scanner job\nre-scans corpus for false negatives\nfuture: #89]
     L2 -->|found sensitive| DB
     DB -->|on sync export / pull| L3[3. Moderation pipeline\nfinal defense on output\nshipped: #85 parts 1+2a+2b]
@@ -425,12 +425,12 @@ flowchart TB
 | Layer | Where | When | What it does | Status |
 |-------|-------|------|-------------|--------|
 | **1. Write-path scanner** | `mnemos_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | On every write | Runs `detect_secrets(content)`. If a secret is detected and the record does not already carry `mnemos:no-federate`, the tag is auto-added. Logs pattern names + counts only — never raw matched values. | ✅ Shipped (#86) |
-| **2. Background scanner** | MCP server, background job | Configurable interval (`scanner.interval_hours`, default 6h) | Re-scans the whole corpus for false negatives missed at write time. Re-uses `detect_secrets` unchanged (DRY — one source of truth for patterns). Manual trigger: `mnemos scanner run`. | ✅ Shipped (#89) |
+| **2. Background scanner** | MCP server, background job | Configurable interval (`scanner.interval_hours`, default 6h) | Re-scans the whole corpus for false negatives missed at write time. Re-uses `detect_secrets` unchanged (DRY — one source of truth for patterns). Manual trigger: `vesma scanner run`. | ✅ Shipped (#89) |
 | **3. Moderation pipeline** | Sync export (Phase 0) / Pull (Phase 2) | On every sync export / pull | Final defense — runs `moderate()` on output via `build_compact_payload()`. Even if the `no-federate` tag is missing, the pipeline sanitizes the content (redact) or refuses the record. | ✅ Shipped (#85 parts 1, 2a, 2b) |
 
 ### 11.1 Secrets detector module
 
-The detector lives in `src/mnemos/secrets_detector.py` and exposes a
+The detector lives in `src/vesmaro/secrets_detector.py` and exposes a
 **stable public API** consumed by all three layers:
 
 - `detect_secrets(content: str) -> list[SecretFinding]` — scan content.
@@ -445,19 +445,19 @@ connection strings, and high-entropy base64 spans (Shannon entropy
 
 **Constraint:** `SecretFinding.matched_value` exists for programmatic
 redaction only. Logging code MUST use `findings_by_pattern()` — raw
-matched values never enter log records, chat output, or mnemos memory
+matched values never enter log records, chat output, or vesma memory
 content.
 
 ### 11.2 `mnemos:no-federate` tag
 
-See [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#mnemosno-federate--federation-exclusion-marker)
+See [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#vesmano-federate--federation-exclusion-marker)
 for the tag's lifecycle (auto-add, idempotent, removal with confirmation,
 re-detection guard). The tag is an **exclusion marker** in the
-`mnemos:` subtype namespace — it is NOT a cognitive category.
+`vesma:` subtype namespace — it is NOT a cognitive category.
 
 ### 11.3 Export redaction + exclusion
 
-`mnemos export` (JSON format) applies the defence-in-depth at output time:
+`vesma export` (JSON format) applies the defence-in-depth at output time:
 
 - **Exclusion:** records tagged `mnemos:no-federate` are excluded from
   the export entirely (contract КП-6: "запись исключается из export И pull").
@@ -472,7 +472,7 @@ re-detection guard). The tag is an **exclusion marker** in the
 
 ### 11.4 Import validation
 
-`mnemos import` validates every record before writing:
+`vesma import` validates every record before writing:
 
 - **Content** — max 1 MiB chars (default), no control characters except
   `\n` / `\t`, valid UTF-8.
@@ -488,13 +488,13 @@ re-detection guard). The tag is an **exclusion marker** in the
 - On schema-drift / contract violation, the **whole batch is rejected**
   (no partial writes).
 
-### 11.5 Batch sync (`mnemos sync`) — Phase 0
+### 11.5 Batch sync (`vesma sync`) — Phase 0
 
-`mnemos sync export` / `mnemos sync import` (#85 part 2b) wire Layer 3
+`vesma sync export` / `vesma sync import` (#85 part 2b) wire Layer 3
 into the federation batch-sync path. See
 [Federation — Batch Sync](../user/sync.md) for the operator guide.
 
-- **Export** — `mnemos sync export` queries memories in the configured
+- **Export** — `vesma sync export` queries memories in the configured
   `shared_projects` (excludes `mnemos:no-federate` and `archived`), then
   calls `build_compact_payload()` which runs `moderate()` on every
   record: `allow` → original content in the compact summary, `redact` →
@@ -502,7 +502,7 @@ into the federation batch-sync path. See
   `records_refused`. The compact payload (`mnemos.federation.v1`) is
   written to a file, optionally AES-256-GCM encrypted with a passphrase
   from `MNEMOS_EXPORT_PASSPHRASE` (never a CLI argument).
-- **Import** — `mnemos sync import` reads the compact payload
+- **Import** — `vesma sync import` reads the compact payload
   (decrypting if needed via a passphrase from the env var **named** by
   `--passphrase-env`), validates each record (reuses #86
   `validate_import_record` adapted for the `CompactRecord` shape —
@@ -516,7 +516,7 @@ into the federation batch-sync path. See
   anonymized, errors, warnings. **No raw content, no secrets, no PII
   values** ever enter the audit log.
 - **Transfer** — offline. `scripts/sync-peers.sh` is a cron-ready
-  template that wraps export → rsync/scp/cp → import. mnemos itself
+  template that wraps export → rsync/scp/cp → import. vesma itself
   makes no network call; the operator owns the transport.
 
 The compact format (#85 part 2a) carries only summaries (≤500 chars),

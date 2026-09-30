@@ -1,10 +1,10 @@
 # Federation — cross-host testing guide
 
-**Audience:** operators and QA engineers verifying mnemos federation
+**Audience:** operators and QA engineers verifying vesma federation
 before a release or before opening a new peer.
 
 **Scope:** end-to-end verification of the mediated-pull channel
-(`POST /api/v1/federation/pull`) between two mnemos instances — one
+(`POST /api/v1/federation/pull`) between two vesma instances — one
 acting as peer A (the puller), one as peer B (the publisher). Covers
 the single-host smoke test and the cross-host (laptop ↔ remote host)
 e2e test. Production deployment notes are at the end.
@@ -46,12 +46,12 @@ The test matrix covers six behaviours:
 | 2 | Anti-correlation — a repeat query on the same `(peer, topic)` returns `ALREADY_EXHAUSTED` | Repeat the query, expect `trigger_code=ALREADY_EXHAUSTED` and empty `records` |
 | 3 | ACL enforcement — a `project_scope` not in `PeerConfig.allowed_projects` is refused | Query with an out-of-scope project, expect `403` + `trigger_code=REFUSED` |
 | 4 | Rate limiting — requests beyond `rate_limit_per_minute` return `429` | Fire 30+ rapid requests, expect `429` after the limit |
-| 5 | Idempotent import — re-importing the same compact payload skips existing records | `mnemos sync import` twice, expect `records_imported=0, records_skipped=N` on the second run |
-| 6 | Full roundtrip — pulled records are searchable on A after import | `mnemos search` finds the imported record on peer A |
+| 5 | Idempotent import — re-importing the same compact payload skips existing records | `vesma sync import` twice, expect `records_imported=0, records_skipped=N` on the second run |
+| 6 | Full roundtrip — pulled records are searchable on A after import | `vesma search` finds the imported record on peer A |
 
 The five trigger codes (`EXHAUSTIVE`, `ALREADY_EXHAUSTED`, `PARTIAL`,
 `REFUSED`, `OFFLINE_LITE`) are defined in
-`src/mnemos/trigger_codes.py` and documented in
+`src/vesmaro/trigger_codes.py` and documented in
 [`federation.md`](federation.md) §2. (Rate limiting is an HTTP `429`
 response, not a trigger code; the response body still carries
 `trigger_code=REFUSED`.)
@@ -62,15 +62,15 @@ response, not a trigger code; the response body still carries
 
 | Requirement | Detail |
 | --- | --- |
-| mnemos version | v2.12.1+ on **both** hosts (the mediated-pull endpoint and the non-loopback startup guard both landed in the v2.12 line); current release: 4.0.0. |
+| vesma version | v2.12.1+ on **both** hosts (the mediated-pull endpoint and the non-loopback startup guard both landed in the v2.12 line); current release: 4.0.0. |
 | Peer B config | `federation.enabled: true` (or `federation.shared_projects` non-empty — the server treats an empty `shared_projects` as federation disabled). |
 | Peer B peers | Peer A is configured in `federation.peers` on peer B with `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. See [`federation.md`](federation.md) §1. |
 | SSH access | For the cross-host test, the operator has SSH access to peer B's host (used to forward peer B's loopback port to the laptop). |
-| Loopback bind | The startup guard `_check_non_loopback_auth` (in `src/mnemos/api/main.py`) exits non-zero if a non-loopback bind is attempted without `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. The test binds to loopback and tunnels over SSH so the full auth stack is not required for the test. |
+| Loopback bind | The startup guard `_check_non_loopback_auth` (in `src/vesmaro/api/main.py`) exits non-zero if a non-loopback bind is attempted without `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. The test binds to loopback and tunnels over SSH so the full auth stack is not required for the test. |
 
-> **Store isolation.** mnemos resolves its config in a fixed order —
+> **Store isolation.** vesma resolves its config in a fixed order —
 > explicit `--config` flag → `MNEMOS_CONFIG` env var → `./config.yaml` →
-> `~/.mnemos/config.yaml` (`find_config_file` in `src/mnemos/config.py`).
+> `~/.mnemos/config.yaml` (`find_config_file` in `src/vesmaro/config.py`).
 > There is **no** `MNEMOS_HOME` variable. To run an isolated instance,
 > write a per-instance `config.yaml` (own `mnemos.data_dir` /
 > `mnemos.vault_path`) and point `MNEMOS_CONFIG` at it — every command
@@ -103,13 +103,13 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 
 ## 3. Single-host smoke test
 
-The single-host smoke test runs two mnemos instances on the same
+The single-host smoke test runs two vesma instances on the same
 machine — each pointed at its own store through a per-instance config
 file selected by `MNEMOS_CONFIG` — and walks the export → import →
 search → re-import idempotency loop. It does **not** exercise the live
 `POST /api/v1/federation/pull` endpoint — that is the cross-host test
 in §4. The smoke test verifies the compact payload format and the
-`mnemos sync` CLI.
+`vesma sync` CLI.
 
 A companion script `scripts/smoke-federation.sh` automates the steps
 below. It is being added in parallel with this guide; if it is not yet
@@ -123,14 +123,14 @@ present in your checkout, run the steps manually.
    `mnemos.data_dir` / `mnemos.vault_path` inside it:
 
    ```bash
-   export MNEMOS_CONF_A=/tmp/mnemos-fed-a/config.yaml
-   export MNEMOS_CONF_B=/tmp/mnemos-fed-b/config.yaml
+   export MNEMOS_CONF_A=/tmp/vesma-fed-a/config.yaml
+   export MNEMOS_CONF_B=/tmp/vesma-fed-b/config.yaml
    for inst in a b; do
-     mkdir -p "/tmp/mnemos-fed-$inst/data" "/tmp/mnemos-fed-$inst/vault"
-     cat > "/tmp/mnemos-fed-$inst/config.yaml" <<EOF
+     mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
+     cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
    mnemos:
-     data_dir: /tmp/mnemos-fed-$inst/data
-     vault_path: /tmp/mnemos-fed-$inst/vault
+     data_dir: /tmp/vesma-fed-$inst/data
+     vault_path: /tmp/vesma-fed-$inst/vault
    EOF
    done
    ```
@@ -145,7 +145,7 @@ present in your checkout, run the steps manually.
    comma-separated `--tags` value (the tag contract):
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" mnemos add \
+   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
      --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
    ```
@@ -153,9 +153,9 @@ present in your checkout, run the steps manually.
 3. **Export a compact payload from peer B.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" mnemos sync export \
+   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma sync export \
      --shared-projects cross-memory-test \
-     --output /tmp/mnemos-fed-payload.json
+     --output /tmp/vesma-fed-payload.json
    ```
 
 4. **Import the payload into peer A.**
@@ -163,8 +163,8 @@ present in your checkout, run the steps manually.
    The source file is a positional argument:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos sync import \
-     /tmp/mnemos-fed-payload.json
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+     /tmp/vesma-fed-payload.json
    ```
 
    Expect `Imported: 1 records` and `skipped: 0`.
@@ -174,7 +174,7 @@ present in your checkout, run the steps manually.
    The query is a positional argument too:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos search \
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma search \
      "federation pull" --project cross-memory-test
    ```
 
@@ -183,19 +183,19 @@ present in your checkout, run the steps manually.
 6. **Re-import the same payload — verify idempotency.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos sync import \
-     /tmp/mnemos-fed-payload.json
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+     /tmp/vesma-fed-payload.json
    ```
 
    Expect `Imported: 0 records` and `skipped: 1`. The `sync import`
    command merges idempotently by record `id`
    (`fed:<source_agent>:<uuid>` prefix); existing records are skipped,
-   never overwritten (see `src/mnemos/cli/sync.py`).
+   never overwritten (see `src/vesmaro/cli/sync.py`).
 
 7. **Clean up.**
 
    ```bash
-   rm -rf /tmp/mnemos-fed-a /tmp/mnemos-fed-b /tmp/mnemos-fed-payload.json
+   rm -rf /tmp/vesma-fed-a /tmp/vesma-fed-b /tmp/vesma-fed-payload.json
    ```
 
 ---
@@ -211,18 +211,18 @@ remote host (peer B, the `ai-agent` machine). It exercises the live
 ```mermaid
 flowchart LR
   LAP[Peer A<br/>laptop<br/>loopback :18101] -- SSH tunnel --> SSH[peer-b-host<br/>SSH -L 18101 → 127.0.0.1:8101]
-  SSH --> PB[Peer B mnemos serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
+  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
 ```
 
-### a. Start the test `mnemos serve` on peer B (remote host)
+### a. Start the test `vesma serve` on peer B (remote host)
 
-SSH into peer B and start mnemos on a loopback port. The
+SSH into peer B and start vesma on a loopback port. The
 `auth_enabled=false` setting is **test-only** — the loopback bind
 satisfies the startup guard, and the SSH tunnel is the only way in.
 
 ```bash
 # On peer B (remote host)
-mnemos serve --port 8101
+vesma serve --port 8101
 ```
 
 If `config.yaml` on peer B has `api.auth_enabled: true`, override it
@@ -236,7 +236,7 @@ Still on peer B, add a test record in a project that will be in peer
 A's `allowed_projects`:
 
 ```bash
-mnemos add \
+vesma add \
   "Cross-host test decision: mediated pull verified 2026-07-27" \
   --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
 ```
@@ -264,21 +264,21 @@ federation:
       # optional and not exercised in the SSH-tunnel test path.
 ```
 
-Restart `mnemos serve` so it picks up the config change (the
+Restart `vesma serve` so it picks up the config change (the
 federation peers map is loaded at startup).
 
 ### d. Set the bearer token in peer B's serve environment
 
-Restart `mnemos serve` with the token in the environment:
+Restart `vesma serve` with the token in the environment:
 
 ```bash
 # On peer B (remote host)
-MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> mnemos serve --port 8101
+MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 The server reads the token from the env var named in
 `bearer_token_env` at request time (see
-`_resolve_peer_token` in `src/mnemos/federation_server.py`), so a
+`_resolve_peer_token` in `src/vesmaro/federation_server.py`), so a
 rotation does not require a restart — but the peers map itself does.
 
 ### e. Open the SSH tunnel from the laptop
@@ -292,7 +292,7 @@ ssh -f -N -L 18101:127.0.0.1:8101 peer-b-host
 ```
 
 `-f` backgrounds the tunnel after authentication; `-N` means no remote
-command is executed. The laptop now reaches peer B's mnemos at
+command is executed. The laptop now reaches peer B's vesma at
 `http://127.0.0.1:18101`.
 
 ### f. Pull from the laptop
@@ -391,7 +391,7 @@ Expect the first ~30 requests to return `200` (each with a distinct
 `query`, so anti-correlation does not short-circuit them) and the
 remainder to return `429`. The rate limiter is a per-peer sliding
 60-second window keyed on `peer_id` (see `RateLimiter` in
-`src/mnemos/federation_server.py`). Wait 60 seconds for the window to
+`src/vesmaro/federation_server.py`). Wait 60 seconds for the window to
 evict before continuing.
 
 ### k. Full roundtrip — pull, import, search on peer A
@@ -413,12 +413,12 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   }' > /tmp/pull-response.json
 
 # Wrap the records as a compact payload. The compact payload shape is
-# documented in src/mnemos/compact.py. A minimal wrapper:
+# documented in src/vesmaro/compact.py. A minimal wrapper:
 jq '{format_version: "mnemos.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
-# Import into peer A's mnemos
-mnemos sync import /tmp/compact-payload.json
+# Import into peer A's vesma
+vesma sync import /tmp/compact-payload.json
 ```
 
 Expect `Imported: 1 records` and `skipped: 0`.
@@ -426,7 +426,7 @@ Expect `Imported: 1 records` and `skipped: 0`.
 Then verify the record is searchable on peer A:
 
 ```bash
-mnemos search "mediated pull verified" --project cross-memory-test
+vesma search "mediated pull verified" --project cross-memory-test
 ```
 
 The imported record should appear, with provenance from peer B
@@ -435,7 +435,7 @@ The imported record should appear, with provenance from peer B
 ### l. Idempotency — re-import the same payload
 
 ```bash
-mnemos sync import /tmp/compact-payload.json
+vesma sync import /tmp/compact-payload.json
 ```
 
 Expect `Imported: 0 records` and `skipped: 1`. The `sync import`
@@ -444,8 +444,8 @@ skipped, never overwritten.
 
 ### m. Cleanup
 
-1. Kill `mnemos serve` on peer B (`Ctrl-C` in the serve terminal, or
-   `pkill -f "mnemos serve --port 8101"`).
+1. Kill `vesma serve` on peer B (`Ctrl-C` in the serve terminal, or
+   `pkill -f "vesma serve --port 8101"`).
 2. Tear down the SSH tunnel on the laptop:
 
    ```bash
@@ -459,9 +459,9 @@ skipped, never overwritten.
 4. Remove the `mnemos-A` peer entry from peer B's `config.yaml`, or
    replace it with the production config.
 5. Optionally withdraw the test memory on peer B. There is no
-   `mnemos delete` CLI verb — the supported path is the workflow
+   `vesma delete` CLI verb — the supported path is the workflow
    withdrawal endpoint (`DELETE /memories/{memory_id}/workflow`,
-   status → `withdrawn`); find the id with `mnemos search`. In
+   status → `withdrawn`); find the id with `vesma search`. In
    practice the record can also simply stay: it lives in the
    `cross-memory-test` project, which no production peer lists in
    `allowed_projects`, so it cannot leak into a later production pull.
@@ -486,7 +486,7 @@ A production federation deployment must use the full auth stack.
 
 ### Helm chart reference
 
-The AgentsNode helm chart task (mnemos memory id `4df5d1bd`) is
+The AgentsNode helm chart task (vesma memory id `4df5d1bd`) is
 tracking the production helm chart that wires the per-peer bearer
 `Secret`, the mTLS cert pinning, and the access-log volume. Until that
 chart lands, production deployments configure the above manually in
@@ -501,16 +501,16 @@ the full threat model and the mTLS-vs-bearer rationale.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `403` + `trigger_code=REFUSED` (peer not configured) | Peer A's `peer_id` is not in peer B's `federation.peers` map, or `federation.peers` is empty | Add the peer entry to peer B's `config.yaml` and restart `mnemos serve` |
+| `403` + `trigger_code=REFUSED` (peer not configured) | Peer A's `peer_id` is not in peer B's `federation.peers` map, or `federation.peers` is empty | Add the peer entry to peer B's `config.yaml` and restart `vesma serve` |
 | `403` + `trigger_code=REFUSED` (token mismatch) | The bearer token in the request does not match the value of the env var named in `bearer_token_env` | Verify the env var is set in peer B's serve environment and the request sends `Authorization: Bearer <token>` with the same value |
 | `403` + `trigger_code=REFUSED` (ACL) | `project_scope` is not in the peer's `allowed_projects` (and is not `["*"]`) | Add the project to `allowed_projects`, or use a project that is already allowed |
 | `429` | Per-peer rate limit exceeded — the sliding 60-second window is full | Wait 60 seconds for the window to evict, or raise `rate_limit_per_minute` (clamped 1–600) |
 | `200` + `trigger_code=ALREADY_EXHAUSTED` + empty `records` | Expected on a repeat query for the same `(peer_id, topic)` — the access log recorded a prior `EXHAUSTIVE` | This is correct behaviour, not an error. To re-pull, use a different `query` string (the access log keys on `sha256(query)`) |
 | `200` + `trigger_code=EXHAUSTIVE` + empty `records` | Peer B has no records matching the query in the allowed project/type scope | Seed peer B with a test record in an allowed project and type, then re-pull |
-| Connection refused (laptop) | SSH tunnel is down, `mnemos serve` is not running on peer B, or the port is wrong | Check the tunnel: `ss -lntp \| grep 18101` on the laptop; check the serve: `ss -lntp \| grep 8101` on peer B; restart as needed |
-| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` at startup | `mnemos serve` was started with a non-loopback `--host` (or `api.host` in config) without the full auth stack | Either bind to loopback (`--host 127.0.0.1`) and use an SSH tunnel for testing, or set `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` and provide `MNEMOS_API__TOTP_MASTER_KEY` (see [`security.md`](security.md) §9) |
+| Connection refused (laptop) | SSH tunnel is down, `vesma serve` is not running on peer B, or the port is wrong | Check the tunnel: `ss -lntp \| grep 18101` on the laptop; check the serve: `ss -lntp \| grep 8101` on peer B; restart as needed |
+| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` at startup | `vesma serve` was started with a non-loopback `--host` (or `api.host` in config) without the full auth stack | Either bind to loopback (`--host 127.0.0.1`) and use an SSH tunnel for testing, or set `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` and provide `MNEMOS_API__TOTP_MASTER_KEY` (see [`security.md`](security.md) §9) |
 | `FATAL: api.totp_enabled=true but MNEMOS_API__TOTP_MASTER_KEY is not set` | TOTP enabled without the master key | Set `MNEMOS_API__TOTP_MASTER_KEY` in the environment (env-only, never on disk) |
-| `mnemos sync import` returns `records_skipped=N` on first import | The records were already present in peer A's store from a prior run | Expected if the test was run before and not cleaned up. Use `mnemos search` to confirm the records are present, then proceed |
+| `vesma sync import` returns `records_skipped=N` on first import | The records were already present in peer A's store from a prior run | Expected if the test was run before and not cleaned up. Use `vesma search` to confirm the records are present, then proceed |
 
 ---
 
@@ -518,9 +518,9 @@ the full threat model and the mTLS-vs-bearer rationale.
 
 - ArchCom contract 2026-07-17 — `.archcom/sessions/2026-07-17-federation-contract.md` §3.2 (flow), §9 (trigger codes), §10 (access log)
 - ADR-0016 — `docs/project/adr/0016-federation-threat-model.md`
-- `src/mnemos/federation_server.py` — `handle_pull` (the server flow)
-- `src/mnemos/api/federation.py` — the FastAPI route adapter
-- `src/mnemos/api/main.py` — `_check_non_loopback_auth` (startup guard)
-- `src/mnemos/cli/sync.py` — `mnemos sync import` (idempotent merge)
-- `src/mnemos/trigger_codes.py` — the five trigger codes
+- `src/vesmaro/federation_server.py` — `handle_pull` (the server flow)
+- `src/vesmaro/api/federation.py` — the FastAPI route adapter
+- `src/vesmaro/api/main.py` — `_check_non_loopback_auth` (startup guard)
+- `src/vesmaro/cli/sync.py` — `vesma sync import` (idempotent merge)
+- `src/vesmaro/trigger_codes.py` — the five trigger codes
 - `scripts/smoke-federation.sh` — single-host smoke test automation (added in parallel)

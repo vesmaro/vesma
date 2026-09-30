@@ -256,7 +256,7 @@ class TestMemoryTagContractIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Mnemos subtype catalogue
+# Vesma subtype catalogue
 # ---------------------------------------------------------------------------
 
 

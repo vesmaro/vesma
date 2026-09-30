@@ -1,4 +1,4 @@
-"""LLM provider abstraction for Mnemos.
+"""LLM provider abstraction for Vesma.
 
 Submodules:
   base        — Provider interface (abstract base class)
