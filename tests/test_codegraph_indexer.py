@@ -281,9 +281,10 @@ class TestZeroSourceBytes:
         conn = store._conn()
         # Docstring secret, literal defaults, comment text: none of it
         # may appear in ANY text column of the sidecar. Parameter NAMES
-        # are identifiers — the signature shape keeps them by contract;
-        # their DEFAULT VALUES ('hi', 5, 2) must not survive.
-        forbidden = [SECRET_AWS_KEY, "'hi'", "x=5", "b=2", "return x", "greeting="]
+        # are identifiers — the signature shape keeps them by contract
+        # (review 10173a2a-1: with the ``=…`` drop marker, so the bare
+        # ``name=`` prefix is no longer a leak signature — the VALUE is).
+        forbidden = [SECRET_AWS_KEY, "'hi'", "x=5", "b=2", "return x", "greeting='hi'"]
         tables = ["project_nodes", "project_edges", "graph_files", "graph_meta"]
         for table in tables:
             rows = conn.execute(f"SELECT * FROM {table}").fetchall()
@@ -300,6 +301,30 @@ class TestZeroSourceBytes:
         text = str(sig["signature"])
         assert "b" in text  # the identifier survives
         assert "2" not in text  # the default value does not
+
+    def test_signature_drops_default_names_literals_and_calls_whole(
+        self, store: CodeGraphStore, tmp_path: Path
+    ) -> None:
+        # Review 10173a2a-1: a NAME in default position (``x=SOME_NAME``)
+        # is residual risk class «names carry secrets» — defaults are
+        # dropped WHOLE (literal, bare name, call, annotated string).
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / "defaults.py").write_text(
+            "def fn(x=SOME_NAME, y=5, z=make_default(), name: str = 'lit'):\n"
+            "    return x\n",
+            encoding="utf-8",
+        )
+        index_project("proj", root, store, _FakeMainStore())
+        row = store._conn().execute(
+            "SELECT signature FROM project_nodes WHERE qname='fn'"
+        ).fetchone()
+        assert row is not None
+        sig = str(row["signature"])
+        for marker in ("SOME_NAME", "make_default", "lit", "5"):
+            assert marker not in sig, f"default-position value leaked: {sig}"
+        assert "x=…" in sig and "y=…" in sig and "z=…" in sig
+        assert "name: str=…" in sig  # the ANNOTATION survives (type names)
 
 
 # ── PG3: poisoned files ─────────────────────────────────────────────────────

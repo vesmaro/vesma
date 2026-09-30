@@ -73,6 +73,11 @@ _LITERAL_TYPES: frozenset[str] = frozenset(
     {"string", "comment", "integer", "float", "true", "false", "none"}
 )
 
+#: Marker rendered in place of a dropped default value — ``f(x=…)``
+#: instead of ``f(x=SOME_NAME)`` (contract §5: a NAME in default
+#: position is still residual risk; the value is unread, whole).
+_SIG_DEFAULT_MARKER = "…"
+
 
 class IndexLimitError(Exception):
     """PG7 fail-closed limit breach — the whole index is aborted.
@@ -145,10 +150,28 @@ def _text(src: bytes, node: Any) -> str:
 def _sig_part_text(src: bytes, part: Any) -> str:
     """Signature shape of ONE parameter/type part — identifiers and
     type names only. Anonymous parts are dropped (PG1: a node whose
-    ``is_named`` is False never contributes), literal parts are
-    dropped (PG1: no default values, no string annotations)."""
+    ``is_named`` is False never contributes), literal parts are dropped
+    (PG1: no default values, no string annotations).
+
+    A parameter WITH a default (``default_parameter`` /
+    ``typed_default_parameter``) keeps only its name — and type names
+    for the annotated form — and renders the ``=…`` marker: the default
+    VALUE is dropped WHOLE, whether it is a literal, a bare NAME
+    (``f(x=SOME_NAME)`` — names from default positions are residual
+    risk, contract §5) or a call (review 10173a2a-1)."""
     if not part.is_named or part.type in _LITERAL_TYPES:
         return ""
+    if part.type in ("default_parameter", "typed_default_parameter"):
+        name_node = part.child_by_field_name("name")
+        name = _text(src, name_node) if name_node is not None else ""
+        annotation = ""
+        if part.type == "typed_default_parameter":
+            type_node = part.child_by_field_name("type")
+            if type_node is not None:
+                annotation = _sig_part_text(src, type_node)
+        return f"{name}: {annotation}={_SIG_DEFAULT_MARKER}" if annotation else (
+            f"{name}={_SIG_DEFAULT_MARKER}"
+        )
     if part.type in ("identifier", "type_identifier"):
         return _text(src, part)
     inner = [_sig_part_text(src, c) for c in part.children]
