@@ -1,7 +1,7 @@
 """``mnemos sync`` — federation Phase 0 batch sync CLI logic.
 
 ArchCom 2026-07-17 federation contract §3.1 — operator-curated, offline,
-cron-triggered batch sync between two mnemos instances. **No network** —
+cron-triggered batch sync between two Vesma instances. **No network** —
 transfer is out-of-band (rsync / scp / shared volume via
 ``scripts/sync-peers.sh``).
 

@@ -1,6 +1,6 @@
 """``mnemos doctor`` CLI subcommand — health check.
 
-Runs a series of checks against the local Mnemos installation and reports
+Runs a series of checks against the local Vesma installation and reports
 status. Exit codes:
 
 * 0 — all checks pass
@@ -32,7 +32,7 @@ console = Console()
 
 doctor_app = typer.Typer(
     name="doctor",
-    help="Run Mnemos health checks (config, vault, DB, pending refine queue, MCP, "
+    help="Run Vesma health checks (config, vault, DB, pending refine queue, MCP, "
     "integration, tags).",
     no_args_is_help=False,
 )
@@ -509,7 +509,7 @@ def _check_agent_wiring() -> CheckResult:
 
 
 def _collect_paths(settings: Any) -> dict[str, str]:
-    """Collect all relevant Mnemos paths as display strings.
+    """Collect all relevant Vesma paths as display strings.
 
     Returns a dict with keys: root, config, data_dir, db_path, vault, logs,
     cache, completion, mcp_config.
@@ -708,7 +708,7 @@ def _fix_action_for(check_name: str) -> _FixAction | None:
 
 def _render(results: list[CheckResult]) -> None:
     """Render the results as a rich table."""
-    table = Table(title="Mnemos Health Check", show_header=True, header_style="bold")
+    table = Table(title="Vesma Health Check", show_header=True, header_style="bold")
     table.add_column("Status", style="bold", width=4)
     table.add_column("Check", style="bold cyan")
     table.add_column("Detail")
@@ -761,7 +761,7 @@ def doctor(
         ),
     ] = False,
 ) -> None:
-    """Run Mnemos health checks and report status.
+    """Run Vesma health checks and report status.
 
     Checks: config, data dir, vault, SQLite DB, vector store, pending
     refinement queue, MCP server, integration layer, agent wiring, tag
@@ -862,7 +862,7 @@ def doctor(
         if fix_skipped:
             console.print(f"[yellow]Could not auto-fix: {', '.join(fix_skipped)}[/yellow]")
     if code == 0:
-        console.print("[green]All checks passed. Mnemos is healthy.[/green]")
+        console.print("[green]All checks passed. Vesma is healthy.[/green]")
     elif code == 2:
         console.print("[yellow]⚠ Some checks warn — see above.[/yellow]")
     else:

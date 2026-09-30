@@ -1,6 +1,6 @@
-"""Data models for the Mnemos memory system.
+"""Data models for the Vesma memory system.
 
-Core models: TagContract (Mnemos tag validation, M2), Memory (pipeline + Context
+Core models: TagContract (Vesma tag validation, M2), Memory (pipeline + Context
 Filter fields, M4/M10), Trace (explainability layer, M6), AgentRecallQuery
 (per-agent recall, M3).
 """
@@ -148,7 +148,7 @@ def render_retraction(memory: Memory) -> str:
     return f"[retracted: {ts}]"
 
 
-# ── Mnemos Tag Contract (M2) ──────────────────────────────────────────────────────
+# ── Vesma Tag Contract (M2) ──────────────────────────────────────────────────────
 
 
 # Valid mnemos:* subtypes (enforced when strict_tag_contract=True)
@@ -408,11 +408,11 @@ def normalize_task_slug(value: str) -> str:
 
 
 class TagContractError(ValueError):
-    """Raised when a tag set violates the Mnemos tag contract in strict mode."""
+    """Raised when a tag set violates the Vesma tag contract in strict mode."""
 
 
 def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
-    """Validate tags against the Mnemos tag contract.
+    """Validate tags against the Vesma tag contract.
 
     Scope hierarchy doctrine (ADR-0027 Phase 0, epic #308): inheritance is
     **INTERSECTION, not union** — ``project x agent x session x task``.
@@ -524,7 +524,7 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
     # Always fatal errors raise regardless of strict flag
     if fatal_errors:
         raise TagContractError(
-            "Mnemos tag contract violation(s) (always fatal):\n"
+            "Vesma tag contract violation(s) (always fatal):\n"
             + "\n".join(f"  - {e}" for e in fatal_errors)
         )
 
@@ -533,7 +533,7 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
 
     if strict:
         raise TagContractError(
-            "Mnemos tag contract violation(s):\n" + "\n".join(f"  - {e}" for e in patchable_errors)
+            "Vesma tag contract violation(s):\n" + "\n".join(f"  - {e}" for e in patchable_errors)
         )
 
     # Lax mode: patch the tag list rather than reject
@@ -721,7 +721,7 @@ class Memory(BaseModel):
     """Single unified memory entry — status-driven pipeline model.
 
     Field groups:
-      - Mnemos tag contract denormalisations (project, agent)
+      - Vesma tag contract denormalisations (project, agent)
       - Knowledge pipeline fields (quality_score, confidence, cluster_id, derived_from …)
       - Context Filter fields (raw_content, clean_content, filter_profile …) — M10
       - Embedding tracking (embedding_id)
@@ -739,7 +739,7 @@ class Memory(BaseModel):
     file_path: str | None = None
     category: str | None = None
 
-    # ── Mnemos tag contract (denormalised from tags, set by MCP/TagContract layer) ──
+    # ── Vesma tag contract (denormalised from tags, set by MCP/TagContract layer) ──
     project: str = ""
     agent: str = ""
 
@@ -793,7 +793,7 @@ class Memory(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     # ── Validation control (not stored) ────────────────────────────────────
-    # Set strict_tags=True to enforce Mnemos tag contract on construction.
+    # Set strict_tags=True to enforce Vesma tag contract on construction.
     strict_tags: bool = Field(default=False, exclude=True)
 
     @model_validator(mode="after")

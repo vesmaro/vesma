@@ -1,7 +1,7 @@
 """Background secrets scanner — Layer 2 of the federation defence-in-depth.
 
 ArchCom 2026-07-17 federation contract §2.2.1 — the background scanner
-periodically re-scans the whole mnemos corpus for secrets missed by the
+periodically re-scans the whole Vesma corpus for secrets missed by the
 write-path scanner (Layer 1) and auto-tags ``mnemos:no-federate`` so the
 record is excluded from all external exchange (batch sync + mediated
 pull). It catches false negatives:
@@ -153,7 +153,7 @@ class BackgroundScanner:
         # very old timestamp so the SQL ``>=`` comparison is uniform.
         self._last_scan_ts: datetime | None = None
         # Cumulative counter — total records tagged across all passes.
-        # Used by ``mnemos scanner status``. Reset only on process
+        # Used by ``mnemos scanner status`` (CLI name). Reset only on process
         # restart (intentional — the counter is operational telemetry,
         # not a persisted metric).
         self._total_tagged: int = 0

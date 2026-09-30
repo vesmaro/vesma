@@ -3,7 +3,7 @@
 Phase A (docs/architecture.md §2-3): born-final schema, one insert per
 assemble call + its blocks, keyed-HMAC fingerprints, non-fatal writes.
 
-Host contract (the ONLY integration surface mnemos touches):
+Host contract (the ONLY integration surface Vesma touches):
   - ``MetricsStore(path)`` — opens (and creates) the sidecar;
   - ``record_assemble(result, *, latency_ms)`` — one call after
     ``assemble_context`` built its result, at the hook/MCP boundary;

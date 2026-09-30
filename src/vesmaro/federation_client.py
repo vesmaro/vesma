@@ -107,7 +107,7 @@ def _pull_from_peer_impl(
         peer_id: A2A id of the peer to pull from.
         query: The query topic.
         project_scope: Which project A wants to pull.
-        settings: The mnemos :class:`Settings` (provides ``federation.peers``).
+        settings: The Vesma :class:`Settings` (provides ``federation.peers``).
         timeout_s: HTTP timeout in seconds (КП-2 default 2.0s).
         transport: Optional ``httpx`` transport for tests (e.g.
             ``httpx.MockTransport``). When ``None``, the default

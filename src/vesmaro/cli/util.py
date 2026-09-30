@@ -43,7 +43,7 @@ console = Console()
 
 integration_app = typer.Typer(
     name="integration",
-    help="Manage Mnemos integration layer (instructions, skills, prompts, MCP).",
+    help="Manage Vesma integration layer (instructions, skills, prompts, MCP).",
     no_args_is_help=True,
 )
 
@@ -231,7 +231,7 @@ def _prompt_wire_agents_default(agents: list[AgentInfo]) -> list[AgentInfo]:
     )
 
     if not unwired:
-        console.print("  [dim]Nothing to wire — all agents already have mnemos tools.[/dim]")
+        console.print("  [dim]Nothing to wire — all agents already have Vesma tools.[/dim]")
         return []
 
     # Non-interactive: safe default is to SKIP (don't modify agent files in CI).
@@ -242,7 +242,7 @@ def _prompt_wire_agents_default(agents: list[AgentInfo]) -> list[AgentInfo]:
         )
         return []
 
-    answer = console.input("Wire Mnemos MCP to all Copilot agents? [Y/n] ").strip().lower()
+    answer = console.input("Wire Vesma MCP to all Copilot agents? [Y/n] ").strip().lower()
     if answer in ("", "y", "yes"):
         return unwired
     return []
@@ -267,7 +267,7 @@ def _prompt_wire_agents_interactive(agents: list[AgentInfo]) -> list[AgentInfo]:
     )
 
     if not unwired:
-        console.print("  [dim]Nothing to wire — all agents already have mnemos tools.[/dim]")
+        console.print("  [dim]Nothing to wire — all agents already have Vesma tools.[/dim]")
         return []
 
     # Non-interactive fallback: user passed --wire-agents, so wire all.

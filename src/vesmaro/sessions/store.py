@@ -16,7 +16,7 @@ Responsibilities:
 
 This module deliberately does **not** import :mod:`vesmaro.manager`.  It
 opens its own SQLite connection, sharing the same database file as the
-rest of Mnemos (WAL allows concurrent readers and one writer).  The
+rest of Vesma (WAL allows concurrent readers and one writer).  The
 ``SQLiteStore`` used by ``MemoryManager`` is independent — the two
 speak to the same file but maintain their own connection pools.
 

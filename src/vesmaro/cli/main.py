@@ -1,4 +1,4 @@
-"""Mnemos CLI — Typer-based command interface.
+"""Vesma CLI — Typer-based command interface.
 
 Entry point: mnemos (declared in pyproject.toml [project.scripts]).
 """
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 app = typer.Typer(
     name="mnemos",
-    help="Mnemos — standalone memory & knowledge server for AI agents.",
+    help="Vesma — standalone memory & knowledge server for AI agents.",
     no_args_is_help=True,
 )
 console = Console()
@@ -57,7 +57,7 @@ def main(
         typer.Option(
             "--version",
             "-V",
-            help="Show the Mnemos version and exit.",
+            help="Show the Vesma version and exit.",
             callback=_version_callback,
             is_eager=True,
         ),
@@ -71,7 +71,7 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """Mnemos — standalone memory & knowledge server for AI agents."""
+    """Vesma — standalone memory & knowledge server for AI agents."""
     global _verbose
     _verbose = verbose
 
@@ -298,7 +298,7 @@ app.add_typer(_tags_app, name="tags")
 
 @_tags_app.command(name="validate")
 def tags_validate(
-    vault: Annotated[Path, typer.Argument(help="Path to Mnemos vault directory")],
+    vault: Annotated[Path, typer.Argument(help="Path to Vesma vault directory")],
     config: str = ConfigOption,
 ) -> None:
     """Validate tag contract across an existing vault. Reports non-conformant entries."""
@@ -639,7 +639,7 @@ def workflow_history(
 
 @app.command()
 def stats(config: str = ConfigOption) -> None:
-    """Display Mnemos health statistics."""
+    """Display Vesma health statistics."""
     mgr = get_manager(config)
     s = mgr.stats()
     for k, v in s.items():
@@ -1189,7 +1189,7 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 
 # ── migrate (M13) ──────────────────────────────────────────────────────────────
 # Subcommand tree:
-#   mnemos migrate from-ai-brain   — migrate ai-brain data to Mnemos format
+#   mnemos migrate from-ai-brain   — migrate ai-brain data to Vesma format
 #   mnemos migrate tags            — migrate gcw: tags → mnemos: tags
 
 _migrate_app = typer.Typer(
@@ -1212,14 +1212,14 @@ def migrate(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be migrated"),
     config: str = ConfigOption,
 ) -> None:
-    """Migrate existing ai-brain data to Mnemos format. (M13)"""
+    """Migrate existing ai-brain data to Vesma format. (M13)"""
     from vesmaro.cli.migrate import migrate_from_ai_brain
 
     settings = load_settings(config)
     db_path = source / "ai_brain.db"
     vault_path = vault if vault.exists() else None
 
-    with console.status("[bold green]Migrating ai-brain → Mnemos..."):
+    with console.status("[bold green]Migrating ai-brain → Vesma..."):
         summary = migrate_from_ai_brain(
             db_path,
             vault_path,

@@ -1,7 +1,7 @@
 """FastAPI router for the federation mediated-pull endpoint (Phase 2).
 
 ArchCom 2026-07-17 federation contract §3.2. Registers
-``POST /api/v1/federation/pull`` on the existing mnemos FastAPI app.
+``POST /api/v1/federation/pull`` on the existing Vesma FastAPI app.
 The route is a thin adapter over :func:`vesmaro.federation_server.handle_pull`
 — no business logic lives here.
 

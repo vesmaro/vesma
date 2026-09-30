@@ -4,7 +4,7 @@ The gRPC Python plugin emits flat top-level imports
 (``import mnemos_core_api_pb2 as ...``) inside the generated
 ``*_pb2_grpc.py`` files. The generated directory
 (``federation/gen/python/``) is gitignored and lives outside the
-``mnemos`` package tree, so the generated modules are not importable as
+``vesmaro`` package tree, so the generated modules are not importable as
 ordinary package members.
 
 This shim resolves that by inserting the generated directory on
@@ -34,7 +34,7 @@ from typing import Any, Final
 
 #: Absolute path to the gRPC-generated Python stubs directory.
 #:
-#: Resolved relative to this file: ``src/mnemos/_mesh_gen.py`` ->
+#: Resolved relative to this file: ``src/vesmaro/_mesh_gen.py`` ->
 #: ``../../federation/gen/python``. Kept as a resolved ``Path`` so the
 #: shim works regardless of the current working directory.
 _GEN_DIR: Path = Path(__file__).resolve().parent.parent.parent / "federation" / "gen" / "python"

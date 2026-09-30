@@ -1,1 +1,1 @@
-"""Mnemos HTTP API package."""
+"""Vesma HTTP API package."""

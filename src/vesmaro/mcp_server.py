@@ -1,6 +1,6 @@
-"""MCP server for Mnemos — exposes mnemos_* memory tools to Copilot/LLM agents.
+"""MCP server for Vesma — exposes mnemos_* memory tools to Copilot/LLM agents.
 
-Tools: mnemos_add (enforces Mnemos TagContract), mnemos_search, mnemos_recall,
+Tools: mnemos_add (enforces Vesma TagContract), mnemos_search, mnemos_recall,
 mnemos_agent_recall (M3), mnemos_auto_collect_status (per-signal compaction
 vector, M7), and others. Auto-collect driven by VESMARO_AUTO_COLLECT env var.
 
@@ -385,7 +385,7 @@ async def _canonical_tools() -> list[Tool]:
         else (
             "Add a new entry to long-term memory. "
             "Tags MUST include: project:<slug>, agent:<slug>, and mnemos:<subtype>. "
-            "Valid mnemos subtypes: session, bug-pattern, learning, decision, rule, "
+            "Valid vesma: subtypes: session, bug-pattern, learning, decision, rule, "
             "open-question, checkpoint, legacy."
         )
     )
@@ -936,7 +936,7 @@ async def _canonical_tools() -> list[Tool]:
         ),
         Tool(
             name="mnemos_stats",
-            description="Get Mnemos health statistics and memory counts.",
+            description="Get Vesma health statistics and memory counts.",
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -3170,7 +3170,7 @@ server = Server(
 
 
 async def main() -> None:
-    """Run the Mnemos MCP server over stdio."""
+    """Run the Vesma MCP server over stdio."""
     from vesmaro.logging_setup import setup_logging
 
     settings = load_settings()

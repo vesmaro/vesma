@@ -1,1 +1,1 @@
-"""Mnemos CLI package."""
+"""Vesma CLI package."""

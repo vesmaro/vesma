@@ -1,10 +1,10 @@
-"""M13 — Migration CLI: ai-brain → Mnemos.
+"""M13 — Migration CLI: ai-brain → Vesma.
 
-Converts legacy ai-brain SQLite DB + vault into Mnemos format.
+Converts legacy ai-brain SQLite DB + vault into Vesma format.
 Key transformations:
   - tags: add project:legacy, agent:unknown, mnemos:legacy
   - status: preserved (raw/processing/processed/published/archived)
-  - source: ai-brain TELEGRAM → Mnemos MCP (closest match)
+  - source: ai-brain TELEGRAM → Vesma MCP (closest match)
   - Memory fields: parent_ids → derived_from, content_ru/content_en → metadata
   - Config: BrainConfig → MnemosConfig (paths updated)
 """
@@ -56,7 +56,7 @@ _LEGACY_TO_VESMARO_STATUS: dict[str, MemoryStatus] = {
 
 
 def _migrate_tags(old_tags: list[str]) -> list[str]:
-    """Add Mnemos contract tags to legacy tags and migrate gcw: → mnemos:."""
+    """Add Vesma contract tags to legacy tags and migrate gcw: → mnemos:."""
     tags = []
     for t in old_tags:
         # Migrate legacy gcw: tags → mnemos:
@@ -74,7 +74,7 @@ def _migrate_tags(old_tags: list[str]) -> list[str]:
 
 
 def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
-    """Migrate existing gcw: tags in the Mnemos DB to mnemos: tags.
+    """Migrate existing gcw: tags in the Vesma DB to mnemos: tags.
 
     Converts all tag arrays in the memories table that contain ``gcw:<subtype>``
     entries to ``mnemos:<subtype>``. Idempotent — safe to run multiple times.
@@ -108,7 +108,7 @@ def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
 
 
 def _migrate_memory(row: sqlite3.Row) -> MemoryCreate:
-    """Convert a legacy ai-brain DB row into Mnemos MemoryCreate."""
+    """Convert a legacy ai-brain DB row into Vesma MemoryCreate."""
     raw_tags = json.loads(row["tags"]) if row["tags"] else []
     tags = _migrate_tags(raw_tags)
 
@@ -124,7 +124,7 @@ def _migrate_memory(row: sqlite3.Row) -> MemoryCreate:
     raw_status = row["status"] or "raw"
     status = _LEGACY_TO_VESMARO_STATUS.get(raw_status, MemoryStatus.RAW)
 
-    # Build metadata from legacy fields not present in Mnemos
+    # Build metadata from legacy fields not present in Vesma
     metadata: dict[str, Any] = {}
     if row["content_ru"]:
         metadata["content_ru"] = row["content_ru"]
@@ -164,14 +164,14 @@ def migrate_from_ai_brain(
     backup: bool = True,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
-    """Migrate ai-brain SQLite DB (and optional vault) into Mnemos.
+    """Migrate ai-brain SQLite DB (and optional vault) into Vesma.
 
     Args:
         source_db: Path to ai-brain SQLite file (e.g. ~/.ai-brain/ai_brain.db).
         source_vault: Optional path to ai-brain vault dir (e.g. ~/brain-vault).
         dry_run: If True, only report what would be migrated without writing.
-        backup: If True and not dry_run, backup existing Mnemos DB before migration.
-        settings: Mnemos settings to use. If None, loads default.
+        backup: If True and not dry_run, backup existing Vesma DB before migration.
+        settings: Vesma settings to use. If None, loads default.
 
     Returns:
         Summary dict with counts and any errors.
@@ -184,13 +184,13 @@ def migrate_from_ai_brain(
         settings.resolve_paths()
         settings.apply_runtime_env()
 
-    # Backup existing Mnemos DB if it exists
+    # Backup existing Vesma DB if it exists
     mnemos_db = settings.db_path
     if backup and not dry_run and mnemos_db.exists():
         ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         backup_path = mnemos_db.with_suffix(f".db.backup-{ts}")
         shutil.copy2(mnemos_db, backup_path)
-        logger.info("Backed up existing Mnemos DB to %s", backup_path)
+        logger.info("Backed up existing Vesma DB to %s", backup_path)
 
     manager = MemoryManager(settings)
 
@@ -236,7 +236,7 @@ def migrate_from_ai_brain(
         for md_file in source_vault.rglob("*.md"):
             try:
                 if not dry_run:
-                    # Copy file into Mnemos vault, preserving relative path
+                    # Copy file into Vesma vault, preserving relative path
                     rel = md_file.relative_to(source_vault)
                     target = settings.mnemos.vault_path / rel
                     target.parent.mkdir(parents=True, exist_ok=True)

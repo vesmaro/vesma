@@ -1,4 +1,4 @@
-"""File watchers for Mnemos.
+"""File watchers for Vesma.
 
 Submodules:
   vault       — General vault watcher (debounce + batching → pipeline triggers)

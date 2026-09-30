@@ -1,6 +1,6 @@
 """Pydantic models for the A2A Sessions API (M16).
 
-These models are deliberately isolated from the rest of the Mnemos models
+These models are deliberately isolated from the rest of the Vesma models
 to keep the A2A contract (per ``docs/a2a/mnemos-requirements.md``) stable
 and reviewable in one place.  They mirror the requirements document 1:1:
 
@@ -11,7 +11,7 @@ and reviewable in one place.  They mirror the requirements document 1:1:
   * ``TurnCreate`` / ``TurnRead`` — request/response for turns.
   * ``TurnRangeRequest`` / ``TurnRangeResponse`` — bulk-load a step range.
 
-Pydantic v2 is used (matches the rest of Mnemos).  Field validation
+Pydantic v2 is used (matches the rest of Vesma).  Field validation
 covers the small set of invariants that must hold for every payload:
 
   * ``user_id`` and ``session_id`` are non-empty strings of bounded length.

@@ -2,7 +2,7 @@
 
 Inspired by headroom's CCR (https://github.com/headroomlabs-ai/headroom),
 Apache 2.0. This is an original implementation integrated into the existing
-mnemos SQLite store (one DB, one backup) rather than a separate cache.
+Vesma SQLite store (one DB, one backup) rather than a separate cache.
 
 Pipeline
 --------
