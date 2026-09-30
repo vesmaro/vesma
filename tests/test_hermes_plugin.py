@@ -1,7 +1,7 @@
 """Unit tests for the Hermes MnemosMemoryProvider contract shim (#125 W5).
 
 The plugin at ``integrations/hermes/__init__.py`` imports two Hermes-internal
-modules that are not available in the Mnemos test environment:
+modules that are not available in the Vesma test environment:
 
   - ``agent.memory_provider.MemoryProvider``  — the Hermes ABC
   - ``tools.registry.tool_error``              — Hermes tool-error helper

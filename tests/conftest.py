@@ -1,4 +1,4 @@
-"""Shared test setup and fixtures for the Mnemos test suite.
+"""Shared test setup and fixtures for the Vesma test suite.
 
 MCP stub
 --------
