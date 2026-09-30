@@ -12,7 +12,7 @@ ai-brain stored every memory in both SQLite (FTS5) and ChromaDB (vector) regardl
 maturity. The result: vector search returned raw `brain dump` notes interleaved with
 finished articles, drowning signal in noise.
 
-Mnemos introduces a 4-state machine for knowledge: `raw → processing → processed →
+Vesma introduces a 4-state machine for knowledge: `raw → processing → processed →
 published`. The product question: at which state should a memory enter the vector
 index?
 
@@ -66,5 +66,5 @@ The state machine is enforced by the policy engine (M5): no direct transition
 
 - `PLAN.md` §"Phase M4 — Knowledge Pipeline"
 - `ARCHITECTURE.md` §1, §2 (Memory.status field)
-- `src/mnemos/pipeline/cluster.py`, `synthesize.py`, `quality_gate.py`, `publish.py`
+- `src/vesma/pipeline/cluster.py`, `synthesize.py`, `quality_gate.py`, `publish.py`
 - `tests/test_pipeline.py` — 24 tests

@@ -1,4 +1,4 @@
-# План разработки mnemos — Фаза 2 (dev-plan)
+# План разработки vesma — Фаза 5.0.0 (dev-plan)
 
 > **Живой документ.** Обновляется на закрытии каждой волны (каденция — §7).
 > Единый язык задач — GitHub-трекер [vesmaro/vesmaro](https://github.com/vesmaro/vesmaro/issues)
@@ -88,6 +88,8 @@
 | 2026-09-28 | ADR-адденды: 0027 Phase-2 decision record + 0030 A0-review record | [PR #424](https://github.com/vesmaro/vesmaro/pull/424) (`5f8d1ae`): **ADR-0027 §A** — вердикт Ф1 + арбитраж владельца дословно (value call с зафиксированной властью §5.2; mnemos `2b3ae42f`), что влито как Phase 2 (§A.4), обязанность κ-аудит-артефакта (§A.5: 53 пар double-annotated blind-аудита должны жить в записи репо; placeholder-указатель на mnemos `762adcac`), §7 exploratory set получил явный дом («в аналитической записи; перемер на следующем recorded run»). **ADR-0030 §B** — A0-review record: перебазелирование гейта (cohort-семантика ≥ 0.5), контракт S1/S2, инварианты depth-2 кодифицированы ДО BFS-2 (I3-пин поправлен зарегистрированно), семантика `graph_epoch` (per-PROJECT, bump через manager-wrapper, идемпотентность), калибровочные заметки S1→S2. Тела ADR байт-не-тронуты (179/0 и 160/0 diff-строк; конвенция append-only) |
 | 2026-09-28 | Кросс-проектная подача: mnemos-eyes [#130](https://github.com/Korrnals/mnemos-eyes/issues/130) | Настройка switcher-режима GUI (директива владельца 2026-09-28, транслирована в eyes-трекер): режим **AUTO** (default) — дефолтный поиск, при пустом результате retry второй формой (client-side fallback — обе формы бьют один движок, strict-AND); плюс режимы **task-param / task-tag** — зеркало сравнительной метрики ядра (`task_param_queries_total`/`task_tag_queries_total` из PR #420) на стороне клиента |
 | 2026-09-15 | АрхКом: Memory Graph → «самозаправляющийся граф» (ревизия роадмапа) | Владелец обнаружил потерю инициативы «Memory Graph + Learning Loop» (очередь АрхКома с 2026-08-21, TL-рекомендация P1; при вычистке очереди 2026-08-31 не переоформлена — disposition отсутствовал, в dev-plan выжил только D2-хвост [#172](https://github.com/vesmaro/vesmaro/issues/172)). Комитет (TL chair + Product Architect + Senior System Engineer + Senior Security Engineer, все conditional → сходимость в фазе критики) принял **accept-staged**: прод-факт 1662 записи / 0 рёбер опроверг теорию топлива от харнессов ⇒ топливо прежде механики. A0 (S–M): миграция видов (`relates_to`+веса+provenance/scope, одноразовое окно пустой таблицы), детерминированный авто-минтинг `relates_to` на write (без LLM, без supersede-решений), capture used/rejected в `edge_stats` (`event_id` PK, append-only, volume-cap), I1–I3 mutation-verified ДО включения 1-hop walk — acceptance: minting-rate + `via_graph`>0, guard recall@5 ≥ 0.9409. A1 (M) за гейтом плотности edges/100 ≥ 50 (revisitable на A0-review): BFS-2 прикладной уровнями, feedback APPLY rank-only, `graph_epoch` в cache key. B/C — Later (C за отдельной threat-model сессией). Линия едет мажорным 4.4.0; 4.3.0 не тронут; D2 #172 слит в эпик. Инварианты I1–I9 + процессные анти-потеря-фиксы (рекомендация → issue ≤48ч; disposition на каждый item при вычистке; dev-plan = derived state) — ADR-0030 `docs/project/adr/0030-memory-graph-self-fueling.md`; mnemos `d11debf8`/`1d4bf66e`; план — §4c |
+
+| 2026-10-01 | **VESMA-ребрендинг (5.0.0)** | Нейминг-трек закрыт решением владельца (37 волн): имя **vesma** общее (PyPI+npm), полное PyPI-имя `vesma-memory-server`, org vesmaro остаётся, компоненты vesma-* (все слоты верифицированы свободными), MCP dual-prefix `vesma_*`, LLM-диктант ок. Волна: pyproject name/description/version 5.0.0 + VERSION; src-легенды (54 файла), tests-легенды, docs EN/RU (91 файл), `VESMA_MCP_BRAND` канон + `VESMARO_MCP_BRAND` deprecated-alias, version-chain vesma→vesmaro→mnemos, dev-group self-extra fix, .venv-регрессия #441 снята, ruff clean, сьют 4644/0. Коммиты `fb84a87..b1c8a41`; каскад-ревью → окно регистраций |
 
 ## 4. DAG ближайших волн
 
@@ -454,7 +456,7 @@ fail-closed, never-pinnable + born no-federate, федеративное иск�
 ## 4b. Многоконтекстная память — план реализации (АрхКом 2026-09-14)
 
 > **Источник:** АрхКом 2026-09-14 (вердикт accept-staged; ADR-0027, эпик
-> [#308](https://github.com/vesmaro/vesmaro/issues/308); mnemos-решение
+> [#308](https://github.com/vesmaro/vesmaro/issues/308); vesma-решение
 > `bb7aa6be`, суперпрессировало идею `a4b846c7`). Формулировка владельца
 > 2026-09-14 после конкурентного среза (10 проектов: multi-context = ~80%
 > маркетинга; пустые зоны рынка — task-скоуп первого класса, пересечение
@@ -620,7 +622,7 @@ ADR-0027 §A.2–§A.3; mnemos `2b3ae42f`. Зарегистрированный 
 ## 4c. Memory Graph — самозаправляющийся граф (АрхКом 2026-09-15)
 
 > **Источник:** АрхКом 2026-09-15 (вердикт accept-staged; ADR-0030
-> `docs/project/adr/0030-memory-graph-self-fueling.md`; mnemos-решение
+> `docs/project/adr/0030-memory-graph-self-fueling.md`; vesma-решение
 > `d11debf8`, контракт `1d4bf66e`). Ревизия вскрыла потерю инициативы
 > «Memory Graph + Learning Loop» (очередь с 2026-08-21, P1-рекомендация;
 > слилась в очередь при вычистке 31.08 без disposition). Решающий
@@ -719,7 +721,7 @@ wave-аннотаций (S/M/L, зависимости); сверка «реко
 ## 4d. Граф проектов как память (АрхКом 2026-09-28)
 
 > **Источник:** АрхКом 2026-09-28 (вердикт accept-staged; ADR-0032
-> `docs/project/adr/0032-project-graph.md`; mnemos-решение `266aa582`,
+> `docs/project/adr/0032-project-graph.md`; vesma-решение `266aa582`,
 > контракт `b7572c97`). Инициатива владельца: агенты жгут токены на
 > перечитывание файлов проекта; решение — memory-first проектный граф
 > (sidecar-БД `code_graph.db` по прецеденту vectors.db, tree-sitter,
@@ -870,4 +872,4 @@ PGT-1..7 (dump-тест, конфайнмент, poisoned, выдача, экс�
 
 *Источник снимка: данные председателя Архитектурного комитета от
 2026-08-31 (проценты посчитаны председателем); main@`7c56b7f`. Артефакты
-волн — PR и issues репозитория Korrnals/mnemos.*
+волн — PR и issues репозитория Korrnals/vesma.*

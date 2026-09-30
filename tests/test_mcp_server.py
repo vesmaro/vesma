@@ -12,6 +12,7 @@ Validates three contracts:
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -360,3 +361,56 @@ async def test_brand_self_alias_and_invalid_brand_rejected() -> None:
     with patch("vesmaro.mcp_server._MCP_BRAND", "Bad Brand!"):
         tools = await _canonical_tools()
     assert len(tools) == 38  # malformed brand is a no-op
+
+
+async def test_vesma_mcp_brand_canonical_env_read() -> None:
+    """Rebrand 5.0.0: VESMA_MCP_BRAND canonical env is honoured with vesma_ aliases.
+
+    Regression guard for 84a2579: the brand tests above patch _MCP_BRAND directly
+    and never touch the dual-read env line; this test exercises it via env + import-reload."""
+    import importlib
+
+    from vesmaro import mcp_server as mcp
+
+    with patch.dict(os.environ, {"VESMA_MCP_BRAND": "vesma", "VESMARO_MCP_BRAND": ""}):
+        importlib.reload(mcp)
+        tools = await mcp.list_tools()
+    names = [t.name for t in tools]
+    assert len(names) == 76
+    assert any(n.startswith("vesma_") for n in names)
+    assert all(n.startswith("mnemos_") or n.startswith("vesma_") for n in names)
+
+
+async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
+    """Both envs set and differing → canonical VESMA_MCP_BRAND wins (no vesmaro_ aliases)."""
+    import importlib
+
+    from vesmaro import mcp_server as mcp
+
+    with patch.dict(
+        os.environ,
+        {"VESMA_MCP_BRAND": "vesma", "VESMARO_MCP_BRAND": "vesmaro"},
+    ):
+        importlib.reload(mcp)
+        tools = await mcp.list_tools()
+    names = [t.name for t in tools]
+    ves_aliases = [n for n in names if n.startswith("vesma_")]
+    vesmaro_aliases = [n for n in names if n.startswith("vesmaro_")]
+    assert ves_aliases and not vesmaro_aliases
+    # restore
+    importlib.reload(mcp)
+
+
+async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
+    """VESMA_MCP_BRAND unset → deprecated VESMARO_MCP_BRAND still honoured (dual-period)."""
+    import importlib
+
+    from vesmaro import mcp_server as mcp
+
+    with patch.dict(os.environ, {"VESMARO_MCP_BRAND": "vesmaro", "VESMA_MCP_BRAND": ""}):
+        importlib.reload(mcp)
+        tools = await mcp.list_tools()
+    names = [t.name for t in tools]
+    assert len(names) == 76
+    assert any(n.startswith("vesmaro_") for n in names)
+    importlib.reload(mcp)

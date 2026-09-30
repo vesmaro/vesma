@@ -1,4 +1,4 @@
-"""Compact exchange format for mnemos federation (Phase 0, issue #85 part 2a).
+"""Compact exchange format for Vesma federation (Phase 0, issue #85 part 2a).
 
 Implements the ``vesmaro.federation.v1`` compact record format (ArchCom
 2026-07-17 federation contract §2.3). The compact format is a list of
@@ -395,7 +395,7 @@ def build_compact_record(
     key_points = extract_key_points(content_source)
     record_type = derive_record_type(memory.tags)
 
-    # Tags: keep project/agent/mnemos tags, defensively drop
+    # Tags: keep project/agent/mnemos: tags, defensively drop
     # ``mnemos:no-federate`` (moderation should have refused such records
     # already, but strip anyway — belt and braces).
     tags = [t for t in memory.tags if t != NO_FEDERATE_TAG]

@@ -1,1 +1,1 @@
-"""Mnemos test suite."""
+"""Vesma test suite."""

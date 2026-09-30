@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 1280 360"
      preserveAspectRatio="xMidYMid meet" role="img"
      aria-labelledby="mnemos-title mnemos-desc">
-  <title id="mnemos-title">Mnemos — memory &amp; knowledge server for AI agents</title>
-  <desc id="mnemos-desc">Named after Mnemosyne, the Titaness of memory and mother of the nine Muses.
+  <title id="mnemos-title">Vesma — memory &amp; knowledge server for AI agents</title>
+  <desc id="mnemos-desc">Named for remembering — the task the pre-rebrand name Mnemosyne, the
+    Titaness of memory and mother of the nine Muses, stood for.
     A classical wordmark beside a constellation of nine glowing nodes — at once the Muses
     and a graph of memory nodes — framed by a Greek meander accent.</desc>
 
@@ -119,7 +120,7 @@
   <!-- ── Brand block: wordmark + etymology (centered under the wordmark) ── -->
   <!-- Wordmark -->
   <text x="462" y="172" text-anchor="middle" class="word" font-size="148"
-        letter-spacing="8" fill="url(#gold)">MNEMOS</text>
+        letter-spacing="8" fill="url(#gold)">VESMA</text>
 
   <!-- Etymology, centered under the wordmark — Greek original in gold, gloss muted -->
   <text x="462" y="208" text-anchor="middle" class="sub" font-size="19"

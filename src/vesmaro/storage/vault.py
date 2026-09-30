@@ -1,7 +1,7 @@
 """Obsidian-compatible vault integration — read/write markdown with YAML frontmatter.
 
 Stores pipeline fields (status, quality_score, cluster_id) and project + agent
-(Mnemos tag contract) in frontmatter for searchability. Default path: ~/.mnemos/vault/.
+(Vesma tag contract) in frontmatter for searchability. Default path: ~/.mnemos/vault/.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ class VaultManager:
         m["memory_type"] = memory.memory_type.value
         m["created"] = memory.created_at.isoformat()
         m["updated"] = memory.updated_at.isoformat()
-        # Mnemos contract
+        # Vesma contract
         if memory.project:
             m["project"] = memory.project
         if memory.agent:
@@ -96,7 +96,7 @@ class VaultManager:
             return None
 
         # `python-frontmatter` exposes `post.metadata` as `Any` (untyped
-        # library stub). For our Mnemos/Obsidian vault contract the metadata
+        # library stub). For our Vesma/Obsidian vault contract the metadata
         # is always a YAML mapping, so the cast is sound — it lets mypy
         # treat the subsequent `.get(...)` calls as dict[str, Any] access.
         meta = cast("dict[str, Any]", post.metadata)

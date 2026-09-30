@@ -1,9 +1,25 @@
 # Changelog
 
-All notable changes to Mnemos.
+All notable changes to Vesma (formerly Mnemos).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [5.0.0] — 2026-10-01 — VESMA rebrand
+
+### Changed (breaking)
+- **Product name: Mnemos → Vesma.** PyPI: naked `vesma` (canonical install) + full legacy-compatible name `vesma-memory-server`; npm: naked `vesma` + scoped `@vesma/*`; GH org stays `vesmaro`, repo renamed `vesmaro/vesma` in the release window.
+- **CLI:** canonical command `vesma` (aliases `vesmaro`, legacy `mnemos` — deprecated, retire no earlier than 6.0 per dual-import contract ADR-0031).
+- **MCP brand env:** `VESMA_MCP_BRAND` is canonical; `VESMARO_MCP_BRAND` kept as deprecated alias (dual-read); `mnemos_*` tool names and `mnemos:` tag namespace stay live wire contracts until 6.0.
+- **Version chain:** `vesma` → `vesmaro` → `mnemos-memory-server` (importlib lookup order, both in `vesmaro.__init__` and the version guard).
+
+### Changed
+- src legend: 54 files (docstrings/comments/help, no code-channel changes); tests legend: 8 files; docs EN/RU: 91 files (README h1/badges/banner-alt; env tables use the `VESMARO_*` code truth with a deprecated `MNEMOS_*` note block; EN/RU parity 28↔28).
+- dev-plan: Vesma 5.0.0 wave row (commit `3697e45`).
+
+### Fixed
+- stray tracked `.venv` symlink removed from the tree (regression surfaced by PR #441) and ignored.
+- version drift guard (#204): VERSION==pyproject==metadata enforced synchronously.
 
 ## [Unreleased]
 

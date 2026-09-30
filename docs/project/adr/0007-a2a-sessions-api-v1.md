@@ -4,7 +4,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-06-15
-- **Deciders**: abyss, GCW Agent Architect (requesting team), Mnemos Tech Lead
+- **Deciders**: abyss, GCW Agent Architect (requesting team), Vesma Tech Lead
 
 ## Context
 
@@ -19,8 +19,8 @@ FTS5, atomic write, `mode=summary` default, idempotency via `message_id`. Three
 
 ## Decision
 
-Mnemos implements the 5 required endpoints as a new **isolated sub-module**
-`src/mnemos/sessions/`, mounted under `/v1/sessions/*` in FastAPI. The existing
+Vesma implements the 5 required endpoints as a new **isolated sub-module**
+`src/vesma/sessions/`, mounted under `/v1/sessions/*` in FastAPI. The existing
 memory API (`/memories`, `/recall/*`, `/search`) is **not** modified.
 
 Key design choices:
@@ -33,7 +33,7 @@ Key design choices:
    `commit` after `INSERT`, `rollback` on any error. WAL mode is set at session
    table creation.
 4. **Failure mode: NOT single point of failure** — GCW has a file-based fallback
-   (`~/.gcw/a2a-messages.jsonl`). Mnemos is best-effort, not a hard dependency.
+   (`~/.gcw/a2a-messages.jsonl`). Vesma is best-effort, not a hard dependency.
 5. **Schema isolation** — `sessions` and `turns` tables are separate from
    `memories`. They share the SQLite connection but not the schema contract.
 
@@ -72,6 +72,6 @@ Key design choices:
 
 - `tasks/senior-system-engineer/M16-a2a-sessions-api.md` — implementation spec
 - `/var/home/abyss/LABs/Projects/Reserching/GithubCopilotWorkflow/docs/a2a/mnemos-requirements.md` — GCW contract
-- `src/mnemos/sessions/` — implementation
+- `src/vesma/sessions/` — implementation
 - `docs/a2a-sessions.md` — user-facing API reference
 - `tests/test_a2a_sessions.py` — 26 tests

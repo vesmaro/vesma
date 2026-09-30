@@ -8,7 +8,7 @@
 
 ## Context
 
-Mnemos is a personal memory server. Embeddings are computed for every `published`
+Vesma is a personal memory server. Embeddings are computed for every `published`
 memory and every search query. The team had to choose between:
 
 1. **Local ONNX** (e.g. all-MiniLM-L6-v2, downloaded at first run).
@@ -17,7 +17,7 @@ memory and every search query. The team had to choose between:
 
 ## Decision
 
-Mnemos v1 ships with **local ONNX embeddings by default**, with a swappable provider
+Vesma v1 ships with **local ONNX embeddings by default**, with a swappable provider
 interface (`EmbeddingProvider`) so users can switch to Ollama, SentenceTransformers,
 or a server-side API later.
 
@@ -49,7 +49,7 @@ captured in `docs/security.md`.
 
 **Neutral**
 
-- Provider abstraction in `src/mnemos/embeddings/__init__.py` exposes 4 providers.
+- Provider abstraction in `src/vesma/embeddings/__init__.py` exposes 4 providers.
   Users can opt in to a different one in `config.yaml`.
 
 ## Alternatives considered
@@ -65,6 +65,6 @@ captured in `docs/security.md`.
 ## References
 
 - `PLAN.md` §"Further considerations" Q1 (Lazy embeddings)
-- `src/mnemos/embeddings/__init__.py` — 4 providers, ONNX default
+- `src/vesma/embeddings/__init__.py` — 4 providers, ONNX default
 - `docs/security.md` — supply-chain hardening (B615)
-- `src/mnemos/config.py` — `hf_revision` pinned SHA
+- `src/vesma/config.py` — `hf_revision` pinned SHA

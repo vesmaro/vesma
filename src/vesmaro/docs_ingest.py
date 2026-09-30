@@ -62,7 +62,7 @@ invalidation; until then the counter is an exposed, bumped, test-pinned
 contract — not a wired defence.
 
 Boundary with the existing single-URL ingest: ``mnemos_ingest_url``
-(REST ``POST /ingest-url``, CLI ``mnemos add --url``) keeps its
+(REST ``POST /ingest-url``, CLI ``mnemos add --url`` — legacy CLI name) keeps its
 pre-Ф3 semantics UNTOUCHED — a fetched page saved as ONE memory row
 through the ordinary visibility policy, no born-quarantine. The
 document path is the SEPARATE ``ingest_document`` surface (MCP

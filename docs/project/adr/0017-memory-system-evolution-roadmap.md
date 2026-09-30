@@ -6,7 +6,7 @@
 
 ## Context
 
-Mnemos is a single-tenant, local-first memory server exposing three equivalent
+Vesma is a single-tenant, local-first memory server exposing three equivalent
 surfaces (CLI, HTTP API, MCP) over one core (`MemoryManager`): hybrid recall
 (FTS5 + vector, RRF fusion), a status-driven knowledge pipeline
 (`raw → processing → processed → published`) with quality gates and DLQ, a

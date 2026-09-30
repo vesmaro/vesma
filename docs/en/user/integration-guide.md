@@ -3,7 +3,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/integration-guide.md)
 
-The Mnemos integration layer is a set of **behavioral triggers** that make
+The Vesma integration layer is a set of **behavioral triggers** that make
 agents actually *use* the memory tools, not just have them available. Without
 these triggers, agents forget to recall at session start, skip checkpoints
 before compaction, and omit required tags.
@@ -23,7 +23,7 @@ Three surfaces, each with a different strength:
 ### Instructions vs skills vs prompts
 
 - **Instructions** are always-on rules. They say *when* to act. Every agent
-  with `mnemos/*` tools gets them.
+  with `vesma/*` tools gets them.
 - **Skills** are on-demand workflows. They say *how* to act. The agent loads
   them when it needs the procedure.
 - **Prompt mode** is an opt-in contract. It says *you are now a memory agent*.
@@ -58,7 +58,7 @@ integrations/
 ### One command (all targets)
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
 Deploys instructions, skills, and prompt mode to the default target
@@ -67,14 +67,14 @@ Deploys instructions, skills, and prompt mode to the default target
 ### Per-target
 
 ```bash
-mnemos integration setup --target copilot           # VS Code Copilot ~/.copilot/ (default)
-mnemos integration setup --target generic-copilot   # VS Code prompt mode ~/.config/Code/User/prompts/
-mnemos integration setup --target cursor            # Cursor ~/.cursor/
-mnemos integration setup --target zcode             # ZCode (native skills + MCP config)
-mnemos integration setup --target agents            # ~/.agents standard — Claude Code, Codex, Cursor, …
-mnemos integration setup --target pi                # Pi coding agent (bridge extension)
-mnemos integration setup --target hermes            # Hermes Agent (native plugin)
-mnemos integration setup --target all               # every detected target
+vesma integration setup --target copilot           # VS Code Copilot ~/.copilot/ (default)
+vesma integration setup --target generic-copilot   # VS Code prompt mode ~/.config/Code/User/prompts/
+vesma integration setup --target cursor            # Cursor ~/.cursor/
+vesma integration setup --target zcode             # ZCode (native skills + MCP config)
+vesma integration setup --target agents            # ~/.agents standard — Claude Code, Codex, Cursor, …
+vesma integration setup --target pi                # Pi coding agent (bridge extension)
+vesma integration setup --target hermes            # Hermes Agent (native plugin)
+vesma integration setup --target all               # every detected target
 ```
 
 Target names come from `integrations/targets.yaml`; `--help` lists them for
@@ -95,7 +95,7 @@ your install. Claude Code / Codex have no dedicated target — they read the
 The `agents` target works for **any harness** that reads the AGENTS.md
 standard locations (ZCode, Claude Code, Codex, Cursor, …) — one install,
 every tool. The MCP merge is additive: existing servers, plugins, and a
-user-tuned `env` on the `mnemos` entry are never overwritten.
+user-tuned `env` on the `vesma` entry are never overwritten.
 
 ### Pi coding agent
 
@@ -104,17 +104,17 @@ The `pi` target covers the [Pi coding agent](https://www.npmjs.com/package/@eare
 tools arrive via TypeScript extensions — so the MCP registration IS a file:
 the shipped bridge `integrations/extensions/mnemos-mcp.ts` is deployed
 (stamped) into `~/.pi/agent/extensions/`, where Pi auto-loads it. On session
-start the bridge spawns `mnemos mcp-server` over stdio and registers every
-`mnemos_*` tool natively; `/reload` hot-reloads, `/mnemos` reconnects.
+start the bridge spawns `vesma mcp-server` over stdio and registers every
+`vesma_*` tool natively; `/reload` hot-reloads, `/vesma` reconnects.
 
 ```bash
-mnemos integration setup --target pi
+vesma integration setup --target pi
 ```
 
 Skills deploy in the nested layout Pi reads natively
 (`~/.pi/agent/skills/<name>/SKILL.md`). Because Pi also reads
 `~/.agents/skills/`, prefer `--target pi` over deploying both to avoid
-duplicate skill listings. `mnemos integration uninstall --target pi`
+duplicate skill listings. `vesma integration uninstall --target pi`
 removes only the stamped bridge and skills — user extensions are never
 touched.
 
@@ -124,14 +124,14 @@ Deploy into another environment's home (a container, a dotfiles checkout)
 without rewriting targets.yaml:
 
 ```bash
-mnemos integration setup --target zcode \
+vesma integration setup --target zcode \
   --home /var/home/you/.distrobox/other-box/home \
-  --mnemos-bin /path/to/mnemos-wrapper \
+  --vesma-bin /path/to/mnemos-wrapper \
   --no-wire-agents
 ```
 
-`~` in targets.yaml resolves against `--home`. Pass `--mnemos-bin` when the
-target environment launches mnemos through a wrapper or a different path.
+`~` in targets.yaml resolves against `--home`. Pass `--vesma-bin` when the
+target environment launches vesma through a wrapper or a different path.
 
 ### What gets deployed where
 
@@ -140,7 +140,7 @@ target environment launches mnemos through a wrapper or a different path.
 | `copilot` | `~/.copilot/instructions/` | `~/.copilot/skills/` | — |
 | `generic-copilot` | — | — | `~/.config/Code/User/prompts/` |
 | `cursor` | `~/.cursor/rules/` | — | — |
-| `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ plugin in `~/.hermes/plugins/mnemos/`) | — |
+| `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ plugin in `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<name>/SKILL.md` | MCP in `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<name>/SKILL.md` | MCP in `~/.agents/mcp.json` |
 | `pi` | — | `~/.pi/agent/skills/<name>/SKILL.md` | bridge: `~/.pi/agent/extensions/mnemos-mcp.ts` |
@@ -152,7 +152,7 @@ target environment launches mnemos through a wrapper or a different path.
 After deployment, verify that all files landed correctly:
 
 ```bash
-mnemos integration verify
+vesma integration verify
 ```
 
 Checks:
@@ -169,26 +169,26 @@ Exit code `0` = all checks passed. Non-zero = missing or malformed files.
 
 ## Update
 
-When a new version of Mnemos ships updated integration content:
+When a new version of Vesma ships updated integration content:
 
 ```bash
-mnemos integration update
+vesma integration update
 ```
 
 Updates only files that changed. Preserves any local customizations (files
-not managed by Mnemos are left alone). After update, run `mnemos integration verify`.
+not managed by Vesma are left alone). After update, run `vesma integration verify`.
 
 ---
 
 ## Uninstall
 
-To remove all Mnemos integration files:
+To remove all Vesma integration files:
 
 ```bash
-mnemos integration uninstall
+vesma integration uninstall
 ```
 
-Removes only files deployed by `mnemos integration setup`. Local customizations are
+Removes only files deployed by `vesma integration setup`. Local customizations are
 preserved. **This is a destructive action** — it deletes files. Confirm when
 prompted.
 
@@ -197,48 +197,48 @@ prompted.
 ## Agent MCP wiring
 
 Deploying instructions and skills tells agents *when* to call memory tools.
-**Agent MCP wiring** goes one step further: it adds `mnemos/*` to the
+**Agent MCP wiring** goes one step further: it adds `vesma/*` to the
 `tools:` frontmatter of Copilot agent files (`~/.copilot/agents/*.agent.md`) so
 the tools are actually granted to the agent at request time.
 
 Without wiring, an agent may have the behavioural instructions but no
-`mnemos_*` tools in its frontmatter — the harness won't pass them to the
+`vesma_*` tools in its frontmatter — the harness won't pass them to the
 model. Wiring closes that gap.
 
 ### What it does
 
 - Scans `~/.copilot/agents/` for `*.agent.md` files.
-- Parses YAML frontmatter and adds `mnemos/*` (wildcard) or individual
-  `mnemos/mnemos_*` tool references to the `tools:` array.
+- Parses YAML frontmatter and adds `vesma/*` (wildcard) or individual
+  `vesma/vesma_*` tool references to the `tools:` array.
 - **Only `tools:` is touched** — `model:`, `model_tier:`, `agents:`, and
   other keys are never modified.
-- Idempotent — re-running does not duplicate `mnemos/*` entries.
+- Idempotent — re-running does not duplicate `vesma/*` entries.
 
 ### What gets skipped
 
 | Condition | Why |
 |-----------|-----|
-| Agent already has `mnemos/*` or `mnemos/mnemos_*` in `tools:` | Already wired — no change needed. |
+| Agent already has `vesma/*` or `vesma/vesma_*` in `tools:` | Already wired — no change needed. |
 | Agent uses `tool_profile:` instead of `tools:` | Resolved by the Copilot installer (`make install-all`); mutating it would be overwritten on the next install. |
 | Agent has no parseable frontmatter | Cannot safely edit — reported as skipped. |
 
 ### Usage
 
-`mnemos integration setup` wires agents in the same pass as file deployment
+`vesma integration setup` wires agents in the same pass as file deployment
 and MCP registration. The wiring flags control the behaviour:
 
 ```bash
 # Wire all unwired agents (no prompt)
-mnemos integration setup --wire-agents --all
+vesma integration setup --wire-agents --all
 
 # Wire specific agents by name or filename stem
-mnemos integration setup --wire-agents --select tech-lead,code-reviewer
+vesma integration setup --wire-agents --select tech-lead,code-reviewer
 
 # Skip agent wiring entirely (no prompt)
-mnemos integration setup --no-wire-agents
+vesma integration setup --no-wire-agents
 
 # Preview what would change without modifying files
-mnemos integration setup --wire-agents --dry-run
+vesma integration setup --wire-agents --dry-run
 ```
 
 If neither `--wire-agents` nor `--no-wire-agents` is passed, the command
@@ -252,37 +252,37 @@ agents.
 | `--wire-agents --all` | Wire all unwired agents without prompting |
 | `--wire-agents --select name1,name2` | Wire only the named agents (matches `name`, filename stem, or filename) |
 | `--no-wire-agents` | Skip agent wiring entirely (explicit opt-out) |
-| `--precise` | Use individual `mnemos/mnemos_*` tool names instead of the `mnemos/*` wildcard |
+| `--precise` | Use individual `vesma/vesma_*` tool names instead of the `vesma/*` wildcard |
 | `--dry-run` | Show what would change without modifying files |
 
 ### Wildcard vs precise mode
 
-- **Wildcard** (default): adds a single `mnemos/*` entry granting all
-  mnemos tools. Compact frontmatter, grants everything.
-- **Precise** (`--precise`): adds individual `mnemos/mnemos_*` entries
+- **Wildcard** (default): adds a single `vesma/*` entry granting all
+  vesma tools. Compact frontmatter, grants everything.
+- **Precise** (`--precise`): adds individual `vesma/vesma_*` entries
   (add, search, recall_context, agent_recall, save_context, list_recent,
   list_tags, ingest_url, stats, auto_collect_status). Explicit grant list —
   `watch_*` admin tools are intentionally excluded.
 
 Use precise mode when you want fine-grained control over which tools each
 agent gets. Use wildcard mode for convenience when all agents should have
-the full mnemos toolset.
+the full vesma toolset.
 
 ### Verifying wiring
 
 After wiring, verify the state:
 
 ```bash
-mnemos integration verify
+vesma integration verify
 ```
 
 The agents section of the verify report shows:
 
-- **Wired** — agents with `mnemos/*` or `mnemos/mnemos_*` in `tools:`.
-- **Unwired** — agents without mnemos tools (candidates for wiring).
+- **Wired** — agents with `vesma/*` or `vesma/vesma_*` in `tools:`.
+- **Unwired** — agents without vesma tools (candidates for wiring).
 - **Skipped** — agents with `tool_profile:` (managed by the Copilot installer).
 
-`mnemos doctor` also includes an agent wiring check (9th check) that
+`vesma doctor` also includes an agent wiring check (9th check) that
 reports the same summary and warns if unwired agents are detected.
 
 ---
@@ -301,9 +301,9 @@ Key surfaces:
   `clean_content` when available.
 - **`mnemos_filter` MCP tool** — explicit re-filter of an existing memory
   (override profile, set token budget).
-- **`mnemos filter` CLI** — `mnemos filter <id>` for a single memory,
-  `mnemos filter --all` to backfill unfiltered records.
-- **Filter stats in `mnemos stats`** — filtered/unfiltered counts, average
+- **`vesma filter` CLI** — `vesma filter <id>` for a single memory,
+  `vesma filter --all` to backfill unfiltered records.
+- **Filter stats in `vesma stats`** — filtered/unfiltered counts, average
   reduction, breakdown by profile.
 - **Profiles** — `log | terminal | code | docs | web | default`,
   auto-detected from content heuristics.
@@ -315,7 +315,7 @@ configuration, see [context-filter.md](context-filter.md).
 
 ## Hooks & SDK for automation
 
-Mnemos ships two dedicated surfaces for harness/automation integrations
+Vesma ships two dedicated surfaces for harness/automation integrations
 (ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3):
 
 - **Lifecycle hooks** — the grouped `mnemos_hooks` MCP tool and the REST
@@ -348,18 +348,18 @@ section below](#hermes-agent) — the reference migration onto the contract.
 
 ---
 
-## `mnemos integration setup` — default flow
+## `vesma integration setup` — default flow
 
-By default, `mnemos integration setup` now **prompts for agent wiring**
+By default, `vesma integration setup` now **prompts for agent wiring**
 in the same pass as file deployment and MCP registration. This closes the
-gap where instructions were deployed but agents lacked `mnemos/*` in
+gap where instructions were deployed but agents lacked `vesma/*` in
 their `tools:` frontmatter.
 
 ```bash
-mnemos integration setup
+vesma integration setup
 # → Deploys instructions + skills + prompts
 # → Registers the MCP server
-# → Prompts: "Wire mnemos/* into Copilot agents? [Y/n]"
+# → Prompts: "Wire vesma/* into Copilot agents? [Y/n]"
 ```
 
 | Flag | Behaviour |
@@ -368,7 +368,7 @@ mnemos integration setup
 | `--wire-agents --all` | Wire all unwired agents without prompting |
 | `--wire-agents --select name1,name2` | Wire only the named agents |
 | `--no-wire-agents` | Skip agent wiring entirely |
-| `--precise` | Use individual `mnemos/mnemos_*` tool names instead of the wildcard |
+| `--precise` | Use individual `vesma/vesma_*` tool names instead of the wildcard |
 | `--dry-run` | Preview what would change without modifying files |
 
 In a non-interactive terminal (CI / pipe), the command defaults to
@@ -377,14 +377,14 @@ section above for the full flag reference.
 
 ---
 
-## `mnemos add --dry-run` — filter preview
+## `vesma add --dry-run` — filter preview
 
 Preview how the Context Filter will transform content **before saving**.
 Validates the tag contract, runs the five-stage filter pipeline, and
 prints stats — without writing anything to the store.
 
 ```bash
-mnemos add "long log output..." --tags "project:mnemos,agent:tech-lead,mnemos:trace" --dry-run
+vesma add "long log output..." --tags "project:vesma,agent:tech-lead,mnemos:trace" --dry-run
 ```
 
 Output:
@@ -413,22 +413,22 @@ Output:
 
 ---
 
-## `mnemos doctor --fix` — auto-fix warnings
+## `vesma doctor --fix` — auto-fix warnings
 
-`mnemos doctor` runs health checks and reports status. With `--fix`, it
+`vesma doctor` runs health checks and reports status. With `--fix`, it
 **auto-fixes WARN-level checks** — no manual intervention needed for the
 common cases.
 
 ```bash
-mnemos doctor          # report only
-mnemos doctor --fix    # fix warnings, then re-check
-mnemos doctor --fix --dry-run   # preview what would be fixed
+vesma doctor          # report only
+vesma doctor --fix    # fix warnings, then re-check
+vesma doctor --fix --dry-run   # preview what would be fixed
 ```
 
 | Warning | Auto-fix action |
 |---------|-----------------|
-| Integration stale | `mnemos integration update` — redeploy stale files to current version |
-| Agent wiring — unwired agents | `mnemos integration setup --wire-agents --all` |
+| Integration stale | `vesma integration update` — redeploy stale files to current version |
+| Agent wiring — unwired agents | `vesma integration setup --wire-agents --all` |
 | MCP server not registered | MCP registration via `mcp-setup.sh` |
 
 **FAIL-level checks are not auto-fixable** — they require manual
@@ -440,19 +440,19 @@ only.
 
 ---
 
-## `mnemos logs` — pipeline traces
+## `vesma logs` — pipeline traces
 
 View the pipeline trace log (the `traces` table) directly from the CLI.
 Shows cluster, synthesize, publish, and recall steps with latency, LLM,
 cache, and fallback flags.
 
 ```bash
-mnemos logs                       # last 50 traces
-mnemos logs --task cluster        # only cluster traces
-mnemos logs --project mnemos      # filter by project
-mnemos logs --limit 100           # more rows
-mnemos logs --since 2026-06-01    # only traces after this date
-mnemos logs --follow              # poll for new traces (tail -f)
+vesma logs                       # last 50 traces
+vesma logs --task cluster        # only cluster traces
+vesma logs --project vesma      # filter by project
+vesma logs --limit 100           # more rows
+vesma logs --since 2026-06-01    # only traces after this date
+vesma logs --follow              # poll for new traces (tail -f)
 ```
 
 | Flag | Description |
@@ -474,8 +474,8 @@ stages.
 
 ## How agents discover the tools
 
-The integration layer assumes the Mnemos MCP server is already connected.
-The tools (`mnemos_*`) appear in the agent's tool list once the MCP server is
+The integration layer assumes the Vesma MCP server is already connected.
+The tools (`vesma_*`) appear in the agent's tool list once the MCP server is
 registered in the client's MCP configuration. Agent MCP wiring (above)
 ensures the `tools:` frontmatter actually grants those tools to each agent.
 
@@ -487,20 +487,20 @@ package tell the agent *when* and *how* to call those tools.
 
 ## One-line MCP presets
 
-For harnesses without a native deploy target, Mnemos ships ready-made
+For harnesses without a native deploy target, Vesma ships ready-made
 one-line MCP presets — the whole connection is a single line (or paste
 block) per harness, always the same stdio wire (ADR-0017 D1):
-`command "mnemos", args ["mcp-server"]`.
+`command "vesma", args ["mcp-server"]`.
 
 | Harness | Config location | Preset |
 |---------|-----------------|--------|
-| Cursor | `~/.cursor/mcp.json` | `"mnemos": { "type": "stdio", "command": "mnemos", "args": ["mcp-server"] }` |
-| Claude Code | `claude mcp add` | `claude mcp add --scope user mnemos -- mnemos mcp-server` |
-| Codex | `~/.codex/config.toml` | `[mcp_servers.mnemos]` TOML block |
+| Cursor | `~/.cursor/mcp.json` | `"vesma": { "type": "stdio", "command": "vesma", "args": ["mcp-server"] }` |
+| Claude Code | `claude mcp add` | `claude mcp add --scope user vesma -- vesma mcp-server` |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.vesma]` TOML block |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | same JSON line as Cursor |
-| OpenCode | `~/.config/opencode/opencode.json` | `"mnemos": { "type": "local", "command": ["mnemos", "mcp-server"] }` inside `mcp` |
+| OpenCode | `~/.config/opencode/opencode.json` | `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` inside `mcp` |
 | VS Code Copilot | user/workspace `mcp.json` | `mcp-setup.sh` or the `servers` JSON block |
-| ZCode / `~/.agents` tools | `mnemos integration setup --target zcode` / `--target agents` | scripted, additive merge |
+| ZCode / `~/.agents` tools | `vesma integration setup --target zcode` / `--target agents` | scripted, additive merge |
 
 Full copy-paste lines (plus fresh-setup shell one-liners and env tuning):
 [`integrations/mcp-presets.md`](../../../integrations/mcp-presets.md).
@@ -512,7 +512,7 @@ No environment variables are required — the server defaults to
 For any harness not covered by a native target or a preset, copy the
 published adapter template —
 [`integrations/adapter-template.md`](../../../integrations/adapter-template.md):
-three sections (**Connect** the MCP wire → **Expose** the `mnemos_*` tools →
+three sections (**Connect** the MCP wire → **Expose** the `vesma_*` tools →
 **Configure** project/agent slugs and the tag contract) plus an acceptance
 checklist the template itself passes. If your harness speaks MCP stdio, the
 template is the whole integration.
@@ -525,7 +525,7 @@ Every `mnemos_add` and `mnemos_ingest_url` call must carry:
 
 - **exactly one** `project:<slug>`
 - **exactly one** `agent:<slug>` (or `agent:user`)
-- **at least one** `mnemos:<subtype>`
+- **at least one** `vesma:<subtype>`
 
 See [tag-contract.md](tag-contract.md) for the full schema. The integration
 layer reinforces this in three places: the `mnemos-tag-contract` instruction,
@@ -535,35 +535,35 @@ the `mnemos-tag-contract` skill, and the `mnemos-memory` prompt mode.
 
 ## Hermes Agent
 
-Mnemos provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `mnemos.adapters.hermes.HermesMemoryAdapter` — the `MnemosSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
+Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `mnemos.adapters.hermes.HermesMemoryAdapter` — the `MnemosSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
 
 ### Installation
 
-1. Make the `mnemos` package importable in the Hermes Python environment:
+1. Make the `vesma` package importable in the Hermes Python environment:
    ```bash
-   pip install mnemos-memory-server
+   pip install vesma   # pre-rebrand spelling: mnemos-memory-server (deprecated)
    ```
-   No separate `mnemos serve` process is needed anymore.
+   No separate `vesma serve` process is needed anymore.
 
 2. Deploy the integration:
    ```bash
-   mnemos integration setup --target hermes
+   vesma integration setup --target hermes
    ```
-   This copies the plugin to `~/.hermes/plugins/mnemos/` and deploys skills/instructions to `~/.hermes/skills/`.
+   This copies the plugin to `~/.hermes/plugins/vesma/` and deploys skills/instructions to `~/.hermes/skills/`.
 
 3. Activate via the wizard:
    ```bash
    hermes memory setup
    ```
-   Select "mnemos" from the provider list and configure the project/agent slugs and store paths.
+   Select "vesma" from the provider list and configure the project/agent slugs and store paths.
 
 4. Restart your Hermes session (`/restart` in gateway, or relaunch CLI).
 
-> **One owner per store:** the plugin embeds the memory server — point `data_dir`/`vault_path` at a store no other process writes (SQLite single-writer). To share a store with `mnemos serve` or other harnesses, give each its own data dir.
+> **One owner per store:** the plugin embeds the memory server — point `data_dir`/`vault_path` at a store no other process writes (SQLite single-writer). To share a store with `vesma serve` or other harnesses, give each its own data dir.
 
 ### Tools
 
-The plugin exposes the `mnemos_*` tools as native Hermes tools, now backed by the contract verbs (`MnemosSDK.remember` / `recall`, the hooks) instead of raw HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
+The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the contract verbs (`MnemosSDK.remember` / `recall`, the hooks) instead of raw HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
 
 | Tool | Contract surface |
 |------|------------------|
@@ -585,12 +585,12 @@ The plugin exposes the `mnemos_*` tools as native Hermes tools, now backed by th
 
 ### Configuration
 
-Config is stored in `~/.hermes/config.yaml` under `memory.mnemos`:
+Config is stored in `~/.hermes/config.yaml` under `memory.vesma`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `data_dir` | (empty) | Mnemos data dir (empty = mnemos default) |
-| `vault_path` | (empty) | Obsidian vault path (empty = mnemos default) |
+| `data_dir` | (empty) | Vesma data dir (empty = vesma default) |
+| `vault_path` | (empty) | Obsidian vault path (empty = vesma default) |
 | `project` | `hermes` | Default project slug for tag contract |
 | `agent` | `hermes-default` | Default agent slug for tag contract |
 | `auto_sync` | `true` | Mirror built-in memory writes and sync significant turns |
@@ -623,6 +623,6 @@ Every file in the integration layer carries a version stamp:
 <!-- mnemos-integration: v2.0.0 -->
 ```
 
-This allows `mnemos integration verify` to detect stale files after an update. If
-the stamp does not match the installed Mnemos version, the file is flagged
+This allows `vesma integration verify` to detect stale files after an update. If
+the stamp does not match the installed Vesma version, the file is flagged
 for update.

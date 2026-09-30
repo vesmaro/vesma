@@ -17,28 +17,28 @@ PyPI неизменяемы: опубликованную версию нево�
 
 Имя дистрибутива решено 2026-09-01 и установлено в `pyproject.toml`
 (`name = "mnemos-memory-server"`). Импортируемый пакет остаётся
-`mnemos`, CLI остаётся `mnemos` — изменилось только устанавливаемое имя.
+`vesma`, CLI остаётся `vesma` — изменилось только устанавливаемое имя.
 Матрица ниже сохранена как история решения; последняя перепроверка —
 2026-09-01 (статусы не менялись с 2026-08-21).
 
-Естественное имя `mnemos` на PyPI **занято**. Матрица доступности:
+Естественное имя `vesma` на PyPI **занято**. Матрица доступности:
 
 | Имя | Статус на PyPI | Чем занято |
 | --- | --- | --- |
-| `mnemos` | ❌ занято (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
+| `vesma` | ❌ занято (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
 | `mnemos-memory` | ❌ занято (v0.6.0) | "Biomimetic memory architectures for LLMs" |
 | `mnemos-memory-server` | ✅ свободно | — |
 | `mnemos-server` | ✅ свободно | — |
-| `mnemos-mcp` | ✅ свободно | — |
-| `mnemos-ai` | ✅ свободно | — |
-| `mnemos-agent-memory` | ✅ свободно | — |
+| `vesma-mcp` | ✅ свободно | — |
+| `vesma-ai` | ✅ свободно | — |
+| `vesma-agent-memory` | ✅ свободно | — |
 
 Оба занятых имени — **AI-memory-проекты в той же доменной области**;
 третье похожее имя максимизирует путаницу у пользователей, поэтому
 fallback должен быть самоописательным, а не минимальным.
 
 **Выбрано: `mnemos-memory-server`** — прямо говорит, что это
-(«сервер памяти mnemos»), совпадает с описанием проекта и однозначно
+(«сервер памяти vesma»), совпадает с описанием проекта и однозначно
 отличается от обоих занятых соседей.
 
 Как перепроверить (без авторизации):
@@ -82,7 +82,7 @@ curl -s https://pypi.org/pypi/<name>/json | python3 -c \
 | Режим | Что делает |
 | --- | --- |
 | по умолчанию (check) | гейты G0–G4, сборка wheel/sdist, `twine check`, офлайн metadata-smoke |
-| `--full-smoke` | дополнительно ставит wheel С зависимостями в одноразовый venv, запускает `mnemos --version` (нужен pypi.org) |
+| `--full-smoke` | дополнительно ставит wheel С зависимостями в одноразовый venv, запускает `vesma --version` (нужен pypi.org) |
 | `--publish` | все проверки, затем `twine upload` (нужны release-тег и учётные данные) |
 | `--publish --full-smoke` | рекомендуемая комбинация перед загрузкой |
 | `--i-own-name` | обязателен для загрузки, когда проект на PyPI уже существует (обновления ТОЛЬКО нашего проекта) |
@@ -135,7 +135,7 @@ G0 существует, потому что имя проекта на моме
    ```bash
    pip index versions <final-name>            # наша версия должна появиться
    curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/simple/<final-name>/   # 200
-   pip install <final-name> && mnemos --version
+   pip install <final-name> && vesma --version
    ```
 
 4. **Закрыть цикл** — обновить `docs/en/admin/runbooks/install.md` (+ RU

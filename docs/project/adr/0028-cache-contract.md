@@ -29,7 +29,7 @@ fetched the same day) established the landscape this contract answers:
 - **The measured cache poisoners are volatility placed early**: timestamps
   in first blocks, mid-prefix mutation, tool-schema drift,
   non-deterministic retrieval ordering.
-- **mnemos's own largest poisoner was `retrieved=<iso>`** — minted per
+- **vesma's own largest poisoner was `retrieved=<iso>`** — minted per
   assembly, first line of every provenance-wrapped block, after the align
   stage deliberately runs. A second defect: the aligner's bare-token
   pattern gutted CCR marker lines in `log/terminal/web/default` profiles.
@@ -129,7 +129,7 @@ mnemos adopts a cache contract in six clauses.
 
 ```mermaid
 flowchart LR
-    subgraph M["mnemos — content supply"]
+    subgraph M["vesma — content supply"]
         direction TB
         PACKS["static packs (a)<br/>version-stamped, timestamp-free"]
         ASM["assemble pipeline<br/>session-scoped stamps · atomic markers<br/>id-tiebreak ordering"]

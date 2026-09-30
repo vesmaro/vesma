@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vesmaro"
-version = "4.3.0"
-description = "Standalone memory & knowledge server for AI agents — forked from ai-brain"
+name = "vesma"
+version = "5.0.0"
+description = "Vesma — standalone memory & knowledge server for AI agents (Vesmaro Project)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -168,7 +168,7 @@ all = [
 # (`pip install -e ".[dev]"`) and `uv sync --extra dev` keep working
 # unchanged (uv installs the default `dev` group plus any requested extras).
 [dependency-groups]
-dev = ["vesmaro[dev]"]
+dev = ["vesma[dev]"]
 
 [project.scripts]
 # Canonical + short hook (owner-approved, GWS card #331 amendment)

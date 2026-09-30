@@ -1,4 +1,4 @@
-"""Recall layer for Mnemos — hybrid FTS5 + vector + RRF.
+"""Recall layer for Vesma — hybrid FTS5 + vector + RRF.
 
 Submodules:
   fts          — SQLite FTS5 full-text search

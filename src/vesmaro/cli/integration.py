@@ -1,4 +1,4 @@
-"""Mnemos integration layer — deploy instructions/skills/prompts to agent harnesses.
+"""Vesma integration layer — deploy instructions/skills/prompts to agent harnesses.
 
 This module is the engine behind the `mnemos util-*` CLI subcommands. It:
 
@@ -1056,7 +1056,7 @@ class IntegrationManager:
                                 source=Path("<user-file>"),
                                 destination=path,
                                 status=DeployStatus.SKIPPED,
-                                note="user file — not managed by mnemos",
+                                note="user file — not managed by Vesma",
                             )
                         )
 
@@ -1296,7 +1296,7 @@ class IntegrationManager:
                             source=Path("<user-file>"),
                             destination=path,
                             status=DeployStatus.SKIPPED,
-                            note="user file — not managed by mnemos",
+                            note="user file — not managed by Vesma",
                         )
                     )
         return results

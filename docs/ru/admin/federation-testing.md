@@ -2,11 +2,11 @@
 
 **🌐 Language / Язык:** [English](../../en/admin/federation-testing.md) · Русский
 
-**Аудитория:** операторы и QA-инженеры, проверяющие федерацию mnemos перед
+**Аудитория:** операторы и QA-инженеры, проверяющие федерацию vesma перед
 релизом или перед открытием нового peer'а.
 
 **Область:** сквозная проверка канала mediated pull
-(`POST /api/v1/federation/pull`) между двумя инстансами mnemos — один в
+(`POST /api/v1/federation/pull`) между двумя инстансами vesma — один в
 роли peer A (puller, забирающая сторона), другой в роли peer B (publisher,
 публикующая сторона). Охватывает смоук-тест на одном хосте и e2e-тест между
 хостами (ноутбук ↔ удалённый хост). Заметки о production-развёртывании —
@@ -49,12 +49,12 @@ flowchart LR
 | 2 | Anti-correlation — повторный запрос по той же паре `(peer, topic)` возвращает `ALREADY_EXHAUSTED` | Повторить запрос; ожидаем `trigger_code=ALREADY_EXHAUSTED` и пустой `records` |
 | 3 | Применение ACL — `project_scope`, отсутствующий в `PeerConfig.allowed_projects`, отклоняется | Запрос с проектом вне scope; ожидаем `403` + `trigger_code=REFUSED` |
 | 4 | Rate limiting — запросы сверх `rate_limit_per_minute` возвращают `429` | Отправить 30+ быстрых запросов; после лимита ожидаем `429` |
-| 5 | Идемпотентный импорт — повторный импорт того же compact-payload пропускает существующие записи | `mnemos sync import` дважды; на втором запуске ожидаем `records_imported=0, records_skipped=N` |
-| 6 | Полный roundtrip — после импорта вытянутые записи находятся поиском на A | `mnemos search` находит импортированную запись на peer A |
+| 5 | Идемпотентный импорт — повторный импорт того же compact-payload пропускает существующие записи | `vesma sync import` дважды; на втором запуске ожидаем `records_imported=0, records_skipped=N` |
+| 6 | Полный roundtrip — после импорта вытянутые записи находятся поиском на A | `vesma search` находит импортированную запись на peer A |
 
 Пять триггер-кодов (`EXHAUSTIVE`, `ALREADY_EXHAUSTED`, `PARTIAL`,
 `REFUSED`, `OFFLINE_LITE`) определены в
-`src/mnemos/trigger_codes.py` и описаны в
+`src/vesmaro/trigger_codes.py` и описаны в
 [`federation.md`](federation.md) §2.
 
 ---
@@ -63,16 +63,16 @@ flowchart LR
 
 | Требование | Детали |
 | --- | --- |
-| Версия mnemos | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 4.0.0. |
+| Версия vesma | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 4.0.0. |
 | Конфиг peer B | `federation.enabled: true` (или непустой `federation.shared_projects` — сервер трактует пустой `shared_projects` как выключенную федерацию). |
 | Peer'ы peer B | Peer A сконфигурирован в `federation.peers` на peer B с `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. См. [`federation.md`](federation.md) §1. |
 | SSH-доступ | Для cross-host-теста оператор имеет SSH-доступ к хосту peer B (используется, чтобы пробросить loopback-порт peer B на ноутбук). |
-| Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/mnemos/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
+| Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/vesmaro/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
 
-> **Изоляция хранилищ.** mnemos разрешает свой конфиг в фиксированном
+> **Изоляция хранилищ.** vesma разрешает свой конфиг в фиксированном
 > порядке — явный флаг `--config` → переменная окружения `MNEMOS_CONFIG` →
 > `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
-> `src/mnemos/config.py`). Переменной `MNEMOS_HOME` **не существует**.
+> `src/vesmaro/config.py`). Переменной `MNEMOS_HOME` **не существует**.
 > Чтобы запустить изолированный инстанс, создайте per-instance
 > `config.yaml` (с собственными `mnemos.data_dir` / `mnemos.vault_path`)
 > и укажите `MNEMOS_CONFIG` на него — все команды ниже используют этот
@@ -105,12 +105,12 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 
 ## 3. Смоук-тест на одном хосте
 
-Смоук-тест на одном хосте запускает два инстанса mnemos на одной машине —
+Смоук-тест на одном хосте запускает два инстанса vesma на одной машине —
 каждый смотрит на своё хранилище через per-instance конфиг-файл,
 выбираемый `MNEMOS_CONFIG` — и проходит цикл export → import → search →
 повторный import (идемпотентность). Он **не** задействует живой эндпоинт
 `POST /api/v1/federation/pull` — это cross-host-тест в §4. Смоук-тест
-проверяет формат compact-payload и CLI `mnemos sync`.
+проверяет формат compact-payload и CLI `vesma sync`.
 
 Сопутствующий скрипт `scripts/smoke-federation.sh` автоматизирует шаги
 ниже. Он добавляется параллельно с этим руководством; если его ещё нет в
@@ -124,14 +124,14 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    указывающим `mnemos.data_dir` / `mnemos.vault_path` внутри неё:
 
    ```bash
-   export MNEMOS_CONF_A=/tmp/mnemos-fed-a/config.yaml
-   export MNEMOS_CONF_B=/tmp/mnemos-fed-b/config.yaml
+   export MNEMOS_CONF_A=/tmp/vesma-fed-a/config.yaml
+   export MNEMOS_CONF_B=/tmp/vesma-fed-b/config.yaml
    for inst in a b; do
-     mkdir -p "/tmp/mnemos-fed-$inst/data" "/tmp/mnemos-fed-$inst/vault"
-     cat > "/tmp/mnemos-fed-$inst/config.yaml" <<EOF
+     mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
+     cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
    mnemos:
-     data_dir: /tmp/mnemos-fed-$inst/data
-     vault_path: /tmp/mnemos-fed-$inst/vault
+     data_dir: /tmp/vesma-fed-$inst/data
+     vault_path: /tmp/vesma-fed-$inst/vault
    EOF
    done
    ```
@@ -146,7 +146,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    значения `--tags` через запятую (контракт тегов):
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" mnemos add \
+   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
      --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
    ```
@@ -154,9 +154,9 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 3. **Экспортируйте compact-payload с peer B.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" mnemos sync export \
+   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma sync export \
      --shared-projects cross-memory-test \
-     --output /tmp/mnemos-fed-payload.json
+     --output /tmp/vesma-fed-payload.json
    ```
 
 4. **Импортируйте payload на peer A.**
@@ -164,8 +164,8 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Исходный файл — позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos sync import \
-     /tmp/mnemos-fed-payload.json
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+     /tmp/vesma-fed-payload.json
    ```
 
    Ожидаем `Imported: 1 records` и `skipped: 0`.
@@ -175,7 +175,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Запрос — тоже позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos search \
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma search \
      "federation pull" --project cross-memory-test
    ```
 
@@ -184,19 +184,19 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 6. **Повторно импортируйте тот же payload — проверьте идемпотентность.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" mnemos sync import \
-     /tmp/mnemos-fed-payload.json
+   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+     /tmp/vesma-fed-payload.json
    ```
 
    Ожидаем `Imported: 0 records` и `skipped: 1`. Команда `sync import`
    мержит идемпотентно по `id` записи (префикс
    `fed:<source_agent>:<uuid>`); существующие записи пропускаются,
-   никогда не перезаписываются (см. `src/mnemos/cli/sync.py`).
+   никогда не перезаписываются (см. `src/vesmaro/cli/sync.py`).
 
 7. **Очистка.**
 
    ```bash
-   rm -rf /tmp/mnemos-fed-a /tmp/mnemos-fed-b /tmp/mnemos-fed-payload.json
+   rm -rf /tmp/vesma-fed-a /tmp/vesma-fed-b /tmp/vesma-fed-payload.json
    ```
 
 ---
@@ -212,18 +212,18 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 ```mermaid
 flowchart LR
   LAP[Peer A<br/>laptop<br/>loopback :18101] -- SSH tunnel --> SSH[peer-b-host<br/>SSH -L 18101 → 127.0.0.1:8101]
-  SSH --> PB[Peer B mnemos serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
+  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
 ```
 
-### a. Запустите тестовый `mnemos serve` на peer B (удалённый хост)
+### a. Запустите тестовый `vesma serve` на peer B (удалённый хост)
 
-Зайдите по SSH на peer B и запустите mnemos на loopback-порту. Настройка
+Зайдите по SSH на peer B и запустите vesma на loopback-порту. Настройка
 `auth_enabled=false` — **только для теста**: привязка к loopback
 удовлетворяет стартовому guard'у, а SSH-туннель — единственный путь внутрь.
 
 ```bash
 # On peer B (remote host)
-mnemos serve --port 8101
+vesma serve --port 8101
 ```
 
 Если `config.yaml` на peer B содержит `api.auth_enabled: true`,
@@ -238,7 +238,7 @@ non-loopback bind, поэтому serve на loopback с `auth_enabled=false`
 `allowed_projects` peer A:
 
 ```bash
-mnemos add \
+vesma add \
   "Cross-host test decision: mediated pull verified 2026-07-27" \
   --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
 ```
@@ -266,21 +266,21 @@ federation:
       # optional and not exercised in the SSH-tunnel test path.
 ```
 
-Перезапустите `mnemos serve`, чтобы он подхватил изменение конфига (карта
+Перезапустите `vesma serve`, чтобы он подхватил изменение конфига (карта
 федеративных peer'ов загружается на старте).
 
 ### d. Задайте bearer-токен в окружении serve на peer B
 
-Перезапустите `mnemos serve` с токеном в окружении:
+Перезапустите `vesma serve` с токеном в окружении:
 
 ```bash
 # On peer B (remote host)
-MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> mnemos serve --port 8101
+MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 Сервер читает токен из переменной окружения, названной в
 `bearer_token_env`, в момент запроса (см. `_resolve_peer_token` в
-`src/mnemos/federation_server.py`), поэтому ротация не требует рестарта —
+`src/vesmaro/federation_server.py`), поэтому ротация не требует рестарта —
 а вот карта peer'ов требует.
 
 ### e. Откройте SSH-туннель с ноутбука
@@ -293,7 +293,7 @@ ssh -f -N -L 18101:127.0.0.1:8101 peer-b-host
 ```
 
 `-f` уводит туннель в фон после аутентификации; `-N` означает, что
-удалённая команда не выполняется. Ноутбук теперь достаёт mnemos peer B по
+удалённая команда не выполняется. Ноутбук теперь достаёт vesma peer B по
 `http://127.0.0.1:18101`.
 
 ### f. Выполните pull с ноутбука
@@ -390,7 +390,7 @@ done
 Ожидаем, что первые ~30 запросов вернут `200` (у каждого свой `query`,
 поэтому anti-correlation их не перехватывает), а остальные вернут `429`.
 Rate limiter — per-peer скользящее 60-секундное окно с ключом по
-`peer_id` (см. `RateLimiter` в `src/mnemos/federation_server.py`).
+`peer_id` (см. `RateLimiter` в `src/vesmaro/federation_server.py`).
 Подождите 60 секунд, пока окно вытеснится, прежде чем продолжать.
 
 ### k. Полный roundtrip — pull, импорт, поиск на peer A
@@ -411,12 +411,12 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   }' > /tmp/pull-response.json
 
 # Wrap the records as a compact payload. The compact payload shape is
-# documented in src/mnemos/compact.py. A minimal wrapper:
+# documented in src/vesmaro/compact.py. A minimal wrapper:
 jq '{format_version: "mnemos.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
-# Import into peer A's mnemos
-mnemos sync import /tmp/compact-payload.json
+# Import into peer A's vesma
+vesma sync import /tmp/compact-payload.json
 ```
 
 Ожидаем `Imported: 1 records` и `skipped: 0`.
@@ -424,7 +424,7 @@ mnemos sync import /tmp/compact-payload.json
 Затем проверьте, что запись находится поиском на peer A:
 
 ```bash
-mnemos search "mediated pull verified" --project cross-memory-test
+vesma search "mediated pull verified" --project cross-memory-test
 ```
 
 Импортированная запись должна появиться, с provenance от peer B (префикс
@@ -433,7 +433,7 @@ mnemos search "mediated pull verified" --project cross-memory-test
 ### l. Идемпотентность — повторный импорт того же payload
 
 ```bash
-mnemos sync import /tmp/compact-payload.json
+vesma sync import /tmp/compact-payload.json
 ```
 
 Ожидаем `Imported: 0 records` и `skipped: 1`. Команда `sync import`
@@ -442,8 +442,8 @@ mnemos sync import /tmp/compact-payload.json
 
 ### m. Очистка
 
-1. Убейте `mnemos serve` на peer B (`Ctrl-C` в терминале serve или
-   `pkill -f "mnemos serve --port 8101"`).
+1. Убейте `vesma serve` на peer B (`Ctrl-C` в терминале serve или
+   `pkill -f "vesma serve --port 8101"`).
 2. Снесите SSH-туннель на ноутбуке:
 
    ```bash
@@ -457,9 +457,9 @@ mnemos sync import /tmp/compact-payload.json
 4. Уберите запись peer'а `mnemos-A` из `config.yaml` peer B или замените
    её на production-конфиг.
 5. Опционально отзовите тестовую память на peer B. CLI-глагола
-   `mnemos delete` не существует — поддерживаемый путь это workflow-эндпоинт
+   `vesma delete` не существует — поддерживаемый путь это workflow-эндпоинт
    отзыва (`DELETE /memories/{memory_id}/workflow`, статус → `withdrawn`);
-   id найдите через `mnemos search`. На практике запись может и просто
+   id найдите через `vesma search`. На практике запись может и просто
    остаться: она живёт в проекте `cross-memory-test`, который ни один
    production-peer не указывает в `allowed_projects`, так что в будущий
    production-pull она утечь не может.
@@ -483,7 +483,7 @@ Production-развёртывание федерации обязано испо
 
 ### Ссылка на Helm-чарт
 
-Задача по Helm-черту AgentsNode (id памяти mnemos `4df5d1bd`) отслеживает
+Задача по Helm-черту AgentsNode (id памяти vesma `4df5d1bd`) отслеживает
 production Helm-чарт, который подключает per-peer bearer `Secret`, пиннинг
 mTLS-сертификатов и том для журнала доступа. Пока чарт не приземлился,
 production-развёртывания настраивают перечисленное выше вручную в
@@ -498,16 +498,16 @@ production-развёртывания настраивают перечисле�
 
 | Симптом | Вероятная причина | Решение |
 | --- | --- | --- |
-| `403` + `trigger_code=REFUSED` (peer не сконфигурирован) | `peer_id` peer A отсутствует в карте `federation.peers` peer B, или `federation.peers` пуст | Добавьте запись peer'а в `config.yaml` peer B и перезапустите `mnemos serve` |
+| `403` + `trigger_code=REFUSED` (peer не сконфигурирован) | `peer_id` peer A отсутствует в карте `federation.peers` peer B, или `federation.peers` пуст | Добавьте запись peer'а в `config.yaml` peer B и перезапустите `vesma serve` |
 | `403` + `trigger_code=REFUSED` (несовпадение токена) | Bearer-токен в запросе не совпадает со значением переменной окружения, названной в `bearer_token_env` | Проверьте, что переменная задана в окружении serve на peer B, а запрос отправляет `Authorization: Bearer <token>` с тем же значением |
 | `403` + `trigger_code=REFUSED` (ACL) | `project_scope` отсутствует в `allowed_projects` peer'а (и не `["*"]`) | Добавьте проект в `allowed_projects` или используйте уже разрешённый проект |
 | `429` | Превышен per-peer rate limit — скользящее 60-секундное окно заполнено | Подождите 60 секунд, пока окно вытеснится, или поднимите `rate_limit_per_minute` (диапазон 1–600) |
 | `200` + `trigger_code=ALREADY_EXHAUSTED` + пустой `records` | Ожидаемо при повторном запросе по той же паре `(peer_id, topic)` — журнал доступа зафиксировал прежний `EXHAUSTIVE` | Это корректное поведение, а не ошибка. Чтобы повторить pull, используйте другую строку `query` (журнал доступа ключуется по `sha256(query)`) |
 | `200` + `trigger_code=EXHAUSTIVE` + пустой `records` | На peer B нет записей, совпадающих с запросом в разрешённом scope проектов/типов | Наполните peer B тестовой записью разрешённого проекта и типа, затем повторите pull |
-| Connection refused (ноутбук) | SSH-туннель упал, `mnemos serve` не запущен на peer B или порт неверен | Проверьте туннель: `ss -lntp \| grep 18101` на ноутбуке; проверьте serve: `ss -lntp \| grep 8101` на peer B; перезапустите по необходимости |
-| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` при старте | `mnemos serve` запущен с non-loopback `--host` (или `api.host` в конфиге) без полного auth-стека | Либо привяжитесь к loopback (`--host 127.0.0.1`) и используйте SSH-туннель для теста, либо задайте `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` и предоставьте `MNEMOS_API__TOTP_MASTER_KEY` (см. [`security.md`](security.md) §9) |
+| Connection refused (ноутбук) | SSH-туннель упал, `vesma serve` не запущен на peer B или порт неверен | Проверьте туннель: `ss -lntp \| grep 18101` на ноутбуке; проверьте serve: `ss -lntp \| grep 8101` на peer B; перезапустите по необходимости |
+| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` при старте | `vesma serve` запущен с non-loopback `--host` (или `api.host` в конфиге) без полного auth-стека | Либо привяжитесь к loopback (`--host 127.0.0.1`) и используйте SSH-туннель для теста, либо задайте `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` и предоставьте `MNEMOS_API__TOTP_MASTER_KEY` (см. [`security.md`](security.md) §9) |
 | `FATAL: api.totp_enabled=true but MNEMOS_API__TOTP_MASTER_KEY is not set` | TOTP включён без master-ключа | Задайте `MNEMOS_API__TOTP_MASTER_KEY` в окружении (только env, никогда на диск) |
-| `mnemos sync import` возвращает `records_skipped=N` при первом импорте | Записи уже были в хранилище peer A с прошлого прогона | Ожидаемо, если тест запускался раньше и не был убран. Подтвердите наличие записей через `mnemos search`, затем продолжайте |
+| `vesma sync import` возвращает `records_skipped=N` при первом импорте | Записи уже были в хранилище peer A с прошлого прогона | Ожидаемо, если тест запускался раньше и не был убран. Подтвердите наличие записей через `vesma search`, затем продолжайте |
 
 ---
 
@@ -515,11 +515,11 @@ production-развёртывания настраивают перечисле�
 
 - Контракт ArchCom 2026-07-17 — `.archcom/sessions/2026-07-17-federation-contract.md` §3.2 (flow), §9 (триггер-коды), §10 (журнал доступа)
 - ADR-0016 — `docs/project/adr/0016-federation-threat-model.md`
-- `src/mnemos/federation_server.py` — `handle_pull` (поток обработки на сервере)
-- `src/mnemos/api/federation.py` — адаптер FastAPI-маршрута
-- `src/mnemos/api/main.py` — `_check_non_loopback_auth` (стартовый guard)
-- `src/mnemos/cli/sync.py` — `mnemos sync import` (идемпотентный мерж)
-- `src/mnemos/trigger_codes.py` — пять триггер-кодов
+- `src/vesmaro/federation_server.py` — `handle_pull` (поток обработки на сервере)
+- `src/vesmaro/api/federation.py` — адаптер FastAPI-маршрута
+- `src/vesmaro/api/main.py` — `_check_non_loopback_auth` (стартовый guard)
+- `src/vesmaro/cli/sync.py` — `vesma sync import` (идемпотентный мерж)
+- `src/vesmaro/trigger_codes.py` — пять триггер-кодов
 - `scripts/smoke-federation.sh` — автоматизация смоук-теста на одном хосте (добавляется параллельно)
 
 ---

@@ -440,7 +440,7 @@ def decrypt(data: bytes, passphrase: str) -> bytes:
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
     if not data.startswith(b"MNEMOS1"):
-        raise ValueError("Not a Mnemos encrypted export (missing magic header).")
+        raise ValueError("Not a Vesma encrypted export (missing magic header).")
     body = data[len(b"MNEMOS1") :]
     if len(body) < _SALT_LEN + _NONCE_LEN:
         raise ValueError("Truncated encrypted payload.")
@@ -547,7 +547,7 @@ def parse_json_export(data: bytes) -> dict[str, Any]:
 
 
 def is_encrypted(data: bytes) -> bool:
-    """Detect the Mnemos encryption magic header."""
+    """Detect the Vesma encryption magic header."""
     return data.startswith(b"MNEMOS1")
 
 

@@ -1,17 +1,19 @@
 <!-- markdownlint-disable MD041 MD033 -->
 <p align="center">
-  <img src="docs/assets/mnemos-banner.svg" alt="Mnemos — сервер памяти и знаний для AI-агентов" width="100%">
+  <img src="docs/assets/mnemos-banner.svg" alt="Vesma — сервер памяти и знаний для AI-агентов" width="100%">
 </p>
 
-<h1 align="center">Mnemos</h1>
+<h1 align="center">Vesma</h1>
 
 <p align="center">
   <strong>Сервер памяти и знаний для AI-агентов</strong><br>
-  <em>назван в честь титаниды памяти, создан для агентов, которым нужно помнить</em>
+  <em>назван в честь весры памяти, создан для агентов, которым нужно помнить</em>
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vesma/"><img src="https://img.shields.io/pypi/v/vesma?label=pypi&color=3776ab" alt="PyPI"></a>
+  <!-- deprecated-note: legacy PyPI package mnemos-memory-server (published until deprecation) -->
+  <!-- <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a> -->
   <a href="https://www.npmjs.com/package/pi-mnemos"><img src="https://img.shields.io/npm/v/pi-mnemos?label=npm&color=cb3837" alt="npm"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache-2.0"></a>
@@ -25,7 +27,7 @@
 <p align="center">
   <a href="#-быстрый-старт">Быстрый старт</a> ·
   <a href="#-возможности">Возможности</a> ·
-  <a href="#-что-такое-mnemos">Что это</a> ·
+  <a href="#-что-такое-vesma">Что это</a> ·
   <a href="#-подключение-любого-харнеса">Подключить харнес</a> ·
   <a href="#%EF%B8%8F-архитектура">Архитектура</a> ·
   <a href="#-документация">Документация</a>
@@ -33,7 +35,7 @@
 
 ---
 
-AI-агенты забывают всё, когда сессия заканчивается. Mnemos даёт им место, куда это можно
+AI-агенты забывают всё, когда сессия заканчивается. Vesma даёт им место, куда это можно
 положить — структурированно, с поиском, по контракту — чтобы то, что агент узнал, не исчезало
 с закрытием окна.
 
@@ -50,14 +52,17 @@ AI-агенты забывают всё, когда сессия заканчи�
 ### 1 · Установите сервер
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
-Всё в одном пакете: сервер памяти, CLI `mnemos`, REST API и MCP-сервер, с которым разговаривает
+Всё в одном пакете: сервер памяти, CLI `vesma`, REST API и MCP-сервер, с которым разговаривает
 ваш агентский харнес. Модель эмбеддингов встроена — поиск работает полностью офлайн,
 без API-ключей и без загрузок.
 
-> ⚠️ Не перепутайте имя: `pip install mnemos` (без `-memory-server`) — посторонний проект.
+> ⚠️ **Имена.** Продукт и CLI — `vesma` (`pip install vesma`, слот PyPI `project/vesma`).
+> Доребрендинговые пакеты живут до момента deprecation: `pip install mnemos-memory-server`
+> ставит тот же сервер под старым именем (легаси-написание его CLI было `mnemos`, теперь это
+> алиас). Голый `pip install mnemos` — посторонний проект, не используйте его.
 
 #### Или возьмите готовый образ — Docker, Podman или кластер Kubernetes
 
@@ -72,7 +77,7 @@ helm install vesmaro deploy/helm/vesmaro \
   --namespace vesmaro --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 kubectl -n vesmaro rollout status deploy/vesmaro
 ```
 
@@ -98,9 +103,11 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 
 ```bash
 # systemd user-сервис (предпочтительно для постоянно работающего хоста)
+# легаси-имя ассета — unit-файл остаётся mnemos.container до деплой-волны
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesmaro.env (оба имени переменной), затем:
 podman pull ghcr.io/vesmaro/vesmaro:4.3.0
+# quadlet выводит имя unit из имени файла — пока это mnemos.service
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
 ```
@@ -113,10 +120,10 @@ curl -fsS http://localhost:8787/health
 ### 2 · Подключите харнес — и научите его пользоваться памятью
 
 ```bash
-mnemos integration setup
+vesma integration setup
 ```
 
-Один проход: находит агентские харнесы на вашей машине, регистрирует MCP-сервер Mnemos в каждом
+Один проход: находит агентские харнесы на вашей машине, регистрирует MCP-сервер Vesma в каждом
 поддерживаемом харнесе (VS Code Copilot, Cursor, ZCode, OpenCode, pi, Hermes и всё, что читает
 стандарт `~/.agents`, — Claude Code, Codex и друзья) и разворачивает **поведенческий пакет** —
 always-on инструкции и скиллы памяти, чтобы агент вспоминал в начале сессии, делал чекпоинт
@@ -124,21 +131,21 @@ always-on инструкции и скиллы памяти, чтобы аген
 что инструменты существуют.
 
 Харнес, который не читает ничего стандартного? Один блок для копипаста на каждый:
-[Подключите Mnemos к любому харнесу](integrations/mcp-presets.md).
+[Подключите Vesma к любому харнесу](integrations/mcp-presets.md).
 
 ### 3 · Проверьте — и попробуйте
 
 ```bash
-mnemos doctor
+vesma doctor
 ```
 
 PASS / WARN / FAIL по каждой проверке: хранилище, конфиг, MCP-транспорт, регистрация харнесов
 (`--fix` чинит типовые предупреждения). Затем дайте ему память:
 
 ```bash
-mnemos add "Первая запись — Mnemos помнит между сессиями" \
-  --tags project:mnemos,agent:me,mnemos:learning
-mnemos search "помнит между сессиями"
+vesma add "Первая запись — Vesma помнит между сессиями" \
+  --tags project:vesma,agent:me,vesma:learning
+vesma search "помнит между сессиями"
 ```
 
 Это весь цикл: **записал, нашёл, не потерял — и агент знает, когда заглянуть в память.**
@@ -157,7 +164,7 @@ mnemos search "помнит между сессиями"
 | Область | Что даёт |
 |---------|----------|
 | **Универсальное подключение** | MCP-сервер (38 инструментов, stdio) + REST API — любой харнесс с поддержкой MCP подключается одной строкой ([инструменты](docs/ru/user/mcp-tools.md) · [HTTP](docs/ru/user/http-api.md)) |
-| **Готовые интеграции** | VS Code Copilot, Claude Code, Cursor, Codex, Windsurf, OpenCode, ZCode, pi, Hermes Agent — однострочные MCP-пресеты для всех, [нативные таргеты развёртывания](docs/ru/user/integration-guide.md) для большинства, мульти-харнесный доктор (`mnemos doctor`) |
+| **Готовые интеграции** | VS Code Copilot, Claude Code, Cursor, Codex, Windsurf, OpenCode, ZCode, pi, Hermes Agent — однострочные MCP-пресеты для всех, [нативные таргеты развёртывания](docs/ru/user/integration-guide.md) для большинства, мульти-харнесный доктор (`vesma doctor`) |
 | **Пакет скиллов** | 14+ скиллов памяти разворачиваются в ваши харнесы |
 | **Гибкая память** | Гибридный поиск (полнотекстовый + векторный, слияние рангов) поверх встроенной офлайн-модели `mnema-embed-v1`, [контракт тегов](docs/ru/user/tag-contract.md), память по агентам и проектам, профили [контекстного фильтра](docs/ru/user/context-filter.md), сжатие CCR — экономия 70–90% токенов, оригиналы сохраняются |
 | **Сборка контекста** | `assemble_context`: поиск → сжатие → фильтр → скан секретов → выравнивание кэша → бюджет токенов, провенанс каждого блока |
@@ -172,7 +179,7 @@ mnemos search "помнит между сессиями"
 
 ---
 
-## 🧩 Что такое Mnemos
+## 🧩 Что такое Vesma
 
 **Однотенантный, локально-ориентированный сервер памяти** для AI-агентов. Одно ядро in-process, три
 эквивалентных поверхности управления и слой хранения, который можно прочитать своими глазами.
@@ -186,7 +193,7 @@ mnemos search "помнит между сессиями"
 | 🧹 | **Контекстный фильтр** | Пятиступенчатая очистка шума из логов / stdout до того, как что-то попадёт в модель |
 | 🗜️ | **Обратимое сжатие (CCR)** | Сжатие большого контента без потери данных — оригиналы кэшируются в SQLite, извлекаются по хеш-маркеру |
 | 🧷 | **CacheAligner** | Перенос динамического контента (таймстампы, UUID, session id, токены) в хвост, чтобы KV-кэши провайдеров (Anthropic `cache_control`, OpenAI prefix caching) попадали между запросами |
-| 🪶 | **Сокращение токенов вывода** | Опциональные параметры `verbosity` / `effort` на `mnemos_add` / `mnemos_search` / `mnemos_recall_context` управляют стилем вывода вызывающей стороны — обратно совместимо, значения по умолчанию — no-op |
+| 🪶 | **Сокращение токенов вывода** | Опциональные параметры `verbosity` / `effort` на `mnemos_add` / `mnemos_search` / `mnemos_recall_context` (имена MCP-тулов — неизменный wire-контракт) управляют стилем вывода вызывающей стороны — обратно совместимо, значения по умолчанию — no-op |
 | 📂 | **Path-scoped rules** | Ингест правил проекта и применение их по пути файла |
 | 🗂️ | **Obsidian vault** | Markdown-зеркало, которое люди могут листать, править и грепать |
 
@@ -206,7 +213,7 @@ vault для людей в контуре.
 
 ## 🤝 Подключение любого харнеса
 
-Mnemos работает с любым агентским харнесом с поддержкой MCP. Три уровня интеграции —
+Vesma работает с любым агентским харнесом с поддержкой MCP. Три уровня интеграции —
 выбирайте самый сильный из доступных для вашего харнеса:
 
 | Харнесс | Нативная цель | Однострочный MCP-пресет | Шаблон адаптера |
@@ -222,18 +229,18 @@ Mnemos работает с любым агентским харнесом с п�
 | pi | `pi` (бридж-расширение, также на npm как [`pi-mnemos`](https://www.npmjs.com/package/pi-mnemos)) | [пресет](integrations/mcp-presets.md#pi) | ✓ |
 | [Hermes Agent](https://hermes-agent.nousresearch.com/) | `hermes` (нативный in-process плагин `MemoryProvider`) | — | — |
 
-- **Нативные таргеты** — `mnemos integration setup --target <имя>` разворачивает поведенческий пакет
+- **Нативные таргеты** — `vesma integration setup --target <имя>` разворачивает поведенческий пакет
   и регистрирует MCP-сервер за один проход ([руководство по интеграции](docs/ru/user/integration-guide.md)).
 - **Однострочные пресеты** — [`integrations/mcp-presets.md`](integrations/mcp-presets.md): каждый
   харнес из таблицы выше, готово к копипасту.
 - **Шаблон адаптера** — [`integrations/adapter-template.md`](integrations/adapter-template.md):
   Connect / Expose / Configure + чеклист приёмки для любого харнеса, говорящего по MCP stdio.
-- **Hermes Agent** запускает Mnemos in-process: `pip install mnemos-memory-server` в Python-окружении
-  Hermes, затем `mnemos integration setup --target hermes`
+- **Hermes Agent** запускает Vesma in-process: `pip install vesma` в Python-окружении
+  Hermes, затем `vesma integration setup --target hermes`
   ([подробнее](docs/ru/user/integration-guide.md#hermes-agent)).
 
 Общий контракт — [схема тегов](docs/ru/user/tag-contract.md) — `project:<slug>`, `agent:<slug>`
-и хотя бы один `mnemos:<subtype>` — обязательна для каждой записи памяти.
+и хотя бы один `mnemos:<subtype>` (неймспейс тегов — неизменный контракт данных) — обязательна для каждой записи памяти.
 
 ---
 
@@ -248,7 +255,7 @@ Mnemos работает с любым агентским харнесом с п�
 flowchart TB
     subgraph CLIENTS["Clients"]
         C1(["Agent harness\nstdio MCP"])
-        C2(["CLI — mnemos …"])
+        C2(["CLI — vesma …"])
         C3(["HTTP API client"])
     end
 
@@ -313,9 +320,9 @@ flowchart TB
 
 | Поверхность | Когда использовать… | Документация |
 |---------|--------------|-----------|
-| **MCP** — `mnemos mcp-server` | Вы — агентский харнес; путь, по которому идёт каждый подключённый агент | [mcp-tools.md](docs/ru/user/mcp-tools.md) |
-| **CLI** — `mnemos …` | Вы живёте в шелле, нужен быстрый ad-hoc add / search или скрипты для cron | [cli-reference.md](docs/ru/user/cli-reference.md) |
-| **HTTP** — `mnemos serve` | У вас не-MCP клиент — веб-дашборд, мобильное приложение, CI runner | [http-api.md](docs/ru/user/http-api.md) |
+| **MCP** — `vesma mcp-server` | Вы — агентский харнес; путь, по которому идёт каждый подключённый агент | [mcp-tools.md](docs/ru/user/mcp-tools.md) |
+| **CLI** — `vesma …` | Вы живёте в шелле, нужен быстрый ad-hoc add / search или скрипты для cron | [cli-reference.md](docs/ru/user/cli-reference.md) |
+| **HTTP** — `vesma serve` | У вас не-MCP клиент — веб-дашборд, мобильное приложение, CI runner | [http-api.md](docs/ru/user/http-api.md) |
 
 HTTP-поверхность также открывает **A2A Sessions API** — постоянный бэкенд для многошаговых
 разговоров агентов, которые переживают рестарты. См. [a2a-sessions.md](docs/ru/architecture/a2a-sessions.md).
@@ -328,14 +335,14 @@ HTTP-поверхность также открывает **A2A Sessions API** �
 |------|----------------|
 | [docs/README.md](docs/README.md) | Главная страница документации — выбор языка (EN / RU) |
 | [getting-started.md](docs/ru/user/getting-started.md) | Первый запуск: установка → первая запись → первый поиск → подключение харнеса |
-| [mcp-presets.md](integrations/mcp-presets.md) | Подключение Mnemos к любому харнесу — однострочные MCP-пресеты (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes) |
+| [mcp-presets.md](integrations/mcp-presets.md) | Подключение Vesma к любому харнесу — однострочные MCP-пресеты (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes) |
 | [integration-guide.md](docs/ru/user/integration-guide.md) | Поведенческий пакет: инструкции, скиллы, режим промпта, таргеты развёртывания, wiring агентов, плагин Hermes |
 | [features.md](docs/ru/features.md) | Что работает из коробки, что частично, что в планах |
 | [architecture/overview.md](docs/ru/architecture/overview.md) | Устройство системы, модель данных, конечные автоматы, границы безопасности |
-| [cli-reference.md](docs/ru/user/cli-reference.md) | Все подкоманды `mnemos` с флагами, значениями по умолчанию, примерами |
-| [mcp-tools.md](docs/ru/user/mcp-tools.md) | Все инструменты `mnemos_*`, доступные агентским харнесам |
+| [cli-reference.md](docs/ru/user/cli-reference.md) | Все подкоманды `vesma` с флагами, значениями по умолчанию, примерами |
+| [mcp-tools.md](docs/ru/user/mcp-tools.md) | Все инструменты `mnemos_*`, доступные агентским харнесам (имена тулов — неизменный MCP wire-контракт) |
 | [http-api.md](docs/ru/user/http-api.md) | Все HTTP-эндпоинты (CRUD памяти, workflow, хуки, A2A Sessions) |
-| [tag-contract.md](docs/ru/user/tag-contract.md) | Схема `project:` / `agent:` / `mnemos:`, обязательная для каждой записи памяти |
+| [tag-contract.md](docs/ru/user/tag-contract.md) | Схема тегов `project:` / `agent:` / `mnemos:` (неймспейс — неизменный контракт данных), обязательная для каждой записи памяти |
 | [security.md](docs/ru/admin/security.md) | Модель угроз, SSRF-защита, FTS5 escape, модель аутентификации |
 | [kubernetes-deployment.md](docs/ru/admin/kubernetes-deployment.md) | Helm-чарт для кластеров K8s/K3s: ингресс, хранилище, TLS, TOTP-секрет |
 | [runbooks/](docs/ru/admin/runbooks/) | Установка, миграция, резервное копирование / восстановление, обновление зависимостей, развёртывание в контейнере |
@@ -351,9 +358,10 @@ HTTP-поверхность также открывает **A2A Sessions API** �
 > через них сделала возможным воспоминание мира. Её имя — корень слова *мнемонический*, и к ней
 > обращается каждый певец, поэт и философ, прежде чем начать.
 
-Это программное обеспечение носит её имя, потому что создано для той же задачи: **сделать воспоминание
-возможным для тех, кто мыслит.** AI-агенты, не привязанные ни к одному разговору, теряют всё, что было
-до. Mnemos даёт им место, куда это можно положить — структурированно, с поиском, по контракту — чтобы
+Это программное обеспечение создано для той же задачи: **сделать воспоминание
+возможным для тех, кто мыслит.** Раздел легенды ниже хранит память о доребрендинговом
+имени — сам продукт теперь идёт под именем **Vesma**. AI-агенты, не привязанные ни к одному разговору, теряют всё, что было
+до. Vesma даёт им место, куда это можно положить — структурированно, с поиском, по контракту — чтобы
 то, что они узнали, не исчезало с закрытием сессии. Музы, в конце концов, были не для богов. Они были
 для песен.
 

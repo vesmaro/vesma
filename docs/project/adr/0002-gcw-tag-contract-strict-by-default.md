@@ -1,4 +1,4 @@
-# 0002. Mnemos tag contract is strict by default at the MCP layer
+# 0002. Vesma tag contract is strict by default at the MCP layer
 
 *Historical artifact — English only.*
 
@@ -8,22 +8,22 @@
 
 ## Context
 
-GCW agents (Tech Lead, SRE, DBA, etc.) write to Mnemos via MCP. Without a contract, every
+GCW agents (Tech Lead, SRE, DBA, etc.) write to Vesma via MCP. Without a contract, every
 agent invents its own tag schema, search becomes unreliable, and per-agent recall
 (`mnemos_agent_recall`) cannot filter by `agent:` reliably.
 
 A pre-existing personal `ai-brain` had a lax tag system — any tag was allowed. The user
-wants this cleaned up in Mnemos so that:
+wants this cleaned up in Vesma so that:
 
 - `agent:gcw-tech-lead` is always present
 - `project:gcw` (or another project slug) is always present
-- at least one `mnemos:*` namespace tag is always present
+- at least one `vesma:*` namespace tag is always present
   (`mnemos:session`, `mnemos:bug-pattern`, `mnemos:learning`, `mnemos:decision`, `mnemos:rule`,
   `mnemos:open-question`, `mnemos:checkpoint`, `mnemos:legacy`)
 
 ## Decision
 
-We will enforce the Mnemos tag contract at the **MCP `mnemos_add` layer**, not the storage
+We will enforce the Vesma tag contract at the **MCP `mnemos_add` layer**, not the storage
 layer, because:
 
 1. MCP is the only public surface that produces records — the CLI is for human use and
@@ -34,7 +34,7 @@ layer, because:
    GCW agents add domain-specific tags without breaking search.
 
 A `strict_tag_contract: bool` setting (default `true` for new installs, `false` during
-M13 migration) controls enforcement. When `false`, Mnemos auto-tags incoming records
+M13 migration) controls enforcement. When `false`, Vesma auto-tags incoming records
 with `mnemos:legacy` and `agent:unknown` and logs a warning.
 
 ## Consequences
@@ -69,7 +69,7 @@ with `mnemos:legacy` and `agent:unknown` and logs a warning.
 
 ## References
 
-- `PLAN.md` §"Phase M2 — Mnemos Tag Contract"
+- `PLAN.md` §"Phase M2 — Vesma Tag Contract"
 - `ARCHITECTURE.md` §2 (TagContract section)
 - `docs/tag-contract.md` — operator-facing schema
 - `tests/test_tag_contract.py` — 31 tests

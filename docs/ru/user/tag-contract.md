@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/user/tag-contract.md) · Русский
 
-Mnemos применяет структурированную схему тегов к каждой записи в памяти. Этот документ
+Vesma применяет структурированную схему тегов к каждой записи в памяти. Этот документ
 описывает контракт, допустимые значения и руководство по миграции.
 
 ---
@@ -14,7 +14,7 @@ Mnemos применяет структурированную схему тего
 
 - Привязывает каждую запись ровно к **одному проекту** и **одному агенту**
 - Опционально сужает запись до **одной task-области** (`task:`, ADR-0027)
-- Классифицирует запись хотя бы **одним Mnemos-подтипом** (когнитивная категория)
+- Классифицирует запись хотя бы **одним Vesma-подтипом** (когнитивная категория)
 - Обеспечивает per-agent recall (M3) и очистку в рамках проекта
 - Предотвращает неоднозначные записи с двумя проектами (частый источник загрязнения контекста)
 
@@ -26,9 +26,9 @@ Mnemos применяет структурированную схему тего
 |-----|--------|----------------|------------ |
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **ровно 1** | Привязывает запись к кодовой базе / инициативе |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **ровно 1** | Агент, создавший запись |
-| `mnemos:<subtype>` | см. таблицу ниже | **не менее 1** | Когнитивная категория |
+| `vesma:<subtype>` | см. таблицу ниже | **не менее 1** | Когнитивная категория |
 
-### Mnemos-подтипы
+### Vesma-подтипы
 
 | Подтип | Когда использовать |
 |--------|-------------------|
@@ -128,7 +128,7 @@ A==C, закреплённая тестами на каждой поверхно
 ## `mnemos:no-federate` — маркер исключения из федерации
 
 `mnemos:no-federate` — это **маркер исключения**, а не когнитивная категория.
-Он живёт в пространстве имён подтипов `mnemos:` (поэтому проходит валидацию
+Он живёт в пространстве имён подтипов `vesma:` (поэтому проходит валидацию
 тег-контракта без нового префикса), но его семантика операционная, не
 когнитивная: запись с этим тегом **исключается из всего внешнего обмена** —
 и из batch export, и из mediated pull (федерация).
@@ -189,7 +189,7 @@ base64-последовательности), сканер:
 - Некорректный слаг `task:` нормализуется, если спасаем (регистр, пробелы);
   неспасаемый **удаляется** — lax-режим никогда не чеканит фейковый скоуп
   `task:unknown`.
-- Используется командой `mnemos migrate from-ai-brain`.
+- Используется командой `vesma migrate from-ai-brain`.
 
 ---
 
@@ -220,8 +220,8 @@ print(tc.task)          # "refactor-auth" ("" — если записи не п�
 from mnemos.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
-    tags=["project:mnemos", "agent:tech-lead", "mnemos:decision"],
-    project="mnemos",
+    tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],
+    project="vesma",
     agent="tech-lead",
 )
 ```
@@ -233,36 +233,36 @@ m = Memory(
 ```
 mnemos_add(
     content="Discovered timing issue in FTS5 query planner.",
-    tags=["project:mnemos", "agent:copilot", "mnemos:bug-pattern"],
-    project="mnemos",
+    tags=["project:vesma", "agent:copilot", "mnemos:bug-pattern"],
+    project="vesma",
     agent="copilot",
 )
 ```
 
 ---
 
-## Массовое переименование тегов (`gcw:` → `mnemos:` и другие смены префикса)
+## Массовое переименование тегов (`gcw:` → `vesma:` и другие смены префикса)
 
-Команда `mnemos tags rename` (и эквивалентные MCP-инструмент `mnemos_tags_rename` /
+Команда `vesma tags rename` (и эквивалентные MCP-инструмент `mnemos_tags_rename` /
 HTTP-эндпоинт `POST /tags/rename`) массово переименовывает теги, соответствующие
 исходному префиксу, в целевой префикс по всем существующим записям. Это безопасная
-замена устаревшей команды `mnemos migrate tags`.
+замена устаревшей команды `vesma migrate tags`.
 
 ```bash
 # Сначала dry-run — только предпросмотр, ничего не записывается (по умолчанию)
-mnemos tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to mnemos: --dry-run
 
 # Применить переименование
-mnemos tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --no-dry-run
 
 # Ограничить конкретными подтипами
-mnemos tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
 
 # Ограничить одним проектом / агентом
-mnemos tags rename --from gcw: --to mnemos: --project mnemos --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --project vesma --no-dry-run
 
 # Неверные подтипы отправлять в <to_prefix>legacy вместо пропуска
-mnemos tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
+vesma tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
 ```
 
 **Почему это безопасно:** переименование идёт через `SQLiteStore.update_fields`
@@ -279,7 +279,7 @@ external-content остаётся согласованным — в отличи
 продолжает работать, потому что хранящиеся векторы всё ещё указывают на те же
 `memory_id`, а ветка FTS5 (которая отражает новые теги через триггер) обслуживает
 запросы с фильтром по тегам. Если требуется точное выравнивание тег-вектор,
-выполните `mnemos reindex` после переименования.
+выполните `vesma reindex` после переименования.
 
 **Аудит-трейл:** каждый вызов записывает одну строку в таблицу трассировок с
 `step="tags_rename"`, фиксируя префиксы, флаг dry-run и счётчики.
@@ -324,19 +324,19 @@ external-content остаётся согласованным — в отличи
 контракта зависит от действия:
 
 - `rename` проверяет в **мягком (lax)** режиме — это замена префикса
-  (напр. `gcw:` → `mnemos:`), сохраняющая обязательные теги, поэтому lax там
+  (напр. `gcw:` → `vesma:`), сохраняющая обязательные теги, поэтому lax там
   не портит данные.
 - `remove` / `add` проверяют результирующий набор тегов в **строгом (strict)**
   режиме — результат, нарушающий контракт (напр. удаление последнего тега
-  `project:`, либо добавление недопустимого подтипа `mnemos:` / искажённого
+  `project:`, либо добавление недопустимого подтипа `vesma:` / искажённого
   slug), отклоняется по каждой записи с записью в `errors`, и запись для
   этой памяти **пропускается**, вместо того чтобы портить хранилище.
 
 ```
-mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
+mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
 mnemos_tags(action="remove", tags=["severity:high"], dry_run=False)
 mnemos_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
-mnemos_tags(action="add", tags=["severity:high"], project="mnemos", dry_run=False)
+mnemos_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
 ```
 
 **Отчёты:** `rename` возвращает структуру `mnemos_tags_rename` (`scanned`,
@@ -357,8 +357,8 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 проверяют результирующий набор в строгом режиме, любой результат,
 нарушающий контракт, отклоняется по каждой записи с записью в `errors`,
 и запись для этой памяти пропускается: удаление последнего тега
-`project:`/`agent:`/`mnemos:`, добавление второго тега `project:`,
-добавление недопустимого подтипа `mnemos:`, искажённого slug или тега без
+`project:`/`agent:`/`vesma:`, добавление второго тега `project:`,
+добавление недопустимого подтипа `vesma:`, искажённого slug или тега без
 префикса `:`. `rename` остаётся в мягком режиме (замена префикса сохраняет
 обязательные теги).
 
@@ -368,11 +368,11 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 
 В ai-brain обязательной схемы тегов не было. Процесс миграции:
 
-1. Запустите `mnemos migrate from-ai-brain` — копирует SQLite из ai-brain в хранилище Mnemos.
+1. Запустите `vesma migrate from-ai-brain` — копирует SQLite из ai-brain в хранилище Vesma.
 2. Существующие записи без `project:` / `agent:` получают добавленный тег `mnemos:legacy`
    и сохраняются с `strict_tags=False`.
-3. Проверьте контракт командой `mnemos tags validate` (полный обход vault
-   пока не подключён — для просмотра записей используйте `mnemos stats`
+3. Проверьте контракт командой `vesma tags validate` (полный обход vault
+   пока не подключён — для просмотра записей используйте `vesma stats`
    или `GET /memories`, см. [cli-reference.md](cli-reference.md#tags-validate)).
 4. Отредактируйте записи вручную, задав best-effort-умолчания
    (`project:unknown`, `agent:unknown`).
@@ -394,7 +394,7 @@ mnemos.models.TagContractError
 |--------------------|---------|
 | `exactly one project:` | 0 или ≥2 тегов `project:` |
 | `exactly one agent:` | 0 или ≥2 тегов `agent:` |
-| `at least one mnemos:` | Нет тега `mnemos:` |
+| `at least one vesma:` | Нет тега `vesma:` |
 | `invalid mnemos: subtype` | Подтип не входит в допустимое множество |
 | `invalid slug for project:` | Slug содержит заглавные буквы или спецсимволы |
 | `invalid slug for agent:` | Slug содержит заглавные буквы или спецсимволы |

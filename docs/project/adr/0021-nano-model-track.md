@@ -95,7 +95,7 @@ is not gateable.
 
 Two transports, one pin: a single SHA256-pinned signed model entity is
 delivered either as a separate models wheel through the extra
-`mnemos[local-refiner]` — primary for measured artifacts ≤95 MB
+`vesma[local-refiner]` — primary for measured artifacts ≤95 MB
 (pip-native atomicity, resume, cache, air-gapped installs via
 `pip install --no-index`; rides the existing release-pipeline signature) —
 or via hash-pinned lazy download, the mandatory oversize channel. The

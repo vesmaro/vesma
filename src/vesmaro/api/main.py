@@ -1,4 +1,4 @@
-"""FastAPI HTTP API for Mnemos.
+"""FastAPI HTTP API for Vesma.
 
 Mirrors MCP tools as REST endpoints.
 Loopback-bound by default (127.0.0.1) — do not expose externally without auth.
@@ -219,7 +219,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Mnemos",
+    title="Vesma",
     description="Standalone memory & knowledge server for AI agents.",
     version=__version__,
     lifespan=lifespan,
@@ -246,12 +246,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ── Dashboard / metrics (mnemos-eyes) ─────────────────────────────────────────
+# ── Dashboard / metrics (mnemos-eyes, Vesma dashboard) ─────────────────────────────────────────
 
 
 @app.get("/api/v1/stats")
 async def dashboard_stats() -> dict[str, Any]:
-    """Structured JSON dashboard data for mnemos-eyes."""
+    """Structured JSON dashboard data for mnemos-eyes (Vesma dashboard)."""
     return get_manager().dashboard_stats()
 
 

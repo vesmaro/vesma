@@ -33,7 +33,7 @@ noise; net savings must be allowed to come out negative.
 
 The facts are already computed and then thrown away: `assemble_context`
 returns `tokens {budget, estimated}`, per-block provenance, and six-stage
-stats (`src/mnemos/assemble.py`) — the telemetry dies with the call
+stats (`src/vesma/assemble.py`) — the telemetry dies with the call
 response. Zones 2 and 4 would also open the project's first
 "context → persistent store" back-path, which nothing gates today
 (CWE-532). The committee resolved the tension by splitting planes: facts
@@ -207,7 +207,7 @@ p25/p75, by strata, not only pooled.
 
 | Phase | Content | P / size | Phase gate |
 |---|---|---|---|
-| A. Passive collection | `src/mnemos/metrics/sink.py` + `MetricsStore`; sink calls at the hooks/MCP boundary; zone-1 counters | P1, S | the C1 isolation canary is green before any metric lands |
+| A. Passive collection | `src/vesma/metrics/sink.py` + `MetricsStore`; sink calls at the hooks/MCP boundary; zone-1 counters | P1, S | the C1 isolation canary is green before any metric lands |
 | B. Dynamism + `S5` v1 + `F8` + retention | `context_dynamism_ratio` / `dynamic_uniqueness` / `explicit_hint_share` on server outputs; the `S5` framework, synthetic workload, comparator legs; `F8` in `report_page.py`; TTL 90 d | P1, M | the first `S5` run with `--record` writes `baselines/s5.json`; the pre-registration is committed before the run |
 | C. Usage loop | the `post_llm_call` action per the committee contract annex (mnemos `9a3cd4a2`, §3.5); `touched_rate` into corridors | P2, S | the touched proxy is calibrated (κ ≥ 0.6) against the ablation |
 | D. Real-session replay | session-tape export from `metrics.sqlite` → `S5` informational (no gates) | P3, S→M | owner opt-in capture policy; fail-closed sanitization at the capture boundary |
@@ -272,7 +272,7 @@ p25/p75, by strata, not only pooled.
 ## Addendum: Full Server Coverage (2026-09-09, owner directive)
 
 The owner extended the directive the same day: the methodology must cover
-the ENTIRE functionality of the Mnemos memory server — 26 MCP tools,
+the ENTIRE functionality of the Vesma memory server — 26 MCP tools,
 ~50 REST routes (including auth, sessions, federation), 85
 `MemoryManager` methods, the background subsystems (processor loop,
 CCR-cleanup, heal, reclaim, scanner, federation pull server/client,

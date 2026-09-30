@@ -1,4 +1,4 @@
-"""Logging configuration for Mnemos.
+"""Logging configuration for Vesma.
 
 Configures the root logger with a console (stderr) handler and an optional
 rotating file handler based on ``Settings.logging``. Also integrates
@@ -42,7 +42,7 @@ def setup_logging(settings: Settings, *, verbose: bool = False) -> None:
     Parameters
     ----------
     settings:
-        Loaded Mnemos settings (``Settings`` instance).
+        Loaded Vesma settings (``Settings`` instance).
     verbose:
         When True, overrides the configured level to DEBUG (CLI ``--verbose``).
     """

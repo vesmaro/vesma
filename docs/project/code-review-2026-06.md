@@ -1,9 +1,9 @@
-# Финальный код-ревью Mnemos — 2026-06
+# Финальный код-ревью Vesma — 2026-06
 
 *Historical artifact — English only.*
 
 **Ревьюер:** GCW: Code Reviewer (multi-pass)
-**Объём:** весь `src/mnemos/` (39 модулей, ~7 300 LOC) + тесты + документация
+**Объём:** весь `src/vesma/` (39 модулей, ~7 300 LOC) + тесты + документация
 **Базовая ревизия:** `main` @ `208a686` (tag `v0.2.0`)
 **Ветка с исправлениями:** `fix/code-review-resource-leaks`
 **Режим:** `standard` (security + architecture + quality + performance + tests)
@@ -35,7 +35,7 @@ format`, `mypy --strict`, `bandit`, `pip-audit`, 326 тестов, покрыт�
 
 ### [High-1] SSRF через HTTP-редиректы в `ingest_url`
 
-- **Файл:** [src/mnemos/manager.py](../../src/mnemos/manager.py#L487)
+- **Файл:** [src/vesma/manager.py](../../src/vesma/manager.py#L487)
 - **Класс:** OWASP A10:2021 — Server-Side Request Forgery (CWE-918)
 - **Суть:** `_validate_url()` валидирует только **исходный** хост. HTTP-клиент
   создавался с `httpx.Client(follow_redirects=True, max_redirects=5)`, поэтому
@@ -53,7 +53,7 @@ format`, `mypy --strict`, `bandit`, `pip-audit`, 326 тестов, покрыт�
 
 ### [Medium-2] Утечка SQLite-соединений в `VectorStore`
 
-- **Файл:** [src/mnemos/storage/vector_store.py](../../src/mnemos/storage/vector_store.py#L45)
+- **Файл:** [src/vesma/storage/vector_store.py](../../src/vesma/storage/vector_store.py#L45)
 - **Класс:** Reliability / resource leak
 - **Суть:** `VectorStore` кэшировал соединение в `threading.local`, но —
   в отличие от `SQLiteStore` и `SessionStore` — **не имел метода `close()`**.
@@ -69,14 +69,14 @@ format`, `mypy --strict`, `bandit`, `pip-audit`, 326 тестов, покрыт�
 ### [Low-3] Рассинхрон версии пакета с релизным тегом
 
 - **Файлы:** [pyproject.toml](../../pyproject.toml#L7),
-  [src/mnemos/__init__.py](../../src/mnemos/__init__.py#L6),
-  [src/mnemos/api/main.py](../../src/mnemos/api/main.py#L59)
+  [src/vesma/__init__.py](../../src/vesma/__init__.py#L6),
+  [src/vesma/api/main.py](../../src/vesma/api/main.py#L59)
 - **Класс:** Release hygiene
 - **Суть:** CHANGELOG и git-тег объявляли релиз `0.2.0`, но `pyproject.toml`,
   `__version__` и FastAPI-app сообщали `0.1.0`. Версия пакета (и `/docs` Swagger)
   не совпадала с релизом.
 - **Исправление:** bump до `0.2.0` во всех трёх местах; FastAPI-app теперь
-  читает версию из `mnemos.__version__` (единый источник истины, устраняет
+  читает версию из `vesma.__version__` (единый источник истины, устраняет
   будущий дрейф). Добавлена секция `[Unreleased]` в CHANGELOG для этих фиксов.
 
 ---
@@ -130,9 +130,9 @@ format`, `mypy --strict`, `bandit`, `pip-audit`, 326 тестов, покрыт�
 
 ## Изменённые файлы
 
-- `src/mnemos/manager.py` — SSRF fix + vectors.close()
-- `src/mnemos/storage/vector_store.py` — добавлен `close()`
-- `src/mnemos/__init__.py`, `pyproject.toml`, `src/mnemos/api/main.py` — версия 0.2.0
+- `src/vesma/manager.py` — SSRF fix + vectors.close()
+- `src/vesma/storage/vector_store.py` — добавлен `close()`
+- `src/vesma/__init__.py`, `pyproject.toml`, `src/vesma/api/main.py` — версия 0.2.0
 - `tests/test_security.py` — регрессионный тест на redirects
 - `tests/test_vector_store.py` — закрытие фикстуры
 - `docs/adr/0009-ssrf-guard-in-ingest-url.md` — корректная формулировка митигации

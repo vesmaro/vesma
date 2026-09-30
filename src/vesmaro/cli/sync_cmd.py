@@ -22,7 +22,7 @@ console = Console()
 
 sync_app = typer.Typer(
     name="sync",
-    help="Federation Phase 0 batch sync — export/import compact payloads between mnemos instances.",
+    help="Federation Phase 0 batch sync — export/import compact payloads between Vesma instances.",
     no_args_is_help=True,
 )
 

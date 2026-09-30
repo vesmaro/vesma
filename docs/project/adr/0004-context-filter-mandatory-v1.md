@@ -10,7 +10,7 @@
 
 MCP-originated content is noisy: terminal output (progress bars, ANSI escapes, long
 stdout), logs (timestamps, stack traces, duplicates), web pages (boilerplate, ads).
-Without pre-LLM filtering, Mnemos ships that noise to the model, blowing up token cost
+Without pre-LLM filtering, Vesma ships that noise to the model, blowing up token cost
 and degrading response quality.
 
 The team's instinct: filter aggressively. The risk: filter is destructive — if the
@@ -44,7 +44,7 @@ The Context Filter is **mandatory in v1**, with two architectural commitments:
 - Every record carries ~2× the storage cost (raw + clean). For 10k memories at
   ~5KB average, this is ~100MB extra. Acceptable; SQLite WAL handles it.
 - Filter pipeline version is per-record (`filter_version`). Re-running a record
-  through a new filter version is a manual `mnemos filter reprocess --id ...`.
+  through a new filter version is a manual `vesma filter reprocess --id ...`.
 
 **Neutral**
 
@@ -64,6 +64,6 @@ The Context Filter is **mandatory in v1**, with two architectural commitments:
 
 - `PLAN.md` §"Phase M10 — Context Filter (mandatory v1)"
 - `ARCHITECTURE.md` §1 (Context Filter layer)
-- `src/mnemos/filter/` — `dedup.py`, `noise.py`, `extract.py`, `compress.py`, `tokens.py`
+- `src/vesma/filter/` — `dedup.py`, `noise.py`, `extract.py`, `compress.py`, `tokens.py`
 - `tests/test_context_filter.py` — 32 tests
 - `docs/architecture.md` § Context Filter (KPI targets)

@@ -4,7 +4,7 @@
 |---|---|
 | Status | **PRE-REGISTERED — committed before the first run** |
 | Date | 2026-09-20 |
-| Commit window | **Open.** No F1 leg of any arm (A0/C/B/A) has been executed or recorded — no `benchmarks/experiments/f1_task_scope/` runner exists yet (this file precedes the runner wave, exactly as E0 preceded the E3-runner wave). This file precedes all runs (epic [#308](https://github.com/Korrnals/mnemos/issues/308), dev-plan §4b Ф1 row; ADR-0027 Phase 1 acceptance). |
+| Commit window | **Open.** No F1 leg of any arm (A0/C/B/A) has been executed or recorded — no `benchmarks/experiments/f1_task_scope/` runner exists yet (this file precedes the runner wave, exactly as E0 preceded the E3-runner wave). This file precedes all runs (epic [#308](https://github.com/Korrnals/vesma/issues/308), dev-plan §4b Ф1 row; ADR-0027 Phase 1 acceptance). |
 | Owner | Analytics Lead (experiment design); corpus ground-truth criterion per the E0 §4.4 pattern, blind-auditκ co-owned with the adjudicator of the runner wave |
 | Anti-HARKing clause | **No metric, threshold, stratum, arm, or hypothesis may be added or altered after the first recorded run.** Deviations require a dated §8 amendment; single-look analysis; no interim peeking (§6.6). Engine/instrument parameters the implementation must fix before a run are registered as pre-run revisions exactly as implemented (the E0 §8 revisions 2–7 pattern) — never as aspirations. |
 | Language | English (canonical, ADR-style) |

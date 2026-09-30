@@ -1,4 +1,4 @@
-# Runbook: Install Mnemos
+# Runbook: Install Vesma
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/install.md)
 
@@ -11,18 +11,18 @@
 ## Quick install (PyPI)
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
-- The MCP server ships in the base package — `mnemos mcp-server` works out of the box (ADR-0023).
+- The MCP server ships in the base package — `vesma mcp-server` works out of the box (ADR-0023).
 - The embedding model (`mnema-embed-v1`) is bundled: no downloads, works offline.
 
-Isolated variant (installs the `mnemos` CLI on `PATH`, project environments untouched):
+Isolated variant (installs the `vesma` CLI on `PATH`, project environments untouched):
 
 ```bash
-uv tool install mnemos-memory-server
+uv tool install vesma
 # or
-pipx install mnemos-memory-server
+pipx install vesma
 ```
 
 Scripted variant (venv at `~/.mnemos/venv` + launcher in `~/.local/bin` + optional VS Code wiring):
@@ -31,7 +31,7 @@ Scripted variant (venv at `~/.mnemos/venv` + launcher in `~/.local/bin` + option
 curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
 ```
 
-> ⚠️ The PyPI name is `mnemos-memory-server` — `pip install mnemos` installs an unrelated project.
+> ⚠️ **Names.** The PyPI package is `vesma` (bare slot, ours). Pre-rebrand `mnemos-memory-server` stays live until deprecation; the bare `pip install vesma` is an unrelated third-party project.
 
 ## Configuration
 
@@ -46,7 +46,7 @@ embedding:
   provider: nano  # mnema-embed-v1 — bundled local model, works offline; or onnx, ollama
 ```
 
-Store: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Vault mirror: `~/.mnemos/vault/` (Obsidian-compatible markdown).
+Store: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Vault mirror: `~/.mnemos/vault/` (Obsidian-compatible markdown; the `~/.mnemos/` paths are the shipped defaults — 5.x keeps this layout during the dual period).
 
 ## Start MCP server
 
@@ -55,9 +55,9 @@ Add to your VS Code **User** or **Workspace** `mcp.json`:
 ```jsonc
 {
   "servers": {
-    "mnemos": {
+    "vesma": {
       "type": "stdio",
-      "command": "mnemos",
+      "command": "vesma",
       "args": ["mcp-server"]
     }
   }
@@ -66,12 +66,12 @@ Add to your VS Code **User** or **Workspace** `mcp.json`:
 
 Per-harness presets (Claude Code, Cursor, OpenCode, Codex, Windsurf, ZCode, pi, Hermes):
 [`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md). Behavioral pack (instructions
-/ skills / prompts): `mnemos integration setup`.
+/ skills / prompts): `vesma integration setup`.
 
 ## Start HTTP API
 
 ```bash
-mnemos serve  # uvicorn on 127.0.0.1:8787
+vesma serve  # uvicorn on 127.0.0.1:8787
 ```
 
 ## Container
@@ -82,8 +82,8 @@ For full container deployment (compose, Kubernetes, systemd quadlet), see
 Quick single-container start using the released image:
 
 ```bash
-podman run -d -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0
+podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
+  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0  # 5.x images: VESMARO_API__TOTP_MASTER_KEY
 ```
 
 Or with compose from the repo root:
@@ -95,7 +95,7 @@ podman-compose up -d
 ## Upgrade
 
 ```bash
-pip install --upgrade mnemos-memory-server
+pip install --upgrade vesma
 ```
 
 The store schema is migrated automatically on first start of the new version. Back up
@@ -104,7 +104,7 @@ The store schema is migrated automatically on first start of the new version. Ba
 ## Verify
 
 ```bash
-mnemos add "Hello Mnemos" --tags "project:test,agent:manual,mnemos:learning"
-mnemos search "Hello"
-mnemos recall --agent manual --project test
+vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
+vesma search "Hello"
+vesma recall --agent manual --project test
 ```

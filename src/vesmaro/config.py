@@ -1,4 +1,4 @@
-"""Configuration management for Mnemos."""
+"""Configuration management for Vesma."""
 
 from __future__ import annotations
 
@@ -337,7 +337,7 @@ class AutomationConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     # Hard cap for CPU-bound thread pools (BLAS/OMP/ONNX/tokenizers)
     cpu_threads: int = Field(default=4, ge=1, le=64)
-    # Uvicorn worker processes for `mnemos serve`
+    # Uvicorn worker processes for `vesma serve` (binary: legacy `mnemos serve`)
     uvicorn_workers: int = Field(default=1, ge=1, le=8)
 
 
@@ -346,7 +346,7 @@ class CCRConfig(BaseModel):
 
     Inspired by headroom's CCR (https://github.com/headroomlabs-ai/headroom),
     Apache 2.0. We implement our own version integrated into the existing
-    mnemos SQLite store (one DB, one backup) with FTS5 snippet retrieval
+    Vesma SQLite store (one DB, one backup) with FTS5 snippet retrieval
     and per-project scoping.
     """
 
@@ -605,8 +605,8 @@ class PeerConfig(BaseModel):
 class MetaPollConfig(BaseModel):
     """S2 phase 2 meta-poller configuration (ADR-0021 Q10.2 poll-first).
 
-    The poller lives in the mnemos process (ArchCom ruling Q10.1:
-    orchestration in MNEMOS, the mesh is transport) and pulls each
+    The poller lives in the Vesma process (ArchCom ruling Q10.1:
+    orchestration in the app, the mesh is transport) and pulls each
     peer's ``federation_index`` pages by shelling out to the mesh CLI
     (``mnemos-mesh sync-meta --config <mesh.yaml> --peer <id> --json
     [--since <rev>]``), then imports the records in-process via
@@ -731,7 +731,7 @@ class FederationConfig(BaseModel):
 
     ArchCom 2026-07-17 federation contract §3.1. This section governs
     operator-curated, offline, cron-triggered batch sync between two
-    mnemos instances. It is NOT networked — transfer is out-of-band
+    Vesma instances. It is NOT networked — transfer is out-of-band
     (rsync / scp / shared volume by the operator).
 
     Fields:
@@ -780,11 +780,11 @@ class FederationConfig(BaseModel):
             pattern must compile — invalid regex fails at the config
             boundary (startup fail-fast, never a silent skip).
         meta_poll: S2 phase 2 background meta-poller (ADR-0021 Q10.2
-            poll-first, Q10.1 orchestration-in-mnemos ruling). Default
+            poll-first, Q10.1 orchestration-in-app ruling). Default
             OFF; see :class:`MetaPollConfig`. Additive: configs without
             the key parse unchanged (bit-for-bit S1/phase-1 behaviour).
         fetch: S2 lazy-fetch (Q10.3) — keys for the explicit
-            ``mnemos fetch`` command only (mesh CLI binary + mesh yaml
+            ``vesma fetch`` (legacy ``mnemos fetch``) command: mesh CLI binary + mesh yaml
             path); see :class:`FetchConfig`. Additive; no background
             behaviour.
         agent_token_key_path: Optional override for the W3 AgentGateway
@@ -1104,9 +1104,9 @@ class MeshConfig(BaseModel):
 
     Fields:
         socket_path: Filesystem path to the ``mnemos-mesh`` Unix socket.
-            The mesh binary creates the socket; mnemos connects to it.
+            The mesh binary creates the socket; Vesma connects to it.
             Default ``/run/mnemos/core.sock`` (systemd-tmpfiles convention
-            for runtime sockets owned by the mnemos user).
+            for runtime sockets owned by the vesma user).
         enabled: Master switch. When ``False`` (default), :class:`MeshClient`
             is not constructed and the MCP/HTTP paths do not attempt to
             talk to the mesh. Operators enable it after deploying the mesh.
@@ -1119,7 +1119,7 @@ class MeshConfig(BaseModel):
             where the socket dir is a shared volume whose group ownership
             is already solved outside the process (Kubernetes fsGroup,
             compose ``user: <uid>:<gid>``). When ``False`` (default) the
-            socket is ``0600`` and the dir ``0700`` — mnemos user only.
+            socket is ``0600`` and the dir ``0700`` — vesma user only.
             Additive (W2 native serve wiring): existing configs behave
             exactly as before.
         tcp: Optional networked TCP leg on the SAME grpcio server

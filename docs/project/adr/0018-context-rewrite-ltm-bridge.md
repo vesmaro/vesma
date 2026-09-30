@@ -17,7 +17,7 @@ original is preserved in long-term memory and details are fetched on demand
 part of the mnemos architecture (ADR-0017), what is missing, and whether
 formalizing it is correct.
 
-Part of it exists. CCR (`src/mnemos/ccr.py`, `ccr_cache`, exposed as MCP
+Part of it exists. CCR (`src/vesma/ccr.py`, `ccr_cache`, exposed as MCP
 tools `mnemos_compress` / `mnemos_retrieve` and over REST) already provides
 "thin marker in context + full original + retrieve by marker" with 86–96%
 reduction, content addressing, and idempotency. But the proposal is wider on
@@ -50,7 +50,7 @@ flowchart LR
     P["Pinned zones: security instructions are non-replaceable"]
     EV["Replace-event emission"]
   end
-  subgraph PROVIDER["mnemos — provider guarantees"]
+  subgraph PROVIDER["vesma — provider guarantees"]
     OP["on_context_rewrite<br/>(idempotent event, no versions)"]
     PIPE["Knowledge pipeline:<br>raw → published"]
     AC["assemble_context: RRF → CCR stage → filter →<br/>secret scan → CacheAligner → budget"]
@@ -145,7 +145,7 @@ marker-driven automation** (`post_tool_call` autocompression, auto-rehydrate).
   metrics violates D5; versioned diff semantics silently grows to L.
 - **Implement entirely inside zcode as private harness mechanics** —
   rejected: reproduces ADR-0017 gap #1 ("context delivery is
-  adapter-private") and forfeits mnemos' provider position.
+  adapter-private") and forfeits vesma' provider position.
 - **Separate `context_diff` API outside D1** — rejected: duplicates the
   contract; extending the lifecycle is the correct shape.
 - **"CCR is done, close the question"** — rejected as false: automation,

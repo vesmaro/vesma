@@ -8,9 +8,9 @@
 
 ## Context
 
-The Makefile `make verify` runs `mypy --strict src/mnemos/`, but `pyproject.toml`
+The Makefile `make verify` runs `mypy --strict src/vesma/`, but `pyproject.toml`
 had `warn_return_any = false`. The result: the `make verify` step passed while
-`src/mnemos/` had **45 unfixed type errors**. The two configurations contradicted
+`src/vesma/` had **45 unfixed type errors**. The two configurations contradicted
 each other.
 
 The deeper problem: `mypy --strict` is treated as a check-the-box lint in v0.1.0

@@ -1,10 +1,10 @@
-# Mnemos — Архитектура системы
+# Vesma — Архитектура системы
 
 **🌐 Language / Язык:** [English](../../en/architecture/overview.md) · Русский
 
 ## Обзор
 
-Mnemos — гибридная система долговременной памяти: личная база знаний +
+Vesma — гибридная система долговременной памяти: личная база знаний +
 RAG-хранилище для AI-агентов. Основные поверхности доступа: CLI, HTTP API,
 MCP-сервер и Obsidian-совместимый vault. Web UI запланирован как отдельный
 проект (mnemos-eyes).
@@ -75,7 +75,7 @@ MCP-сервер и Obsidian-совместимый vault. Web UI заплани
 
 - **По умолчанию**: `mnema-embed-v1` — встроенная локальная модель (~30 МБ, int8 ONNX, RU+EN, 384d), работает офлайн
 - Текущие веса (round 3, 2026-09-09): дистилляция с **Qwen/Qwen3-Embedding-0.6B** (Apache-2.0), `weights_sha256 3b752e06…`, MRL-размерности 64/128/256/384, opset 15; обучающий корпус ~100k пар «текст→вектор учителя», включая 8086 реальных записей стора (RU 41.9%)
-- **Смена эмбеддера отслеживается по «винтажу»**: каждый вектор хранит отпечаток создавшего его эмбеддера (для встроенной модели — `weights_sha256`); векторы чужого отпечатка автоматически переэмбеддятся фоновым heal-свипером, а `mnemos doctor` показывает оставшееся количество векторов чужого винтажа
+- **Смена эмбеддера отслеживается по «винтажу»**: каждый вектор хранит отпечаток создавшего его эмбеддера (для встроенной модели — `weights_sha256`); векторы чужого отпечатка автоматически переэмбеддятся фоновым heal-свипером, а `vesma doctor` показывает оставшееся количество векторов чужого винтажа
 - **Внешние провайдеры остаются доступны**: `onnx` (любая HF-модель), Ollama, `sentence-transformers`
 - Embedding-провайдер настраивается через конфиг
 - Кэширование эмбеддингов для избежания повторных вычислений
@@ -216,7 +216,7 @@ cache_aligner:
 
 ### Сокращение токенов вывода (P1-7)
 
-Сокращение токенов вывода управляет стилем вывода вызывающей стороны, не меняя того, что Mnemos хранит или возвращает. Три инструмента — `mnemos_add`, `mnemos_search`, `mnemos_recall_context` — принимают два опциональных параметра:
+Сокращение токенов вывода управляет стилем вывода вызывающей стороны, не меняя того, что Vesma хранит или возвращает. Три инструмента — `mnemos_add`, `mnemos_search`, `mnemos_recall_context` — принимают два опциональных параметра:
 
 | Параметр | Значения | Эффект |
 |----------|----------|--------|
@@ -258,15 +258,15 @@ output_style:
 
 #### CLI (Typer)
 ```bash
-mnemos add "Заметка о важном" --tags project:mnemos agent:user mnemos:learning   # быстрое добавление
-mnemos add --file ./document.pdf --tags project:mnemos agent:user mnemos:learning              # из файла
-mnemos add --url https://example.com --tags project:research agent:user mnemos:learning        # ингест URL
-mnemos search "как настроить nginx"               # гибридный поиск (FTS5 + vector + RRF)
-mnemos search "CVE" --project mnemos --limit 20    # поиск в пределах проекта
-mnemos recall --agent tech-writer --limit 20       # последние записи агента (M3)
-mnemos stats                                       # статистика хранилища
-mnemos serve                                       # запуск HTTP API
-mnemos mcp-server                                  # запуск MCP-сервера (stdio)
+vesma add "Заметка о важном" --tags project:vesma agent:user mnemos:learning   # быстрое добавление
+vesma add --file ./document.pdf --tags project:vesma agent:user mnemos:learning              # из файла
+vesma add --url https://example.com --tags project:research agent:user mnemos:learning        # ингест URL
+vesma search "как настроить nginx"               # гибридный поиск (FTS5 + vector + RRF)
+vesma search "CVE" --project vesma --limit 20    # поиск в пределах проекта
+vesma recall --agent tech-writer --limit 20       # последние записи агента (M3)
+vesma stats                                       # статистика хранилища
+vesma serve                                       # запуск HTTP API
+vesma mcp-server                                  # запуск MCP-сервера (stdio)
 ```
 
 #### REST API (FastAPI)
@@ -369,7 +369,7 @@ mcp:
 ## Путь развития
 
 > Снимок исходного плана. Фазы 1–2 (кроме PDF/DOCX-парсинга) реализованы;
-> текущая версия Mnemos — 4.0.0. Актуальный план — в
+> текущая версия Vesma — 4.0.0. Актуальный план — в
 > [PLAN.md](../../../PLAN.md).
 
 ### Фаза 1 — MVP (реализована)

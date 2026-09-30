@@ -2,9 +2,9 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/mcp-tools.md)
 
-> Complete reference for the `mnemos_*` tools exposed by the Mnemos MCP server (`mnemos mcp-server`).
+> Complete reference for the `vesma_*` tools exposed by the Vesma MCP server (`vesma mcp-server`).
 
-Mnemos speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) over **stdio JSON-RPC 2.0**. VS Code Copilot and any MCP-aware client can call the tools listed here.
+Vesma speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) over **stdio JSON-RPC 2.0**. VS Code Copilot and any MCP-aware client can call the tools listed here.
 
 The server is defined in `src/vesmaro/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
 
@@ -17,9 +17,9 @@ For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp
 | Property | Value |
 |----------|-------|
 | Protocol | MCP (JSON-RPC 2.0 over stdio) |
-| Server name | `mnemos` |
+| Server name | `vesma` |
 | Default transport | stdio (no TCP) |
-| Tool prefix | `mnemos_` |
+| Tool prefix | `vesma_` |
 | Encoding | UTF-8, JSON |
 
 The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on stdin.
@@ -38,7 +38,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_list_recent`](#mnemos_list_recent) | List recent entries | no |
 | [`mnemos_list_tags`](#mnemos_list_tags) | List all tags with counts | no |
 | [`mnemos_tags`](#mnemos_tags) *(pilot #97)* | Grouped bulk tag ops: rename / remove / add (`action: enum`) | no |
-| [`mnemos_tags_rename`](#mnemos_tags_rename) | Bulk rename tag prefixes across memories (e.g. `gcw:` → `mnemos:`); dry-run by default | no |
+| [`mnemos_tags_rename`](#mnemos_tags_rename) | Bulk rename tag prefixes across memories (e.g. `gcw:` → `vesma:`); dry-run by default | no |
 | [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Workflow lifecycle: set / get / history (`action: enum`) | no |
 | [`mnemos_ingest_url`](#mnemos_ingest_url) | Fetch and save a web page | yes |
 | [`mnemos_ingest_document`](#mnemos_ingest_document) | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) | yes |
@@ -73,7 +73,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 
 ## `mnemos_add`
 
-Create a new memory entry. The MCP layer enforces the Mnemos tag contract ([M2](tag-contract.md)) before writing.
+Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](tag-contract.md)) before writing.
 
 ### Input
 
@@ -81,7 +81,7 @@ Create a new memory entry. The MCP layer enforces the Mnemos tag contract ([M2](
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Text to remember. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>` (subtype namespace — unchanged data contract across the rebrand). |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | no | auto | One of `log`, `terminal`, `code`, `docs`, `web`, `default`. Drives M10 context filter. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -108,7 +108,7 @@ Create a new memory entry. The MCP layer enforces the Mnemos tag contract ([M2](
     "name": "mnemos_add",
     "arguments": {
       "content": "Use uv, not pip",
-      "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"]
+      "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
     }
   }
 }
@@ -125,7 +125,7 @@ Create a new memory entry. The MCP layer enforces the Mnemos tag contract ([M2](
 
 - Tag schema: [tag-contract.md](tag-contract.md)
 - HTTP equivalent: [`POST /memories`](http-api.md#post-memories--create-memory)
-- CLI equivalent: [`mnemos add`](cli-reference.md#add)
+- CLI equivalent: [`vesma add`](cli-reference.md#add)
 
 ---
 
@@ -156,7 +156,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it's faster and resolves transitive CVE closure correctly.",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "score": 0.812,
     "search_type": "hybrid",
     "status": "published"
@@ -176,7 +176,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
     "arguments": {
       "query": "how to manage Python dependencies",
       "limit": 5,
-      "project": "mnemos"
+      "project": "vesma"
     }
   }
 }
@@ -189,7 +189,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 ### Related
 
 - HTTP equivalent: [`POST /search`](http-api.md#search)
-- CLI equivalent: [`mnemos search`](cli-reference.md#search)
+- CLI equivalent: [`vesma search`](cli-reference.md#search)
 
 ---
 
@@ -217,7 +217,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Bandit B608 hardcoded SQL — flag for triage",
     "content": "Found hardcoded SQL in src/legacy/loader.py:42 ...",
-    "tags": ["project:mnemos", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
+    "tags": ["project:vesma", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
     "created_at": "2026-06-15T10:42:00+00:00",
     "status": "published"
   }
@@ -235,7 +235,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
     "name": "mnemos_agent_recall",
     "arguments": {
       "agent": "cr-security-reviewer",
-      "project": "mnemos",
+      "project": "vesma",
       "query": "bandit SQL injection",
       "limit": 10
     }
@@ -250,7 +250,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
 ### Related
 
 - HTTP equivalent: [`GET /recall/agent/{name}`](http-api.md#get-recallagentname--agent-recall)
-- CLI equivalent: [`mnemos recall --agent <slug>`](cli-reference.md#recall)
+- CLI equivalent: [`vesma recall --agent <slug>`](cli-reference.md#recall)
 
 ---
 
@@ -273,7 +273,7 @@ Restore the latest session checkpoint for a project. The **first** thing an agen
 A plain-text block formatted as Markdown:
 
 ```text
-# Context for project 'mnemos'
+# Context for project 'vesma'
 
 ---
 # Session checkpoint — 2026-06-15T10:42:00+00:00
@@ -287,13 +287,13 @@ pip-audit CVE-2026-45829 ignore
 ## Decisions
 Pin chromadb 1.5.9 with audit
 ## Context
-Active files: src/mnemos/manager.py, src/mnemos/api/main.py
+Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
 ```
 
 If no checkpoint is found:
 
 ```text
-No context found for project 'mnemos'. Start by saving context with mnemos_save_context.
+No context found for project 'vesma'. Start by saving context with mnemos_save_context.
 ```
 
 In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode Active` block is appended with mandatory session rules.
@@ -307,7 +307,7 @@ In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode
   "method": "tools/call",
   "params": {
     "name": "mnemos_recall_context",
-    "arguments": { "project": "mnemos" }
+    "arguments": { "project": "vesma" }
   }
 }
 ```
@@ -338,7 +338,7 @@ Persist a session checkpoint. Agents should call this **proactively**: after mea
 | `session` | string | no | — | Session id binding the checkpoint to a conversation. First presentation records the session→agent binding server-side; later calls with the same session but a different agent are rejected. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `mnemos_recall_context` / `mnemos_search` / `mnemos_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
 
-Mnemos synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
+Vesma synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
 
 A checkpoint whose five payload fields are all empty is trivially rejected before any store (zero-loss: the caller is told, nothing is silently dropped). Re-sending an identical payload for the same `(project, agent)` is idempotent: the existing memory id is returned with `duplicate=true` and nothing new is stored.
 
@@ -359,7 +359,7 @@ A checkpoint whose five payload fields are all empty is trivially rejected befor
   "params": {
     "name": "mnemos_save_context",
     "arguments": {
-      "project": "mnemos",
+      "project": "vesma",
       "goals": "Finish M15.1 mypy --strict",
       "completed": "Added None checks in 12 functions",
       "in_progress": "tests/test_api.py:241 type narrowing",
@@ -397,7 +397,7 @@ List the most recent memory entries, oldest-last.
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
-    "tags": ["project:mnemos", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
     "status": "raw",
     "created_at": "2026-06-15T10:42:00+00:00"
   }
@@ -413,7 +413,7 @@ List the most recent memory entries, oldest-last.
   "method": "tools/call",
   "params": {
     "name": "mnemos_list_recent",
-    "arguments": { "limit": 20, "project": "mnemos" }
+    "arguments": { "limit": 20, "project": "vesma" }
   }
 }
 ```
@@ -421,7 +421,7 @@ List the most recent memory entries, oldest-last.
 ### Related
 
 - HTTP equivalent: [`GET /memories`](http-api.md#get-memories--list-recent)
-- CLI equivalent: [`mnemos recall`](cli-reference.md#recall)
+- CLI equivalent: [`vesma recall`](cli-reference.md#recall)
 
 ---
 
@@ -437,7 +437,7 @@ None.
 
 ```json
 {
-  "project:mnemos": 142,
+  "project:vesma": 142,
   "agent:tech-writer": 23,
   "agent:sre": 41,
   "mnemos:learning": 67,
@@ -474,7 +474,7 @@ Grouped bulk tag operations across memories: rename a prefix, remove tags, or ad
 |-------|------|----------|---------|-------------|
 | `action` | string | **yes** | — | `rename`, `remove`, or `add`. |
 | `from_prefix` | string | for `rename` | — | Source prefix, e.g. `gcw:`. Must end with `:`. |
-| `to_prefix` | string | for `rename` | — | Target prefix, e.g. `mnemos:`. Must end with `:`. |
+| `to_prefix` | string | for `rename` | — | Target prefix, e.g. `vesma:`. Must end with `:`. |
 | `tags` | string[] | for `remove` / `add` | — | Tags to remove or add. Required for those two actions. |
 | `subtypes` | string[] | no | — | Optional whitelist of subtypes to rename (`rename` only). |
 | `wildcard` | boolean | no | `false` | `remove` only: treat each entry in `tags` as a prefix and strip every matching `prefix*` tag instead of exact matches. `rename` is prefix-based by design. |
@@ -483,7 +483,7 @@ Grouped bulk tag operations across memories: rename a prefix, remove tags, or ad
 | `agent` | string | no | — | Scope the scan to an agent slug. |
 | `invalid_subtypes_to_legacy` | boolean | no | `false` | `rename` only: rename invalid subtypes to `<to_prefix>legacy` instead of skipping them. |
 
-> **Contract safety.** The resulting tag set is re-validated in strict mode per memory: removing the last `project:` / `agent:` / `mnemos:` tag (or otherwise breaking the contract) is rejected per memory with an error entry instead of corrupting the store.
+> **Contract safety.** The resulting tag set is re-validated in strict mode per memory: removing the last `project:` / `agent:` / `vesma:` tag (or otherwise breaking the contract) is rejected per memory with an error entry instead of corrupting the store.
 
 ### Output
 
@@ -545,7 +545,7 @@ Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` acro
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `from_prefix` | string | **yes** | — | Source prefix, e.g. `gcw:`. Must end with `:`. |
-| `to_prefix` | string | **yes** | — | Target prefix, e.g. `mnemos:`. Must end with `:`. |
+| `to_prefix` | string | **yes** | — | Target prefix, e.g. `vesma:`. Must end with `:`. |
 | `subtypes` | string[] | no | — | Optional whitelist of subtypes to rename. |
 | `dry_run` | boolean | no | `true` | Preview without writing. |
 | `project` | string | no | — | Scope to a project slug. |
@@ -557,7 +557,7 @@ Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` acro
 ```json
 {
   "from_prefix": "gcw:",
-  "to_prefix": "mnemos:",
+  "to_prefix": "vesma:",
   "scanned": 142,
   "renamed": 0,
   "changed": 0,
@@ -640,7 +640,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 
 ### Related
 
-- CLI equivalent: [`mnemos add --url <URL>`](cli-reference.md#add)
+- CLI equivalent: [`vesma add --url <URL>`](cli-reference.md#add)
 - HTTP equivalent: [`POST /memories` with manual content](http-api.md#post-memories--create-memory)
 - HTTP equivalent: [`POST /ingest-url`](http-api.md#post-ingest-url--fetch-and-save-a-web-page)
 - Security: [security.md](../admin/security.md#2-ssrf-prevention-memorymanager_validate_url)
@@ -748,9 +748,9 @@ Register a project's code graph for the in-process watch poll (ADR-0032 §3.2). 
 ```json
 {
   "status": "registered",
-  "project": "mnemos",
-  "project_id": "mnemos",
-  "root": "/home/you/mnemos",
+  "project": "vesma",
+  "project_id": "vesma",
+  "root": "/home/you/vesma",
   "agent": "tech-writer",
   "session": null,
   "registered_at": "2026-09-28T12:00:00+00:00",
@@ -774,7 +774,7 @@ A repeat registration for the same project returns the payload with `"status": "
   "method": "tools/call",
   "params": {
     "name": "mnemos_watch_start",
-    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+    "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
 ```
@@ -834,9 +834,9 @@ None.
   "cap": 8,
   "registrations": [
     {
-      "project": "mnemos",
-      "project_id": "mnemos",
-      "root": "/home/you/mnemos",
+      "project": "vesma",
+      "project_id": "vesma",
+      "root": "/home/you/vesma",
       "agent": "tech-writer",
       "session": null,
       "registered_at": "2026-09-28T12:00:00+00:00",
@@ -938,7 +938,7 @@ Index a **registered** project root into the shared project graph — full or in
   "method": "tools/call",
   "params": {
     "name": "mnemos_index_project",
-    "arguments": { "project_id": "mnemos", "agent": "tech-writer" }
+    "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
 ```
@@ -966,7 +966,7 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "nodes": 2143,
   "edges": 5107,
   "files": 400,
@@ -1010,13 +1010,13 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "query_kind": null,
   "results": [
     {
       "score": 3,
       "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
-      "project": "mnemos",
+      "project": "vesma",
       "kind": "Function",
       "name": "window_rows",
       "qname": "vesmaro.codegraph.service.window_rows",
@@ -1060,7 +1060,7 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [
@@ -1111,7 +1111,7 @@ Symbol outline of one indexed file: kinds, names, qnames, line ranges, signature
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "lang": "python",
   "outline": [
@@ -1157,7 +1157,7 @@ Read a line range **from disk** for an indexed file. The full PG4 sequence runs 
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "path": "src/vesmaro/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
@@ -1195,7 +1195,7 @@ Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `un
 
 ```json
 {
-  "project": "mnemos",
+  "project": "vesma",
   "coverage": [
     { "path": "src/vesmaro/manager.py", "verdict": "stale" },
     { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
@@ -1264,7 +1264,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 {
   "projects": [
     {
-      "project": "mnemos",
+      "project": "vesma",
       "registered": true,
       "has_root": true,
       "nodes": 2143,
@@ -1301,7 +1301,7 @@ Drop a project's graph INDEX — the sidecar data only, never the project entity
 ### Output
 
 ```json
-{ "project": "mnemos", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
 ```
 
 ### Related
@@ -1378,7 +1378,7 @@ Tool descriptions also change (with `🔄 [AUTO-COLLECT] MANDATORY:` prefixes) s
 
 ## `mnemos_stats`
 
-Return Mnemos health counters.
+Return Vesma health counters.
 
 ### Input
 
@@ -1386,14 +1386,14 @@ None.
 
 ### Output
 
-Same shape as the CLI `mnemos stats` command — see [cli-reference.md#stats](cli-reference.md#stats).
+Same shape as the CLI `vesma stats` command — see [cli-reference.md#stats](cli-reference.md#stats).
 
 ```json
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -1403,7 +1403,7 @@ Same shape as the CLI `mnemos stats` command — see [cli-reference.md#stats](cl
 ### Related
 
 - HTTP equivalent: [`GET /metrics`](http-api.md#get-metrics)
-- CLI equivalent: [`mnemos stats`](cli-reference.md#stats)
+- CLI equivalent: [`vesma stats`](cli-reference.md#stats)
 
 ---
 
@@ -1450,7 +1450,7 @@ Memories that do not form a cluster are promoted individually (`single_promoted`
   "method": "tools/call",
   "params": {
     "name": "mnemos_reprocess",
-    "arguments": { "project": "mnemos", "limit": 200 }
+    "arguments": { "project": "vesma", "limit": 200 }
   }
 }
 ```
@@ -1458,7 +1458,7 @@ Memories that do not form a cluster are promoted individually (`single_promoted`
 ### Related
 
 - HTTP equivalent: [`POST /process`](http-api.md#post-process--run-end-to-end-pipeline)
-- CLI equivalent: [`mnemos processor run`](cli-reference.md#processor)
+- CLI equivalent: [`vesma processor run`](cli-reference.md#processor)
 
 ---
 
@@ -1720,7 +1720,7 @@ Error payloads carry a `reason` field:
 
 - [context-filter.md](context-filter.md) — profiles, pipeline stages, auto-filter behaviour (the profile list lives there — not duplicated here)
 - HTTP equivalent: [`POST /filter/{memory_id}`](http-api.md#post-filtermemory_id--apply-the-5-stage-context-filter)
-- CLI equivalent: [`mnemos filter`](cli-reference.md#filter)
+- CLI equivalent: [`vesma filter`](cli-reference.md#filter)
 
 ---
 
@@ -1731,10 +1731,10 @@ Every non-save tool call returns its normal payload **plus** an optional reminde
 ```text
 ... normal result ...
 
-⚠️ [mnemos] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
+⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
 ```
 
-This is informational; nothing in Mnemos blocks the call. Disable by setting `MNEMOS_AUTO_COLLECT=0` (the default).
+This is informational; nothing in Vesma blocks the call. Disable by setting `MNEMOS_AUTO_COLLECT=0` (the default).
 
 ---
 
@@ -1746,7 +1746,7 @@ The `mnemos_add` and `mnemos_ingest_url` tools reject calls that violate the M2 
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Binds to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Authoring agent |
-| `mnemos:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category |
+| `mnemos:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category (namespace — unchanged data contract) |
 
 Valid `mnemos:` subtypes: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
 
@@ -1758,7 +1758,7 @@ Full reference: [tag-contract.md](tag-contract.md).
 
 ## Output token reduction (P1-7)
 
-`mnemos_add`, `mnemos_search`, and `mnemos_recall_context` accept two optional parameters that steer the caller's output style without changing what Mnemos stores or returns:
+`mnemos_add`, `mnemos_search`, and `mnemos_recall_context` accept two optional parameters that steer the caller's output style without changing what Vesma stores or returns:
 
 | Parameter | Values | What it does |
 |-----------|--------|--------------|
@@ -2058,7 +2058,7 @@ Semantics (ADR-0018, verbatim):
 
 ## `mnemos_export`
 
-Export memories to a file on disk. Thin wrapper over the CLI `mnemos export` logic. Returns metadata only — the export content is **never** returned inline (the stdio transport cannot carry a binary SQLite tarball or a large JSON blob over the JSON-RPC stdout channel).
+Export memories to a file on disk. Thin wrapper over the CLI `vesma export` logic. Returns metadata only — the export content is **never** returned inline (the stdio transport cannot carry a binary SQLite tarball or a large JSON blob over the JSON-RPC stdout channel).
 
 Federation defence-in-depth (#86) is inherited automatically because the tool wraps the same `run_export` function as the CLI and HTTP surfaces: records tagged `mnemos:no-federate` are excluded from the export, and detected secrets in passing records are replaced with `<REDACTED:<pattern_name>>`.
 
@@ -2109,7 +2109,7 @@ Federation defence-in-depth (#86) is inherited automatically because the tool wr
     "arguments": {
       "output_path": "/tmp/mnemos-backup.json",
       "format": "json",
-      "project": "mnemos",
+      "project": "vesma",
       "compress": "gzip"
     }
   }
@@ -2135,7 +2135,7 @@ For an encrypted full snapshot:
 
 ## `mnemos_import`
 
-Import memories from an export file. Thin wrapper over the CLI `mnemos import` logic. Two modes: **merge** (insert new, skip or overwrite existing) and **restore** (wipe all then import — destructive, requires `confirm=true`).
+Import memories from an export file. Thin wrapper over the CLI `vesma import` logic. Two modes: **merge** (insert new, skip or overwrite existing) and **restore** (wipe all then import — destructive, requires `confirm=true`).
 
 Import validation (#86) is inherited automatically: schema drift, oversized content, invalid tags, and prompt-injection patterns are handled by the same `run_import` function the CLI and HTTP surfaces use.
 

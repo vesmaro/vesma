@@ -1,4 +1,4 @@
-"""Compaction detection signals for Mnemos. (M7)
+"""Compaction detection signals for Vesma. (M7)
 
 Weighted signals for auto-checkpoint triggers:
   1. call_counter     — N tool calls since last checkpoint

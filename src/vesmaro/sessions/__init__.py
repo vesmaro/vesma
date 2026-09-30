@@ -8,7 +8,7 @@ Provides 5 HTTP endpoints for the GCW A2A routing layer:
   4. ``GET    /v1/sessions/{id}/turns/{turn_id}``    — lazy load turn
   5. ``POST   /v1/sessions/{id}/turns/range``        — bulk load range
 
-The storage backend is the same SQLite database the rest of Mnemos uses
+The storage backend is the same SQLite database the rest of Vesma uses
 (via :class:`vesmaro.storage.sqlite_store.SQLiteStore`), with WAL mode for
 concurrent reads. Idempotency is provided by a UNIQUE constraint on
 ``turns.message_id`` and a check-before-insert pattern in

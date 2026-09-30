@@ -1,31 +1,31 @@
-# Mnemos — чек-лист ужесточения SSH-синхронизации
+# Vesma — чек-лист ужесточения SSH-синхронизации
 
 **🌐 Language / Язык:** [English](../../en/admin/ssh-sync-hardening.md) · Русский
 
 Авто-cron-мост федерации (#104) — ужесточение хост/SSH-слоя для
-автоматизации `mnemos-sync` между двумя инстансами mnemos
+автоматизации `mnemos-sync` между двумя инстансами vesma
 (A = источник, B = цель).
 
 ## Область, аудитория, связанное
 
 - **Область:** хост/SSH-слой, на котором работают `scripts/sync-peers.sh` и
   юниты `contrib/systemd/mnemos-sync.{service,timer}`. Это НЕ код приложения
-  mnemos — сам mnemos остаётся офлайн.
+  vesma — сам vesma остаётся офлайн.
 - **Аудитория:** операторы, разворачивающие пакетную синхронизацию Phase 0
   как автоматизированный cron-мост. Подразумеваются root на обеих машинах
   A и B, обе под Linux с systemd.
 - **Связанное:**
   - ArchCom 2026-07-20 — решение об автоматизированном канале (память
-    mnemos `4dc7d96e`, протокол
+    vesma `4dc7d96e`, протокол
     `.archcom/sessions/2026-07-20-automated-channel.md`).
-  - Контракт федерации 2026-07-17 §3.1 (память mnemos `c64b0c37`,
+  - Контракт федерации 2026-07-17 §3.1 (память vesma `c64b0c37`,
     `.archcom/sessions/2026-07-17-federation-contract.md`).
   - Оценка Senior Security Engineer — 7 пунктов ужесточения (память
-    mnemos `ed38f162`).
+    vesma `ed38f162`).
 
 ## Ключевой инвариант
 
-**mnemos остаётся офлайн.** У mnemos нет входящего эндпоинта — ни
+**vesma остаётся офлайн.** У vesma нет входящего эндпоинта — ни
 слушающего порта, ни API, открытого в сторону A. Вся автоматизация — на
 хост/SSH-слое: A пушит payload поверх rsync+ssh и триггерит импорт поверх
 ssh. Украденный SSH-ключ даёт атакующему только `command=""`-ограниченные
@@ -78,7 +78,7 @@ ssh-ed25519 AAAA... mnemos-sync-trigger@A
   отклоняет не-rsync вызовы, запирает назначение на `INCOMING_DIR`,
   дописывает строку аудита, затем re-exec `rsync --server`.
 - `contrib/systemd/mnemos-import-wrapper.sh` — парсит
-  `SSH_ORIGINAL_COMMAND`, отклоняет всё, кроме `mnemos sync import`,
+  `SSH_ORIGINAL_COMMAND`, отклоняет всё, кроме `vesma sync import`,
   переписывает исходный путь под `INCOMING_DIR`, **пиннит
   `--passphrase-env` на сконфигурированное имя** (даже скомпрометированная
   A не может перенаправить чтение парольной фразы), дописывает строку
@@ -93,9 +93,9 @@ ssh-ed25519 AAAA... mnemos-sync-trigger@A
 бы полную ротацию.
 
 ```bash
-sudo install -d -o root -g root -m 0750 /etc/mnemos
-sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-push-key    -N "" -C "mnemos-sync-push@A"
-sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
+sudo install -d -o root -g root -m 0750 /etc/vesma
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "mnemos-sync-push@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
 ```
 
 | Вариант | Два ключа (выбрано) | Один общий ключ |
@@ -105,12 +105,12 @@ sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-trigger-key -N "" -C "mnemos-sync
 | Операционная поверхность | два файла ключей к развёртыванию | один файл ключа |
 
 Скопируйте каждый `.pub` на B и добавьте в `authorized_keys` под его
-строкой `command=""` (§2). Приватные ключи остаются на A в `/etc/mnemos/`
+строкой `command=""` (§2). Приватные ключи остаются на A в `/etc/vesma/`
 (§4).
 
 ### 4. Хранение ключей на A
 
-Приватные ключи лежат в `/etc/mnemos/` с `chmod 600`, владелец
+Приватные ключи лежат в `/etc/vesma/` с `chmod 600`, владелец
 `root:root`. Юнит `mnemos-sync.service` работает от `mnemos-sync`, но
 ключи читаются согласно `User=` юнита systemd — скорректируйте, если ваша
 политика требует, чтобы сервисный пользователь владел ключами. Либо
@@ -118,8 +118,8 @@ sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-trigger-key -N "" -C "mnemos-sync
 systemd-creds) и ссылайтесь на путь в `sync.env`.
 
 ```bash
-sudo chmod 600 /etc/mnemos/sync-push-key /etc/mnemos/sync-trigger-key
-sudo chown root:root /etc/mnemos/sync-push-key /etc/mnemos/sync-trigger-key
+sudo chmod 600 /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
+sudo chown root:root /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
 ```
 
 Никогда не коммитьте приватные ключи в VCS. `sync.env.example` ссылается
@@ -132,14 +132,14 @@ sudo chown root:root /etc/mnemos/sync-push-key /etc/mnemos/sync-trigger-key
 
 ```text
 1. Сгенерируйте новый ключ Ed25519 на A (§3):
-     sudo ssh-keygen -t ed25519 -f /etc/mnemos/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
+     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
 2. Добавьте новый .pub в authorized_keys на B (§2) — во время переключения
    оставьте СТАРУЮ строку на месте, чтобы неудавшаяся ротация не сломала cron.
 3. Проверьте: запустите sync-peers.sh вручную с MNEMOS_SYNC_DRY_RUN=1 против
    нового ключа, затем реальный прогон.
 4. Обновите sync.env на A, указав путь к новому ключу.
 5. Удалите старую строку .pub из authorized_keys на B.
-6. Затрите старый приватный ключ на A:  sudo shred -u /etc/mnemos/sync-push-key-old
+6. Затрите старый приватный ключ на A:  sudo shred -u /etc/vesma/sync-push-key-old
 ```
 
 ### 6. Audit-лог на B
@@ -231,7 +231,7 @@ Match User mnemos-sync
 4. Скопируйте два файла .pub на B и добавьте их в authorized_keys (шаг B5).
 5. Установите scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-6. Разверните /etc/mnemos/sync.env из contrib/systemd/sync.env.example
+6. Разверните /etc/vesma/sync.env из contrib/systemd/sync.env.example
    (замените каждый RFC-зарезервированный dummy). Парольную фразу
    предоставьте через systemd drop-in или LoadCredential — НЕ в sync.env.
 7. Установите systemd-юниты:
@@ -252,8 +252,8 @@ Match User mnemos-sync
 | `ssh -i sync-push-key mnemos-sync@B` (без команды) | отказ — "no command provided — interactive shell refused." (код 2) | `command=""` не задан в authorized_keys |
 | `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | отказ — "non-rsync command refused" (код 2) | rsync-wrapper.sh не является `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | отказ — "destination outside INCOMING_DIR" (код 2) | сломана проверка пути в rsync-wrapper.sh |
-| `ssh -i sync-trigger-key mnemos-sync@B "mnemos sync export ..."` | отказ — "non-import command refused" (код 2) | сломан guard mnemos-import-wrapper.sh |
-| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (с env) | код выхода 0, в stderr логируются `mnemos sync export`, `rsync`, `ssh` | расхождение env-контракта скрипта |
+| `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | отказ — "non-import command refused" (код 2) | сломан guard mnemos-import-wrapper.sh |
+| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (с env) | код выхода 0, в stderr логируются `vesma sync export`, `rsync`, `ssh` | расхождение env-контракта скрипта |
 | `tail /var/log/mnemos-sync.log` после реального прогона | строки ACCEPT с src IP + меткой времени | хелпер аудита не пишет |
 
 На каждой новой установке сначала прогоняйте dry-run — он отрабатывает
@@ -262,12 +262,12 @@ Match User mnemos-sync
 ## См. также
 
 - ArchCom 2026-07-20 — решение об автоматизированном канале (память
-  mnemos `4dc7d96e`, протокол
+  vesma `4dc7d96e`, протокол
   `.archcom/sessions/2026-07-20-automated-channel.md`).
-- Контракт федерации 2026-07-17 §3.1 (память mnemos `c64b0c37`,
+- Контракт федерации 2026-07-17 §3.1 (память vesma `c64b0c37`,
   `.archcom/sessions/2026-07-17-federation-contract.md`).
 - Оценка Senior Security Engineer — 7 пунктов ужесточения (память
-  mnemos `ed38f162`).
+  vesma `ed38f162`).
 - `contrib/systemd/rsync-wrapper.sh` — конкретный guard rsync-push
   (§2, §6).
 - `contrib/systemd/mnemos-import-wrapper.sh` — конкретный guard триггера

@@ -1,4 +1,4 @@
-"""Context Filter for Mnemos. (M10 — mandatory v1 subsystem)
+"""Context Filter for Vesma. (M10 — mandatory v1 subsystem)
 
 Sits between interface input and downstream pipeline/recall so the model
 receives concise, semantically complete context instead of raw noise.

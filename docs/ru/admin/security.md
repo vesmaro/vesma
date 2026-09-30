@@ -1,21 +1,21 @@
-# Mnemos — Состояние безопасности (M15.2)
+# Vesma — Состояние безопасности (M15.2)
 
 **🌐 Language / Язык:** [English](../../en/admin/security.md) · Русский
 
-> **Владелец**: Mnemos Security Engineer
+> **Владелец**: Vesma Security Engineer
 > **Статус**: Актуальна — последний аудит 2026-06-15
-> **Область**: Mnemos memory & knowledge server (форк ai-brain)
+> **Область**: Vesma memory & knowledge server (форк ai-brain)
 > **Вне области**: M16 A2A Sessions API (новый модуль, отдельная модель угроз)
 
 Документ фиксирует архитектурные решения, значимые для безопасности кодовой
-базы Mnemos. Является авторитетным референсом при триаже находок, написании
+базы Vesma. Является авторитетным референсом при триаже находок, написании
 тестов и ревью pull request'ов, затрагивающих границы доверия.
 
 ---
 
 ## 1. Сводка модели угроз
 
-Mnemos — **local-first, single-tenant, file-backed** сервер памяти,
+Vesma — **local-first, single-tenant, file-backed** сервер памяти,
 развёртываемый как CLI-инструмент, stdio MCP-сервер или loopback HTTP API
 (по умолчанию `127.0.0.1`). Поверхности доступа:
 
@@ -29,13 +29,13 @@ Mnemos — **local-first, single-tenant, file-backed** сервер памяти
 
 | Граница | Доверенная сторона | Недоверенная сторона | Меры защиты |
 |---------|-------------------|----------------------|-------------|
-| `ingest_url` (HTTP fetch) | Процесс Mnemos | Публичный интернет (любой URL от пользователя) | SSRF-блоклист — см. §2 |
-| Загрузка с HF Hub (`ONNXHubProvider`) | Процесс Mnemos | HuggingFace Hub | Закреплённый `revision=` (CWE-494) — см. §3 |
-| MCP stdio | Процесс Mnemos | Локальный AI-агент | Граница прав Unix; аутентификация не нужна (loopback) |
-| FastAPI HTTP API | Процесс Mnemos | Локальные процессы (loopback) | Привязка к loopback по умолчанию; нет удалённой поверхности в v1 |
-| FTS5 search (`fts_search`) | Процесс Mnemos | Строка поискового запроса | FTS5 escape — см. §4 |
-| `update_fields` динамический SQL | Процесс Mnemos | `**kwargs` от вызывающих | Ограниченный dispatch по колонкам — см. §5 |
-| Строка `0.0.0.0` | Процесс Mnemos | bandit B104 (false positive) | `# nosec B104` с обоснованием — см. §6 |
+| `ingest_url` (HTTP fetch) | Процесс Vesma | Публичный интернет (любой URL от пользователя) | SSRF-блоклист — см. §2 |
+| Загрузка с HF Hub (`ONNXHubProvider`) | Процесс Vesma | HuggingFace Hub | Закреплённый `revision=` (CWE-494) — см. §3 |
+| MCP stdio | Процесс Vesma | Локальный AI-агент | Граница прав Unix; аутентификация не нужна (loopback) |
+| FastAPI HTTP API | Процесс Vesma | Локальные процессы (loopback) | Привязка к loopback по умолчанию; нет удалённой поверхности в v1 |
+| FTS5 search (`fts_search`) | Процесс Vesma | Строка поискового запроса | FTS5 escape — см. §4 |
+| `update_fields` динамический SQL | Процесс Vesma | `**kwargs` от вызывающих | Ограниченный dispatch по колонкам — см. §5 |
+| Строка `0.0.0.0` | Процесс Vesma | bandit B104 (false positive) | `# nosec B104` с обоснованием — см. §6 |
 
 ### Вне области в v1
 
@@ -49,7 +49,7 @@ Mnemos — **local-first, single-tenant, file-backed** сервер памяти
 ## 2. Защита от SSRF (`MemoryManager._validate_url`)
 
 Метод `ingest_url` может получить любой URL, переданный пользователем. Без
-контроля атакующий может использовать Mnemos для обращения к loopback или
+контроля атакующий может использовать Vesma для обращения к loopback или
 cloud-metadata эндпоинтам.
 
 **Блоклист** (должен поддерживаться в актуальном состоянии — см. список
@@ -169,7 +169,7 @@ kwargs молча отбрасываются и таблица не повреж
 ## 6. Привязка к сети — `0.0.0.0` (M15.2, B104)
 
 Bandit B104 флажит строковый литерал `"0.0.0.0"` везде в коде, считая его
-сокет-биндом. В Mnemos эта строка появляется **только внутри SSRF-блоклиста**
+сокет-биндом. В Vesma эта строка появляется **только внутри SSRF-блоклиста**
 (`MemoryManager._validate_url`) — она означает *отклоняемое значение*, а не
 цель bind. Фактический API-сервер (`cli/main.py:serve`) по умолчанию использует
 `127.0.0.1`; оператор, намеренно желающий маппинга портов контейнера, может
@@ -195,7 +195,7 @@ Bandit B104 флажит строковый литерал `"0.0.0.0"` везд�
   в именах файлов vault. `path_scoped.py` использует `Path.resolve()` для
   удержания вотчеров внутри наблюдаемого корня.
 - **Контракт тегов M2** — `models.py::validate_tag_contract` принудительно
-  применяет таксономию префиксов `project:` / `agent:` / `mnemos:` на уровне MCP.
+  применяет таксономию префиксов `project:` / `agent:` / `vesma:` на уровне MCP.
 - **SSRF guard M9** — `_validate_url` (описан в §2).
 - **Трассировки M6** — каждый шаг, обращающийся к LLM, записывается с
   латентностью, количеством токенов и `rationale_summary`. Это журнал аудита;
@@ -232,7 +232,7 @@ ruff check src/ tests/          # ОБЯЗАТЕЛЬНО: 0 ошибок
 
 ### 9.1 Модель токенов
 
-Mnemos использует **непрозрачные bearer-токены** (префикс `mnk_`, 256 бит
+Vesma использует **непрозрачные bearer-токены** (префикс `mnk_`, 256 бит
 случайных данных через `secrets.token_urlsafe(32)`). На диск и в SQLite
 записывается только PBKDF2-HMAC-SHA256 дайджест каждого токена (600 000
 итераций, фиксированная соль `mnemos.api.auth.fernet.v1`). Открытый текст
@@ -284,7 +284,7 @@ env** (`MNEMOS_API__TOTP_MASTER_KEY`) и никогда не записывае�
 
 ### 9.5 Стартовый guard CLI
 
-`mnemos serve` экспортирует `MNEMOS_API__HOST` и `MNEMOS_API__PORT` в окружение
+`vesma serve` экспортирует `MNEMOS_API__HOST` и `MNEMOS_API__PORT` в окружение
 перед запуском uvicorn. Стартовый guard воркера проверяет экспортированный хост:
 non-loopback привязка отклоняется с ненулевым кодом выхода, если
 `api.auth_enabled=true` не установлено. Это предотвращает молчаливое открытие
@@ -321,7 +321,7 @@ API-ключи LLM-провайдеров (`openai_api_key`, `anthropic_api_key`
   `SecretStr('**********')`, не сыровое значение. Используйте
   `model_dump(mode="json", secrets=True)` только когда открытый текст
   явно нужен.
-- **Дампы конфига** — `mnemos doctor` и отладочные выводы больше не
+- **Дампы конфига** — `vesma doctor` и отладочные выводы больше не
   раскрывают ключи.
 
 **Рекомендуемая практика** — передавайте ключи через переменные
@@ -384,16 +384,16 @@ fetch-failed фиксирует причину отклонения, а не с�
 
 ```bash
 # Подтвердить отсутствие API-ключей в дампах конфига
-mnemos doctor --json | grep -i api_key   # должно показать SecretStr('**********')
+vesma doctor --json | grep -i api_key   # должно показать SecretStr('**********')
 
 # Подтвердить отклонение SSRF
-mnemos add --url http://169.254.169.254/  # отклонено, не сохранено
+vesma add --url http://169.254.169.254/  # отклонено, не сохранено
 
 # Подтвердить покрытие секретов в .gitignore
 git check-ignore -v config.yaml .env     # должен указать .gitignore:line
 
 # Подтвердить точное совпадение тегов
-mnemos search --tags mnemos:decision         # не совпадает с mnemos:decision-review
+vesma search --tags mnemos:decision         # не совпадает с mnemos:decision-review
 ```
 
 ---
@@ -402,13 +402,13 @@ mnemos search --tags mnemos:decision         # не совпадает с mnemos
 
 Федерация (batch sync + mediated pull) вводит новую границу доверия:
 записи, покидающие локальную ноду, могут утечь секреты, которые никогда
-не предназначались для расшаривания. mnemos реализует
+не предназначались для расшаривания. vesma реализует
 **трёхслойный defence-in-depth** (ArchCom 2026-07-17 контракт федерации
 §2.2.1), так что один пропущенный слой не раскрывает секрет.
 
 ```mermaid
 flowchart TB
-    L1[1. Сканер на write-path\nзапускается на каждом mnemos_add] -->|тег mnemos:no-federate| DB[(mnemos store)]
+    L1[1. Сканер на write-path\nзапускается на каждом mnemos_add] -->|тег mnemos:no-federate| DB[(vesma store)]
     DB -->|настраиваемый интервал| L2[2. Background scanner job\nпересканирует корпус для false negatives\nбудущее: #89]
     L2 -->|найдено чувствительное| DB
     DB -->|на sync export / pull| L3[3. Moderation pipeline\nфинальная защита на выходе\nвыпущено: #85 parts 1+2a+2b]
@@ -418,12 +418,12 @@ flowchart TB
 | Слой | Где | Когда | Что делает | Статус |
 |------|-----|-------|-----------|--------|
 | **1. Сканер на write-path** | `mnemos_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | На каждой записи | Запускает `detect_secrets(content)`. Если секрет обнаружен и запись ещё не несёт `mnemos:no-federate`, тег добавляется автоматически. Логирует только имена паттернов + счётчики — никогда сырые значения. | ✅ Выпущено (#86) |
-| **2. Background scanner** | MCP-сервер, фоновая задача | Настраиваемый интервал (`scanner.interval_hours`, default 6ч) | Пересканирует весь корпус для false negatives, пропущенных на write-path. Переиспользует `detect_secrets` без изменений (DRY — один источник паттернов). Ручной запуск: `mnemos scanner run`. | ✅ Выпущено (#89) |
+| **2. Background scanner** | MCP-сервер, фоновая задача | Настраиваемый интервал (`scanner.interval_hours`, default 6ч) | Пересканирует весь корпус для false negatives, пропущенных на write-path. Переиспользует `detect_secrets` без изменений (DRY — один источник паттернов). Ручной запуск: `vesma scanner run`. | ✅ Выпущено (#89) |
 | **3. Moderation pipeline** | Sync export (Phase 0) / Pull (Phase 2) | На каждом sync export / pull | Финальная защита — запускает `moderate()` на выходе через `build_compact_payload()`. Даже если тег `no-federate` отсутствует, pipeline санитизирует контент (redact) или отказывает в записи. | ✅ Выпущено (#85 parts 1, 2a, 2b) |
 
 ### 11.1 Модуль детектора секретов
 
-Детектор живёт в `src/mnemos/secrets_detector.py` и предоставляет
+Детектор живёт в `src/vesmaro/secrets_detector.py` и предоставляет
 **стабильный публичный API**, потребляемый всеми тремя слоями:
 
 - `detect_secrets(content: str) -> list[SecretFinding]` — сканировать контент.
@@ -439,18 +439,18 @@ key, database connection strings, и high-entropy base64-последовате�
 **Ограничение:** `SecretFinding.matched_value` существует только для
 программной редекции. Логирующий код ДОЛЖЕН использовать
 `findings_by_pattern()` — сырые совпадающие значения никогда не попадают
-в логи, чат или контент памяти mnemos.
+в логи, чат или контент памяти vesma.
 
 ### 11.2 Тег `mnemos:no-federate`
 
-См. [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#mnemosno-federate--маркер-исключения-из-федерации)
+См. [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#vesmano-federate--маркер-исключения-из-федерации)
 для жизненного цикла тега (авто-добавление, идемпотентность, удаление с
 подтверждением, re-detection guard). Тег — это **маркер исключения** в
-пространстве имён подтипов `mnemos:`, НЕ когнитивная категория.
+пространстве имён подтипов `vesma:`, НЕ когнитивная категория.
 
 ### 11.3 Редакция и исключение при export
 
-`mnemos export` (JSON-формат) применяет defence-in-depth на выходе:
+`vesma export` (JSON-формат) применяет defence-in-depth на выходе:
 
 - **Исключение:** записи с тегом `mnemos:no-federate` исключаются из export
   полностью (контракт КП-6: "запись исключается из export И pull").
@@ -465,7 +465,7 @@ key, database connection strings, и high-entropy base64-последовате�
 
 ### 11.4 Валидация при import
 
-`mnemos import` валидирует каждую запись перед записью:
+`vesma import` валидирует каждую запись перед записью:
 
 - **Контент** — max 1 МиБ символов (default), без управляющих символов кроме
   `\n` / `\t`, валидный UTF-8.
@@ -481,14 +481,14 @@ key, database connection strings, и high-entropy base64-последовате�
 - При schema-drift / нарушении контракта **весь batch отклоняется**
   (без частичных записей).
 
-### 11.5 Пакетная синхронизация (`mnemos sync`) — Phase 0
+### 11.5 Пакетная синхронизация (`vesma sync`) — Phase 0
 
-`mnemos sync export` / `mnemos sync import` (#85 part 2b) подключают
+`vesma sync export` / `vesma sync import` (#85 part 2b) подключают
 Слой 3 к пути пакетной синхронизации федерации. См.
 [Федерация — пакетная синхронизация](../user/sync.md) для руководства
 оператора.
 
-- **Экспорт** — `mnemos sync export` запрашивает записи из
+- **Экспорт** — `vesma sync export` запрашивает записи из
   настроенных `shared_projects` (исключает `mnemos:no-federate` и
   `archived`), затем вызывает `build_compact_payload()`, который
   прогоняет `moderate()` на каждой записи: `allow` → оригинальный
@@ -497,7 +497,7 @@ key, database connection strings, и high-entropy base64-последовате�
   (`mnemos.federation.v1`) записывается в файл, опционально
   AES-256-GCM зашифрованным с паролем из `MNEMOS_EXPORT_PASSPHRASE`
   (никогда из CLI-аргумента).
-- **Импорт** — `mnemos sync import` читает compact-payload
+- **Импорт** — `vesma sync import` читает compact-payload
   (расшифровывая при необходимости через пароль из переменной
   окружения, **названной** `--passphrase-env`), валидирует каждую
   запись (переиспользует #86 `validate_import_record`, адаптированный
@@ -512,7 +512,7 @@ key, database connection strings, и high-entropy base64-последовате�
   redacted, PII anonymized, errors, warnings. **Сырой контент, секреты
   и PII-значения никогда не попадают в audit-лог**.
 - **Перенос** — офлайн. `scripts/sync-peers.sh` — cron-ready шаблон,
-  объединяющий экспорт → rsync/scp/cp → импорт. Сам mnemos не делает
+  объединяющий экспорт → rsync/scp/cp → импорт. Сам vesma не делает
   сетевых вызовов; транспорт — за оператором.
 
 Compact-формат (#85 part 2a) несёт только summary (≤500 символов),

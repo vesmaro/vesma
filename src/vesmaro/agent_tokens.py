@@ -1,6 +1,6 @@
 """Agent token scheme for the W3-v1 AgentGateway leg (ADR-0018 + ADR-0018-T).
 
-Implements the mnemos side of the token contract mandated by the W3 threat
+Implements the Vesma side of the token contract mandated by the W3 threat
 model (``docs: ADR-0018-threat-model.md``, normative):
 
 * **Envelope** (TM §3) — versioned, JWT-like but intentionally NOT a JWT
@@ -14,14 +14,14 @@ model (``docs: ADR-0018-threat-model.md``, normative):
   The signature is Ed25519 over the ASCII bytes ``header.payload``. The
   header is cleartext BY DESIGN: the mesh reads it for routing, audit, and
   fast-fail only (``aud`` early reject); signature verification,
-  revocation, and scope→ACL resolution happen in mnemos on EVERY request
+  revocation, and scope→ACL resolution happen in Vesma on EVERY request
   (criterion 5 — the mesh is not an ACL authority).
 
 * **Why Ed25519 and not HMAC-SHA256** — ``cryptography>=50`` is already a
   direct runtime dependency (Fernet for TOTP-at-rest), so the asymmetric
   scheme costs nothing new; a symmetric MAC would require shipping the
   shared secret to every future verifier, violating "the signing key never
-  leaves mnemos" the moment anyone besides the minter must verify. The
+  leaves Vesma" the moment anyone besides the minter must verify. The
   Ed25519 seed is 256-bit, satisfying the token entropy floor against
   offline brute force (TM §4 T8): without the seed an attacker cannot
   forge a token regardless of how many envelopes they observe.
@@ -114,7 +114,7 @@ SCOPE_READ: Final[str] = "read"
 SCOPE_RW: Final[str] = "rw"
 
 #: Default signing-key filename under ``mnemos.data_dir`` (TM §3: the key
-#: lives in mnemos config territory and never leaves the host).
+#: lives in Vesma config territory and never leaves the host).
 DEFAULT_KEY_FILENAME: Final[str] = "agent-token-signing.key"
 
 _DEFAULT_ISSUER: Final[str] = "mnemos"
@@ -412,8 +412,8 @@ def signing_key_path(data_dir: Path, *, override: str | None = None) -> Path:
 def load_or_create_signing_key(path: Path) -> Ed25519PrivateKey:
     """Load the Ed25519 signing key, minting it on first use (mode 0600).
 
-    TM §3: the signing key never leaves mnemos; generation happens at
-    first start, storage is a PEM file readable by the mnemos user only.
+    TM §3: the signing key never leaves Vesma; generation happens at
+    first start, storage is a PEM file readable by the vesma user only.
 
     The file is created with ``O_EXCL`` and mode ``0o600`` (umask cannot
     widen it) and written atomically — a torn key file can never exist
@@ -731,7 +731,7 @@ def validate_agent_token(
     The verdict carries per-check outcomes so the caller (part 2 servicer)
     can log a precise reject reason. ``iss`` is deliberately NOT compared:
     possession of a valid signature over the envelope already proves the
-    token was minted by THIS mnemos (single issuer per deployment, one key
+    token was minted by THIS Vesma instance (single issuer per deployment, one key
     per host) — a string compare would add no security.
     """
     moment = now if now is not None else int(datetime.now(UTC).timestamp())

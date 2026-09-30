@@ -14,7 +14,7 @@ already merged — the dual-mode MCP PR #319 is in `main`; registries claimed
 Senior System Engineer, Analytics Lead; final name selection by the owner
 **Scope:** the product/brand rename across registries (GitHub org and repo,
 PyPI, npm), the import package and CLI names, MCP tool naming, model family
-names, and docs. NOT in scope: the `mnemos:<subtype>` tag namespace and the
+names, and docs. NOT in scope: the `vesma:<subtype>` tag namespace and the
 `[mnemos:<id>]` CCR marker format — data-contract formats whose migration is
 a separate 6.0 decision — and federation wire protocol semantics.
 **Preconditions:** release-versioning policy v2 (GWS release-window card
@@ -24,15 +24,15 @@ precedent v1.1.0 (round-3 nano-model track).
 
 ## Context
 
-1. **The bare name is burned.** The PyPI name `mnemos` is occupied by a
+1. **The bare name is burned.** The PyPI name `vesma` is occupied by a
    dormant third-party stub (published June 2025; PyPI names are never
    released), and at least four live same-niche namesakes exist: the
-   Riley-Coyote/mnemos MCP server with a colliding `mnemos doctor` command,
-   anthony-maio/mnemos, the PyPI mnemos-memory / mnemos-embedkit pair, and
-   an npm `mnemos`. The niche burns names weekly — mnemex, mnemora, and
+   Riley-Coyote/vesma MCP server with a colliding `vesma doctor` command,
+   anthony-maio/vesma, the PyPI mnemos-memory / mnemos-embedkit pair, and
+   an npm `vesma`. The niche burns names weekly — mnemex, mnemora, and
    mienetic/mnema appeared in September 2026 alone.
 2. **Round 1 stayed inside the burned cluster.** Its shortlist (`mnemus`,
-   `mnemata`, `mnemosia`) kept the mnem- stem and was rejected by the owner
+   `mnemata`, `vesmaia`) kept the mnem- stem and was rejected by the owner
    as "too tight".
 3. **Rounds 2–4 converged on `vesmaro`.** Over 150 names were screened
    against PyPI, npm, GitHub, RDAP, MCP directories, and trademark screens.
@@ -50,15 +50,15 @@ together — unanimous), and `vesmaro-eyes` (the future GUI).
 
 **2. Additive dual-prefix, not a hard cut.** MCP tools gained `vesmaro_*`
 aliases behind `MNEMOS_MCP_BRAND=vesmaro` (PR #319, merged) while the
-canonical `mnemos_*` tools stay live; the legacy prefix retires no earlier
+canonical `vesma_*` tools stay live; the legacy prefix retires no earlier
 than 6.0, after legacy-call telemetry. Import package, CLI, and env names
-rename in the 5.0.0 window with compatibility shims: a CLI shim `mnemos`, a
-`MNEMOS_*` → `VESMARO_*` env mapping, and a store path migration
+rename in the 5.0.0 window with compatibility shims: a CLI shim `vesma`, a
+`VESMA_*` → `VESMARO_*` env mapping, and a store path migration
 `~/.mnemos/` → `~/.vesmaro/` that is **copy-not-move**, with a backup and a
 refuse-on-two-stores guard.
 
 **3. The data-contract formats stay through the dual period.** The
-`mnemos:<subtype>` tag namespace and the `[mnemos:<id>]` CCR marker remain
+`vesma:<subtype>` tag namespace and the `[mnemos:<id>]` CCR marker remain
 as-is — 83 test files and all stored records depend on them. A one-shot
 rename of these formats is a separate 6.0 decision, out of scope here.
 
@@ -74,8 +74,8 @@ and sibling squatting regardless of which name a model emits.
 
 ```mermaid
 flowchart LR
-    Now["4.x — now<br/>PR #319 merged: vesmaro_* MCP aliases<br/>behind MNEMOS_MCP_BRAND=vesmaro;<br/>mnemos_* canonical"] --> V5["5.0.0 window<br/>import package, CLI, env rename<br/>+ shims: CLI mnemos · MNEMOS_* → VESMARO_*<br/>store copy-not-move ~/.mnemos/ → ~/.vesmaro/"]
-    V5 --> V6["6.0 (separate decision)<br/>legacy mnemos_* prefix retires<br/>after legacy-call telemetry;<br/>tag namespace / CCR marker rename"]
+    Now["4.x — now<br/>PR #319 merged: vesmaro_* MCP aliases<br/>behind MNEMOS_MCP_BRAND=vesmaro;<br/>vesma_* canonical"] --> V5["5.0.0 window<br/>import package, CLI, env rename<br/>+ shims: CLI mnemos · VESMA_* → VESMARO_*<br/>store copy-not-move ~/.mnemos/ → ~/.vesmaro/"]
+    V5 --> V6["6.0 (separate decision)<br/>legacy vesma_* prefix retires<br/>after legacy-call telemetry;<br/>tag namespace / CCR marker rename"]
 ```
 
 ## Execution status
@@ -125,12 +125,12 @@ flowchart LR
 
 | Alternative | Why rejected |
 |---|---|
-| `mnemus` / `mnemata` / `mnemosia` (round-1) | Inside the burned mnem- cluster; the owner rejected the shortlist as "too tight". |
+| `mnemus` / `mnemata` / `vesmaia` (round-1) | Inside the burned mnem- cluster; the owner rejected the shortlist as "too tight". |
 | `karteka` / `cunea` / `deltoi` (round-2) | Rejected by the owner on aesthetics; `cunea` carries a permanent SERP anchor (the Hyphantria cunea moth); `deltoi` has 1-edit paths to deltoid/delton. |
 | `vesmara` / `vesmeri` (round-3 siblings) | `vesmara` collides with the fashion brand vesmara.co.in and the occupied GitHub user vesmira; `vesmeri` loses the LLM-attractor race to `vesmaro`. |
 | `vemara` / `vekara` (round-4 feature-vector names) | One edit away from the vesm* family with live external edges; `vekara` is a dictionary word with an existing children's brand. |
 | Feature-rooted names (vec-/embed-/mesh-/sem- stems, ~65 checked, round-4) | Feature semantics does not sell — mem0, letta, and zep carry none; and those stems are collision hot-zones (vixor: .ai taken + 72 repos; semira: 273 repos; vexta: vextab ★652). |
-| Keep `mnemos` and fight squatters | Impossible: PyPI never releases names, and every install of the bare name feeds the third-party stub. |
+| Keep `vesma` and fight squatters | Impossible: PyPI never releases names, and every install of the bare name feeds the third-party stub. |
 
 ## References
 
@@ -139,7 +139,7 @@ flowchart LR
 - PR #319 — dual-mode MCP naming, merged; commit `1ced5b0`.
 - Conftest src-pin guard: #303, #288.
 - ArchCom artefacts are team-local, not part of this repository:
-  `~/.gcw/architectural-committee/2026-09-14-mnemos-rename.md`,
+  `~/.gcw/architectural-committee/2026-09-14-vesma-rename.md`,
   `-round2.md`, `-round3.md`, `-round4.md`, `-contract.md`, and
   `2026-09-15-vesmaro-registration-runbook.md`.
 - mnemos decision-chain ids (see Status): open question

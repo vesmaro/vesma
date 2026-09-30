@@ -124,7 +124,7 @@ class ProjectDirectory(Protocol):
 @dataclass(frozen=True, slots=True)
 class _RegisteredRoot:
     """A PG2-resolved project: the graph key (project name — the same
-    slug every mnemos surface keys projects by) and the operator-
+    slug every Vesma surface keys projects by) and the operator-
     registered index root."""
 
     graph_key: str
@@ -260,7 +260,7 @@ class CodeGraphService:
         path, empty string) is a confinement refusal. The index root is
         the FIRST registered path; an empty/invalid registration is a
         refusal, not a fallback. The graph key is the project NAME (the
-        slug every other mnemos surface keys projects by; the node-id
+        slug every other Vesma surface keys projects by; the node-id
         length-prefix makes it collision-safe)."""
         if not isinstance(project_id, str) or not project_id.strip():
             raise GraphConfinementError("project_id is required and must be a non-empty string")

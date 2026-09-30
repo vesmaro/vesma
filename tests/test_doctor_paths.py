@@ -98,7 +98,7 @@ def test_doctor_paths_flag_shows_paths_table(isolated_home: Path) -> None:
 
 
 def test_doctor_paths_flag_no_health_checks(isolated_home: Path) -> None:
-    """``--paths`` should NOT run health checks (no 'Mnemos Health Check' table)."""
+    """``--paths`` should NOT run health checks (no 'Vesma Health Check' table)."""
     result = runner.invoke(doctor_app, ["--paths"])
     assert "Mnemos Health Check" not in result.output
 
