@@ -321,3 +321,47 @@ def write_awareness_cursor(
         raise ValueError("cursor must be a non-empty string (None-clear is not a write)")
     key = awareness_cursor_key(project=project, agent=agent, session=session)
     mgr.sqlite.set_meta(key, cursor)
+
+
+# ── Native heartbeat cursor (ADR-0035 C14 — the awrh: 2-tuple namespace) ─────
+
+
+#: Meta-table key prefix for the NATIVE heartbeat cursors (ADR-0035 C14):
+#: ``awrh:{project}:{agent}`` — a SEPARATE namespace from ``awr:`` on
+#: purpose. The legacy prefix length-prefixes a 3-tuple
+#: ``(project, agent, session)``; a 2-tuple encoded into the same
+#: namespace would alias at parse time (the length-prefix split of
+#: ``awr:5:projA:3:abc`` is a valid 3-tuple prefix — a heartbeat key
+#: must never be readable as a session-scoped cursor or vice versa).
+#: The heartbeat cursor is keyed WITHOUT session (C14): delivery is
+#: per-agent state, session churn must not reopen the delta window.
+AWARENESS_HEARTBEAT_CURSOR_PREFIX: Final[str] = "awrh:"
+
+
+def awareness_heartbeat_cursor_key(*, project: str, agent: str) -> str:
+    """Build the meta-table cursor key for the heartbeat ``(project, agent)``.
+
+    Encoding mirrors :func:`awareness_cursor_key` minus the session leg:
+    ``awrh:{len(project)}:{project}:{len(agent)}:{agent}`` — each
+    component LENGTH-PREFIXED (a plain ``:``-join aliases when an agent
+    id legally contains ``:``). Components are validated non-empty at
+    this boundary, same discipline as the 3-tuple builder.
+    """
+    for label, value in (("project", project), ("agent", agent)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"heartbeat cursor component {label} must be a non-empty string")
+    return f"{AWARENESS_HEARTBEAT_CURSOR_PREFIX}{len(project)}:{project}:{len(agent)}:{agent}"
+
+
+def read_awareness_heartbeat_cursor(mgr: MemoryManager, *, project: str, agent: str) -> str | None:
+    """Read the heartbeat cursor for ``(project, agent)`` (None = never)."""
+    return mgr.sqlite.get_meta(awareness_heartbeat_cursor_key(project=project, agent=agent))
+
+
+def write_awareness_heartbeat_cursor(
+    mgr: MemoryManager, *, project: str, agent: str, cursor: str
+) -> None:
+    """Persist the heartbeat cursor (same UPSERT/boundary rules as ``awr:``)."""
+    if not isinstance(cursor, str) or not cursor.strip():
+        raise ValueError("cursor must be a non-empty string (None-clear is not a write)")
+    mgr.sqlite.set_meta(awareness_heartbeat_cursor_key(project=project, agent=agent), cursor)
