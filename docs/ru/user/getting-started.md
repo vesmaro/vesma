@@ -312,6 +312,68 @@ bandit + pip-audit + набор тестов. Если `pip-audit` жалует�
 
 ---
 
+## Обновления
+
+Vesma сообщает о новой версии и обновляется одной командой (issue #445).
+
+**Проверка обновлений — включена по умолчанию, тихая.** Vesma спрашивает у PyPI
+«есть ли версия новее?» одним GET версионного манифеста (таймаут 3с, никакой
+телеметрии, ничего не отправляется), кэширует ответ на 24 часа в
+`<data_dir>/update-check.json` и показывает его в трёх местах:
+
+| Где | Что вы видите |
+|-----|---------------|
+| `mnemos_stats` (MCP) / `vesma stats` | объект `update_available`: `{installed, latest, dist, update_available, checked_at}` (или `null`) |
+| `vesma --version` | строка в stderr: `update available: 5.2.0 (run 'vesma update --check')` |
+| Старт сервера (`vesma serve`, `vesma mcp-server`) | одна INFO-строка в логе |
+
+Офлайн-машины не страдают: неудачная проверка отдаёт кэшированный ответ
+(с пометкой «stale») и никогда ничего не ломает. Выключить проверку:
+
+```bash
+VESMARO_UPDATES_CHECK=off vesma serve      # жёсткий env-выключатель
+```
+
+или в `config.yaml` (env-эквивалент: `VESMARO_UPDATES__CHECK_ENABLED=false`):
+
+```yaml
+updates:
+  check_enabled: false
+```
+
+**`vesma update` — одна команда на машину.** Без флагов показывает все поверхности
+обновлений, найденные на этой машине: pip-дистрибутив, который она бы обновила
+(установленная версия vs последняя), глобальный npm-пакет `@vesmaro/vesma`,
+прод-венвы хоста и Go-бинарники:
+
+```bash
+vesma update            # или: vesma update --check
+vesma update --yes --scope=user    # pip install --user --upgrade <dist>, npm -g best-effort
+vesma update --to 5.1.1 --yes      # откат / закрепление на конкретной версии
+```
+
+`--yes` трогает только pip user-site (и npm, если установлен) — прод-венвы,
+Go-бинарники и контейнеры молча не обновляются никогда, они только в отчёте.
+Каждый запуск дописывает запись в
+`~/.local/share/vesma/update-history.json`. После обновления перезапустите
+агент-харнес / `vesma serve`, чтобы подхватить новую версию.
+
+**Полностью автоматически (опционально).** Еженедельный systemd user-таймер
+делает то же самое:
+
+```bash
+vesma update --install-timer      # пишет ~/.config/systemd/user/vesma-update.{service,timer}, включает weekly + Persistent
+vesma update --uninstall-timer    # снять
+```
+
+Шаблоны юнитов лежат в
+[`contrib/vesma-update.service`](../../../contrib/vesma-update.service) /
+[`.timer`](../../../contrib/vesma-update.timer) — в шапке файлов объяснена
+адаптация под distrobox (по одному `distrobox-enter` ExecStart на бокс, тот же
+паттерн, что у прод-юнитов) и что никогда не обновляется автоматически.
+
+---
+
 ## Миграция с legacy ai-brain
 
 Если у вас есть старая установка `ai-brain` (`~/.ai-brain/ai_brain.db` +
@@ -428,4 +490,4 @@ ADR-0023; после переустановки транспорт подтве�
 
 ---
 
-_Последнее обновление: 2026-09-05_
+_Последнее обновление: 2026-10-01_

@@ -1,0 +1,15 @@
+# vesma-update.timer — schedule for vesma-update.service (issue #445).
+# Weekly with a 1h random delay; Persistent=true replays a tick missed
+# while the machine was off at the next boot.
+
+[Unit]
+Description=Weekly Vesma user-site update
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+Unit=vesma-update.service
+
+[Install]
+WantedBy=timers.target

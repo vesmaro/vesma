@@ -191,3 +191,17 @@ def reset_rate_limiter() -> None:
 
     limiter._storage.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_update_check_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force the update-check kill switch for the whole suite (issue #445).
+
+    The check is default-ON in product and rides ``MemoryManager.stats()`` —
+    without this guard every stats()-calling test would attempt a PyPI fetch
+    (fresh tmp data_dir = cache miss, 3s timeout offline). The suite is
+    offline by contract; tests that exercise the check itself re-enable it
+    locally (``monkeypatch.delenv``) or inject a fetcher.
+    """
+    monkeypatch.setenv("VESMARO_UPDATES_CHECK", "off")
+    yield

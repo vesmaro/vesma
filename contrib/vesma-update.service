@@ -1,0 +1,35 @@
+# vesma-update.service — weekly user-site auto-update (issue #445).
+#
+# WHAT IS AUTO-UPDATED: the pip user-site copy of the installed Vesma
+#   dist (vesma-memory-server / vesma), and the global npm package
+#   @vesmaro/vesma when present.
+# WHAT IS NEVER AUTO-UPDATED: the production API/dashboard venvs (system
+#   units — manual gate, see the upgrade runbook), the Go binaries
+#   (vesmaro-agent/vesma-agent, mnemos-mesh/vesma-mesh — goreleaser
+#   releases with checksum verification), and container images (CI
+#   release artifacts).
+#
+# Install with `vesma update --install-timer`, remove with
+# `vesma update --uninstall-timer`. --install-timer writes this file
+# with the ExecStart chosen for this machine (%h launcher when present,
+# /usr/bin/env fallback otherwise).
+#
+# Distrobox hosts: a systemd USER timer on the HOST cannot reach the
+# boxes' pip user-sites. Adapt this unit the way the prod units do —
+# one ExecStart line per box, e.g.:
+#   ExecStart=distrobox-enter ubuntu-box -- vesma update --yes --scope=user
+#   ExecStart=distrobox-enter vscode-box -- vesma update --yes --scope=user
+# (systemd accumulates ExecStart= lines; keep the primary one first).
+
+[Unit]
+Description=Vesma weekly user-site update (pip --user, npm -g)
+Documentation=https://github.com/vesmaro/vesma
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/vesma update --yes --scope=user
+# No Restart=: a failed run simply waits for the next scheduled tick
+# (no auto-retry storms, per the auto-update design).
+
+[Install]
+WantedBy=default.target

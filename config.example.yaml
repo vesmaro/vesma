@@ -223,6 +223,18 @@ mesh:
   # quickly, long enough for a local Unix-socket round trip.
   timeout_s: 2.0
 
+# ── Update check (issue #445) ────────────────────────────────────────────────
+# Quiet version check against PyPI: one stdlib GET of the version manifest
+# (3s timeout, no telemetry), served from a 24h cache in
+# <data_dir>/update-check.json. Surfaces: the `update_available` field of
+# `mnemos_stats`, a stderr hint on `vesma --version`, and one INFO line at
+# server start. Hard env kill switch (independent of this section):
+# VESMARO_UPDATES_CHECK=off
+updates:
+  # Set false (env: VESMARO_UPDATES__CHECK_ENABLED=false) to stop all
+  # version checks. Default: on.
+  check_enabled: true
+
 # ── Logging (v2.1) ───────────────────────────────────────────────────────────
 # File logging with rotation. Set log_file to empty ("") for stderr-only output.
 logging:

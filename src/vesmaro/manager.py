@@ -4449,9 +4449,14 @@ class MemoryManager:
         # dashboards see the whole backlog; the breakdown is separate.
         pipeline_counts = self.sqlite.count_by_pipeline_state()
         refine_depth = self.sqlite.count_refine_intake()
+        # Issue #445 — best-effort update advisory next to the version
+        # stamp; None when disabled/offline/not pip-installed. Never raises.
+        from vesmaro.updates import update_stats_payload
+
         return {
             "status": "ok",
             "version": __version__,
+            "update_available": update_stats_payload(self.settings),
             "data_dir": str(self.settings.mnemos.data_dir),
             "vault_path": str(self.settings.mnemos.vault_path),
             "total": self.sqlite.count(),

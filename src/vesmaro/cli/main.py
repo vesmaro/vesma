@@ -42,11 +42,30 @@ console = Console()
 _verbose: bool = False
 
 
+def _print_update_hint() -> None:
+    """One stderr line when a newer release exists (issue #445).
+
+    Best-effort by contract: the check never raises, is served from the
+    24h disk cache when warm, and is capped by the module's 3s HTTP
+    timeout. Honors both opt-outs (``updates.check_enabled`` and the
+    ``VESMARO_UPDATES_CHECK`` env kill switch) via ``check_for_update``.
+    """
+    try:
+        from vesmaro.updates import check_for_update
+
+        info = check_for_update()
+    except Exception:
+        return
+    if info is not None and info.update_available:
+        print(f"update available: {info.latest} (run 'vesma update --check')", file=sys.stderr)
+
+
 def _version_callback(value: bool) -> None:
     if value:
         from vesmaro import __version__
 
         console.print(f"vesma {__version__}")
+        _print_update_hint()
         raise typer.Exit()
 
 
@@ -915,6 +934,11 @@ def serve(
         settings.logging.log_file = log_file
         settings.resolve_paths()
     setup_logging(settings, verbose=_verbose)
+    # Issue #445 — one INFO line when a newer release exists. Synchronous
+    # by design: cache-first (24h sidecar), 3s HTTP cap, never raises.
+    from vesmaro.updates import log_update_if_available
+
+    log_update_if_available(settings)
     h = host or settings.api.host
     p = port or settings.api.port
     # Zero-config profile notice (ADR-0017 Phase 0, D6): when no config file
@@ -1184,6 +1208,11 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 
     settings = load_settings(config)
     setup_logging(settings, verbose=_verbose)
+    # Issue #445 — one INFO line when a newer release exists (cache-first,
+    # 3s cap, never raises; runs before the stdio loop starts).
+    from vesmaro.updates import log_update_if_available
+
+    log_update_if_available(settings)
     asyncio.run(mcp_main())
 
 
@@ -1544,6 +1573,7 @@ from vesmaro.cli.import_cmd import import_app  # noqa: E402
 from vesmaro.cli.logs import logs_app  # noqa: E402
 from vesmaro.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesmaro.cli.sync_cmd import sync_app  # noqa: E402
+from vesmaro.cli.update_cmd import update as update_cmd  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
@@ -1551,6 +1581,9 @@ app.add_typer(import_app, name="import")
 app.add_typer(logs_app, name="logs")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
+app.command(name="update", help="Check for updates / update the user-site install (issue #445).")(
+    update_cmd
+)
 
 
 def cli_main() -> None:

@@ -274,6 +274,52 @@ To run the full development gate (contributors only): clone the repo, `uv pip in
 
 ---
 
+## Updates
+
+Vesma tells you when a newer release exists and updates itself with one command (issue #445).
+
+**Update check — on by default, quiet.** Vesma asks PyPI "is there a newer version?" with a single version-manifest GET (3s timeout, no telemetry, nothing posted), caches the answer for 24h in `<data_dir>/update-check.json`, and surfaces it in three places:
+
+| Where | What you see |
+|-------|--------------|
+| `mnemos_stats` (MCP) / `vesma stats` | the `update_available` object: `{installed, latest, dist, update_available, checked_at}` (or `null`) |
+| `vesma --version` | a stderr line: `update available: 5.2.0 (run 'vesma update --check')` |
+| Server start (`vesma serve`, `vesma mcp-server`) | one INFO line in the log |
+
+Offline machines are unaffected: a failed check serves the cached answer (marked stale) and never crashes anything. To turn the check off:
+
+```bash
+VESMARO_UPDATES_CHECK=off vesma serve      # hard env kill switch
+```
+
+or in `config.yaml` (env equivalent: `VESMARO_UPDATES__CHECK_ENABLED=false`):
+
+```yaml
+updates:
+  check_enabled: false
+```
+
+**`vesma update` — one command per machine.** Without flags it reports every update surface found on this machine — the pip dist it would upgrade (installed vs latest), the global npm package `@vesmaro/vesma`, host prod-venvs, and the Go binaries:
+
+```bash
+vesma update            # or: vesma update --check
+vesma update --yes --scope=user    # pip install --user --upgrade <dist>, npm -g best-effort
+vesma update --to 5.1.1 --yes      # rollback / pin to a specific version
+```
+
+`--yes` touches only the pip user-site (and npm, when installed) — it never silently touches the production venvs, the Go binaries, or containers; those are report-only by design. Every run appends a record to `~/.local/share/vesma/update-history.json`. After an update, restart your agent harness / `vesma serve` to pick up the new version.
+
+**Fully automatic (optional).** A weekly systemd user timer runs the same update:
+
+```bash
+vesma update --install-timer      # writes ~/.config/systemd/user/vesma-update.{service,timer}, enables weekly + Persistent
+vesma update --uninstall-timer    # remove again
+```
+
+The unit templates live in [`contrib/vesma-update.service`](../../../contrib/vesma-update.service) / [`.timer`](../../../contrib/vesma-update.timer) — their header comments explain the distrobox adaptation (one `distrobox-enter` ExecStart per box, same pattern as the prod units) and what is never auto-updated.
+
+---
+
 ## Migrate from legacy ai-brain
 
 If you have an existing legacy `ai-brain` install (`~/.ai-brain/ai_brain.db` + `~/brain-vault/`), Vesma imports it in one command. Dry-run first:
@@ -374,4 +420,4 @@ Another `vesma` process (CLI, MCP, or HTTP) holds the write lock. SQLite uses WA
 
 ---
 
-_Last updated: 2026-09-05_
+_Last updated: 2026-10-01_

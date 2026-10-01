@@ -1124,6 +1124,26 @@ class VitalsConfig(BaseModel):
     retention_interval_sec: int = Field(default=24 * 3600, ge=3600)
 
 
+class UpdatesConfig(BaseModel):
+    """Update-check configuration (issue #445).
+
+    The check is quiet by design: one stdlib GET of the PyPI version
+    manifest (3s timeout, no telemetry), answered from a 24h disk cache
+    (``<data_dir>/update-check.json``) and surfaced in ``mnemos_stats``,
+    the ``vesma --version`` stderr hint, and one INFO line at server
+    start. See ``vesmaro.updates`` for the full contract.
+
+    The env override ``VESMARO_UPDATES_CHECK=off`` disables the check
+    INDEPENDENTLY of this section (a hard kill switch that works even
+    when the config cannot be loaded).
+    """
+
+    # Default ON (owner directive 2026-10-01: components must report new
+    # versions). Set false (or ``VESMARO_UPDATES__CHECK_ENABLED=false``)
+    # to stop all version checks.
+    check_enabled: bool = True
+
+
 class MeshConfig(BaseModel):
     """mnemos-mesh gRPC client configuration (Phase 3, issue #105 M3).
 
@@ -1245,6 +1265,7 @@ class Settings(BaseSettings):
     mesh: MeshConfig = MeshConfig()
     code_graph: CodeGraphConfig = CodeGraphConfig()
     vitals: VitalsConfig = VitalsConfig()
+    updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
     logging: LoggingConfig = LoggingConfig()
     # M5: declarative policy rules (loaded from YAML or set programmatically)
     policies: dict[str, Any] = Field(default_factory=dict)
