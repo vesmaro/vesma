@@ -489,6 +489,26 @@ class TestSecretAllowlistService:
         finally:
             allowlisted.close()
 
+    def test_allowlisted_fixture_secret_line_still_refuses_pg4(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """#449 review P2-1: the allowlist lifts only the index-time PG3
+        marking; the issuance-time scan (PG4) is NOT waived — a requested
+        range that itself trips the detector still refuses fail-closed."""
+        fixture = mini_repo / "fake_key_fixture.py"
+        fixture.write_text(
+            f'AWS_ID = "{SECRET_AWS_KEY}"\nBODY = "clean fixture line"\n', encoding="utf-8"
+        )
+        allowlisted, _ = make_service(tmp_path, mini_repo, secret_allowlist=["fake_key*"])
+        try:
+            allowlisted.index_project(PROJECT, agent=AGENT)
+            with pytest.raises(GraphToolError, match="PG4"):
+                allowlisted.get_code_snippet(
+                    PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT
+                )
+        finally:
+            allowlisted.close()
+
     def test_non_allowlisted_poisoning_unchanged(
         self, tmp_path: Path, mini_repo: Path
     ) -> None:

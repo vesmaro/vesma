@@ -197,7 +197,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `watch` | `true` | Arms the watch poll (`mnemos_watch_start`); inert until an explicit registration. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
-| `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. |
+| `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
 

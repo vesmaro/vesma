@@ -109,6 +109,8 @@ code_graph:
   # matches is un-poisoned on the next index run — audited as
   # "allowlist-unpoison", never silent. The per-range issuance scan
   # (PG4) is never waived. Default [] keeps PG3 semantics byte-identical.
+  # Note: removing a glob is not retroactive (a cleaned file stays clean
+  # until its content changes); fnmatch "*" matches across "/" too.
   secret_allowlist: []
   # secret_allowlist:
   #   - "tests/fixtures/fake_secrets.py"
