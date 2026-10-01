@@ -1069,6 +1069,7 @@ Namespace `/graph/` зеркалит десять MCP-инструментов [
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": [],
+  "unpoisoned": [],
   "parse_errors": {},
   "duration_sec": 4.212,
   "incremental": true,

@@ -928,6 +928,7 @@ Index a **registered** project root into the shared project graph — full or in
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": ["deploy/secret.env"],
+  "unpoisoned": [],
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "duration_sec": 4.212,
   "incremental": true,
@@ -940,7 +941,7 @@ Index a **registered** project root into the shared project graph — full or in
 }
 ```
 
-`status` is `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` is `null` when nothing changed (no fake freshness). Parse failures ride along as an honesty marker — «clean ≠ proof». Poisoned paths hit the secrets detector at index time and are refused at snippet issuance forever (PG3).
+`status` is `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` is `null` when nothing changed (no fake freshness). Parse failures ride along as an honesty marker — «clean ≠ proof». Poisoned paths hit the secrets detector at index time and are refused at snippet issuance forever (PG3) — unless allowlisted (`code_graph.secret_allowlist`, #449): `unpoisoned` lists paths this run's allowlist pass removed from the poisoned set (audited as `allowlist-unpoison`).
 
 ### Example call (JSON-RPC)
 

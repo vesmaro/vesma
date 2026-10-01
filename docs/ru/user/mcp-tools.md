@@ -925,6 +925,7 @@ Vesma синтезирует части в единую запись Markdown с
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": ["deploy/secret.env"],
+  "unpoisoned": [],
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "duration_sec": 4.212,
   "incremental": true,
@@ -937,7 +938,7 @@ Vesma синтезирует части в единую запись Markdown с
 }
 ```
 
-`status` — `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` равен `null`, когда ничего не изменилось (без фальшивой свежести). Ошибки разбора едут в ответе как маркер честности — «clean ≠ proof». Poisoned-пути сработали на детектор секретов при индексации и навсегда отклоняются при выдаче сниппетов (PG3).
+`status` — `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` равен `null`, когда ничего не изменилось (без фальшивой свежести). Ошибки разбора едут в ответе как маркер честности — «clean ≠ proof». Poisoned-пути сработали на детектор секретов при индексации и навсегда отклоняются при выдаче сниппетов (PG3) — если они не в allowlist (`code_graph.secret_allowlist`, #449): `unpoisoned` перечисляет пути, которые allowlist-проход этого запуска снял с отравления (аудит `allowlist-unpoison`).
 
 ### Пример вызова (JSON-RPC)
 
