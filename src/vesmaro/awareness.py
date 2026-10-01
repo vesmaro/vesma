@@ -465,13 +465,13 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
         "в",
         "не",
         "на",
-        "с",
+        "с",  # noqa: RUF001 — Cyrillic 'es', NOT Latin 'c' (deliberate)
         "по",
         "для",
         "из",
-        "у",
+        "у",  # noqa: RUF001 — Cyrillic 'u', NOT Latin 'y' (deliberate)
         "к",
-        "о",
+        "о",  # noqa: RUF001 — Cyrillic 'o', NOT Latin 'o' (deliberate)
         "как",
         "что",
         "это",
