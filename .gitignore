@@ -93,3 +93,8 @@ benchmarks/experiments/e3_d/runs/
 # report wave commits them deliberately when citing.
 benchmarks/experiments/f1_task_scope/runs/
 .venv
+
+# Session junk (never in sdist/wheel — see 5.1.2 release notes)
+/.local/
+/.zcode/
+integrations/skills/.remember/

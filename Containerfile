@@ -1,11 +1,11 @@
-# Mnemos — Memory & Knowledge Server for AI Agents
-# Build: podman build -t ghcr.io/vesmaro/vesma:4.1.0 .
-# Run:   podman run -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 ghcr.io/vesmaro/vesma:4.1.0
+# Vesma — Memory & Knowledge Server for AI Agents
+# Build: podman build -t ghcr.io/vesmaro/vesma:5.1.2 .
+# Run:   podman run -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 ghcr.io/vesmaro/vesma:5.1.2
 FROM docker.io/library/python:3.12-slim AS base
 
 LABEL maintainer="abyss"
-LABEL description="Mnemos: hybrid long-term memory system for AI agents"
-LABEL org.opencontainers.image.source="https://github.com/vesmaro/vesmaro"
+LABEL description="Vesma: hybrid long-term memory system for AI agents"
+LABEL org.opencontainers.image.source="https://github.com/vesmaro/vesma"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ENV PYTHONUNBUFFERED=1 \
