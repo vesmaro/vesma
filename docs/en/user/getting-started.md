@@ -29,7 +29,7 @@ Vesma ships on PyPI as **`vesma`** (the bare slot is ours as of the rebrand). Pi
 > ⚠️ **Names.** The product and CLI are `vesma` (`pip install vesma`). The pre-rebrand package
 > `mnemos-memory-server` remains live until deprecation and installs the same server
 > (`pip install "mnemos-memory-server[ollama]"` keeps working across the dual-period). The bare
-> `pip install vesma` is an unrelated third-party project — do not use it.
+> `pip install mnemos` is an unrelated third-party project — do not use it.
 
 ### Scripted variant (zero decisions)
 
