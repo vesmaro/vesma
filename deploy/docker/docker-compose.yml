@@ -10,7 +10,7 @@
 
 services:
   vesmaro:
-    image: ghcr.io/vesmaro/vesmaro:${VESMARO_IMAGE_TAG:-4.3.0}
+    image: ghcr.io/vesmaro/vesma:${VESMARO_IMAGE_TAG:-5.1.2}
     # Legacy namespace (pre-rebrand releases): ghcr.io/korrnals/mnemos
     container_name: vesmaro
     restart: unless-stopped

@@ -21,7 +21,7 @@ Full documentation:
 
 - **TOTP master key** — required in any non-loopback deployment. Generate:
   `openssl rand -hex 32`. An empty key is rejected at startup.
-- **Image**: published at `ghcr.io/vesmaro/vesmaro` (tags `4.3.0`, `latest`;
+- **Image**: published at `ghcr.io/vesmaro/vesma` (tags `5.1.2`, `latest`;
   **public** — anonymous pulls, backfilled from the legacy
   `ghcr.io/korrnals/mnemos` user namespace). The release pipeline targets
   the legacy name until 5.0.0 phase-g (GWS card #331); new releases are
@@ -38,4 +38,4 @@ Full documentation:
 (`docker/`), **Podman** — quadlet-юнит и kube-play манифест (`podman/`).
 Полные руководства — в docs (EN/RU, ссылки выше). Обязательное для любого
 не-loopback деплоя: TOTP-ключ (`openssl rand -hex 32`); образ публичный —
-`ghcr.io/vesmaro/vesmaro`, тянется без логина.
+`ghcr.io/vesmaro/vesma`, тянется без логина.

@@ -15,7 +15,7 @@
 
 services:
   mnemos:
-    image: ghcr.io/vesmaro/vesmaro:${VESMARO_IMAGE_TAG:-4.3.0}
+    image: ghcr.io/vesmaro/vesma:${VESMARO_IMAGE_TAG:-5.1.2}
     container_name: mnemos
     restart: unless-stopped
     ports:

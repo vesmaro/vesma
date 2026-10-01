@@ -80,7 +80,7 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMARO_API__TOTP_MASTER_KEY="${VESMARO_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesmaro:4.3.0
+  ghcr.io/vesmaro/vesma:5.1.2
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq

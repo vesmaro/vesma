@@ -6,9 +6,9 @@
 replicaCount: 1
 
 image:
-  # Canonical org registry (backfilled from the legacy user namespace in the
-  # 4.3.0 wave; the release pipeline moves here permanently in 5.0.0 phase-g).
-  repository: ghcr.io/vesmaro/vesmaro
+  # Canonical image (phase-g flip landed 2026-10-02: deploy manifests ship the
+  # vesmaro/vesma image; the 4.3.0 legacy image stays for historical pins only).
+  repository: ghcr.io/vesmaro/vesma
   tag: ""            # empty = Chart.yaml appVersion
   pullPolicy: IfNotPresent
   pullSecrets: []    # the published image is public — pullSecrets only for

@@ -11,9 +11,9 @@ version: 0.1.1
 appVersion: "4.3.0"
 kubeVersion: ">=1.25.0-0"
 
-home: https://github.com/vesmaro/vesmaro
+home: https://github.com/vesmaro/vesma
 sources:
-  - https://github.com/vesmaro/vesmaro
+  - https://github.com/vesmaro/vesma
 keywords:
   - memory
   - ai-agents
@@ -28,4 +28,4 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/images: |
     - name: vesmaro
-      image: ghcr.io/vesmaro/vesmaro:4.3.0
+      image: ghcr.io/vesmaro/vesma:5.1.2

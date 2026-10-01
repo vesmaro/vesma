@@ -2,7 +2,7 @@
 # scripts/install.sh — one-command Mnemos install
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version 2.0.0 --extra mcp
 #   curl -fsSL .../install.sh | bash -s -- --venv ~/.mnemos-venv --extra mcp,ollama
 #
@@ -103,15 +103,15 @@ VERSION_EXPLICIT=true
 if [[ -z "$VERSION" ]]; then
   VERSION_EXPLICIT=false
   info "Detecting latest Mnemos version on PyPI…"
-  VERSION="$(curl -fsSL "https://pypi.org/pypi/mnemos-memory-server/json" 2>/dev/null \
+  VERSION="$(curl -fsSL "https://pypi.org/pypi/vesma-memory-server/json" 2>/dev/null \
     | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || true)"
   [[ -z "$VERSION" ]] && die "Could not detect latest version. Specify --version manually."
 fi
-info "Installing Mnemos v${VERSION} (extras: ${EXTRAS})"
+info "Installing Vesma v${VERSION} (extras: ${EXTRAS})"
 
 # ── Container path ────────────────────────────────────────────────
 if [[ "$CONTAINER" == true ]]; then
-  info "Container mode — pulling image ghcr.io/vesmaro/vesmaro:${VERSION}…"
+  info "Container mode — pulling image ghcr.io/vesmaro/vesma:${VERSION}…"
 
   RUNTIME=""
   for r in podman docker; do
@@ -122,11 +122,11 @@ if [[ "$CONTAINER" == true ]]; then
   # PyPI and GHCR are independent registries: an auto-detected PyPI version
   # may not be tagged on GHCR yet. Fall back to :latest only when the version
   # was not pinned explicitly by the caller.
-  if ! "$RUNTIME" pull "ghcr.io/vesmaro/vesmaro:${VERSION}"; then
-    [[ "$VERSION_EXPLICIT" == true ]] && die "Failed to pull image ghcr.io/vesmaro/vesmaro:${VERSION}."
+  if ! "$RUNTIME" pull "ghcr.io/vesmaro/vesma:${VERSION}"; then
+    [[ "$VERSION_EXPLICIT" == true ]] && die "Failed to pull image ghcr.io/vesmaro/vesma:${VERSION}."
     warn "Tag ${VERSION} is not on GHCR (yet) — falling back to :latest."
     VERSION="latest"
-    "$RUNTIME" pull "ghcr.io/vesmaro/vesmaro:${VERSION}" || die "Failed to pull image."
+    "$RUNTIME" pull "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to pull image."
   fi
 
   if "$RUNTIME" ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^mnemos$'; then
@@ -150,7 +150,7 @@ if [[ "$CONTAINER" == true ]]; then
     -v mnemos-data:/data \
     -v mnemos-vault:/vault \
     -e MNEMOS_API__TOTP_MASTER_KEY="${MNEMOS_API__TOTP_MASTER_KEY}" \
-    "ghcr.io/vesmaro/vesmaro:${VERSION}" || die "Failed to start container."
+    "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to start container."
 
   ok "Mnemos container started on port ${CONTAINER_PORT}."
   echo ""

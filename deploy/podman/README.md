@@ -13,7 +13,7 @@ mkdir -p ~/.config/containers/systemd
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 KEY=$(openssl rand -hex 32)
 printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" > ~/.vesmaro.env
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0   # or: podman build -t localhost/mnemos:latest -f Containerfile . + edit the unit Image=
+podman pull ghcr.io/vesmaro/vesma:5.1.2   # or: podman build -t localhost/vesma:latest -f Containerfile . + edit the unit Image=
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
 ```
@@ -27,7 +27,7 @@ curl -fsS http://localhost:8787/health
 printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesmaro-totp -
 podman volume create mnemos-data && podman volume create mnemos-vault
-podman kube play deploy/podman/kube/mnemos-pod.yaml    # pulls ghcr.io/vesmaro/vesmaro:4.3.0
+podman kube play deploy/podman/kube/mnemos-pod.yaml    # pulls ghcr.io/vesmaro/vesma:5.1.2
 curl -fsS http://localhost:8787/health
 ```
 

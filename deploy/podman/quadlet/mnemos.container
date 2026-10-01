@@ -11,7 +11,7 @@ ContainerName=mnemos
 # Published image (org namespace). Local build alternative:
 #   podman build -t localhost/mnemos:latest -f Containerfile .
 #   → then set Image=localhost/mnemos:latest and AutoUpdate=local
-Image=ghcr.io/vesmaro/vesmaro:4.3.0
+Image=ghcr.io/vesmaro/vesma:5.1.2
 AutoUpdate=registry
 
 PublishPort=8787:8787

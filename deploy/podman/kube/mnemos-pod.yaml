@@ -19,7 +19,7 @@ spec:
     - name: api
       # Published image (org namespace). Local build alternative:
       #   podman build -t localhost/mnemos:latest -f Containerfile .
-      image: ghcr.io/vesmaro/vesmaro:4.3.0
+      image: ghcr.io/vesmaro/vesma:5.1.2
       ports:
         - containerPort: 8787
           hostPort: 8787
