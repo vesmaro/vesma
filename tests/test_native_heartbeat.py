@@ -21,6 +21,7 @@ The six CI pins from the wave brief:
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import tempfile
@@ -52,6 +53,8 @@ from vesmaro.lanes import (
 )
 from vesmaro.manager import MemoryManager
 from vesmaro.mcp_server import _call_tool_dispatch, call_tool
+from vesmaro.metrics.schema import validate_awareness_meta
+from vesmaro.metrics.sink import MetricsStore
 from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
 from vesmaro.storage.sqlite_store import SQLiteStore
 
@@ -619,6 +622,238 @@ class TestDenyList:
             contents = await call_tool("mnemos_list_recent", args)
         assert len(contents) == 1
         assert "Peer awareness" not in contents[0].text
+
+
+# ── The events plane (ADR-0026 family, metrics sidecar) ──────────────────────
+
+SECRET_GOAL = "secret-goal-zq7x-watermark"
+
+
+def _sidecar_events(mgr: MemoryManager) -> list[dict[str, Any]]:
+    db = mgr.settings.mnemos.data_dir / "metrics.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in conn.execute("SELECT * FROM awareness_events ORDER BY id")]
+    finally:
+        conn.close()
+
+
+class TestHeartbeatEvents:
+    async def test_shadow_writes_the_full_event_chain(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            _checkpoint(mgr, goals=SECRET_GOAL, agent=NEIGHBOR_A)
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_list_recent", args)
+            events = _sidecar_events(mgr)
+            kinds = [e["kind"] for e in events]
+            assert kinds == ["tool_call", "delta_available", "heartbeat_delivery"]
+            delivery = events[-1]
+            assert delivery["project"] == PROJECT
+            assert delivery["agent"] == AGENT
+            assert delivery["session"] == SESSION
+            meta = json.loads(delivery["meta_json"])
+            assert meta["tool"] == "mnemos_list_recent"
+            assert meta["state"] == "delta"
+            assert meta["lines"] >= 1
+            assert meta["tokens_est"] >= 1
+            assert meta["cursor_before"] is None
+            assert meta["cursor_after"]
+            mgr.close()
+
+    async def test_shadow_calm_writes_calm_delivery(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_list_recent", args)
+            events = _sidecar_events(mgr)
+            kinds = [e["kind"] for e in events]
+            assert kinds == ["tool_call", "heartbeat_delivery"]
+            assert json.loads(events[-1]["meta_json"])["state"] == "calm"
+            mgr.close()
+
+    async def test_off_writes_no_events_at_all(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "off events body")
+        args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            await call_tool("mnemos_list_recent", args)
+        assert _sidecar_events(manager) == []
+
+    async def test_events_carry_zero_peer_content(self, tmp_path: Path) -> None:
+        """CWE-359: no peer goal text, no peer ids — only the caller's
+        identity slugs, counters, enums and tool ids."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _checkpoint(mgr, goals=SECRET_GOAL, agent=NEIGHBOR_A)
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_list_recent", args)
+            blob = json.dumps(_sidecar_events(mgr))
+            assert SECRET_GOAL not in blob
+            assert NEIGHBOR_A not in blob
+            mgr.close()
+
+    async def test_peer_write_event_on_write_tools(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            add_args = {
+                "content": "a write through the MCP surface",
+                "tags": [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
+                "session": SESSION,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_add", add_args)
+            events = _sidecar_events(mgr)
+            kinds = [e["kind"] for e in events]
+            assert "peer_write" in kinds
+            pw = next(e for e in events if e["kind"] == "peer_write")
+            assert pw["project"] == PROJECT and pw["agent"] == AGENT
+            assert json.loads(pw["meta_json"])["tool"] == "mnemos_add"
+            mgr.close()
+
+    async def test_deny_listed_tool_lands_in_denominator_only(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _knowledge(mgr, "deny list events body")
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "query": "x"}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_assemble_context", args)
+            kinds = [e["kind"] for e in _sidecar_events(mgr)]
+            assert kinds == ["tool_call"]  # no compose events for denied surfaces
+            mgr.close()
+
+    async def test_suppressed_rate_cap_event_written(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary", heartbeat_rate_limit=1))
+            _knowledge(mgr, "rate cap events body")
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_list_recent", args)
+                await call_tool("mnemos_list_recent", args)
+            suppressed = [
+                e
+                for e in _sidecar_events(mgr)
+                if e["kind"] == "heartbeat_suppressed"
+                and json.loads(e["meta_json"])["reason"] == "rate_cap"
+            ]
+            assert len(suppressed) == 1
+            mgr.close()
+
+    async def test_suppressed_probe_error_event_written(
+        self, manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _knowledge(manager, "probe error events body")
+        manager.settings.awareness.native_heartbeat_mode = "shadow"
+
+        def _raise(self: SQLiteStore, project: str, since_iso: str) -> bool:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(SQLiteStore, "exists_since", _raise)
+        args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            contents = await call_tool("mnemos_list_recent", args)
+        assert len(contents) == 1  # the call survived the broken probe
+        suppressed = [
+            e
+            for e in _sidecar_events(manager)
+            if e["kind"] == "heartbeat_suppressed"
+            and json.loads(e["meta_json"])["reason"] == "probe_error"
+        ]
+        assert len(suppressed) == 1
+
+
+class TestAwarenessMetaGate:
+    """The C5 twin for awareness meta — fail-closed allowlist."""
+
+    def test_clean_meta_passes(self) -> None:
+        clean = validate_awareness_meta(
+            {
+                "tool": "mnemos_list_recent",
+                "state": "delta",
+                "lines": 6,
+                "tokens_est": 118,
+                "cursor_before": None,
+                "cursor_after": "2026-10-01T12:00:00.000001+00:00",
+            }
+        )
+        assert clean is not None and clean["state"] == "delta"
+
+    def test_unknown_key_refuses_whole_meta(self) -> None:
+        assert validate_awareness_meta({"tool": "t", "goal_title": "peer text"}) is None
+
+    def test_bad_state_enum_refused(self) -> None:
+        assert validate_awareness_meta({"state": "excited"}) is None
+
+    def test_bad_reason_enum_refused(self) -> None:
+        assert validate_awareness_meta({"reason": "because"}) is None
+
+    def test_lines_must_be_int(self) -> None:
+        assert validate_awareness_meta({"lines": "six"}) is None
+        assert validate_awareness_meta({"lines": True}) is None
+
+    def test_cursor_must_be_iso_shaped(self) -> None:
+        assert validate_awareness_meta({"cursor_after": "not-a-cursor"}) is None
+        assert validate_awareness_meta({"cursor_before": "2026-10-01T12:00:00+00:00"}) is not None
+
+    def test_none_meta_passes_as_empty(self) -> None:
+        assert validate_awareness_meta(None) == {}
+
+
+class TestSinkAwarenessEvents:
+    def test_record_and_read_roundtrip(self, tmp_path: Path) -> None:
+        store = MetricsStore(tmp_path / "metrics.sqlite")
+        row_id = store.record_awareness_event(
+            kind="peer_write",
+            project=PROJECT,
+            agent=AGENT,
+            session=SESSION,
+            meta={"tool": "mnemos_add"},
+        )
+        assert row_id is not None
+        conn = sqlite3.connect(tmp_path / "metrics.sqlite")
+        try:
+            row = conn.execute(
+                "SELECT kind, project, agent, session, meta_json FROM awareness_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row == ("peer_write", PROJECT, AGENT, SESSION, '{"tool": "mnemos_add"}')
+        store.close()
+
+    def test_bad_kind_refused(self, tmp_path: Path) -> None:
+        store = MetricsStore(tmp_path / "metrics.sqlite")
+        assert (
+            store.record_awareness_event(kind="peer_write", meta={"tool": "mnemos_add"}) is not None
+        )
+        assert store.record_awareness_event(kind="peeer_write") is None  # typo'd kind
+        conn = sqlite3.connect(tmp_path / "metrics.sqlite")
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM awareness_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+        store.close()
+
+    def test_table_created_on_legacy_sidecar(self, tmp_path: Path) -> None:
+        """Additive delivery: a sidecar created before W2a gains the
+        awareness_events table on its next open (born-final philosophy —
+        CREATE IF NOT EXISTS in the connect script, no migrations)."""
+        db = tmp_path / "metrics.sqlite"
+        first = MetricsStore(db)
+        conn = first._conn()
+        assert conn is not None
+        conn.execute("DROP TABLE awareness_events")
+        conn.commit()
+        first.close()
+        second = MetricsStore(db)
+        conn2 = second._conn()
+        assert conn2 is not None
+        names = {r[0] for r in conn2.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert "awareness_events" in names
+        second.close()
 
 
 # ── shared manager helpers ────────────────────────────────────────────────────

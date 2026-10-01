@@ -6005,6 +6005,33 @@ class MemoryManager:
         except Exception:
             logger.warning("vitals: verb record failed (non-fatal)", exc_info=True)
 
+    def record_awareness_event(
+        self,
+        *,
+        kind: str,
+        project: str | None = None,
+        agent: str | None = None,
+        session: str | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """Record one native-heartbeat contour event (W2a, ADR-0035).
+
+        The ``record_verb_vitals`` discipline over the awareness_events
+        table: counters and server-side timestamps only (zero peer
+        content, CWE-359), meta through the awareness allowlist inside
+        the sink, every failure swallowed with a warning — the heartbeat
+        plane must never break the tool call it rides.
+        """
+        store = self._vitals_store
+        if store is None:
+            return
+        try:
+            store.record_awareness_event(
+                kind=kind, project=project, agent=agent, session=session, meta=meta
+            )
+        except Exception:
+            logger.warning("vitals: awareness event record failed (non-fatal)", exc_info=True)
+
     def vitals_exposition(self) -> str:
         """Prometheus text for the vitals plane ('' when disabled)."""
         store = self._vitals_store

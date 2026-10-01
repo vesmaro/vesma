@@ -5,7 +5,13 @@ response through a single injection point (``mcp_server.call_tool``);
 this module is everything that glue needs beyond the pure
 :func:`vesmaro.awareness.compose_heartbeat` contour: identity
 extraction from tool arguments, the C13 deny-list, the mode ladder
-(off / shadow / canary / on) and the TextContent construction.
+(off / shadow / canary / on), the TextContent construction, and the
+ADR-0026-family event writes into the metrics sidecar (``tool_call``
+for every dispatched call — the funnel denominator; ``peer_write`` on
+write-class verbs; the compose's own ``delta_available`` /
+``heartbeat_delivery`` / ``heartbeat_suppressed`` events). Zero peer
+content in any event (CWE-359): counters, enums, tool ids and the
+caller's identity slugs only.
 
 Hard contract (the wrapper's side of ADR-0035):
 
@@ -15,14 +21,15 @@ Hard contract (the wrapper's side of ADR-0035):
 * ``mode=off`` (the default, the kill switch) is fully inert: no
   probe, no cursor, no events, no tail — engine behaviour
   byte-identical to the pre-ADR-0035 build (CI-pinned);
-* ``shadow`` composes (and in the events wave, records) but renders
-  NOTHING — wave 0 is the measuring wave;
+* ``shadow`` composes and records events but renders NOTHING — wave 0
+  is the measuring wave;
 * ``canary``/``on`` append ONE TextContent as the LAST element of the
   response (tail-LAST, ADR-0028);
 * the deny-list surfaces (``mnemos_assemble_context`` — it already
   composes the full picture, a tail there means double render and
   double cursor advance; export/import — the bulk transfer pair, the
-  MCP legs of the federation class) never carry the tail.
+  MCP legs of the federation class) never carry the tail (but still
+  land in the ``tool_call`` denominator).
 
 The REST leg carries no tail in v1 (a silent text tail would break the
 typed JSON contract — ADR-0035 Configuration).
@@ -109,6 +116,33 @@ def _identity(args: dict[str, Any]) -> tuple[str | None, str | None, str | None]
     return project, agent, session
 
 
+def _record_event(
+    mgr: Any,
+    kind: str,
+    *,
+    project: str | None,
+    agent: str | None,
+    session: str | None,
+    meta: dict[str, Any] | None,
+) -> None:
+    """Persist one contour event through the vitals plane (non-fatal).
+
+    The guest contract double-belted: the manager method already swallows
+    everything; this belt exists so a mock/alt manager without the method
+    (tests, exotic embeddings) degrades silently instead of killing the
+    heartbeat — and with it the tool call it rides.
+    """
+    try:
+        recorder = getattr(mgr, "record_awareness_event", None)
+        if recorder is None:
+            return
+        recorder(kind=kind, project=project, agent=agent, session=session, meta=meta)
+    except Exception:
+        logger.warning(
+            "awareness heartbeat: event record failed (non-fatal) kind=%s", kind, exc_info=True
+        )
+
+
 def native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
     """One MCP response heartbeat — returns the tail TextContent or None.
 
@@ -135,15 +169,35 @@ def _native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
     mode = getattr(getattr(mgr, "settings", None), "awareness", None)
     mode_value = getattr(mode, "native_heartbeat_mode", "off")
     if mode_value == "off":
-        return None  # the kill switch: fully inert
+        return None  # the kill switch: fully inert — no events either
 
-    project, agent, _session = _identity(args)
+    project, agent, session = _identity(args)
+
+    # The funnel denominator first: EVERY dispatched call is a tool_call
+    # event (deny-listed and identity-less calls included — delivery
+    # rates are honest only against the full denominator). Write-class
+    # verbs emit peer_write (the freshness numerator's start stamp).
+    _record_event(
+        mgr, "tool_call", project=project, agent=agent, session=session, meta={"tool": tool_name}
+    )
+    if tool_name in HEARTBEAT_WRITE_TOOLS:
+        _record_event(
+            mgr,
+            "peer_write",
+            project=project,
+            agent=agent,
+            session=session,
+            meta={"tool": tool_name},
+        )
+
     if tool_name in HEARTBEAT_DENY_TOOLS:
         return None
     if not (project and agent):
         return None
 
     result = compose_heartbeat(mgr, project=project, agent=agent, tool=tool_name)
+    for kind, meta in result.get("events", []):
+        _record_event(mgr, kind, project=project, agent=agent, session=session, meta=dict(meta))
 
     if mode_value not in HEARTBEAT_RENDERING_MODES:
         return None  # shadow: the contour ran (events recorded), nothing renders

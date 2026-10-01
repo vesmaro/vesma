@@ -1163,8 +1163,8 @@ class AwarenessConfig(BaseModel):
     # off | shadow | canary | on.
     #   * "off" (default) — the whole contour is inert: no probe, no
     #     cursor, no events, no tail. Kill switch.
-    #   * "shadow" — compose + events in metrics.sqlite, NOTHING rendered
-    #     (wave 0: the measuring wave whose gates decide canary).
+    #   * "shadow" — compose + events in the metrics sidecar, NOTHING
+    #     rendered (wave 0: the measuring wave whose gates decide canary).
     #   * "canary"/"on" — the envelope renders as the last TextContent
     #     (covered by tests; not enabled in production until the wave 0/1
     #     gates close green).
