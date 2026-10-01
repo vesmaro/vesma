@@ -444,9 +444,7 @@ class TestBareSlugTaskFallback:
         """The retry narrows nothing and widens nothing: the project
         scope (and agent) stay bound — only the tag FORM changes."""
         mine = _row(mgr, "harbor tide schedule notes", task="qa-vesma")
-        foreign = _row(
-            mgr, "harbor tide schedule notes", project=PROJECT_B, task="qa-vesma"
-        )
+        foreign = _row(mgr, "harbor tide schedule notes", project=PROJECT_B, task="qa-vesma")
         mgr.vectors.wipe()
 
         results = mgr.search("harbor tide", tags=["qa-vesma"], project=PROJECT, limit=10)
@@ -467,6 +465,53 @@ class TestBareSlugTaskFallback:
 
         results = mgr.search("harbor tide", task="qa-vesma", project=PROJECT, limit=10)
         assert {r.memory.id for r in results} == {row.id}
+
+    def test_mixed_exact_and_bare_tags_never_retry(
+        self, mgr: MemoryManager, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Guard branch (manager._bare_slug_task_retry_tags): a tags
+        filter that ALREADY carries a ``task:`` entry never takes the
+        rewrite — exact-tag queries keep byte-identical behavior even
+        when a bare sibling entry could have been rewritten (the
+        ``task:<bare>`` rows exist in the census, so the rewrite WOULD
+        qualify). Pinned on the retry log line: the rewrite never fires,
+        so the honest empty page is the FIRST answer, not a fallback."""
+        _row(mgr, "harbor tide schedule notes", task="qa-vesma")
+        _row(mgr, "harbor tide schedule notes", task="keep-me")
+        mgr.vectors.wipe()
+
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="vesmaro.manager"):
+            # The mixed filter matches nothing: no row carries BOTH
+            # ``task:keep-me`` AND the bare ``qa-vesma`` (rows carry
+            # ``task:qa-vesma`` — the AND-exact-membership filter).
+            results = mgr.search(
+                "harbor tide", tags=["task:keep-me", "qa-vesma"], project=PROJECT, limit=10
+            )
+        assert results == []
+        assert mgr.search_stats()["task_tag_fallback_total"] == 0
+        assert not any("task-tag fallback" in r.message for r in caplog.records), (
+            "a mixed exact+bare tags filter must never fire the bare-slug retry"
+        )
+
+    def test_retry_with_zero_rows_no_marker_no_counter(self, mgr: MemoryManager) -> None:
+        """Guard branch (MemoryManager.search retry leg): the census says
+        ``task:<slug>`` rows exist, the retry fires — but finds ZERO
+        rows (the task row lives in another project; the retry narrows
+        nothing and widens nothing). Zero surfaced rows means no
+        ``task_tag_fallback`` marker anywhere and NO counter bump: the
+        counter counts surfaced-fallback pages, not fired retries."""
+        _row(mgr, "harbor tide schedule notes", project=PROJECT_B, task="qa-vesma")
+        mgr.vectors.wipe()
+
+        results = mgr.search("harbor tide", tags=["qa-vesma"], project=PROJECT, limit=10)
+        assert results == []
+        assert mgr.search_stats()["task_tag_fallback_total"] == 0
+        # The follow-on project soft-fallback also surfaces nothing
+        # (the bare tag matches no row in ANY project) — its counter
+        # stays quiet too.
+        assert mgr.search_stats()["project_scope_fallback_total"] == 0
         assert all(not r.task_tag_fallback for r in results)
         assert mgr.search_stats()["task_tag_fallback_total"] == 0
 

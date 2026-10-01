@@ -48,12 +48,25 @@ claims more certainty than it has.
 The graph indexes **registered roots only** (PG2). A root is the first
 absolute path on a project record (`paths[0]`). Registration is an operator
 step — projects auto-created by memory writes carry no paths, so a graph call
-for them answers a confinement refusal until you register a root:
+for them answers a confinement refusal (the refusal text names the fix) until
+a root is registered. Two ways to register:
+
+- **Agent-side** (#454): the `mnemos_register_project` tool — `project_id`,
+  the absolute `root`, and the mandatory `agent` attribution. The root must
+  exist, carry a packaging manifest or a `.git`, and not be `$HOME`/the
+  filesystem root. Idempotent when the root is already registered.
+- **CLI**: `vesma graph register <project> <root>` — the same gates and
+  audit trail (`manual-register`), from the terminal.
+
+The raw store write also works (what the tools do underneath):
 
 ```python
 from vesmaro.models import Project
 mgr.sqlite.save_project(Project(name="vesma", paths=["/home/you/vesma"]))
 ```
+
+Explicit registration does **not** count against `auto_register_max_projects`
+— that cap bounds the auto path only.
 
 Then the flow is three tool calls (every one needs an `agent` — see
 [Boundaries & FAQ](#boundaries--faq)):
@@ -129,7 +142,34 @@ on actual changes, audited with reason `watch`.
 
 ---
 
-## The ten tools
+## Moved roots: ghosts and `vesma graph repoint` (#450)
+
+A project directory renamed or moved on disk leaves a **ghost**
+registration: the auto path no-ops silently, `mnemos_index_project`
+refuses confinement ("registered root is missing on disk"), and — before
+#450 — the only exit was deleting the graph. Ghosts are visible:
+`mnemos_list_graph_projects` marks them `root_missing: true`.
+
+Repair is one operator command:
+
+```bash
+vesma graph repoint <project> <new-root>
+```
+
+Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
+
+- the new root must exist, be absolute, carry a packaging manifest or a
+  `.git` (no pointing the graph at an unrelated directory), and not be
+  `$HOME`/the filesystem root;
+- one root = one graph: a new root already claimed by another project is
+  refused;
+- the stale index is **purged** (it describes the old tree — derived,
+  rebuildable data), the auto-path suspension is lifted, and the next
+  index run rebuilds fresh.
+
+---
+
+## The graph tools
 
 | Tool | What it does |
 |------|--------------|
@@ -141,8 +181,9 @@ on actual changes, audited with reason `watch`.
 | `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
 | `mnemos_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
 | `mnemos_get_graph_schema` | The contract card: kinds, limits, token contract |
-| `mnemos_list_graph_projects` | Registered projects joined with index status |
+| `mnemos_list_graph_projects` | Registered projects joined with index status; ghosts marked `root_missing` |
 | `mnemos_delete_graph_project` | Drop the index (sidecar only); the only way to clear the poisoned set |
+| `mnemos_register_project` | Register a root (#454) — the agent-side answer to "not registered" |
 
 Plus the watch family: `mnemos_watch_start` / `mnemos_watch_stop` /
 `mnemos_watch_status`.
@@ -220,6 +261,10 @@ Environment overrides follow the canonical settings pattern:
   The *auto* path is stricter: no manifest in the cwd, no auto-registration.
 - **Multiple paths on one project?** The graph indexes the first registered
   path (`paths[0]`) — one root, one graph per project.
+- **My project root moved on disk.** The registration goes ghost:
+  `mnemos_list_graph_projects` shows `root_missing: true`, indexing refuses.
+  Repair with `vesma graph repoint <project> <new-root>` (#450) — the stale
+  index is purged and the next index rebuilds fresh.
 - **A file changed after indexing.** Snippets come back with a `stale` marker
   instead of content; reindex (or let the watch poll do it) to refresh.
 - **How do I turn it all off?** `code_graph.enabled: false` — tools answer

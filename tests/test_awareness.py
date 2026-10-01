@@ -460,7 +460,30 @@ class TestScanRefusal:
         assert FAKE_AWS_KEY not in title
         assert "<REDACTED:" in title
         assert delta["counts"]["redactions"] >= 1
+        # #456: pattern NAMES ride counts next to the total — names only,
+        # never values or spans.
+        assert delta["counts"]["redacted_patterns"] == {"aws-key": 1}
         assert FAKE_AWS_KEY not in render_awareness_section(delta, [])
+
+    def test_clean_delta_carries_no_pattern_names(self, manager: MemoryManager) -> None:
+        """#456 shape policy: ``redacted_patterns`` is ABSENT on a clean
+        issuance — the count stays 0, no empty-dict noise (the same
+        policy as mnemos_search / assemble / hooks)."""
+        _checkpoint(
+            manager, goals="clean goal nothing secret", agent=NEIGHBOR, session=NEIGHBOR_SESSION
+        )
+        delta = project_delta(manager, project=PROJECT, since=_hour_ago_iso(), exclude_agent=AGENT)
+        assert delta["counts"]["redactions"] == 0
+        assert "redacted_patterns" not in delta["counts"]
+
+    def test_compose_meta_carries_pattern_names(self, manager: MemoryManager) -> None:
+        """#456: the pre_llm_call composition's meta mirrors the delta's
+        pattern names next to its redactions count."""
+        _stale_secret_checkpoint(manager)
+        composed = compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
+        assert composed["meta"]["redactions"] >= 1
+        assert composed["meta"]["redacted_patterns"] == {"aws-key": 1}
+        assert FAKE_AWS_KEY not in composed["text"]
 
     def test_refuse_mode_goal_dropped_observed_facts_stay(
         self, refuse_manager: MemoryManager
@@ -2058,6 +2081,10 @@ class TestPictureTaskScanGate:
         entry = picture["agents"][0]
         assert entry["task"] is None
         assert picture["counts"]["redactions"] == 1
+        # #456: the dropped tag still names WHICH pattern fired — names
+        # only, never the slug value.
+        assert picture["counts"]["redacted_patterns"] == {"slack-token": 1}
+        assert FAKE_TASK_SLACK_SLUG not in repr(picture["counts"])
         assert "<REDACTED:" not in repr(picture["agents"])
         assert picture["agents"][0]["entries"] == 2, "observed facts stay"
 

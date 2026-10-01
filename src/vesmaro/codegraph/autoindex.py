@@ -59,13 +59,15 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 from vesmaro.codegraph.incremental import staleness_check
 from vesmaro.codegraph.service import (
+    PROJECT_MARKERS,
     CodeGraphService,
     GraphToolError,
+    _is_forbidden_root,
     auto_suspended_key,
+    project_marker,
 )
 from vesmaro.codegraph.watch import GraphWatchScheduler
 from vesmaro.config import CodeGraphConfig
@@ -73,18 +75,15 @@ from vesmaro.models import Project
 
 logger = logging.getLogger(__name__)
 
-#: Packaging manifests accepted as auto-registration markers (PR #443
-#: review P2-2): the operator's footprint on disk, the canonical
-#: manifests of the supported ecosystems. A bare ``.git`` deliberately
-#: does NOT qualify — a dotfiles ``$HOME`` is a repo, not a project —
-#: and neither do lockfiles (generated artifacts, not declarations).
-PROJECT_MARKERS: tuple[str, ...] = (
-    "pyproject.toml",
-    "setup.py",
-    "package.json",
-    "go.mod",
-    "Cargo.toml",
-)
+#: Re-exported from ``service`` since PG-0.5 (the manual registration
+#: and repoint paths share the marker gate); kept importable from here
+#: for the autoindex test suite.
+__all__ = [
+    "AUTO_REGISTER_DESCRIPTION_PREFIX",
+    "PROJECT_MARKERS",
+    "AutoIndexer",
+    "project_marker",
+]
 
 #: Stable description prefix marking an AUTO-registered ``projects`` row
 #: (the table has no ``registered_by`` column — the marker IS the
@@ -103,33 +102,6 @@ _LAST_AUTO_ACTION_PREFIX = "last_auto_action:"
 
 def _throttle_key(project: str) -> str:
     return f"{_LAST_AUTO_ACTION_PREFIX}{len(project)}:{project}"
-
-
-def project_marker(cwd: str) -> str | None:
-    """The FIRST packaging manifest found in ``cwd`` (a stat per
-    candidate — cheap by contract), or ``None`` when the directory is
-    not a project root. A non-directory ``cwd`` never registers; a bare
-    ``.git`` is not a marker (P2-2)."""
-    if not os.path.isdir(cwd):
-        return None
-    for marker in PROJECT_MARKERS:
-        if os.path.exists(os.path.join(cwd, marker)):
-            return marker
-    return None
-
-
-def _is_forbidden_root(cwd: str) -> bool:
-    """``$HOME`` and the filesystem root are NEVER auto-registered
-    (PR #443 review P2-2): even a manifest sitting there (a dotfiles
-    repo exporting a ``package.json`` into ``$HOME``) must not turn the
-    server's own home into a graph project."""
-    root = Path(cwd)
-    if str(root) == root.anchor:  # "/" on POSIX, "C:\\" on Windows
-        return True
-    try:
-        return root == Path.home()
-    except RuntimeError:  # no resolvable home — the manifest gate decides
-        return False
 
 
 @dataclass(slots=True, frozen=True)

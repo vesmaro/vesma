@@ -81,7 +81,9 @@ _brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
 if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
     logger.warning(
         "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
-        _BRAND_ENV_CANON, _brand_canon_val, _brand_depr_val,
+        _BRAND_ENV_CANON,
+        _brand_canon_val,
+        _brand_depr_val,
     )
 _raw_brand = (_brand_canon_val or _brand_depr_val).lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
@@ -89,7 +91,8 @@ _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand
 if _raw_brand and not _MCP_BRAND:
     logger.warning(
         "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _BRAND_ENV_CANON, _raw_brand,
+        _BRAND_ENV_CANON,
+        _raw_brand,
     )
 
 
@@ -214,6 +217,51 @@ def _checkpoint_reminder() -> str | None:
             f"to preserve your current progress."
         )
     return None
+
+
+# ── #456: one-time server-updated notice ─────────────────────────────────────
+#
+# A mid-session server upgrade is invisible to the sessions it serves.
+# On the FIRST tool dispatch after process start the dispatcher compares
+# the store meta ``last_reported_server_version`` with the running
+# ``__version__``: a difference appends ONE non-blocking line to that
+# response and re-stamps the meta. Off-resilient by contract — any
+# store error skips the notice silently after one warning log, and the
+# check runs at most ONCE per process whatever happens (no per-dispatch
+# store reads, no retry storm against a broken store).
+
+SERVER_VERSION_META_KEY = "last_reported_server_version"
+
+_server_update_state: dict[str, bool] = {"checked": False}
+
+
+def _reset_server_update_state() -> None:
+    """Test seam: re-arm the once-per-process version check."""
+    _server_update_state["checked"] = False
+
+
+def _server_update_hint(mgr: Any) -> str | None:
+    """The one-line upgrade notice, at most once per process (#456).
+
+    ``None`` when: already checked this process, the meta matches the
+    running version, or the store is unavailable (fail-open — the
+    notice is a courtesy, never a failure mode). A MISSING or
+    non-string meta is a first contact: the baseline is written
+    silently, nothing to compare yet."""
+    if _server_update_state["checked"]:
+        return None
+    _server_update_state["checked"] = True  # one attempt per process, whatever happens
+    try:
+        meta = mgr.sqlite.get_meta(SERVER_VERSION_META_KEY)
+        if isinstance(meta, str) and meta == __version__:
+            return None
+        mgr.sqlite.set_meta(SERVER_VERSION_META_KEY, __version__)
+        if isinstance(meta, str):
+            return f"\n\nvesma server updated: {meta} → {__version__}"
+        return None
+    except Exception:
+        logger.warning("server-update notice skipped (store unavailable)", exc_info=True)
+        return None
 
 
 def _track_call(is_save: bool = False) -> None:
@@ -379,7 +427,7 @@ def _graph_node_kinds() -> tuple[str, ...]:
 
 
 async def _canonical_tools() -> list[Tool]:
-    """Return the tool manifest (37 tools — stable model-visible contract).
+    """Return the tool manifest (39 tools — stable model-visible contract).
 
     Pre-2.x this was decorated with ``@server.list_tools()``; the port keeps
     the callable importable with the same zero-arg signature (the test suite
@@ -1957,6 +2005,39 @@ async def _canonical_tools() -> list[Tool]:
                 "required": ["project_id", "agent"],
             },
         ),
+        Tool(
+            name="mnemos_register_project",
+            description=(
+                "Register a project root for the code graph (#454) — the "
+                "answer to 'not registered' refusals. The root must exist "
+                "on disk, be absolute, carry a packaging manifest "
+                "(pyproject.toml/setup.py/package.json/go.mod/Cargo.toml) "
+                "or a .git, and not be $HOME/the filesystem root. "
+                "Idempotent when the root is already registered (audit "
+                "manual-register-reused). Attaches a root to an existing "
+                "pathless project; a name already registered at ANOTHER "
+                "root is refused (moved roots: 'vesma graph repoint'). "
+                "Explicit registration does NOT count against "
+                "auto_register_max_projects (that cap bounds the auto "
+                "path only). Audited as manual-register."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Project id or name to register.",
+                    },
+                    "root": {
+                        "type": "string",
+                        "description": "Absolute path to the project root on disk.",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["project_id", "root", "agent"],
+            },
+        ),
     ]
 
 
@@ -2030,6 +2111,12 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     canonical_name = _canonicalize_tool_name(name)
     _track_call(is_save=(canonical_name == "mnemos_save_context"))
     reminder = _checkpoint_reminder()
+    # #456: the one-time upgrade notice rides the FIRST dispatch of the
+    # process (checked once, fail-open on any store error).
+    try:
+        update_hint = _server_update_hint(get_manager())
+    except Exception:
+        update_hint = None
 
     try:
         result = await _dispatch(canonical_name, arguments)
@@ -2042,6 +2129,8 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     text = (
         result if isinstance(result, str) else json.dumps(result, default=str, ensure_ascii=False)
     )
+    if update_hint:
+        text += update_hint
     if reminder:
         text += reminder
     return [TextContent(type="text", text=text)]
@@ -3023,6 +3112,7 @@ _GRAPH_TOOLS = frozenset(
         "mnemos_get_graph_schema",
         "mnemos_list_graph_projects",
         "mnemos_delete_graph_project",
+        "mnemos_register_project",
     }
 )
 
@@ -3040,7 +3130,8 @@ def _graph_req_int(args: dict[str, Any], key: str) -> int | None:
 
 
 def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """Dispatch the 10 project-graph tools to CodeGraphService."""
+    """Dispatch the project-graph tools (the ADR-0032 ten + #454
+    ``mnemos_register_project``) to CodeGraphService."""
     from vesmaro.codegraph.indexer import IndexLimitError
     from vesmaro.codegraph.service import (
         GraphAttributionError,
@@ -3153,6 +3244,12 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             return get_graph_service(mgr).get_graph_schema(args.get("project_id"), **common)
         if name == "mnemos_list_graph_projects":
             return get_graph_service(mgr).list_graph_projects(**common)
+        if name == "mnemos_register_project":
+            project_id = _graph_req_str(args, "project_id")
+            root = _graph_req_str(args, "root")
+            if project_id is None or root is None:
+                return bad("project_id, root", "non-empty strings")
+            return get_graph_service(mgr).register_project(project_id, root, **common)
         # name == "mnemos_delete_graph_project"
         project_id = _graph_req_str(args, "project_id")
         if project_id is None:

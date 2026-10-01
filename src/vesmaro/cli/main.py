@@ -1590,6 +1590,17 @@ app.add_typer(import_app, name="import")
 app.add_typer(logs_app, name="logs")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
+
+# ── graph (project-graph registration lifecycle, #450/#454) ───────────────────
+# Subcommand tree:
+#   vesma graph register <project> <root>   — register a root (agent twin of
+#                                             mnemos_register_project, #454)
+#   vesma graph repoint <project> <root>    — re-point a ghost registration
+#                                             whose root moved on disk (#450)
+
+from vesmaro.cli.graph_cmd import graph_app  # noqa: E402
+
+app.add_typer(graph_app, name="graph")
 app.command(name="update", help="Check for updates / update the user-site install (issue #445).")(
     update_cmd
 )

@@ -31,7 +31,8 @@ from vesmaro.cli.doctor import CheckStatus, _check_mcp_transport
 # 27 → 28 (ADR-0027 Ф3, epic #308): mnemos_ingest_document added — the
 # docs-as-memory document ingest (born-quarantined chunks, swept at
 # completion; mnemos_ingest_url keeps its single-row semantics).
-EXPECTED_TOOL_COUNT = 38
+# 38 → 39 (#454): mnemos_register_project added (agent-side PG2 registration).
+EXPECTED_TOOL_COUNT = 39
 
 
 # The conftest installs MagicMock stubs into sys.modules BEFORE any test

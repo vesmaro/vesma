@@ -66,6 +66,7 @@ class FakeProject:
     id: str
     name: str
     paths: list[str] = field(default_factory=list)
+    description: str = ""
 
 
 class FakeMainStore:
@@ -85,6 +86,14 @@ class FakeMainStore:
     def list_projects(self) -> list[FakeProject]:
         return list(self.projects)
 
+    def save_project(self, project: object) -> None:
+        """Upsert by id (the register/repoint lifecycle, #450/#454)."""
+        for i, existing in enumerate(self.projects):
+            if existing.id == project.id:
+                self.projects[i] = project
+                return
+        self.projects.append(project)
+
     def get_meta(self, key: str) -> str | None:
         return self.meta.get(key)
 
@@ -100,6 +109,9 @@ def mini_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     pkg = root / "pkg"
     pkg.mkdir(parents=True)
+    (root / "pyproject.toml").write_text(
+        "[project]\nname = 'miniproj'\n", encoding="utf-8"
+    )  # packaging marker: the register/repoint root gate (#450/#454)
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "helper.py").write_text(
         "class Base:\n"
@@ -481,9 +493,7 @@ class TestSecretAllowlistService:
             )
             assert snippet["content"] == 'BODY = "clean fixture line"'
             rows = [
-                r
-                for r in allowlisted._audit.recent(PROJECT)
-                if r["reason"] == "allowlist-unpoison"
+                r for r in allowlisted._audit.recent(PROJECT) if r["reason"] == "allowlist-unpoison"
             ]
             assert rows and rows[0]["details"]["paths"] == ["fake_key_fixture.py"]
         finally:
@@ -503,15 +513,11 @@ class TestSecretAllowlistService:
         try:
             allowlisted.index_project(PROJECT, agent=AGENT)
             with pytest.raises(GraphToolError, match="PG4"):
-                allowlisted.get_code_snippet(
-                    PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT
-                )
+                allowlisted.get_code_snippet(PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT)
         finally:
             allowlisted.close()
 
-    def test_non_allowlisted_poisoning_unchanged(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_non_allowlisted_poisoning_unchanged(self, tmp_path: Path, mini_repo: Path) -> None:
         service, _ = make_service(tmp_path, mini_repo, secret_allowlist=["docs/**"])
         try:
             result = service.index_project(PROJECT, agent=AGENT)
@@ -519,9 +525,7 @@ class TestSecretAllowlistService:
             assert result["unpoisoned"] == []
             with pytest.raises(GraphToolError, match="POISONED"):
                 service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
-            assert all(
-                r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT)
-            )
+            assert all(r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT))
         finally:
             service.close()
 
@@ -616,6 +620,244 @@ class TestPGMechanics:
             service.close()
 
 
+# ── #450: ghost re-point ─────────────────────────────────────────────────────
+
+
+class TestGhostRepoint:
+    """A registration whose root moved on disk is STUCK pre-#450: the
+    auto path no-ops, the explicit index refuses confinement, the only
+    exit was nuclear delete. ``repoint_project`` rewrites the root
+    (confinement-gated) and purges the stale index."""
+
+    def test_repoint_updates_root_then_index_succeeds(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            service.index_project(PROJECT, agent=AGENT)
+            assert service.store.count_nodes(PROJECT) > 0
+            moved = mini_repo.with_name("repo-moved")
+            mini_repo.rename(moved)  # the ghost: root gone on disk
+            with pytest.raises(GraphConfinementError, match="missing on disk"):
+                service.index_project(PROJECT, agent=AGENT)
+
+            result = service.repoint_project(PROJECT, str(moved), agent=AGENT)
+            assert result["status"] == "repointed"
+            assert result["root"] == str(moved)
+            assert result["purged_nodes"] > 0
+            # registration rewritten: paths[0] is the new root
+            assert main.get_project_by_name(PROJECT).paths[0] == str(moved)
+            # the next index succeeds and rebuilds the graph
+            rebuilt = service.index_project(PROJECT, agent=AGENT)
+            assert rebuilt["status"] == "ok"
+            assert service.store.count_nodes(PROJECT) > 0
+        finally:
+            service.close()
+
+    def test_repoint_refuses_nonexistent_root(self, tmp_path: Path, mini_repo: Path) -> None:
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            with pytest.raises(GraphConfinementError, match="does not exist"):
+                service.repoint_project(PROJECT, str(tmp_path / "nope"), agent=AGENT)
+        finally:
+            service.close()
+
+    def test_repoint_refuses_unrelated_directory(self, tmp_path: Path, mini_repo: Path) -> None:
+        """The cross-jump guard: a directory with no manifest and no
+        ``.git`` is not a project root — refuse loudly."""
+        bare = tmp_path / "bare"
+        bare.mkdir()
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            with pytest.raises(GraphConfinementError, match=r"no packaging manifest and no \.git"):
+                service.repoint_project(PROJECT, str(bare), agent=AGENT)
+        finally:
+            service.close()
+
+    def test_repoint_refuses_root_claimed_by_other_project(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        other = tmp_path / "other-repo"
+        other.mkdir()
+        (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            service.register_project("claimant", str(other), agent=AGENT)
+            with pytest.raises(GraphConfinementError, match="claimant"):
+                service.repoint_project(PROJECT, str(other), agent=AGENT)
+        finally:
+            service.close()
+
+    def test_repoint_same_root_is_unchanged(self, service: CodeGraphService) -> None:
+        current = service._resolve_root(PROJECT).root
+        result = service.repoint_project(PROJECT, str(current), agent=AGENT)
+        assert result["status"] == "unchanged"
+        assert all(r["action"] != "repoint" for r in service._audit.recent(PROJECT))
+
+    def test_repoint_audit_row_and_sidecar_path_hygiene(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """The repoint audit row exists (action=repoint, reason
+        graph-repoint) and carries BASENAMES only — the sidecar trail
+        leaves the process, so no absolute prefix may ride it (review
+        10173a2a-4 discipline)."""
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            service.index_project(PROJECT, agent=AGENT)
+            moved = mini_repo.with_name("repo-moved")
+            mini_repo.rename(moved)
+            service.repoint_project(PROJECT, str(moved), agent=AGENT)
+            rows = [r for r in service._audit.recent(PROJECT) if r["action"] == "repoint"]
+            assert rows, "expected the repoint audit row"
+            assert rows[0]["reason"] == "graph-repoint"
+            assert rows[0]["details"]["new_root"] == "repo-moved"
+            assert rows[0]["details"]["old_root"] == mini_repo.name
+            assert str(tmp_path) not in json.dumps(rows)
+        finally:
+            service.close()
+
+    def test_list_marks_root_missing(self, tmp_path: Path, mini_repo: Path) -> None:
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            healthy = service.list_graph_projects(agent=AGENT)["projects"]
+            row = next(p for p in healthy if p["project"] == PROJECT)
+            assert row["root_missing"] is False
+            moved = mini_repo.with_name("repo-moved")
+            mini_repo.rename(moved)
+            ghosted = service.list_graph_projects(agent=AGENT)["projects"]
+            row = next(p for p in ghosted if p["project"] == PROJECT)
+            assert row["root_missing"] is True  # the ghost is visible
+        finally:
+            service.close()
+
+
+# ── #454: agent-side registration ────────────────────────────────────────────
+
+
+class TestManualRegister:
+    def test_register_new_project_then_index_succeeds(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, main = make_service(tmp_path, mini_repo, register=False)
+        try:
+            result = service.register_project("fresh", str(mini_repo), agent=AGENT)
+            assert result["status"] == "registered"
+            assert result["project"] == "fresh"
+            assert main.get_project_by_name("fresh") is not None
+            indexed = service.index_project("fresh", agent=AGENT)
+            assert indexed["status"] == "ok"
+            assert service.store.count_nodes("fresh") > 0
+            rows = [r for r in service._audit.recent("fresh") if r["action"] == "manual-register"]
+            assert rows and rows[0]["actor"] == AGENT
+        finally:
+            service.close()
+
+    def test_register_idempotent_same_root(self, tmp_path: Path, mini_repo: Path) -> None:
+        service, main = make_service(tmp_path, mini_repo, register=False)
+        try:
+            first = service.register_project("solo", str(mini_repo), agent=AGENT)
+            assert first["status"] == "registered"
+            second = service.register_project("solo", str(mini_repo) + "/", agent=AGENT)
+            assert second["status"] == "already-registered"  # normpath-equal root
+            assert len([p for p in main.list_projects() if p.name == "solo"]) == 1
+            reused = [
+                r for r in service._audit.recent("solo") if r["action"] == "manual-register-reused"
+            ]
+            assert reused  # the auto-register-reused precedent
+        finally:
+            service.close()
+
+    def test_register_attaches_root_to_pathless_project(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """The common orphan: a project row auto-created by memory
+        writes carries no paths — registration attaches the root."""
+        service, main = make_service(tmp_path, mini_repo, register=False)
+        main.projects.append(FakeProject(id="p-orphan", name="orphan", paths=[]))
+        try:
+            result = service.register_project("orphan", str(mini_repo), agent=AGENT)
+            assert result["status"] == "registered"
+            assert main.get_project_by_name("orphan").paths == [str(mini_repo)]
+        finally:
+            service.close()
+
+    def test_register_name_collision_different_root_refused(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        other = tmp_path / "other-repo"
+        other.mkdir()
+        (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        service, _ = make_service(tmp_path, mini_repo)  # PROJECT → mini_repo
+        try:
+            with pytest.raises(GraphConfinementError, match="already registered at"):
+                service.register_project(PROJECT, str(other), agent=AGENT)
+        finally:
+            service.close()
+
+    def test_register_root_of_other_project_reuses_it(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """One root = one graph: a second NAME over a registered root
+        rides the existing project instead of duplicating the row."""
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            result = service.register_project("alias", str(mini_repo), agent=AGENT)
+            assert result["status"] == "already-registered"
+            assert result["project"] == PROJECT
+            assert main.get_project_by_name("alias") is None  # no duplicate row
+        finally:
+            service.close()
+
+    @pytest.mark.parametrize("make_root", ["missing", "bare", "home"])
+    def test_register_refuses_bad_roots(
+        self, tmp_path: Path, mini_repo: Path, make_root: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        if make_root == "missing":
+            root = str(tmp_path / "nope")
+        elif make_root == "bare":
+            bare = tmp_path / "bare"
+            bare.mkdir()
+            root = str(bare)
+        else:
+            root = str(tmp_path)  # == Path.home() under the patch below
+            monkeypatch.setattr(
+                "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+            )
+        service, _ = make_service(tmp_path, mini_repo, register=False)
+        try:
+            with pytest.raises(GraphConfinementError):
+                service.register_project("bad", root, agent=AGENT)
+        finally:
+            service.close()
+
+    def test_register_ignores_auto_cap(self, tmp_path: Path, mini_repo: Path) -> None:
+        """Explicit registration does NOT count against
+        ``auto_register_max_projects`` — the cap bounds the AUTO path
+        (provenance: the description marker it counts, which manual
+        rows never carry). Config floor is 1, so the pin is: TWO manual
+        registrations under a cap of 1 both succeed."""
+        service, _ = make_service(tmp_path, mini_repo, register=False, auto_register_max_projects=1)
+        other = tmp_path / "other-repo"
+        other.mkdir()
+        (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        try:
+            first = service.register_project("manual-one", str(mini_repo), agent=AGENT)
+            second = service.register_project("manual-two", str(other), agent=AGENT)
+            assert first["status"] == second["status"] == "registered"
+        finally:
+            service.close()
+
+    def test_unregistered_refusal_names_the_register_tool(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, _ = make_service(tmp_path, mini_repo, register=False)
+        try:
+            with pytest.raises(GraphConfinementError, match="mnemos_register_project"):
+                service.index_project("never-registered", agent=AGENT)
+        finally:
+            service.close()
+
+
 # ── MCP layer ────────────────────────────────────────────────────────────────
 
 
@@ -636,7 +878,7 @@ def _fake_manager(tmp_path: Path, repo: Path, *, enabled: bool) -> _FakeManager:
 
 
 class TestMcpLayer:
-    def test_manifest_contains_the_10_graph_tools(self) -> None:
+    def test_manifest_contains_the_graph_tools(self) -> None:
         from vesmaro.mcp_server import _canonical_tools
 
         names = {t.name for t in asyncio.run(_canonical_tools())}
@@ -651,6 +893,7 @@ class TestMcpLayer:
             "mnemos_get_graph_schema",
             "mnemos_list_graph_projects",
             "mnemos_delete_graph_project",
+            "mnemos_register_project",
         }
         assert expected <= names
 
@@ -669,6 +912,30 @@ class TestMcpLayer:
             "mnemos_project_graph_status", mgr, {"project_id": PROJECT, "agent": AGENT}
         )
         assert result["code"] == "disabled"
+
+    def test_register_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
+        """#454: the agent-facing register tool registers the project and
+        a refusal carries the confinement code (never a traceback)."""
+        from vesmaro.mcp_server import _handle_graph
+
+        mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
+        mgr.sqlite.projects.clear()  # unregistered — the tool's whole point
+        result = _handle_graph(
+            "mnemos_register_project",
+            mgr,
+            {"project_id": PROJECT, "root": str(mini_repo), "agent": AGENT},
+        )
+        assert result["status"] == "registered"
+        indexable = _handle_graph(
+            "mnemos_index_project", mgr, {"project_id": PROJECT, "agent": AGENT}
+        )
+        assert indexable["status"] == "ok"
+        refused = _handle_graph(
+            "mnemos_register_project",
+            mgr,
+            {"project_id": "bad", "root": str(tmp_path / "nope"), "agent": AGENT},
+        )
+        assert refused["code"] == "confinement-refused"
 
     def test_index_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
         from vesmaro.mcp_server import _handle_graph

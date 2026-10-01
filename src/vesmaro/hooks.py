@@ -239,6 +239,7 @@ def on_session_start(
     memories = mgr.recall_context(project=project, limit=limit)
     checkpoints: list[dict[str, Any]] = []
     total_redactions = 0
+    total_patterns: dict[str, int] = {}
     for m in memories:
         scan = mgr.scan_issuance(m.effective_content(), context=f"hooks:on_session_start:{m.id}")
         if scan.refused:
@@ -251,6 +252,8 @@ def on_session_start(
         }
         if scan.redactions:
             item["redacted_patterns"] = scan.redacted_patterns
+            for name, count in scan.redacted_patterns.items():
+                total_patterns[name] = total_patterns.get(name, 0) + count
         checkpoints.append(item)
         total_redactions += scan.redactions
 
@@ -272,6 +275,10 @@ def on_session_start(
         "checkpoints": checkpoints,
         "redactions": total_redactions,
     }
+    if total_redactions:
+        # #456: the top-level count carries the merged pattern NAMES
+        # (log-safe per-pattern counts) — never values, never spans.
+        result["redacted_patterns"] = total_patterns
     if include_awareness:
         # C9 (swarm v0a review P2-1, issue #414): on_session_start is a
         # POLLABLE surface — the REST twin lets a harness re-request
