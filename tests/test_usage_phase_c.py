@@ -41,6 +41,7 @@ from vesmaro.metrics.usage import (
     kappa_calibration_pending,
 )
 
+
 #: The frozen pre-registration doc lives in the MASTER library repo, not
 #: in this vendored copy — the pin asserts reachability there.
 def _find_vitals_master() -> Path | None:
