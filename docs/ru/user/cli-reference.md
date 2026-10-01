@@ -84,7 +84,7 @@ VESMARO_LOGGING__LEVEL=DEBUG vesma serve      # 5.x канон
 | `VESMARO_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
 | `VESMARO_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
 | `VESMARO_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |
-| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (mnema-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
+| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
 | `VESMARO_LLM__PROVIDER` | `ollama` | LLM для синтеза и контекстного фильтра |
 | `VESMARO_LLM__MODEL` | `qwen2.5:3b` | Имя LLM-модели |
 | `VESMARO_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |

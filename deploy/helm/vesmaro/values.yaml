@@ -70,7 +70,7 @@ api:
     allowHeaders: [Authorization, Content-Type]
 
 embedding:
-  provider: nano               # mnema-embed-v1 ships in the image, works offline
+  provider: nano               # vesma-embed-v1 ships in the image, works offline
   model: nomic-embed-text      # used when provider=ollama
   ollamaUrl: http://ollama:11434
 

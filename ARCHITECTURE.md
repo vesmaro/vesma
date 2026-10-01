@@ -8,7 +8,7 @@ Mnemos is a single-tenant memory/knowledge service for AI agents (primarily Copi
 
 - **Runtime**: Python 3.11+, FastAPI HTTP API, Typer CLI, MCP server (stdio).
 - **Storage**: SQLite (FTS5) for raw + processing + processed, SQLite + NumPy vector store (`vectors.db`) only for `published` knowledge units, Obsidian-compatible vault on disk for human-readable mirror.
-- **Embeddings**: bundled `mnema-embed-v1` ONNX model (default `nano` provider, shipped at `src/mnemos/models/mnema-embed-v1/`) — privacy + offline, no external vector DB.
+- **Embeddings**: bundled `vesma-embed-v1` ONNX model (default `nano` provider, shipped at `src/mnemos/models/vesma-embed-v1/`) — privacy + offline, no external vector DB.
 - **Packaging**: rootless `podman` container; systemd quadlet units; user-level install option.
 
 ### Conceptual layers
@@ -430,9 +430,9 @@ src/
     recall/              # hybrid recall engine (FTS5 + vector + RRF)
     filter/              # Context Filter (M10)
       pipeline.py        #   5-stage filter: dedup → noise → extract → compress → tokens
-    embeddings/          # embedding providers (bundled mnema-embed-v1 nano)
+    embeddings/          # embedding providers (bundled vesma-embed-v1 nano)
     models/
-      mnema-embed-v1/    # bundled ONNX embedding model (model.onnx, tokenizer.json, manifest.json)
+      vesma-embed-v1/    # bundled ONNX embedding model (model.onnx, tokenizer.json, manifest.json)
     llm/                 # LLM provider abstraction
       base.py            #   provider interface
     metrics/             # vitals metrics sidecar (phase A2: ledger + exposition)

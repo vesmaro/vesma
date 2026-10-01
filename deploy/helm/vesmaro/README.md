@@ -1,6 +1,6 @@
 # vesmaro Helm chart
 
-Deploys the full Vesmaro (Mnemos) memory server — HTTP API + bundled mnema-embed-v1
+Deploys the full Vesmaro (Mnemos) memory server — HTTP API + bundled vesma-embed-v1
 embedder — into any Kubernetes 1.25+ cluster (vanilla K8s, K3s, kind, k0s) behind
 an ingress.
 

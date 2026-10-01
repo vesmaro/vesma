@@ -10,7 +10,7 @@ mnemos:
   data_dir: ~/.mnemos/data
 
 embedding:
-  # mnema-embed-v1: bundled local model, works offline; alternatives: onnx (any HF model), ollama, sentence-transformers
+  # vesma-embed-v1: bundled local model, works offline; alternatives: onnx (any HF model), ollama, sentence-transformers
   provider: nano
   # Alternative: Ollama (CPU works fine for embeddings)
   # provider: ollama

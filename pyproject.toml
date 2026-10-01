@@ -19,7 +19,7 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "pyyaml>=6.0.3",
     "aiosqlite>=0.20",
-    # Vector Search (NM-1c, ADR-0021): the bundled mnema-embed model runs on
+    # Vector Search (NM-1c, ADR-0021): the bundled vesma-embed model runs on
     # onnxruntime directly — chromadb is gone from the runtime. These three
     # were transitive via chromadb before and are now direct deps.
     "onnxruntime>=1.20",

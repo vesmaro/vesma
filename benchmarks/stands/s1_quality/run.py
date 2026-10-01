@@ -150,7 +150,7 @@ def run_model_leg(root: Path) -> dict[str, Any]:
     honest-looking, wrong).
 
     Initialization may still fail (the default since NM-1c is the bundled
-    mnema-embed artifact, but an operator-configured external provider
+    vesma-embed artifact, but an operator-configured external provider
     may fetch weights), so EVERY failure inside the leg (import,
     download, init) converts to the documented SKIP with the concrete
     reason; the deterministic reference measurement in the same

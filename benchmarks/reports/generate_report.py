@@ -160,7 +160,7 @@ def bar_matrix(
     """{model label: {metric: value|None}} for the grouped bar chart.
 
     Sources are honest about what each contour measures:
-    - student (S1m) — the PRODUCTION embedder (mnema-embed-v1) measured by
+    - student (S1m) — the PRODUCTION embedder (vesma-embed-v1) measured by
       the s1 stand (freshest report, else the canonical baseline);
     - teacher / student-onnx / BM25 — the nm1b eval jig legs (recall@5 only).
     """
@@ -464,7 +464,7 @@ def build_markdown(
         analysis: list[str] = []
         if isinstance(student.get("recall@5"), float):
             analysis.append(
-                f"- Production student (S1m, mnema-embed-v1): recall@5 "
+                f"- Production student (S1m, vesma-embed-v1): recall@5 "
                 f"{student['recall@5']:.4f}, MRR {_fmt(student.get('MRR'))}, "
                 f"nDCG@10 {_fmt(student.get('nDCG@10'))}."
             )

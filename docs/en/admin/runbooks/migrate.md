@@ -89,7 +89,7 @@ Notes:
 ## Upgrading across an embedder weights change
 
 When an upgrade ships new bundled embedder weights (e.g. the round-3
-`mnema-embed-v1` swap, `weights_sha256 3b752e06…`), your existing vectors
+`vesma-embed-v1` swap, `weights_sha256 3b752e06…`), your existing vectors
 were produced by the OLD geometry. Nothing needs to be done manually:
 
 1. On upgrade, the background heal sweeper detects every vector whose

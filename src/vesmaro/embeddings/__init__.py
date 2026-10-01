@@ -3,7 +3,7 @@
 Uses local ONNX models by default (privacy + offline).
 
 Providers:
-  - NanoProvider            — the bundled mnema-embed model (default,
+  - NanoProvider            — the bundled vesma-embed model (default,
                               ADR-0021 NM-1: 384d, int8 ONNX, ships in the
                               wheel — zero downloads, zero network)
   - ONNXHubProvider         — any HuggingFace ONNX model
@@ -59,14 +59,24 @@ class EmbeddingProvider(ABC):
         return f"{type(self).__name__}"
 
 
-# ── mnema-embed: the bundled distilled embedder (ADR-0021 NM-1) ───────────────
+# ── vesma-embed: the bundled distilled embedder (ADR-0021 NM-1) ───────────────
 
 #: Bundled artifact directory name (src/mnemos/models/<name>/ inside the
 #: wheel, reachable via importlib.resources). NOTE: ``mnemos/models/`` is a
 #: DATA directory, deliberately NOT a Python package — ``vesmaro.models``
 #: remains the ``models.py`` module; a directory without ``__init__.py``
 #: never shadows it at import time.
-MNEMA_EMBED_MODEL = "mnema-embed-v1"
+#: Renamed from ``mnema-embed-v1`` in the vesma rebrand: the weights are
+#: byte-identical (the store pin is ``nano:sha256:<onnx-hash>`` — a rename
+#: cannot invalidate stored pins), and the old-name directory ships until
+#: 6.0 for the deprecated mnemos-memory-server mirror.
+MNEMA_EMBED_MODEL = "vesma-embed-v1"
+
+#: Pre-6.0 rebrand fallback: bundled name → legacy artifact directory.
+#: If the new-name directory is missing (e.g. a deploy where only the
+#: deprecated mirror shipped the old directory), resolve the legacy
+#: directory instead and warn — the weights there are byte-identical.
+_LEGACY_ARTIFACT_DIRS: dict[str, str] = {"vesma-embed-v1": "mnema-embed-v1"}
 
 #: Static sequence shape of the exported graph (batch 1 x 256 tokens).
 MNEMA_MAX_SEQ = 256
@@ -79,7 +89,7 @@ _OrtTensor = np.ndarray[Any, Any]
 
 
 def _mnema_artifact_dir(model: str) -> Path:
-    """Resolve the artifact directory for a mnema-embed model spec.
+    """Resolve the artifact directory for a vesma-embed model spec.
 
     ``model`` is either (a) a filesystem path to a ``.onnx`` file — the
     tokenizer is then expected as ``tokenizer.json`` next to it — or
@@ -94,7 +104,7 @@ def _mnema_artifact_dir(model: str) -> Path:
         if onnx_path.is_file():
             return onnx_path.parent
         raise FileNotFoundError(
-            f"mnema-embed model not found at {onnx_path!s}; pass a path to "
+            f"vesma-embed model not found at {onnx_path!s}; pass a path to "
             f"an existing .onnx file or a bundled name (default: {MNEMA_EMBED_MODEL!r})"
         )
     name = spec or MNEMA_EMBED_MODEL
@@ -103,14 +113,29 @@ def _mnema_artifact_dir(model: str) -> Path:
         # onnxruntime needs a real file path, so the Traversable is
         # stringified — the wheel/source layouts are real directories.
         return Path(str(bundled))
+    # Rebrand fallback (pre-6.0): the vesma-* directory is missing but the
+    # deprecated mnema-* twin (byte-identical weights) is still bundled —
+    # resolve it so upgraded-but-mixed installs keep working.
+    legacy_name = _LEGACY_ARTIFACT_DIRS.get(name)
+    if legacy_name:
+        legacy = resource_files("vesmaro") / "models" / legacy_name
+        if (legacy / "model.onnx").is_file():
+            logger.warning(
+                "bundled artifact %r not found, falling back to the deprecated "
+                "legacy directory %r (byte-identical weights; the legacy name "
+                "is removed in 6.0)",
+                name,
+                legacy_name,
+            )
+            return Path(str(legacy))
     raise FileNotFoundError(
-        f"mnema-embed artifact {name!r} is not bundled (looked at {bundled!s}); "
+        f"vesma-embed artifact {name!r} is not bundled (looked at {bundled!s}); "
         f"expected model.onnx + tokenizer.json inside it"
     )
 
 
 def mnema_artifact_onnx_path(model: str = "") -> Path:
-    """Path to the resolved mnema-embed ``model.onnx`` (never checks existence).
+    """Path to the resolved vesma-embed ``model.onnx`` (never checks existence).
 
     Shared with the S1m model-contour fingerprint so the provider and the
     gate hash the SAME file for ``weights_sha256``.
@@ -119,7 +144,7 @@ def mnema_artifact_onnx_path(model: str = "") -> Path:
 
 
 def mnema_weights_sha256(model: str = "") -> str:
-    """SHA-256 over the resolved mnema-embed ``model.onnx`` bytes."""
+    """SHA-256 over the resolved vesma-embed ``model.onnx`` bytes."""
     digest = hashlib.sha256()
     with mnema_artifact_onnx_path(model).open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -128,7 +153,7 @@ def mnema_weights_sha256(model: str = "") -> str:
 
 
 class NanoProvider(EmbeddingProvider):
-    """The bundled mnema-embed model (ADR-0021 NM-1; provider key ``nano``).
+    """The bundled vesma-embed model (ADR-0021 NM-1; provider key ``nano``).
 
     Loads the int8-quantized ONNX artifact shipped inside the package
     (``mnemos/models/<name>/``): 384-dim, multilingual (RU+EN), L2-
@@ -173,7 +198,7 @@ class NanoProvider(EmbeddingProvider):
         test = self._infer(["test"])
         self._dim = int(test.shape[-1])
         logger.info(
-            "mnema-embed ready: %s (dim=%d, sha256=%s…)",
+            "vesma-embed ready: %s (dim=%d, sha256=%s…)",
             self.model_name,
             self._dim,
             self.weights_sha256[:12],
@@ -414,7 +439,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
 #: The pre-NM-1c legacy default pair: chromadb + its built-in MiniLM
 #: model. A config carrying BOTH values is the shipped default of an old
-#: install — the factory degrades it wholesale to the bundled mnema-embed
+#: install — the factory degrades it wholesale to the bundled vesma-embed
 #: (review #221 F1: the MiniLM string alone is not a bundled artifact
 #: name, so degrading only the provider crashed NanoProvider with
 #: FileNotFoundError on the resolved artifact).

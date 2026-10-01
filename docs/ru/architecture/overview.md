@@ -49,7 +49,7 @@ MCP-сервер и Obsidian-совместимый vault. Web UI заплани
 │  └────────────────┘  └───────────────┘  └─────────────┘ │
 ├─────────────────────────────────────────────────────────┤
 │                    EMBEDDING                             │
-│ mnema-embed-v1 (встроена) / onnx / Ollama / sentence-tr.│
+│ vesma-embed-v1 (встроена) / onnx / Ollama / sentence-tr.│
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -73,7 +73,7 @@ MCP-сервер и Obsidian-совместимый vault. Web UI заплани
 
 ### 2. Embedding Layer
 
-- **По умолчанию**: `mnema-embed-v1` — встроенная локальная модель (~30 МБ, int8 ONNX, RU+EN, 384d), работает офлайн
+- **По умолчанию**: `vesma-embed-v1` — встроенная локальная модель (~30 МБ, int8 ONNX, RU+EN, 384d), работает офлайн
 - Текущие веса (round 3, 2026-09-09): дистилляция с **Qwen/Qwen3-Embedding-0.6B** (Apache-2.0), `weights_sha256 3b752e06…`, MRL-размерности 64/128/256/384, opset 15; обучающий корпус ~100k пар «текст→вектор учителя», включая 8086 реальных записей стора (RU 41.9%)
 - **Смена эмбеддера отслеживается по «винтажу»**: каждый вектор хранит отпечаток создавшего его эмбеддера (для встроенной модели — `weights_sha256`); векторы чужого отпечатка автоматически переэмбеддятся фоновым heal-свипером, а `vesma doctor` показывает оставшееся количество векторов чужого винтажа
 - **Внешние провайдеры остаются доступны**: `onnx` (любая HF-модель), Ollama, `sentence-transformers`
@@ -348,8 +348,8 @@ mnemos:
   data_dir: ~/.mnemos/data             # векторный индекс + SQLite
 
 embedding:
-  provider: nano                       # nano (mnema-embed-v1, встроена) | onnx | ollama | sentence-transformers
-  model: mnema-embed-v1
+  provider: nano                       # nano (vesma-embed-v1, встроена) | onnx | ollama | sentence-transformers
+  model: vesma-embed-v1
   # ollama_url: http://localhost:11434
 
 search:
@@ -375,7 +375,7 @@ mcp:
 ### Фаза 1 — MVP (реализована)
 - [x] Архитектура и модели данных
 - [x] Core: MemoryManager + SQLite + векторное хранилище (`vectors.db`)
-- [x] Embedding layer (встроенная `mnema-embed-v1`)
+- [x] Embedding layer (встроенная `vesma-embed-v1`)
 - [x] Гибридный поиск
 - [x] CLI (add, search, recall, tags)
 - [x] Obsidian vault sync (read/write)

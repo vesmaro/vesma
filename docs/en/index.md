@@ -16,7 +16,7 @@ Vesma is on **PyPI** (bare slot, ours as of the rebrand):
 pip install vesma
 ```
 
-The default embedding model (`mnema-embed-v1`, ~30 MB) is bundled in the wheel — search works fully offline, on CPU, no API keys, nothing downloaded. Isolated variant: `uv tool install vesma` or `pipx install vesma`.
+The default embedding model (`vesma-embed-v1`, ~30 MB) is bundled in the wheel — search works fully offline, on CPU, no API keys, nothing downloaded. Isolated variant: `uv tool install vesma` or `pipx install vesma`.
 
 > ⚠️ **Names.** The PyPI package is **`vesma`**. The pre-rebrand package `mnemos-memory-server` stays live until deprecation (`pip install mnemos-memory-server` installs the same server). The bare `pip install vesma` is an unrelated third-party project.
 

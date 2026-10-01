@@ -4,7 +4,7 @@
   "corpus_fingerprint": "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1",
   "model_fingerprint": {
     "provider": "nano",
-    "model": "mnema-embed-v1",
+    "model": "vesma-embed-v1",
     "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
     "opset": null
   },
@@ -226,7 +226,7 @@
       "required": false,
       "fingerprint": {
         "provider": "nano",
-        "model": "mnema-embed-v1",
+        "model": "vesma-embed-v1",
         "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
         "opset": null
       },

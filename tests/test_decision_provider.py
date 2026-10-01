@@ -4,7 +4,7 @@ Store card vesmaro-canon-w4b-calibration-baseline (vesmaro-canon
 [ADR 0004](https://github.com/vesmaro/vesmaro-canon/blob/main/docs/decisions/0004-decision-provider.md)):
 the interface dataclasses, the first provider (the engine's existing
 heuristics formalized as-is) and the CORPUS BASELINE PIN — the frozen
-result any future provider (mnema router, Jev adapter) must be measured
+result any future provider (vesma router, Jev adapter) must be measured
 against under the pre-registered methodology
 (``vesmaro-canon/docs/experiments/provider-calibration.md``).
 
@@ -17,7 +17,7 @@ the baseline must be re-run (that is the point). Without the sibling
 serves as the frozen-sha fallback, verified against the same pins.
 
 The embeddings leg is the REAL bundled embedder (NanoProvider /
-mnema-embed-v1, ADR-0021) — the same one the engine's vector leg uses;
+vesma-embed-v1, ADR-0021) — the same one the engine's vector leg uses;
 the embedder fingerprint is pinned in the baseline artifact, and an
 embedder swap (fingerprint change) is a re-baseline event by contract.
 """
@@ -324,7 +324,7 @@ def test_baseline_reproducible_on_corpus(
 ) -> None:
     """The frozen W4b baseline reproduces byte-for-byte on this machine.
 
-    Same corpus pins, same embedder leg (NanoProvider / mnema-embed-v1 —
+    Same corpus pins, same embedder leg (NanoProvider / vesma-embed-v1 —
     the engine's own vector-leg embedder), same streaming policy. A
     failure here means one of the pinned inputs moved: re-run the
     baseline under the pre-registered methodology and re-freeze BOTH

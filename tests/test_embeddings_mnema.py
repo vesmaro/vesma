@@ -1,8 +1,8 @@
-"""NM-1c/NM-1d — NanoProvider: the bundled mnema-embed model (ADR-0021).
+"""NM-1c/NM-1d — NanoProvider: the bundled vesma-embed model (ADR-0021).
 
 Guards the production default:
 
-* the bundled artifact under ``mnemos/models/mnema-embed-v1/`` is complete
+* the bundled artifact under ``mnemos/models/vesma-embed-v1/`` is complete
   and its manifest pins the REAL weights hash (the manifest drifting
   from the shipped bytes would poison every fingerprint consumer);
 * the provider loads from the shipped default config (no config edits
@@ -70,7 +70,7 @@ def test_bundled_artifact_manifest_pins_real_weights() -> None:
 
 
 def test_default_config_builds_nano() -> None:
-    """The shipped default is provider=nano / model=mnema-embed-v1."""
+    """The shipped default is provider=nano / model=vesma-embed-v1."""
     cfg = EmbeddingConfig()
     assert cfg.provider == "nano"
     assert cfg.model == MNEMA_EMBED_MODEL
@@ -140,7 +140,7 @@ def test_legacy_default_pair_migrates_model_too(caplog: pytest.LogCaptureFixture
     default of a pre-NM-1c install. Degrading only the provider used to
     crash NanoProvider with FileNotFoundError (the MiniLM string is not
     a bundled artifact name); the factory must swap the model to the
-    bundled mnema-embed artifact with a loud warning.
+    bundled vesma-embed artifact with a loud warning.
     """
     with caplog.at_level("WARNING", logger="vesmaro.embeddings"):
         built = create_embedding_provider(

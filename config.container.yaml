@@ -4,7 +4,7 @@ mnemos:
   data_dir: /data
 
 embedding:
-  # mnema-embed-v1: bundled local model, works offline; alternatives: onnx (any HF model), ollama, sentence-transformers
+  # vesma-embed-v1: bundled local model, works offline; alternatives: onnx (any HF model), ollama, sentence-transformers
   provider: nano
   # To use Ollama from host/separate container:
   # provider: ollama

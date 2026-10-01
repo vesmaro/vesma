@@ -254,7 +254,7 @@ Vesma использует `config.container.yaml` в качестве конф�
 | `api.auth_enabled` | `true` | Обязательно `true` при `host: 0.0.0.0` |
 | `api.totp_enabled` | `true` | Требует TOTP 2FA; ключ через `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` с 5.x — ADR-0031) |
 | `api.behind_tls_proxy` | `true` | TLS завершается выше по стеку (Caddy, nginx, ingress и т.п.) |
-| `embedding.provider` | `nano` | mnema-embed-v1: встроенная локальная модель, работает офлайн; GPU не требуется |
+| `embedding.provider` | `nano` | vesma-embed-v1: встроенная локальная модель, работает офлайн; GPU не требуется |
 
 ### Требования безопасности
 
@@ -270,7 +270,7 @@ TOTP-мастер-ключ должен передаваться через env-
 
 ### Провайдер эмбеддингов
 
-- **По умолчанию**: `nano` — встроенная локальная ONNX-модель `mnema-embed-v1` (без torch, без GPU, работает офлайн; внешние провайдеры вроде `onnx`/`sentence-transformers` остаются доступны)
+- **По умолчанию**: `nano` — встроенная локальная ONNX-модель `vesma-embed-v1` (без torch, без GPU, работает офлайн; внешние провайдеры вроде `onnx`/`sentence-transformers` остаются доступны)
 - **Ollama sidecar**: задайте `embedding.provider: ollama` и `embedding.ollama_url: http://ollama:11434`
   (см. раздел compose выше)
 

@@ -160,7 +160,7 @@ periodic `on_context_rewrite` events, and checkpoint → new session →
 
 S1 gates the retrieval PIPELINE on the deterministic BLAKE2b reference;
 until NM-0 the PRODUCTION embedder (chromadb's all-MiniLM-L6-v2 ONNX
-back then; the bundled mnema-embed-v1 since NM-1c) was measured by
+back then; the bundled vesma-embed-v1 since NM-1c) was measured by
 nothing — a silent weights substitution passed
 the gate. S1m closes that hole as a separate section of the same
 deterministic run:

@@ -5,7 +5,7 @@ The FIRST implementation of the interface ratified in vesmaro-canon
 a decision provider answers TYPED questions (``Choice`` / ``Score`` /
 ``Noul``) over PREPARED canon state, never raw memory dumps. Three
 implementations are planned on this one interface — deterministic
-engine heuristics (this module, now), a local mnema router (goal,
+engine heuristics (this module, now), a local vesma router (goal,
 local-first) and an opt-in external Jev adapter (owner flag + key,
 off by default forever).
 
@@ -399,7 +399,7 @@ def run_streaming_baseline(
     alone. The first record has no prior → its is-duplicate verdict is
     ``None`` (not askable), never a fabricated answer.
 
-    Every provider — mnema, Jev — is measured with THIS runner on the
+    Every provider — vesma, Jev — is measured with THIS runner on the
     same corpus and similarity leg; only the provider argument changes.
     That is the calibration contract: the comparison is like-for-like
     by construction.

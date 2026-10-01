@@ -6,7 +6,7 @@
 
 Historically this runbook tracked the ignored `CVE-2026-45829` in `chromadb` (no upstream fix).
 Since NM-1c (ADR-0021) chromadb is **removed from the runtime** — replaced by the bundled
-`mnema-embed-v1` local model — and its CVEs left with it. The runbook stays for what is still
+`vesma-embed-v1` local model — and its CVEs left with it. The runbook stays for what is still
 true: the direct-pin policy for vulnerable transitives and the weekly audit check.
 
 ## Pinning policy (M15.5.1)
@@ -24,7 +24,7 @@ Vesma uses **direct pins** for vulnerable transitives rather than bumping parent
 - **`pip` 26.1.2** — upgrade via `pip install --upgrade pip` after venv recreate.
   Fixes PYSEC-2026-196. `pip` is a tool, not a project dep, so it is not in `pyproject.toml`.
 
-- **`chromadb`** — removed from the runtime in NM-1c (ADR-0021): the bundled `mnema-embed-v1`
+- **`chromadb`** — removed from the runtime in NM-1c (ADR-0021): the bundled `vesma-embed-v1`
   model runs on `onnxruntime` directly. Nothing to bump anymore; kept here as decision history.
 
 When adding a new pin: include a one-line comment in `pyproject.toml` with the CVE id and

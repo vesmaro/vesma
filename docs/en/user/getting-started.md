@@ -22,7 +22,7 @@ Vesma ships on PyPI as **`vesma`** (the bare slot is ours as of the rebrand). Pi
 
 > **One package, nothing extra.** Since 4.1.0 the MCP SDK is a core dependency (ADR-0023) — the base
 > install serves agent harnesses out of the box, and the legacy `[mcp]` extra survives as an empty
-> no-op alias so older commands and snippets keep resolving. The `mnema-embed-v1` embedding model
+> no-op alias so older commands and snippets keep resolving. The `vesma-embed-v1` embedding model
 > (~30 MB) is bundled inside the wheel: search works fully offline, on CPU, with no downloads and
 > no API keys.
 
@@ -111,7 +111,7 @@ The default provider is `ollama` pointing at `http://localhost:11434`. See [conf
 
 > **OS notes.** Vesma is developed on Linux (Arch, Fedora, Ubuntu 22.04+) and is regularly smoke-tested on macOS. Windows works through WSL2. The systemd unit in `contrib/systemd/` is Linux-only.
 
-> **Hardware.** The bundled `mnema-embed-v1` runs comfortably on a single CPU core. No GPU. A 2 vCPU / 2 GB VM is enough for personal use.
+> **Hardware.** The bundled `vesma-embed-v1` runs comfortably on a single CPU core. No GPU. A 2 vCPU / 2 GB VM is enough for personal use.
 
 ---
 
@@ -301,7 +301,7 @@ Vesma reads `config.yaml` from the current directory or `~/.mnemos/config.yaml`.
 | `mnemos.data_dir` | `~/.mnemos/data` | SQLite store + vector index |
 | `mnemos.vault_path` | `~/.mnemos/vault` | Obsidian mirror |
 | `mnemos.strict_tag_contract` | `true` | Enforce the tag contract (set `false` only for legacy imports) |
-| `embedding.provider` | `nano` | `nano` (mnema-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
+| `embedding.provider` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Weight of the vector leg in RRF (0.0 = pure FTS, 1.0 = pure vector). Default re-tuned 0.7 → 0.5: leg balance stops vector dominance from drowning FTS-rank-1 matches (issue #300) |
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | `vesma serve` defaults |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis & context filter |

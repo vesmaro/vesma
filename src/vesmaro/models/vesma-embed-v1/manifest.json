@@ -1,0 +1,17 @@
+{
+  "name": "vesma-embed-v1",
+  "version": "1.1.0",
+  "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
+  "dimensions": 384,
+  "max_seq": 256,
+  "created": "2026-09-09T07:08:18+00:00",
+  "license": "Apache-2.0 (teacher Qwen/Qwen3-Embedding-0.6B)",
+  "base_teacher": "Qwen/Qwen3-Embedding-0.6B",
+  "student_name": "epoch3",
+  "student_params": 30298320,
+  "source_checkpoint": "training/runs/nm1b-r3/epoch3",
+  "dataset_fingerprint": "b27f8cf0afb09d1ea54369870caa20bee1dc2964e01eee2f95ccdc931e4f0e69",
+  "mrl_dims": [64, 128, 256, 384],
+  "opset": 15,
+  "quantized": true
+}

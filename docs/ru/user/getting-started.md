@@ -29,7 +29,7 @@ Vesma опубликован на PyPI пакетом **`vesma`** (голый с
 > **Один пакет, без экстры.** Начиная с 4.1.0 MCP SDK — основная зависимость (ADR-0023):
 > базовая установка обслуживает агентские харнесы из коробки, а легасная экстра `[mcp]`
 > осталась пустым no-op-алиасом, чтобы старые команды и сниппеты продолжали работать.
-> Модель эмбеддингов `mnema-embed-v1` (~30 МБ) встроена в wheel: поиск работает полностью
+> Модель эмбеддингов `vesma-embed-v1` (~30 МБ) встроена в wheel: поиск работает полностью
 > офлайн, на CPU, без загрузок и без API-ключей.
 
 > ⚠️ **Имена.** Продукт и CLI — `vesma` (`pip install vesma`). Доребрендинговый пакет
@@ -123,7 +123,7 @@ uv pip install "vesma[gemini]"      # Google Gemini
 > и регулярно проходит smoke-тест на macOS. Windows работает через WSL2. Юнит systemd
 > в `contrib/systemd/` — только для Linux.
 
-> **Железо.** Встроенная `mnema-embed-v1` комфортно работает на одном ядре CPU.
+> **Железо.** Встроенная `vesma-embed-v1` комфортно работает на одном ядре CPU.
 > GPU не требуется. VM с 2 vCPU / 2 ГБ ОЗУ достаточно для личного использования.
 
 ---
@@ -344,7 +344,7 @@ Vesma читает `config.yaml` из текущего каталога или `
 | `mnemos.data_dir` | `~/.mnemos/data` | Хранилище SQLite + векторный индекс |
 | `mnemos.vault_path` | `~/.mnemos/vault` | Зеркало Obsidian |
 | `mnemos.strict_tag_contract` | `true` | Принуждать контракт тегов (`false` — только для легаси-импортов) |
-| `embedding.provider` | `nano` | `nano` (mnema-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
+| `embedding.provider` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Вес векторной ноги в RRF (0.0 = чистый FTS, 1.0 = чистый вектор). Дефолт перенастроен 0.7 → 0.5: баланс ног не даёт доминированию векторной ноги топить FTS-совпадения ранга 1 (issue #300) |
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | Значения по умолчанию для `vesma serve` |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Синтез конвейера и контекстный фильтр |

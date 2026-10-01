@@ -210,8 +210,8 @@ flowchart TD
     E0["#252 · E0-предрегистрация эксперимента<br/>(A/B/B0 + H5 каскад + D1–D4 awareness)<br/>ДО первого прогона — анти-HARKing"]
     E1["#253 · E1-спайк lanes за флагом<br/>LanesConfig default-off<br/>(+ cascade-ready/awareness-ready контракты)"]
     AWR["#254 · awareness v0<br/>(presence+delta+hints, per-agent слот)"]
-    NM3a["#223 · NM-3a · mnema-refine<br/>(критический путь ноги C — pi)"]
-    C1["Нога C1 · свёртка сессий<br/>(после smoke-валидации mnema-refine)"]
+    NM3a["#223 · NM-3a · vesma-refine<br/>(критический путь ноги C — pi)"]
+    C1["Нога C1 · свёртка сессий<br/>(после smoke-валидации vesma-refine)"]
     E2["E2 · расширение корпуса<br/>(G-gov/G-neg, мульти-сессионная страта,<br/>канары, G-poison)"]
     E3["E3 · прогоны A/B/B0 + C + D<br/>→ вердикт в АрхКом"]
     D1["D1∥C2 · awareness-эксперимент<br/>параллельно проектной свёртке"]
@@ -372,7 +372,7 @@ default-off; ничего не ломает прод.
   запроса + surplus-пул замены), G-neg 24, мульти-сессии 80–100 сценариев,
   200 канарок, 40 stale-claims, G-poison; распределение-согласованный
   профиль (58% чекпоинтов ±2pp); re-baseline по ADR-0020 в том же PR;
-  для C-ног — smoke-валидация mnema-refine [#223](https://github.com/vesmaro/vesmaro/issues/223)
+  для C-ног — smoke-валидация vesma-refine [#223](https://github.com/vesmaro/vesmaro/issues/223)
   (pi); для D-ноги — awareness v0 [#254](https://github.com/vesmaro/vesmaro/issues/254)
   (требует green-light interleave владельца).
 - **Форвард-ноты ревью E1** (в каноне lanes.py): collapse_level/delta-slot —
@@ -431,7 +431,7 @@ fail-closed, never-pinnable + born no-federate, федеративное иск�
   (`e3-lanes-56c568297ad6`; D-runner + type-2 40→80 —
   [PR #294](https://github.com/vesmaro/vesmaro/pull/294), run-ledger —
   [PR #296](https://github.com/vesmaro/vesmaro/pull/296)). Ноги C1/D НЕ
-  гонялись: C1 — за smoke mnema-refine
+  гонялись: C1 — за smoke vesma-refine
   [#223](https://github.com/vesmaro/vesmaro/issues/223); D-раннер готов,
   прогон D-ноги — за нейро-треком (D-behavioral, главный эксперимент);
   факториалы B×C1 и B×D сняты с повестки фальсификацией lanes.

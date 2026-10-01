@@ -195,13 +195,15 @@ class LoggingConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    # NM-1c (ADR-0021): the bundled mnema-embed model is the default.
+    # NM-1c (ADR-0021): the bundled vesma-embed model is the default.
     # Legacy values ("chromadb"/"chroma"/"default") migrate to nano with a
     # deprecation warning; quality-first operators can switch to "onnx".
     provider: str = "nano"  # nano | onnx | ollama | sentence-transformers
     # nano: bundled artifact name under mnemos/models/, or a filesystem path
-    # to a .onnx file; onnx/st: HF model ID.
-    model: str = "mnema-embed-v1"
+    # to a .onnx file; onnx/st: HF model ID. Renamed from "mnema-embed-v1"
+    # in the vesma rebrand (weights byte-identical; old name resolved as a
+    # deprecated fallback until 6.0).
+    model: str = "vesma-embed-v1"
     onnx_file: str = "onnx/model.onnx"  # ONNX filename within HF repo
     ollama_url: str = "http://localhost:11434"
     # M15.2: pin HF Hub downloads to a specific revision to mitigate supply-chain

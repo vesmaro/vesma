@@ -5,7 +5,7 @@ its corridors stay the single source for pipeline mechanics forever
 (ADR-0021, "replacing the BLAKE2b S1 reference" rejected). S1m pins the
 THING THAT EMBEDS: the SAME judged corpus and the SAME golden queries,
 run through the PRODUCTION embedder (the provider the shipped default
-config builds — since NM-1c the bundled mnema-embed ONNX artifact),
+config builds — since NM-1c the bundled vesma-embed ONNX artifact),
 measuring the semantic retrieval quality of that model:
 
     recall@k, precision@k (k ∈ {5, 10}), MRR, nDCG@k
@@ -80,7 +80,7 @@ def build_production_embedder() -> Any:
     """Build the production embedder, or raise (→ the skip path).
 
     Construction initializes the ONNX runtime session over the bundled
-    mnema-embed artifact — callers keep this inside the skip guard.
+    vesma-embed artifact — callers keep this inside the skip guard.
     """
     from mnemos.embeddings import create_embedding_provider
 
@@ -122,7 +122,7 @@ def _onnx_opset(onnx_path: Path) -> int | None:
 
 
 def _mnema_fingerprint(provider: str, model: str) -> dict[str, Any] | None:
-    """Fingerprint the mnema-embed model's local ONNX artifact.
+    """Fingerprint the vesma-embed model's local ONNX artifact.
 
     The hash is over the REAL resolved ``model.onnx`` (bundled artifact or
     the explicit path from ``EmbeddingConfig.model``) — a weights swap on
@@ -168,7 +168,7 @@ def model_fingerprint() -> dict[str, Any] | None:
         # embedder, or every legacy-config gate run would false-RED on the
         # provider field alone. The legacy default MODEL degrades with it
         # (review #221 F1): the factory swaps it for the bundled
-        # mnema-embed artifact, so the fingerprint must record that swap.
+        # vesma-embed artifact, so the fingerprint must record that swap.
         provider = "nano"
         try:
             from mnemos.embeddings import MNEMA_EMBED_MODEL

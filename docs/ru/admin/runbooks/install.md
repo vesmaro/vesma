@@ -15,7 +15,7 @@ pip install vesma
 ```
 
 - MCP-сервер входит в базовый пакет — `vesma mcp-server` работает из коробки (ADR-0023).
-- Модель эмбеддингов (`mnema-embed-v1`) встроена: без скачиваний, работает офлайн.
+- Модель эмбеддингов (`vesma-embed-v1`) встроена: без скачиваний, работает офлайн.
 
 Изолированный вариант (кладёт CLI `vesma` в `PATH`, проектные окружения не затрагиваются):
 
@@ -47,7 +47,7 @@ mnemos:
   vault_path: ~/.mnemos/vault
   strict_tag_contract: true
 embedding:
-  provider: nano  # mnema-embed-v1 — встроенная локальная модель, работает офлайн; или onnx, ollama
+  provider: nano  # vesma-embed-v1 — встроенная локальная модель, работает офлайн; или onnx, ollama
 ```
 
 Хранилище: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Зеркало vault:

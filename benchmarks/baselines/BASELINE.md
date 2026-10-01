@@ -8,7 +8,7 @@
 - **stand_version:** s1-1
 - **corpus_fingerprint:** `c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1`
 - **created:** 2026-09-15T07:52:50+00:00
-- **model_fingerprint (production embedder):** `nano mnema-embed-v1 sha256:3b752e0671a5…`
+- **model_fingerprint (production embedder):** `nano vesma-embed-v1 sha256:3b752e0671a5…`
   - full weights sha256: `3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba`
 - **environment:** python 3.12.13, deterministic_embedder=True (BLAKE2b lexical — pins the retrieval PIPELINE, not MiniLM)
 
@@ -104,7 +104,7 @@ Delta (current - pre-A9) recall@10: **+0.0122**
 | ndcg@5 | 0.8994 | — |
 | ndcg@10 | 0.9117 | — |
 | judged queries | 191 | — |
-- embedder: `nano mnema-embed-v1 sha256:3b752e0671a5…`, dim 384, arch x86_64
+- embedder: `nano vesma-embed-v1 sha256:3b752e0671a5…`, dim 384, arch x86_64
 
 ## 11. Gate corridors (derived from THIS baseline)
 

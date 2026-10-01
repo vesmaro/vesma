@@ -84,7 +84,7 @@ All settings are env-overridable via the `VESMARO_` prefix (the canonical 5.x na
 | `VESMARO_API__HOST` | `127.0.0.1` | Default for `vesma serve` |
 | `VESMARO_API__PORT` | `8787` | Default for `vesma serve` |
 | `VESMARO_SEARCH__HYBRID_ALPHA` | `0.5` | Vector weight in RRF fusion |
-| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (mnema-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
+| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
 | `VESMARO_LLM__PROVIDER` | `ollama` | LLM for synthesis + context filter |
 | `VESMARO_LLM__MODEL` | `qwen2.5:3b` | LLM model name |
 | `VESMARO_AUTO_COLLECT` | `0` | Set `1` to enable MCP auto-collect mode |
