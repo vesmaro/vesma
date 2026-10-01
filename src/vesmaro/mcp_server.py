@@ -44,6 +44,7 @@ from mcp.types import (
 from vesmaro import __version__
 from vesmaro.config import load_settings
 from vesmaro.context_rewrite import ContextRewriteRateLimitError
+from vesmaro.heartbeat import native_heartbeat_tail
 from vesmaro.hooks import HOOK_ACTIONS, dispatch_hook
 from vesmaro.models import (
     CHECKPOINT_FIELDS,
@@ -2064,13 +2065,19 @@ async def _known_tool_names() -> frozenset[str]:
 
 
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    """Time one MCP tool call and record it as a verb (A2 boundary #1).
+    """Time one MCP tool call, record it as a verb, attach the heartbeat.
 
     Thin shell over :func:`_call_tool_dispatch` — every tool, including
     ``mnemos_assemble_context``, lands in the verb ledger here (the
     assemble row is a SEPARATE plane written inside the assemble
     handler: ledger says who/what/how-long, the domain table says what
     was assembled — two planes of fact, not double counting).
+
+    W2a (ADR-0035): this is also the SINGLE injection point of the
+    native awareness heartbeat — one appended ``TextContent`` after the
+    handler (canary/on modes only; ``off``/``shadow`` leave the response
+    bytes untouched). The heartbeat glue never raises and never alters
+    the dispatch result.
     """
     import time as _time
 
@@ -2093,6 +2100,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             status="ok",
             latency_ms=(_time.monotonic() - t0) * 1000,
         )
+    # W2a (ADR-0035): native awareness heartbeat — the single injection
+    # point. Returns the tail text (canary/on) or None (off / shadow /
+    # suppressed); never raises, never touches `result` bytes. The
+    # TextContent lives HERE — ADR-0023 keeps the mcp SDK inside this
+    # module only.
+    heartbeat_text = native_heartbeat_tail(_canonicalize_tool_name(name), arguments)
+    if heartbeat_text is not None:
+        result = [*result, TextContent(type="text", text=heartbeat_text)]
     return result
 
 

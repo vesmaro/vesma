@@ -213,11 +213,14 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
+from vesmaro.filter.pipeline import estimate_tokens
 from vesmaro.lanes import (
     Lane,
     assert_foreign_lanes_tail_only,
     read_awareness_cursor,
+    read_awareness_heartbeat_cursor,
     write_awareness_cursor,
+    write_awareness_heartbeat_cursor,
 )
 from vesmaro.models import (
     CANON_LANGUAGES,
@@ -1592,6 +1595,416 @@ def pre_flight_snapshot(
         "text": text,
         "disclaimer": AWARENESS_DISCLAIMER,
         "cursor_advanced": False,
+    }
+
+
+# ── Native heartbeat (ADR-0035 W2a wave 0 — shadow) ───────────────────────────
+
+
+#: The addendum's deterministic calm-line — the ONE line an empty delta
+#: renders at canary/on (~10 tokens, NO timestamp: a timestamp would make
+#: "quiet" non-deterministic and defeat the literal CI pin; the
+#: :data:`PICTURE_RATE_LIMITED_LINE` precedent of a server constant that
+#: turns an absent signal into a positive one — "quiet" is no longer
+#: indistinguishable from "the eye is off"). PINNED LITERAL — do not
+#: reword without moving the CI pin with it.
+HEARTBEAT_CALM_LINE: Final[str] = "## Peer awareness — no new peer activity"
+
+#: Hard token ceiling of the delivery envelope (the addendum's "fixed
+#: volume" = a constant CEILING, never byte equality — padding cuts
+#: signal). Enforced by greedy line truncation with an observable
+#: "(+N more peers not shown)" marker; the ceiling is the invariant, the
+#: ≤8 agent lines are the maximum, not a promise.
+HEARTBEAT_ENVELOPE_TOKEN_CEILING: Final[int] = 120
+
+#: Rendered agent-id cap (C11 sanitization bound; real agent ids are
+#: slug-shaped and far shorter — the cap only bounds the adversarial
+#: worst case inside the ceiling).
+HEARTBEAT_AGENT_ID_MAX_CHARS: Final[int] = 24
+
+#: Rendered project-slug cap (cascade SEC-1: the client-supplied
+#: ``project`` argument rides the envelope header, the event rows and
+#: the rate-ledger keys — same C11 bound, project-sized).
+HEARTBEAT_PROJECT_ID_MAX_CHARS: Final[int] = 64
+
+#: The exactly-one server-side action flag line (C11) — DESCRIPTIVE
+#: ONLY: it states where peer detail lives, carries no directive
+#: lexicon ("urgent", "act now"), no policy semantics, nothing pinnable.
+HEARTBEAT_FLAG_LINE: Final[str] = "peer details are available through the mnemos_awareness tool"
+
+#: C11 sanitization: everything outside Unicode word characters, dot,
+#: underscore and hyphen collapses to ``_`` — no markdown syntax, no
+#: control characters, no whitespace runs can ride a peer id into the
+#: unsolicited tail (client-supplied text is a CWE-74 / OWASP LLM01
+#: vector and does not travel verbatim).
+_HEARTBEAT_AGENT_ID_STRIP_RE: Final[re.Pattern[str]] = re.compile(r"[^\w.\-]", re.UNICODE)
+
+#: C14 heartbeat rate ledger — same shape as :data:`_PICTURE_RATE_LEDGER`
+#: but a SEPARATE ledger: heartbeat deliveries must not consume the
+#: picture-query budget (two surfaces, two caps, one key discipline —
+#: ``(project, agent)``, never session).
+_HEARTBEAT_RATE_LEDGER: weakref.WeakKeyDictionary[
+    MemoryManager, dict[tuple[str, str], deque[datetime]]
+] = weakref.WeakKeyDictionary()
+_HEARTBEAT_RATE_LEDGER_ALT: dict[tuple[str, str], deque[datetime]] = {}
+_HEARTBEAT_RATE_MUTEX: threading.Lock = threading.Lock()
+
+
+def _heartbeat_rate_limit(mgr: MemoryManager) -> int:
+    """Effective heartbeat cap from settings (0 = off), defensive read."""
+    awr_cfg = getattr(getattr(mgr, "settings", None), "awareness", None)
+    return int(getattr(awr_cfg, "heartbeat_rate_limit_per_minute", 30))
+
+
+def _heartbeat_rate_refused(
+    mgr: MemoryManager, *, project: str, agent: str, now_dt: datetime
+) -> bool:
+    """Admit ONE heartbeat composition under the C14 cap, or refuse it.
+
+    The :func:`_picture_rate_refused` semantics verbatim: refused
+    compositions consume no quota (a live caller is never locked out),
+    the window is a 60 s slide, the key is ``(project, agent)`` with NO
+    session (C14: session churn must not reopen the window). Refusal
+    suppresses the tail with an event — never an error, never a shape
+    break.
+    """
+    limit = _heartbeat_rate_limit(mgr)
+    if limit <= 0:
+        return False
+    window_start = now_dt - timedelta(minutes=1)
+    key = (project, agent)
+    with _HEARTBEAT_RATE_MUTEX:
+        ledger = _HEARTBEAT_RATE_LEDGER.get(mgr)
+        if ledger is None:
+            ledger = {}
+            try:
+                _HEARTBEAT_RATE_LEDGER[mgr] = ledger
+            except TypeError:  # pragma: no cover — non-weakref-able manager
+                ledger = _HEARTBEAT_RATE_LEDGER_ALT
+        stamps = ledger.get(key)
+        if stamps is not None:
+            while stamps and stamps[0] <= window_start:
+                stamps.popleft()
+            if len(stamps) >= limit:
+                logger.warning(
+                    "awareness heartbeat: C14 rate cap fired project=%s agent=%s "
+                    "queries=%d limit=%d/min — suppressing the tail",
+                    project,
+                    agent,
+                    len(stamps),
+                    limit,
+                )
+                return True
+        ledger.setdefault(key, deque()).append(now_dt)
+        return False
+
+
+def _sanitize_agent_id(agent: str) -> str:
+    """C11 render-side sanitization of one peer agent id.
+
+    Control characters, whitespace runs and every markdown-significant
+    character collapse to ``_``; the result is capped to
+    :data:`HEARTBEAT_AGENT_ID_MAX_CHARS` and never empty (a fully
+    hostile id degrades to ``peer``, the observed line survives).
+    """
+    collapsed = " ".join(agent.split())
+    cleaned = _HEARTBEAT_AGENT_ID_STRIP_RE.sub("_", collapsed)
+    trimmed = cleaned.strip("._-") or "peer"
+    return trimmed[:HEARTBEAT_AGENT_ID_MAX_CHARS]
+
+
+def sanitize_project_id(project: str) -> str:
+    """C11 sanitization of the client-supplied project slug.
+
+    Cascade-review SEC-1 (fix-first): the raw ``project`` argument
+    echoed into the unsolicited envelope header (and the event rows /
+    ledger keys via :func:`vesmaro.heartbeat._identity`) is
+    client-supplied text — the same CWE-74 / OWASP LLM01 class the
+    agent-id sanitizer exists to close. Same pipeline, project-sized
+    cap; a fully hostile slug degrades to ``project``.
+    """
+    collapsed = " ".join(project.split())
+    cleaned = _HEARTBEAT_AGENT_ID_STRIP_RE.sub("_", collapsed)
+    trimmed = cleaned.strip("._-") or "project"
+    # Lowercase: the store's project/tag contract is ^[a-z0-9_-]{1,64}$
+    # — an uppercase residue would mint a cursor/ledger key that can
+    # never correspond to a real stored project.
+    return trimmed[:HEARTBEAT_PROJECT_ID_MAX_CHARS].lower()
+
+
+def _compact_seen(iso: str) -> str:
+    """Minute-precision UTC rendering of a ``last_seen`` ISO stamp.
+
+    Envelope lines pay the token ceiling: seconds/microseconds and the
+    offset suffix buy nothing a minute cannot say. Deterministic pure
+    function of the input — a naive stamp is read as UTC (the
+    ``_parse_since`` rule: the store writes UTC), never as host-local
+    time; an unparseable stamp degrades to a truncated literal (never
+    raises — the envelope is a render, not a parser).
+    """
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso[:17]
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%MZ")
+
+
+def _heartbeat_agent_line(slot: dict[str, Any]) -> str:
+    """One envelope line per peer — OBSERVED ONLY (C11): sanitized agent
+    id, entry count, compact last-seen. No goal text, no record ids, no
+    scores (the ORDER is the relevance signal and carries no numbers)."""
+    return (
+        f"- {_sanitize_agent_id(str(slot['agent']))}: {slot['entries']} entries, "
+        f"last {_compact_seen(str(slot['last_seen']))}"
+    )
+
+
+def _heartbeat_order(slots: list[dict[str, Any]], *, my_goal: str | None) -> list[dict[str, Any]]:
+    """Deterministic v1 relevance ordering of the delta slots (addendum §2).
+
+    Server-side data only: my-goal lexical token overlap (the
+    :func:`conflict_hints` generalization) → checkpoint presence (the
+    record-type leg: a server-stamped checkpoint carries more signal
+    than a bare write) → recency → agent id. The tail carries the ORDER
+    ONLY — a numeric score in the response would turn goal-rewriting
+    into a binary-search oracle over peer content (Security finding),
+    so the key exists here and never leaves this function. Ties break
+    fully deterministically (agent id ascending).
+    """
+    mine = _goal_tokens(my_goal) if my_goal else frozenset()
+
+    def _overlap(slot: dict[str, Any]) -> int:
+        title = slot.get("goal_title")
+        if not mine or not title:
+            return 0
+        return len(mine & _goal_tokens(str(title)))
+
+    ordered = list(slots)
+    ordered.sort(key=lambda s: str(s["agent"]))
+    ordered.sort(key=lambda s: str(s["last_seen"]), reverse=True)
+    ordered.sort(key=lambda s: 0 if s.get("last_checkpoint_id") else 1)
+    ordered.sort(key=lambda s: -_overlap(s))
+    return ordered
+
+
+def render_heartbeat_envelope(delta: dict[str, Any], *, my_goal: str | None) -> str:
+    """Render the fixed-CEILING delivery envelope (canary/on shape).
+
+    Header + the R3 disclaimer verbatim + at most
+    :data:`AWARENESS_MAX_RENDERED_AGENTS` observed lines in relevance
+    order (:func:`_heartbeat_order`) + the flag line — the whole block
+    never exceeds :data:`HEARTBEAT_ENVELOPE_TOKEN_CEILING` tokens by
+    greedy truncation with an observable ``(+N more peers not shown)``
+    marker when peers were cut. An empty-after-filter delta renders as
+    ``""`` (the calm-line is the caller's decision, not the envelope's).
+    """
+    slots = _heartbeat_order(delta.get("agents", []), my_goal=my_goal)
+    if not slots:
+        return ""
+    header = f"## Peer awareness — heartbeat (project {sanitize_project_id(str(delta['project']))})"
+    fixed = [header, AWARENESS_DISCLAIMER]
+
+    def _fits(body: list[str], *extra: str) -> bool:
+        return estimate_tokens("\n".join([*fixed, *body, *extra, HEARTBEAT_FLAG_LINE])) <= (
+            HEARTBEAT_ENVELOPE_TOKEN_CEILING
+        )
+
+    body: list[str] = []
+    for slot in slots[:AWARENESS_MAX_RENDERED_AGENTS]:
+        line = _heartbeat_agent_line(slot)
+        if not _fits([*body, line]):
+            break
+        body.append(line)
+    hidden = len(slots) - len(body)
+    marker = f"(+{hidden} more peers not shown)" if hidden > 0 else None
+    if marker is not None and not _fits(body, marker):
+        marker = None  # the ceiling wins; the cut stays observable via events/meta
+    out = [*fixed]
+    if body or marker:
+        out.append("")
+        out.extend(body)
+        if marker is not None:
+            out.append(marker)
+    out.append(HEARTBEAT_FLAG_LINE)
+    return "\n".join(out)
+
+
+def compose_heartbeat(
+    mgr: MemoryManager,
+    *,
+    project: str,
+    agent: str,
+    tool: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """The native heartbeat contour (ADR-0035): probe → compose → advance.
+
+    A clone of the :func:`compose_pre_llm_awareness` contour (read →
+    clamp → delta → render → advance) specialized for the doorbell
+    delivery, with the C12 probe in front of the expensive leg:
+
+    * rate cap (C14, ``(project, agent)``, no session) — refusal
+      suppresses with a ``heartbeat_suppressed{rate_cap}`` event;
+    * the sub-millisecond :meth:`SQLiteStore.exists_since` probe — no
+      rows beyond the cursor → the calm state WITHOUT composing (the
+      common case costs one index-only EXISTS); a probe failure
+      suppresses with a warning + ``heartbeat_suppressed{probe_error}``
+      and never touches the tool call it rides;
+    * delta + envelope render (observed-only, ORDER-only relevance,
+      fixed ceiling) with the caller's own writes excluded;
+    * cursor advance STRICTLY BEFORE the return (at-most-once delivery
+      — at-least-once is impossible in request-response, accepted),
+      identity-logged per C14. Even a filtered-to-empty delta advances
+      past the caller's own rows so the probe does not re-fire on them.
+
+    The MODE ladder (off/shadow/canary/on) is the CALLER's business —
+    this function always composes the honest would-be tail (shadow
+    measures exactly what canary would deliver) and returns it as
+    ``text`` with an ``events`` list of ``(kind, meta)`` pairs for the
+    wrapper to persist; only the wrapper decides whether a TextContent
+    is appended. Never raises for probe/compose failures (suppression
+    is data); ``ValueError`` for a malformed identity is a caller bug.
+    """
+    project = _require_project(project)
+    if not isinstance(agent, str) or not agent.strip():
+        raise ValueError("agent is required and must be a non-empty string")
+    now_dt = _now_or(now)
+    base: dict[str, Any] = {"project": project, "agent": agent, "generated_at": now_dt.isoformat()}
+
+    if _heartbeat_rate_refused(mgr, project=project, agent=agent, now_dt=now_dt):
+        return {
+            **base,
+            "state": "suppressed",
+            "reason": "rate_cap",
+            "text": "",
+            "lines": 0,
+            "tokens_est": 0,
+            "cursor_before": None,
+            "cursor_after": None,
+            "events": [
+                ("heartbeat_suppressed", {"reason": "rate_cap", **({"tool": tool} if tool else {})})
+            ],
+        }
+
+    cursor = read_awareness_heartbeat_cursor(mgr, project=project, agent=agent)
+    since_dt = _resolve_since(cursor, now_dt)
+
+    # C12: the cheap gate. Anything raising here is a store-level fault —
+    # suppress the heartbeat, warn loudly, count it; the tool call itself
+    # is never touched (the wrapper's contract).
+    try:
+        has_rows = mgr.sqlite.exists_since(project, since_dt.isoformat())
+    except Exception as exc:
+        logger.warning(
+            "awareness heartbeat: delta probe failed project=%s agent=%s (%s: %s)"
+            " — tail suppressed, tool call untouched",
+            project,
+            agent,
+            type(exc).__name__,
+            exc,
+        )
+        return {
+            **base,
+            "state": "suppressed",
+            "reason": "probe_error",
+            "text": "",
+            "lines": 0,
+            "tokens_est": 0,
+            "cursor_before": cursor,
+            "cursor_after": cursor,
+            "events": [
+                (
+                    "heartbeat_suppressed",
+                    {"reason": "probe_error", **({"tool": tool} if tool else {})},
+                )
+            ],
+        }
+
+    if not has_rows:
+        tokens = estimate_tokens(HEARTBEAT_CALM_LINE)
+        return {
+            **base,
+            "state": "calm",
+            "text": HEARTBEAT_CALM_LINE,
+            "lines": 1,
+            "tokens_est": tokens,
+            "cursor_before": cursor,
+            "cursor_after": cursor,
+            "agents": [],
+            "events": [
+                (
+                    "heartbeat_delivery",
+                    {
+                        "state": "calm",
+                        "lines": 1,
+                        "tokens_est": tokens,
+                        "cursor_before": cursor,
+                        "cursor_after": cursor,
+                        **({"tool": tool} if tool else {}),
+                    },
+                )
+            ],
+        }
+
+    delta = project_delta(
+        mgr, project=project, since=since_dt.isoformat(), exclude_agent=agent, now=now_dt
+    )
+    my_goal = _my_goal(mgr, project=project, agent=agent)
+    envelope = render_heartbeat_envelope(delta, my_goal=my_goal)
+
+    # Advance BEFORE anything else the caller does with the result —
+    # at-most-once delivery (C14). High-water comes from the SAME feed
+    # the delta consumed (the compose_pre_llm_awareness review-P2 rule).
+    high_water = _parse_since(delta["counts"]["high_water"])
+    new_cursor = (high_water + timedelta(microseconds=1)).isoformat()
+    write_awareness_heartbeat_cursor(mgr, project=project, agent=agent, cursor=new_cursor)
+    logger.info(
+        "awareness heartbeat: cursor advanced project=%s agent=%s cursor %s -> %s",
+        project,
+        agent,
+        cursor,
+        new_cursor,
+    )
+
+    if envelope:
+        state = "delta"
+        text = envelope
+    else:
+        # Rows existed but all were the caller's own (agent post-filter):
+        # consumed and quiet — the calm-line, with the cursor moved past
+        # the self-writes so the probe stops re-firing on them.
+        state = "calm"
+        text = HEARTBEAT_CALM_LINE
+    lines = text.count("\n") + 1
+    tokens = estimate_tokens(text)
+    return {
+        **base,
+        "state": state,
+        "text": text,
+        "lines": lines,
+        "tokens_est": tokens,
+        "cursor_before": cursor,
+        "cursor_after": new_cursor,
+        "agents": [
+            _sanitize_agent_id(str(s["agent"]))
+            for s in delta["agents"][:AWARENESS_MAX_RENDERED_AGENTS]
+        ],
+        "events": [
+            ("delta_available", {**({"tool": tool} if tool else {})}),
+            (
+                "heartbeat_delivery",
+                {
+                    "state": state,
+                    "lines": lines,
+                    "tokens_est": tokens,
+                    "cursor_before": cursor,
+                    "cursor_after": new_cursor,
+                    **({"tool": tool} if tool else {}),
+                },
+            ),
+        ],
     }
 
 

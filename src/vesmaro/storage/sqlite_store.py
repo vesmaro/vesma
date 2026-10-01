@@ -666,6 +666,15 @@ CREATE INDEX IF NOT EXISTS idx_memories_created  ON memories(created_at);
 CREATE INDEX IF NOT EXISTS idx_memories_status   ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_project  ON memories(project);
 CREATE INDEX IF NOT EXISTS idx_memories_agent    ON memories(agent);
+-- ADR-0035 C12 (W2a wave 0): composite backing the native-heartbeat delta
+-- probe (exists_since). Both columns are base schema columns, so unlike the
+-- C10/m3 indexes this lives HERE, not in _run_migrations: _DB_SCHEMA runs on
+-- every connect and the IF NOT EXISTS no-ops after the first one, so legacy
+-- DBs gain it on their next connect with zero migration machinery. A probe
+-- over (project, created_at > cursor) on the separate single-column indexes
+-- would degrade to a project-index scan + per-row created_at filtering; the
+-- composite answers it index-only.
+CREATE INDEX IF NOT EXISTS idx_memories_project_created ON memories(project, created_at);
 CREATE INDEX IF NOT EXISTS idx_memories_cluster  ON memories(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
 -- NOTE (C10): idx_memories_project_rewrite_source_created is created in
@@ -3008,6 +3017,34 @@ class SQLiteStore:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
+
+    # ── Native heartbeat delta probe (ADR-0035 C12, W2a wave 0) ──────────
+
+    def exists_since(self, project: str, since_iso: str) -> bool:
+        """Delta probe for the native awareness heartbeat — EXISTS only.
+
+        Answers "is there ANY non-archived row in ``project`` with
+        ``created_at > since``" WITHOUT hydrating a single row: the
+        heartbeat rides every MCP tool call, so the check must stay a
+        sub-millisecond index-only lookup over
+        ``idx_memories_project_created`` (the C12 contract — the
+        ``_window_rows`` feed it gates hydrates up to 200 rows per call,
+        a CWE-770-class cost on every invocation). The probe does NOT
+        post-filter ``agent != caller`` or federation exclusion — those
+        are compose-time filters; the probe is deliberately the cheap
+        over-approximation that decides whether composing is worth it.
+
+        Raises whatever sqlite raises — the CALLER (compose_heartbeat)
+        owns the suppress-and-warn contract (a probe failure must never
+        break the tool call it rides).
+        """
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT EXISTS(SELECT 1 FROM memories"
+            " WHERE project=? AND created_at>? AND status!='archived')",
+            (project, since_iso),
+        ).fetchone()
+        return bool(row[0])
 
     # ── Generic key-value metadata ────────────────────────────────────────
 

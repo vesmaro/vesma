@@ -35,12 +35,15 @@ SIDECAR_FILENAME = "metrics.sqlite"
 
 #: Retention policy (days). Raw verb rows are cheap to lose; the hourly
 #: rollup outlives them; the assemble family is the analysis corpus.
+#: The awareness shadow events ride the assemble-family horizon (the
+#: wave 0/1 funnel reads them over weeks, not months).
 RETENTION_DAYS: dict[str, int] = {
     "verb_metrics": 30,
     "verb_metrics_hourly": 400,
     "assemble_metrics": 90,
     "injection_blocks": 90,
     "usage_reports": 90,
+    "awareness_events": 90,
 }
 
 
@@ -160,9 +163,54 @@ USAGE_REPORTS = _table(
     ("wrong_tool_flag", "INTEGER"),
 )
 
+#: W2a (ADR-0035): native-heartbeat shadow events — one row per observed
+#: contour fact (peer_write / delta_available / heartbeat_delivery /
+#: heartbeat_suppressed / tool_call). Vesma-wave addition (not part of the
+#: mnemos-vitals vendored surface): additive table in the born-final
+#: sidecar — ``CREATE TABLE IF NOT EXISTS`` in the connect script, so
+#: existing sidecars gain it on their next open, no migration machinery.
+#: ZERO PEER CONTENT (CWE-359): ``project``/``agent``/``session`` carry
+#: the CALLER's identity slugs (surface-declared, not principals), and
+#: ``meta_json`` passes the awareness allowlist below — tool ids, int
+#: counters, state/reason enums and server-side cursor timestamps. Peer
+#: agent ids, goals and record text never land here (the verb-ledger C3
+#: posture: awareness events add the session the ADR-0035 funnel needs,
+#: nothing else).
+AWARENESS_EVENTS = _table(
+    "awareness_events",
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("ts", "REAL NOT NULL"),
+    (
+        "kind",
+        "TEXT NOT NULL CHECK (kind IN ('peer_write','delta_available',"
+        "'heartbeat_delivery','heartbeat_suppressed','tool_call'))",
+    ),
+    ("project", "TEXT"),
+    ("agent", "TEXT"),
+    ("session", "TEXT"),
+    ("meta_json", "TEXT"),
+)
+
+#: Legal ``kind`` values (mirrored from the born-final CHECK for cheap
+#: refusal before the write — the ``SURFACES`` precedent).
+AWARENESS_EVENT_KINDS: tuple[str, ...] = (
+    "peer_write",
+    "delta_available",
+    "heartbeat_delivery",
+    "heartbeat_suppressed",
+    "tool_call",
+)
+
 TABLE_SCHEMAS: dict[str, TableSchema] = {
     t.name: t
-    for t in (VERB_METRICS, VERB_HOURLY, ASSEMBLE_METRICS, INJECTION_BLOCKS, USAGE_REPORTS)
+    for t in (
+        VERB_METRICS,
+        VERB_HOURLY,
+        ASSEMBLE_METRICS,
+        INJECTION_BLOCKS,
+        USAGE_REPORTS,
+        AWARENESS_EVENTS,
+    )
 }
 TABLE_NAMES: tuple[str, ...] = tuple(TABLE_SCHEMAS)
 
@@ -175,6 +223,8 @@ INDEXES_SQL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_assemble_project_ts ON assemble_metrics(project, ts)",
     "CREATE INDEX IF NOT EXISTS idx_injection_metrics ON injection_blocks(metrics_id)",
     "CREATE INDEX IF NOT EXISTS idx_usage_metrics ON usage_reports(metrics_id)",
+    "CREATE INDEX IF NOT EXISTS idx_awareness_kind_ts ON awareness_events(kind, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_awareness_project_ts ON awareness_events(project, ts)",
 )
 
 #: C5 — ``meta_json`` allowlist, fail-closed. Unknown key → the write is
@@ -201,6 +251,8 @@ SCHEMA_SQL: tuple[str, ...] = tuple([*(t.create_sql for t in TABLE_SCHEMAS.value
 #: Security invariant inputs — the exposer computes these from gates and
 #: canaries, never from non-fatal telemetry (RL-S4).
 __all__ = [
+    "AWARENESS_EVENT_KINDS",
+    "AWARENESS_META_ALLOWLIST",
     "META_ALLOWLIST",
     "RETENTION_DAYS",
     "SCHEMA_SQL",
@@ -267,6 +319,99 @@ def validate_meta(meta: dict[str, Any] | None) -> dict[str, Any] | None:
                 return None
             if key in _INT_ONLY_KEYS:
                 return None  # integer-by-definition key carrying a string
+            clean[key] = value
+        else:
+            return None
+    return clean
+
+
+# ── W2a (ADR-0035): the awareness-event meta gate ─────────────────────────────
+
+
+#: C5 twin for ``awareness_events.meta_json`` — fail-closed allowlist.
+#: Values are the heartbeat contour's observable facts only: the
+#: canonical tool id, integer line/token counters, the calm|delta state
+#: enum, the born-final suppression reason enum, and the server-side
+#: cursor timestamps (high-water marks of the caller's own consumption —
+#: never peer content). Keys outside this set refuse the WHOLE write.
+AWARENESS_META_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "tool",  # canonical tool id (id, not text)
+        "lines",  # int, rendered line count
+        "tokens_est",  # int, same tokenizer as the render (honest ledger)
+        "state",  # "calm" | "delta" (heartbeat_delivery)
+        "cursor_before",  # server-side ISO cursor timestamp
+        "cursor_after",
+        "reason",  # suppression reason enum (heartbeat_suppressed)
+    }
+)
+
+#: Enum domains enforced inside the awareness meta gate.
+AWARENESS_STATES: frozenset[str] = frozenset({"calm", "delta"})
+AWARENESS_SUPPRESS_REASONS: frozenset[str] = frozenset(
+    {
+        "no_delta",
+        "rate_cap",
+        "budget",
+        "presence_stale",
+        "probe_error",
+    }
+)
+
+#: Integer-by-definition keys (strings refused) and enum-by-definition
+#: keys (values checked against their domain).
+_AWARENESS_INT_ONLY_KEYS = frozenset({"lines", "tokens_est"})
+_AWARENESS_ENUM_KEYS: dict[str, frozenset[str]] = {
+    "state": AWARENESS_STATES,
+    "reason": AWARENESS_SUPPRESS_REASONS,
+}
+
+#: Cursor stamps are ISO-8601 with offset — bounded shape, bounded length.
+_AWARENESS_CURSOR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.+]+Z?$")
+
+
+def validate_awareness_meta(meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Awareness-event meta gate — same fail-closed contract as
+    :func:`validate_meta` over the awareness allowlist.
+
+    Returns the sanitised dict, or ``None`` when the meta must be
+    REFUSED: unknown key, non-scalar value, non-finite float, over-long
+    string, an integer-by-definition key carrying a string, an enum key
+    outside its born-final domain, or a cursor stamp that is not an
+    ISO-shaped server timestamp. The caller logs the refusal — loud,
+    never silently dropped, never fatal to the host.
+    """
+    if meta is None:
+        return {}
+    if not isinstance(meta, dict):
+        return None
+    clean: dict[str, Any] = {}
+    for key, value in meta.items():
+        if key not in AWARENESS_META_ALLOWLIST:
+            return None
+        if key in _AWARENESS_INT_ONLY_KEYS:
+            if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 10**9:
+                return None
+            clean[key] = value
+        elif key in _AWARENESS_ENUM_KEYS:
+            if value not in _AWARENESS_ENUM_KEYS[key]:
+                return None
+            clean[key] = value
+        elif key in ("cursor_before", "cursor_after"):
+            if value is not None and (
+                not isinstance(value, str)
+                or len(value) > _META_STR_LIMIT
+                or not _AWARENESS_CURSOR_RE.match(value)
+            ):
+                return None
+            clean[key] = value
+        elif value is None or isinstance(value, (bool, int)):
+            clean[key] = value
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                return None
+            clean[key] = value
+        elif isinstance(value, str) and len(value) <= _META_STR_LIMIT:
             clean[key] = value
         else:
             return None

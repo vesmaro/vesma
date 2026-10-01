@@ -65,6 +65,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_context_rewrite`](#mnemos_context_rewrite) *(#125)* | ADR-0018 — `on_context_rewrite` lifecycle event: report a context rewrite, the original lands in LTM (idempotent, version-less) | no |
 | [`mnemos_hooks`](#mnemos_hooks) *(#125)* | ADR-0017 D1 / ADR-0018 lifecycle hooks — grouped `action:enum` tool: `pre_llm_call` / `on_session_start` / `post_tool_call` (autocompression, opt-in) | no |
 | [`mnemos_awareness`](#mnemos_awareness) *(#254)* | Awareness pre-flight — server-observed neighbor presence, delta, conflict hints, and the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only + the peer's claimed task, self-reported and labeled) | no |
+| [Native awareness heartbeat](#native-awareness-heartbeat-adr-0035) *(ADR-0035)* | The awareness tail that rides every MCP tool response natively (no manual invocation) — gated by `awareness.native_heartbeat_mode`; wave 0 ships `shadow` (measured, not rendered) | — |
 | [`mnemos_export`](#mnemos_export) | Export memories to a file (JSON or SQLite snapshot) | no |
 | [`mnemos_import`](#mnemos_import) | Import memories from an export file (merge or restore) | no |
 | [`mnemos_reprocess`](#mnemos_reprocess) | Manually run the knowledge pipeline over queued raw/processing entries | no |
@@ -2112,6 +2113,41 @@ Semantics (ADR-0018, verbatim):
 
 - Composition: `mnemos_hooks` `pre_llm_call` / `on_session_start` with `include_awareness=true` (the picture renders last, below the delta section)
 - REST twin: `POST /hooks/{action}` with `include_awareness` — [http-api.md](http-api.md)
+
+---
+
+## Native awareness heartbeat (ADR-0035)
+
+**The doorbell contour** — awareness of peer activity reaches the agent NATIVELY, without manual invocation and without any change in foreign harnesses: a delta-gated, observed-only awareness tail attached to the responses of ALL MCP tools through a single injection point (the `call_tool` wrapper). Delivery happens on the FIRST tool call after a peer write — cost scales with peer activity, not with call count; the delta check itself is a sub-millisecond `SELECT EXISTS` probe, so quiet stores pay one index lookup per call.
+
+The tail is one appended `TextContent` after the handler (never inline, lane=awareness, tail-LAST per the cache contract). A deny-list of surfaces never carries it: `mnemos_assemble_context` (it already composes the full picture — a tail there would mean double render and double cursor advance), `mnemos_export` and `mnemos_import` (the bulk transfer pair). The REST leg carries no tail in v1.
+
+### Mode ladder (`awareness.native_heartbeat_mode`)
+
+| Mode | Probe/compose | Rendered tail | Events | Notes |
+|------|---------------|---------------|--------|-------|
+| `off` *(default)* | no | no | no | The kill switch: engine behaviour is byte-identical to the pre-ADR-0035 build (CI-pinned). |
+| `shadow` | yes | **no** | yes | Wave 0: the whole contour is computed and logged in the metrics sidecar, nothing reaches the agent. |
+| `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. |
+| `on` | yes | yes | yes | Wave 2: the default flips only after the wave 0/1 gates close green. |
+
+Canonical env override: `VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
+
+### The envelope (canary/on)
+
+Non-empty peer delta → a fixed-CEILING block (≤120 tokens, enforced by observable truncation): a header, the R3 disclaimer verbatim, at most 8 observed-only lines — one per peer: sanitized agent id, entry count, minute-precision last-seen; no goal text, no record ids, no numeric scores (the ORDER is the relevance signal: my-goal overlap → checkpoint → recency → agent id, deterministic) — and exactly one descriptive flag line pointing at `mnemos_awareness` for depth. Empty delta → ONE deterministic calm-line (~10 tokens, timestamp-free): "quiet" is no longer indistinguishable from "the eye is off".
+
+The delivery cursor (`awrh:` namespace, keyed `(project, agent)`, session-free) advances strictly BEFORE the response returns — at-most-once delivery; a retry sees "no delta". Advancements are logged with identity.
+
+### Events (shadow metrics)
+
+The contour writes zero-content events into the metrics sidecar (90-day retention): `peer_write` (write-class verbs), `delta_available`, `heartbeat_delivery` (tool, lines, token estimate, `state: calm|delta`, cursor before/after), `heartbeat_suppressed` (reason: `rate_cap` / `probe_error` / …), and `tool_call` (name, ts, session — the funnel denominator). No peer content ever lands in an event (counts, enums and the caller's identity slugs only).
+
+### Related
+
+- Decision record: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
+- Depth surface: [`mnemos_awareness`](#mnemos_awareness); hooks composition: `mnemos_hooks` `pre_llm_call` with `include_awareness=true`
+- Config: [config.example.yaml](../../../config.example.yaml) — the `awareness` section
 
 ---
 

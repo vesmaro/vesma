@@ -1149,6 +1149,38 @@ class VitalsConfig(BaseModel):
     retention_interval_sec: int = Field(default=24 * 3600, ge=3600)
 
 
+class AwarenessConfig(BaseModel):
+    """Native awareness heartbeat (ADR-0035, W2a wave 0 — shadow).
+
+    The owner's «око/рой» delivery contour: a delta-gated, observed-only
+    awareness tail appended to MCP tool responses through the single
+    ``call_tool`` injection point. The mode ladder is the committee's
+    shadow → canary → default-on phasing; the DEFAULT ``off`` is the
+    kill switch — with it, engine behaviour is byte-identical to the
+    pre-ADR-0035 build (pinned by CI).
+    """
+
+    # off | shadow | canary | on.
+    #   * "off" (default) — the whole contour is inert: no probe, no
+    #     cursor, no events, no tail. Kill switch.
+    #   * "shadow" — compose + events in the metrics sidecar, NOTHING
+    #     rendered (wave 0: the measuring wave whose gates decide canary).
+    #   * "canary"/"on" — the envelope renders as the last TextContent
+    #     (covered by tests; not enabled in production until the wave 0/1
+    #     gates close green).
+    # Canonical env override:
+    # VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow.
+    native_heartbeat_mode: Literal["off", "shadow", "canary", "on"] = "off"
+    # C14 rate cap: heartbeat compositions per (project, agent) per minute,
+    # in-process sliding window (the _picture_rate_limit pattern; the key
+    # carries NO session — session churn must not reopen the window). 0
+    # disables. Over-limit suppresses the tail with a heartbeat_suppressed
+    # {rate_cap} event — never an error, never a shape break.
+    # Canonical env override:
+    # VESMARO_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0.
+    heartbeat_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
+
+
 class UpdatesConfig(BaseModel):
     """Update-check configuration (issue #445).
 
@@ -1291,6 +1323,7 @@ class Settings(BaseSettings):
     code_graph: CodeGraphConfig = CodeGraphConfig()
     vitals: VitalsConfig = VitalsConfig()
     updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
+    awareness: AwarenessConfig = AwarenessConfig()
     logging: LoggingConfig = LoggingConfig()
     # M5: declarative policy rules (loaded from YAML or set programmatically)
     policies: dict[str, Any] = Field(default_factory=dict)

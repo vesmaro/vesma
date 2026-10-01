@@ -49,9 +49,13 @@ from typing import Any
 
 from vesmaro.metrics.ledger import VerbLedgerMixin
 from vesmaro.metrics.schema import (
+    AWARENESS_EVENT_KINDS,
     RETENTION_DAYS,
     SCHEMA_SQL,
     TABLE_NAMES,
+)
+from vesmaro.metrics.schema import (
+    validate_awareness_meta as validate_awareness_meta,  # re-export: sink contract
 )
 from vesmaro.metrics.schema import (
     validate_meta as validate_meta,  # re-export: part of the sink contract
@@ -403,6 +407,62 @@ class MetricsStore(VerbLedgerMixin):
                     json.dumps(b.get("ccr_hashes") or [], separators=(",", ":")),
                 ),
             )
+
+    # ── W2a (ADR-0035): native-heartbeat events ──────────────────────────
+
+    def record_awareness_event(
+        self,
+        *,
+        kind: str,
+        project: str | None = None,
+        agent: str | None = None,
+        session: str | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> int | None:
+        """Record one heartbeat contour event. Non-fatal; row id or None.
+
+        The ``record_verb`` discipline over the ``awareness_events``
+        table: kind checked against the born-final enum BEFORE the write,
+        identity columns shape-checked (short single-line slugs), meta
+        through the awareness allowlist gate — a refused meta logs a
+        warning and the WHOLE write is refused, never silently dropped,
+        never raised into the host (the guest contract: telemetry must
+        not stop the product, and the heartbeat must never break the
+        tool call it rides).
+        """
+        try:
+            if kind not in AWARENESS_EVENT_KINDS:
+                raise ValueError(f"awareness event kind not allowed: {kind!r}")
+            clean_meta = validate_awareness_meta(meta)
+            if clean_meta is None:
+                raise ValueError("meta refused by the awareness allowlist")
+            for name, val in (("project", project), ("agent", agent), ("session", session)):
+                if val is not None and (not isinstance(val, str) or len(val) > 128 or "\n" in val):
+                    raise ValueError(f"{name} must be a short single-line string")
+            conn = self._conn()
+            if conn is None:
+                return None
+            cur = conn.execute(
+                "INSERT INTO awareness_events (ts, kind, project, agent, session, meta_json)"
+                " VALUES (?,?,?,?,?,?)",
+                (
+                    datetime.now(UTC).timestamp(),
+                    kind,
+                    project,
+                    agent,
+                    session,
+                    None if not clean_meta else json.dumps(clean_meta),
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+        except (sqlite3.Error, ValueError, TypeError, AttributeError, OSError) as exc:
+            self._fail("record_awareness_event", exc)
+            conn = getattr(self._local, "conn", None)
+            if conn is not None:
+                with suppress(sqlite3.Error):
+                    conn.rollback()
+            return None
 
     # ── Retention (C4: nightly DELETE + VACUUM; refusal to run = alert) ──
 
