@@ -20,7 +20,7 @@ The default embedding model (`vesma-embed-v1`, ~30 MB) is bundled in the wheel �
 
 > ⚠️ **Names.** The PyPI package is **`vesma`**. The pre-rebrand package `mnemos-memory-server` stays live until deprecation (`pip install mnemos-memory-server` installs the same server). The bare `pip install vesma` is an unrelated third-party project.
 
-npm (pi extension): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` · `@korrlabs/vesma-pi`. Container: `ghcr.io/vesmaro/vesmaro`.
+npm (pi extension): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` · `@korrlabs/vesma-pi`. Container: `ghcr.io/vesmaro/vesma`.
 
 ---
 

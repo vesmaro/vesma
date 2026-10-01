@@ -67,7 +67,7 @@ pip install vesma
 
 #### Или возьмите готовый образ — Docker, Podman или кластер Kubernetes
 
-Тот же сервер опубликован публичным образом (`ghcr.io/vesmaro/vesmaro`) — скачал и запустил:
+Тот же сервер опубликован публичным образом (`ghcr.io/vesmaro/vesma`) — скачал и запустил:
 без сборки и без логина. Полные руководства — в админ-доках.
 
 <details>
@@ -107,7 +107,7 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 # легаси-имя ассета — unit-файл остаётся mnemos.container до деплой-волны
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesmaro.env (оба имени переменной), затем:
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
+podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet выводит имя unit из имени файла — пока это mnemos.service
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
@@ -370,7 +370,7 @@ HTTP-поверхность также открывает **A2A Sessions API** �
 
 ## ⚖️ Лицензия и вклад
 
-Apache-2.0 — см. [LICENSE](LICENSE) и [NOTICE](NOTICE). Исходники: [github.com/vesmaro/vesmaro](https://github.com/vesmaro/vesmaro).
+Apache-2.0 — см. [LICENSE](LICENSE) и [NOTICE](NOTICE). Исходники: [github.com/vesmaro/vesma](https://github.com/vesmaro/vesma).
 
 Вклад приветствуется — в [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md): настройка окружения разработки,
 конвенции веток и коммитов и quality gate, который должно пройти каждое изменение.

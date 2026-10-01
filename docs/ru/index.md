@@ -33,7 +33,7 @@ pip install vesma
 > ставит тот же сервер). Голый `pip install vesma` — посторонний сторонний проект.
 
 npm (расширение pi): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` ·
-`@korrlabs/vesma-pi`. Контейнер: `ghcr.io/vesmaro/vesmaro`.
+`@korrlabs/vesma-pi`. Контейнер: `ghcr.io/vesmaro/vesma`.
 
 ---
 

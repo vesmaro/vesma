@@ -67,7 +67,7 @@ offline, no API keys, nothing downloaded.
 
 #### Or take the prebuilt image — Docker, Podman, or a Kubernetes cluster
 
-The same server ships as a public image (`ghcr.io/vesmaro/vesmaro`) — pull and run: no build,
+The same server ships as a public image (`ghcr.io/vesmaro/vesma`) — pull and run: no build,
 no login. Full guides live in the admin docs.
 
 <details>
@@ -107,7 +107,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesmaro.env (both env spellings), then:
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
+podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet derives the unit name from the file name — the unit is mnemos.service for now
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health

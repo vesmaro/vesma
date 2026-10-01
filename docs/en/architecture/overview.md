@@ -7,7 +7,7 @@
 Vesma is a hybrid long-term memory system: a personal knowledge base and
 RAG store for AI agents. Primary access surfaces: CLI, HTTP API, MCP server,
 and an Obsidian-compatible vault. A Web UI is planned as a separate project
-(mnemos-eyes).
+([vesma-eyes](https://github.com/vesmaro/vesma-eyes)).
 
 ## Core Principles
 
@@ -28,7 +28,7 @@ and an Obsidian-compatible vault. A Web UI is planned as a separate project
 │  ┌─────┐  ┌──────────────────────┐  ┌──────┐  ┌─────┐  │
 │  │ CLI │  │  Web UI              │  │ API  │  │ MCP │  │
 │  │Typer│  │  (planned,           │  │ REST │  │ Srv │  │
-│  │     │  │   mnemos-eyes)       │  │      │  │     │  │
+│  │     │  │   vesma-eyes)        │  │      │  │     │  │
 │  └──┬──┘  └──────────┬───────────┘  └──┬───┘  └──┬──┘  │
 │     │               │               │          │       │
 ├─────┴───────────────┴───────────────┴──────────┴───────┤
@@ -293,7 +293,7 @@ Tools for Copilot / LLM agents (full catalogue in [mcp-tools.md](../user/mcp-too
 - `mnemos_list_tags` — list tags
 - `mnemos_ingest_url` — load a web page
 
-#### Web UI (planned — mnemos-eyes)
+#### Web UI (planned — vesma-eyes)
 
 A separate frontend project. Status: in development. Planned features:
 - Dashboard: statistics, recent entries, tag cloud
@@ -391,7 +391,7 @@ mcp:
 - [ ] PDF/DOCX parsing
 
 ### Phase 3 — Advanced features
-- [ ] Web UI (mnemos-eyes)
+- [ ] Web UI (vesma-eyes)
 - [ ] Auto-categorisation (LLM-powered)
 - [ ] Relationship graph between entries
 - [ ] Auto-summarisation of long documents

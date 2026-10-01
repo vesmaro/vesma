@@ -3,7 +3,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/metrics.md)
 
-> Three HTTP endpoints power the `mnemos-eyes` dashboard and external
+> Three HTTP endpoints power the [`vesma-eyes`](https://github.com/vesmaro/vesma-eyes) dashboard and external
 > observability stacks: structured JSON stats, temporal timeseries, and
 > Prometheus text exposition. Plus extended `GET /memories` filters for
 > list views.
@@ -12,7 +12,7 @@
 
 ## Overview
 
-Vesma exposes three metrics endpoints for the `mnemos-eyes` frontend and
+Vesma exposes three metrics endpoints for the `vesma-eyes` frontend and
 for external observability tools (Grafana, Prometheus, dashboards):
 
 | Endpoint | Format | Purpose |
@@ -30,7 +30,7 @@ list views (status, project, agent, tags, since, until, limit, offset).
 ## `GET /api/v1/stats`
 
 Returns a structured JSON object aggregating the current state of the
-memory store. This is the primary endpoint for the `mnemos-eyes`
+memory store. This is the primary endpoint for the `vesma-eyes`
 dashboard.
 
 **Response** (`200 OK`):
@@ -254,9 +254,9 @@ GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offse
 
 ---
 
-## How mnemos-eyes consumes these endpoints
+## How vesma-eyes consumes these endpoints
 
-The `mnemos-eyes` frontend (L1 read-only viewer) uses the metrics
+The `vesma-eyes` frontend (L1 read-only viewer) uses the metrics
 endpoints as follows:
 
 | Dashboard widget | Endpoint | Section / param |

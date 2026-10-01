@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+
+- **Ecosystem rebrand completed** — all sibling repositories moved to `vesma-*` names in the `vesmaro` org (`vesmaro-agent` / `vesmaro-cortex` / `vesmaro-canon` → `vesma-agent` / `vesma-cortex` / `vesma-canon`; `mnemos-eyes` → `vesma-eyes`; `mnemos-mesh` → `vesma-mesh`; `mnemos-vitals` → `vesma-vitals`); models `mnema-*` → `vesma-*` hash-preserving; GHCR packages `vesmaro/vesma` and `vesmaro/vesma-eyes` live. Documentation updated to the new names.
+
+
 ## [5.1.1] — 2026-10-01 — the native auto-indexing ships for real
 
 > **Shipping-integrity note.** The 5.1.0 artifacts were cut from a tree

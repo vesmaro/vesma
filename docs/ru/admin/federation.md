@@ -16,7 +16,7 @@ per-peer ACL, enum триггер-кодов и журнал доступа фе
   enum триггер-кодов, журнал доступа федерации.
 - **Живой запросный путь:** `src/vesmaro/federation_server.py` (сторона B)
   и `src/vesmaro/api/federation.py` (route-адаптер). Внешний Go-бинарник
-  пира живёт в отдельном репозитории, `mnemos-mesh`.
+  пира живёт в отдельном репозитории, `vesma-mesh`.
 - **Ссылки:** контракт ArchCom 2026-07-17
   (`.archcom/sessions/2026-07-17-federation-contract.md` §3.2, §6, §9,
   §10), ADR-0016 (`docs/project/adr/0016-federation-threat-model.md`).
@@ -167,7 +167,7 @@ Phase 1 поставляет форму конфига, enum и журнал. Ph
    или уйти в локальный `mnemos_search`.
 
 Go-бинарник, несущий gRPC-транспорт, живёт в отдельном репозитории
-(`mnemos-mesh`) и вне области этой страницы.
+(`vesma-mesh`) и вне области этой страницы.
 
 ## 5. См. также
 

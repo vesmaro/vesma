@@ -14,7 +14,7 @@ some sections below keep the Phase 1/Phase 2 wording.
   enum, federation access log.
 - **Live request path:** `src/vesmaro/federation_server.py` (B side) and
   `src/vesmaro/api/federation.py` (route adapter). The external Go peer
-  binary lives in a separate repo, `mnemos-mesh`.
+  binary lives in a separate repo, `vesma-mesh`.
 - **References:** ArchCom contract 2026-07-17
   (`.archcom/sessions/2026-07-17-federation-contract.md` §3.2, §6, §9,
   §10), ADR-0016 (`docs/project/adr/0016-federation-threat-model.md`).
@@ -167,7 +167,7 @@ Phase 1 ships the config shape, the enum, and the log. Phase 2 will:
    it, or fall back to local `mnemos_search`.
 
 The Go binary that carries the gRPC transport lives in a separate
-repo (`mnemos-mesh`) and is out of scope for this page.
+repo (`vesma-mesh`) and is out of scope for this page.
 
 ## 5. See also
 
