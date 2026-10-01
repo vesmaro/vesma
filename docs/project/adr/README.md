@@ -62,6 +62,7 @@ documented elsewhere, or anything that fits in a code comment.
 | [0031](0031-rebrand-mnemos-to-vesmaro.md) | Rebrand — mnemos → vesmaro (additive dual-prefix; legacy retires in 6.0) | Accepted | 2026-09-15 |
 | [0032](0032-project-graph.md) | Project graph as memory — sidecar `code_graph.db`, memory-first, waves PG-0..PG-3 behind gates | Accepted (with conditions — owner green-light per wave) | 2026-09-28 |
 | [0033](0033-vesma-harness-layer.md) | Harness memory layer — owned by vesma, delivered via `vesma integration` | Accepted (conditional — two security-major merge gates) | 2026-10-01 |
+| [0034](0034-memory-engine-switch-protocol.md) | Memory-engine switch protocol — open vendor-neutral spec, reference implementation in vesma | Accepted (conditional — spec extraction gated by adoption; B1–B4 blocking controls) | 2026-10-01 |
 
 ## Themes
 
