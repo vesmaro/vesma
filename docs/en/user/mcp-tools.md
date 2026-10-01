@@ -51,7 +51,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
 | [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
 | [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
-| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / poisoned | no |
+| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
 | [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
@@ -1193,7 +1193,7 @@ A file that changed on disk since indexation yields a staleness marker — never
 
 ## `mnemos_check_graph_coverage`
 
-Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
+Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (path does not exist under the project root, #452) / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
 
 ### Input
 
@@ -2055,7 +2055,7 @@ Semantics (ADR-0018, verbatim):
 
 ### Output
 
-`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). Conflict hints use a Unicode tokenizer (#451): word characters of any alphabet (Cyrillic included), dotted version tails stay one token (`v4.0.0`), hyphens split (`qa-vesma-5x` → `qa`/`vesma`/`5x`); a minimal RU stopword set rides the EN one. `record_abstention` returns the trace id and the full provenance chain.
+`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). The picture rides ONCE, at the top level (#452): `presence` carries its agents summary WITHOUT a nested picture. Conflict hints use a Unicode tokenizer (#451): word characters of any alphabet (Cyrillic included), dotted version tails stay one token (`v4.0.0`), hyphens split (`qa-vesma-5x` → `qa`/`vesma`/`5x`); a minimal RU stopword set rides the EN one. `record_abstention` returns the trace id and the full provenance chain.
 
 ### Notes
 

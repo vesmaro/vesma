@@ -324,16 +324,23 @@ class TestToolHappyPaths:
         assert {"Base", "make_base"} <= names
         assert outline["parse_error"] is None
 
-    def test_coverage_verdicts(self, indexed: CodeGraphService) -> None:
+    def test_coverage_verdicts(self, indexed: CodeGraphService, mini_repo: Path) -> None:
+        # A REAL file the index has not covered (created after indexing):
+        # this is what "unindexed" means — distinct from a path that
+        # does not exist on disk (#452b: "missing").
+        (mini_repo / "added_later.py").write_text("X = 1\n", encoding="utf-8")
         verdicts = {
             v["path"]: v["verdict"]
             for v in indexed.check_coverage(
-                PROJECT, ["notes.py", "never-indexed.py", "secret.py"], agent=AGENT
+                PROJECT,
+                ["notes.py", "added_later.py", "secret.py", "never-existed.py"],
+                agent=AGENT,
             )["coverage"]
         }
         assert verdicts["notes.py"] == "indexed"
-        assert verdicts["never-indexed.py"] == "unindexed"
+        assert verdicts["added_later.py"] == "unindexed"
         assert verdicts["secret.py"] == "poisoned"
+        assert verdicts["never-existed.py"] == "missing"
 
     def test_coverage_stale_verdict(self, indexed: CodeGraphService, mini_repo: Path) -> None:
         (mini_repo / "notes.py").write_text("LINE_A = 'alpha'\nCHANGED = 1\n", encoding="utf-8")

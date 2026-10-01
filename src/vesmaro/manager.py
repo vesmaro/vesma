@@ -558,7 +558,8 @@ class MemoryManager:
         # service is built LAZILY on first use (get_codegraph_service,
         # behind the master ``code_graph.enabled`` flag) and the watch
         # poll scheduler on the first ``watch_start`` (behind the
-        # ``code_graph.watch`` flag — default OFF, contract §3.2).
+        # ``code_graph.watch`` flag — default ON, inert until an
+        # explicit registration, contract §3.2).
         # PG-0.5: the SAME scheduler hosts the native auto-indexer's
         # one-shot drain jobs (one cooperative thread for both).
         self._graph_watch: GraphWatchScheduler | None = None
@@ -4970,7 +4971,8 @@ class MemoryManager:
         checks the project's graph files by mtime+size on the adaptive
         interval and reindexes on ACTUAL changes — audited with reason
         ``watch``. Requires ``code_graph.enabled`` AND ``code_graph.watch``
-        (default OFF), agent attribution (PG7), an EXISTING index (the
+        (default ON — the poll stays inert until an explicit
+        registration), agent attribution (PG7), an EXISTING index (the
         poll reindexes — it never seeds a first index) and room under
         the global registration cap.
 

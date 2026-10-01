@@ -1265,7 +1265,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 
 ### `POST /graph/coverage` — batch coverage check
 
-Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Coverage honesty — verify content with `POST /graph/snippet`.
+Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (path does not exist under the project root, #452) / `poisoned`. Coverage honesty — verify content with `POST /graph/snippet`.
 
 **Request body**
 

@@ -948,8 +948,14 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
     ) -> dict[str, Any]:
-        """Per-path verdicts: indexed / stale / parse-error / unindexed
-        (coverage honesty — «clean ≠ proof» stays visible)."""
+        """Per-path verdicts: indexed / stale / parse-error / unindexed /
+        missing (coverage honesty — «clean ≠ proof» stays visible).
+
+        ``missing`` (#452b): the path does not exist under the project
+        root — its own verdict, distinct from ``unindexed`` (a REAL
+        file the index has not covered; before, both answered
+        ``unindexed`` and a typo read as an index gap).
+        """
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -963,7 +969,10 @@ class CodeGraphService:
             rel = self._confine_path(registered.root, raw)
             rec = records.get(rel)
             verdict: dict[str, Any] = {"path": rel}
-            if rel in poisoned:
+            if not os.path.exists(Path(registered.root) / rel):
+                verdict["verdict"] = "missing"
+                verdict["reason"] = "path does not exist under the project root"
+            elif rel in poisoned:
                 verdict["verdict"] = "poisoned"
                 verdict["reason"] = "secret-detected (permanent)"
             elif rec is None:

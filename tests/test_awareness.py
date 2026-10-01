@@ -1834,6 +1834,23 @@ class TestPictureSurfaces:
         assert "## Operational picture" in result["text"]
         assert read_awareness_cursor(manager, project=PROJECT, agent=AGENT, session=SESSION) is None
 
+    def test_pre_flight_picture_rides_once_top_level(self, manager: MemoryManager) -> None:
+        """#452a: the pre-flight response carries the picture ONCE — the
+        canonical top-level dict; ``presence`` keeps its agents summary
+        WITHOUT the nested picture (the payload used to ship the same
+        picture three times: top-level dict, ``presence.picture`` dict, and the
+        rendered ``text`` section)."""
+        _checkpoint(manager, goals="dedup picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        result = pre_flight_snapshot(manager, project=PROJECT, agent=AGENT, session=SESSION)
+        assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
+        assert "picture" not in result["presence"], "presence must not nest a second picture"
+        assert [a["agent"] for a in result["presence"]["agents"]] == [NEIGHBOR]
+        assert "## Operational picture" in result["text"]  # the render stays
+        # The on_session_start hook keeps its nested picture — its ONLY
+        # picture channel (include_picture defaults to True there).
+        presence = compose_session_presence(manager, project=PROJECT, agent=AGENT)
+        assert presence["picture"]["agents"][0]["agent"] == NEIGHBOR
+
     def test_session_presence_carries_picture(self, manager: MemoryManager) -> None:
         _checkpoint(manager, goals="session picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
         presence = compose_session_presence(manager, project=PROJECT, agent=AGENT)

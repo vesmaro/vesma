@@ -1437,7 +1437,12 @@ def compose_pre_llm_awareness(
 
 
 def compose_session_presence(
-    mgr: MemoryManager, *, project: str, agent: str, now: datetime | None = None
+    mgr: MemoryManager,
+    *,
+    project: str,
+    agent: str,
+    now: datetime | None = None,
+    include_picture: bool = True,
 ) -> dict[str, Any]:
     """Presence + conflict hints, for the ``on_session_start`` section.
 
@@ -1445,6 +1450,14 @@ def compose_session_presence(
     hint layer needs neighbor GOALS, which are the delta's self-reported
     layer, so hints ride a delta over the presence window; the presence
     section itself stays observed-only.
+
+    ``include_picture`` (issue #452a): the ``on_session_start`` hook
+    wants the operational picture nested here (its only picture
+    channel); the ``pre_flight`` snapshot passes ``False`` — it carries
+    ONE canonical top-level ``picture`` and must not duplicate it inside
+    ``presence`` (the payload used to ship the same picture three times: the
+    top-level dict, the nested ``presence.picture`` dict, and the
+    rendered ``text`` section).
     """
     project = _require_project(project)
     now_dt = _now_or(now)
@@ -1457,18 +1470,22 @@ def compose_session_presence(
         now=now_dt,
     )
     hints = conflict_hints(_my_goal(mgr, project=project, agent=agent), window_delta)
-    return {
+    result: dict[str, Any] = {
         "window_sec": snapshot["window_sec"],
         "agents": [a for a in snapshot["agents"] if a["agent"] != agent],
         "conflict_hints": hints,
         "disclaimer": AWARENESS_DISCLAIMER,
+    }
+    if include_picture:
         # swarm v0a: the operational picture rides additively (the
         # on_session_start surface renders it below the presence block).
         # No C9 gate HERE: this is an internal leg of a composition the
         # CALLING surface already gated (double-counting one user query
         # would halve the honest budget).
-        "picture": operational_picture(mgr, project=project, exclude_agent=agent, now=now_dt),
-    }
+        result["picture"] = operational_picture(
+            mgr, project=project, exclude_agent=agent, now=now_dt
+        )
+    return result
 
 
 def pre_flight_snapshot(
@@ -1499,6 +1516,12 @@ def pre_flight_snapshot(
     the pre-cap slot count so the truncation is observable, never
     silent. ``counts`` scalars (feed/excluded/redactions/high_water)
     are aggregates and stay full-window.
+
+    The operational picture rides ONCE, as the canonical top-level
+    ``picture`` (issue #452a) — ``presence`` keeps its agents summary
+    WITHOUT a nested picture (the pre-flight payload used to ship the
+    same picture three times: the top-level dict, the nested
+    ``presence.picture`` dict, and the rendered ``text`` section).
     """
     _require_identity(agent, session)
     project = _require_project(project)
@@ -1534,7 +1557,11 @@ def pre_flight_snapshot(
     return {
         "action": "pre_flight",
         "project": project,
-        "presence": compose_session_presence(mgr, project=project, agent=agent, now=now_dt),
+        # #452a: ONE canonical picture — top-level only; the nested
+        # presence picture is deliberately omitted (see the docstring).
+        "presence": compose_session_presence(
+            mgr, project=project, agent=agent, now=now_dt, include_picture=False
+        ),
         "delta": delta,
         "picture": picture,
         "conflict_hints": hints,
