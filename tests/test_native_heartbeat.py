@@ -3,20 +3,24 @@
 Covers the C12 delta probe + composite index, the ``awrh:`` cursor, the
 ``compose_heartbeat`` contour (envelope / calm-line / ceiling / ORDER-only
 relevance), the ``call_tool`` wrapper gating (off / shadow / canary / on),
-the deny-list, and the ADR-0026-family events in ``metrics.sqlite``.
+the deny-list, and the ADR-0026-family events in the metrics sidecar.
 
-The six CI pins from the wave brief:
+The six CI pins from the wave brief, by class:
 
 1. ``TestOffByteIdentity`` — mode=off: the response is byte-identical to
-   the pre-feature shape (the dispatch-level result).
-2. ``TestShadowByteIdentity`` — shadow: byte-identical to off, events
-   written.
-3. ``TestCalmLinePin`` — empty delta at canary/on: exactly one line, the
-   pinned calm-line LITERAL.
+   the pre-feature shape (the dispatch-level result), any tool, any
+   condition.
+2. ``TestShadowByteIdentity`` (+ ``TestHeartbeatEvents``) — shadow:
+   byte-identical to off, events written.
+3. ``TestCanaryOnRendering::test_canary_calm_appends_exactly_one_line``
+   (+ ``TestComposeHeartbeat::test_calm_line_is_timestamp_free_deterministic_constant``)
+   — empty delta at canary/on: exactly one line, the pinned calm-line
+   LITERAL.
 4. ``TestDenyList`` — assemble/export/import never carry the tail.
-5. ``TestCursorAdvanceOnce`` — advance exactly once per delivery; a retry
-   sees "no delta".
-6. ``TestNoScoresInTail`` — order/counters/ids only, no numeric scores.
+5. ``TestComposeHeartbeat::test_second_compose_after_advance_is_calm`` —
+   advance exactly once per delivery; a retry sees "no delta".
+6. ``TestEnvelope::test_agent_lines_observed_only_no_scores`` —
+   order/counters/ids only, no numeric scores.
 """
 
 from __future__ import annotations
@@ -514,6 +518,55 @@ class TestOffByteIdentity:
         with patch("vesmaro.mcp_server.get_manager", return_value=manager):
             await call_tool("mnemos_list_recent", args)
         assert read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT) is None
+
+    @pytest.mark.parametrize(
+        ("tool", "args", "seed"),
+        [
+            # A read tool with identity and a pending delta (the case where
+            # a tail WOULD exist in canary) — the primary pin condition.
+            (
+                "mnemos_list_recent",
+                {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3},
+                "delta",
+            ),
+            # A calm store (probe negative — the most common real state).
+            ("mnemos_list_recent", {"project": PROJECT, "agent": AGENT, "limit": 3}, "none"),
+            # A search-shaped tool (JSON-serialized result path).
+            (
+                "mnemos_search",
+                {"query": "quokka", "project": PROJECT, "agent": AGENT, "session": SESSION},
+                "delta",
+            ),
+            # A deny-listed surface with a pending delta.
+            (
+                "mnemos_assemble_context",
+                {"project": PROJECT, "agent": AGENT, "session": SESSION, "query": "x"},
+                "delta",
+            ),
+            # An identity-less call (no agent — no heartbeat possible).
+            ("mnemos_stats", {}, "delta"),
+        ],
+    )
+    async def test_off_equals_dispatch_bytes_any_tool_any_condition(
+        self, tmp_path: Path, tool: str, args: dict[str, Any], seed: str
+    ) -> None:
+        """The pin's full wording: mode=off ⇒ byte-identical response for
+        ANY tool under ANY condition — delta present, calm store,
+        deny-listed surface, identity-less call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="off"))
+            if seed == "delta":
+                _knowledge(mgr, "off identity sweep body")
+                _checkpoint(mgr, goals="off identity neighbor goal", agent=NEIGHBOR_A)
+            snap = _reset_call_tracker()
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                direct = await _call_tool_dispatch(tool, dict(args))
+                mcp_server_module._checkpoint_tracker.clear()
+                mcp_server_module._checkpoint_tracker.update(snap)
+                via_wrapper = await call_tool(tool, dict(args))
+            assert [c.text for c in via_wrapper] == [c.text for c in direct]
+            assert len(via_wrapper) == len(direct)
+            mgr.close()
 
 
 class TestShadowByteIdentity:
