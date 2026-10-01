@@ -1598,6 +1598,11 @@ HEARTBEAT_ENVELOPE_TOKEN_CEILING: Final[int] = 120
 #: worst case inside the ceiling).
 HEARTBEAT_AGENT_ID_MAX_CHARS: Final[int] = 24
 
+#: Rendered project-slug cap (cascade SEC-1: the client-supplied
+#: ``project`` argument rides the envelope header, the event rows and
+#: the rate-ledger keys — same C11 bound, project-sized).
+HEARTBEAT_PROJECT_ID_MAX_CHARS: Final[int] = 64
+
 #: The exactly-one server-side action flag line (C11) — DESCRIPTIVE
 #: ONLY: it states where peer detail lives, carries no directive
 #: lexicon ("urgent", "act now"), no policy semantics, nothing pinnable.
@@ -1684,6 +1689,25 @@ def _sanitize_agent_id(agent: str) -> str:
     return trimmed[:HEARTBEAT_AGENT_ID_MAX_CHARS]
 
 
+def sanitize_project_id(project: str) -> str:
+    """C11 sanitization of the client-supplied project slug.
+
+    Cascade-review SEC-1 (fix-first): the raw ``project`` argument
+    echoed into the unsolicited envelope header (and the event rows /
+    ledger keys via :func:`vesmaro.heartbeat._identity`) is
+    client-supplied text — the same CWE-74 / OWASP LLM01 class the
+    agent-id sanitizer exists to close. Same pipeline, project-sized
+    cap; a fully hostile slug degrades to ``project``.
+    """
+    collapsed = " ".join(project.split())
+    cleaned = _HEARTBEAT_AGENT_ID_STRIP_RE.sub("_", collapsed)
+    trimmed = cleaned.strip("._-") or "project"
+    # Lowercase: the store's project/tag contract is ^[a-z0-9_-]{1,64}$
+    # — an uppercase residue would mint a cursor/ledger key that can
+    # never correspond to a real stored project.
+    return trimmed[:HEARTBEAT_PROJECT_ID_MAX_CHARS].lower()
+
+
 def _compact_seen(iso: str) -> str:
     """Minute-precision UTC rendering of a ``last_seen`` ISO stamp.
 
@@ -1755,7 +1779,7 @@ def render_heartbeat_envelope(delta: dict[str, Any], *, my_goal: str | None) -> 
     slots = _heartbeat_order(delta.get("agents", []), my_goal=my_goal)
     if not slots:
         return ""
-    header = f"## Peer awareness — heartbeat (project {delta['project']})"
+    header = f"## Peer awareness — heartbeat (project {sanitize_project_id(str(delta['project']))})"
     fixed = [header, AWARENESS_DISCLAIMER]
 
     def _fits(body: list[str], *extra: str) -> bool:

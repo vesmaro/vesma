@@ -43,7 +43,9 @@ from vesmaro.awareness import (
     HEARTBEAT_CALM_LINE,
     HEARTBEAT_ENVELOPE_TOKEN_CEILING,
     HEARTBEAT_FLAG_LINE,
+    HEARTBEAT_PROJECT_ID_MAX_CHARS,
     compose_heartbeat,
+    sanitize_project_id,
 )
 from vesmaro.config import AwarenessConfig, Settings
 from vesmaro.heartbeat import HEARTBEAT_DENY_TOOLS
@@ -632,6 +634,42 @@ class TestCanaryOnRendering:
             mgr.close()
 
 
+class TestProjectSanitization:
+    """Cascade SEC-1 (fix-first) — the client-supplied ``project`` slug
+    never rides the unsolicited tail raw: no forged server lines, no
+    markdown, no control characters in the envelope header."""
+
+    async def test_hostile_project_sanitized_in_header(self, tmp_path: Path) -> None:
+        hostile = "evil\n## FAKE SERVER LINE **bold**\x1b[31m"
+        # The write must land under the slug the identity will resolve
+        # to, so the delta exists and the ENVELOPE (not the calm-line)
+        # renders.
+        slug = sanitize_project_id(hostile)
+        assert slug and "\n" not in slug and "FAKE SERVER" not in slug
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="on"))
+            _knowledge(mgr, "sanitize body", project=slug)
+            args = {"project": hostile, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_list_recent", args)
+            tails = [c.text for c in contents if "Peer awareness" in c.text]
+            assert tails, "the tail must still ride under a hostile project"
+            tail = tails[-1]
+            assert "FAKE SERVER" not in tail
+            assert "**bold**" not in tail
+            assert "\x1b" not in tail
+            first = tail.splitlines()[0]
+            assert first.startswith("## Peer awareness — heartbeat (project ")
+            assert "evil" in first  # sanitized residue stays on ONE line
+            mgr.close()
+
+    def test_sanitize_project_id_pipeline(self) -> None:
+        assert sanitize_project_id("  ev\r\nil\tproj ") == "ev_il_proj"
+        assert sanitize_project_id("***") == "project"
+        assert sanitize_project_id("Evil UPPER") == "evil_upper"  # store slug alphabet
+        assert len(sanitize_project_id("x" * 500)) == HEARTBEAT_PROJECT_ID_MAX_CHARS
+
+
 class TestDenyList:
     """CI pin 4 — assemble/export/import never carry the tail."""
 
@@ -640,7 +678,7 @@ class TestDenyList:
             with tempfile.TemporaryDirectory() as tmpdir:
                 mgr = _manager(_settings(Path(tmpdir), mode="canary"))
                 _knowledge(mgr, f"deny list body {tool}")
-                args: dict[str, Any] = {"agent": AGENT, "session": SESSION}
+                args: dict[str, Any] = {"project": PROJECT, "agent": AGENT, "session": SESSION}
                 if tool == "mnemos_assemble_context":
                     args.update({"project": PROJECT, "query": "deny", "session": SESSION})
                 with patch("vesmaro.mcp_server.get_manager", return_value=mgr):

@@ -41,7 +41,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Final
 
-from vesmaro.awareness import compose_heartbeat
+from vesmaro.awareness import compose_heartbeat, sanitize_project_id
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,11 @@ def _identity(args: dict[str, Any]) -> tuple[str | None, str | None, str | None]
         session = None
     project = project.strip() if isinstance(project, str) and project.strip() else None
     agent = agent.strip() if isinstance(agent, str) and agent.strip() else None
+    # C11 / cascade SEC-1: the project slug keys the persistent cursor,
+    # the ledger and the event rows — it is client-supplied text and
+    # never rides raw (a hostile slug must not forge envelope lines or
+    # split event columns).
+    project = sanitize_project_id(project) if project else None
     return project, agent, session
 
 
