@@ -20,9 +20,13 @@ This module is the engine behind the `mnemos util-*` CLI subcommands. It:
 
 The version stamp is a Markdown HTML comment on the first non-shebang line::
 
-    <!-- mnemos-integration: v2.0.0 -->
+    <!-- vesma-integration: v5.2.0 -->
 
-This is invisible in rendered Markdown but trivially greppable.
+This is invisible in rendered Markdown but trivially greppable. Stamps from
+the previous brand generation (``mnemos-integration``) are still RECOGNIZED
+for ownership detection during the migration window (2-3 releases); the
+first deploy/update re-stamps such files to the current generation, and
+``verify`` reports them with the dedicated ``OLD_STAMP`` status.
 
 For the ``schemas`` kind the same discipline lives in a stamped JSON
 sidecar manifest (``mnemos-schemas.manifest.json``) written NEXT TO the
@@ -61,6 +65,7 @@ __all__ = [
     "Target",
     "TargetsConfig",
     "VerifyResult",
+    "has_legacy_stamp",
     "load_targets",
     "read_agents_md_version",
     "render_agents_md_block",
@@ -71,7 +76,17 @@ __all__ = [
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 #: The stamp injected into every deployed file (first useful line).
-STAMP_PATTERN = re.compile(r"<!--\s*mnemos-integration:\s*v(\S+?)\s*-->")
+#: DUAL-PATTERN (stamp migration, ArchCom 2026-10-01): both the current
+#: ``vesma-integration`` generation and the legacy ``mnemos-integration``
+#: generation are recognized, so ownership detection keeps working across
+#: the migration window. New stamps are only ever written in the current
+#: generation; the first deploy/update re-stamps legacy files.
+STAMP_PATTERN = re.compile(r"<!--\s*(?:vesma-integration|mnemos-integration):\s*v(\S+?)\s*-->")
+
+#: Legacy-generation stamps only (``mnemos-integration``). Used to report
+#: the dedicated ``OLD_STAMP`` verify status — a file we own whose stamp
+#: predates the current brand generation.
+STAMP_LEGACY_PATTERN = re.compile(r"<!--\s*mnemos-integration:\s*v(\S+?)\s*-->")
 
 #: Paired block markers for the ``agents_md`` deployment kind. Unlike file
 #: stamps, an ``agents_md`` deployment lives INSIDE a user-owned file (an
@@ -79,9 +94,9 @@ STAMP_PATTERN = re.compile(r"<!--\s*mnemos-integration:\s*v(\S+?)\s*-->")
 #: is wrapped in paired BEGIN/END comments and only that region is ever
 #: mutated — user content around it is preserved byte-for-byte.
 AGENTS_MD_BLOCK_RE = re.compile(
-    r"<!--\s*mnemos:integration:v(?P<version>\S+?)\s+BEGIN\s*-->\r?\n"
+    r"<!--\s*(?:vesma|mnemos):integration:v(?P<version>\S+?)\s+BEGIN\s*-->\r?\n"
     r"(?P<body>.*?)"
-    r"<!--\s*mnemos:integration:v(?P<end_version>\S+?)\s+END\s*-->\r?\n?",
+    r"<!--\s*(?:vesma|mnemos):integration:v(?P<end_version>\S+?)\s+END\s*-->\r?\n?",
     re.DOTALL,
 )
 
@@ -109,7 +124,17 @@ LINE_COMMENT_SUFFIXES: frozenset[str] = frozenset({".ts", ".js", ".mjs", ".cjs"}
 #: instead. The manifest is a stamped file in the ordinary sense (its
 #: raw text carries the ``mnemos-integration`` marker), which keeps
 #: verify/uninstall ownership detection uniform across kinds.
-SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
+SCHEMAS_MANIFEST_NAME = "vesma-schemas.manifest.json"
+#: Manifest file name used by pre-rebrand deployments. Recognized for
+#: ownership detection during the stamp-migration window; the first
+#: deploy/update writes the current name and removes the legacy file.
+LEGACY_SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
+
+#: Registered MCP server key per config format. Brand-primary key is
+#: ``vesma``; the legacy ``mnemos`` key is recognized (and migrated on
+#: register, removed on unregister) during the migration window.
+MCP_SERVER_KEY = "vesma"
+MCP_LEGACY_SERVER_KEY = "mnemos"
 
 #: Provenance of the vendored canon schemas (ADR-0003 pin protocol).
 #: Bumping the pin changes these literals, the vendored files under
@@ -166,6 +191,10 @@ class DeployStatus(StrEnum):
     STALE = "stale"
     MISSING = "missing"
     SKIPPED = "skipped"
+    #: We own the file (stamp/block present) but it carries the legacy
+    #: ``mnemos-integration`` generation marker. Safe, but the next
+    #: deploy/update re-stamps it to the current generation.
+    OLD_STAMP = "old-stamp"
 
 
 # ── Pack-root resolution ─────────────────────────────────────────────────────
@@ -361,8 +390,8 @@ def load_targets(config_path: Path | None = None, home: Path | None = None) -> T
 
 
 def make_stamp(version: str) -> str:
-    """Build the stamp comment for a given version."""
-    return f"<!-- mnemos-integration: v{version} -->"
+    """Build the stamp comment for a given version (current generation)."""
+    return f"<!-- vesma-integration: v{version} -->"
 
 
 def stamp_content(content: str, version: str, *, line_comment: bool = False) -> str:
@@ -419,9 +448,22 @@ def stamp_content(content: str, version: str, *, line_comment: bool = False) -> 
 
 
 def read_stamp(content: str) -> str | None:
-    """Extract the version from a stamped file, or ``None`` if unstamped."""
+    """Extract the version from a stamped file, or ``None`` if unstamped.
+
+    Recognizes BOTH stamp generations (``vesma-integration`` and the
+    legacy ``mnemos-integration``) — see :data:`STAMP_PATTERN`.
+    """
     match = STAMP_PATTERN.search(content)
     return match.group(1) if match else None
+
+
+def has_legacy_stamp(content: str) -> bool:
+    """True when the content carries only the legacy ``mnemos-integration`` stamp.
+
+    Used by ``verify`` to report the dedicated ``OLD_STAMP`` status for
+    files we own whose marker predates the current brand generation.
+    """
+    return STAMP_LEGACY_PATTERN.search(content) is not None
 
 
 # ── Schemas kind (byte-identical deployment + sidecar manifest) ───────────────
@@ -489,14 +531,18 @@ def _atomic_write_text(dest: Path, text: str) -> None:
 def render_agents_md_block(content: str, version: str) -> str:
     """Wrap ``content`` in the stamped BEGIN/END block markers.
 
-    The result always ends with a newline so appending further user content
-    (or a future block refresh) never glues onto the END marker.
+    Markers are emitted in the CURRENT brand generation
+    (``vesma:integration``); blocks from the legacy ``mnemos:integration``
+    generation are still matched by :data:`AGENTS_MD_BLOCK_RE` and replaced
+    in place on the next deploy/update. The result always ends with a
+    newline so appending further user content (or a future block refresh)
+    never glues onto the END marker.
     """
     body = content if content.endswith("\n") else content + "\n"
     return (
-        f"<!-- mnemos:integration:v{version} BEGIN -->\n"
+        f"<!-- vesma:integration:v{version} BEGIN -->\n"
         f"{body}"
-        f"<!-- mnemos:integration:v{version} END -->\n"
+        f"<!-- vesma:integration:v{version} END -->\n"
     )
 
 
@@ -577,6 +623,10 @@ class VerifyResult:
         return sum(1 for f in self.files if f.status == DeployStatus.STALE)
 
     @property
+    def old_stamp_count(self) -> int:
+        return sum(1 for f in self.files if f.status == DeployStatus.OLD_STAMP)
+
+    @property
     def missing_count(self) -> int:
         return sum(1 for f in self.files if f.status == DeployStatus.MISSING)
 
@@ -588,6 +638,10 @@ class UninstallResult:
     target_name: str
     removed: list[Path] = field(default_factory=list)
     skipped_user_files: list[Path] = field(default_factory=list)
+    #: SEC-major #2 (ArchCom 2026-10-01): whether the MCP server entry the
+    #: pack registered was removed (and the operator-facing note).
+    mcp_unregistered: bool = False
+    mcp_note: str = ""
 
 
 # ── Manager ───────────────────────────────────────────────────────────────────
@@ -740,10 +794,16 @@ class IntegrationManager:
             )
 
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        legacy_manifest_path = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
         existing_manifest_version: str | None = None
         if manifest_path.exists():
             existing_manifest_version = read_stamp(
                 manifest_path.read_text(encoding="utf-8", errors="replace")
+            )
+        elif legacy_manifest_path.exists():
+            # Migration window: ownership evidence lives in the legacy name.
+            existing_manifest_version = read_stamp(
+                legacy_manifest_path.read_text(encoding="utf-8", errors="replace")
             )
 
         manifest = schemas_manifest(self.version, checksums)
@@ -794,10 +854,31 @@ class IntegrationManager:
                 )
             )
 
-        # Refresh the manifest whenever its version is stale or absent.
-        if existing_manifest_version != self.version and not dry_run:
+        # Refresh the manifest whenever its version is stale or absent, or
+        # whenever the legacy-named manifest still carries ownership (stamp
+        # migration: first deploy/update re-mints under the current name).
+        needs_manifest_write = (
+            existing_manifest_version != self.version or legacy_manifest_path.exists()
+        )
+        if needs_manifest_write and not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(manifest_path, manifest)
+            # Stamp migration: a legacy-named manifest is superseded by the
+            # freshly written current-name manifest — remove the old file.
+            if legacy_manifest_path.exists():
+                legacy_manifest_path.unlink()
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=legacy_manifest_path,
+                        status=DeployStatus.UPDATED,
+                        deployed_version=self.version,
+                        note=(
+                            f"legacy manifest {LEGACY_SCHEMAS_MANIFEST_NAME} migrated "
+                            f"to {SCHEMAS_MANIFEST_NAME}"
+                        ),
+                    )
+                )
 
         results.append(
             FileResult(
@@ -1094,7 +1175,7 @@ class IntegrationManager:
                 source=source,
                 destination=dest,
                 status=DeployStatus.MISSING,
-                note="no mnemos block in file — not injected yet",
+                note="no vesma block in file — not injected yet",
             )
         if deployed_version != self.version:
             return FileResult(
@@ -1103,6 +1184,17 @@ class IntegrationManager:
                 status=DeployStatus.STALE,
                 deployed_version=deployed_version,
                 note=f"block v{deployed_version} != current v{self.version}",
+            )
+        if "mnemos:integration:v" in existing:
+            return FileResult(
+                source=source,
+                destination=dest,
+                status=DeployStatus.OLD_STAMP,
+                deployed_version=deployed_version,
+                note=(
+                    "legacy mnemos:integration block markers — "
+                    "next deploy/update re-stamps to vesma:integration"
+                ),
             )
 
         block_body, _ = self._agents_md_content()
@@ -1138,7 +1230,7 @@ class IntegrationManager:
                 source=src,
                 destination=dest,
                 status=DeployStatus.SKIPPED,
-                note="no mnemos stamp — user file, not ours",
+                note="no vesma stamp — user file, not ours",
             )
         if deployed_version != self.version:
             return FileResult(
@@ -1147,6 +1239,17 @@ class IntegrationManager:
                 status=DeployStatus.STALE,
                 deployed_version=deployed_version,
                 note=f"deployed v{deployed_version} != current v{self.version}",
+            )
+        if has_legacy_stamp(existing):
+            return FileResult(
+                source=src,
+                destination=dest,
+                status=DeployStatus.OLD_STAMP,
+                deployed_version=deployed_version,
+                note=(
+                    "legacy mnemos-integration stamp — "
+                    "next deploy/update re-stamps to vesma-integration"
+                ),
             )
         return FileResult(
             source=src,
@@ -1169,12 +1272,23 @@ class IntegrationManager:
         results: list[FileResult] = []
 
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        legacy_manifest_path = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
         manifest_version: str | None = None
+        manifest_exists = False
         if manifest_path.exists():
             manifest_version = read_stamp(
                 manifest_path.read_text(encoding="utf-8", errors="replace")
             )
-        else:
+            manifest_exists = True
+        elif legacy_manifest_path.exists():
+            # Migration window: the legacy-named manifest still proves
+            # ownership, but is reported OLD_STAMP so the next update
+            # migrates it to the current name.
+            manifest_version = read_stamp(
+                legacy_manifest_path.read_text(encoding="utf-8", errors="replace")
+            )
+            manifest_exists = True
+        if not manifest_exists:
             results.append(
                 FileResult(
                     source=Path("<schemas-manifest>"),
@@ -1186,14 +1300,14 @@ class IntegrationManager:
 
         # The manifest is always a reported row: it is the ownership marker
         # for the whole kind (see _deploy_schemas / _uninstall_schemas).
-        if manifest_path.exists():
+        if manifest_exists:
             if manifest_version is None:
                 results.append(
                     FileResult(
                         source=Path("<schemas-manifest>"),
                         destination=manifest_path,
                         status=DeployStatus.SKIPPED,
-                        note="manifest carries no mnemos stamp — not ours",
+                        note="manifest carries no vesma stamp — not ours",
                     )
                 )
             elif manifest_version != self.version:
@@ -1206,6 +1320,34 @@ class IntegrationManager:
                         note=f"manifest v{manifest_version} != current v{self.version}",
                     )
                 )
+            elif manifest_path.exists() and has_legacy_stamp(
+                manifest_path.read_text(encoding="utf-8", errors="replace")
+            ):
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=manifest_path,
+                        status=DeployStatus.OLD_STAMP,
+                        deployed_version=manifest_version,
+                        note=(
+                            "legacy mnemos-integration stamp — "
+                            "update re-stamps to vesma-integration"
+                        ),
+                    )
+                )
+            elif legacy_manifest_path.exists():
+                results.append(
+                    FileResult(
+                        source=Path("<schemas-manifest>"),
+                        destination=legacy_manifest_path,
+                        status=DeployStatus.OLD_STAMP,
+                        deployed_version=manifest_version,
+                        note=(
+                            f"legacy manifest name {LEGACY_SCHEMAS_MANIFEST_NAME} — "
+                            f"update migrates it to {SCHEMAS_MANIFEST_NAME}"
+                        ),
+                    )
+                )
             else:
                 results.append(
                     FileResult(
@@ -1216,7 +1358,7 @@ class IntegrationManager:
                     )
                 )
 
-        seen_dests: set[Path] = {manifest_path}
+        seen_dests: set[Path] = {manifest_path, legacy_manifest_path}
         for src in files:
             dest = dest_dir / src.name
             seen_dests.add(dest)
@@ -1389,10 +1531,14 @@ class IntegrationManager:
     # ── Uninstall ──────────────────────────────────────────────────────────────
 
     def uninstall(self, target_name: str, *, dry_run: bool = False) -> UninstallResult:
-        """Remove ONLY files carrying the mnemos-integration stamp.
+        """Remove ONLY files carrying the pack's version stamp.
 
-        User-created files (no stamp) are never deleted. The method scans
-        each deploy directory recursively for stamped files.
+        Recognizes both stamp generations (``vesma-integration`` and the
+        legacy ``mnemos-integration``). User-created files (no stamp) are
+        never deleted. The method scans each deploy directory recursively
+        for stamped files and also unregisters the MCP server entry the
+        pack registered (SEC-major #2, ArchCom 2026-10-01) — foreign MCP
+        entries are never touched.
         """
         target = self.targets.get(target_name)
         if target is None:
@@ -1431,6 +1577,15 @@ class IntegrationManager:
             if removed is not None:
                 result.removed.append(removed)
 
+        # SEC-major #2: take down the MCP registration this pack added.
+        # Dry-run reports what would happen without touching the config.
+        if not dry_run:
+            ok, note = self.unregister_mcp(target_name)
+            result.mcp_unregistered = ok
+            result.mcp_note = note
+        else:
+            result.mcp_note = "MCP entry removal skipped in dry-run"
+
         return result
 
     def _uninstall_schemas(self, dest_dir: Path, result: UninstallResult, *, dry_run: bool) -> None:
@@ -1459,12 +1614,15 @@ class IntegrationManager:
         Empty parent dirs are cleaned up to the deploy root afterwards.
         """
         manifest_path = dest_dir / SCHEMAS_MANIFEST_NAME
+        legacy_manifest_path = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
 
         # The manifest itself is stamped → ordinary ownership rule applies.
-        if manifest_path.exists():
-            if not dry_run:
-                manifest_path.unlink()
-            result.removed.append(manifest_path)
+        # Both name generations are ours (stamp migration window).
+        for manifest_file in (manifest_path, legacy_manifest_path):
+            if manifest_file.exists():
+                if not dry_run:
+                    manifest_file.unlink()
+                result.removed.append(manifest_file)
 
         # name → sha256 of the CURRENT pack schemas — the only
         # byte-identity registry ownership may rest on.
@@ -1611,11 +1769,13 @@ class IntegrationManager:
     # ── MCP: JSON-merge registration (zcode / agents) ─────────────────────────
 
     def _register_mcp_json(self, target: Target, *, mnemos_bin: str | None) -> tuple[bool, str]:
-        """Merge a ``mnemos`` server entry into the target's JSON config.
+        """Merge the ``vesma`` server entry into the target's JSON config.
 
         The merge is additive: unknown top-level keys and other MCP servers
-        are preserved untouched. An existing ``mnemos`` entry keeps its
-        user-tuned ``env`` values (only missing keys are filled in).
+        are preserved untouched. An existing entry keeps its user-tuned
+        ``env`` values (only missing keys are filled in). A legacy ``mnemos``
+        key written by pre-rebrand packs is migrated to ``vesma`` in the
+        same pass (stamp-migration window discipline).
         """
         cfg_path = target.mcp_config
         assert cfg_path is not None  # guaranteed by register_mcp dispatch
@@ -1637,11 +1797,17 @@ class IntegrationManager:
         if not isinstance(servers, dict):
             return False, f"{cfg_path}: server map is not an object"
 
-        existing = servers.get("mnemos")
+        # Migration: legacy-key entry moves to the brand-primary key.
+        if MCP_SERVER_KEY not in servers and isinstance(servers.get(MCP_LEGACY_SERVER_KEY), dict):
+            servers[MCP_SERVER_KEY] = servers.pop(MCP_LEGACY_SERVER_KEY)
+
+        existing = servers.get(MCP_SERVER_KEY)
+        if not isinstance(existing, dict):
+            existing = None
         if target.mcp_format == "opencode":
-            servers["mnemos"] = self._mcp_entry_opencode(mnemos_bin, existing)
+            servers[MCP_SERVER_KEY] = self._mcp_entry_opencode(mnemos_bin, existing)
         else:
-            servers["mnemos"] = self._mcp_entry(mnemos_bin, existing)
+            servers[MCP_SERVER_KEY] = self._mcp_entry(mnemos_bin, existing)
 
         try:
             cfg_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1650,12 +1816,122 @@ class IntegrationManager:
             return False, f"cannot write {cfg_path}: {exc}"
         return True, f"MCP server registered in {cfg_path}"
 
+    # ── MCP: unregistration (SEC-major #2, ArchCom 2026-10-01) ─────────────────
+
+    @staticmethod
+    def _mcp_entry_is_ours(entry: Any) -> bool:
+        """Evidence check that an MCP server entry was written by this pack.
+
+        An entry is ours when its command resolves to the memory-server
+        binary (``vesma``/``mnemos`` basename) or its argv carries the
+        ``mcp-server`` subcommand. A foreign entry that merely REUSES the
+        ``vesma`` server key but points elsewhere does NOT match and is
+        never touched by :meth:`unregister_mcp`.
+        """
+        if not isinstance(entry, dict):
+            return False
+        command = entry.get("command")
+        argv: list[str] = []
+        if isinstance(command, str):
+            argv.append(command)
+            argv.extend(str(a) for a in entry.get("args", []) if isinstance(a, str))
+        elif isinstance(command, list):
+            argv.extend(str(a) for a in command if isinstance(a, (str, int)))
+        if not argv:
+            return False
+        exe = Path(argv[0]).name.lower()
+        exe = exe.removesuffix(".exe")
+        ours_bin = exe in {"vesma", "mnemos"}
+        subcommand = "mcp-server" in argv[1:]
+        return ours_bin or subcommand
+
+    def unregister_mcp(self, target_name: str | None = None) -> tuple[bool, str]:
+        """Remove the MCP server entry THIS pack registered (SEC-major #2).
+
+        The reverse of :meth:`register_mcp` for JSON-merge targets (zcode,
+        agents, opencode). Ownership rules:
+
+        * only the pack's server keys (``vesma``, legacy ``mnemos``) are
+          considered;
+        * a key is removed only when the entry passes the
+          :meth:`_mcp_entry_is_ours` evidence check — a foreign tool that
+          registered a server under the same key keeps its entry;
+        * every other server entry and every other config key is preserved
+          as data.
+
+        The Pi target needs no unregistration here (its bridge extension is
+        a stamped file removed by :meth:`uninstall`); the legacy VS Code
+        script path manages its own registration and is not touched.
+        """
+        target = self.targets.get(target_name) if target_name else None
+        if target is None or target.mcp_config is None or target.mcp_format in ("pi",):
+            return False, "no JSON MCP registration known for this target — nothing to unregister"
+
+        cfg_path = target.mcp_config
+        if not cfg_path.exists():
+            return False, f"{cfg_path} does not exist — nothing to unregister"
+        try:
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return False, f"cannot read {cfg_path}: {exc}"
+        if not isinstance(data, dict):
+            return False, f"{cfg_path}: expected a JSON object at top level"
+
+        if target.mcp_format == "zcode":
+            mcp = data.get("mcp")
+            servers = mcp.get("servers") if isinstance(mcp, dict) else None
+        elif target.mcp_format == "opencode":
+            servers = data.get("mcp") if isinstance(data.get("mcp"), dict) else None
+        else:
+            servers = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else None
+        if servers is None:
+            return False, f"{cfg_path}: no server map — nothing to unregister"
+
+        removed: list[str] = []
+        kept_foreign: list[str] = []
+        for key in (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY):
+            if key not in servers:
+                continue
+            if self._mcp_entry_is_ours(servers[key]):
+                del servers[key]
+                removed.append(key)
+            else:
+                kept_foreign.append(key)
+        if not removed:
+            note = "no vesma-owned MCP entry found"
+            if kept_foreign:
+                note += f" (foreign entry under {', '.join(kept_foreign)} kept untouched)"
+            return False, note
+
+        # Drop now-empty containers so we do not leave structural litter.
+        if target.mcp_format == "zcode":
+            mcp = data.get("mcp")
+            if isinstance(mcp, dict) and not mcp.get("servers"):
+                mcp.pop("servers", None)
+                if not mcp:
+                    data.pop("mcp", None)
+        elif target.mcp_format == "opencode":
+            if isinstance(data.get("mcp"), dict) and not data["mcp"]:
+                data.pop("mcp", None)
+        else:
+            if isinstance(data.get("mcpServers"), dict) and not data["mcpServers"]:
+                data.pop("mcpServers", None)
+
+        try:
+            _atomic_write_text(cfg_path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            return False, f"cannot write {cfg_path}: {exc}"
+        note = f"MCP entry removed from {cfg_path}: {', '.join(removed)}"
+        if kept_foreign:
+            note += f"; foreign entry under {', '.join(kept_foreign)} kept untouched"
+        return True, note
+
     def _mcp_entry(self, mnemos_bin: str | None, existing: dict[str, Any] | None) -> dict[str, Any]:
         """Build the stdio server entry, preserving user tuning where present.
 
         Env defaults mirror ``mcp-setup.sh``: ``<home>/.mnemos/{data,vault}``.
-        A pre-existing ``mnemos`` entry keeps its env verbatim, so cross-layout
-        installs never clobber tuned paths.
+        A pre-existing entry keeps its env verbatim, so cross-layout installs
+        never clobber tuned paths.
         """
         bin_path = self._resolve_mnemos_bin(mnemos_bin)
         env = self._mcp_env_defaults()

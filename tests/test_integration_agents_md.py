@@ -135,13 +135,13 @@ class TestAgentsMdBlock:
     def test_render_block_format(self) -> None:
         block = render_agents_md_block(BLOCK_BODY, VERSION)
         lines = block.splitlines()
-        assert lines[0] == f"<!-- mnemos:integration:v{VERSION} BEGIN -->"
-        assert lines[-1] == f"<!-- mnemos:integration:v{VERSION} END -->"
+        assert lines[0] == f"<!-- vesma:integration:v{VERSION} BEGIN -->"
+        assert lines[-1] == f"<!-- vesma:integration:v{VERSION} END -->"
         assert "# Mnemos memory — always-on rules" in block
 
     def test_render_block_appends_missing_newline(self) -> None:
         block = render_agents_md_block("no trailing newline", VERSION)
-        assert block.endswith(f"<!-- mnemos:integration:v{VERSION} END -->\n")
+        assert block.endswith(f"<!-- vesma:integration:v{VERSION} END -->\n")
 
     def test_strip_removes_block_preserves_user_content(self) -> None:
         content = USER_HEADER + render_agents_md_block(BLOCK_BODY, VERSION) + USER_FOOTER
@@ -478,7 +478,7 @@ class TestOpenCodeTarget:
 
         cfg_path = Path(str(opencode_target.mcp_config))
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        entry = data["mcp"]["mnemos"]
+        entry = data["mcp"]["vesma"]
         assert entry["type"] == "local"
         assert entry["command"][1] == "mcp-server"
         assert entry["enabled"] is True
@@ -507,7 +507,7 @@ class TestOpenCodeTarget:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         assert data["theme"] == "dark"
         assert data["mcp"]["other-server"] == {"type": "local", "command": ["foo", "bar"]}
-        assert "mnemos" in data["mcp"]
+        assert "vesma" in data["mcp"]
 
     def test_register_mcp_opencode_preserves_user_environment(
         self, manager: IntegrationManager, opencode_target: Target
@@ -525,7 +525,7 @@ class TestOpenCodeTarget:
         ok, _ = manager.register_mcp("test-opencode")
         assert ok
 
-        entry = json.loads(cfg_path.read_text(encoding="utf-8"))["mcp"]["mnemos"]
+        entry = json.loads(cfg_path.read_text(encoding="utf-8"))["mcp"]["vesma"]
         assert entry["environment"]["VESMARO_DATA_DIR"] == "/custom/data"
         assert entry["environment"]["VESMARO_VAULT__VAULT_PATH"] == str(
             manager.home / ".mnemos/vault"
@@ -549,7 +549,7 @@ class TestOpenCodeTarget:
         assert verify.all_current
 
         data = json.loads(Path(str(opencode_target.mcp_config)).read_text(encoding="utf-8"))
-        assert "mnemos" in data["mcp"]
+        assert "vesma" in data["mcp"]
 
         uninstall = manager.uninstall("test-opencode")
         assert opencode_target.deploy_map["agents_md"] in uninstall.removed

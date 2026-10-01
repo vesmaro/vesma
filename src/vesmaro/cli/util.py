@@ -139,6 +139,7 @@ def _print_verify_result(result: VerifyResult) -> None:
             DeployStatus.CURRENT: "green",
             DeployStatus.STALE: "yellow",
             DeployStatus.MISSING: "red",
+            DeployStatus.OLD_STAMP: "yellow",
             DeployStatus.SKIPPED: "dim",
         }.get(f.status, "white")
         table.add_row(
@@ -537,6 +538,11 @@ def verify_cmd(
             console.print(
                 f"  [yellow]{result.stale_count} stale, {result.missing_count} missing[/yellow]"
             )
+        if result.old_stamp_count > 0:
+            console.print(
+                f"  [yellow]{result.old_stamp_count} old-stamp "
+                f"(legacy mnemos-integration marker — `integration update` re-stamps)[/yellow]"
+            )
 
     # ── Agent wiring section (informational — does not affect exit code) ────
     # Agent wiring status is reported here for visibility, but it does not
@@ -587,10 +593,11 @@ def uninstall_cmd(
     ] = False,
     home: Annotated[Path | None, HomeOption] = None,
 ) -> None:
-    """Remove ONLY files carrying the mnemos-integration version stamp.
+    """Remove ONLY files carrying the pack's version stamp (both generations).
 
-    User-created files are never deleted. Lists what was removed (or would
-    be removed with ``--dry-run``).
+    User-created files are never deleted. Also unregisters the MCP server
+    entry the pack registered (foreign entries are never touched). Lists
+    what was removed (or would be removed with ``--dry-run``).
     """
     targets = _resolve_targets(target, home)
     if not targets:
@@ -604,6 +611,10 @@ def uninstall_cmd(
         prefix = "[dry-run] " if dry_run else ""
         console.print(f"{prefix}Uninstalling from target: [bold]{name}[/bold]")
         result = mgr.uninstall(name, dry_run=dry_run)
+
+        if result.mcp_note:
+            icon = "[green]✓[/green]" if result.mcp_unregistered else "[dim]·[/dim]"
+            console.print(f"  {icon} MCP: {result.mcp_note}")
 
         if result.removed:
             console.print(f"  [green]Removed ({len(result.removed)}):[/green]")

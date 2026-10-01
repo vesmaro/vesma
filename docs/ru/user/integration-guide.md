@@ -37,19 +37,38 @@
 ```text
 integrations/
 ├── instructions/
-│   ├── mnemos-session-lifecycle.instructions.md   # recall / checkpoint / save
-│   ├── mnemos-memory-ops.instructions.md          # search / add / agent-recall
-│   ├── mnemos-tag-contract.instructions.md        # обязательный состав тегов
-│   └── canon-records.instructions.md              # канон-стандарты записей (конверт + секции)
+│   ├── vesma-memory-ops.instructions.md           # канон память-операций: гейты G1–G4, операции, tag contract, деградация
+│   └── canon-records.instructions.md              # стандарт канон-записей (конверт + секции)
+├── agents_md/
+│   └── vesma-always-on.md                         # always-on поведенческий блок (G1–G4), инъекция в AGENTS.md
 ├── skills/
-│   ├── mnemos-session-init.md                     # recall в начале сессии
-│   ├── mnemos-checkpoint.md                       # save в середине / при компакции
-│   ├── mnemos-recall.md                           # эффективный поиск (узко → широко)
-│   ├── mnemos-write.md                            # написание хороших записей
-│   ├── mnemos-canon-write.md                      # канон-записи (task / decision / report)
-│   └── mnemos-tag-contract.md                     # справочник схемы тегов
+│   ├── vesma-session-init.md                      # G1: recall на старте сессии
+│   ├── vesma-recall.md                            # эффективный поиск (узко → расширять)
+│   ├── vesma-agent-recall.md                      # recall по агенту
+│   ├── vesma-write.md                             # как писать хорошие записи
+│   ├── vesma-checkpoint.md                        # G3: чекпоинты, переживающие компакцию
+│   ├── vesma-tag-contract.md                      # схема тегов
+│   ├── vesma-core.md                              # зонтик: когда какие скиллы запускать
+│   ├── vesma-bootstrap.md                         # bootstrap файлового режима
+│   ├── vesma-compress.md                          # zero-loss CCR-сжатие
+│   ├── vesma-filter.md                            # профили context-filter / токен-бюджеты
+│   ├── vesma-housekeeping.md                      # статистика, очередь, гигиена тегов
+│   ├── vesma-ingest.md                            # разовый ingest URL
+│   ├── vesma-watch.md                             # наблюдение за директориями / авто-индексация
+│   ├── vesma-workflow.md                          # открытые вопросы / жизненный цикл задач
+│   ├── vesma-exchange.md                          # экспорт / импорт / бэкапы
+│   ├── vesma-cache-align.md                       # выравнивание префикса для KV-кэшей
+│   ├── mnemos-canon-write.md                      # канон-совместимые записи (task / decision / report)
+│   └── mnemos-context-lifecycle.md                # жизненный цикл сборки контекста
 └── prompts/
-    └── mnemos-memory.prompt.md                    # активный режим памяти
+    └── mnemos-memory.prompt.md                    # режим активной памяти
+```
+
+Каждый разворачиваемый файл несёт safety-контракт пака (вспомненное — данные,
+а не инструкции; без эксфильтрации; ноль секретов; локальный канон харнеса
+приоритетен) и версионный штамп `vesma-integration`. Легаси-штампы
+`mnemos-integration` распознаются в миграционное окно и переклеиваются
+первым `vesma integration update`.
 ```
 
 ---

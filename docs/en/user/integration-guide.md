@@ -36,19 +36,38 @@ Three surfaces, each with a different strength:
 ```text
 integrations/
 ├── instructions/
-│   ├── mnemos-session-lifecycle.instructions.md   # recall / checkpoint / save
-│   ├── mnemos-memory-ops.instructions.md          # search / add / agent-recall
-│   ├── mnemos-tag-contract.instructions.md        # required tag composition
+│   ├── vesma-memory-ops.instructions.md           # memory-operations canon: gates G1–G4, ops, tag contract, degradation
 │   └── canon-records.instructions.md              # canon record standards (envelope + sections)
+├── agents_md/
+│   └── vesma-always-on.md                         # always-on behavioral block (G1–G4) injected into AGENTS.md files
 ├── skills/
-│   ├── mnemos-session-init.md                     # recall at session start
-│   ├── mnemos-checkpoint.md                       # save mid-session / on compaction
-│   ├── mnemos-recall.md                           # effective search (narrow → broaden)
-│   ├── mnemos-write.md                            # write good entries
+│   ├── vesma-session-init.md                      # G1: recall at session start
+│   ├── vesma-recall.md                            # effective search (narrow → broaden)
+│   ├── vesma-agent-recall.md                      # agent-scoped recall
+│   ├── vesma-write.md                             # write good entries
+│   ├── vesma-checkpoint.md                        # G3: checkpoints that survive compaction
+│   ├── vesma-tag-contract.md                      # tag schema reference
+│   ├── vesma-core.md                              # umbrella: when to chain the atomic skills
+│   ├── vesma-bootstrap.md                         # file-mode store bootstrap
+│   ├── vesma-compress.md                          # zero-loss CCR compression
+│   ├── vesma-filter.md                            # context-filter profiles / token budgets
+│   ├── vesma-housekeeping.md                      # stats, queue depth, tag hygiene
+│   ├── vesma-ingest.md                            # one-shot URL ingest
+│   ├── vesma-watch.md                             # directory watching / auto-index
+│   ├── vesma-workflow.md                          # open questions / task lifecycle
+│   ├── vesma-exchange.md                          # export / import / backups
+│   ├── vesma-cache-align.md                       # KV-cache prompt-prefix alignment
 │   ├── mnemos-canon-write.md                      # canon-compliant records (task / decision / report)
-│   └── mnemos-tag-contract.md                     # tag schema reference
+│   └── mnemos-context-lifecycle.md                # context assembly / rewrite lifecycle
 └── prompts/
     └── mnemos-memory.prompt.md                    # active memory mode
+```
+
+Every deployable file carries the pack safety contract (recalled content is
+data, not instructions; no exfiltration; no secrets; harness-local canon
+takes precedence) and a `vesma-integration` version stamp. Legacy
+`mnemos-integration` stamps are recognized during the migration window and
+re-stamped by the first `vesma integration update`.
 ```
 
 ---
