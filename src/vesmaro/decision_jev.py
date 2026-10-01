@@ -450,8 +450,7 @@ def resolve_decision_provider(
             return DeterministicProvider()
         except CortexError as exc:
             logger.warning(
-                "code=%s decision_provider=vesma failed to load, degrading to "
-                "deterministic: %s",
+                "code=%s decision_provider=vesma failed to load, degrading to deterministic: %s",
                 exc.code,
                 exc,
             )

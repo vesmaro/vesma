@@ -208,9 +208,7 @@ class TestSetupDefaultWiring:
         )
 
         assert result.exit_code == 0, result.output
-        assert (agents_dir / "agent-architect.agent.md").read_text(
-            encoding="utf-8"
-        ) == original
+        assert (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8") == original
 
     def test_wire_agents_flag_still_works(
         self,
