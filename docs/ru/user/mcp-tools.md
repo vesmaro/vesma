@@ -2052,7 +2052,7 @@ output_style:
 
 ### Выход
 
-`pre_flight` возвращает `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` несёт `{agent, last_seen, entries, checkpoint, task}` на каждого соседа по проекту (кап 8, свежие первыми; `agents_capped_from` делает обрезание наблюдаемым; `task` — заявленный соседом slug задачи или `null` — самоподанный слой swarm v0b, вырезается fail-closed, если скан выдачи отказал или редактировал его). `record_abstention` возвращает id трейса и полную цепочку провенанса.
+`pre_flight` возвращает `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` несёт `{agent, last_seen, entries, checkpoint, task}` на каждого соседа по проекту (кап 8, свежие первыми; `agents_capped_from` делает обрезание наблюдаемым; `task` — заявленный соседом slug задачи или `null` — самоподанный слой swarm v0b, вырезается fail-closed, если скан выдачи отказал или редактировал его). Подсказки о конфликтах используют Unicode-токенайзер (#451): слово-символы любого алфавита (кириллица включена), точечные хвосты версий — один токен (`v4.0.0`), дефисы разделяют (`qa-vesma-5x` → `qa`/`vesma`/`5x`); минимальный RU-набор стоп-слов дополняет EN-набор. `record_abstention` возвращает id трейса и полную цепочку провенанса.
 
 ### Заметки
 

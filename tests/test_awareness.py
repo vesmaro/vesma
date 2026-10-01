@@ -677,6 +677,38 @@ class TestConflictHints:
         assert conflict_hints(None, delta) == []
         assert conflict_hints("anything", {"agents": []}) == []
 
+    # ── #451: the Unicode tokenizer ────────────────────────────────────
+
+    def test_cyrillic_goals_fire_hints(self) -> None:
+        """#451: a Cyrillic goal tokenizes (the old ASCII-only class
+        yielded an EMPTY set and never fired) — RU↔RU overlap reaches
+        the hint layer."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "релиз платёжного модуля v4"}]}
+        hints = conflict_hints("готовлю релиз платёжного модуля", delta)
+        assert hints == [{"neighbor": "n1", "shared_tokens": ["модуля", "платёжного", "релиз"]}]
+
+    def test_hyphen_split_overlap_fires(self) -> None:
+        """#451: hyphens are SEPARATORS — slug-bearing goals overlap on
+        their PARTS, not the whole literal (before: ``qa-vesma-5x`` was
+        one opaque token that never matched a differently-spelled
+        neighbor)."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "close the qa-vesma-5x wave"}]}
+        hints = conflict_hints("finish qa-vesma-5x checks", delta)
+        assert hints == [{"neighbor": "n1", "shared_tokens": ["5x", "qa", "vesma"]}]
+
+    def test_dotted_versions_stay_single_tokens(self) -> None:
+        """The in-token dot survives the #451 widening: ``v4.0.0`` is
+        ONE token (the anti-#224 replay scenario depends on it)."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "cut the payments release v4.0.0"}]}
+        hints = conflict_hints("ship release v4.0.0 of payments", delta)
+        assert hints[0]["shared_tokens"] == ["payments", "release", "v4.0.0"]
+
+    def test_ru_stopwords_do_not_manufacture_hints(self) -> None:
+        """The minimal RU service-word set rides the EN D4 rule: shared
+        «и/в/не/на»-class words alone never fire a hint."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "это не то и не сё"}]}
+        assert conflict_hints("это не то же самое, что и как", delta) == []
+
     def test_224_replay_scenario(self, manager: MemoryManager) -> None:
         """The permanent scenario: my release goal vs the parallel session
         that is about to close the same release — the hint fires."""

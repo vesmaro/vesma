@@ -328,7 +328,14 @@ PICTURE_TASK_DISCLAIMER: Final[str] = (
 _GOAL_SECTION_RE: Final[re.Pattern[str]] = re.compile(
     r"^## Goals\s*$(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
-_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9][a-z0-9_.\-]+")
+#: Goal tokenizer (#451): Unicode word characters (``\w`` over a str
+#: pattern matches Unicode letters — Cyrillic included — plus digits and
+#: underscore), dotted tails kept IN-token (``v4.0.0`` is ONE token),
+#: hyphens as SEPARATORS (``qa-vesma-5x`` yields ``qa``/``vesma``/``5x``
+#: — the delimiter real slugs use, so slug-bearing goals overlap on
+#: their slug PARTS, not the whole literal). A token always starts and
+#: ends on a word character — lone dots never match.
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"\w+(?:\.\w+)*", re.UNICODE)
 _POLICY_TAG_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:applyTo|severity):[^\s,;]*")
 #: swarm v0b (C6): the PICTURE's defensive read-side view of the
 #: ADR-0027 task-slug alphabet — identical bytes to
@@ -343,7 +350,11 @@ _POLICY_TAG_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:applyTo|severity):[^\
 _TASK_TAG_SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9_\-]{1,64}\Z")
 
 #: Stopwords dropped before overlap comparison (deterministic fixed set —
-#: single common words must not manufacture conflicts, D4).
+#: single common words must not manufacture conflicts, D4). The EN core
+#: plus a MINIMAL RU service-word set (#451): the project is bilingual
+#: (RU owner, EN corpus), and without the RU set every «и/в/на» would
+#: count as overlap fuel for Cyrillic goals. Deliberately tiny — a
+#: longer list is a curation decision, not a tokenizer fix.
 _STOPWORDS: Final[frozenset[str]] = frozenset(
     {
         "the",
@@ -449,6 +460,21 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
         "goals",
         "task",
         "tasks",
+        # Minimal RU service-word set (#451) — see the _STOPWORDS comment.
+        "и",
+        "в",
+        "не",
+        "на",
+        "с",
+        "по",
+        "для",
+        "из",
+        "у",
+        "к",
+        "о",
+        "как",
+        "что",
+        "это",
     }
 )
 
@@ -804,14 +830,14 @@ def _picture_task_tag(
 def _goal_tokens(text: str) -> frozenset[str]:
     """Deterministic lexical token set (lowercased, stopwords dropped).
 
-    Known v0 limitation: the tokenizer is ASCII-blind by construction
-    (``[a-z0-9][a-z0-9_.\\-]+`` over the lowercased text) — a Cyrillic
-    goal yields an EMPTY token set and never fires a conflict hint. The
-    project is bilingual (RU owner, EN corpus), so this is a real gap:
-    D-batches with Cyrillic-goal scenarios must not be scored as hint
-    misses without noting this. Widening the class (e.g. ``\\w`` with
-    Unicode) is a tokenizer change that E0 must register before any run
-    that relies on it.
+    Unicode tokenizer (#451): ``\\w`` word characters (Unicode letters,
+    digits, underscore — Cyrillic included), dotted tails kept in-token
+    (``v4.0.0`` is ONE token), hyphens as separators
+    (``qa-vesma-5x`` → ``qa``/``vesma``/``5x``). A Cyrillic goal now
+    tokenizes like a Latin one, so RU↔RU and RU↔EN goal overlap both
+    reach the hint layer; the stopword set carries the EN core plus a
+    minimal RU service-word set. Pure function of the input: same text
+    → same tokens, every call.
     """
     return frozenset(t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS)
 

@@ -2055,7 +2055,7 @@ Semantics (ADR-0018, verbatim):
 
 ### Output
 
-`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). `record_abstention` returns the trace id and the full provenance chain.
+`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). Conflict hints use a Unicode tokenizer (#451): word characters of any alphabet (Cyrillic included), dotted version tails stay one token (`v4.0.0`), hyphens split (`qa-vesma-5x` → `qa`/`vesma`/`5x`); a minimal RU stopword set rides the EN one. `record_abstention` returns the trace id and the full provenance chain.
 
 ### Notes
 
