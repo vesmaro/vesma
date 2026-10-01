@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [5.1.2] — 2026-10-02
 
 ### Added
 
@@ -20,8 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`vesma integration setup` is now the full host deployment by default (UX inversion, owner ruling; board card `vesma-integration-setup-default-all`)** (`src/vesmaro/cli/util.py`, `src/vesmaro/cli/doctor.py`, `integrations/targets.yaml`; docs `docs/en|ru/user/getting-started.md`, `docs/en|ru/user/integration-guide.md`, `docs/en|ru/user/cli-reference.md`) — the plain `vesma integration setup` deploys the pack to **ALL detected harnesses on this host AND wires all agents** in ONE non-interactive, idempotent pass; the interactive wiring prompts are gone (the previous "prompt when TTY / skip in CI" default is retired). Flags are now the narrowing/custom variant: `--target <name>` is repeatable and deploys only the named harness(es) (`all` still accepted), `--no-wire-agents` skips wiring, `--select a,b` narrows wiring to named agents (works standalone); `--wire-agents` / `--all` remain accepted for backward compatibility (docs and scripts reference them) but are no-ops relative to the default — wiring is already default-on. `--dry-run`, `--precise`, `--home`, `--no-mcp` unchanged. Doctor hints and the verify wiring hint updated to the plain command. A failing target is now reported loudly per target and never blocks the remaining targets (see the #448 fix below).
 
 - **Ecosystem rebrand completed** — all sibling repositories moved to `vesma-*` names in the `vesmaro` org (`vesmaro-agent` / `vesmaro-cortex` / `vesmaro-canon` → `vesma-agent` / `vesma-cortex` / `vesma-canon`; `mnemos-eyes` → `vesma-eyes`; `mnemos-mesh` → `vesma-mesh`; `mnemos-vitals` → `vesma-vitals`); models `mnema-*` → `vesma-*` hash-preserving; GHCR packages `vesmaro/vesma` and `vesmaro/vesma-eyes` live. Documentation updated to the new names.
-
-### Changed
 
 - **Brand-primary MCP manifest** — with `VESMA_MCP_BRAND` set (e.g. `vesma`), `tools/list` now advertises each tool under its `vesma_*` name ONLY instead of appending brand aliases to the `mnemos_*` manifest (owner ruling 2026-10-01: the doubled 76-entry list confused clients). Legacy `mnemos_*` spellings leave the manifest but remain accepted on the call path and dispatch identically (dual-period contract until 6.0, ADR-0031).
 

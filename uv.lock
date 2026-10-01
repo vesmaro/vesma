@@ -4486,7 +4486,7 @@ wheels = [
 
 [[package]]
 name = "vesma"
-version = "5.1.1"
+version = "5.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
