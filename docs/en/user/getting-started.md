@@ -214,7 +214,25 @@ The MCP server is the primary integration surface: your agent harness spawns `ve
 vesma integration setup
 ```
 
-See the [integration guide](integration-guide.md) for targets and flags.
+The plain command deploys to **all detected harnesses on this host and wires
+all agents** — non-interactive and idempotent (re-running refreshes). Use
+flags to narrow: `--target <name>` (repeatable) installs to a specific
+harness, `--no-wire-agents` skips agent wiring. See the
+[integration guide](integration-guide.md) for all targets and flags.
+
+### Memory status
+
+At any point, check how memory is attached to each detected harness:
+
+```bash
+vesma memory status
+```
+
+A read-only report per harness: pack attachment (stamps), the MCP
+registration (server keys only — vesma plus any external memory engines
+seen in the harness config), the local store markers (existence/mtime,
+never contents) and the active precedence mode (`overlay+mirror` by
+default; ADR-0034).
 
 Manual VS Code reference — user- or workspace-scope `mcp.json`:
 

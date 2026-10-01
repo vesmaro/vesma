@@ -154,58 +154,31 @@ def _patch_integration(monkeypatch: pytest.MonkeyPatch, fake_pack: Path) -> None
     )
 
 
-# ── Task 1: integration setup default-flow wiring prompt ─────────────────────
+# ── Task 1: integration setup default-all wiring (UX inversion, #448 family) ──
 
 
-class TestSetupDefaultWiringPrompt:
-    """``mnemos integration setup`` (no wiring flags) prompts / skips."""
+class TestSetupDefaultWiring:
+    """Plain ``vesma integration setup`` wires ALL agents, non-interactively.
 
-    def test_non_interactive_skips_wiring(
+    Owner ruling (board card ``vesma-integration-setup-default-all``): the
+    plain command is the full host deployment — deploy every detected
+    target and wire every unwired agent in ONE non-interactive pass.
+    Flags narrow; ``--wire-agents``/``--all`` are kept only for backward
+    compatibility (they are no-ops relative to the default).
+    """
+
+    def test_default_wires_all_non_interactively(
         self,
         agents_dir: Path,
         fake_pack: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Non-interactive terminal (no TTY) → skip wiring, don't modify agents."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
-        _patch_integration(monkeypatch, fake_pack)
-
-        original = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
-
-        result = runner.invoke(
-            app,
-            ["integration", "setup", "--target", "test-harness", "--no-mcp"],
-        )
-
-        assert result.exit_code == 0, result.output
-        # Agent file NOT modified (non-interactive → skip).
-        assert (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8") == original
-        assert "skipping agent wiring" in result.output.lower()
-
-    def test_interactive_yes_wires_all(
-        self,
-        agents_dir: Path,
-        fake_pack: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Interactive terminal + 'Y' answer → wire all unwired agents.
-
-        We patch ``_prompt_wire_agents_default`` to return the unwired list
-        directly, simulating a 'Y' answer. This avoids CliRunner's stdin
-        replacement interfering with the isatty() check.
-        """
+        """No flags → all unwired agents get wired (no prompt, no TTY needed)."""
         import frontmatter
 
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
-
-        # Simulate 'Y' answer: prompt returns all unwired agents.
-        def _yes_prompt(agents):
-            return [a for a in agents if not a.has_mnemos and not a.uses_tool_profile]
-
-        monkeypatch.setattr("vesmaro.cli.util._prompt_wire_agents_default", _yes_prompt)
 
         result = runner.invoke(
             app,
@@ -216,28 +189,28 @@ class TestSetupDefaultWiringPrompt:
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
         assert VESMARO_WILDCARD in post.metadata["tools"]
 
-    def test_interactive_no_skips_wiring(
+    def test_no_wire_agents_skips_wiring(
         self,
         agents_dir: Path,
         fake_pack: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Interactive terminal + 'n' answer → skip wiring."""
+        """``--no-wire-agents`` skips agent wiring entirely."""
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
-        # Simulate 'n' answer: prompt returns empty list.
-        monkeypatch.setattr("vesmaro.cli.util._prompt_wire_agents_default", lambda agents: [])
 
         original = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
 
         result = runner.invoke(
             app,
-            ["integration", "setup", "--target", "test-harness", "--no-mcp"],
+            ["integration", "setup", "--target", "test-harness", "--no-mcp", "--no-wire-agents"],
         )
 
         assert result.exit_code == 0, result.output
-        assert (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8") == original
+        assert (agents_dir / "agent-architect.agent.md").read_text(
+            encoding="utf-8"
+        ) == original
 
     def test_wire_agents_flag_still_works(
         self,
@@ -245,7 +218,7 @@ class TestSetupDefaultWiringPrompt:
         fake_pack: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``--wire-agents --all`` still wires without prompting."""
+        """``--wire-agents --all`` is still accepted (legacy scripts) and wires."""
         import frontmatter
 
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)

@@ -759,7 +759,7 @@ Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migrati
 
 ### `doctor --fix` and `--dry-run`
 
-With `--fix`, WARN-level checks are repaired in place (stale integration → `integration update`, unwired agents → `integration setup --wire-agents --all`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. Combine with `--dry-run` to preview the fixes without executing them. `--json --fix` reports the `fixed` / `fix_skipped` lists in the JSON payload.
+With `--fix`, WARN-level checks are repaired in place (stale integration → `integration update`, unwired agents → `vesma integration setup`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. Combine with `--dry-run` to preview the fixes without executing them. `--json --fix` reports the `fixed` / `fix_skipped` lists in the JSON payload.
 
 ```bash
 # Preview only
@@ -771,6 +771,43 @@ vesma doctor --fix
 # CI: machine-readable verdict, no fixes
 vesma doctor --json
 ```
+
+---
+
+## `memory status`
+
+Read-only per-harness memory-attachment report (ADR-0034, MS-0). Never
+writes, never touches the network; MCP configs are read to enumerate server
+KEYS only (never env values or command lines), and store markers are
+reported as existence + mtime.
+
+```text
+vesma memory status [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--target <name>` | all detected | Narrow to specific harness(es); repeatable. |
+| `--home <dir>` | `~` | Inspect an alternate home directory. |
+
+Per harness the table shows: pack attachment (stamps: attached / stale /
+missing counts), MCP registration (whether the `vesma` server entry is
+present), external memory engines (other server keys seen in the harness
+config), the built-in store markers (`data`, `vault`, `mnemos.db` —
+existence + mtime) and the active precedence mode (`overlay+mirror`;
+`replace`/`off` arrive with MS-1).
+
+### Example
+
+```bash
+vesma memory status
+# ┌─────────┬──────────────┬─────────┬─────────────────┬─────────────┬───────────────┐
+# │ Harness │ Pack         │ MCP     │ External engines │ Vesma store │ Precedence    │
+# │ zcode   │ attached (25)│ vesma ✓ │ obsidian-mcp     │ db ✓ 10:01  │ overlay+mirror│
+```
+
+Exit codes: `0` when the report was produced (it is a status surface, not a
+health gate — `doctor` and `integration verify` govern health).
 
 ---
 

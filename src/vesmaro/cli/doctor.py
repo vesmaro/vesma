@@ -307,7 +307,7 @@ def _check_mcp_server() -> CheckResult:
     return CheckResult(
         "MCP server",
         CheckStatus.WARN,
-        "not registered in any known harness — run `mnemos integration setup`",
+        "not registered in any known harness — run `vesma integration setup`",
     )
 
 
@@ -326,15 +326,15 @@ def _check_integration() -> CheckResult:
         return CheckResult(
             "Integration",
             CheckStatus.WARN,
-            "no agent harnesses detected — run `mnemos integration detect`",
+            "no agent harnesses detected — run `vesma integration detect`",
         )
 
     # Aggregate verify across all detected targets.
     total_stale = 0
     total_missing = 0
-    target_names: list[str] = []
+    target_notes: list[str] = []
     for target in detected:
-        target_names.append(target.name)
+        target_notes.append(f"{target.name} ({target.precedence})")
         try:
             result = mgr.verify(target.name)
             total_stale += result.stale_count
@@ -347,20 +347,20 @@ def _check_integration() -> CheckResult:
         return CheckResult(
             "Integration",
             CheckStatus.WARN,
-            f"installed v{__version__}, targets: {', '.join(target_names)}, "
-            f"{total_missing} missing file(s) — run `mnemos integration setup`",
+            f"installed v{__version__}, targets: {', '.join(target_notes)}, "
+            f"{total_missing} missing file(s) — run `vesma integration setup`",
         )
     if total_stale > 0:
         return CheckResult(
             "Integration",
             CheckStatus.WARN,
-            f"installed v{__version__}, targets: {', '.join(target_names)}, "
-            f"{total_stale} stale — run `mnemos integration update`",
+            f"installed v{__version__}, targets: {', '.join(target_notes)}, "
+            f"{total_stale} stale — run `vesma integration update`",
         )
     return CheckResult(
         "Integration",
         CheckStatus.PASS,
-        f"installed v{__version__}, targets: {', '.join(target_names)}, stale: no",
+        f"installed v{__version__}, targets: {', '.join(target_notes)}, stale: no",
     )
 
 
@@ -500,8 +500,7 @@ def _check_agent_wiring() -> CheckResult:
         "Agent wiring",
         CheckStatus.WARN,
         f"{summary.wired}/{summary.total} wired, {summary.unwired} unwired, "
-        f"{summary.skipped_tool_profile} skipped — run "
-        "`mnemos integration setup --wire-agents --all`",
+        f"{summary.skipped_tool_profile} skipped — run `vesma integration setup`",
     )
 
 
@@ -691,11 +690,11 @@ def _fix_action_for(check_name: str) -> _FixAction | None:
     """Return the fix action for a WARN-level check, or None if not fixable."""
     actions: dict[str, _FixAction] = {
         "Integration": _FixAction(
-            description="mnemos integration update (redeploy stale files)",
+            description="vesma integration update (redeploy stale files)",
             run=_fix_integration_stale,
         ),
         "Agent wiring": _FixAction(
-            description="mnemos integration setup --wire-agents --all",
+            description="vesma integration setup (wires all agents by default)",
             run=_fix_agent_wiring,
         ),
         "MCP server": _FixAction(
@@ -771,7 +770,7 @@ def doctor(
 
     With ``--fix``: attempts to auto-fix WARN-level checks (stale
     integration → ``integration update``, unwired agents →
-    ``integration setup --wire-agents --all``, missing MCP → MCP setup).
+    ``vesma integration setup``, missing MCP → MCP setup).
     After fixes, re-runs the affected checks and reports the new status.
     ``--fix --dry-run`` previews what would be fixed without executing.
 

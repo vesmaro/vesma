@@ -80,10 +80,15 @@ re-stamped by the first `vesma integration update`.
 vesma integration setup
 ```
 
-Deploys instructions, skills, and prompt mode to the default target
-(`~/.copilot/` for VS Code Copilot Chat). Idempotent — safe to re-run.
+The plain command is the **full host deployment**: it deploys the pack to
+**ALL detected harnesses on this host** and wires all agents — in one
+non-interactive, idempotent pass (re-running refreshes stale files). There
+is no interactive prompt anywhere in the default path.
 
-### Per-target
+### Narrowing to specific targets (--target)
+
+Flags are always the custom variant — install to a specific harness only.
+`--target` is repeatable; `all` is accepted and means the default:
 
 ```bash
 vesma integration setup --target copilot           # VS Code Copilot ~/.copilot/ (default)
@@ -243,33 +248,28 @@ model. Wiring closes that gap.
 
 ### Usage
 
-`vesma integration setup` wires agents in the same pass as file deployment
-and MCP registration. The wiring flags control the behaviour:
+Agent wiring is part of the default pass: the plain
+`vesma integration setup` wires **all unwired agents** without prompting.
+The flags narrow or opt out:
 
 ```bash
-# Wire all unwired agents (no prompt)
-vesma integration setup --wire-agents --all
+# Default: wire ALL unwired agents (no prompt, works in CI too)
+vesma integration setup
 
 # Wire specific agents by name or filename stem
 vesma integration setup --wire-agents --select tech-lead,code-reviewer
 
-# Skip agent wiring entirely (no prompt)
+# Skip agent wiring entirely
 vesma integration setup --no-wire-agents
 
 # Preview what would change without modifying files
-vesma integration setup --wire-agents --dry-run
+vesma integration setup --dry-run
 ```
-
-If neither `--wire-agents` nor `--no-wire-agents` is passed, the command
-prompts interactively (same pattern as the MCP registration prompt). In a
-non-interactive terminal (CI / pipe), it defaults to wiring all unwired
-agents.
 
 | Flag | Description |
 |------|-------------|
-| `--wire-agents` | Enable agent wiring (interactive prompt by default) |
-| `--wire-agents --all` | Wire all unwired agents without prompting |
-| `--wire-agents --select name1,name2` | Wire only the named agents (matches `name`, filename stem, or filename) |
+| *(no flags)* | Wire all unwired agents (the default; `--wire-agents --all` is accepted as a legacy alias and is a no-op) |
+| `--wire-agents --select name1,name2` (or just `--select`) | Wire only the named agents (matches `name`, filename stem, or filename) |
 | `--no-wire-agents` | Skip agent wiring entirely (explicit opt-out) |
 | `--precise` | Use individual `vesma/vesma_*` tool names instead of the `vesma/*` wildcard |
 | `--dry-run` | Show what would change without modifying files |

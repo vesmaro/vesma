@@ -1,19 +1,20 @@
-"""``mnemos integration *`` CLI subcommands — integration layer management.
+"""``vesma integration *`` CLI subcommands — integration layer management.
 
 Subcommand tree::
 
-    mnemos integration detect    — print detected harnesses + deploy paths
-    mnemos integration setup     — deploy files + register MCP (unified entry point)
-    mnemos integration update    — bring stale files to current version
-    mnemos integration verify    — compare deployed files against shipped pack
-    mnemos integration uninstall — remove only stamped files
+    vesma integration detect    — print detected harnesses + deploy paths
+    vesma integration setup     — deploy to ALL detected harnesses + wire all agents
+    vesma integration update    — bring stale files to current version
+    vesma integration verify    — compare deployed files against shipped pack
+    vesma integration uninstall — remove only stamped files
 
-All commands support ``--dry-run`` and ``--target`` (default: all detected).
+The plain ``setup`` command is the full host deployment (owner ruling,
+board card ``vesma-integration-setup-default-all``): every detected target
+gets the pack and every agent gets wired, non-interactively. Flags narrow.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -64,14 +65,20 @@ HomeOption = typer.Option(
 )
 
 
-def _resolve_targets(target: str, home: Path | None = None) -> list[str]:
-    """Resolve ``--target`` value to a concrete list of target names.
+def _resolve_targets(targets: list[str] | str | None, home: Path | None = None) -> list[str]:
+    """Resolve ``--target`` value(s) to a concrete list of target names.
 
-    ``all`` → every detected target. A specific name is validated against
-    the config and must be detected (or we warn and skip).
+    ``None`` or ``"all"`` / ``["all"]`` → every detected target (the
+    plain-command default). A plain string is accepted for the commands
+    that still use a single ``--target``. Specific names are validated
+    against the config; a name that is not detected warns and is skipped,
+    an unknown name exits 1. Duplicates are collapsed, order preserved.
     """
+    if isinstance(targets, str):
+        targets = [targets]
     cfg = load_targets(home=home)
-    if target == "all":
+
+    def _detected_names() -> list[str]:
         detected = cfg.detected()
         if not detected:
             console.print("[yellow]No agent harnesses detected.[/yellow]")
@@ -81,20 +88,31 @@ def _resolve_targets(target: str, home: Path | None = None) -> list[str]:
             return []
         return [t.name for t in detected]
 
-    tgt = cfg.get(target)
-    if tgt is None:
-        console.print(f"[red]Unknown target: {target}[/red]")
-        console.print(f"  Available: {', '.join(t.name for t in cfg.targets)}")
-        raise typer.Exit(1)
+    if not targets or targets == ["all"]:
+        return _detected_names()
 
-    if not tgt.is_detected():
-        console.print(f"[yellow]Target {target!r} not detected (paths missing).[/yellow]")
-        console.print("  Detect paths:")
-        for p in tgt.detect_paths:
-            console.print(f"    {p} {'✓' if p.exists() else '✗'}")
-        return []
+    resolved: list[str] = []
+    for target in targets:
+        if target == "all":
+            resolved.extend(_detected_names())
+            continue
+        tgt = cfg.get(target)
+        if tgt is None:
+            console.print(f"[red]Unknown target: {target}[/red]")
+            console.print(f"  Available: {', '.join(t.name for t in cfg.targets)}")
+            raise typer.Exit(1)
 
-    return [target]
+        if not tgt.is_detected():
+            console.print(f"[yellow]Target {target!r} not detected (paths missing).[/yellow]")
+            console.print("  Detect paths:")
+            for p in tgt.detect_paths:
+                console.print(f"    {p} {'✓' if p.exists() else '✗'}")
+            continue
+
+        if target not in resolved:
+            resolved.append(target)
+
+    return resolved
 
 
 def _print_deploy_result(result: DeployResult, *, dry_run: bool) -> None:
@@ -213,84 +231,6 @@ def _resolve_agents_to_wire(
     return []
 
 
-def _prompt_wire_agents_default(agents: list[AgentInfo]) -> list[AgentInfo]:
-    """Interactive Y/n prompt for agent wiring (default flow, no flags).
-
-    When stdin is a TTY: shows a summary and asks ``[Y/n]``.
-    When non-interactive (CI / pipe): **skips wiring** (safe default —
-    don't modify agent files in CI without an explicit ``--wire-agents``).
-    """
-    unwired = [agent for agent in agents if not agent.has_mnemos and not agent.uses_tool_profile]
-    already = sum(1 for agent in agents if agent.has_mnemos)
-    skipped = sum(1 for agent in agents if agent.uses_tool_profile)
-
-    console.print(f"\nFound [bold]{len(agents)}[/bold] agents in [cyan]{DEFAULT_AGENTS_DIR}[/cyan]")
-    console.print(
-        f"  [green]{already}[/green] already wired, "
-        f"[yellow]{len(unwired)}[/yellow] need wiring, "
-        f"[dim]{skipped} skipped (tool_profile)[/dim]"
-    )
-
-    if not unwired:
-        console.print("  [dim]Nothing to wire — all agents already have Vesma tools.[/dim]")
-        return []
-
-    # Non-interactive: safe default is to SKIP (don't modify agent files in CI).
-    if not sys.stdin.isatty():
-        console.print(
-            "[dim]Non-interactive terminal — skipping agent wiring "
-            "(use --wire-agents to force).[/dim]"
-        )
-        return []
-
-    answer = console.input("Wire Vesma MCP to all Copilot agents? [Y/n] ").strip().lower()
-    if answer in ("", "y", "yes"):
-        return unwired
-    return []
-
-
-def _prompt_wire_agents_interactive(agents: list[AgentInfo]) -> list[AgentInfo]:
-    """Interactive numbered prompt for ``--wire-agents`` without ``--all``.
-
-    Offers three choices: wire all, select by name, or skip. Falls back
-    to wiring all unwired agents when stdin is not a TTY (CI / pipe) —
-    the user explicitly asked for wiring via ``--wire-agents``.
-    """
-    unwired = [agent for agent in agents if not agent.has_mnemos and not agent.uses_tool_profile]
-    already = sum(1 for agent in agents if agent.has_mnemos)
-    skipped = sum(1 for agent in agents if agent.uses_tool_profile)
-
-    console.print(f"\nFound [bold]{len(agents)}[/bold] agents in [cyan]{DEFAULT_AGENTS_DIR}[/cyan]")
-    console.print(
-        f"  [green]{already}[/green] already wired, "
-        f"[yellow]{len(unwired)}[/yellow] need wiring, "
-        f"[dim]{skipped} skipped (tool_profile)[/dim]"
-    )
-
-    if not unwired:
-        console.print("  [dim]Nothing to wire — all agents already have Vesma tools.[/dim]")
-        return []
-
-    # Non-interactive fallback: user passed --wire-agents, so wire all.
-    if not sys.stdin.isatty():
-        console.print("[yellow]⚠ Non-interactive terminal — wiring all unwired agents.[/yellow]")
-        return unwired
-
-    console.print("\n  [bold]Options:[/bold]")
-    console.print("  [1] Wire all unwired agents")
-    console.print("  [2] Select specific agents by name")
-    console.print("  [3] Skip agent wiring")
-    choice = console.input("\n  Choice [1-3] (default 1): ").strip() or "1"
-
-    if choice == "3":
-        return []
-    if choice == "2":
-        raw = console.input("  Enter agent names (comma-separated, e.g. tech-lead,code-reviewer): ")
-        return _resolve_agents_to_wire(agents, select=raw, wire_all=False)
-
-    return unwired
-
-
 def _run_agent_wiring(
     agents: list[AgentInfo],
     *,
@@ -334,22 +274,22 @@ def detect_cmd(
     console.print(table)
 
     console.print(
-        "\n[dim]Run [bold]mnemos integration setup --target all[/bold] "
-        "to deploy the integration pack.[/dim]"
+        "\n[dim]Run [bold]vesma integration setup[/bold] to deploy the "
+        "integration pack to every detected harness.[/dim]"
     )
 
 
 @integration_app.command(name="setup")
 def setup_cmd(
     target: Annotated[
-        str,
+        list[str] | None,
         typer.Option(
             "--target",
             "-t",
-            help="Target harness: all | any name in targets.yaml, e.g. copilot, cursor, "
-            "hermes, zcode, agents, pi, opencode (default: all detected)",
+            help="Narrow to specific harness(es); repeatable, e.g. --target copilot "
+            "--target zcode. Default: ALL detected harnesses ('all' accepted).",
         ),
-    ] = "all",
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Show what would be deployed without writing"),
@@ -360,34 +300,36 @@ def setup_cmd(
     ] = False,
     mnemos_bin: Annotated[
         str | None,
-        typer.Option("--mnemos-bin", help="Path to mnemos executable for MCP registration"),
+        typer.Option("--mnemos-bin", help="Path to the vesma executable for MCP registration"),
     ] = None,
     wire_agents: Annotated[
         bool,
         typer.Option(
             "--wire-agents",
-            help="Wire mnemos/* into Copilot agent tools: frontmatter (prompts if interactive).",
+            help="Accepted for backward compatibility — agent wiring is already "
+            "the default (no-op).",
         ),
     ] = False,
     no_wire_agents: Annotated[
         bool,
         typer.Option(
             "--no-wire-agents",
-            help="Skip agent MCP wiring (explicit opt-out, no prompt).",
+            help="Skip agent MCP wiring entirely.",
         ),
     ] = False,
     all_agents: Annotated[
         bool,
         typer.Option(
             "--all",
-            help="With --wire-agents: wire all unwired agents (no prompt).",
+            help="Accepted for backward compatibility — wiring already covers all "
+            "unwired agents (no-op).",
         ),
     ] = False,
     select_agents: Annotated[
         str | None,
         typer.Option(
             "--select",
-            help="With --wire-agents: comma-separated agent names/stems to wire.",
+            help="Narrow agent wiring to these comma-separated agent names/stems.",
         ),
     ] = None,
     precise: Annotated[
@@ -399,26 +341,33 @@ def setup_cmd(
     ] = False,
     home: Annotated[Path | None, HomeOption] = None,
 ) -> None:
-    """Deploy instructions + skills + prompts, register MCP, and wire agents.
+    """Deploys to ALL detected harnesses on this host and wires all agents.
 
-    This is the single entry point: running ``mnemos integration setup`` wires
-    everything — file deployment, MCP registration, and agent MCP wiring — in
-    one pass. Idempotent: re-running updates stale files without duplicating.
+    Use flags to narrow. This is the single entry point: the plain command
+    performs the full host deployment — file deployment, MCP registration,
+    and agent MCP wiring — in ONE non-interactive pass. Idempotent:
+    re-running refreshes stale files without duplicating.
 
-    Agent wiring flags:
+    Narrowing / custom flags:
 
-    * ``--wire-agents`` — enable agent wiring (interactive prompt by default).
-    * ``--wire-agents --all`` — wire all unwired agents without prompting.
-    * ``--wire-agents --select name1,name2`` — wire only specified agents.
-    * ``--no-wire-agents`` — skip agent wiring entirely (no prompt).
+    * ``--target <name>`` (repeatable) — deploy only the named harness(es);
+      ``all`` is accepted and means the default.
+    * ``--no-wire-agents`` — skip agent MCP wiring.
+    * ``--wire-agents`` — accepted for backward compatibility (docs and
+      scripts reference it); wiring is already the default, so alone it is
+      a no-op.
+    * ``--wire-agents --select a,b`` (or just ``--select a,b``) — wire only
+      the named agents.
+    * ``--all`` — accepted for backward compatibility; wiring already covers
+      all unwired agents, so it is a no-op.
     * ``--precise`` — use individual ``mnemos/mnemos_*`` tokens instead of
       the ``mnemos/*`` wildcard.
-    * ``--dry-run`` — show what would change without modifying files.
+    * ``--no-mcp``, ``--dry-run``, ``--home`` — unchanged.
 
-    If neither ``--wire-agents`` nor ``--no-wire-agents`` is passed, the
-    command prompts interactively (``[Y/n]``) when stdin is a TTY. In a
-    non-interactive terminal (CI / pipe), agent wiring is **skipped** as a
-    safe default — use ``--wire-agents`` to force wiring in CI.
+    There is NO interactive prompt anywhere in the default path (owner
+    ruling, board card ``vesma-integration-setup-default-all``). A failure
+    on one target is reported loudly and never blocks the remaining
+    targets (issue #448).
     """
     if wire_agents and no_wire_agents:
         console.print("[red]--wire-agents and --no-wire-agents are mutually exclusive.[/red]")
@@ -429,7 +378,7 @@ def setup_cmd(
         return
 
     mgr = _manager(home=home)
-    any_failed = False
+    failed: list[str] = []
 
     for name in targets:
         if dry_run:
@@ -437,43 +386,49 @@ def setup_cmd(
         else:
             console.print(f"Setting up target: [bold]{name}[/bold]")
 
-        result = mgr.setup(
-            name,
-            dry_run=dry_run,
-            register_mcp=not no_mcp,
-            mnemos_bin=mnemos_bin,
-        )
+        try:
+            result = mgr.setup(
+                name,
+                dry_run=dry_run,
+                register_mcp=not no_mcp,
+                mnemos_bin=mnemos_bin,
+            )
+        except Exception as exc:
+            console.print(f"[red]✗ Target {name}: {exc}[/red]")
+            failed.append(name)
+            continue
         _print_deploy_result(result, dry_run=dry_run)
 
         if result.mcp_note and not result.mcp_registered and not no_mcp and not dry_run:
-            any_failed = True
+            failed.append(name)
 
-    # ── Agent MCP wiring ────────────────────────────────────────────────────
+    # ── Agent MCP wiring (default-on; --no-wire-agents opts out) ────────────
     mode = "precise" if precise else "wildcard"
     if not no_wire_agents:
         agents = detect_agents()
         if not agents:
-            if wire_agents:
-                console.print(
-                    f"[yellow]No agents found in {DEFAULT_AGENTS_DIR} — skipping wiring.[/yellow]"
-                )
-        elif wire_agents:
-            to_wire = _resolve_agents_to_wire(agents, select=select_agents, wire_all=all_agents)
-            if not to_wire and not select_agents and not all_agents:
-                to_wire = _prompt_wire_agents_interactive(agents)
+            console.print(
+                f"[yellow]No agents found in {DEFAULT_AGENTS_DIR} — nothing to wire.[/yellow]"
+            )
+        else:
+            if select_agents:
+                to_wire = _resolve_agents_to_wire(agents, select=select_agents, wire_all=False)
+            else:
+                to_wire = [
+                    agent
+                    for agent in agents
+                    if not agent.has_mnemos and not agent.uses_tool_profile
+                ]
             if to_wire:
                 _run_agent_wiring(to_wire, mode=mode, dry_run=dry_run)
             else:
-                console.print("[dim]No agents selected for wiring.[/dim]")
-        else:
-            # Default flow (no --wire-agents / --no-wire-agents): prompt
-            # interactively. Non-interactive terminals skip safely.
-            to_wire = _prompt_wire_agents_default(agents)
-            if to_wire:
-                _run_agent_wiring(to_wire, mode=mode, dry_run=dry_run)
+                console.print("[dim]All agents already wired (or skipped via tool_profile).[/dim]")
 
-    if any_failed:
-        console.print("\n[yellow]⚠ Some steps had issues — see above.[/yellow]")
+    if failed:
+        console.print(
+            f"\n[yellow]⚠ {len(failed)} target(s) had issues "
+            f"({', '.join(failed)}) — see above.[/yellow]"
+        )
         raise typer.Exit(1)
 
     console.print("\n[green]✓[/green] Setup complete.")
@@ -527,11 +482,19 @@ def verify_cmd(
         return
 
     mgr = _manager(home=home)
+    cfg = load_targets(home=home)
     has_issues = False
 
     for name in targets:
         result = mgr.verify(name)
         _print_verify_result(result)
+
+        # Memory-switch precedence (ADR-0034 MS-0): show the active mode
+        # per wired harness so the operator always sees what governs the
+        # relationship between the harness canon and the vesma pack.
+        tgt = cfg.get(name)
+        if tgt is not None:
+            console.print(f"  precedence: {tgt.precedence}")
 
         if result.stale_count > 0 or result.missing_count > 0:
             has_issues = True
@@ -567,14 +530,12 @@ def verify_cmd(
             )
             console.print(f"  Unwired:     {preview}{more}")
         if agent_summary.unwired > 0:
-            console.print(
-                "  [dim]Run `mnemos integration setup --wire-agents --all` to wire.[/dim]"
-            )
+            console.print("  [dim]Run `vesma integration setup` to wire.[/dim]")
 
     if has_issues:
         console.print(
             "\n[yellow]⚠ Stale or missing files detected. "
-            "Run [bold]mnemos integration update[/bold] to fix.[/yellow]"
+            "Run [bold]vesma integration update[/bold] to fix.[/yellow]"
         )
         raise typer.Exit(1)
     else:

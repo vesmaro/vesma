@@ -1549,6 +1549,15 @@ from vesmaro.cli.util import integration_app  # noqa: E402
 app.add_typer(integration_app, name="integration")
 
 
+# ── memory (memory-switch status surface, ADR-0034 MS-0) ──────────────────────
+# Subcommand tree:
+#   vesma memory status — read-only per-harness memory attachment report
+
+from vesmaro.cli.memory_status import memory_app  # noqa: E402
+
+app.add_typer(memory_app, name="memory")
+
+
 # ── completion ─────────────────────────────────────────────────────────────────
 # Auto-detect current shell, generate completion script, auto-install into rc.
 

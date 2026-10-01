@@ -56,6 +56,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "AGENTS_MD_BLOCK_RE",
+    "DEFAULT_PRECEDENCE",
+    "ENGINE_MANIFEST_NAME",
+    "PRECEDENCE_MODES_KNOWN",
     "SCHEMAS_MANIFEST_NAME",
     "SCHEMAS_SOURCE_PIN",
     "ArtefactKind",
@@ -66,11 +69,13 @@ __all__ = [
     "TargetsConfig",
     "VerifyResult",
     "has_legacy_stamp",
+    "load_engine_manifest",
     "load_targets",
     "read_agents_md_version",
     "render_agents_md_block",
     "schemas_manifest",
     "strip_agents_md_block",
+    "validate_precedence",
 ]
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -135,6 +140,34 @@ LEGACY_SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
 #: register, removed on unregister) during the migration window.
 MCP_SERVER_KEY = "vesma"
 MCP_LEGACY_SERVER_KEY = "mnemos"
+
+#: Memory-switch precedence modes (ADR-0034, contract MS-0).
+#:
+#: ``overlay+mirror`` is the ONLY enforced mode: the deployed vesma pack
+#: overlays the harness's own canon (local instructions win on divergence)
+#: while memory writes mirror into the vesma store. ``replace`` and ``off``
+#: are RECOGNIZED so targets.yaml / engine manifests can already name them,
+#: but they are not enforced yet — they arrive with the spec-repo MS-1 wave
+#: (honest staging per the ADR-0034 contract). An unknown mode is rejected
+#: at parse time (fail-closed, never silently defaulted).
+PRECEDENCE_OVERLAY_MIRROR = "overlay+mirror"
+PRECEDENCE_REPLACE = "replace"
+PRECEDENCE_OFF = "off"
+#: The default and the only currently enforced mode.
+DEFAULT_PRECEDENCE = PRECEDENCE_OVERLAY_MIRROR
+#: Recognized-but-not-yet-enforced modes (documented for MS-1).
+PRECEDENCE_MODES_ENFORCED: frozenset[str] = frozenset({PRECEDENCE_OVERLAY_MIRROR})
+#: Every value ``precedence:`` may legally carry today.
+PRECEDENCE_MODES_KNOWN: frozenset[str] = frozenset(
+    {PRECEDENCE_OVERLAY_MIRROR, PRECEDENCE_REPLACE, PRECEDENCE_OFF}
+)
+
+#: Shipped engine manifest (memory-switch MS-0, ADR-0034) — generalized from
+#: the Hermes ``plugin.yaml``. A PLAIN pack file: it describes the ENGINE (not
+#: a per-harness artefact), so it ships inside the wheel (the ``integrations/``
+#: force-include) but is deliberately NOT deployed by the kind loop — consumers
+#: load it from the installed pack root via :func:`load_engine_manifest`.
+ENGINE_MANIFEST_NAME = "engine-manifest.yaml"
 
 #: Provenance of the vendored canon schemas (ADR-0003 pin protocol).
 #: Bumping the pin changes these literals, the vendored files under
@@ -249,6 +282,10 @@ class Target:
     #: ``nested`` stores each skill as ``<skills-dir>/<name>/SKILL.md``
     #: instead of the flat ``<name>.md`` pack layout (zcode, agents).
     layout: str = "flat"
+    #: Memory-switch precedence mode (ADR-0034 MS-0). Default
+    #: ``overlay+mirror`` (the only enforced mode); ``replace`` / ``off``
+    #: are recognized-but-not-yet-enforced values that arrive with MS-1.
+    precedence: str = DEFAULT_PRECEDENCE
     #: Config file to register the MCP server in (JSON merge), if the
     #: target declares one. ``None`` → fall back to ``mcp-setup.sh``.
     mcp_config: Path | None = None
@@ -296,6 +333,32 @@ def _expand(path: str, home: Path | None = None) -> Path:
         rest = path[1:].lstrip("/")
         return home / rest if rest else home
     return Path(path).expanduser()
+
+
+def validate_precedence(name: str, value: object) -> str:
+    """Validate a ``precedence:`` value (ADR-0034 MS-0); return it as ``str``.
+
+    Unknown modes raise ``ValueError`` (fail-closed — a typo must never
+    silently deploy under the default mode). ``replace`` / ``off`` pass
+    validation but are not enforced yet (see ``PRECEDENCE_MODES_KNOWN``).
+    """
+    if not isinstance(value, str) or value not in PRECEDENCE_MODES_KNOWN:
+        known = ", ".join(sorted(PRECEDENCE_MODES_KNOWN))
+        raise ValueError(
+            f"targets.yaml: target '{name}'.precedence must be one of: {known} (got {value!r})"
+        )
+    if value not in PRECEDENCE_MODES_ENFORCED:
+        # Recognized but honest: the mode is accepted so configs can be
+        # written ahead of MS-1, with a loud log line.
+        logger.warning(
+            "target %r: precedence %r is recognized but not enforced yet "
+            "(arrives with the memory-switch MS-1 wave, ADR-0034) — "
+            "deploying under the default %r behavior",
+            name,
+            value,
+            DEFAULT_PRECEDENCE,
+        )
+    return value
 
 
 def load_targets(config_path: Path | None = None, home: Path | None = None) -> TargetsConfig:
@@ -371,6 +434,7 @@ def load_targets(config_path: Path | None = None, home: Path | None = None) -> T
             mcp_format = str(mcp_raw.get("format", "agents")) if mcp_raw.get("format") else None
 
         fmt = str(spec.get("format", "copy"))
+        precedence = validate_precedence(name, spec.get("precedence", DEFAULT_PRECEDENCE))
         targets.append(
             Target(
                 name=name,
@@ -378,6 +442,7 @@ def load_targets(config_path: Path | None = None, home: Path | None = None) -> T
                 deploy_map=deploy_map,
                 format=fmt,
                 layout=str(spec.get("layout", "flat")),
+                precedence=precedence,
                 mcp_config=mcp_config,
                 mcp_format=mcp_format,
             )
@@ -1033,14 +1098,32 @@ class IntegrationManager:
         )
 
     def _deploy_file(self, src: Path, dest: Path, *, dry_run: bool) -> FileResult:
-        """Deploy a single file, returning the outcome."""
+        """Deploy a single file, returning the outcome.
+
+        Issue #448 (multi-target one-pass contract): a destination file we
+        cannot parse (non-UTF-8) is reported SKIPPED and left untouched —
+        the same refuse-to-touch discipline as the ``agents_md`` kind —
+        instead of raising. An unguarded read here used to abort the whole
+        CLI target loop, so every target AFTER the failing one silently
+        never deployed.
+        """
         content = src.read_text(encoding="utf-8")
         stamped = stamp_content(
             content, self.version, line_comment=src.suffix in LINE_COMMENT_SUFFIXES
         )
 
         if dest.exists():
-            existing = dest.read_text(encoding="utf-8")
+            try:
+                existing = dest.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                return FileResult(
+                    source=src,
+                    destination=dest,
+                    status=DeployStatus.SKIPPED,
+                    note=(
+                        "destination is not valid UTF-8 — refusing to touch a file we cannot parse"
+                    ),
+                )
             existing_version = read_stamp(existing)
             if existing_version == self.version and existing == stamped:
                 return FileResult(
@@ -1223,7 +1306,17 @@ class IntegrationManager:
                 note="not deployed",
             )
 
-        existing = dest.read_text(encoding="utf-8")
+        try:
+            existing = dest.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            # Same contract as _deploy_file (issue #448): an unreadable file
+            # at a pack destination is reported, never fatal.
+            return FileResult(
+                source=src,
+                destination=dest,
+                status=DeployStatus.SKIPPED,
+                note="destination is not valid UTF-8 — cannot verify",
+            )
         deployed_version = read_stamp(existing)
         if deployed_version is None:
             return FileResult(
@@ -2048,3 +2141,70 @@ def deployable_targets(config: TargetsConfig | None = None) -> Sequence[str]:
     """Return names of all targets defined in the config."""
     cfg = config or load_targets()
     return [t.name for t in cfg.targets]
+
+
+# ── Engine manifest (memory-switch protocol MS-0, ADR-0034) ──────────────────
+
+
+def load_engine_manifest(pack_root: Path | None = None) -> dict[str, Any]:
+    """Load and validate the shipped engine manifest (ADR-0034, MS-0).
+
+    The manifest (``integrations/engine-manifest.yaml``) is the engine-side
+    identity card for the memory-switch protocol — generalized from the
+    Hermes ``plugin.yaml``. It is a PLAIN pack file: it ships inside the
+    wheel (the ``integrations/`` force-include) but describes the ENGINE,
+    so it is deliberately never deployed into harness directories.
+
+    The ``version`` field is NOT hardcoded in the YAML: this loader injects
+    the runtime package version (``vesmaro.__version__``) so the manifest
+    can never drift from the installed engine.
+
+    Args:
+        pack_root: Explicit pack root. Defaults to the same resolution the
+            IntegrationManager uses (source tree → wheel → upward search).
+
+    Returns:
+        The validated manifest dict with ``version`` injected.
+
+    Raises:
+        FileNotFoundError: if the manifest is not shipped.
+        ValueError: if required keys are missing or a declared precedence
+            mode is not a recognized value.
+    """
+    root = pack_root or IntegrationManager._default_pack_root()
+    path = root / ENGINE_MANIFEST_NAME
+    if not path.is_file():
+        raise FileNotFoundError(f"engine manifest not found: {path}")
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: expected a mapping at top level")
+
+    required = ("name", "capabilities", "mcp", "precedence_modes", "attach_points")
+    missing = [key for key in required if key not in raw]
+    if missing:
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: missing required keys: {', '.join(missing)}")
+
+    # Single source of truth for the engine version is the package.
+    import vesmaro
+
+    raw["version"] = vesmaro.__version__
+
+    modes = raw["precedence_modes"]
+    if not isinstance(modes, list) or not modes:
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: 'precedence_modes' must be a non-empty list")
+    for mode in modes:
+        if mode not in PRECEDENCE_MODES_KNOWN:
+            known = ", ".join(sorted(PRECEDENCE_MODES_KNOWN))
+            raise ValueError(
+                f"{ENGINE_MANIFEST_NAME}: unknown precedence mode {mode!r} (known: {known})"
+            )
+
+    if not isinstance(raw["capabilities"], list) or not raw["capabilities"]:
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: 'capabilities' must be a non-empty list")
+    if not isinstance(raw["attach_points"], dict) or not raw["attach_points"]:
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: 'attach_points' must be a non-empty mapping")
+    if not isinstance(raw["mcp"], dict) or not raw["mcp"]:
+        raise ValueError(f"{ENGINE_MANIFEST_NAME}: 'mcp' must be a non-empty mapping")
+
+    return raw

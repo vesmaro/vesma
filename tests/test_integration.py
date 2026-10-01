@@ -25,11 +25,13 @@ from typer.testing import CliRunner
 from vesmaro.cli.integration import (
     SCHEMAS_MANIFEST_NAME,
     SCHEMAS_SOURCE_PIN,
+    DeployResult,
     DeployStatus,
     IntegrationManager,
     Target,
     TargetsConfig,
     has_legacy_stamp,
+    load_engine_manifest,
     load_targets,
     make_stamp,
     read_stamp,
@@ -3280,3 +3282,508 @@ class TestAgentsMdInjectionByteExactness:
             "after uninstall the file is byte-identical to the pre-injection user content"
         )
         assert result.removed  # block removal reported
+
+
+# ── Setup UX inversion + multi-target one-pass (owner card setup-default-all,
+#    issue #448) ────────────────────────────────────────────────────────────────
+
+
+class _MultiTargetHome:
+    """Build a fake multi-target pack + harness home for CLI-level tests."""
+
+    @staticmethod
+    def build(
+        tmp_path: Path, names: tuple[str, ...] = ("alpha", "beta", "gamma")
+    ) -> tuple[Path, Path]:
+        pack = tmp_path / "integrations"
+        (pack / "skills").mkdir(parents=True)
+        (pack / "skills" / "probe-skill.md").write_text("# probe\n", encoding="utf-8")
+
+        targets: dict[str, dict[str, object]] = {}
+        for name in names:
+            marker = tmp_path / f"marker-{name}"
+            marker.mkdir()
+            targets[name] = {
+                "detect": [{"path": str(marker)}],
+                "deploy": {"skills": str(tmp_path / f"deploy-{name}" / "skills") + "/"},
+                "format": "copy",
+            }
+        (pack / "targets.yaml").write_text(yaml.dump({"targets": targets}), encoding="utf-8")
+        return pack, tmp_path
+
+    @staticmethod
+    def config(pack: Path) -> TargetsConfig:
+        return load_targets(pack / "targets.yaml")
+
+    @staticmethod
+    def patch(
+        monkeypatch: pytest.MonkeyPatch,
+        pack: Path,
+        agents_dir: Path | None = None,
+    ) -> None:
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+        import vesmaro.cli.util as util_mod
+
+        monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
+        monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
+        if agents_dir is not None:
+            import vesmaro.cli.agent_wiring as wiring_mod
+
+            monkeypatch.setattr(wiring_mod, "DEFAULT_AGENTS_DIR", agents_dir)
+            monkeypatch.setattr(util_mod, "DEFAULT_AGENTS_DIR", agents_dir)
+
+
+def _write_agent(path: Path, name: str, tools: str, *, tool_profile: bool = False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    profile_line = "tool_profile: standard\n" if tool_profile else ""
+    (path).write_text(
+        f"---\nname: {name.removesuffix('.agent.md')}\ntools: [{tools}]\n{profile_line}---\nbody\n",
+        encoding="utf-8",
+    )
+
+
+class TestSetupDefaultAll:
+    """Plain ``vesma integration setup`` = ALL detected targets + ALL agents."""
+
+    def test_default_deploys_every_detected_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pack, root = _MultiTargetHome.build(tmp_path)
+        _MultiTargetHome.patch(monkeypatch, pack)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp"])
+
+        assert result.exit_code == 0, result.output
+        for name in ("alpha", "beta", "gamma"):
+            deployed = root / f"deploy-{name}" / "skills" / "probe-skill.md"
+            assert deployed.exists(), f"{name} not deployed in the default pass"
+            assert "Setting up target" in result.output
+
+    def test_target_flag_narrows_to_named_harnesses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pack, root = _MultiTargetHome.build(tmp_path)
+        _MultiTargetHome.patch(monkeypatch, pack)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp", "--target", "beta"])
+
+        assert result.exit_code == 0, result.output
+        assert (root / "deploy-beta" / "skills" / "probe-skill.md").exists()
+        assert not (root / "deploy-alpha" / "skills").exists()
+        assert not (root / "deploy-gamma" / "skills").exists()
+
+    def test_target_flag_is_repeatable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pack, root = _MultiTargetHome.build(tmp_path)
+        _MultiTargetHome.patch(monkeypatch, pack)
+
+        result = runner.invoke(
+            app,
+            ["integration", "setup", "--no-mcp", "--target", "gamma", "--target", "alpha"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (root / "deploy-alpha" / "skills" / "probe-skill.md").exists()
+        assert (root / "deploy-gamma" / "skills" / "probe-skill.md").exists()
+        assert not (root / "deploy-beta" / "skills").exists()
+
+    def test_default_wires_all_agents_non_interactively(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import frontmatter
+
+        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+
+        pack, _root = _MultiTargetHome.build(tmp_path)
+        agents = tmp_path / "agents"
+        _write_agent(agents / "one.agent.md", "one", "'other/*'")
+        _write_agent(agents / "two.agent.md", "two", "'other/*', 'mnemos/*'")
+        _write_agent(agents / "three.agent.md", "three", "'read'", tool_profile=True)
+        _MultiTargetHome.patch(monkeypatch, pack, agents_dir=agents)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp"])
+
+        assert result.exit_code == 0, result.output
+        one = frontmatter.load(agents / "one.agent.md")
+        assert VESMARO_WILDCARD in one.metadata["tools"]
+        # Already wired / tool_profile agents are never touched.
+        two = frontmatter.load(agents / "two.agent.md")
+        assert two.metadata["tools"] == ["other/*", "mnemos/*"]
+        three = frontmatter.load(agents / "three.agent.md")
+        assert three.metadata["tools"] == ["read"]
+
+    def test_no_wire_agents_skips_wiring(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pack, _root = _MultiTargetHome.build(tmp_path)
+        agents = tmp_path / "agents"
+        _write_agent(agents / "one.agent.md", "one", "'other/*'")
+        _MultiTargetHome.patch(monkeypatch, pack, agents_dir=agents)
+
+        before = (agents / "one.agent.md").read_text(encoding="utf-8")
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp", "--no-wire-agents"])
+
+        assert result.exit_code == 0, result.output
+        assert (agents / "one.agent.md").read_text(encoding="utf-8") == before
+
+    def test_legacy_wire_agents_flags_still_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``--wire-agents --all`` / ``--select`` keep working (backward compat)."""
+        import frontmatter
+
+        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+
+        pack, _root = _MultiTargetHome.build(tmp_path)
+        agents = tmp_path / "agents"
+        _write_agent(agents / "one.agent.md", "one", "'other/*'")
+        _write_agent(agents / "two.agent.md", "two", "'other/*'")
+        _MultiTargetHome.patch(monkeypatch, pack, agents_dir=agents)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp", "--wire-agents", "--all"])
+        assert result.exit_code == 0, result.output
+        assert VESMARO_WILDCARD in frontmatter.load(agents / "one.agent.md").metadata["tools"]
+
+    def test_legacy_select_narrows_wiring(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import frontmatter
+
+        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+
+        pack, _root = _MultiTargetHome.build(tmp_path)
+        agents = tmp_path / "agents"
+        _write_agent(agents / "one.agent.md", "one", "'other/*'")
+        _write_agent(agents / "two.agent.md", "two", "'other/*'")
+        _MultiTargetHome.patch(monkeypatch, pack, agents_dir=agents)
+
+        result = runner.invoke(
+            app, ["integration", "setup", "--no-mcp", "--wire-agents", "--select", "two"]
+        )
+        assert result.exit_code == 0, result.output
+        assert VESMARO_WILDCARD in frontmatter.load(agents / "two.agent.md").metadata["tools"]
+        assert VESMARO_WILDCARD not in frontmatter.load(agents / "one.agent.md").metadata["tools"]
+
+
+class TestIssue448MultiTargetOnePass:
+    """A fresh-host ``setup`` deploys EVERY target in one pass, or fails loud.
+
+    Issue #448 point 1: on the first real host deployment the run stopped
+    after the first target and the remaining targets silently never got
+    their files. Two code-level guarantees close the failure class:
+
+    * an unreadable destination file can no longer abort the deploy loop
+      (``_deploy_file`` used to raise ``UnicodeDecodeError`` through the
+      CLI loop, killing every later target);
+    * the CLI loop isolates per-target failures — the failing target is
+      reported loudly and the remaining targets still deploy.
+    """
+
+    def test_unreadable_dest_file_does_not_abort_later_targets(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pack, root = _MultiTargetHome.build(tmp_path)
+        # Binary junk sitting at a pack destination of the SECOND target —
+        # the exact input that used to kill the whole loop (#448).
+        beta_skills = root / "deploy-beta" / "skills"
+        beta_skills.mkdir(parents=True)
+        (beta_skills / "probe-skill.md").write_bytes(b"\xff\xfe\x00binary")
+        _MultiTargetHome.patch(monkeypatch, pack)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp"])
+
+        # The poisoned destination is skipped (row in the table, file
+        # untouched) — and the run still deploys EVERY target in one pass.
+        assert result.exit_code == 0, result.output
+        assert "UTF-8" in result.output
+        assert (beta_skills / "probe-skill.md").read_bytes() == b"\xff\xfe\x00binary"
+        assert (root / "deploy-alpha" / "skills" / "probe-skill.md").exists()
+        assert (root / "deploy-gamma" / "skills" / "probe-skill.md").exists()
+
+    def test_failing_target_reported_loudly_others_still_deploy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A crashing target is loud + isolated; later targets still deploy."""
+        pack, root = _MultiTargetHome.build(tmp_path)
+        cfg = load_targets(pack / "targets.yaml")
+        real_mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+
+        class _Flaky:
+            def setup(self, name: str, **kw: object) -> DeployResult:
+                if name == "beta":
+                    raise RuntimeError("boom — injected #448-style failure")
+                return real_mgr.setup(name, **kw)
+
+        import vesmaro.cli.util as util_mod
+
+        monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: _Flaky())
+        monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
+
+        result = runner.invoke(app, ["integration", "setup", "--no-mcp"])
+
+        # Loud per-target failure, non-zero exit...
+        assert result.exit_code == 1, result.output
+        assert "Target beta: boom" in result.output
+        # ...and the targets AFTER the failing one are still deployed.
+        assert (root / "deploy-alpha" / "skills" / "probe-skill.md").exists()
+        assert (root / "deploy-gamma" / "skills" / "probe-skill.md").exists()
+
+    def test_deploy_skip_reported_at_manager_level(self, tmp_path: Path) -> None:
+        """Manager contract: an unreadable dest is SKIPPED, never raised."""
+        pack, root = _MultiTargetHome.build(tmp_path, names=("alpha",))
+        skills = root / "deploy-alpha" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "probe-skill.md").write_bytes(b"\xff\xfe\x00junk")
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+
+        result = mgr.deploy("alpha")
+        statuses = {f.destination.name: f.status for f in result.files}
+        assert statuses["probe-skill.md"] == DeployStatus.SKIPPED
+        assert "not valid UTF-8" in next(
+            f.note for f in result.files if f.destination.name == "probe-skill.md"
+        )
+
+
+class TestPrecedenceField:
+    """Memory-switch precedence field (ADR-0034, MS-0)."""
+
+    def _write(self, tmp_path: Path, precedence: object) -> TargetsConfig:
+        pack = tmp_path / "integrations"
+        pack.mkdir(parents=True)
+        marker = tmp_path / "marker"
+        marker.mkdir()
+        spec: dict[str, object] = {
+            "detect": [{"path": str(marker)}],
+            "deploy": {"skills": str(tmp_path / "deploy") + "/"},
+            "format": "copy",
+        }
+        if precedence is not None:
+            spec["precedence"] = precedence
+        (pack / "targets.yaml").write_text(yaml.dump({"targets": {"t": spec}}), encoding="utf-8")
+        return load_targets(pack / "targets.yaml")
+
+    def test_default_is_overlay_mirror(self, tmp_path: Path) -> None:
+        cfg = self._write(tmp_path, None)
+        assert cfg.targets[0].precedence == "overlay+mirror"
+
+    def test_explicit_overlay_mirror(self, tmp_path: Path) -> None:
+        cfg = self._write(tmp_path, "overlay+mirror")
+        assert cfg.targets[0].precedence == "overlay+mirror"
+
+    def test_replace_recognized_but_not_enforced(self, tmp_path: Path) -> None:
+        cfg = self._write(tmp_path, "replace")
+        assert cfg.targets[0].precedence == "replace"
+
+    def test_off_recognized_but_not_enforced(self, tmp_path: Path) -> None:
+        cfg = self._write(tmp_path, "off")
+        assert cfg.targets[0].precedence == "off"
+
+    def test_unknown_mode_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="precedence"):
+            self._write(tmp_path, "mirror-only")
+
+    def test_shipped_targets_yaml_all_declare_enforced_mode(self) -> None:
+        """The shipped registry parses and every target is overlay+mirror."""
+        cfg = load_targets()
+        assert cfg.targets
+        assert all(t.precedence == "overlay+mirror" for t in cfg.targets)
+
+    def test_verify_shows_precedence(
+        self, fake_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg = load_targets(fake_pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
+        mgr.deploy("test-harness")
+
+        import vesmaro.cli.util as util_mod
+
+        monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
+        monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
+
+        result = runner.invoke(app, ["integration", "verify", "--target", "test-harness"])
+        assert result.exit_code == 0, result.output
+        assert "precedence: overlay+mirror" in result.output
+
+
+class TestEngineManifest:
+    """Shipped engine manifest (memory-switch MS-0, ADR-0034)."""
+
+    def test_loads_and_validates(self) -> None:
+        manifest = load_engine_manifest()
+        assert manifest["name"] == "vesma"
+        assert manifest["precedence_modes"] == ["overlay+mirror"]
+        assert isinstance(manifest["capabilities"], list) and manifest["capabilities"]
+        assert isinstance(manifest["attach_points"], dict) and manifest["attach_points"]
+        assert manifest["mcp"]["transport"] == "stdio"
+
+    def test_version_injected_from_package(self) -> None:
+        import vesmaro
+
+        manifest = load_engine_manifest()
+        assert manifest["version"] == vesmaro.__version__
+
+    def test_attach_points_point_at_targets_registry(self) -> None:
+        manifest = load_engine_manifest()
+        assert manifest["attach_points"]["targets_config"] == "integrations/targets.yaml"
+
+    def test_missing_manifest_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            load_engine_manifest(pack_root=tmp_path)
+
+    def test_unknown_precedence_mode_rejected(self, tmp_path: Path) -> None:
+        pack = tmp_path / "integrations"
+        pack.mkdir()
+        (pack / "engine-manifest.yaml").write_text(
+            yaml.dump(
+                {
+                    "name": "vesma",
+                    "capabilities": ["x"],
+                    "mcp": {"transport": "stdio"},
+                    "precedence_modes": ["mirror-only"],
+                    "attach_points": {"targets_config": "t.yaml"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="unknown precedence mode"):
+            load_engine_manifest(pack_root=pack)
+
+    def test_missing_required_key_rejected(self, tmp_path: Path) -> None:
+        pack = tmp_path / "integrations"
+        pack.mkdir()
+        (pack / "engine-manifest.yaml").write_text(yaml.dump({"name": "vesma"}), encoding="utf-8")
+        with pytest.raises(ValueError, match="missing required keys"):
+            load_engine_manifest(pack_root=pack)
+
+
+class TestMemoryStatus:
+    """``vesma memory status`` — read-only per-harness report (ADR-0034 MS-0)."""
+
+    @staticmethod
+    def _build(tmp_path: Path) -> tuple[Path, Path, Path]:
+        """Fake home with a zcode config carrying vesma + a foreign engine."""
+        home = tmp_path / "home"
+        (home / ".zcode" / "cli").mkdir(parents=True)
+        (home / ".zcode" / "cli" / "config.json").write_text(
+            json.dumps(
+                {
+                    "mcp": {
+                        "servers": {
+                            "vesma": {
+                                "command": "vesma",
+                                "args": ["mcp-server"],
+                                "env": {"VESMARO_DATA_DIR": "/home/u/.mnemos/data"},
+                            },
+                            "obsidian-mcp": {"command": "node", "args": ["/opt/engine.js"]},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (home / ".zcode" / "skills").mkdir(parents=True)
+
+        pack = tmp_path / "integrations"
+        (pack / "skills").mkdir(parents=True)
+        (pack / "skills" / "probe-skill.md").write_text("# probe\n", encoding="utf-8")
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "zcode": {
+                            "detect": [{"path": str(home / ".zcode")}],
+                            "deploy": {"skills": str(home / ".zcode" / "skills") + "/"},
+                            "format": "copy",
+                            "mcp": {
+                                "config": str(home / ".zcode" / "cli" / "config.json"),
+                                "format": "zcode",
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return home, pack, tmp_path
+
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch, home: Path, pack: Path) -> None:
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+        import vesmaro.cli.memory_status as ms_mod
+
+        monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
+        monkeypatch.setattr(ms_mod, "_manager", lambda home=None: mgr)
+
+    def test_output_shape_on_deployed_harness(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+
+        home, pack, _ = self._build(tmp_path)
+        self._patch(monkeypatch, home, pack)
+        # Attach the pack first so the report shows an attached state.
+        cfg = load_targets(pack / "targets.yaml")
+        IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg).deploy("zcode")
+
+        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+
+        assert result.exit_code == 0, result.output
+        assert "zcode" in result.output
+        assert "overlay+mirror" in result.output
+        assert "obsidian-mcp" in result.output  # external engine KEY
+        assert "read-only" in result.output
+
+    def test_hygiene_never_prints_config_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Server keys are shown; command/env/args VALUES never are (B3)."""
+        home, pack, _ = self._build(tmp_path)
+        self._patch(monkeypatch, home, pack)
+
+        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+
+        assert result.exit_code == 0, result.output
+        assert "vesma" in result.output  # the key, not the entry
+        for secret in ("/opt/engine.js", "/home/u/.mnemos/data", "mcp-server"):
+            assert secret not in result.output, f"config value leaked: {secret}"
+
+    def test_no_harnesses_detected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import vesmaro.cli.memory_status as ms_mod
+
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        cfg = TargetsConfig(targets=())
+        monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
+
+        result = runner.invoke(app, ["memory", "status", "--home", str(empty)])
+
+        assert result.exit_code == 0, result.output
+        assert "No agent harnesses detected" in result.output
+
+    def test_unknown_target_exits_nonzero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home, pack, _ = self._build(tmp_path)
+        self._patch(monkeypatch, home, pack)
+
+        result = runner.invoke(app, ["memory", "status", "--target", "ghost"])
+
+        assert result.exit_code == 1
+        assert "Unknown target" in result.output
+
+    def test_store_markers_reported_by_name_and_mtime(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home, pack, _ = self._build(tmp_path)
+        self._patch(monkeypatch, home, pack)
+        (home / ".mnemos" / "data").mkdir(parents=True)
+        (home / ".mnemos" / "data" / "mnemos.db").write_bytes(b"")  # marker only
+
+        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+
+        assert result.exit_code == 0, result.output
+        assert "mnemos.db ✓" in result.output
+        assert "vault ✗" in result.output

@@ -1,0 +1,59 @@
+# Vesma engine manifest — memory-switch protocol MS-0 (ADR-0034).
+#
+# Generalized from the Hermes plugin manifest (integrations/hermes/plugin.yaml):
+# the engine-side identity card any harness (or spec repo) reads to learn WHAT
+# this memory engine is, HOW it attaches, and WHICH precedence modes it honors.
+#
+# This is a PLAIN pack file: it ships inside the wheel (the integrations/
+# force-include) but is deliberately NOT deployed into harness directories —
+# it describes the engine, not a per-harness artefact. Load it with
+# `vesmaro.cli.integration.load_engine_manifest()`; the `version` field is
+# injected at load time from the installed package version (single source of
+# truth), so it is intentionally absent here.
+
+name: vesma
+
+description: >-
+  Vesma — standalone memory & knowledge server for AI agents. Hybrid
+  vector+FTS5 search, tag contract, Obsidian vault mirror, reversible
+  compression (CCR), URL/document ingest, file watcher, project graph.
+  Attaches to agent harnesses via the integration pack (`vesma integration`)
+  and the MCP server (`vesma mcp-server`, stdio JSON-RPC).
+
+author: Korrnals
+license: Apache-2.0
+homepage: https://github.com/vesmaro/vesma
+
+capabilities:
+  - memory-search          # hybrid FTS5 + vector recall (published knowledge)
+  - memory-write           # add / checkpoint / decision / report records
+  - context-recall         # session bootstrap via assembled context blocks
+  - agent-recall           # per-agent scoped recall
+  - compression            # zero-loss CCR compress/retrieve
+  - url-ingest             # fetch + ingest a web page
+  - document-ingest        # chunked document ingest (quarantine-swept)
+  - auto-collect           # compaction-detection signal vector
+  - file-watch             # opt-in watch poll registrations
+  - workflow               # memory workflow lifecycle (state machine + audit)
+  - project-graph          # code graph index / search / trace (ADR-0032)
+  - stats                  # health statistics
+
+mcp:
+  transport: stdio
+  server_key: vesma          # brand-primary key in harness MCP configs
+  legacy_server_key: mnemos  # recognized during the dual-period (until 6.0)
+  command: vesma             # entry point; `mnemos` accepted in the dual period
+  args: [mcp-server]
+
+# Memory-switch precedence (ADR-0034). MS-0 ships exactly one ENFORCED mode;
+# `replace` / `off` become enforced with the spec-repo MS-1 wave.
+precedence_modes:
+  - overlay+mirror
+
+# Where the engine attaches into a harness. The authoritative, versioned
+# registry of per-harness detect/deploy maps is the targets file below;
+# this pointer keeps the manifest stable while targets evolve.
+attach_points:
+  targets_config: integrations/targets.yaml
+  artefact_kinds: [instructions, skills, prompts, extensions, schemas, agents_md]
+  mcp_registration: per-target (targets.yaml `mcp:` key; JSON merge or bridge)

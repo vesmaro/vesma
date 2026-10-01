@@ -5,6 +5,12 @@
 #
 # `format: copy` means files are copied verbatim (no templating).
 # Future formats (symlink, template) can be added without breaking the schema.
+#
+# `precedence:` — memory-switch mode (ADR-0034, MS-0). Default and only
+# enforced mode: `overlay+mirror` (the vesma pack overlays the harness's own
+# canon — local instructions win on divergence — while memory writes mirror
+# into the vesma store). `replace` / `off` are recognized but NOT enforced
+# yet (they arrive with the MS-1 wave); any other value fails at parse time.
 
 targets:
   copilot:
@@ -19,6 +25,7 @@ targets:
       # like the mnemos-eyes Go validator read them straight from here.
       schemas: "~/.copilot/schemas/"
     format: copy
+    precedence: overlay+mirror
 
   generic-copilot:
     detect:
@@ -26,6 +33,7 @@ targets:
     deploy:
       prompts: "~/.config/Code/User/prompts/"
     format: copy
+    precedence: overlay+mirror
 
   cursor:
     detect:
@@ -33,6 +41,7 @@ targets:
     deploy:
       instructions: "~/.cursor/rules/"
     format: copy
+    precedence: overlay+mirror
 
   hermes:
     detect:
@@ -43,6 +52,7 @@ targets:
       instructions: "~/.hermes/skills/"
       skills: "~/.hermes/skills/"
     format: copy
+    precedence: overlay+mirror
 
   # ZCode agent. Skills live as <skills-dir>/<name>/SKILL.md (layout:
   # nested); MCP is registered in the user config under mcp.servers,
@@ -60,6 +70,7 @@ targets:
       schemas: "~/.zcode/schemas/"
       agents_md: "~/.zcode/AGENTS.md"
     format: copy
+    precedence: overlay+mirror
     layout: nested
     mcp:
       config: "~/.zcode/cli/config.json"
@@ -82,6 +93,7 @@ targets:
       schemas: "~/.agents/schemas/"
       agents_md: "~/.agents/AGENTS.md"
     format: copy
+    precedence: overlay+mirror
     layout: nested
     mcp:
       config: "~/.agents/mcp.json"
@@ -100,6 +112,7 @@ targets:
       skills: "~/.config/opencode/skills/"
       agents_md: "~/.config/opencode/AGENTS.md"
     format: copy
+    precedence: overlay+mirror
     layout: nested
     mcp:
       config: "~/.config/opencode/opencode.json"
@@ -122,6 +135,7 @@ targets:
       skills: "~/.pi/agent/skills/"
       extensions: "~/.pi/agent/extensions/"
     format: copy
+    precedence: overlay+mirror
     layout: nested
     mcp:
       config: "~/.pi/agent/extensions/mnemos-mcp.ts"
