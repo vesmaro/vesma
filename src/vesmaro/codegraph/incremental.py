@@ -225,7 +225,7 @@ def _index_serialized(
     surface_paths = {sf.rel_path: sf.abs_path for sf in surface}
     unchanged, stale, removed = classify_files(surface_paths, existing)
     if not stale and not removed:
-        return IndexResult(
+        fresh = IndexResult(
             nodes=indexer.store.count_nodes(project),
             edges=indexer.store.count_edges(project),
             files_indexed=len(unchanged),
@@ -233,6 +233,11 @@ def _index_serialized(
             incremental=True,
             status=STATUS_FRESH,
         )
+        # Issue #449: a config-only allowlist change must not wait for a
+        # file to change — the allowlist pass runs on the fresh path too
+        # (no publish, but the un-poison is explicit + audited upstream).
+        fresh.unpoisoned = indexer.apply_secret_allowlist(project)
+        return fresh
     logger.info(
         "codegraph: incremental index %s: %d unchanged, %d stale/new, %d removed → atomic rebuild",
         project,

@@ -417,6 +417,20 @@ class CodeGraphService:
             )
             raise
         payload = self._index_payload(result)
+        # Issue #449: the allowlist un-poison is EXPLICIT — every
+        # non-empty removal gets its own audit row (reason
+        # ``allowlist-unpoison``) on every path that reaches here,
+        # fresh runs included: config-only allowlist changes must show
+        # in the sidecar trail, never silently shrink the set.
+        if result.unpoisoned:
+            self._audit.record(
+                registered.graph_key,
+                "reindex" if pre_files else "index",
+                actor,
+                session=sess,
+                reason="allowlist-unpoison",
+                details={"paths": sorted(result.unpoisoned)},
+            )
         no_change = result.status in (
             incremental_mod.STATUS_FRESH,
             incremental_mod.STATUS_IN_PROGRESS,
@@ -455,6 +469,9 @@ class CodeGraphService:
             "files_indexed": result.files_indexed,
             "files_skipped": result.files_skipped,
             "poisoned": sorted(result.poisoned),
+            # Issue #449: paths un-poisoned by THIS run's allowlist pass
+            # (audited with reason ``allowlist-unpoison``).
+            "unpoisoned": sorted(result.unpoisoned),
             "parse_errors": dict(sorted(result.parse_errors.items())),
             "duration_sec": round(result.duration, 3),
             "incremental": result.incremental,

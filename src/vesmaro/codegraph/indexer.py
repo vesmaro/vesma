@@ -33,6 +33,7 @@ so the resolution is local and needs no cross-file index.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import logging
 import os
@@ -79,6 +80,16 @@ _LITERAL_TYPES: frozenset[str] = frozenset(
 _SIG_DEFAULT_MARKER = "…"
 
 
+def _secret_allowlisted(rel_path: str, patterns: tuple[str, ...]) -> bool:
+    """Issue #449: does the repo-relative path match an allowlist glob?
+
+    ``fnmatch`` semantics over the repo-relative path (the surface the
+    config documents); an empty pattern tuple never matches, so the
+    default config keeps PG3 byte-identical.
+    """
+    return any(fnmatch.fnmatch(rel_path, pattern) for pattern in patterns)
+
+
 class IndexLimitError(Exception):
     """PG7 fail-closed limit breach — the whole index is aborted.
 
@@ -122,6 +133,11 @@ class IndexResult:
     files_skipped: int = 0
     files_reparsed: int = 0
     poisoned: list[str] = field(default_factory=list)
+    #: Issue #449: previously-poisoned paths removed from the sidecar
+    #: set by THIS run's allowlist pass (audited by the service layer
+    #: with reason ``allowlist-unpoison`` — the un-poison is never
+    #: silent).
+    unpoisoned: list[str] = field(default_factory=list)
     parse_errors: dict[str, str] = field(default_factory=dict)
     duration: float = 0.0
     incremental: bool = False
@@ -255,12 +271,18 @@ class PythonFileParser:
     class bases and (call head, enclosing def) pairs for the
     project-wide resolution pass. ``comment`` and ``string`` node
     types are never read — PG1 at the parser level.
+
+    ``secret_allowlist`` (issue #449): repo-relative fnmatch globs whose
+    files SKIP poison-marking — the detector is not even run for them
+    (the file is still indexed normally; only the ``secret-detected``
+    marking is skipped). Empty tuple = today's PG3 behavior.
     """
 
-    def __init__(self, language: Any) -> None:
+    def __init__(self, language: Any, secret_allowlist: tuple[str, ...] = ()) -> None:
         from tree_sitter import Parser
 
         self._parser = Parser(language)
+        self._secret_allowlist = secret_allowlist
 
     def parse(self, project: str, rel_path: str, source: bytes) -> _FileExtraction:
         tree = self._parser.parse(source)
@@ -268,7 +290,9 @@ class PythonFileParser:
         spec = language_for_path(rel_path)
         assert spec is not None  # the surface passed the allowlist
 
-        poisoned = bool(detect_secrets(source.decode("utf-8", "replace")))
+        poisoned = not _secret_allowlisted(
+            rel_path, self._secret_allowlist
+        ) and bool(detect_secrets(source.decode("utf-8", "replace")))
         meta: dict[str, Any] | None = {"poisoned": True} if poisoned else None
         fid = _file_id(project, rel_path)
         mid = _module_id(project, rel_path)
@@ -562,11 +586,14 @@ class ProjectIndexer:
         self.store = store
         self._config = data or CodeGraphConfig()
         self._parsers: dict[str, PythonFileParser] = {}
+        # Issue #449: the allowlist is fixed for the indexer's lifetime
+        # (config is immutable here), so the parsers are built with it.
+        self._secret_allowlist = tuple(self._config.secret_allowlist)
 
     def _parser_for(self, spec: LanguageSpec) -> PythonFileParser:
         cached = self._parsers.get(spec.name)
         if cached is None:
-            cached = PythonFileParser(spec.language_factory())
+            cached = PythonFileParser(spec.language_factory(), self._secret_allowlist)
             self._parsers[spec.name] = cached
         return cached
 
@@ -581,6 +608,35 @@ class ProjectIndexer:
         return self._parser_for(spec).parse(project, rel_path, source)
 
     # ── limits (PG7, fail-closed) ──────────────────────────────────────────
+
+    def apply_secret_allowlist(self, project: str) -> list[str]:
+        """Un-poison allowlist-matching paths (issue #449, explicit).
+
+        Reads the sidecar poisoned set and removes every path whose
+        repo-relative form matches a ``secret_allowlist`` glob — the
+        operator's escape hatch for known-fake secret fixtures. Returns
+        the removed paths (sorted; empty = nothing matched) so the
+        caller reports them; the SERVICE layer audits every non-empty
+        removal with reason ``allowlist-unpoison`` — the un-poison is
+        logged, never silent. Called on EVERY index run (publish or
+        fresh), so a config-only allowlist change takes effect on the
+        next index call without waiting for a file to change.
+        """
+        if not self._secret_allowlist:
+            return []
+        poisoned = self.store.get_poisoned_paths(project)
+        matching = sorted(p for p in poisoned if _secret_allowlisted(p, self._secret_allowlist))
+        if not matching:
+            return []
+        removed = self.store.remove_poisoned_paths(project, matching)
+        if removed:
+            logger.info(
+                "codegraph: secret_allowlist un-poisoned %d path(s) for %s: %s",
+                len(removed),
+                project,
+                ", ".join(removed),
+            )
+        return removed
 
     def check_limits(self, surface: list[SurfaceFile], root: str) -> None:
         """File count and total source bytes, checked BEFORE any store
@@ -632,6 +688,9 @@ class ProjectIndexer:
         # the sidecar set — a reindex must never launder a poisoned file
         # (the store refuses to touch the set on the publish path).
         self.store.add_poisoned_paths(project, result.poisoned)
+        # Issue #449: the one sanctioned exception — allowlist-matching
+        # paths LEAVE the set (explicit, audited upstream in the service).
+        result.unpoisoned = self.apply_secret_allowlist(project)
         result.nodes = len(nodes)
         result.edges = len(edges)
         result.files_indexed = len(records)

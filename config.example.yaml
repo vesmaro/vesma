@@ -103,6 +103,15 @@ code_graph:
   # Fail-closed index ceilings per project (PG7).
   index_max_files: 20000
   index_max_source_mb: 500
+  # Operator's escape hatch for known-fake secret fixtures (issue #449):
+  # repo-relative fnmatch globs whose files SKIP poison-marking at index
+  # time (still indexed normally). A previously-poisoned path that now
+  # matches is un-poisoned on the next index run — audited as
+  # "allowlist-unpoison", never silent. The per-range issuance scan
+  # (PG4) is never waived. Default [] keeps PG3 semantics byte-identical.
+  # secret_allowlist:
+  #   - "tests/fixtures/fake_secrets.py"
+  #   - "docs/samples/**"
   # Watch poll: global registration cap + adaptive interval
   # base + 1s per 500 indexed files, capped.
   watch_max_registrations: 8
