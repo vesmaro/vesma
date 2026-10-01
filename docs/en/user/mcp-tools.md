@@ -55,6 +55,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
 | [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
+| [`mnemos_register_project`](#mnemos_register_project) | Register a project root for the graph (#454) — the answer to "not registered" refusals | no |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Compaction signal vector (M7) | no |
 | [`mnemos_compress`](#mnemos_compress) | Reversible compression (CCR) — cache original, embed marker | no |
 | [`mnemos_retrieve`](#mnemos_retrieve) | Retrieve a CCR-cached original or FTS5 snippets | no |
@@ -1281,6 +1282,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
       "project": "vesma",
       "registered": true,
       "has_root": true,
+      "root_missing": false,
       "nodes": 2143,
       "edges": 5107,
       "files": 400,
@@ -1292,6 +1294,8 @@ Registered projects joined with their index status (volumes, poisoned count, `la
   "cursor": 0
 }
 ```
+
+`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`.
 
 ### Related
 
@@ -1321,6 +1325,35 @@ Drop a project's graph INDEX — the sidecar data only, never the project entity
 ### Related
 
 - HTTP equivalent: [`DELETE /graph/projects/{project_id}`](http-api.md#delete-graphprojectsproject_id--drop-a-graph-index)
+
+---
+
+## `mnemos_register_project`
+
+Register a project root for the code graph (#454) — the agent-side answer to `not registered` confinement refusals (previously operator-only, and the auto path covers marker roots only, capped at `auto_register_max_projects`).
+
+The root must exist on disk, be absolute, carry a packaging manifest (`pyproject.toml` / `setup.py` / `package.json` / `go.mod` / `Cargo.toml`) or a `.git`, and not be `$HOME`/the filesystem root. One root = one graph: a root already registered under another project is REUSED (audit `manual-register-reused`), never duplicated. A project name already registered at a DIFFERENT root is refused — moved roots belong to the operator's `vesma graph repoint` (#450). An existing project row without paths (auto-created by memory writes) gets the root attached. **Explicit registration does not count against `auto_register_max_projects`** — that cap bounds the AUTO path only (its provenance marker lives in the description, which manual rows never carry).
+
+### Input
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_id` | string | **yes** | — | Project id or name to register. |
+| `root` | string | **yes** | — | Absolute path to the project root on disk. |
+| `agent` | string | **yes** | — | Caller identity (PG7). |
+| `session` | string | no | — | Optional session id for the audit trail. |
+
+### Output
+
+```json
+{ "project": "vesma", "status": "registered", "root": "/home/you/vesma" }
+```
+
+`status` is `already-registered` (idempotent, root reuse) or `registered`. CLI twin: `vesma graph register <project> <root>`.
+
+### Related
+
+- [project-graph.md — Turn it on for a project](project-graph.md#turn-it-on-for-a-project)
 
 ---
 

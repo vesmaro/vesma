@@ -379,7 +379,7 @@ def _graph_node_kinds() -> tuple[str, ...]:
 
 
 async def _canonical_tools() -> list[Tool]:
-    """Return the tool manifest (37 tools — stable model-visible contract).
+    """Return the tool manifest (39 tools — stable model-visible contract).
 
     Pre-2.x this was decorated with ``@server.list_tools()``; the port keeps
     the callable importable with the same zero-arg signature (the test suite
@@ -1957,6 +1957,39 @@ async def _canonical_tools() -> list[Tool]:
                 "required": ["project_id", "agent"],
             },
         ),
+        Tool(
+            name="mnemos_register_project",
+            description=(
+                "Register a project root for the code graph (#454) — the "
+                "answer to 'not registered' refusals. The root must exist "
+                "on disk, be absolute, carry a packaging manifest "
+                "(pyproject.toml/setup.py/package.json/go.mod/Cargo.toml) "
+                "or a .git, and not be $HOME/the filesystem root. "
+                "Idempotent when the root is already registered (audit "
+                "manual-register-reused). Attaches a root to an existing "
+                "pathless project; a name already registered at ANOTHER "
+                "root is refused (moved roots: 'vesma graph repoint'). "
+                "Explicit registration does NOT count against "
+                "auto_register_max_projects (that cap bounds the auto "
+                "path only). Audited as manual-register."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Project id or name to register.",
+                    },
+                    "root": {
+                        "type": "string",
+                        "description": "Absolute path to the project root on disk.",
+                    },
+                    "agent": _GRAPH_AGENT_PROP,
+                    "session": _GRAPH_SESSION_PROP,
+                },
+                "required": ["project_id", "root", "agent"],
+            },
+        ),
     ]
 
 
@@ -3023,6 +3056,7 @@ _GRAPH_TOOLS = frozenset(
         "mnemos_get_graph_schema",
         "mnemos_list_graph_projects",
         "mnemos_delete_graph_project",
+        "mnemos_register_project",
     }
 )
 
@@ -3040,7 +3074,8 @@ def _graph_req_int(args: dict[str, Any], key: str) -> int | None:
 
 
 def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """Dispatch the 10 project-graph tools to CodeGraphService."""
+    """Dispatch the project-graph tools (the ADR-0032 ten + #454
+    ``mnemos_register_project``) to CodeGraphService."""
     from vesmaro.codegraph.indexer import IndexLimitError
     from vesmaro.codegraph.service import (
         GraphAttributionError,
@@ -3153,6 +3188,12 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             return get_graph_service(mgr).get_graph_schema(args.get("project_id"), **common)
         if name == "mnemos_list_graph_projects":
             return get_graph_service(mgr).list_graph_projects(**common)
+        if name == "mnemos_register_project":
+            project_id = _graph_req_str(args, "project_id")
+            root = _graph_req_str(args, "root")
+            if project_id is None or root is None:
+                return bad("project_id, root", "non-empty strings")
+            return get_graph_service(mgr).register_project(project_id, root, **common)
         # name == "mnemos_delete_graph_project"
         project_id = _graph_req_str(args, "project_id")
         if project_id is None:

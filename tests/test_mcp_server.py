@@ -306,7 +306,7 @@ async def test_no_brand_env_canonical_manifest_only() -> None:
     with patch("vesmaro.mcp_server._MCP_BRAND", ""):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 38
+    assert len(names) == 39
     assert all(n.startswith("mnemos_") for n in names)
 
 
@@ -322,7 +322,7 @@ async def test_brand_env_brand_primary_manifest() -> None:
     with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 38
+    assert len(names) == 39
     assert all(n.startswith("vesmaro_") for n in names)
     assert not any(n.startswith("mnemos_") for n in names)
     assert "vesmaro_search" in names
@@ -364,11 +364,11 @@ async def test_brand_self_alias_and_invalid_brand_rejected() -> None:
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "mnemos"):
         tools = await list_tools()
-    assert len(tools) == 38  # no doubling
+    assert len(tools) == 39  # no doubling
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "Bad Brand!"):
         tools = await _canonical_tools()
-    assert len(tools) == 38  # malformed brand is a no-op
+    assert len(tools) == 39  # malformed brand is a no-op
 
 
 async def test_vesma_mcp_brand_canonical_env_read() -> None:
@@ -384,7 +384,7 @@ async def test_vesma_mcp_brand_canonical_env_read() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 38
+    assert len(names) == 39
     assert all(n.startswith("vesma_") for n in names)
 
 
@@ -403,7 +403,7 @@ async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
     names = [t.name for t in tools]
     ves_aliases = [n for n in names if n.startswith("vesma_")]
     vesmaro_aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert len(ves_aliases) == 38
+    assert len(ves_aliases) == 39
     assert not vesmaro_aliases
     assert not any(n.startswith("mnemos_") for n in names)
     # restore
@@ -420,6 +420,6 @@ async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 38
+    assert len(names) == 39
     assert all(n.startswith("vesmaro_") for n in names)
     importlib.reload(mcp)

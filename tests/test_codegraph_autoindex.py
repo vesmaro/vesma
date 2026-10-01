@@ -406,7 +406,9 @@ def test_home_cwd_is_refused_even_with_manifest(
     """``$HOME`` and the filesystem root never auto-register (P2-2) —
     even when a manifest sits right in them (a dotfiles repo exporting
     a ``package.json`` into ``$HOME``)."""
-    monkeypatch.setattr("vesmaro.codegraph.autoindex.Path.home", classmethod(lambda cls: repo))
+    # _is_forbidden_root moved to service (shared with the manual
+    # register/repoint paths, #450/#454) — patch where it resolves Path.
+    monkeypatch.setattr("vesmaro.codegraph.service.Path.home", classmethod(lambda cls: repo))
     mgr = _make_manager(tmp_path)
     try:
         assert project_marker(str(repo)) == "pyproject.toml"  # marker present…

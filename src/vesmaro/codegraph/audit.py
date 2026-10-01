@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 #: hint over an already-registered root reuses the project instead of
 #: duplicating it) and the ``auto_register_max_projects`` cap refuse —
 #: both silent skips on the auto path, both audit-first-class.
+#: ``manual-register`` / ``manual-register-reused`` (#454) and
+#: ``repoint`` (#450) joined the project-lifecycle wave: agent-side
+#: explicit registration (idempotent on the same root) and the operator
+#: re-point of a ghost registration whose root moved on disk.
 AUDIT_ACTIONS = (
     "index",
     "reindex",
@@ -45,6 +49,9 @@ AUDIT_ACTIONS = (
     "auto-register",
     "auto-register-reused",
     "auto-register-capped",
+    "manual-register",
+    "manual-register-reused",
+    "repoint",
 )
 
 

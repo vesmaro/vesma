@@ -87,6 +87,59 @@ GRAPH_SCHEMA_VERSION = 1
 #: colon-safe, the same discipline as every other graph_meta key.
 _AUTO_SUSPENDED_PREFIX = "auto_suspended:"
 
+#: Packaging manifests accepted as project-root markers (PR #443 review
+#: P2-2): the operator's footprint on disk, the canonical manifests of
+#: the supported ecosystems. A bare ``.git`` deliberately does NOT
+#: qualify for AUTO-registration — a dotfiles ``$HOME`` is a repo, not a
+#: project — and neither do lockfiles (generated artifacts, not
+#: declarations). Lives here (not in ``autoindex``) since PG-0.5: the
+#: manual registration/repoint paths (#454/#450) share the same
+#: root-shape gate; ``autoindex`` re-exports it for its tests.
+PROJECT_MARKERS: tuple[str, ...] = (
+    "pyproject.toml",
+    "setup.py",
+    "package.json",
+    "go.mod",
+    "Cargo.toml",
+)
+
+#: One line appended to every unregistered-project confinement refusal
+#: (#454): the caller is told HOW to register, not just that it cannot.
+REGISTER_HINT = (
+    " — to register it: the mnemos_register_project tool "
+    "(agent attribution required) or 'vesma graph register <project> <root>'"
+)
+
+
+def project_marker(cwd: str) -> str | None:
+    """The FIRST packaging manifest found in ``cwd`` (a stat per
+    candidate — cheap by contract), or ``None`` when the directory is
+    not a project root. A non-directory ``cwd`` never registers; a bare
+    ``.git`` is not an auto marker (P2-2) but DOES qualify as a root
+    shape for the manual repoint path (#450 — an operator pointing at a
+    checkout knows what they are doing; the AUTO path stays stricter)."""
+    if not os.path.isdir(cwd):
+        return None
+    for marker in PROJECT_MARKERS:
+        if os.path.exists(os.path.join(cwd, marker)):
+            return marker
+    return None
+
+
+def _is_forbidden_root(cwd: str) -> bool:
+    """``$HOME`` and the filesystem root are NEVER graph roots (PR #443
+    review P2-2, now shared by the manual paths #450/#454): even a
+    manifest sitting there (a dotfiles repo exporting a
+    ``package.json`` into ``$HOME``) must not turn the server's own home
+    into a graph project."""
+    root = Path(cwd)
+    if str(root) == root.anchor:  # "/" on POSIX, "C:\\" on Windows
+        return True
+    try:
+        return root == Path.home()
+    except RuntimeError:  # no resolvable home — the marker gate decides
+        return False
+
 
 def auto_suspended_key(project: str) -> str:
     """The sidecar ``graph_meta`` key of the auto-path suspension flag
@@ -153,6 +206,26 @@ class _RegisteredRoot:
 
     graph_key: str
     root: str
+
+
+def _clone_project_with_paths(project: ProjectRecord, paths: list[str]) -> Project:
+    """Rebuild a project row with new ``paths`` (register/repoint).
+
+    A real ``Project`` model is copied field-for-field (``created_at``
+    preserved, ``updated_at`` bumped); a duck-typed record (test fakes)
+    falls back to a fresh model over the protocol's four fields."""
+    from datetime import UTC, datetime
+
+    from vesmaro.models import Project as _Project
+
+    if isinstance(project, _Project):
+        return project.model_copy(update={"paths": paths, "updated_at": datetime.now(UTC)})
+    return _Project(
+        id=project.id,
+        name=project.name,
+        description=project.description or "",
+        paths=paths,
+    )
 
 
 def resolve_token_budget(raw: Any) -> int:
@@ -306,13 +379,13 @@ class CodeGraphService:
         if project is None:
             raise GraphConfinementError(
                 f"project {wanted!r} is not registered in the projects table "
-                "(PG2: the graph indexes only operator-registered roots)"
+                f"(PG2: the graph indexes only registered roots){REGISTER_HINT}"
             )
         registered = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
         if not registered:
             raise GraphConfinementError(
                 f"project {project.name!r} has no registered path to index "
-                "(PG2: register the root via the project's paths)"
+                f"(PG2: register the root via the project's paths){REGISTER_HINT}"
             )
         root = registered[0]
         if not os.path.isabs(root):
@@ -365,8 +438,230 @@ class CodeGraphService:
                     return project
         return None
 
-    # ── tool 1: index_project ───────────────────────────────────────────────
+    # ── registration lifecycle (#450 repoint / #454 manual register) ─────
 
+    def _validate_new_root(self, raw_root: Any, *, what: str) -> str:
+        """Validate a caller-supplied absolute root for register/repoint.
+
+        Confinement gates shared with the auto path (#454/#450): the
+        root must be an existing directory, must look like a project
+        root (a packaging manifest OR a ``.git`` — the repoint/git leg
+        is the operator's explicit act, so a bare checkout qualifies;
+        the auto path stays marker-only), and must never be ``$HOME`` or
+        the filesystem root. Returns the normalized absolute path;
+        refusals are loud (they name the failed gate)."""
+        if not isinstance(raw_root, str) or not raw_root.strip():
+            raise GraphConfinementError(f"{what} root is required and must be a non-empty string")
+        root = os.path.abspath(os.path.expanduser(raw_root.strip()))
+        if not os.path.isabs(raw_root.strip()):
+            raise GraphConfinementError(
+                f"{what} root must be an absolute path (PG2), got {raw_root!r}"
+            )
+        if _is_forbidden_root(root):
+            raise GraphConfinementError(
+                f"{what} root {root!r} is $HOME or the filesystem root — refused"
+            )
+        if not os.path.isdir(root):
+            raise GraphConfinementError(
+                f"{what} root does not exist on disk: {root!r} "
+                "(move the tree first, then repoint/register)"
+            )
+        marker = project_marker(root)
+        if marker is None and not os.path.isdir(os.path.join(root, ".git")):
+            raise GraphConfinementError(
+                f"{what} root {root!r} has no packaging manifest and no .git — "
+                "refusing to point the graph at an unrelated directory"
+            )
+        return root
+
+    def register_project(
+        self,
+        project_id: str,
+        root: str,
+        *,
+        agent: str,
+        session: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a project root WITHOUT the operator's Python REPL
+        (#454): the agent-facing path for «graph tools answer not
+        registered».
+
+        Confinement: same gates as the auto path (existing dir, marker
+        or ``.git``, not ``$HOME``/fs-root) plus the one-root-one-graph
+        rule — a root already registered under another name is REUSED
+        (audit ``manual-register-reused``, the ``auto-register-reused``
+        precedent), never duplicated. A project NAME that already
+        exists under a DIFFERENT root is a loud refusal (the existing
+        registration wins; ``vesma graph repoint`` is the operator's
+        tool for moved roots, #450). An existing project with NO paths
+        (the common case: auto-created by memory writes) gets the root
+        attached. Explicit registration does NOT count against
+        ``auto_register_max_projects`` — that cap bounds the AUTO path
+        only (provenance lives in the description marker the cap
+        counts, which manual rows never carry)."""
+        self._ensure_enabled()
+        actor, sess = self._require_attribution(agent, session)
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise GraphConfinementError("project_id is required and must be a non-empty string")
+        name = project_id.strip()
+        new_root = self._validate_new_root(root, what="registration")
+        existing_by_root = self.find_project_by_root(new_root)
+        if existing_by_root is not None and existing_by_root.name != name:
+            # One root = one graph: the hint rides the existing project.
+            self._audit.record(
+                existing_by_root.name,
+                "manual-register-reused",
+                actor,
+                session=sess,
+                reason="manual-register-reused (root already registered)",
+                details={"hint": name, "root": os.path.basename(new_root)},
+            )
+            return {
+                "project": existing_by_root.name,
+                "status": "already-registered",
+                "root": new_root,
+                "note": f"root already registered under project {existing_by_root.name!r}",
+            }
+        project = self._main.get_project(name) or self._main.get_project_by_name(name)
+        if project is not None:
+            current = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+            if current and os.path.normpath(os.path.abspath(current[0])) == os.path.normpath(
+                new_root
+            ):
+                self._audit.record(
+                    project.name,
+                    "manual-register-reused",
+                    actor,
+                    session=sess,
+                    reason="manual-register-reused (same root)",
+                    details={"root": os.path.basename(new_root)},
+                )
+                return {"project": project.name, "status": "already-registered", "root": new_root}
+            if current:
+                raise GraphConfinementError(
+                    f"project {project.name!r} is already registered at "
+                    f"{current[0]!r} — refusing to re-point an existing root "
+                    f"from the register tool (moved roots: vesma graph repoint)"
+                )
+            # The orphan case: a project row created by memory writes,
+            # no paths — attach the root.
+            updated = _clone_project_with_paths(project, [new_root])
+            self._main.save_project(updated)
+            self._audit.record(
+                updated.name,
+                "manual-register",
+                actor,
+                session=sess,
+                reason="manual-register (root attached to existing project)",
+                details={"root": os.path.basename(new_root)},
+            )
+            return {"project": updated.name, "status": "registered", "root": new_root}
+        from datetime import UTC, datetime
+
+        from vesmaro.models import Project as _NewProject
+
+        created = _NewProject(
+            name=name,
+            paths=[new_root],
+            description=(
+                f"manually registered by {actor} at {datetime.now(UTC).isoformat()} "
+                "(mnemos_register_project; PG2)"
+            ),
+        )
+        self._main.save_project(created)
+        self._audit.record(
+            created.name,
+            "manual-register",
+            actor,
+            session=sess,
+            reason="manual-register",
+            details={"root": os.path.basename(new_root)},
+        )
+        logger.info("codegraph: project %s manually registered at %s by %s", name, new_root, actor)
+        return {"project": created.name, "status": "registered", "root": new_root}
+
+    def repoint_project(
+        self,
+        project_id: str,
+        new_root: str,
+        *,
+        agent: str,
+        session: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Re-point a GHOST registration at its moved root (#450).
+
+        A registration whose root no longer exists on disk is stuck
+        (auto-index no-ops, explicit index refuses confinement, the only
+        exit was nuclear delete). This method resolves the project BY
+        NAME/ID — deliberately NOT through ``_resolve_root``, which
+        refuses exactly the missing-root state being repaired — validates
+        the new root through the shared confinement gates, rewrites
+        ``paths[0]`` and purges the stale index: the sidecar describes
+        the OLD tree, so it is dropped (derived, rebuildable data) and
+        the next index run rebuilds fresh. The one-root-one-graph rule
+        binds: a new root already claimed by ANOTHER project is a loud
+        refusal. Audit action ``repoint`` (the reason defaults to
+        ``graph-repoint``); the sidecar row carries BASENAMES only
+        (review 10173a2a-4), the response keeps full paths."""
+        self._ensure_enabled()
+        actor, sess = self._require_attribution(agent, session)
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise GraphConfinementError("project_id is required and must be a non-empty string")
+        wanted = project_id.strip()
+        project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
+        if project is None:
+            raise GraphConfinementError(
+                f"project {wanted!r} is not registered in the projects table "
+                f"(PG2){REGISTER_HINT}"
+            )
+        root = self._validate_new_root(new_root, what="repoint")
+        claimed = self.find_project_by_root(root)
+        if claimed is not None and claimed.name != project.name:
+            raise GraphConfinementError(
+                f"root {root!r} is already registered under project {claimed.name!r} "
+                "(one root = one graph; refusing the cross-jump)"
+            )
+        old = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+        if old and os.path.normpath(os.path.abspath(old[0])) == os.path.normpath(root):
+            return {
+                "project": project.name,
+                "status": "unchanged",
+                "root": root,
+                "note": "the registration already points at this root",
+            }
+        paths = [root, *old[1:]] if old else [root]
+        updated = _clone_project_with_paths(project, paths)
+        self._main.save_project(updated)
+        key = updated.name
+        purged = self._store.purge_project(key)
+        # Fresh start, the delete-tool semantics: suspension lifted,
+        # consumers see a new epoch (the index they cached is gone).
+        self._store.set_meta(auto_suspended_key(key), "0")
+        bump_project_graph_epoch(self._main, key)
+        self._audit.record(
+            key,
+            "repoint",
+            actor,
+            session=sess,
+            reason=reason or "graph-repoint",
+            details={
+                "old_root": os.path.basename(old[0]) if old else None,
+                "new_root": os.path.basename(root),
+                "purged_nodes": purged,
+            },
+        )
+        logger.info(
+            "codegraph: project %s re-pointed %s -> %s by %s (%d stale nodes purged)",
+            key,
+            old[0] if old else "<none>",
+            root,
+            actor,
+            purged,
+        )
+        return {"project": key, "status": "repointed", "root": root, "purged_nodes": purged}
+
+    # ── tool 1: index_project ───────────────────────────────────────────────
     def index_project(
         self,
         project_id: str,
@@ -1062,18 +1357,25 @@ class CodeGraphService:
 
     def list_graph_projects(self, *, agent: str, session: str | None = None) -> dict[str, Any]:
         """Registered projects (main DB) JOIN their index status
-        (sidecar) — registered-but-never-indexed stays visible."""
+        (sidecar) — registered-but-never-indexed stays visible, and a
+        registration whose root is MISSING on disk is marked
+        ``root_missing`` (#450: ghosts must be visible, not silent)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         indexed = {entry["project"]: entry for entry in self._store.list_graph_projects()}
         rows: list[dict[str, Any]] = []
         for project in self._main.list_projects():
             entry = indexed.pop(project.name, None)
+            registered_paths = [
+                p for p in (project.paths or []) if isinstance(p, str) and p.strip()
+            ]
+            root_missing = bool(registered_paths) and not os.path.isdir(registered_paths[0])
             rows.append(
                 {
                     "project": project.name,
                     "registered": True,
-                    "has_root": bool([p for p in (project.paths or []) if p]),
+                    "has_root": bool(registered_paths),
+                    "root_missing": root_missing,
                     "nodes": entry["nodes"] if entry else 0,
                     "edges": entry["edges"] if entry else 0,
                     "files": entry["files"] if entry else 0,
@@ -1087,6 +1389,7 @@ class CodeGraphService:
                     "project": name,
                     "registered": False,
                     "has_root": False,
+                    "root_missing": False,
                     "nodes": entry["nodes"],
                     "edges": entry["edges"],
                     "files": entry["files"],

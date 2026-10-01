@@ -731,7 +731,7 @@ class TestSurfaceSmoke:
         tools = await mcp_server.list_tools()
         names = [t.name for t in tools]
         assert "mnemos_ingest_document" in names
-        assert len(names) == 38  # 27 canonical + Ф3 document tool + 10 project-graph tools
+        assert len(names) == 39  # 27 canonical + Ф3 document tool + 11 project-graph tools (+#454 register)
 
         result = await mcp_server._dispatch(
             "mnemos_ingest_document",

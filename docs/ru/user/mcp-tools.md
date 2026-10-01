@@ -55,6 +55,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
 | [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
+| [`mnemos_register_project`](#mnemos_register_project) | Зарегистрировать корень проекта для графа (#454) — ответ на отказы «not registered» | нет |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Вектор сигналов сжатия контекста (M7) | нет |
 | [`mnemos_compress`](#mnemos_compress) | Обратимое сжатие (CCR) — кэш оригинала, маркер в вывод | нет |
 | [`mnemos_retrieve`](#mnemos_retrieve) | Извлечение оригинала из кэша CCR или FTS5-сниппеты | нет |
@@ -1278,6 +1279,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
       "project": "vesma",
       "registered": true,
       "has_root": true,
+      "root_missing": false,
       "nodes": 2143,
       "edges": 5107,
       "files": 400,
@@ -1289,6 +1291,10 @@ BFS по `project_edges` от одного символа, разрешаемо�
   "cursor": 0
 }
 ```
+
+`root_missing: true` (#450) помечает **призрака**: зарегистрированный корень
+исчез с диска (перенесён/переименован), индексация застряла — чинится
+командой `vesma graph repoint <project> <new-root>`.
 
 ### Связанные ресурсы
 
@@ -1318,6 +1324,50 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`DELETE /graph/projects/{project_id}`](http-api.md#delete-graphprojectsproject_id--удаление-индекса-графа)
+
+---
+
+## `mnemos_register_project`
+
+Зарегистрировать корень проекта для графа кода (#454) — ответ агента на отказы
+конфайнмента «not registered» (раньше регистрация была только у оператора, а
+авто-путь покрывает лишь корни с манифестом и ограничен потолком
+`auto_register_max_projects`).
+
+Корень должен существовать на диске, быть абсолютным путём, нести
+packaging-манифест (`pyproject.toml` / `setup.py` / `package.json` / `go.mod`
+/ `Cargo.toml`) или `.git` и не быть `$HOME`/корнем файловой системы. Один
+корень = один граф: корень, уже зарегистрированный другим проектом,
+**переиспользуется** (аудит `manual-register-reused`), дубль не создаётся.
+Имя проекта, уже зарегистрированное на ДРУГОМ корне, отказывается —
+перенесённые корни чинятся командой оператора `vesma graph repoint` (#450).
+Существующая запись проекта без путей (частый случай: автосоздана записями
+памяти) получает корень. **Явная регистрация не считается против
+`auto_register_max_projects`** — тот потолок ограничивает только АВТО-путь
+(маркер происхождения, по которому он считается, живёт в описании, которого
+у ручных строк нет).
+
+### Входные параметры
+
+| Поле | Тип | Обязательное | По умолчанию | Описание |
+|------|-----|--------------|-------------|---------- |
+| `project_id` | string | **да** | — | Идентификатор или имя проекта для регистрации. |
+| `root` | string | **да** | — | Абсолютный путь к корню проекта на диске. |
+| `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
+| `session` | string | нет | — | Необязательный id сессии для аудита. |
+
+### Вывод
+
+```json
+{ "project": "vesma", "status": "registered", "root": "/home/you/vesma" }
+```
+
+`status` — `already-registered` (идемпотентно, реис корня) или `registered`.
+CLI-двойник: `vesma graph register <project> <root>`.
+
+### Связанные ресурсы
+
+- [project-graph.md — «Включите граф для проекта»](project-graph.md#включите-граф-для-проекта)
 
 ---
 

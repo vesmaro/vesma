@@ -859,3 +859,35 @@ class TestEdgeStatsCommand:
         result = runner.invoke(app, ["edge-stats", "vacuum"])
         assert result.exit_code == 1, result.output
         assert "Unknown action" in result.output
+
+
+class TestGraphLifecycleCli:
+    """`vesma graph register/repoint` (#450/#454) — thin CLI adapters
+    over CodeGraphService; happy path + loud refusal, exit codes."""
+
+    def _repo(self, tmp_path: Path, name: str) -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        return repo
+
+    def test_register_then_repoint_ghost(self, isolated_config: Path, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path, "cli-repo")
+        result = runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        assert result.exit_code == 0, result.output
+        assert "registered" in result.output
+
+        moved = repo.with_name("cli-repo-moved")
+        repo.rename(moved)  # the ghost
+        repoint = runner.invoke(app, ["graph", "repoint", "cliproj", str(moved)])
+        assert repoint.exit_code == 0, repoint.output
+        assert "repointed" in repoint.output
+
+    def test_repoint_refusal_is_loud_and_nonzero(
+        self, isolated_config: Path, tmp_path: Path
+    ) -> None:
+        repo = self._repo(tmp_path, "cli-repo")
+        runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        result = runner.invoke(app, ["graph", "repoint", "cliproj", str(tmp_path / "nope")])
+        assert result.exit_code == 1, result.output
+        assert "refused" in result.output
