@@ -10,7 +10,7 @@ Wants=network-online.target
 [Container]
 # ghcr image tag == git release tag (Release naming — see
 # contrib/node-install/README.md).
-Image=ghcr.io/korrnals/mnemos:@@CORE_TAG@@
+Image=ghcr.io/vesmaro/vesma:@@CORE_TAG@@
 ContainerName=@@NAME@@-core
 # v1 COMPROMISE: host networking — the mesh daemon (a separate
 # container) dials the core on 127.0.0.1:8790 and the peer listener

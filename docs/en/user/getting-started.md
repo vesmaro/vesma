@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 |--------|---------|
 | Pin a version | `pip install vesma==4.3.0` (*pre-rebrand pin: `mnemos-memory-server==4.1.0` stays installable until deprecation*) |
 | Container one-liner | `… install.sh \| bash -s -- --container` — see [container-deployment.md](../admin/runbooks/container-deployment.md) |
-| From source (contributors) | `git clone https://github.com/vesmaro/vesmaro && cd vesmaro && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — see [CONTRIBUTING.md](../../../CONTRIBUTING.md) |
+| From source (contributors) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — see [CONTRIBUTING.md](../../../CONTRIBUTING.md) |
 
 <details>
 <summary><strong>Released wheel and pre-built container image</strong> — version-pinned channels</summary>
@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 
 <!-- version:pip -->
 ```bash
-pip install https://github.com/vesmaro/vesmaro/releases/download/v4.3.0/mnemos_memory_server-4.3.0-py3-none-any.whl
+pip install https://github.com/vesmaro/vesma/releases/download/v4.3.0/mnemos_memory_server-4.3.0-py3-none-any.whl
 ```
 <!-- /version:pip -->
 

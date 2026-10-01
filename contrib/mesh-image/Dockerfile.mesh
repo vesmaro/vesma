@@ -9,12 +9,12 @@
 # the stubs below are generated from the .proto AT the build commit.
 # Pre-push gate (run before podman push, fail = abort):
 #   distrobox-host-exec podman run --rm --entrypoint python \
-#     ghcr.io/korrnals/mnemos:v4.3.4-mesh.2 /gate.py
+#     ghcr.io/vesmaro/vesma:v4.3.4-mesh.2 /gate.py
 # checks field presence on the shipped stubs.
 #
 # Build (host-built, GH Actions billing-locked — recipe #354/#374):
 #   distrobox-host-exec podman build -f /tmp/v4342-image/Dockerfile.mesh \
-#     -t ghcr.io/korrnals/mnemos:v4.3.4-mesh.2 /tmp/v4342-image
+#     -t ghcr.io/vesmaro/vesma:v4.3.4-mesh.2 /tmp/v4342-image
 
 # ── gencode builder (#354) ────────────────────────────────────────────
 # The gRPC stubs (federation/gen/python/) are gitignored; generate them

@@ -101,8 +101,8 @@ CT_MESH_TAG=""
 CT_PORT=""
 CT_DATA_DIR=""
 CT_NETWORK="host"
-GHCR_CORE="ghcr.io/korrnals/mnemos"
-GHCR_MESH="ghcr.io/korrnals/mnemos-mesh"
+GHCR_CORE="ghcr.io/vesmaro/vesma"
+GHCR_MESH="ghcr.io/vesmaro/vesma-mesh"
 
 SANDBOX=false
 SYS_DRY=false
@@ -239,14 +239,14 @@ pick_python() {
 default_vesmaro_repo() {
   if [[ -n "$VESMARO_REPO_FLAG" ]]; then echo "$VESMARO_REPO_FLAG"; return; fi
   if [[ -n "${VESMARO_REPO:-}" ]]; then echo "$VESMARO_REPO"; return; fi
-  local p="$HOME/LABs/Projects/Project-Mnemos/mnemos"
+  local p="$HOME/LABs/Projects/Project-Vesma/vesma"
   if [[ -d "$p/.git" ]]; then echo "$p"; return; fi
   echo ""
 }
 default_mesh_repo() {
   if [[ -n "$MESH_REPO_FLAG" ]]; then echo "$MESH_REPO_FLAG"; return; fi
   if [[ -n "${MESH_REPO:-}" ]]; then echo "$MESH_REPO"; return; fi
-  local p="$HOME/LABs/Projects/Project-Mnemos/mnemos-mesh"
+  local p="$HOME/LABs/Projects/Project-Vesma/vesma-mesh"
   if [[ -d "$p/.git" ]]; then echo "$p"; return; fi
   echo ""
 }
@@ -1195,7 +1195,7 @@ cmd_install() {
 
   local vrepo mrepo vcache mbin new_cv new_mv changed_units=""
   vrepo="$(ensure_repo vesmaro "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
-  $WITHOUT_MESH || mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:Korrnals/mnemos-mesh.git)"
+  $WITHOUT_MESH || mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
 
   info "target pair: core $CORE_TAG + mesh $MESH_REF (${PAIR_MODE})"
 
@@ -1418,7 +1418,7 @@ cmd_upgrade() {
   new_cv="$(version_core "$vcache/bin/mnemos")"
   local mrepo="" mbin="" new_mv=""
   if $have_mesh; then
-    mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:Korrnals/mnemos-mesh.git)"
+    mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
     mbin="$(build_mesh "$mrepo" "$MESH_REF" "$EXPECT_MESHV")"
     new_mv="$(version_mesh "$mbin")"
   fi

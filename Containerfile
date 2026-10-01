@@ -1,6 +1,6 @@
 # Mnemos — Memory & Knowledge Server for AI Agents
-# Build: podman build -t ghcr.io/korrnals/mnemos:4.1.0 .
-# Run:   podman run -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 ghcr.io/korrnals/mnemos:4.1.0
+# Build: podman build -t ghcr.io/vesmaro/vesma:4.1.0 .
+# Run:   podman run -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 ghcr.io/vesmaro/vesma:4.1.0
 FROM docker.io/library/python:3.12-slim AS base
 
 LABEL maintainer="abyss"

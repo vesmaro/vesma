@@ -2,15 +2,15 @@ name: Release
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RELEASE = tag + GitHub release + container image (ALL THREE mandatory).
-# A release is NOT complete until ghcr.io/korrnals/mnemos:$VERSION is published.
+# A release is NOT complete until ghcr.io/vesmaro/vesma:$VERSION is published.
 # If this workflow's build-push-image job fails, the release is incomplete —
 # fix the image build before declaring the release done.
 #
 # Workaround when GitHub Actions billing is locked:
 #   distrobox-host-exec podman login ghcr.io -u Korrnals --password-stdin <<< "$GH_CLASSIC_TOKEN"
-#   distrobox-host-exec podman build -t ghcr.io/korrnals/mnemos:$VERSION -t ghcr.io/korrnals/mnemos:latest -f Containerfile .
-#   distrobox-host-exec podman push ghcr.io/korrnals/mnemos:$VERSION
-#   distrobox-host-exec podman push ghcr.io/korrnals/mnemos:latest
+#   distrobox-host-exec podman build -t ghcr.io/vesmaro/vesma:$VERSION -t ghcr.io/vesmaro/vesma:latest -f Containerfile .
+#   distrobox-host-exec podman push ghcr.io/vesmaro/vesma:$VERSION
+#   distrobox-host-exec podman push ghcr.io/vesmaro/vesma:latest
 # See mnemos memory 36894588 for full procedure.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ jobs:
       - name: Compute image coordinates
         run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          echo "IMAGE=ghcr.io/korrnals/mnemos" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/vesmaro/vesma" >> "$GITHUB_ENV"
 
       - name: Build image (versioned + latest tags)
         run: buildah bud -t $IMAGE:$VERSION -t $IMAGE:latest -f Containerfile .

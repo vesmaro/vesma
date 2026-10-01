@@ -37,7 +37,7 @@ help:
 	@echo "  make clean      - Remove build artifacts"
 	@echo "  make build-dist - Build wheel + sdist into dist/ (requires: pip install build)"
 	@echo "  make build-image - Build container image locally with podman"
-	@echo "  make push-image - Tag and push local image to ghcr.io/korrnals/mnemos (requires: podman login ghcr.io)"
+	@echo "  make push-image - Tag and push local image to ghcr.io/vesmaro/vesma (requires: podman login ghcr.io)"
 	@echo "  make pypi-publish - PyPI pipeline: name+version gates, build, twine check, smoke (upload needs scripts/pypi-publish.sh --publish)"
 
 # Gate targets invoke the repo venv EXPLICITLY (.venv/bin/*), never bare
@@ -206,10 +206,10 @@ build-image:
 push-image:
 	# Run `make build-image` first to ensure the local image exists.
 	# Requires: podman login ghcr.io  (credentials are NOT embedded here).
-	podman tag localhost/mnemos:$(VERSION) ghcr.io/korrnals/mnemos:$(VERSION)
-	podman tag localhost/mnemos:latest ghcr.io/korrnals/mnemos:latest
-	podman push ghcr.io/korrnals/mnemos:$(VERSION)
-	podman push ghcr.io/korrnals/mnemos:latest
+	podman tag localhost/mnemos:$(VERSION) ghcr.io/vesmaro/vesma:$(VERSION)
+	podman tag localhost/mnemos:latest ghcr.io/vesmaro/vesma:latest
+	podman push ghcr.io/vesmaro/vesma:$(VERSION)
+	podman push ghcr.io/vesmaro/vesma:latest
 
 pypi-publish:
 	# Check mode: name+version gates, wheel/sdist build, twine check, metadata smoke.

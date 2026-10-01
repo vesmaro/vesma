@@ -19,8 +19,8 @@
 #     new rows   : vX.Y.Z / vA.B.C (bare, no suffix) — from the next
 #                  release the git tag carries NO -mesh suffix, and the
 #                  ghcr image tag EQUALS the git tag:
-#                  ghcr.io/korrnals/mnemos:<core_tag>,
-#                  ghcr.io/korrnals/mnemos-mesh:<mesh_ref>.
+#                  ghcr.io/vesmaro/vesma:<core_tag>,
+#                  ghcr.io/vesmaro/vesma-mesh:<mesh_ref>.
 #
 # Seeded with the live laptop pair (2026-09-22). NOTE: the vesmaro
 # pyproject still says 4.3.0 under tag v4.3.7-mesh.2 — the LEDGER is

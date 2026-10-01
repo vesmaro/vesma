@@ -126,7 +126,7 @@ fi
 
 # 3-4. container image
 if ! $NO_IMAGE; then
-  IMAGE="ghcr.io/korrnals/mnemos"
+  IMAGE="ghcr.io/vesmaro/vesma"
   BT=""; command -v buildah >/dev/null 2>&1 && BT="buildah" || { command -v docker >/dev/null 2>&1 && BT="docker"; }
   IDX=$((IDX+1))
   if [[ -z "$BT" ]]; then skip_step $IDX $TOTAL "Build image" "no buildah/docker"

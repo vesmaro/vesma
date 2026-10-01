@@ -41,7 +41,7 @@ sudo ./vesmaro-node install --profile laptop
 
 Artifacts are built locally from the repos (`--vesmaro-repo` /
 `--mesh-repo`, or `VESMARO_REPO` / `MESH_REPO` env; defaults follow
-`$HOME/LABs/Projects/Project-Mnemos/{mnemos,mnemos-mesh}`): server via
+`$HOME/LABs/Projects/Project-Vesma/{vesma,vesma-mesh}`): server via
 `git archive <tag> | uv sync --frozen`, mesh via
 `go build -trimpath -ldflags "-X main.buildVersion=<v>"`. Requirements:
 bash, python >= 3.11, `uv`, `git`; for the mesh either a local `go`, or
@@ -99,8 +99,8 @@ only overloaded the meaning. Rules:
 
 - new git tags are bare semver: `v4.3.8+` (core) / `v1.4.0+` (mesh);
 - the **ghcr image tag equals the git tag** exactly:
-  `ghcr.io/korrnals/mnemos:<core tag>`,
-  `ghcr.io/korrnals/mnemos-mesh:<mesh tag>` (rule already in effect);
+  `ghcr.io/vesmaro/vesma:<core tag>`,
+  `ghcr.io/vesmaro/vesma-mesh:<mesh tag>` (rule already in effect);
 - `compatibility.tsv` keeps accepting BOTH formats: the old
   `-mesh.N` rows (…`v4.3.7-mesh.2`) remain as append-only history and
   must not be rewritten; new rows use bare tags. The ledger parser is
@@ -132,8 +132,8 @@ your memories, and the data dir is the same good old sqlite/vault tree.
                                           # (--keep-data spares the data dir)
 ```
 
-What it does: pull `ghcr.io/korrnals/mnemos:<core tag>` (+ the paired
-`ghcr.io/korrnals/mnemos-mesh:<mesh tag>`), render
+What it does: pull `ghcr.io/vesmaro/vesma:<core tag>` (+ the paired
+`ghcr.io/vesmaro/vesma-mesh:<mesh tag>`), render
 `~/.config/vesmaro/node.container.yaml` (loopback API, your port) and
 quadlets into `~/.config/containers/systemd/vesmaro-{core,mesh}.container`,
 `systemctl --user daemon-reload && enable --now`, then health-verify

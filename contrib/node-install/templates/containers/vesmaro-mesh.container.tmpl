@@ -3,14 +3,14 @@
 # container-install`; only deployed when the mTLS material is present.
 [Unit]
 Description=vesmaro mesh container — federation transport (@@NODE_ID@@)
-Documentation=https://github.com/Korrnals/mnemos-mesh
+Documentation=https://github.com/vesmaro/vesma-mesh
 After=network-online.target
 Wants=network-online.target
 
 [Container]
 # ghcr image tag == git release tag (Release naming — see
 # contrib/node-install/README.md).
-Image=ghcr.io/korrnals/mnemos-mesh:@@MESH_TAG@@
+Image=ghcr.io/vesmaro/vesma-mesh:@@MESH_TAG@@
 ContainerName=@@NAME@@-mesh
 # v1 COMPROMISE: host networking — dials the core on 127.0.0.1:8790 and
 # serves peers on :8443 (see the core quadlet note).
