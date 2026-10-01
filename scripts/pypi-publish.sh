@@ -261,7 +261,7 @@ from importlib.metadata import version
 name, expected = os.environ["NAME"], os.environ["EXPECTED"]
 v = version(name)
 assert v == expected, f"installed {v} != expected {expected}"
-p = r.files("mnemos")
+p = r.files("vesmaro")
 assert (p / "integrations").is_dir(), "integrations/ missing from wheel — integration setup would break on pip installs"
 assert (p / "scripts").is_dir(), "scripts/ missing from wheel — mcp-setup.sh would not be found"
 print(f"✓ installed {name} {v}; integrations/ + scripts/ shipped")

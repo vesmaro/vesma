@@ -199,14 +199,14 @@ exclude = ["benchmarks", "training"]
 # Ship the integration pack (instructions, skills, prompts, targets.yaml) inside
 # the wheel so `mnemos integration setup` works from a pip-installed package,
 # not just from a source checkout. The directory is mapped to
-# `mnemos/integrations/` so it is reachable via `importlib.resources.files(
-# "mnemos") / "integrations"`.
+# `vesmaro/integrations/` so it is reachable via `importlib.resources.files(
+# "vesmaro") / "integrations"`.
 [tool.hatch.build.targets.wheel.force-include]
 "integrations" = "vesmaro/integrations"
 # Ship the setup scripts (mcp-setup.sh, install.sh, deploy.sh, setup-distrobox.sh)
 # inside the wheel so `mnemos integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
-# `mnemos/scripts/` — reachable via `importlib.resources.files("mnemos") / "scripts"`.
+# `vesmaro/scripts/` — reachable via `importlib.resources.files("vesmaro") / "scripts"`.
 "scripts" = "vesmaro/scripts"
 
 [tool.ruff]
