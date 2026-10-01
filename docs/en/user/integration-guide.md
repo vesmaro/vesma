@@ -37,7 +37,7 @@ Three surfaces, each with a different strength:
 integrations/
 ├── instructions/
 │   ├── vesma-memory-ops.instructions.md           # memory-operations canon: gates G1–G4, ops, tag contract, degradation
-│   └── canon-records.instructions.md              # canon record standards (envelope + sections)
+│   └── vesma-canon-records.instructions.md        # canon record standards (envelope + sections)
 ├── agents_md/
 │   └── vesma-always-on.md                         # always-on behavioral block (G1–G4) injected into AGENTS.md files
 ├── skills/
@@ -57,10 +57,10 @@ integrations/
 │   ├── vesma-workflow.md                          # open questions / task lifecycle
 │   ├── vesma-exchange.md                          # export / import / backups
 │   ├── vesma-cache-align.md                       # KV-cache prompt-prefix alignment
-│   ├── mnemos-canon-write.md                      # canon-compliant records (task / decision / report)
-│   └── mnemos-context-lifecycle.md                # context assembly / rewrite lifecycle
+│   ├── vesma-canon-write.md                       # canon-compliant records (task / decision / report)
+│   └── vesma-context-lifecycle.md                 # context assembly / rewrite lifecycle
 └── prompts/
-    └── mnemos-memory.prompt.md                    # active memory mode
+    └── vesma-memory.prompt.md                     # active memory mode
 ```
 
 Every deployable file carries the pack safety contract (recalled content is
@@ -126,7 +126,7 @@ user-tuned `env` on the `vesma` entry are never overwritten.
 The `pi` target covers the [Pi coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 (npm `@earendil-works/pi-coding-agent`). Pi has no built-in MCP client —
 tools arrive via TypeScript extensions — so the MCP registration IS a file:
-the shipped bridge `integrations/extensions/mnemos-mcp.ts` is deployed
+the shipped bridge `integrations/extensions/vesma-mcp.ts` is deployed
 (stamped) into `~/.pi/agent/extensions/`, where Pi auto-loads it. On session
 start the bridge spawns `vesma mcp-server` over stdio and registers every
 `vesma_*` tool natively; `/reload` hot-reloads, `/vesma` reconnects.
@@ -167,7 +167,7 @@ target environment launches vesma through a wrapper or a different path.
 | `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ plugin in `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<name>/SKILL.md` | MCP in `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<name>/SKILL.md` | MCP in `~/.agents/mcp.json` |
-| `pi` | — | `~/.pi/agent/skills/<name>/SKILL.md` | bridge: `~/.pi/agent/extensions/mnemos-mcp.ts` |
+| `pi` | — | `~/.pi/agent/skills/<name>/SKILL.md` | bridge: `~/.pi/agent/extensions/vesma-mcp.ts` |
 
 ---
 

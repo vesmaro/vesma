@@ -148,15 +148,16 @@ mnemos integration setup --target pi
 
 That deploys:
 
-- `~/.pi/agent/extensions/mnemos-mcp.ts` — the MCP bridge (this IS the
+- `~/.pi/agent/extensions/vesma-mcp.ts` — the MCP bridge (this IS the
   registration; Pi loads extensions from that directory automatically)
 - `~/.pi/agent/skills/<name>/SKILL.md` — the skill pack, nested layout
 
 Restart Pi (or run `/reload` inside a session) and the `mnemos_*` tools
-appear; `/mnemos` reconnects the bridge on demand. Manual fallback — copy
-`integrations/extensions/mnemos-mcp.ts` from the repo into
+appear; `/vesma` reconnects the bridge on demand (legacy alias: `/mnemos`).
+Manual fallback — copy
+`integrations/extensions/vesma-mcp.ts` from the repo into
 `~/.pi/agent/extensions/`. Override the server binary with the
-`VESMARO_BIN` environment variable when `mnemos` is not on `PATH`.
+`MNEMOS_BIN` environment variable when `mnemos` is not on `PATH`.
 
 Note: Pi also reads `~/.agents/skills/`; when both the `pi` and `agents`
 targets are deployed, prefer `--target pi` to avoid duplicate skill

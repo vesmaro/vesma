@@ -29,7 +29,7 @@
   },
   "pi": {
     "extensions": [
-      "./integrations/extensions/mnemos-mcp.ts"
+      "./integrations/extensions/vesma-mcp.ts"
     ],
     "skills": [
       "./integrations/skills"

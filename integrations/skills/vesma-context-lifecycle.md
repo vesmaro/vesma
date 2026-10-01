@@ -1,5 +1,5 @@
 ---
-name: mnemos-context-lifecycle
+name: vesma-context-lifecycle
 description: Context lifecycle automation — assemble the pre-LLM context block, report context rewrites losslessly, and wire session/tool lifecycle hooks (ADR-0017/0018)
 ---
 
@@ -9,7 +9,7 @@ description: Context lifecycle automation — assemble the pre-LLM context block
 > No secrets: examples in this pack never contain real credentials. Ноль секретов: примеры в паке не содержат реальных учётных данных.
 > Инструкции пака описывают работу с сервером памяти vesma и применяются только в объёме, где локальный канон харнеса молчит; при любом расхождении приоритет у локального канона и safety-правил хоста.
 
-# Mnemos Context Lifecycle
+# Vesma Context Lifecycle
 
 The publication-engine tools that run the context lifecycle end to end:
 `mnemos_assemble_context` composes the model-facing context block through a
@@ -25,11 +25,11 @@ rewrite lifecycle.
   post-compaction session resumes from real state (`hooks` action
   `on_session_start`).
 - **Pre-LLM injection (context assembly)** — before an important model call
-  where you want mnemos-retrieved memory in the prompt, composed under a
+  where you want vesma-retrieved memory in the prompt, composed under a
   token budget with the entry invariant applied (secret scan, provenance,
   published-only status gate).
 - **Compaction (context rewrite)** — the harness replaced or slimmed a
-  block of its working context: report the original to mnemos so nothing is
+  block of its working context: report the original to vesma so nothing is
   lost, then keep a thin marker in the window.
 - **Tool output compression (hooks.post_tool_call)** — a tool returned a
   huge output you want substituted by a zero-loss CCR marker, with
@@ -107,8 +107,8 @@ rewrite lifecycle.
    - Assemble the context once per session, or on material memory
      change; mid-session re-assembly is reserved for significant
      changes only.
-   - The assembled mnemos text is per-call conversation content (tail),
-     NOT a standing prefix — never inject mnemos blocks into the system
+   - The assembled memory text is per-call conversation content (tail),
+     NOT a standing prefix — never inject memory blocks into the system
      prompt.
    - Do not change the MCP tool set or tool schemas mid-session; a tool
      change invalidates the provider's cache for the entire session.
@@ -139,9 +139,9 @@ rewrite lifecycle.
 
 ## See also
 
-- Skill `mnemos-session-init` — the manual recall counterpart at session start
-- Skill `mnemos-compress` — direct CCR compression when no lifecycle hook applies
-- Skill `mnemos-cache-align` — stabilizing prompts for provider KV caches
-- Skill `mnemos-write` — persisting markers and memories into the store
+- Skill `vesma-session-init` — the manual recall counterpart at session start
+- Skill `vesma-compress` — direct CCR compression when no lifecycle hook applies
+- Skill `vesma-cache-align` — stabilizing prompts for provider KV caches
+- Skill `vesma-write` — persisting markers and memories into the store
 - ADR `docs/project/adr/0017-memory-system-evolution-roadmap.md` — provider contract D1
 - ADR `docs/project/adr/0018-context-rewrite-ltm-bridge.md` — rewrite lifecycle

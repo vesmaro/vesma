@@ -21,7 +21,7 @@ targets:
       instructions: "~/.copilot/instructions/"
       skills: "~/.copilot/skills/"
       # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
-      # stamped sidecar manifest (mnemos-schemas.manifest.json); consumers
+      # stamped sidecar manifest (vesma-schemas.manifest.json); consumers
       # like the mnemos-eyes Go validator read them straight from here.
       schemas: "~/.copilot/schemas/"
     format: copy
@@ -48,7 +48,7 @@ targets:
       - path: "~/.hermes/config.yaml"
       - path: "$HERMES_HOME/config.yaml"
     deploy:
-      plugin: "~/.hermes/plugins/mnemos/"
+      plugin: "~/.hermes/plugins/vesma/"
       instructions: "~/.hermes/skills/"
       skills: "~/.hermes/skills/"
     format: copy
@@ -66,7 +66,7 @@ targets:
     deploy:
       skills: "~/.zcode/skills/"
       # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
-      # stamped sidecar manifest (mnemos-schemas.manifest.json).
+      # stamped sidecar manifest (vesma-schemas.manifest.json).
       schemas: "~/.zcode/schemas/"
       agents_md: "~/.zcode/AGENTS.md"
     format: copy
@@ -89,7 +89,7 @@ targets:
     deploy:
       skills: "~/.agents/skills/"
       # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
-      # stamped sidecar manifest (mnemos-schemas.manifest.json).
+      # stamped sidecar manifest (vesma-schemas.manifest.json).
       schemas: "~/.agents/schemas/"
       agents_md: "~/.agents/AGENTS.md"
     format: copy
@@ -138,5 +138,5 @@ targets:
     precedence: overlay+mirror
     layout: nested
     mcp:
-      config: "~/.pi/agent/extensions/mnemos-mcp.ts"
+      config: "~/.pi/agent/extensions/vesma-mcp.ts"
       format: pi

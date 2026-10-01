@@ -138,7 +138,6 @@ violations. Do not retrofit envelopes onto existing records.
 
 ## See also
 
-- `mnemos-memory-ops.instructions.md` — memory operations (search / add / agent-recall)
-- `mnemos-tag-contract.instructions.md` — required tag composition
-- Skill `mnemos-canon-write` — the write surface with per-type checklists
-- Skill `mnemos-checkpoint` — checkpoint saves (envelope auto-minted)
+- `vesma-memory-ops.instructions.md` — memory operations (search / add / agent-recall), incl. the tag contract (§3)
+- Skill `vesma-canon-write` — the write surface with per-type checklists
+- Skill `vesma-checkpoint` — checkpoint saves (envelope auto-minted)

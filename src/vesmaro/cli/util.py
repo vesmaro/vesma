@@ -504,7 +504,8 @@ def verify_cmd(
         if result.old_stamp_count > 0:
             console.print(
                 f"  [yellow]{result.old_stamp_count} old-stamp "
-                f"(legacy mnemos-integration marker — `integration update` re-stamps)[/yellow]"
+                f"(legacy mnemos-integration marker — `vesma integration update` "
+                f"re-stamps)[/yellow]"
             )
 
     # ── Agent wiring section (informational — does not affect exit code) ────

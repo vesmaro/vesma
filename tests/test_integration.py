@@ -1977,7 +1977,7 @@ class TestPiTarget:
             "---\nname: mnemos-recall\n---\n# Recall\n", encoding="utf-8"
         )
         (pack / "extensions").mkdir(parents=True)
-        (pack / "extensions" / "mnemos-mcp.ts").write_text(
+        (pack / "extensions" / "vesma-mcp.ts").write_text(
             "// bridge source\nexport default function () {}\n", encoding="utf-8"
         )
         (pack / "targets.yaml").write_text(
@@ -1992,7 +1992,7 @@ class TestPiTarget:
                             },
                             "layout": "nested",
                             "mcp": {
-                                "config": "~/.pi/agent/extensions/mnemos-mcp.ts",
+                                "config": "~/.pi/agent/extensions/vesma-mcp.ts",
                                 "format": "pi",
                             },
                         },
@@ -2019,14 +2019,14 @@ class TestPiTarget:
         assert pi is not None
         assert pi.layout == "nested"
         assert pi.mcp_format == "pi"
-        assert pi.mcp_config == pi_home / ".pi" / "agent" / "extensions" / "mnemos-mcp.ts"
+        assert pi.mcp_config == pi_home / ".pi" / "agent" / "extensions" / "vesma-mcp.ts"
         assert pi.deploy_map["extensions"] == pi_home / ".pi" / "agent" / "extensions"
 
     def test_deploy_stamps_ts_with_line_comment(
         self, pi_manager: IntegrationManager, pi_home: Path
     ) -> None:
         pi_manager.deploy("pi")
-        bridge = pi_home / ".pi" / "agent" / "extensions" / "mnemos-mcp.ts"
+        bridge = pi_home / ".pi" / "agent" / "extensions" / "vesma-mcp.ts"
         assert bridge.exists()
         first_line = bridge.read_text(encoding="utf-8").splitlines()[0]
         # Stamp must be a valid TS line comment carrying the version.
@@ -2054,7 +2054,7 @@ class TestPiTarget:
     def test_register_mcp_pi_fails_on_user_file(
         self, pi_manager: IntegrationManager, pi_home: Path
     ) -> None:
-        bridge = pi_home / ".pi" / "agent" / "extensions" / "mnemos-mcp.ts"
+        bridge = pi_home / ".pi" / "agent" / "extensions" / "vesma-mcp.ts"
         bridge.parent.mkdir(parents=True, exist_ok=True)
         bridge.write_text("// user's own bridge\n", encoding="utf-8")
         ok, note = pi_manager.register_mcp("pi")
@@ -2075,7 +2075,7 @@ class TestPiTarget:
         user_ext.write_text("// user file\n", encoding="utf-8")
         result = pi_manager.uninstall("pi")
         removed_names = {p.name for p in result.removed}
-        assert "mnemos-mcp.ts" in removed_names  # our bridge removed
+        assert "vesma-mcp.ts" in removed_names  # our bridge removed
         assert "SKILL.md" in removed_names  # our skill removed too
         assert user_ext.exists()
         assert user_ext in result.skipped_user_files
@@ -2110,26 +2110,31 @@ class TestSkillPack:
     def _skill_files() -> list[Path]:
         repo_root = Path(__file__).resolve().parent.parent
         skills = repo_root / "integrations" / "skills"
-        return sorted(skills.glob("mnemos-*.md"))
+        # Loud rename (ADR-0033, board card vesma-naming-debt-rename): the
+        # pack prefix is vesma-*; this glob guards against silent drift back.
+        return sorted(skills.glob("vesma-*.md"))
 
     def test_skill_pack_nonempty(self) -> None:
         files = self._skill_files()
         assert files, "integrations/skills/ pack must contain skill files"
 
     def test_context_lifecycle_skill_present_and_parses(self) -> None:
+        # Loud rename (ADR-0033, board card vesma-naming-debt-rename): the
+        # #209 artefact was pinned as mnemos-context-lifecycle.md and is now
+        # vesma-context-lifecycle.md — this pin guards the NEW name.
         files = self._skill_files()
-        skill = next((p for p in files if p.name == "mnemos-context-lifecycle.md"), None)
+        skill = next((p for p in files if p.name == "vesma-context-lifecycle.md"), None)
         assert skill is not None, (
-            "issue #209: mnemos-context-lifecycle.md must ship in the skill pack"
+            "issue #209: vesma-context-lifecycle.md must ship in the skill pack"
         )
         text = skill.read_text(encoding="utf-8")
         # Frontmatter: delimited, name matches the filename stem.
         assert text.startswith("---\n"), "skill must start with a frontmatter block"
         (fm, _, body) = text.partition("\n---\n")
-        assert fm.startswith("---\nname: mnemos-context-lifecycle")
+        assert fm.startswith("---\nname: vesma-context-lifecycle")
         assert "description:" in fm
         # Body follows the standard skill section convention.
-        assert "# Mnemos Context Lifecycle" in body
+        assert "# Vesma Context Lifecycle" in body
         for section in ("## WHEN", "## STEPS", "## DISCIPLINE", "## See also"):
             assert section in body, f"missing standard section {section}"
         # Covers the three publication-engine tools (issue #209).
@@ -2152,8 +2157,10 @@ class TestSkillPack:
 class TestCanonPack:
     """W3a canon pack (vesmaro-canon v1.0.0) ships and deploys round-trip.
 
-    The two W3a artefacts — ``instructions/canon-records.instructions.md``
-    and ``skills/mnemos-canon-write.md`` — must (a) exist in the shipped
+    The two W3a artefacts — ``instructions/vesma-canon-records.instructions.md``
+    and ``skills/vesma-canon-write.md`` (loud rename, ADR-0033 / board card
+    ``vesma-naming-debt-rename``; formerly pinned as ``canon-records`` /
+    ``mnemos-canon-write``) — must (a) exist in the shipped
     pack with canon-accurate content, (b) pass the full deploy → verify →
     update → uninstall lifecycle through the real IntegrationManager against
     a fake home (zcode target, nested skills layout — the production path),
@@ -2192,8 +2199,8 @@ class TestCanonPack:
     # ── Shipped pack presence + content ──────────────────────────────────────
 
     def test_canon_instruction_present_and_wellformed(self) -> None:
-        path = self._pack_file("instructions", "canon-records.instructions.md")
-        assert path.is_file(), "canon-records.instructions.md must ship in the pack"
+        path = self._pack_file("instructions", "vesma-canon-records.instructions.md")
+        assert path.is_file(), "vesma-canon-records.instructions.md must ship in the pack"
         text = path.read_text(encoding="utf-8")
         assert text.startswith("---\n"), "instruction must start with a frontmatter block"
         fm = text.split("\n---\n", 1)[0]
@@ -2205,12 +2212,12 @@ class TestCanonPack:
         assert "vesmaro-canon" in text
 
     def test_canon_skill_present_and_wellformed(self) -> None:
-        path = self._pack_file("skills", "mnemos-canon-write.md")
-        assert path.is_file(), "mnemos-canon-write.md must ship in the skill pack"
+        path = self._pack_file("skills", "vesma-canon-write.md")
+        assert path.is_file(), "vesma-canon-write.md must ship in the skill pack"
         text = path.read_text(encoding="utf-8")
         assert text.startswith("---\n"), "skill must start with a frontmatter block"
         fm = text.split("\n---\n", 1)[0]
-        assert fm.startswith("---\nname: mnemos-canon-write")
+        assert fm.startswith("---\nname: vesma-canon-write")
         assert "description:" in fm
         body = text.partition("\n---\n")[2]
         for section in ("## WHEN", "## STEPS", "## DISCIPLINE", "## See also"):
@@ -2230,10 +2237,10 @@ class TestCanonPack:
             TASK_SIZES,
         )
 
-        instruction = self._pack_file("instructions", "canon-records.instructions.md").read_text(
-            encoding="utf-8"
-        )
-        skill = self._pack_file("skills", "mnemos-canon-write.md").read_text(encoding="utf-8")
+        instruction = self._pack_file(
+            "instructions", "vesma-canon-records.instructions.md"
+        ).read_text(encoding="utf-8")
+        skill = self._pack_file("skills", "vesma-canon-write.md").read_text(encoding="utf-8")
         for code in ENGINE_CODES:
             assert code in instruction, f"instruction misses warn code {code}"
             assert code in skill, f"skill misses warn code {code}"
@@ -2258,15 +2265,15 @@ class TestCanonPack:
     ) -> None:
         target = "zcode"
         skills_dir = canon_home / ".zcode" / "skills"
-        canon_skill_dir = skills_dir / "mnemos-canon-write"
+        canon_skill_dir = skills_dir / "vesma-canon-write"
         canon_skill_dest = canon_skill_dir / "SKILL.md"
 
         # -- deploy: real shipped pack, nested skills layout --------------------
         deploy = canon_manager.deploy(target)
         assert deploy.deployed_count >= 2, "the shipped skill pack deploys"
-        assert canon_skill_dest.is_file(), "mnemos-canon-write deployed as <name>/SKILL.md"
+        assert canon_skill_dest.is_file(), "vesma-canon-write deployed as <name>/SKILL.md"
         stamped = canon_skill_dest.read_text(encoding="utf-8")
-        assert stamped.startswith("---\nname: mnemos-canon-write"), "frontmatter preserved"
+        assert stamped.startswith("---\nname: vesma-canon-write"), "frontmatter preserved"
         assert "vesma-integration: v9.9.9" in stamped, "stamp injected after frontmatter"
         assert (skills_dir / "vesma-recall" / "SKILL.md").is_file(), (
             "existing pack skills deploy alongside"
@@ -3787,3 +3794,155 @@ class TestMemoryStatus:
         assert result.exit_code == 0, result.output
         assert "mnemos.db ✓" in result.output
         assert "vault ✗" in result.output
+
+
+# ── Issue #448 P3: verify/update scoped to the target's OWN deploy map ───────
+
+
+class TestVerifyScopedToTargetDeployMap:
+    """``verify``/``update`` judge files against the whole TARGET, not one kind.
+
+    Regression (issue #448 P3, ride-along on board card
+    ``vesma-naming-debt-rename``): the hermes target maps BOTH the
+    ``instructions`` and the ``skills`` kind into ``~/.hermes/skills/``.
+    The old per-kind extra-file scan treated the other kind's freshly
+    deployed files as stale orphans — ``verify`` nagged on every run, and
+    ``update`` DELETED the entire shared directory right after deploy had
+    re-written it (deploy ran first, orphan removal second, each kind
+    deleting the other kind's files). Pinned here on a synthetic pack with
+    a shared deploy dir and on the real shipped registry + hermes target.
+    """
+
+    @pytest.fixture
+    def shared_dir_pack(self, tmp_path: Path) -> Path:
+        """Pack whose ``instructions`` and ``skills`` kinds share ONE deploy dir."""
+        pack = tmp_path / "integrations"
+        (pack / "instructions").mkdir(parents=True)
+        (pack / "skills").mkdir(parents=True)
+        (pack / "instructions" / "alpha.instructions.md").write_text(
+            "---\napplyTo: '**'\n---\n# Alpha instructions\n", encoding="utf-8"
+        )
+        (pack / "skills" / "bravo.md").write_text(
+            "---\nname: bravo\n---\n# Bravo skill\n", encoding="utf-8"
+        )
+        shared = str(tmp_path / "deploy" / "shared") + "/"
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "shared-dir": {
+                            "detect": [{"path": str(tmp_path / "marker")}],
+                            "deploy": {
+                                "instructions": shared,
+                                "skills": shared,
+                            },
+                            "format": "copy",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "marker").mkdir(parents=True, exist_ok=True)
+        return pack
+
+    @pytest.fixture
+    def shared_dir_manager(self, shared_dir_pack: Path) -> IntegrationManager:
+        cfg = load_targets(shared_dir_pack / "targets.yaml")
+        return IntegrationManager(version="1.2.0", pack_root=shared_dir_pack, targets_config=cfg)
+
+    def test_verify_shared_dir_no_cross_kind_stale(
+        self, shared_dir_manager: IntegrationManager
+    ) -> None:
+        """Files of the sibling kind are never reported stale/missing."""
+        target = "shared-dir"
+        shared_dir_manager.deploy(target)
+        verify = shared_dir_manager.verify(target)
+        assert verify.stale_count == 0, [f.note for f in verify.files if f.status is not None]
+        assert verify.missing_count == 0
+        assert verify.all_current
+
+    def test_update_shared_dir_keeps_both_kinds(
+        self, shared_dir_manager: IntegrationManager, shared_dir_pack: Path
+    ) -> None:
+        """update() never deletes the sibling kind's files in a shared dir."""
+        target = "shared-dir"
+        deploy_dir = shared_dir_manager.targets.get(target).deploy_map["instructions"]
+        shared_dir_manager.deploy(target)
+        result = shared_dir_manager.update(target)
+        orphan_rows = [f for f in result.files if "orphaned" in f.note]
+        assert not orphan_rows, [str(f.destination) for f in orphan_rows]
+        assert (deploy_dir / "alpha.instructions.md").is_file()
+        assert (deploy_dir / "bravo.md").is_file()
+
+    def test_orphan_removal_still_clears_true_orphans(
+        self, shared_dir_manager: IntegrationManager
+    ) -> None:
+        """Scoping keeps the legitimate contract: a stamped file that is in
+        NO kind of the target is still removed by update()."""
+        target = "shared-dir"
+        deploy_dir = shared_dir_manager.targets.get(target).deploy_map["instructions"]
+        shared_dir_manager.deploy(target)
+        orphan = deploy_dir / "retired.md"
+        orphan.write_text("<!-- vesma-integration: v0.9.0 -->\nold pack file\n", encoding="utf-8")
+        result = shared_dir_manager.update(target)
+        assert not orphan.exists()
+        assert any("orphaned" in f.note for f in result.files)
+
+    def test_shipped_registry_hermes_roundtrip(self, tmp_path: Path) -> None:
+        """Production shape: real pack + real registry, hermes target.
+
+        Deploys the shipped pack into a fake hermes home, verifies
+        everything current, runs update, and asserts the shared
+        ``~/.hermes/skills/`` directory survives intact (the exact scenario
+        that used to be wiped).
+        """
+        home = tmp_path / "hermes-home"
+        (home / ".hermes").mkdir(parents=True)
+        (home / ".hermes" / "config.yaml").write_text("", encoding="utf-8")
+        cfg = load_targets(home=home)
+        mgr = IntegrationManager(version="9.9.9", pack_root=None, targets_config=cfg, home=home)
+
+        mgr.deploy("hermes")
+        verify = mgr.verify("hermes")
+        assert verify.all_current, [f.status for f in verify.files]
+
+        skills_dir = home / ".hermes" / "skills"
+        before = {p.name for p in skills_dir.iterdir()}
+        assert "vesma-canon-records.instructions.md" in before
+        assert "vesma-canon-write.md" in before  # hermes layout is flat
+
+        result = mgr.update("hermes")
+        assert not any("orphaned" in f.note for f in result.files)
+        assert {p.name for p in skills_dir.iterdir()} == before
+
+
+class TestCliBrandStrings:
+    """User-facing CLI hints carry the brand-primary command name.
+
+    Part of the #448 P3 ride-along: legacy hint strings from the
+    pre-rebrand CLI (``Run mnemos integration update`` style) must not
+    resurface in user-facing output.
+    """
+
+    def test_verify_hint_names_vesma_integration_update(
+        self, manager: IntegrationManager, detected_target: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import vesmaro.cli.util as util_mod
+
+        old_mgr = IntegrationManager(
+            version="1.1.0",
+            pack_root=manager.pack_root,
+            targets_config=manager.targets,
+        )
+        old_mgr.deploy(detected_target)
+
+        monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: manager)
+        monkeypatch.setattr(
+            util_mod, "load_targets", lambda config_path=None, home=None: manager.targets
+        )
+        result = runner.invoke(app, ["integration", "verify", "--target", detected_target])
+        assert result.exit_code == 1
+        assert "vesma integration update" in result.output
+        assert "mnemos integration update" not in result.output
+        assert "mnemos util-setup" not in result.output

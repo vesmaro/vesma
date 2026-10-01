@@ -1,5 +1,5 @@
 ---
-name: mnemos-canon-write
+name: vesma-canon-write
 description: Write memory records that pass the canon validator — envelope shapes, per-type section checklists, the six warn codes
 ---
 
@@ -9,7 +9,7 @@ description: Write memory records that pass the canon validator — envelope sha
 > No secrets: examples in this pack never contain real credentials. Ноль секретов: примеры в паке не содержат реальных учётных данных.
 > Инструкции пака описывают работу с сервером памяти vesma и применяются только в объёме, где локальный канон харнеса молчит; при любом расхождении приоритет у локального канона и safety-правил хоста.
 
-# Mnemos Canon Write
+# Vesma Canon Write
 
 Write a canon-compliant memory record (task, decision, report) — or a plain
 record that will pass validation if the engine stamps it. Use this skill when
@@ -23,7 +23,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 - **Persisting a report** — a period or wave report to the owner.
 - **Checkpoints are different**: `mnemos_save_context` auto-mints
   `metadata.canon` server-side. Never hand-write the envelope for a checkpoint —
-  just pick `language` and compose the five fields (see `mnemos-checkpoint`).
+  just pick `language` and compose the five fields (see `vesma-checkpoint`).
 - **Not sure it needs the envelope?** A record without `metadata.canon` is out
   of canon scope — valid, never warned. Use this skill when you want the record
   validated and counted as canon, not for everyday notes.
@@ -90,7 +90,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
    server-minted for its own channels; task/decision/report envelopes passed
    via `metadata` are validated, and violations are attached to the stored
    record. Tags stay mandatory on every channel: `project:<slug>`,
-   `agent:<slug>`, `mnemos:<subtype>` (see `mnemos-tag-contract`; `report`
+   `agent:<slug>`, `mnemos:<subtype>` (see `vesma-tag-contract`; `report`
    pairs with `mnemos:session`, `task` pairs with `mnemos:open-question`).
 
 6. **Read back the verdict** — in warn mode the write always succeeds. If the
@@ -128,8 +128,8 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 
 ## See also
 
-- Instruction `canon-records.instructions.md` — the full WHEN/HOW policy
-- Skill `mnemos-write` — non-canon everyday entries (bug-pattern, learning, rule)
-- Skill `mnemos-tag-contract` — the mandatory tag trio
-- Skill `mnemos-checkpoint` — checkpoint saves (envelope auto-minted)
+- Instruction `vesma-canon-records.instructions.md` — the full WHEN/HOW policy
+- Skill `vesma-write` — non-canon everyday entries (bug-pattern, learning, rule)
+- Skill `vesma-tag-contract` — the mandatory tag trio
+- Skill `vesma-checkpoint` — checkpoint saves (envelope auto-minted)
 - Canon SSOT: `vesmaro-canon/docs/canon.md` (repo `vesmaro/vesmaro-canon`, tag `canon-v1.0.0`)

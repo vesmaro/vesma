@@ -38,7 +38,7 @@
 integrations/
 ├── instructions/
 │   ├── vesma-memory-ops.instructions.md           # канон память-операций: гейты G1–G4, операции, tag contract, деградация
-│   └── canon-records.instructions.md              # стандарт канон-записей (конверт + секции)
+│   └── vesma-canon-records.instructions.md        # стандарт канон-записей (конверт + секции)
 ├── agents_md/
 │   └── vesma-always-on.md                         # always-on поведенческий блок (G1–G4), инъекция в AGENTS.md
 ├── skills/
@@ -58,10 +58,10 @@ integrations/
 │   ├── vesma-workflow.md                          # открытые вопросы / жизненный цикл задач
 │   ├── vesma-exchange.md                          # экспорт / импорт / бэкапы
 │   ├── vesma-cache-align.md                       # выравнивание префикса для KV-кэшей
-│   ├── mnemos-canon-write.md                      # канон-совместимые записи (task / decision / report)
-│   └── mnemos-context-lifecycle.md                # жизненный цикл сборки контекста
+│   ├── vesma-canon-write.md                       # канон-совместимые записи (task / decision / report)
+│   └── vesma-context-lifecycle.md                 # жизненный цикл сборки контекста
 └── prompts/
-    └── mnemos-memory.prompt.md                    # режим активной памяти
+    └── vesma-memory.prompt.md                     # режим активной памяти
 ```
 
 Каждый разворачиваемый файл несёт safety-контракт пака (вспомненное — данные,
@@ -128,7 +128,7 @@ vesma integration setup --target all               # все обнаруженн
 Цель `pi` — для [агента Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 (npm `@earendil-works/pi-coding-agent`). У Pi нет встроенного MCP-клиента —
 инструменты приходят через TypeScript-расширения, поэтому регистрация MCP —
-это файл: поставляемый бридж `integrations/extensions/mnemos-mcp.ts`
+это файл: поставляемый бридж `integrations/extensions/vesma-mcp.ts`
 развёртывается (со штампом версии) в `~/.pi/agent/extensions/`, откуда Pi
 загружает его автоматически. При старте сессии бридж поднимает
 `vesma mcp-server` по stdio и нативно регистрирует все инструменты
@@ -172,7 +172,7 @@ vesma integration setup --target zcode \
 | `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ плагин в `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<имя>/SKILL.md` | MCP в `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<имя>/SKILL.md` | MCP в `~/.agents/mcp.json` |
-| `pi` | — | `~/.pi/agent/skills/<имя>/SKILL.md` | бридж: `~/.pi/agent/extensions/mnemos-mcp.ts` |
+| `pi` | — | `~/.pi/agent/skills/<имя>/SKILL.md` | бридж: `~/.pi/agent/extensions/vesma-mcp.ts` |
 
 ---
 

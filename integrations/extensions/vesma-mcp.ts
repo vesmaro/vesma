@@ -1,9 +1,10 @@
 /**
- * mnemos-mcp — MCP bridge for the Pi coding agent.
+ * vesma-mcp — MCP bridge for the Pi coding agent.
  *
  * Pi (npm @earendil-works/pi-coding-agent)
  * has no built-in MCP client by design: tools arrive via TypeScript
- * extensions. This extension spawns `mnemos mcp-server` over stdio, performs
+ * extensions. This extension spawns `vesma mcp-server` over stdio (the
+ * legacy `mnemos` binary is accepted in the dual period), performs
  * the MCP handshake and registers every `vesma_*` tool as a native Pi tool
  * (legacy `mnemos_*` names from server builds before 6.0 get the same
  * treatment — the registration is generic over the server's tools/list).
@@ -12,8 +13,8 @@
  * extension is the standing-instructions channel.
  *
  * Deployed by:  vesma integration setup --target pi
- * Location:     ~/.pi/agent/extensions/mnemos-mcp.ts
- * Requires:     `mnemos` on PATH (override with MNEMOS_BIN env var).
+ * Location:     ~/.pi/agent/extensions/vesma-mcp.ts
+ * Requires:     `vesma` on PATH (legacy `mnemos` accepted; override with MNEMOS_BIN).
  * Reload:       /reload  (Pi hot-reloads extensions) or /mnemos to reconnect.
  */
 
@@ -27,15 +28,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-const MNEMOS_BIN = process.env.MNEMOS_BIN ?? "mnemos";
+// Brand-primary server binary; the legacy `mnemos` binary is accepted in the
+// dual period (engine manifest `command: vesma`). MNEMOS_BIN overrides both.
+const MNEMOS_BIN = process.env.MNEMOS_BIN ?? "vesma";
 const REQ_TIMEOUT_MS = 60_000;
 
 // Standing behavioral pack, injected into the system prompt on every turn
-// (mnemos:integration — kept in sync with integrations/agents_md/). Pi has
+// (kept in sync with integrations/agents_md/). Pi has
 // no AGENTS.md mechanism; for the bridge extension this hint IS the
 // always-on instructions channel.
 const MNEMOS_STANDING_HINT = [
-	"# Mnemos memory — always-on rules",
+	"# Vesma memory — always-on rules",
 	"",
 	"You have persistent shared memory through the `vesma_*` tools.",
 	"- Session start: call vesma_recall_context(project=<current-project>) BEFORE reading project files; surface a <=4-line memory header. Never block on failure.",
@@ -194,7 +197,9 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 	// (chained across extensions).
 	pi.on("before_agent_start", (event: { systemPrompt?: string }) => {
 		const base = typeof event.systemPrompt === "string" ? event.systemPrompt : "";
-		if (base.includes("mnemos:integration")) return event; // hint already present — never duplicate
+		// Dedup across both marker generations (stamp-migration window).
+		if (base.includes("vesma:integration") || base.includes("mnemos:integration"))
+			return event; // hint already present — never duplicate
 		return { systemPrompt: base + (base ? "\n\n" : "") + MNEMOS_STANDING_HINT };
 	});
 	pi.on("session_start", (_event: unknown, ctx: Parameters<Parameters<typeof pi.on>[1]>[1]) =>
@@ -203,9 +208,12 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 	pi.on("session_end", () => killChild());
 	process.on("exit", () => killChild());
 
-	// Manual control: /mnemos reconnects the bridge and re-registers tools.
-	pi.registerCommand("mnemos", {
-		description: "Reconnect the mnemos MCP memory bridge",
-		handler: async (_args: string, ctx: any) => connect(ctx),
-	});
+	// Manual control: /vesma (brand-primary; docs reference it) and the
+	// legacy /mnemos alias reconnect the bridge and re-register tools.
+	for (const cmd of ["vesma", "mnemos"]) {
+		pi.registerCommand(cmd, {
+			description: "Reconnect the vesma MCP memory bridge",
+			handler: async (_args: string, ctx: any) => connect(ctx),
+		});
+	}
 }

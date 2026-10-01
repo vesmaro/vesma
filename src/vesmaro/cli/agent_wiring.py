@@ -537,8 +537,8 @@ class AgentVerifySummary:
 def verify_agents(agents_dir: Path | None = None) -> AgentVerifySummary:
     """Aggregate wiring status across all agents in ``agents_dir``.
 
-    Used by ``mnemos integration verify`` (agents section) and
-    ``mnemos doctor`` (agent wiring check).
+    Used by ``vesma integration verify`` (agents section) and
+    ``vesma doctor`` (agent wiring check).
     """
     infos = detect_agents(agents_dir)
     summary = AgentVerifySummary(total=len(infos))

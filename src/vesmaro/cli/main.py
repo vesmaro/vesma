@@ -1538,11 +1538,11 @@ def totp_test(
 
 # ── integration (integration layer) ────────────────────────────────────────────
 # Subcommand tree:
-#   mnemos integration detect    — print detected harnesses + deploy paths
-#   mnemos integration setup     — deploy files + register MCP (unified entry point)
-#   mnemos integration update    — bring stale files to current version
-#   mnemos integration verify    — compare deployed files against shipped pack
-#   mnemos integration uninstall  — remove only stamped files
+#   vesma integration detect     — print detected harnesses + deploy paths
+#   vesma integration setup      — deploy files + register MCP (unified entry point)
+#   vesma integration update     — bring stale files to current version
+#   vesma integration verify     — compare deployed files against shipped pack
+#   vesma integration uninstall  — remove only stamped files
 
 from vesmaro.cli.util import integration_app  # noqa: E402
 

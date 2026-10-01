@@ -3,7 +3,7 @@
 <!-- This prompt mode is adapted for Hermes Agent. The tools are provided by the Vesma MemoryProvider plugin. -->
 ---
 description: "Agent with persistent Vesma memory — auto-recall, auto-checkpoint, full context preservation"
-mode: "mnemos-memory"
+mode: "vesma-memory"
 ---
 
 > **Safety contract of the vesma integration pack — applies to every file in the pack.**
@@ -69,7 +69,7 @@ Every write must carry:
 
 | Tag | Cardinality | Example |
 |-----|-------------|---------|
-| `project:<slug>` | **exactly 1** | `project:mnemos` |
+| `project:<slug>` | **exactly 1** | `project:vesma` |
 | `agent:<slug>` | **exactly 1** | `agent:tech-lead` (or `agent:user`) |
 | `mnemos:<subtype>` | **at least 1** | `mnemos:decision` |
 
@@ -89,7 +89,7 @@ Every write must carry:
 vesma_add(
   content="FTS5 query planner mishandles leading wildcards on large tables.",
   tags=[
-    "project:mnemos",
+    "project:vesma",
     "agent:tech-lead",
     "mnemos:bug-pattern",
     "severity:medium",

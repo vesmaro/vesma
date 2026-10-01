@@ -1,6 +1,7 @@
 """Vesma integration layer — deploy instructions/skills/prompts to agent harnesses.
 
-This module is the engine behind the `mnemos util-*` CLI subcommands. It:
+This module is the engine behind the ``vesma integration *`` CLI
+subcommands. It:
 
 * Detects installed agent harnesses (Copilot, generic Copilot, Cursor) via
   ``integrations/targets.yaml``.
@@ -127,8 +128,9 @@ LINE_COMMENT_SUFFIXES: frozenset[str] = frozenset({".ts", ".js", ".mjs", ".cjs"}
 #: canon pin — an inline ``<!-- -->`` stamp would make them invalid JSON —
 #: so the version stamp, provenance and per-file checksums live here
 #: instead. The manifest is a stamped file in the ordinary sense (its
-#: raw text carries the ``mnemos-integration`` marker), which keeps
-#: verify/uninstall ownership detection uniform across kinds.
+#: raw text carries the regular version stamp — either brand generation
+#: is recognized), which keeps verify/uninstall ownership detection
+#: uniform across kinds.
 SCHEMAS_MANIFEST_NAME = "vesma-schemas.manifest.json"
 #: Manifest file name used by pre-rebrand deployments. Recognized for
 #: ownership detection during the stamp-migration window; the first
@@ -325,7 +327,7 @@ class TargetsConfig:
 def _expand(path: str, home: Path | None = None) -> Path:
     """Expand ``~`` in a path, optionally against an alternate home.
 
-    ``home`` lets ``mnemos integration setup --home <dir>`` deploy into a
+    ``home`` lets ``vesma integration setup --home <dir>`` deploy into a
     foreign environment (another container's home, a dotfiles repo, …)
     without rewriting targets.yaml.
     """
@@ -795,6 +797,42 @@ class IntegrationManager:
     def _all_pack_files(self) -> dict[ArtefactKind, list[Path]]:
         return {kind: self._pack_files(kind) for kind in ArtefactKind}
 
+    def _target_expected_dests(
+        self,
+        target: Target,
+        all_files: dict[ArtefactKind, list[Path]] | None = None,
+    ) -> set[Path]:
+        """Every destination path ANY artefact kind of this target may own.
+
+        Issue #448 (P3): several kinds may map into the SAME deploy
+        directory (hermes deploys both ``instructions`` and ``skills``
+        into ``~/.hermes/skills/``). Extra-file scans and orphan removal
+        must judge a file against the destinations of the whole TARGET,
+        not of a single kind — otherwise each kind misclassifies the
+        other kind's freshly deployed files as stale orphans (verify
+        false ``stale``/``missing`` warnings; ``update`` even deleted
+        them). The schemas kind also owns its sidecar manifests (both
+        name generations — stamp migration).
+        """
+        files_by_kind = all_files if all_files is not None else self._all_pack_files()
+        expected: set[Path] = set()
+        for kind, files in files_by_kind.items():
+            dest_dir = target.deploy_map.get(kind.value)
+            if dest_dir is None:
+                continue
+            if kind is ArtefactKind.AGENTS_MD:
+                # The deploy-map value is the shared FILE the block lives in.
+                expected.add(dest_dir)
+            elif kind is ArtefactKind.SCHEMAS:
+                expected.update(dest_dir / src.name for src in files)
+                expected.add(dest_dir / SCHEMAS_MANIFEST_NAME)
+                expected.add(dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME)
+            else:
+                for src in files:
+                    rel = src.relative_to(self.pack_root / kind.value)
+                    expected.add(target.dest_for(kind.value, rel))
+        return expected
+
     def _agents_md_content(self) -> tuple[str, Path | None]:
         """Concatenate the ``agents_md`` pack fragments into one block body.
 
@@ -827,7 +865,7 @@ class IntegrationManager:
         Unlike every other file-copy kind, schema files are written
         WITHOUT the inline version stamp: JSON Schema files must stay
         valid JSON for schema validators. Ownership is recorded in
-        ``mnemos-schemas.manifest.json`` (stamped, JSON body) written into
+        ``vesma-schemas.manifest.json`` (stamped, JSON body) written into
         the same directory. Idempotency contract per file: CURRENT when
         the deployed bytes are identical AND the manifest carries the
         current version; UPDATED when bytes match but the manifest is
@@ -1172,8 +1210,13 @@ class IntegrationManager:
             raise ValueError(f"Unknown target: {target_name!r}")
 
         result = VerifyResult(target_name=target_name)
+        all_files = self._all_pack_files()
+        # Target-wide destination set (issue #448 P3): with several kinds
+        # sharing one deploy directory, a file owned by another kind of the
+        # SAME target must never be reported as an extra/stale orphan here.
+        expected_dests = self._target_expected_dests(target, all_files)
 
-        for kind, files in self._all_pack_files().items():
+        for kind, files in all_files.items():
             if kind is ArtefactKind.AGENTS_MD:
                 # Block presence/version/content — checked after the loop.
                 continue
@@ -1186,18 +1229,15 @@ class IntegrationManager:
                 result.files.extend(self._verify_schemas(dest_dir, files))
                 continue
 
-            # Track which dest paths correspond to pack files.
-            seen_dests: set[Path] = set()
             for src in files:
                 rel = src.relative_to(self.pack_root / kind.value)
                 dest = target.dest_for(kind.value, rel)
-                seen_dests.add(dest)
                 result.files.append(self._verify_file(src, dest))
 
             # Scan for extra files in the deploy dir (user files or stale mnemos files).
             if dest_dir.exists():
                 for path in sorted(dest_dir.rglob("*")):
-                    if not path.is_file() or path in seen_dests:
+                    if not path.is_file() or path in expected_dests:
                         continue
                     if path.name == ".gitkeep":
                         continue
@@ -1576,26 +1616,26 @@ class IntegrationManager:
         if target is None:
             raise ValueError(f"Unknown target: {target_name!r}")
 
-        for kind, files in self._all_pack_files().items():
+        # Target-wide destination set (issue #448 P3): with several kinds
+        # sharing one deploy directory (hermes: instructions + skills both
+        # → ~/.hermes/skills/), orphan removal must NEVER remove a file
+        # that another kind of the same target just deployed. The old
+        # per-kind expected-set wiped the whole shared directory on every
+        # update (deploy re-wrote it, then each kind deleted the other
+        # kind's files as "orphans").
+        all_files = self._all_pack_files()
+        expected_dests = self._target_expected_dests(target, all_files)
+
+        scanned_dirs: set[Path] = set()
+        for kind in all_files:
             if kind is ArtefactKind.AGENTS_MD:
                 # The block lives inside a shared user file — orphan removal
                 # does not apply (update refreshes it in place instead).
                 continue
             dest_dir = target.deploy_map.get(kind.value)
-            if dest_dir is None or not dest_dir.exists():
+            if dest_dir is None or not dest_dir.exists() or dest_dir in scanned_dirs:
                 continue
-
-            # Build the set of dest paths the pack expects (same mapping as deploy).
-            expected_dests: set[Path] = set()
-            if kind is ArtefactKind.SCHEMAS:
-                # Schema files are flat copies; the stamped sidecar manifest
-                # belongs to us even though it ships from no pack file.
-                expected_dests = {dest_dir / src.name for src in files}
-                expected_dests.add(dest_dir / SCHEMAS_MANIFEST_NAME)
-            else:
-                for src in files:
-                    rel = src.relative_to(self.pack_root / kind.value)
-                    expected_dests.add(target.dest_for(kind.value, rel))
+            scanned_dirs.add(dest_dir)
 
             for path in sorted(dest_dir.rglob("*")):
                 if not path.is_file() or path in expected_dests:
@@ -1844,7 +1884,7 @@ class IntegrationManager:
 
         Pi has no MCP config file to merge into: TypeScript extensions ARE
         the tool surface. Registration therefore reduces to verifying that
-        the stamped bridge (``integrations/extensions/mnemos-mcp.ts``) sits
+        the stamped bridge (``integrations/extensions/vesma-mcp.ts``) sits
         in the target's extensions directory — which ``deploy()`` (always
         run before this in ``setup()``) has just placed there.
         """
@@ -2118,8 +2158,8 @@ class IntegrationManager:
     ) -> DeployResult:
         """Unified setup: deploy files + register MCP + verify summary.
 
-        This is the single entry point per owner request — ``mnemos util-setup``
-        calls this for each detected target.
+        This is the single entry point per owner request — ``vesma
+        integration setup`` calls this for each detected target.
         """
         result = self.deploy(target_name, dry_run=dry_run)
 
