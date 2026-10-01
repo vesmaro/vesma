@@ -155,11 +155,18 @@ class MnemosConfig(BaseModel):
     canon_mode: Literal["off", "warn", "strict"] = "warn"
     # ADR-0004 implementation (c) — decision-provider selection for the
     # «semantic if» seam (``vesmaro.decision_provider``). One interface,
-    # three implementations; this picks which one call sites get from
+    # four implementations; this picks which one call sites get from
     # ``vesmaro.decision_jev.resolve_decision_provider``.
     #   * "deterministic" (default) — the local baseline heuristics, zero
     #     I/O. The DEFAULT-OFF posture of the external leg: no flag, no
     #     key, no network attempt, ever.
+    #   * "vesma" — the BUNDLED vesma-cortex-v1 model (W5d: local ONNX
+    #     over 13 frozen pair features, zero network). Opt-in — the flag
+    #     flips to "vesma" by an OWNER decision after field experience;
+    #     the default stays "deterministic" (brief W5d §2.4). Load is
+    #     fail-open: any CORTEX-E-* degrades to the deterministic
+    #     provider with a machine-parseable warn; ingest is never
+    #     blocked (inference-v1.md §7).
     #   * "jev" — the EXTERNAL OpenRouter router (``typesafe/jev-router``).
     #     Opt-in: outbound HTTP + per-call cost + the privacy gate runs
     #     BEFORE any call (secrets/danger/no-federate → typed refusal).
@@ -167,8 +174,8 @@ class MnemosConfig(BaseModel):
     #     pre-registered methodology (canon repo,
     #     docs/experiments/provider-calibration.md).
     #   * "off" — the seam is disabled entirely (call sites get None).
-    # Canonical env override: VESMARO_MNEMOS__DECISION_PROVIDER=jev.
-    decision_provider: Literal["off", "deterministic", "jev"] = "deterministic"
+    # Canonical env override: VESMARO_MNEMOS__DECISION_PROVIDER=vesma.
+    decision_provider: Literal["off", "deterministic", "vesma", "jev"] = "deterministic"
     # NAME indirection for the Jev adapter's API key: the OpenRouter key
     # is read AT PROVIDER CONSTRUCTION from the environment variable
     # NAMED here (see ``resolve_decision_provider``). The secret itself
