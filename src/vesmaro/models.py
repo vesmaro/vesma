@@ -189,7 +189,7 @@ VESMARO_TAG_SUBTYPES: frozenset[str] = frozenset(
 #: See ArchCom 2026-07-17 federation contract §4 КП-6 and §2.2.1.
 NO_FEDERATE_TAG: str = "mnemos:no-federate"
 
-# mnemos #251 D0 — the five checkpoint payload fields in canonical order.
+# vesma #251 D0 — the five checkpoint payload fields in canonical order.
 # Lives in models (shared vocabulary): mcp_server, api and manager all
 # reference it. The order is load-bearing — it feeds the issuer-keyed
 # checkpoint dedup hash and must never change without a dedup-key
@@ -202,7 +202,7 @@ CHECKPOINT_FIELDS: tuple[str, ...] = (
     "context",
 )
 
-# mnemos #251 security review (P1) — server-minted checkpoint identity
+# vesma #251 security review (P1) — server-minted checkpoint identity
 # stamps. Client surfaces must never set them: a forged
 # ``checkpoint_dedup_key`` landing on a generic create would let the
 # attacker's row satisfy a later genuine ``save_checkpoint`` dedup and
@@ -216,10 +216,10 @@ CHECKPOINT_STAMP_KEYS: frozenset[str] = frozenset(
     {"checkpoint_agent", "checkpoint_session", "checkpoint_dedup_key", "canon"}
 )
 
-# ── vesmaro-canon v1.0.0 — server-minted checkpoint envelope (metadata.canon) ────
+# ── vesma-canon v1.0.0 — server-minted checkpoint envelope (metadata.canon) ────
 #
 # Canon v1.0.0 (ratified 2026-09-26, tag canon-v1.0.0; verdicts in
-# vesmaro-canon/docs/decisions/0003-archcom-v1-verdicts.md, engine
+# vesma-canon/docs/decisions/0003-archcom-v1-verdicts.md, engine
 # obligations 1-4) makes the checkpoint record a canon record: the
 # server stamps a canon envelope at ``metadata.canon`` and the body
 # always carries all five EN sections (``CHECKPOINT_SECTION_TITLES``,
@@ -253,7 +253,7 @@ CANON_LANGUAGES: frozenset[str] = frozenset({"ru", "en"})
 #: lines, never re-derived from ``.title()`` — a Python-idiom change
 #: (e.g. a new Unicode casing rule) must never drift the render. The
 #: ORDER of the values is pinned against the ``x-canon-sections``
-#: annotation of vesmaro-canon/schemas/checkpoint.schema.json by a
+#: annotation of vesma-canon/schemas/checkpoint.schema.json by a
 #: drift test (tests/test_checkpoint_canon_envelope.py).
 CHECKPOINT_SECTION_TITLES: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -775,7 +775,7 @@ class Memory(BaseModel):
     quarantine_reason: str | None = None  # detector class code (lane b)
     marker_version: int = 1  # provenance marker version, incremented on swap
 
-    # ── Workflow lifecycle (mnemos #96) ────────────────────────────────────
+    # ── Workflow lifecycle (vesma #96) ────────────────────────────────────
     # Read-only projection of the workflow state. Writes go through
     # MemoryManager.workflow_set → SQLiteStore.set_workflow_status so the
     # state machine cannot be bypassed by a generic update. ``None`` on

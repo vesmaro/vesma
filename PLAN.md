@@ -1,15 +1,15 @@
-# Plan: Mnemos — standalone memory server (ai-brain fork)
+# Plan: Vesma — standalone memory server (ai-brain fork)
 
 > **Статус**: спецификация для будущей сессии разработки. Реализация ещё не начата.
-> Создан вместе с архитектурным документом [ARCHITECTURE.md](ARCHITECTURE.md) и [README.md](README.md). При старте Mnemos-сессии: прочитать README → ARCHITECTURE → PLAN, затем приступить к **Phase M1**.
+> Создан вместе с архитектурным документом [ARCHITECTURE.md](ARCHITECTURE.md) и [README.md](README.md). При старте Vesma-сессии: прочитать README → ARCHITECTURE → PLAN, затем приступить к **Phase M1**.
 >
 > **Locked decisions** (из планирующей сессии):
-> - Git: сохраняем full history ai-brain через `git clone` + `remote rename` (новый `origin` для Mnemos, старый сохраняем как `upstream-ai-brain` read-only).
+> - Git: сохраняем full history ai-brain через `git clone` + `remote rename` (новый `origin` для Vesma, старый сохраняем как `upstream-ai-brain` read-only).
 > - LLM-провайдеры: широкий набор с самого начала — Anthropic + OpenAI + Azure OpenAI + Ollama + Gemini, через provider abstraction в `mnemos/llm/`.
 > - Context Filter (M10): обязательная v1-подсистема (pre-LLM фильтрация шума + дедуп + чистый контекст).
 > - Cache Center (M11): отложен в v2; идемпотентность из M5 покрывает основную выгоду.
 
-**TL;DR**: Форкаем пользовательский проект `ai-brain` (`/var/home/abyss/LABs/AI/ai-brain/`) в новый самостоятельный продукт **Mnemos** (`/var/home/abyss/LABs/AI/mnemos/`, эта директория). Сохраняем всё лучшее (FastAPI + Typer CLI + MCP-сервер + ChromaDB/SQLite FTS5 + RRF + Obsidian vault + Auto-Collect), и доводим до production-зрелости: Mnemos tag contract на уровне MCP-валидатора, first-class per-agent recall, knowledge pipeline (raw→processing→processed→published), automation-first/policy engine, explainability layer, улучшенный compaction-detection, авто-инжест path-scoped rules, **обязательный Context Filter перед отправкой в модель**, аудит bugs/CRs, миграционный CLI и архивирование ai-brain. Cache Center откладываем в v2.
+**TL;DR**: Форкаем пользовательский проект `ai-brain` (`/var/home/abyss/LABs/AI/ai-brain/`) в новый самостоятельный продукт **Vesma** (`/var/home/abyss/LABs/AI/mnemos/`, эта директория). Сохраняем всё лучшее (FastAPI + Typer CLI + MCP-сервер + ChromaDB/SQLite FTS5 + RRF + Obsidian vault + Auto-Collect), и доводим до production-зрелости: Vesma tag contract на уровне MCP-валидатора, first-class per-agent recall, knowledge pipeline (raw→processing→processed→published), automation-first/policy engine, explainability layer, улучшенный compaction-detection, авто-инжест path-scoped rules, **обязательный Context Filter перед отправкой в модель**, аудит bugs/CRs, миграционный CLI и архивирование ai-brain. Cache Center откладываем в v2.
 
 **Локация**: `/var/home/abyss/LABs/AI/mnemos/` (рядом с архивируемым `ai-brain`).
 **Лицензия**: наследуем из ai-brain.
@@ -28,18 +28,18 @@
    - Defaults: vault path `~/brain-vault/` → `~/mnemos-vault/`; data dir `~/.ai-brain/` → `~/.mnemos/`
    - Container artefacts: `Containerfile`, `compose.yaml`, quadlet файлы, systemd units — переименование сервиса `ai-brain` → `mnemos`
    - Docs: README, architecture.md, mcp-integration.md — обновить названия + URL примеры
-3. Verification: `uv pip install -e .`; `mnemos --help`; `pytest`; запуск MCP-сервера; smoke-тест `mnemos_stats` через MCP-клиент.
+3. Verification: `uv pip install -e .`; `vesma --help`; `pytest`; запуск MCP-сервера; smoke-тест `mnemos_stats` через MCP-клиент.
 
 **Зависимости**: M1 блокирует все остальные фазы.
 
 ---
 
-## Phase M2 — Mnemos Tag Contract enforcement at MCP layer
+## Phase M2 — Vesma Tag Contract enforcement at MCP layer
 
 1. Добавить модель `TagContract` в `mnemos/models.py`: schema с обязательными `project:<...>` + `agent:<...>` + ≥1 `mnemos:*`, плюс whitelist префиксов (`severity:`, `stack:`, `applyTo:`, `source:`).
 2. Конфиг-флаг `strict_tag_contract: bool` (default `true` для новых установок, `false` для legacy миграций) в `mnemos/config.py`.
 3. Валидатор в `mnemos_add` MCP-инструменте: при `strict_tag_contract=true` отказываем с понятным сообщением «missing required tag: project:* / agent:* / mnemos:*». При `false` — warning в логах + автодобавление `mnemos:legacy` + `agent:unknown`.
-4. CLI команда `mnemos tags validate <vault>` — проверка существующего vault на соответствие контракту, отчёт по non-conformant записям.
+4. CLI команда `vesma tags validate <vault>` — проверка существующего vault на соответствие контракту, отчёт по non-conformant записям.
 5. Документация: новая `docs/tag-contract.md` со схемой + примерами + миграционным гайдом.
 6. Тесты: `tests/test_tag_contract.py` — happy-path, missing tags, invalid prefix, strict/lax modes.
 
@@ -51,7 +51,7 @@
 
 1. Новый MCP tool `mnemos_agent_recall(agent: str, project: str | None, query: str | None, limit: int = 20)` — фильтрует по тегу `agent:<name>` опционально с проектным scope, опционально с FTS/vector query. Если query пустой — возвращает свежие N записей агента.
 2. API endpoint `GET /recall/agent/{name}?project=&q=&limit=` в FastAPI.
-3. CLI: `mnemos recall --agent cr-security-reviewer --project gcw --limit 10`.
+3. CLI: `vesma recall --agent cr-security-reviewer --project gcw --limit 10`.
 4. Индекс: убедиться что SQLite индекс на тег-таблицу покрывает `(tag_value, project_value)` для быстрого фильтра.
 5. Тесты: `tests/test_agent_recall.py` — multi-agent vault, фильтр по агенту, фильтр + project, hybrid search в scope агента.
 
@@ -68,12 +68,12 @@
 3. **Stages**:
    - `raw`: всё что пришло через `mnemos_add` без явного status — сырая заметка
    - `processing`: помечено воркером-кластеризатором; ассоциировано с `cluster_id`
-   - `processed`: прошло LLM-синтез в draft-статью (через `mnemos process --cluster <id>`)
+   - `processed`: прошло LLM-синтез в draft-статью (через `vesma process --cluster <id>`)
    - `published`: прошло quality gates → попало в vector index
-4. **Clustering worker**: `mnemos cluster` — группирует свежие raw по схожести (embedding similarity threshold, configurable). Записывает `cluster_id`.
-5. **Draft synthesis**: `mnemos synthesize --cluster <id>` — берёт raw+processing записи кластера, отправляет в LLM (модель из конфига) для генерации article, ставит `status=processed`.
+4. **Clustering worker**: `vesma cluster` — группирует свежие raw по схожести (embedding similarity threshold, configurable). Записывает `cluster_id`.
+5. **Draft synthesis**: `vesma synthesize --cluster <id>` — берёт raw+processing записи кластера, отправляет в LLM (модель из конфига) для генерации article, ставит `status=processed`.
 6. **Quality gates**: проверки на `quality_score >= threshold`, `confidence >= threshold`, `source_coverage >= min_sources`. Конфигурируются в `mnemos/config.py`.
-7. **Publish**: `mnemos publish --id <id>` (или авто, см. M5) — `status=processed→published`, добавляет в vector index.
+7. **Publish**: `vesma publish --id <id>` (или авто, см. M5) — `status=processed→published`, добавляет в vector index.
 8. **API**: новые эндпоинты `POST /process`, `POST /synthesize`, `POST /publish`, `GET /memories?status=`.
 9. Тесты: state machine transitions, quality gate enforcement, vector index reflects only published, rollback on failure.
 
@@ -91,7 +91,7 @@
    - `if record.age > 90d and status=raw then archive`
 4. **Reliability layer**:
    - Retry с экспоненциальным backoff
-   - Dead letter queue (DLQ) для failed синтезов; CLI `mnemos dlq list/retry/discard`
+   - Dead letter queue (DLQ) для failed синтезов; CLI `vesma dlq list/retry/discard`
    - Идемпотентность: ключ = `hash(cluster_id, prompt_version, model_version)` — повторный синтез того же кластера тем же промптом возвращает кэшированный результат (это же — v1-замена отложенного Cache Center)
 5. **Observability**: метрики Prometheus-style (`mnemos_pipeline_processed_total`, `_failed_total`, `_latency_seconds`); endpoint `/metrics`.
 6. **KPI цели** (документируем, мониторим): ≥80% raw→draft автоматически, ≥60% draft→published автоматически.
@@ -136,7 +136,7 @@
 
 ## Phase M8 — Path-scoped rules ingest
 
-1. File-watcher mode для путей `.github/instructions/*.instructions.md` в проектных репах (опционально включается через конфиг или CLI flag `mnemos watch --include-rules`).
+1. File-watcher mode для путей `.github/instructions/*.instructions.md` в проектных репах (опционально включается через конфиг или CLI flag `vesma watch --include-rules`).
 2. При обнаружении файла — парсим frontmatter (`applyTo:` glob), парсим body как markdown, создаём knowledge unit с:
    - `status=published` (rules — это уже отшлифованные знания)
    - tags: `mnemos:rule`, `project:<repo>`, `applyTo:<glob>`, `source:path-scoped-rule`
@@ -192,9 +192,9 @@
    - `mnemos_search` / `mnemos_recall_context` / `mnemos_agent_recall` возвращают `clean_content` по умолчанию; `include_raw=true` — для drill-down
    - watchers и ingest path используют профиль по типу источника (`docs`, `web`, `terminal`, ...)
 5. CLI/API:
-   - `mnemos filter preview --profile <name> --input <file>`
-   - `mnemos filter stats --since <date>`
-   - `mnemos filter reprocess --id <id> --profile <name>`
+   - `vesma filter preview --profile <name> --input <file>`
+   - `vesma filter stats --since <date>`
+   - `vesma filter reprocess --id <id> --profile <name>`
    - `GET /memories/<id>?include_raw=true`
 6. Observability:
    - `mnemos_filter_tokens_saved_total{profile}`
@@ -232,7 +232,7 @@
 
 ## Phase M13 — Migration tool
 
-1. CLI команда `mnemos migrate-from-ai-brain --source ~/.ai-brain --vault ~/brain-vault` — импортирует существующий ai-brain SQLite + vault в Mnemos формат.
+1. CLI команда `vesma migrate-from-ai-brain --source ~/.ai-brain --vault ~/brain-vault` — импортирует существующий ai-brain SQLite + vault в Vesma формат.
 2. Применяет tag contract в **lax mode** (`strict_tag_contract=false`) к импортируемым записям, чтобы старые записи без `agent:` тега не отвергались. Помечает их `mnemos:legacy` + `agent:unknown`.
 3. Создаёт backup перед миграцией.
 4. Dry-run режим: показывает что будет импортировано без записи.
@@ -245,9 +245,9 @@
 ## Phase M14 — ai-brain archival
 
 1. В `ai-brain/README.md` (upstream) — добавить шапку:
-   > **DEPRECATED**: This project has been superseded by [Mnemos](../mnemos/). All new development continues there. ai-brain remains for historical reference only.
+   > **DEPRECATED**: This project has been superseded by [Vesma](../mnemos/). All new development continues there. ai-brain remains for historical reference only.
 2. Создать tag `final-v0.2.x` в ai-brain repo для последнего рабочего состояния.
-3. Перенести open issues (если есть) в Mnemos repo с label `migrated-from-ai-brain`.
+3. Перенести open issues (если есть) в Vesma repo с label `migrated-from-ai-brain`.
 4. Заморозить main branch (или сделать protection rule: no commits).
 
 **Зависимости**: M13 готов (чтобы пользователи могли мигрировать).
@@ -267,7 +267,7 @@
    - `tests/test_path_scoped_rules.py` (M8)
    - `tests/test_migration.py` (M13)
 3. **Integration tests**: end-to-end через MCP клиент (stdio): add → cluster → synthesize → publish → search → agent-recall.
-4. **Smoke**: запустить Mnemos в контейнере (`podman compose up`), подключить из VS Code через mcp.json, выполнить полный цикл из реального Copilot-сессии.
+4. **Smoke**: запустить Vesma в контейнере (`podman compose up`), подключить из VS Code через mcp.json, выполнить полный цикл из реального Copilot-сессии.
 5. **Benchmark**: гибридный поиск на vault с 10k записей — латентность < 200ms p95.
 
 **Зависимости**: все предыдущие фазы.
@@ -312,9 +312,9 @@ M1 (fork & rebrand) ─┬─> M2 (tag contract) ──┬──> M4 (pipeline) 
 
 ## Decisions / scope boundaries
 
-- **Источник правды**: форк, не обёртка. Mnemos владеет данными, схемой, MCP-интерфейсом. Upstream ai-brain — historical reference.
+- **Источник правды**: форк, не обёртка. Vesma владеет данными, схемой, MCP-интерфейсом. Upstream ai-brain — historical reference.
 - **Совместимость**: миграционный CLI (M13) — единственная гарантия. Никакой runtime-совместимости со старыми `brain_*` инструментами (clean break).
-- **Mnemos tag contract — встроенный**, не опциональный (но настраиваемый через `strict_tag_contract` для миграции).
+- **Vesma tag contract — встроенный**, не опциональный (но настраиваемый через `strict_tag_contract` для миграции).
 - **Knowledge Pipeline — обязательная фича v1** (M4). Это главная архитектурная доработка vs ai-brain.
 - **Context Filter — обязательная v1 фича** (M10).
 - **Cache Center — v2** (M11 deferred).
@@ -327,5 +327,5 @@ M1 (fork & rebrand) ─┬─> M2 (tag contract) ──┬──> M4 (pipeline) 
 
 1. **Lazy embeddings**: оставляем ONNX/MiniLM как в ai-brain или мигрируем на серверный embedding API? Рекомендация: оставляем локальный ONNX (privacy + offline). Confirm.
 2. **LLM провайдеры для synthesis (M4)**: широкий набор сразу (Anthropic + OpenAI + Azure OpenAI + Ollama + Gemini) — *locked*. Подтвердить порядок реализации провайдеров (рекомендация: Anthropic → Ollama → OpenAI → Azure → Gemini).
-3. **Naming в MCP клиенте**: оставлять «mnemos» как имя сервера или давать пользователю переименовывать через mcp.json? Рекомендация: сервер сам себя называет `mnemos`; user-facing alias настраиваемый в mcp.json.
+3. **Naming в MCP клиенте**: оставлять «mnemos» как имя сервера или давать пользователю переименовывать через mcp.json? Рекомендация: сервер сам себя называет `vesma`; user-facing alias настраиваемый в mcp.json.
 4. **Git стратегия**: чистый форк (без upstream history) или сохраняем full git history ai-brain? — *locked: сохраняем*. Подтвердить конкретный механизм (`git clone` + remote rename vs `git remote add upstream-ai-brain` + merge `--allow-unrelated-histories`).

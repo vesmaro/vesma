@@ -26,7 +26,7 @@ from typing import Any, Final
 import numpy as np
 import pytest
 
-from vesmaro.config import EmbeddingConfig, MnemosConfig
+from vesmaro.config import EmbeddingConfig, VesmaConfig
 from vesmaro.decision_jev import resolve_decision_provider
 from vesmaro.decision_provider import (
     CORTEX_ARTIFACT_DIR,
@@ -486,13 +486,13 @@ def test_invalid_similarity_degrades_with_a_schema_warn(
 
 
 def test_flag_accepts_vesma_and_stays_off_by_default() -> None:
-    assert MnemosConfig().decision_provider == "deterministic"
-    assert MnemosConfig(decision_provider="vesma").decision_provider == "vesma"
+    assert VesmaConfig().decision_provider == "deterministic"
+    assert VesmaConfig(decision_provider="vesma").decision_provider == "vesma"
 
 
 def test_resolver_wires_the_cortex_provider() -> None:
     wired = resolve_decision_provider(
-        MnemosConfig(decision_provider="vesma"),
+        VesmaConfig(decision_provider="vesma"),
         embedder_fingerprint=config_fingerprint(EmbeddingConfig()),
     )
     assert isinstance(wired, VesmaProvider)
@@ -508,7 +508,7 @@ def test_resolver_fail_open_on_broken_artifact(
     monkeypatch.setattr(dp, "CORTEX_ARTIFACT_DIR", "no-such-bundle")
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
         wired = resolve_decision_provider(
-            MnemosConfig(decision_provider="vesma"),
+            VesmaConfig(decision_provider="vesma"),
             embedder_fingerprint=EMBEDDER_PIN,
         )
     assert isinstance(wired, DeterministicProvider)
@@ -520,7 +520,7 @@ def test_resolver_pin_mismatch_telegraphs_recalibration(
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
         wired = resolve_decision_provider(
-            MnemosConfig(decision_provider="vesma"),
+            VesmaConfig(decision_provider="vesma"),
             embedder_fingerprint="ollama:llama3",
         )
     assert isinstance(wired, DeterministicProvider)
@@ -533,7 +533,7 @@ def test_resolver_without_fingerprint_refuses_the_pin(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
-        wired = resolve_decision_provider(MnemosConfig(decision_provider="vesma"))
+        wired = resolve_decision_provider(VesmaConfig(decision_provider="vesma"))
     assert isinstance(wired, DeterministicProvider)
     assert any("CORTEX-E-PIN" in record.message for record in caplog.records)
 

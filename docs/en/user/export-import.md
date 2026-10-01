@@ -80,7 +80,7 @@ vesma export \
   --format json \
   --project vesma \
   --status published \
-  --output mnemos-published.json
+  --output vesma-published.json
 ```
 
 ---
@@ -210,7 +210,7 @@ vesma export [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--output`, `-o` | `mnemos-export.json` | Output file path |
+| `--output`, `-o` | `vesma-export.json` | Output file path |
 | `--format`, `-f` | `json` | `json` or `sqlite` |
 | `--compress` | `none` | `none`, `gzip`, `zstd` |
 | `--encrypt` | off | Encrypt with passphrase (AES-256-GCM) |
@@ -282,7 +282,7 @@ If `encrypt: true` and the header is missing, the endpoint returns
 `400` with `{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Response** — `StreamingResponse` with `Content-Disposition:
-attachment; filename="mnemos-export.<suffix>"`. The suffix depends on
+attachment; filename="vesma-export.<suffix>"`. The suffix depends on
 format + compression + encryption (`json`, `json.gz`, `tar.gz`, `enc`).
 
 ### `POST /api/v1/import`
@@ -338,7 +338,7 @@ vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
 
 ```bash
 # Source instance
-vesma export --format json --project vesma --output mnemos-project.json
+vesma export --format json --project vesma --output vesma-project.json
 
 # Target instance
 vesma import mnemos-project.json --mode merge

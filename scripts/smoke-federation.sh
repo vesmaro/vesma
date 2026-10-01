@@ -2,7 +2,7 @@
 # scripts/smoke-federation.sh — local federation smoke test.
 #
 # Verifies the full Phase 0 federation roundtrip on a single host using
-# two isolated mnemos instances (per-instance config.yaml selected via
+# two isolated vesma instances (per-instance config.yaml selected via
 # the MNEMOS_CONFIG env var — the only instance-selection mechanism the
 # app understands; see find_config_file in src/mnemos/config.py):
 #
@@ -12,7 +12,7 @@
 #   4. Search on A — the imported record must be findable.
 #   5. Re-import the same payload — idempotent (skip, no duplicate).
 #
-# Prerequisites: mnemos CLI on PATH (or set MNEMOS_BIN), jq, mktemp.
+# Prerequisites: vesma CLI on PATH (or set MNEMOS_BIN), jq, mktemp.
 # Runtime: < 10 s. Exits 0 on success, non-zero on any failure.
 #
 # See docs/en/admin/federation-testing.md for the cross-host variant.
@@ -23,7 +23,7 @@ MNEMOS_BIN="${MNEMOS_BIN:-mnemos}"
 command -v "$MNEMOS_BIN" >/dev/null 2>&1 || { echo "FATAL: $MNEMOS_BIN not on PATH"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "FATAL: jq not on PATH"; exit 1; }
 
-TMPDIR="$(mktemp -d -t mnemos-smoke-XXXXXX)"
+TMPDIR="$(mktemp -d -t vesma-smoke-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 CONF_A="$TMPDIR/instance-a/config.yaml"
@@ -40,7 +40,7 @@ PAYLOAD="$TMPDIR/compact.json"
 
 echo "1. Seed peer B with a clean decision memory"
 MNEMOS_CONFIG="$CONF_B" "$MNEMOS_BIN" add \
-  "Smoke test: mnemos federation verified via local roundtrip." \
+  "Smoke test: vesma federation verified via local roundtrip." \
   --tags "project:$PROJECT,agent:$AGENT_B,mnemos:decision" \
   --title "Federation smoke seed" >/dev/null
 

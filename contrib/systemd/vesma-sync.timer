@@ -1,5 +1,5 @@
 [Unit]
-Description=Mnemos — auto-cron federation bridge timer (#104)
+Description=Vesma — auto-cron federation bridge timer (#104)
 Documentation=file:///usr/share/doc/mnemos/admin/ssh-sync-hardening.md
 
 [Timer]

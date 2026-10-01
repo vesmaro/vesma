@@ -1,6 +1,6 @@
 """Born-final sidecar schema — the allowlist is the whole contract.
 
-Phase A/A2 (docs/architecture.md §2; ADR-0026 mnemos C1-C5). The metrics
+Phase A/A2 (docs/architecture.md §2; ADR-0026 vesma C1-C5). The metrics
 sqlite sidecar is created with this FINAL schema on first open — no
 migrations exist, by decision D-0002 (a sidecar with migrations would
 re-create the very operational risk (migration trains) that the

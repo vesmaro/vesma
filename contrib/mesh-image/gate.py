@@ -2,7 +2,7 @@
 # Required (fail build if absent): ListMemoriesRequest.resume_cursor,
 # ListMemoriesResponse.cursor, federation PullRequest.cursor; W3 (ADR-0018-T
 # §3) — the MnemosCore.ValidateAgentToken RPC in the gencode and the
-# MnemosCoreServicer._agent_data_gate method on the shipped src.
+# VesmaCoreServicer._agent_data_gate method on the shipped src.
 # Informational: MetadataRecord.origin_peer (S2, not on main yet),
 # agent_gateway_pb2 stubs (shipped since the W3 protoc set).
 import importlib.util
@@ -46,7 +46,7 @@ print("PASS  import mnemos.mesh_server (site-packages/vesmaro/mesh_server.py)")
 # W3 src check (#398): the agent data gate must be ON the shipped servicer.
 # An image whose gencode has ValidateAgentToken but whose src predates the
 # data gate would pass every field check yet serve ungated data RPCs.
-gate_check = "MnemosCoreServicer._agent_data_gate (W3)"
+gate_check = "VesmaCoreServicer._agent_data_gate (W3)"
 checks[gate_check] = hasattr(mnemos.mesh_server.MnemosCoreServicer, "_agent_data_gate")
 print(f"{'PASS' if checks[gate_check] else 'absent'}  {gate_check}")
 

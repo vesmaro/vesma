@@ -27,7 +27,7 @@ Covers the meta-mirror phase-1 substrate + the two registered RPCs:
 * ``build_metadata_entry`` — local-memory → index-row synthesis
   (origin='self'), no-federate exclusion, moderation-refuse exclusion,
   project-less exclusion (review nit 2), title ≤ 256.
-* ``MnemosCoreServicer.build_metadata_sync_response`` — the
+* ``VesmaCoreServicer.build_metadata_sync_response`` — the
   SyncMetadata RPC body, exercised with REAL generated ``fed_pb2``
   messages: ACL fail-closed matrix, watermark pagination stability
   (no dupes / no gaps across pages), tag filter, Q10.9 title-blocklist
@@ -74,7 +74,7 @@ from vesmaro.config import FederationConfig, PeerConfig, Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.mesh_server import (
     MeshServer,
-    MnemosCoreServicer,
+    VesmaCoreServicer,
     _metadata_stream_event,
 )
 from vesmaro.models import MemoryCreate, MemorySource
@@ -679,8 +679,8 @@ class TestBuildMetadataEntry:
 
 class TestBuildMetadataSyncResponse:
     @pytest.fixture
-    def servicer(self, tmp_path: Path, manager: MemoryManager) -> MnemosCoreServicer:
-        return MnemosCoreServicer(manager, settings=_settings(tmp_path))
+    def servicer(self, tmp_path: Path, manager: MemoryManager) -> VesmaCoreServicer:
+        return VesmaCoreServicer(manager, settings=_settings(tmp_path))
 
     @pytest.fixture
     def indexed(self, manager: MemoryManager) -> MemoryManager:
@@ -724,7 +724,7 @@ class TestBuildMetadataSyncResponse:
         return _mesh_gen.fed_pb2.MetadataSyncRequest(**fields)
 
     def test_serves_index_including_self_origin(
-        self, servicer: MnemosCoreServicer, indexed: MemoryManager
+        self, servicer: VesmaCoreServicer, indexed: MemoryManager
     ) -> None:
         resp = servicer.build_metadata_sync_response(self._request())
         origins = {r.source_peer for r in resp.records}
@@ -734,7 +734,7 @@ class TestBuildMetadataSyncResponse:
         assert resp.latest_rev > 0
         assert all(r.schema_version == METADATA_SCHEMA for r in resp.records)
 
-    def test_empty_corpus_parks_at_scope_head(self, servicer: MnemosCoreServicer) -> None:
+    def test_empty_corpus_parks_at_scope_head(self, servicer: VesmaCoreServicer) -> None:
         """Empty index: the scope head is 0, so latest_rev stays 0 — the
         watermark has nowhere to advance to (and never regresses)."""
         resp = servicer.build_metadata_sync_response(self._request())
@@ -774,7 +774,7 @@ class TestBuildMetadataSyncResponse:
         conn.commit()
         head_b = manager.sqlite.index_head(projects=["scope-b"])
         assert head_b > watermark  # the empty scope's head is beyond the watermark
-        servicer = MnemosCoreServicer(
+        servicer = VesmaCoreServicer(
             manager, settings=_settings(tmp_path, allowed=["scope-a", "scope-b"])
         )
         # Poll the data scope: rows delivered, watermark parks at its head.
@@ -799,7 +799,7 @@ class TestBuildMetadataSyncResponse:
         wider scope: scope-b's head below since_rev → max() keeps the
         checkpoint (never-regress invariant)."""
         manager.sqlite.upsert_index_entries([_entry("fed:r:a1", project="scope-a")])
-        servicer = MnemosCoreServicer(
+        servicer = VesmaCoreServicer(
             manager, settings=_settings(tmp_path, allowed=["scope-a", "scope-b"])
         )
         resp = servicer.build_metadata_sync_response(
@@ -831,7 +831,7 @@ class TestBuildMetadataSyncResponse:
         # head is beyond it. The empty page must return the PEER head —
         # the scope head (0) would pin the CLI's MIN aggregate.
         assert manager.sqlite.index_head(projects=["scope-b"]) == 0
-        servicer = MnemosCoreServicer(
+        servicer = VesmaCoreServicer(
             manager, settings=_settings(tmp_path, allowed=["scope-a", "scope-b"])
         )
         resp = servicer.build_metadata_sync_response(
@@ -848,7 +848,7 @@ class TestBuildMetadataSyncResponse:
         (60 entries > the 50-row default page → at least two pages)."""
         entries = [_entry(f"fed:r:{i:03d}") for i in range(60)]
         manager.sqlite.upsert_index_entries(entries)
-        servicer = MnemosCoreServicer(manager, settings=_settings(tmp_path))
+        servicer = VesmaCoreServicer(manager, settings=_settings(tmp_path))
         delivered: list[str] = []
         pages = 0
         since = 0
@@ -864,21 +864,21 @@ class TestBuildMetadataSyncResponse:
         assert len(delivered) == len(set(delivered))  # no dupes
 
     def test_acl_denied_scope_refused(
-        self, servicer: MnemosCoreServicer, indexed: MemoryManager
+        self, servicer: VesmaCoreServicer, indexed: MemoryManager
     ) -> None:
         resp = servicer.build_metadata_sync_response(self._request(project_scope=_PROJECT_DENIED))
         assert list(resp.records) == []
         assert resp.trigger_code == _mesh_gen.fed_pb2.REFUSED
 
     def test_acl_unknown_peer_refused(
-        self, servicer: MnemosCoreServicer, indexed: MemoryManager
+        self, servicer: VesmaCoreServicer, indexed: MemoryManager
     ) -> None:
         resp = servicer.build_metadata_sync_response(self._request(peer_id="mnemos-UNKNOWN"))
         assert list(resp.records) == []
         assert resp.trigger_code == _mesh_gen.fed_pb2.REFUSED
 
     def test_tag_filter_intersects(
-        self, servicer: MnemosCoreServicer, indexed: MemoryManager
+        self, servicer: VesmaCoreServicer, indexed: MemoryManager
     ) -> None:
         resp = servicer.build_metadata_sync_response(self._request(filter=["mnemos:learning"]))
         assert all("mnemos:learning" in list(r.tags) for r in resp.records)
@@ -891,7 +891,7 @@ class TestBuildMetadataSyncResponse:
                 _entry("fed:r:blocked", title="Internal secret sprint plan"),
             ]
         )
-        servicer = MnemosCoreServicer(
+        servicer = VesmaCoreServicer(
             manager,
             settings=_settings(tmp_path, title_blocklist=[r"secret\s+sprint"]),
         )
@@ -902,7 +902,7 @@ class TestBuildMetadataSyncResponse:
         # The blocked row still advanced the watermark (no wedged poll).
         assert resp.latest_rev >= 2
 
-    def test_out_of_range_since_rev_rejected(self, servicer: MnemosCoreServicer) -> None:
+    def test_out_of_range_since_rev_rejected(self, servicer: VesmaCoreServicer) -> None:
         from vesmaro.mesh_server import CursorError
 
         with pytest.raises(CursorError):

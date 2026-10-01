@@ -3,21 +3,21 @@
 The ADR-0017 Phase 1 exit gate is "Hermes e2e on contract": this suite
 drives :class:`vesmaro.adapters.hermes.HermesMemoryAdapter` — the migration
 target of the legacy Hermes plugin — through a full harness lifecycle
-IN-PROCESS over a real ``MnemosSDK`` and proves every memory operation
+IN-PROCESS over a real ``VesmaSDK`` and proves every memory operation
 lands on the contract surfaces:
 
-* writes  → ``MnemosSDK.remember`` (tag contract at the channel; since
+* writes  → ``VesmaSDK.remember`` (tag contract at the channel; since
   ADR-0019 Phase D the adapter writes WITHOUT an explicit status — the
   ``vesmaro.visibility`` server policy owns the initial visibility
   through the fail-closed ingest gate, and the ``publish_on_write``
   bypass is removed);
-* reads   → ``MnemosSDK.recall`` / channel-scanned checkpoint + agent
+* reads   → ``VesmaSDK.recall`` / channel-scanned checkpoint + agent
   recall (issuance scan, refuse mode drops);
 * context → the ``pre_llm_call`` hook → ``assemble_context`` (the D1
   fixed pipeline with provenance);
 * compression → the ``post_tool_call`` hook (ADR-0018, N2 identity);
 * Hermes' context-compression loss → the ADR-0018
-  ``on_context_rewrite`` event via ``MnemosSDK.rewrite``.
+  ``on_context_rewrite`` event via ``VesmaSDK.rewrite``.
 
 No HTTP, no mocks of mnemos internals — the adapter talks to a real
 ``MemoryManager`` over a temp store, like ``test_sdk.py``. Secrets below
@@ -37,7 +37,7 @@ from vesmaro.adapters.hermes import HermesMemoryAdapter
 from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import MemoryCreate, MemoryStatus, PipelineState, TagContractError
-from vesmaro.sdk import MnemosSDK
+from vesmaro.sdk import VesmaSDK
 
 PROJECT = "hermes"
 AGENT = "hermes-main"
@@ -89,7 +89,7 @@ def curated_manager() -> Iterator[MemoryManager]:
 
 @pytest.fixture
 def adapter(manager: MemoryManager) -> Iterator[HermesMemoryAdapter]:
-    sdk = MnemosSDK(manager=manager)
+    sdk = VesmaSDK(manager=manager)
     adapter = HermesMemoryAdapter(sdk, project=PROJECT, agent=AGENT)
     adapter.bind_session(SESSION)
     yield adapter
@@ -103,14 +103,14 @@ class TestIdentity:
         """A slug that would break the tag contract fails at construction,
         not on the first write."""
         with pytest.raises(TagContractError):
-            HermesMemoryAdapter(MnemosSDK(manager=manager), project="not a slug", agent=AGENT)
+            HermesMemoryAdapter(VesmaSDK(manager=manager), project="not a slug", agent=AGENT)
 
     def test_constructor_rejects_empty_agent(self, manager: MemoryManager) -> None:
         with pytest.raises(ValueError, match="non-empty"):
-            HermesMemoryAdapter(MnemosSDK(manager=manager), project=PROJECT, agent="")
+            HermesMemoryAdapter(VesmaSDK(manager=manager), project=PROJECT, agent="")
 
     def test_session_scoped_verbs_require_bound_session(self, manager: MemoryManager) -> None:
-        adapter = HermesMemoryAdapter(MnemosSDK(manager=manager), project=PROJECT, agent=AGENT)
+        adapter = HermesMemoryAdapter(VesmaSDK(manager=manager), project=PROJECT, agent=AGENT)
         with pytest.raises(ValueError, match="bind_session"):
             adapter.pre_llm_call()
         with pytest.raises(ValueError, match="bind_session"):
@@ -119,7 +119,7 @@ class TestIdentity:
     def test_bad_sync_interval_rejected(self, manager: MemoryManager) -> None:
         with pytest.raises(ValueError, match="sync_interval"):
             HermesMemoryAdapter(
-                MnemosSDK(manager=manager), project=PROJECT, agent=AGENT, sync_interval=0
+                VesmaSDK(manager=manager), project=PROJECT, agent=AGENT, sync_interval=0
             )
 
 
@@ -214,7 +214,7 @@ class TestSessionLifecycleE2E:
 
     def test_auto_sync_off_disables_turn_writes(self, manager: MemoryManager) -> None:
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=manager),
+            VesmaSDK(manager=manager),
             project=PROJECT,
             agent=AGENT,
             auto_sync=False,
@@ -249,7 +249,7 @@ class TestWriteChannel:
         clean write at ingest — the knob no longer changes anything:
         every entry is visible regardless of publish_on_write."""
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=manager),
+            VesmaSDK(manager=manager),
             project=PROJECT,
             agent=AGENT,
             publish_on_write=False,
@@ -273,7 +273,7 @@ class TestWriteChannel:
         is NOT 'raw forever' (the pre-Phase-D meaning): it sits in the
         refine intake and the cycle completes its visibility."""
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=curated_manager),
+            VesmaSDK(manager=curated_manager),
             project=PROJECT,
             agent=AGENT,
             publish_on_write=False,
@@ -305,7 +305,7 @@ class TestWriteChannel:
         the adapter never forces visibility (ADR-0019 rejected
         per-adapter visibility flags; the server policy owns it)."""
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=curated_manager),
+            VesmaSDK(manager=curated_manager),
             project=PROJECT,
             agent=AGENT,
             publish_on_write=True,
@@ -343,7 +343,7 @@ class TestWriteChannel:
         stored RAW, pipeline_state NULL, invisible to recall, never
         raising at the harness) and the refusal lands on the audit trail
         correlated by memory id."""
-        adapter = HermesMemoryAdapter(MnemosSDK(manager=manager), project=PROJECT, agent=AGENT)
+        adapter = HermesMemoryAdapter(VesmaSDK(manager=manager), project=PROJECT, agent=AGENT)
         adapter.bind_session(SESSION)
 
         with caplog.at_level("WARNING", logger="vesmaro.manager"):
@@ -426,7 +426,7 @@ class TestIssuanceScan:
     def test_refuse_mode_drops_secret_hit(self, refuse_manager: MemoryManager) -> None:
         self._plant_secret_row(refuse_manager)
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=refuse_manager), project=PROJECT, agent=AGENT
+            VesmaSDK(manager=refuse_manager), project=PROJECT, agent=AGENT
         )
         adapter.bind_session(SESSION)
 
@@ -434,7 +434,7 @@ class TestIssuanceScan:
 
     def test_checkpoint_refuse_mode_drops_entry(self, refuse_manager: MemoryManager) -> None:
         adapter = HermesMemoryAdapter(
-            MnemosSDK(manager=refuse_manager), project=PROJECT, agent=AGENT
+            VesmaSDK(manager=refuse_manager), project=PROJECT, agent=AGENT
         )
         adapter.bind_session(SESSION)
         secret_checkpoint = adapter.save_checkpoint(context=f"key {FAKE_AWS_KEY} leaked")

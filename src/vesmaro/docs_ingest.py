@@ -62,7 +62,7 @@ invalidation; until then the counter is an exposed, bumped, test-pinned
 contract — not a wired defence.
 
 Boundary with the existing single-URL ingest: ``mnemos_ingest_url``
-(REST ``POST /ingest-url``, CLI ``mnemos add --url`` — legacy CLI name) keeps its
+(REST ``POST /ingest-url``, CLI ``vesma add --url`` — legacy CLI name) keeps its
 pre-Ф3 semantics UNTOUCHED — a fetched page saved as ONE memory row
 through the ordinary visibility policy, no born-quarantine. The
 document path is the SEPARATE ``ingest_document`` surface (MCP
@@ -135,7 +135,7 @@ DOC_CHUNK_CACHE_VERSION_META_KEY: Final[str] = "ccr_cache_doc_chunk_version"
 #: required by the §5.1 discipline — release is explicit AND audited).
 DOC_SWEEP_STAMP_METADATA_KEY: Final[str] = "doc_swept_at"
 
-#: The server-minted doc-sweep stamp keys (the mnemos #251
+#: The server-minted doc-sweep stamp keys (the vesma #251
 #: checkpoint-stamp discipline, review round P3-1): only the doc sweep
 #: (:func:`sweep_document_chunks`) may write ``doc_swept_at`` — a client
 #: forging the stamp on ``add``/``update`` would fabricate a release

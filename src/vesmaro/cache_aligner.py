@@ -25,7 +25,7 @@ tokens of sufficient entropy). Code identifiers, file paths, and prose are
 not mangled. CCR markers (``[compressed: <hash> | …]``) are ATOMIC
 protected regions in EVERY profile — a marker whose hash is relocated to
 the trailing block is unreadable and breaks the ``mnemos_retrieve``
-round-trip (mnemos #282).
+round-trip (vesma #282).
 
 Determinism: same input always produces the same output (patterns are
 applied in a fixed order; extracted spans are sorted by position).
@@ -93,7 +93,7 @@ _PROFILE_SKIP: dict[str, set[str]] = {
     "docs": {"token"},
 }
 
-# mnemos #282 — CCR markers are ATOMIC: protected from extraction in ALL
+# vesma #282 — CCR markers are ATOMIC: protected from extraction in ALL
 # profiles. A marker `[compressed: <hash> | N→M chars | retrieve via
 # mnemos_retrieve]` carries a 64-hex hash that _TOKEN_RE happily matches
 # in token-extracting profiles (log/terminal/web/default) — the hash would
@@ -120,7 +120,7 @@ def _extract_spans(
     ``start``. Overlapping matches are resolved by earliest start then
     longest match — a timestamp wins over a bare date overlapping its tail.
 
-    ``protected`` (mnemos #282) lists regions (``(start, end)``) that no
+    ``protected`` (vesma #282) lists regions (``(start, end)``) that no
     dynamic span may touch — CCR marker spans in every profile. Any span
     of any kind overlapping a protected region is dropped, so a marker
     stays byte-identical at its original position.
@@ -196,7 +196,7 @@ def align(
           lengths).
 
         CCR markers (``[compressed: …]``) are never extracted — see
-        ``_extract_spans`` (mnemos #282): they stay byte-identical at
+        ``_extract_spans`` (vesma #282): they stay byte-identical at
         their original position in every profile.
     """
     if not text:
@@ -219,7 +219,7 @@ def align(
     # per-kind toggles). Either source may be None/empty.
     profile_skip = _PROFILE_SKIP.get(profile or "") if profile else None
     skip = profile_skip | skip_kinds if profile_skip and skip_kinds else profile_skip or skip_kinds
-    # mnemos #282 — CCR marker spans are protected BEFORE any dynamic
+    # vesma #282 — CCR marker spans are protected BEFORE any dynamic
     # pattern runs (all profiles, no profile can opt out): a relocated
     # marker hash breaks the mnemos_retrieve round-trip.
     protected = _protected_marker_spans(text)

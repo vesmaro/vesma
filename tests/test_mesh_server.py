@@ -378,7 +378,7 @@ class TestHeartbeat:
         )
         assert response.healthy is True
         assert response.version
-        assert response.version.startswith("mnemos ")
+        assert response.version.startswith("vesma ")
 
     def test_heartbeat_uptime_is_nonnegative(self, server: MeshServer) -> None:
         """Uptime seconds is >= 0 for a freshly started server."""

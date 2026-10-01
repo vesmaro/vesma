@@ -1,7 +1,7 @@
 """ADR-0004 implementation (c) — the external Jev adapter (opt-in, default-off).
 
-The SECOND implementation of the interface ratified in vesmaro-canon
-[ADR 0004](https://github.com/vesmaro/vesmaro-canon/blob/main/docs/decisions/0004-decision-provider.md):
+The SECOND implementation of the interface ratified in vesma-canon
+[ADR 0004](https://github.com/vesmaro/vesma-canon/blob/main/docs/decisions/0004-decision-provider.md):
 an outbound LLM leg over OpenRouter's ``typesafe/jev-router``. The seam
 contract (:mod:`vesmaro.decision_provider`) is unchanged — prepared
 canon state in, typed decision out — and so are its rules:
@@ -55,7 +55,7 @@ import os
 from collections.abc import Callable
 from typing import Any, Final
 
-from vesmaro.config import MnemosConfig
+from vesmaro.config import VesmaConfig
 from vesmaro.danger_detectors import detect as danger_detect
 from vesmaro.decision_provider import (
     QUESTION_IS_DUPLICATE,
@@ -398,7 +398,7 @@ class JevRouterProvider:
 
 
 def resolve_decision_provider(
-    settings: MnemosConfig,
+    settings: VesmaConfig,
     *,
     embedder_fingerprint: str | None = None,
 ) -> DecisionProvider | None:

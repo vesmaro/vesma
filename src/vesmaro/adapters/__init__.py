@@ -1,9 +1,9 @@
 """In-process harness adapters over the Vesma provider contract.
 
-ADR-0017 D1: adapters consume the memory server through the MnemosSDK
+ADR-0017 D1: adapters consume the memory server through the VesmaSDK
 facade and the lifecycle hooks — never through bespoke transport. The
 first adapter is the Hermes Agent memory-provider bridge
-(:mod:`vesmaro.adapters.hermes`, mnemos #125 Wave 5).
+(:mod:`vesmaro.adapters.hermes`, vesma #125 Wave 5).
 
 Naming note: this runtime package is ``vesmaro.adapters``, NOT
 ``vesmaro.integrations`` — the wheel force-includes the repo-root

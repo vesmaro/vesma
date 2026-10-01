@@ -1,4 +1,4 @@
-"""MnemosSDK facade (mnemos #125, Wave 3) — delegation contract.
+"""VesmaSDK facade (mnemos #125, Wave 3) — delegation contract.
 
 The facade owns no DOMAIN logic (src/mnemos/sdk.py): every verb is a
 one-line delegation to a ``MemoryManager`` method — EXCEPT the two
@@ -27,7 +27,7 @@ import pytest
 from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import MemoryCreate, MemoryStatus, TagContractError
-from vesmaro.sdk import MnemosSDK
+from vesmaro.sdk import VesmaSDK
 
 PROJECT = "sdk-proj"
 AGENT = "sdk-agent"
@@ -66,8 +66,8 @@ def refuse_manager() -> Iterator[MemoryManager]:
 
 
 @pytest.fixture
-def sdk(manager: MemoryManager) -> MnemosSDK:
-    return MnemosSDK(manager=manager)
+def sdk(manager: MemoryManager) -> VesmaSDK:
+    return VesmaSDK(manager=manager)
 
 
 # ── Constructor ───────────────────────────────────────────────────────────────
@@ -76,13 +76,13 @@ def sdk(manager: MemoryManager) -> MnemosSDK:
 class TestConstructor:
     def test_both_args_rejected(self, manager: MemoryManager) -> None:
         with pytest.raises(ValueError, match="exactly one"):
-            MnemosSDK(_settings(Path("/nonexistent")), manager=manager)
+            VesmaSDK(_settings(Path("/nonexistent")), manager=manager)
 
     def test_neither_arg_rejected(self) -> None:
         with pytest.raises(ValueError, match="exactly one"):
-            MnemosSDK()
+            VesmaSDK()
 
-    def test_manager_exposed(self, manager: MemoryManager, sdk: MnemosSDK) -> None:
+    def test_manager_exposed(self, manager: MemoryManager, sdk: VesmaSDK) -> None:
         assert sdk.manager is manager
 
 
@@ -90,7 +90,7 @@ class TestConstructor:
 
 
 class TestRemember:
-    def test_delegates_to_add(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_delegates_to_add(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         calls: list[dict[str, Any]] = []
         original = manager.add
 
@@ -111,7 +111,7 @@ class TestRemember:
         assert calls[0]["agent"] == AGENT
 
     def test_invalid_mnemos_subtype_rejected_no_write(
-        self, sdk: MnemosSDK, manager: MemoryManager
+        self, sdk: VesmaSDK, manager: MemoryManager
     ) -> None:
         """F2: the tag contract runs at the facade — an invalid reserved
         ``mnemos:*`` subtype raises BEFORE any write (the store count is
@@ -126,7 +126,7 @@ class TestRemember:
             )
         assert manager.sqlite.count() == before, "rejected tags must not write"
 
-    def test_valid_tags_pass_through(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_valid_tags_pass_through(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         memory = sdk.remember(
             "note body",
             PROJECT,
@@ -140,7 +140,7 @@ class TestRemember:
 
 
 class TestRecall:
-    def test_delegates_to_search(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_delegates_to_search(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         calls: list[dict[str, Any]] = []
         original = manager.search
 
@@ -191,7 +191,7 @@ class TestRecallIssuanceScan:
         )
 
     def test_secret_in_recalled_row_masked_via_sdk(
-        self, sdk: MnemosSDK, manager: MemoryManager
+        self, sdk: VesmaSDK, manager: MemoryManager
     ) -> None:
         self._published_secret_row(manager)
 
@@ -209,16 +209,14 @@ class TestRecallIssuanceScan:
         assert any(i.get("redacted_patterns") == {"aws-key": 2} for i in items)
 
     def test_refuse_mode_drops_the_item(self, refuse_manager: MemoryManager) -> None:
-        sdk = MnemosSDK(manager=refuse_manager)
+        sdk = VesmaSDK(manager=refuse_manager)
         self._published_secret_row(refuse_manager)
 
         items = sdk.recall("quokka", PROJECT)
 
         assert items == [], "refuse mode must drop the secret-carrying item entirely"
 
-    def test_clean_row_carries_zero_redactions(
-        self, sdk: MnemosSDK, manager: MemoryManager
-    ) -> None:
+    def test_clean_row_carries_zero_redactions(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         data = MemoryCreate(
             content="clean deploy note about quokka-plain rotation",
             tags=[f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
@@ -238,15 +236,15 @@ class TestRecallIssuanceScan:
 
 
 class TestForget:
-    def test_own_project_deletes(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_own_project_deletes(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         memory = sdk.remember("forget me", PROJECT, AGENT)
         assert sdk.forget(memory.id, PROJECT) is True
         assert manager.get(memory.id) is None
 
-    def test_unknown_id_is_false(self, sdk: MnemosSDK) -> None:
+    def test_unknown_id_is_false(self, sdk: VesmaSDK) -> None:
         assert sdk.forget("no-such-id", PROJECT) is False
 
-    def test_cross_project_denied(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_cross_project_denied(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         memory = sdk.remember("other project memory", "other-proj", AGENT)
         deleted: list[str] = []
         original = manager.delete
@@ -268,11 +266,11 @@ class TestForget:
 
 
 class TestStats:
-    def test_global_verbatim(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_global_verbatim(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         envelope = manager.stats()
         assert sdk.stats() == envelope
 
-    def test_project_slice_keys(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_project_slice_keys(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         sdk.remember("counted", PROJECT, AGENT)
         result = sdk.stats(PROJECT)
         assert result["project"] == PROJECT
@@ -284,7 +282,7 @@ class TestStats:
 
 
 class TestAssembleContext:
-    def test_delegates_with_passthrough(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_delegates_with_passthrough(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         memory = sdk.remember("assembled body quokka-asm", PROJECT, AGENT)
         manager.publish(memory.id, skip_quality_check=True)
 
@@ -315,7 +313,7 @@ class TestAssembleContext:
 
 
 class TestRewrite:
-    def test_delegates_to_context_rewrite(self, sdk: MnemosSDK, manager: MemoryManager) -> None:
+    def test_delegates_to_context_rewrite(self, sdk: VesmaSDK, manager: MemoryManager) -> None:
         calls: list[dict[str, Any]] = []
         original = manager.context_rewrite
 

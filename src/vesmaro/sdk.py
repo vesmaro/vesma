@@ -1,6 +1,6 @@
-"""MnemosSDK — the thin typed facade over :class:`vesmaro.manager.MemoryManager`.
+"""VesmaSDK — the thin typed facade over :class:`vesmaro.manager.MemoryManager`.
 
-The programmatic contract surface for adapters (mnemos #125, Wave 3):
+The programmatic contract surface for adapters (vesma #125, Wave 3):
 the Hermes migration (next wave) and any in-process harness consume the
 memory server through THIS class instead of weaving manager calls into
 adapter code. Local-first by construction — the SDK talks to the
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class MnemosSDK:
+class VesmaSDK:
     """Typed facade over ``MemoryManager`` — see the module docstring."""
 
     def __init__(
@@ -135,7 +135,7 @@ class MnemosSDK:
             )
         data = MemoryCreate(content=content, **kw)
         memory = self._manager.add(data, project=project, agent=agent)
-        # vesmaro-canon v1.0.0 (canon §9): the manager canon gate already
+        # vesma-canon v1.0.0 (canon §9): the manager canon gate already
         # logged + attached violations to ``metadata["canon_warnings"]``;
         # THIS channel echoes the codes at its edge so an SDK caller sees
         # the warning without parsing manager logs (write still succeeds —
@@ -170,7 +170,7 @@ class MnemosSDK:
         therefore returns SCANNED item dicts (``id``, ``title``,
         ``content``, ``tags``, ``score``, ``search_type``, ``status``,
         ``redactions``, optional ``redacted_patterns``) — never stored
-        rows; a raw-row escape hatch is ``MnemosSDK.manager.search``.
+        rows; a raw-row escape hatch is ``VesmaSDK.manager.search``.
         """
         results = self._manager.search(query=query, project=project, **kw)
         items: list[dict[str, Any]] = []

@@ -1,4 +1,4 @@
-"""``mnemos export`` — backup memories to JSON or SQLite snapshot.
+"""``vesma export`` — backup memories to JSON or SQLite snapshot.
 
 Design (owner-confirmed, 2026-06-20):
 

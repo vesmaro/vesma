@@ -207,7 +207,7 @@ with a bearer header:
 scrape_configs:
   - job_name: vesma
     static_configs:
-      - targets: ["mnemos.example.internal:8787"]
+      - targets: ["vesma.example.internal:8787"]
     metrics_path: /api/v1/metrics
     authorization:
       type: Bearer

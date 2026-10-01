@@ -100,7 +100,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
     """Strip a checkpoint reminder appended after the JSON payload.
 
     ``mcp_server._checkpoint_reminder()`` may append a nudge like
-    ``\n\n⚠️ [mnemos] N tool calls since last checkpoint … Consider
+    ``\n\n⚠️ [vesma] N tool calls since last checkpoint … Consider
     calling mnemos_save_context …`` after the tool's JSON response. It is
     informational metadata for MCP clients, NOT part of the tool's return
     value — a correct client must ignore it before parsing.
@@ -116,7 +116,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
     Mirrors the same fix in ``test_workflow_e2e.py`` — one theme: e2e
     helpers must ignore the checkpoint reminder appended by ``mcp_server``.
     """
-    marker = "\n\n⚠️ [mnemos]"
+    marker = "\n\n⚠️ [vesma]"
     idx = text.find(marker)
     return text[:idx] if idx != -1 else text
 

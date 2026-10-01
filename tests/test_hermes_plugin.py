@@ -1,4 +1,4 @@
-"""Unit tests for the Hermes MnemosMemoryProvider contract shim (#125 W5).
+"""Unit tests for the Hermes VesmaMemoryProvider contract shim (#125 W5).
 
 The plugin at ``integrations/hermes/__init__.py`` imports two Hermes-internal
 modules that are not available in the Vesma test environment:
@@ -79,7 +79,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from integrations.hermes import (  # noqa: E402
-    MnemosMemoryProvider,
+    VesmaMemoryProvider,
     _load_config,
     register,
 )
@@ -89,7 +89,7 @@ from integrations.hermes import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def _make_provider(**overrides) -> MnemosMemoryProvider:
+def _make_provider(**overrides) -> VesmaMemoryProvider:
     """Build a provider with a config dict (skips env/yaml loading)."""
     cfg = {
         "data_dir": "",
@@ -102,7 +102,7 @@ def _make_provider(**overrides) -> MnemosMemoryProvider:
         "sync_min_user_chars": 50,
     }
     cfg.update(overrides)
-    return MnemosMemoryProvider(cfg)
+    return VesmaMemoryProvider(cfg)
 
 
 def _make_mock_adapter() -> MagicMock:
@@ -124,14 +124,14 @@ class TestPluginImport:
         assert callable(register)
 
     def test_provider_class_exists(self):
-        assert MnemosMemoryProvider is not None
+        assert VesmaMemoryProvider is not None
         from agent.memory_provider import MemoryProvider
 
-        assert issubclass(MnemosMemoryProvider, MemoryProvider)
+        assert issubclass(VesmaMemoryProvider, MemoryProvider)
 
     def test_provider_name_property(self):
         p = _make_provider()
-        assert p.name == "mnemos"
+        assert p.name == "vesma"
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ class TestConfigSchema:
 
 class TestSaveConfig:
     def test_writes_to_memory_mnemos(self, tmp_path):
-        """save_config must write under memory.mnemos, not plugins.vesmaro."""
+        """save_config must write under memory.vesma, not plugins.*."""
         p = _make_provider()
         hermes_home = str(tmp_path)
         values = {"project": "test", "agent": "hermes-main"}
@@ -260,9 +260,9 @@ class TestSaveConfig:
         with open(config_path) as f:
             data = yaml.safe_load(f)
         assert "memory" in data
-        assert "mnemos" in data["memory"]
-        assert data["memory"]["mnemos"] == values
-        assert "plugins" not in data or "mnemos" not in data.get("plugins", {})
+        assert "vesma" in data["memory"]
+        assert data["memory"]["vesma"] == values
+        assert "plugins" not in data or "vesma" not in data.get("plugins", {})
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +325,7 @@ class TestLifecycleDelegation:
         adapter.report_context_rewrite.assert_called_once()
         original = adapter.report_context_rewrite.call_args[0][0]
         assert "gateway rotation" in original
-        assert "Mnemos" in hint
+        assert "Vesma" in hint
 
     def test_on_pre_compress_no_user_messages_no_report(self):
         p = _make_provider()

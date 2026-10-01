@@ -1,5 +1,5 @@
 # mesh.container.yaml — mesh daemon config for the CONTAINER install
-# (rendered by `vesmaro-node container-install`; container paths only —
+# (rendered by `vesma-node container-install`; container paths only —
 # pki and the shared run dir are bind-mounts from the HOST).
 #
 # After the first cert-gen, fill in:
@@ -12,13 +12,13 @@ node_id: @@NODE_ID@@
 # Peer gRPC listener (mTLS). LAN/WireGuard address for real peers —
 # reachable as-is under Network=host.
 listen: ":8443"
-# Rollback leg to the core (unix; shared /run/vesmaro volume).
-unix_socket: /run/vesmaro/core.sock
+# Rollback leg to the core (unix; shared /run/vesma volume).
+unix_socket: /run/vesma/core.sock
 
 mtls:
-  ca_cert: /etc/vesmaro/pki/ca.pem
-  node_cert: /etc/vesmaro/pki/node.pem
-  node_key: /etc/vesmaro/pki/node.key
+  ca_cert: /etc/vesma/pki/ca.pem
+  node_cert: /etc/vesma/pki/node.pem
+  node_key: /etc/vesma/pki/node.key
   rotation_days: 90
   peer_fingerprints: {}
     # peer-node-id: "sha256:..."

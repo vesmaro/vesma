@@ -63,7 +63,7 @@ __all__ = [
 #: Default Copilot agents directory (``~/.copilot/agents``).
 DEFAULT_AGENTS_DIR = Path.home() / ".copilot" / "agents"
 
-#: Individual mnemos MCP tool names used in **precise** mode.
+#: Individual vesma MCP tool names used in **precise** mode.
 #:
 #: ``watch_*`` tools are admin-only (start/stop file watchers) and are
 #: intentionally excluded from precise mode — they are not appropriate for
@@ -84,7 +84,7 @@ VESMARO_TOOLS: tuple[str, ...] = (
     "mnemos/mnemos_auto_collect_status",
 )
 
-#: Wildcard token granting all mnemos tools in one entry.
+#: Wildcard token granting all vesma tools in one entry.
 VESMARO_WILDCARD = "mnemos/*"
 
 
@@ -400,7 +400,7 @@ def wire_agent(
     *,
     dry_run: bool = False,
 ) -> WireResult:
-    """Wire a single agent file with mnemos MCP tools.
+    """Wire a single agent file with vesma MCP tools.
 
     Args:
         agent_path: Path to the ``*.agent.md`` file.
@@ -453,7 +453,7 @@ def wire_agent(
             path=agent_path,
             name=name,
             status=WireStatus.ALREADY_WIRED,
-            note=f"already has {mode} mnemos tools",
+            note=f"already has {mode} vesma tools",
         )
 
     # Build the new tools list (preserve order, append missing at end).

@@ -1,7 +1,7 @@
-"""vesmaro-canon v1.0.0 — write-path canon validator (warn/strict, canon §9).
+"""vesma-canon v1.0.0 — write-path canon validator (warn/strict, canon §9).
 
 Self-contained engine copy of the mechanical canon checks: aligned with
-vesmaro-canon ``tools/validate.py`` (schema-pass + ``x-canon-sections`` +
+vesma-canon ``tools/validate.py`` (schema-pass + ``x-canon-sections`` +
 title rules) and canon.md §5 (dates), but with NO runtime dependency on the
 canon repo — the checks and the pinned literals live HERE. The schemas'
 ``x-canon-sections`` annotations stay pinned by the drift test in

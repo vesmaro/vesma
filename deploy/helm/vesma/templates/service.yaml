@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "vesmaro.fullname" . }}
+  name: {{ include "vesma.fullname" . }}
   labels:
-    {{- include "vesmaro.labels" . | nindent 4 }}
+    {{- include "vesma.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +12,4 @@ spec:
       targetPort: http
       protocol: TCP
   selector:
-    {{- include "vesmaro.selectorLabels" . | nindent 4 }}
+    {{- include "vesma.selectorLabels" . | nindent 4 }}

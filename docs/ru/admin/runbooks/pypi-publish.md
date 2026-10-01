@@ -28,7 +28,7 @@ PyPI неизменяемы: опубликованную версию нево�
 | `vesma` | ❌ занято (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
 | `mnemos-memory` | ❌ занято (v0.6.0) | "Biomimetic memory architectures for LLMs" |
 | `mnemos-memory-server` | ✅ свободно | — |
-| `mnemos-server` | ✅ свободно | — |
+| `vesma-server` | ✅ свободно | — |
 | `vesma-mcp` | ✅ свободно | — |
 | `vesma-ai` | ✅ свободно | — |
 | `vesma-agent-memory` | ✅ свободно | — |

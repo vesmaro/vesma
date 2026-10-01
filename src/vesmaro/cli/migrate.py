@@ -6,7 +6,7 @@ Key transformations:
   - status: preserved (raw/processing/processed/published/archived)
   - source: ai-brain TELEGRAM → Vesma MCP (closest match)
   - Memory fields: parent_ids → derived_from, content_ru/content_en → metadata
-  - Config: BrainConfig → MnemosConfig (paths updated)
+  - Config: BrainConfig → VesmaConfig (paths updated)
 """
 
 from __future__ import annotations

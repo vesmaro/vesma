@@ -166,9 +166,9 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # counter or forge backoff bookkeeping by rewriting metadata. The set is
 # enumerated (not a ``pipeline_*`` prefix rule) so membership is
 # auditable in one place; a new internal key must be listed here.
-# mnemos #251 security review (P1): the server-minted checkpoint stamps
+# vesma #251 security review (P1): the server-minted checkpoint stamps
 # (CHECKPOINT_STAMP_KEYS) join this set — once ``save_checkpoint`` minted
-# them, no update path can rewrite or drop them. vesmaro-canon v1.0.0:
+# them, no update path can rewrite or drop them. vesma-canon v1.0.0:
 # ``"canon"`` (the metadata.canon envelope key) joined
 # CHECKPOINT_STAMP_KEYS, so the envelope is equally server-minted —
 # an external update cannot forge, rewrite or drop it either.
@@ -208,15 +208,15 @@ INTERNAL_METADATA_KEYS: frozenset[str] = (
 # case (see models.py).
 
 
-# mnemos #251 D0 — a session id is already bound to a different agent.
+# vesma #251 D0 — a session id is already bound to a different agent.
 # Subclasses ValueError so every caller that already maps ValueError to a
 # client error keeps working; the REST twin uses the subclass to answer
 # 409 specifically.
 class SessionAgentMismatchError(ValueError):
-    """mnemos #251 D0 — a session id is already bound to a different agent."""
+    """vesma #251 D0 — a session id is already bound to a different agent."""
 
 
-# mnemos #251 review (P3) — identity hygiene for the checkpoint channel.
+# vesma #251 review (P3) — identity hygiene for the checkpoint channel.
 # Agent: a slug (the bare-agent charset of the agent:<slug> tag contract,
 # models._AGENT_RE, without the prefix). Session: bounded print-safe
 # ASCII token (no whitespace/control chars) so a session id can never
@@ -267,7 +267,7 @@ def _lock_is_stale(locked_at_iso: str, threshold_hours: int) -> bool:
 # under-fills the top-N).
 VECTOR_LEG_OVERFETCH_FACTOR: Final[int] = 4
 
-# mnemos #282 — cap for the session-keyed first-assembly timestamp registry
+# vesma #282 — cap for the session-keyed first-assembly timestamp registry
 # (``MemoryManager._retrieval_iso``). FIFO past the cap: the registry exists
 # so a harness pinning an assembled block gets a byte-stable
 # ``retrieved=<iso>`` across one session's assemblies; past 10_000 distinct
@@ -668,7 +668,7 @@ class MemoryManager:
         # optimization, not storage).
         self._assemble_async: dict[str, tuple[dict[str, Any], str]] = {}
         self._assemble_async_lock: threading.Lock = threading.Lock()
-        # mnemos #282 — session-keyed registry of FIRST-assembly timestamps
+        # vesma #282 — session-keyed registry of FIRST-assembly timestamps
         # for the provenance ``retrieved=<iso>`` segment (see
         # :meth:`retrieval_iso`): stable within one session so the block
         # prefix stays byte-identical across the session's assemblies
@@ -1003,7 +1003,7 @@ class MemoryManager:
         return detection.error is None and not detection.positive
 
     def _canon_gate(self, memory: Memory, *, create_path: bool) -> None:
-        """vesmaro-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
+        """vesma-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
         write-path canon enforcement gate, shared by ``add`` (create) and
         ``update``.
 
@@ -1122,14 +1122,14 @@ class MemoryManager:
         keep the default ``False`` — client-controlled metadata must
         never mint rewrite quota counters.
 
-        ``trusted_checkpoint_stamps`` (mnemos #251 security review P1)
+        ``trusted_checkpoint_stamps`` (vesma #251 security review P1)
         is set ONLY by ``save_checkpoint``: the checkpoint identity
         stamps (``CHECKPOINT_STAMP_KEYS``) are server-minted. On every
         other path client-supplied copies are stripped from
         ``data.metadata`` with a warning — a forged
         ``checkpoint_dedup_key`` on a generic create must never satisfy
         a later genuine checkpoint dedup (CWE-346/345 spoofed source).
-        vesmaro-canon v1.0.0 (ADR-0003 obligation 3): a CHECKPOINT-type
+        vesma-canon v1.0.0 (ADR-0003 obligation 3): a CHECKPOINT-type
         ``"canon"`` envelope is equally server-minted — only
         ``save_checkpoint`` mints one, and a client-forged checkpoint
         envelope on a generic create never persists. Cascade review
@@ -1172,8 +1172,8 @@ class MemoryManager:
         # else). Raises ValueError (fail-loud, never normalizes).
         doc_grouping_from_metadata(data.metadata)
 
-        # ── mnemos #251 review P1: strip client-forgeable stamps ────────
-        # vesmaro-canon v1.0.0: the CHECKPOINT envelope is a stamp too —
+        # ── vesma #251 review P1: strip client-forgeable stamps ────────
+        # vesma-canon v1.0.0: the CHECKPOINT envelope is a stamp too —
         # a client-forged checkpoint-type metadata.canon must never land
         # on a generic create; only save_checkpoint mints it (canon §2,
         # ADR-0003 obligation 3, the same server-minted-only discipline).
@@ -1194,7 +1194,7 @@ class MemoryManager:
             if forged:
                 logger.warning(
                     "generic create: stripped client-supplied checkpoint stamps "
-                    "(server-minted only, mnemos #251 review P1 + canon v1.0.0): "
+                    "(server-minted only, vesma #251 review P1 + canon v1.0.0): "
                     "keys=%s",
                     forged,
                 )
@@ -1443,10 +1443,10 @@ class MemoryManager:
         # see INTERNAL_METADATA_KEYS) is merged back on top so a caller
         # can neither reset a retry budget nor forge backoff state.
         if "metadata" in update_kwargs:
-            # mnemos #251 review P1: checkpoint stamps are server-minted —
+            # vesma #251 review P1: checkpoint stamps are server-minted —
             # drop any client-supplied copies BEFORE the merge-back so
             # they cannot land on a row that never had them either.
-            # vesmaro-canon v1.0.0: the CHECKPOINT envelope is a stamp
+            # vesma-canon v1.0.0: the CHECKPOINT envelope is a stamp
             # too — an external update can neither forge nor drop a
             # minted checkpoint metadata.canon (the merge-back below
             # restores it). Cascade review SEC P2-2 (canon §2): the strip
@@ -1466,7 +1466,7 @@ class MemoryManager:
             if forged:
                 logger.warning(
                     "update: stripped client-supplied checkpoint stamps "
-                    "(server-minted only, mnemos #251 review P1 + canon v1.0.0): "
+                    "(server-minted only, vesma #251 review P1 + canon v1.0.0): "
                     "id=%s keys=%s",
                     memory_id[:8],
                     forged,
@@ -1667,7 +1667,7 @@ class MemoryManager:
         self.vectors.delete(memory_id)
         return self.sqlite.delete(memory_id)
 
-    # ── Workflow lifecycle (mnemos #96) ────────────────────────────────────
+    # ── Workflow lifecycle (vesma #96) ────────────────────────────────────
     #
     # Server-side enforcement of the workflow state machine. The MCP tool
     # (mnemos_workflow tool route) and the REST endpoints (/memories/{id}/workflow) are
@@ -2121,7 +2121,7 @@ class MemoryManager:
                 (``pipeline_state='refined'``); NULL/legacy pipeline_state rows
                 never match. Composable with every status mode above.
 
-                mnemos #400 — the QUERY boundary normalizes a non-empty
+                vesma #400 — the QUERY boundary normalizes a non-empty
                 ``project`` with :func:`vesmaro.models.normalize_project_slug`
                 (single authority: the same normalization the checkpoint save
                 boundary and the tag-contract lax mode apply), so a
@@ -3120,7 +3120,7 @@ class MemoryManager:
         to surface recently-added entries regardless of pipeline status.
         The recency path (no query) already has no status filter.
 
-        mnemos #400 — ``query.project`` is normalized at the boundary
+        vesma #400 — ``query.project`` is normalized at the boundary
         (single authority): the search leg inherits ``search``'s own
         normalization, the recency leg normalizes here so
         ``list_recent_for_agent`` predicates on the canonical slug.
@@ -3187,7 +3187,7 @@ class MemoryManager:
         then the top ``limit`` are returned. When ``query`` is omitted,
         checkpoints are returned by recency only.
 
-        mnemos #400 — the QUERY boundary normalizes the project slug with
+        vesma #400 — the QUERY boundary normalizes the project slug with
         :func:`vesmaro.models.normalize_project_slug` (the single
         authority, the same normalization the save boundary and the tag
         contract lax mode apply). A checkpoint saved as ``MyProject`` and
@@ -3195,7 +3195,7 @@ class MemoryManager:
         never diverge from the write surface. Fail-loud on an
         unsalvageable slug: a contract-invalid project means the caller
         asked for a namespace that cannot exist. An empty project stays
-        the pre-existing global recency listing (CLI ``mnemos recall`` — legacy CLI name
+        the pre-existing global recency listing (CLI ``vesma recall`` — legacy CLI name
         with no ``--project`` on an empty vault relies on it; the MCP
         tool always passes a concrete project via the ``_detect_project``
         fallback).
@@ -3263,7 +3263,7 @@ class MemoryManager:
         memories.sort(key=lambda m: m.created_at, reverse=True)
         return memories[:limit]
 
-    # ── Checkpoint channel identity (mnemos #251 D0) ────────────────────
+    # ── Checkpoint channel identity (vesma #251 D0) ────────────────────
 
     def save_checkpoint(
         self,
@@ -3297,7 +3297,7 @@ class MemoryManager:
            normalised to ``""``) — NOT over the rendered markdown, which
            embeds a fresh timestamp and would never collide. A hit
            returns the EXISTING memory with ``duplicate=True`` and stores
-           nothing. NOTE (vesmaro-canon v1.0.0): the payload does NOT
+           nothing. NOTE (vesma-canon v1.0.0): the payload does NOT
            include ``language`` — a dedup hit returns the first-minted
            row with its own envelope, the new call's language never
            rewrites a stored record (canon §10, new-records-only).
@@ -3308,7 +3308,7 @@ class MemoryManager:
         5. Store with server-controlled metadata stamps
            (``checkpoint_agent`` / ``checkpoint_session`` /
            ``checkpoint_dedup_key``) PLUS the canon v1.0.0 envelope
-           (``metadata.canon``, vesmaro-canon ADR-0003 obligation 3):
+           (``metadata.canon``, vesma-canon ADR-0003 obligation 3):
            ``schema_version="1"``, ``type="checkpoint"``,
            ``status="active"``, ``language=<the language below>``,
            ``session_ref=<session or null>``. The stamps and the
@@ -3335,7 +3335,7 @@ class MemoryManager:
         contract's always-fatal multiple-``task:`` check remains the
         invariant's last line of defense on every other write path.
 
-        ``language`` (vesmaro-canon v1.0.0, ADR-0003 obligation 4):
+        ``language`` (vesma-canon v1.0.0, ADR-0003 obligation 4):
         primary language of the record body — canon §2 enum ``"ru"``
         /``"en"``, NO heuristics. ``None`` (the default) falls back to the
         ``vesmaro.mnemos.checkpoint_language`` config value. Every call MUST land
@@ -3373,7 +3373,7 @@ class MemoryManager:
                 f"(got {len(session)} chars)"
             )
 
-        # mnemos #400 — project slug: normalize at the SAVE boundary (the
+        # vesma #400 — project slug: normalize at the SAVE boundary (the
         # single-authority doctrine of #263, applied to slugs). The MCP tool
         # and the REST twin pass ``project`` directly (NOT through the tag
         # contract like the ``mnemos_add`` tool does), so without this gate a
@@ -3414,7 +3414,7 @@ class MemoryManager:
             bound_agent = self.sqlite.bind_session_agent(session, resolved_agent)
             if bound_agent != resolved_agent:
                 logger.warning(
-                    "checkpoint binding mismatch (mnemos #251): session=%r bound_agent=%r "
+                    "checkpoint binding mismatch (vesma #251): session=%r bound_agent=%r "
                     "claimed_agent=%r — refused",
                     session,
                     bound_agent,
@@ -3437,7 +3437,7 @@ class MemoryManager:
         )
         if existing is not None:
             logger.info(
-                "checkpoint dedup hit (mnemos #251): project=%r agent=%r id=%s",
+                "checkpoint dedup hit (vesma #251): project=%r agent=%r id=%s",
                 project,
                 resolved_agent,
                 existing.id,
@@ -3445,7 +3445,7 @@ class MemoryManager:
             return existing, True
 
         # 5. Build and store — content format unchanged from the legacy
-        # hardcoded-agent surfaces EXCEPT (vesmaro-canon v1.0.0, ArchCom
+        # hardcoded-agent surfaces EXCEPT (vesma-canon v1.0.0, ArchCom
         # option A): every section is ALWAYS rendered, in
         # CHECKPOINT_FIELDS order, so the stored body satisfies canon §3
         # ("the body must contain all five `^## <Name>$` headers"). An
@@ -3515,7 +3515,7 @@ class MemoryManager:
     ) -> list[Memory]:
         """Most recent memories (REST ``GET /memories``, MCP ``mnemos_list_recent``).
 
-        mnemos #400 — the QUERY boundary normalizes a non-empty
+        vesma #400 — the QUERY boundary normalizes a non-empty
         ``project`` (single authority, same as ``search`` /
         ``recall_context``); ``None``/empty stays the unscoped listing.
 
@@ -3730,7 +3730,7 @@ class MemoryManager:
     ) -> dict[str, Any]:
         """Bulk rename tags matching ``from_prefix:<subtype>`` → ``to_prefix:<subtype>``.
 
-        Replaces the unsafe legacy ``mnemos migrate tags`` path (which used raw
+        Replaces the unsafe legacy ``vesma migrate tags`` path (which used raw
         ``sqlite3`` writes and bypassed the FTS5 ``AFTER UPDATE`` trigger).
         This method goes through ``SQLiteStore.update_fields`` (a plain
         ``UPDATE``), so the FTS5 external-content index stays consistent —
@@ -3777,7 +3777,7 @@ class MemoryManager:
             the stored vectors still point to the same memory ids and the
             FTS5 leg (which DOES reflect the new tags via the AFTER UPDATE
             trigger) carries tag-filtered queries. If exact tag-vector
-            alignment is required, run ``mnemos reindex`` (CLI legacy name) afterwards.
+            alignment is required, run ``vesma reindex`` (CLI legacy name) afterwards.
         """
         from vesmaro.models import VESMARO_TAG_SUBTYPES
         from vesmaro.traces import TraceRecorder
@@ -4414,7 +4414,7 @@ class MemoryManager:
         }
 
     def dashboard_stats(self) -> dict[str, Any]:
-        """Structured JSON for the mnemos-eyes dashboard.
+        """Structured JSON for the vesma-eyes dashboard.
 
         Aggregates volume, filter, pipeline, search, vectors, sessions.
         """
@@ -4787,7 +4787,7 @@ class MemoryManager:
     ) -> dict[str, Any]:
         """Re-apply the context filter to all (or a batch of) memories.
 
-        Used by `mnemos filter --all`. Iterates memories in batches via
+        Used by `vesma filter --all`. Iterates memories in batches via
         ``sqlite.list_all`` and calls ``apply_context_filter`` on each.
         Failures on individual memories are non-fatal and counted.
 
@@ -6105,7 +6105,7 @@ class MemoryManager:
     def retrieval_iso(self, session: str) -> str:
         """Session-scoped first-assembly ISO stamp for ``retrieved=<iso>``.
 
-        mnemos #282: the provenance timestamp must be STABLE within one
+        vesma #282: the provenance timestamp must be STABLE within one
         session's lifetime (byte-stable block prefixes for harness-side
         KV caching) and DIFFERENT across sessions. The first assembly of
         a session stamps ``now()`` and caches it; every later assembly of

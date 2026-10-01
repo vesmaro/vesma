@@ -32,13 +32,13 @@ purge ниже. Удаление audit-строк — осознанное ре�
 
 ```bash
 # 1. Посмотреть текущее состояние
-vesmaro edge-stats stats
+vesma edge-stats stats
 
 # 2. Dry run — отчёт что БЫЛО БЫ удалено, ничего не пишет (по умолчанию)
-vesmaro edge-stats purge --keep-last 100000
+vesma edge-stats purge --keep-last 100000
 
 # 3. Проверить проекцию и выполнить
-vesmaro edge-stats purge --keep-last 100000 --apply
+vesma edge-stats purge --keep-last 100000 --apply
 ```
 
 `--keep-last N` обязателен и не имеет значения по умолчанию —
@@ -67,4 +67,4 @@ vesmaro edge-stats purge --keep-last 100000 --apply
 
 - Захват возобновляется автоматически (рестарт не нужен) — cap
   проверяется на каждое событие.
-- Перепроверить: `vesmaro edge-stats stats`.
+- Перепроверить: `vesma edge-stats stats`.

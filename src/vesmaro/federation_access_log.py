@@ -91,7 +91,7 @@ class FederationAccessLog:
     interleave lines, not corrupt individual entries.
 
     The log is **never** exported, **never** synced to peers, and
-    **never** included in ``vesma export`` (CLI legacy: ``mnemos export``). It is a leak surface
+    **never** included in ``vesma export`` (CLI legacy: ``vesma export``). It is a leak surface
     (contract §10 "Где хранится").
     """
 

@@ -24,7 +24,7 @@ Marker format
 The marker is the *only* overhead added on top of the filtered content.
 It is short, parseable, and LLM-friendly. Its full span
 (``CCR_MARKER_RE``) is ATOMIC downstream: the CacheAligner protects it
-from dynamic-span extraction in every profile (mnemos #282) — a marker
+from dynamic-span extraction in every profile (vesma #282) — a marker
 whose 64-hex hash is relocated to a trailing block is unreadable and
 breaks the ``mnemos_retrieve`` round-trip.
 """
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Marker: [compressed: <hash> | 5000→500 chars | retrieve via mnemos_retrieve]
-# Exported (mnemos #282): the CacheAligner consumes this SAME pattern to
+# Exported (vesma #282): the CacheAligner consumes this SAME pattern to
 # treat CCR marker spans as atomic protected regions — never duplicate the
 # shape in another module (single source of truth for what a marker is).
 CCR_MARKER_RE: re.Pattern[str] = re.compile(

@@ -1,9 +1,9 @@
-# vesmaro-core.container — quadlet for the CONTAINER install (rootless,
-# systemd --user). Rendered by `vesmaro-node container-install`.
+# vesma-core.container — quadlet for the CONTAINER install (rootless,
+# systemd --user). Rendered by `vesma-node container-install`.
 # Container = code only; data/configs/pki live on the HOST (bind-mounts).
 [Unit]
-Description=vesmaro core container — memory server 127.0.0.1:@@PORT@@
-Documentation=https://github.com/vesmaro/vesmaro
+Description=vesma core container — memory server 127.0.0.1:@@PORT@@
+Documentation=https://github.com/vesmaro/vesma
 After=network-online.target
 Wants=network-online.target
 
@@ -18,13 +18,13 @@ ContainerName=@@NAME@@-core
 # Bridge + published ports is the planned follow-up (README).
 Network=host
 # ADR-0031 dual prefix: 4.x images read MNEMOS_CONFIG, 5.x+ VESMARO_CONFIG.
-Environment=MNEMOS_CONFIG=/etc/vesmaro/node.yaml
-Environment=VESMARO_CONFIG=/etc/vesmaro/node.yaml
+Environment=MNEMOS_CONFIG=/etc/vesma/node.yaml
+Environment=VESMARO_CONFIG=/etc/vesma/node.yaml
 # Port hint for the image HEALTHCHECK (inert for the server itself: the
 # mounted YAML file wins over env — that is why the config is mounted).
 Environment=MNEMOS_API__PORT=@@PORT@@
 Environment=VESMARO_API__PORT=@@PORT@@
-Volume=@@CONFDIR@@/node.container.yaml:/etc/vesmaro/node.yaml:ro
+Volume=@@CONFDIR@@/node.container.yaml:/etc/vesma/node.yaml:ro
 Volume=@@DATADIR@@/data:/data
 Volume=@@DATADIR@@/vault:/vault
 @@MESH_VOLUMES@@

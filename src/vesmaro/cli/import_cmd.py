@@ -1,4 +1,4 @@
-"""``mnemos import`` CLI subcommand — thin Typer wrapper over import logic.
+"""``vesma import`` CLI subcommand — thin Typer wrapper over import logic.
 
 Delegates to :mod:`vesmaro.cli.import_` for the actual import logic.
 """

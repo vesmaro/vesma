@@ -32,13 +32,13 @@ the decision itself is recorded (see the audit stamp below).
 
 ```bash
 # 1. Inspect the current state
-vesmaro edge-stats stats
+vesma edge-stats stats
 
 # 2. Dry run — reports what WOULD be dropped, writes nothing (default)
-vesmaro edge-stats purge --keep-last 100000
+vesma edge-stats purge --keep-last 100000
 
 # 3. Review the projection, then execute
-vesmaro edge-stats purge --keep-last 100000 --apply
+vesma edge-stats purge --keep-last 100000 --apply
 ```
 
 `--keep-last N` is required and has no default by design: retention is
@@ -67,4 +67,4 @@ insertion order as tiebreak) survive; everything older is dropped.
 
 - Capture resumes automatically (no restart needed) — the cap is
   checked per event.
-- Re-check with `vesmaro edge-stats stats`.
+- Re-check with `vesma edge-stats stats`.

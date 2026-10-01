@@ -1,4 +1,4 @@
-"""``mnemos import`` — restore memories from a JSON or SQLite export.
+"""``vesma import`` — restore memories from a JSON or SQLite export.
 
 Two modes:
 

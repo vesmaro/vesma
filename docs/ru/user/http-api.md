@@ -209,7 +209,7 @@ curl -s http://127.0.0.1:8000/tags
 
 ### `POST /tags/rename` — массовое переименование префикса тегов
 
-Переименовывает все теги вида `from_prefix:<subtype>` → `to_prefix:<subtype>` (кейс миграции GCW → mnemos). Зеркалирует MCP-инструмент `mnemos_tags_rename` и CLI-команду `vesma tags rename`. Безопасно по построению: обычный `UPDATE` (FTS5-индекс external content остаётся консистентным), и `dry_run` по умолчанию `true` — ничего не пишется, пока вызывающий явно не передаст `dry_run: false`.
+Переименовывает все теги вида `from_prefix:<subtype>` → `to_prefix:<subtype>` (кейс миграции GCW → vesma). Зеркалирует MCP-инструмент `mnemos_tags_rename` и CLI-команду `vesma tags rename`. Безопасно по построению: обычный `UPDATE` (FTS5-индекс external content остаётся консистентным), и `dry_run` по умолчанию `true` — ничего не пишется, пока вызывающий явно не передаст `dry_run: false`.
 
 **Тело запроса**
 
@@ -575,7 +575,7 @@ curl -s -X POST http://127.0.0.1:8000/context/recall \
 ### `POST /context/assemble` — сборка контекстного блока перед вызовом LLM
 
 Зеркало MCP-инструмента `mnemos_assemble_context` через тот же путь менеджера
-(mnemos #125, волна 1). Фиксированный конвейер: гибридный RRF recall
+(vesma #125, волна 1). Фиксированный конвейер: гибридный RRF recall
 (статусный гейт инварианта входа — наружу выходят только `published`/
 `processed`) → опциональный разворот CCR-маркеров → контекстный фильтр →
 **обязательный** скан секретов (редакции считаются по блокам; refuse-режим
@@ -626,7 +626,7 @@ curl -s -X POST http://127.0.0.1:8000/context/assemble \
 ### `POST /context/rewrite` — сообщить о перезаписи контекста (ADR-0018)
 
 Зеркало MCP-инструмента `mnemos_context_rewrite` через тот же путь менеджера
-(mnemos #125, волна 2). Харнесс сообщает, что перезаписал блок своего
+(vesma #125, волна 2). Харнесс сообщает, что перезаписал блок своего
 рабочего контекста; оригинал без поток попадает в LTM через обычный
 knowledge-конвейер (входит как `raw`, в контексте достижим только после
 продвижения конвейером), идемпотентен по content-addressed ключу события,
@@ -710,7 +710,7 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
 | `tool_name` | string | `post_tool_call` | — | Инструмент, породивший вывод. |
 | `output_text` | string | `post_tool_call` | — | Сырой вывод инструмента для сжатия. |
 | `auto_compress` | boolean | нет | ручка | `post_tool_call`: точечное переопределение `hooks.auto_compress` (по умолчанию `false`). |
-| `include_awareness` | boolean | нет | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): скомпоновать секцию awareness-дельты И «операционную картину» swarm v0a/v0b (наблюдаемые счётчики/ids/времена плюс заявленная каждым соседом задача — самоподанное утверждение с меткой `[unverified]`) — добавляются ПОСЛЕДНИМИ, никогда не закрепляются; курсор awareness двигается только в `pre_llm_call`. Выключено (по умолчанию) = байт-идентичный вывод. Кап частоты по `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, по умолчанию 30) — при превышении деградация в rate-limit-строку, никогда 5xx. |
+| `include_awareness` | boolean | нет | `false` | `pre_llm_call`/`on_session_start` (vesma #254): скомпоновать секцию awareness-дельты И «операционную картину» swarm v0a/v0b (наблюдаемые счётчики/ids/времена плюс заявленная каждым соседом задача — самоподанное утверждение с меткой `[unverified]`) — добавляются ПОСЛЕДНИМИ, никогда не закрепляются; курсор awareness двигается только в `pre_llm_call`. Выключено (по умолчанию) = байт-идентичный вывод. Кап частоты по `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, по умолчанию 30) — при превышении деградация в rate-limit-строку, никогда 5xx. |
 | `profile` | string | нет | авто | `post_tool_call`: подсказка профиля фильтра. |
 
 **Пример**
@@ -1135,7 +1135,7 @@ curl -s "http://127.0.0.1:8000/graph/status/vesma?agent=ci-runner"
   "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1174,8 +1174,8 @@ BFS по рёбрам графа от одного символа (разреш�
   "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
-  "nodes": [ { "id": "mnemos#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
-  "edges": [ { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
+  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
+  "edges": [ { "from": "vesma#…#window_rows#158", "to": "vesma#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
   "truncated": false,
   "cursor": 0,
   "has_more": false,
@@ -1814,9 +1814,9 @@ Pydantic-модель `Memory` (определена в `src/vesmaro/models.py`)
 Для генерации статического клиента — скачайте схему и выполните [`openapi-generator`](https://openapi-generator.tech/):
 
 ```bash
-curl -s http://127.0.0.1:8000/openapi.json -o mnemos-openapi.json
+curl -s http://127.0.0.1:8000/openapi.json -o vesma-openapi.json
 npx @openapitools/openapi-generator-cli generate \
-  -i mnemos-openapi.json -g typescript-fetch -o ./mnemos-client
+  -i vesma-openapi.json -g typescript-fetch -o ./mnemos-client
 ```
 
 ---

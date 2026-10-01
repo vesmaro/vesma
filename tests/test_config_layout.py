@@ -18,9 +18,9 @@ from pydantic import ValidationError
 from vesmaro.config import (
     FederationConfig,
     LoggingConfig,
-    MnemosConfig,
     PeerConfig,
     Settings,
+    VesmaConfig,
     load_settings,
 )
 
@@ -29,19 +29,19 @@ from vesmaro.config import (
 
 def test_default_vault_path_is_consolidated() -> None:
     """Default vault_path should be ~/.mnemos/vault, not ~/mnemos-vault."""
-    cfg = MnemosConfig()
+    cfg = VesmaConfig()
     assert str(cfg.vault_path) == "~/.mnemos/vault"
 
 
 def test_default_data_dir_is_consolidated() -> None:
     """Default data_dir should be ~/.mnemos/data, not ~/.vesmaro."""
-    cfg = MnemosConfig()
+    cfg = VesmaConfig()
     assert str(cfg.data_dir) == "~/.mnemos/data"
 
 
 def test_default_db_name_unchanged() -> None:
     """db_name stays 'mnemos.db' — it's now under data_dir."""
-    cfg = MnemosConfig()
+    cfg = VesmaConfig()
     assert cfg.db_name == "mnemos.db"
 
 

@@ -1,4 +1,4 @@
-"""Workflow lifecycle state machine for memories (mnemos #96).
+"""Workflow lifecycle state machine for memories (vesma #96).
 
 Separates mutable *workflow state* (this module: open → in-progress → done,
 blocked/resolved, terminal states) from append-only *classification* (the
@@ -10,7 +10,7 @@ manager. ``MemoryManager.workflow_set`` is the ONLY place that calls
 ``validate_transition`` before writing — enforcement is server-side, so
 neither the MCP tool nor the REST endpoints can bypass it.
 
-State diagram (mnemos #96, ArchCom 2026-07-18)::
+State diagram (vesma #96, ArchCom 2026-07-18)::
 
     open ─────────────▶ in-progress ─────────────▶ done          (normal path)
              ▲              │   ▲
@@ -34,7 +34,7 @@ from enum import StrEnum
 
 
 class WorkflowStatus(StrEnum):
-    """Lifecycle states for a memory's workflow (mnemos #96).
+    """Lifecycle states for a memory's workflow (vesma #96).
 
     Distinct from ``MemoryStatus`` (raw/processing/processed/published/
     archived), which tracks the *knowledge-pipeline* stage. ``WorkflowStatus``

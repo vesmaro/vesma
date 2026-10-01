@@ -1,5 +1,5 @@
 [Unit]
-Description=Mnemos — auto-cron federation bridge (#104) sync-peers.sh
+Description=Vesma — auto-cron federation bridge (#104) sync-peers.sh
 Documentation=file:///usr/share/doc/mnemos/admin/ssh-sync-hardening.md
 After=network-online.target
 Wants=network-online.target
@@ -14,7 +14,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
-ReadWritePaths=/var/lib/mnemos-sync /var/log/mnemos-sync.log
+ReadWritePaths=/var/lib/mnemos-sync /var/log/vesma-sync.log
 StandardOutput=journal
 StandardError=journal
 

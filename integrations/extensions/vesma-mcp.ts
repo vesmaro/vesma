@@ -4,7 +4,7 @@
  * Pi (npm @earendil-works/pi-coding-agent)
  * has no built-in MCP client by design: tools arrive via TypeScript
  * extensions. This extension spawns `vesma mcp-server` over stdio (the
- * legacy `mnemos` binary is accepted in the dual period), performs
+ * legacy `vesma` binary is accepted in the dual period), performs
  * the MCP handshake and registers every `vesma_*` tool as a native Pi tool
  * (legacy `mnemos_*` names from server builds before 6.0 get the same
  * treatment — the registration is generic over the server's tools/list).
@@ -14,7 +14,7 @@
  *
  * Deployed by:  vesma integration setup --target pi
  * Location:     ~/.pi/agent/extensions/vesma-mcp.ts
- * Requires:     `vesma` on PATH (legacy `mnemos` accepted; override with MNEMOS_BIN).
+ * Requires:     `vesma` on PATH (legacy `vesma` accepted; override with MNEMOS_BIN).
  * Reload:       /reload  (Pi hot-reloads extensions) or /mnemos to reconnect.
  */
 
@@ -28,7 +28,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-// Brand-primary server binary; the legacy `mnemos` binary is accepted in the
+// Brand-primary server binary; the legacy `vesma` binary is accepted in the
 // dual period (engine manifest `command: vesma`). MNEMOS_BIN overrides both.
 const MNEMOS_BIN = process.env.MNEMOS_BIN ?? "vesma";
 const REQ_TIMEOUT_MS = 60_000;
@@ -53,7 +53,7 @@ interface McpTool {
 	inputSchema?: Record<string, unknown>;
 }
 
-export default function mnemosMcpBridge(pi: ExtensionAPI) {
+export default function vesmaMcpBridge(pi: ExtensionAPI) {
 	let child: ChildProcess | null = null;
 	let nextId = 1;
 	let buffer = "";
@@ -66,7 +66,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 
 	// ── JSON-RPC plumbing ──────────────────────────────────────────────────
 	function send(obj: unknown): void {
-		if (!child?.stdin?.writable) throw new Error("mnemos MCP: stdin not writable");
+		if (!child?.stdin?.writable) throw new Error("vesma MCP: stdin not writable");
 		child.stdin.write(JSON.stringify(obj) + "\n");
 	}
 
@@ -75,7 +75,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
 				pending.delete(id);
-				reject(new Error(`mnemos MCP: timeout on ${method}`));
+				reject(new Error(`vesma MCP: timeout on ${method}`));
 			}, REQ_TIMEOUT_MS);
 			pending.set(id, { resolve, reject, timer });
 			send({ jsonrpc: "2.0", id, method, params });
@@ -128,7 +128,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 			started = false;
 			for (const [, p] of pending) {
 				clearTimeout(p.timer);
-				p.reject(new Error("mnemos MCP: server exited"));
+				p.reject(new Error("vesma MCP: server exited"));
 			}
 			pending.clear();
 		});
@@ -136,7 +136,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 		await request("initialize", {
 			protocolVersion: "2024-11-05",
 			capabilities: {},
-			clientInfo: { name: "pi-mnemos-bridge", version: "1.0.0" },
+			clientInfo: { name: "pi-vesma-bridge", version: "1.0.0" },
 		});
 		send({ jsonrpc: "2.0", method: "notifications/initialized" });
 		const res = await request("tools/list", {});
@@ -155,7 +155,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 		pi.registerTool({
 			name: tool.name,
 			label: tool.name.replace(/^(?:mnemos_|vesma_)/, "🧠 "),
-			description: tool.description ?? `mnemos MCP tool ${tool.name}`,
+			description: tool.description ?? `vesma MCP tool ${tool.name}`,
 			promptSnippet: `Persistent shared memory: ${tool.description?.slice(0, 120) ?? tool.name}`,
 			parameters: schema as never,
 			async execute(_toolCallId: string, params: unknown) {
@@ -210,7 +210,7 @@ export default function mnemosMcpBridge(pi: ExtensionAPI) {
 
 	// Manual control: /vesma (brand-primary; docs reference it) and the
 	// legacy /mnemos alias reconnect the bridge and re-register tools.
-	for (const cmd of ["vesma", "mnemos"]) {
+	for (const cmd of ["vesma", "vesma"]) {
 		pi.registerCommand(cmd, {
 			description: "Reconnect the vesma MCP memory bridge",
 			handler: async (_args: string, ctx: any) => connect(ctx),

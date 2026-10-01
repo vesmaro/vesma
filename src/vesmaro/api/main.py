@@ -96,7 +96,7 @@ def get_manager(config: str | None = None) -> MemoryManager:
     ``config`` is only consulted on the FIRST call (when the singleton
     is constructed); later calls return the cached instance and ignore
     it — same semantics as :func:`vesmaro.cli._manager.get_manager`.
-    Added for the native mesh serve wiring (W2) so ``vesmaro serve
+    Added for the native mesh serve wiring (W2) so ``vesma serve
     --config …`` can seed the singleton MeshServer shares with the
     in-process HTTP app; callers that pass nothing keep the old
     config-discovery behaviour.
@@ -246,12 +246,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ── Dashboard / metrics (mnemos-eyes, Vesma dashboard) ─────────────────────────────────────────
+# ── Dashboard / metrics (vesma-eyes, Vesma dashboard) ─────────────────────────────────────────
 
 
 @app.get("/api/v1/stats")
 async def dashboard_stats() -> dict[str, Any]:
-    """Structured JSON dashboard data for mnemos-eyes (Vesma dashboard)."""
+    """Structured JSON dashboard data for vesma-eyes (Vesma dashboard)."""
     return get_manager().dashboard_stats()
 
 
@@ -912,7 +912,7 @@ async def list_tags() -> list[TagCount]:
 async def rename_tags(req: TagsRenameRequest) -> dict[str, Any]:
     """Bulk rename tags matching ``from_prefix:<subtype>`` → ``to_prefix:<subtype>``.
 
-    Mirrors the ``mnemos_tags_rename`` MCP tool and the ``mnemos tags rename``
+    Mirrors the ``mnemos_tags_rename`` MCP tool and the ``vesma tags rename``
     CLI command. Safe: uses ``update_fields`` (plain UPDATE) so the FTS5
     external-content index stays consistent. ``dry_run=true`` by default —
     nothing is written unless the caller explicitly sets ``dry_run=false``.
@@ -1009,7 +1009,7 @@ class SaveContextRequest(BaseModel):
     ``type: array, items: {type: string}`` and the MCP tool which accepts
     free-form strings (bullet lists).
 
-    mnemos #251 D0 — optional ``agent``/``session`` are the validated
+    vesma #251 D0 — optional ``agent``/``session`` are the validated
     identity channel (agent defaults to ``"user"``, today's behaviour);
     validation, session→agent binding and dedup live in
     ``MemoryManager.save_checkpoint`` (single authority).
@@ -1028,7 +1028,7 @@ class SaveContextRequest(BaseModel):
     # at the single manager save boundary (at most one task per record).
     # Normalized / fail-loud there (the #407 canon); ValueError → 400.
     task: str | None = None
-    # vesmaro-canon v1.0.0 (ADR-0003 obligation 4) — the per-call
+    # vesma-canon v1.0.0 (ADR-0003 obligation 4) — the per-call
     # override of the server-configured checkpoint body language
     # (``mnemos.checkpoint_language``); validated at the manager
     # boundary (canon enum, ValueError → 400).
@@ -1114,7 +1114,7 @@ async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
     """Recall the most recent checkpoint memories for a project.
 
     Mirrors the ``mnemos_recall_context`` MCP tool: the project slug is
-    normalized at the manager's query boundary (mnemos #400) and an
+    normalized at the manager's query boundary (vesma #400) and an
     unsalvageable slug raises ``ValueError`` there — mapped to HTTP 400
     here, mirroring the save twin's mapping above.
     """
@@ -1161,7 +1161,7 @@ async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
 
 @app.post("/context/assemble")
 async def assemble_context(req: AssembleContextRequest) -> dict[str, Any]:
-    """Assemble the model-facing context block (ADR-0017 D1, mnemos #125).
+    """Assemble the model-facing context block (ADR-0017 D1, vesma #125).
 
     Mirrors the ``mnemos_assemble_context`` MCP tool over the same manager
     path: fixed pipeline (recall → optional CCR expansion → filter →
@@ -1269,7 +1269,7 @@ class HooksRequest(BaseModel):
     output_text: str | None = None
     auto_compress: bool | None = None
     profile: str | None = None
-    # pre_llm_call / on_session_start (mnemos #254 awareness composition)
+    # pre_llm_call / on_session_start (vesma #254 awareness composition)
     include_awareness: bool = False
 
 
@@ -1687,7 +1687,7 @@ async def api_export(
         media = "application/octet-stream"
         suffix = "enc"
 
-    filename = f"mnemos-export.{suffix}"
+    filename = f"vesma-export.{suffix}"
     return StreamingResponse(
         io.BytesIO(payload_bytes),
         media_type=media,

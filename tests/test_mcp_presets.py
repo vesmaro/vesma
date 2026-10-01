@@ -35,14 +35,14 @@ PRESETS = REPO_ROOT / "integrations" / "mcp-presets.md"
 TEMPLATE = REPO_ROOT / "integrations" / "adapter-template.md"
 
 #: The wire contract every preset/fragment must carry (ADR-0017 D1).
-CANONICAL_COMMAND = "mnemos"
+CANONICAL_COMMAND = "vesma"
 CANONICAL_ARGS = ["mcp-server"]
 CANONICAL_TYPE = "stdio"
 
 #: The OpenCode local-server contract (its native "mcp" map shape, #231):
 #: one argv array instead of command/args, and type "local" instead of
 #: "stdio".
-CANONICAL_OPENCODE_COMMAND = ["mnemos", "mcp-server"]
+CANONICAL_OPENCODE_COMMAND = ["vesma", "mcp-server"]
 CANONICAL_OPENCODE_TYPE = "local"
 
 #: Harness config paths the presets must keep naming correctly.
@@ -107,26 +107,26 @@ def assert_opencode_server_entry(entry: object) -> None:
 
 
 def parse_json_fragment(block: str) -> dict[str, object]:
-    """Parse a `"mnemos": {…}` fragment line by wrapping it in an object."""
+    """Parse a `"vesma": {…}` fragment line by wrapping it in an object."""
     payload = json.loads("{" + block.strip() + "}")
     assert isinstance(payload, dict)
     return payload
 
 
 def dig_server(payload: dict[str, object]) -> object:
-    """Extract the mnemos entry from an mcpServers/servers config file."""
+    """Extract the vesma entry from an mcpServers/servers config file."""
     for key in ("mcpServers", "servers"):
         servers = payload.get(key)
-        if isinstance(servers, dict) and "mnemos" in servers:
-            return servers["mnemos"]
-    raise AssertionError(f"no mcpServers.mnemos in payload: {payload!r}")
+        if isinstance(servers, dict) and "vesma" in servers:
+            return servers["vesma"]
+    raise AssertionError(f"no mcpServers.vesma in payload: {payload!r}")
 
 
 def assert_toml_server_table(block: str) -> None:
     """Assert a Codex-style TOML block defines the canonical entry."""
     data = tomllib.loads(block)
-    entry = data.get("mcp_servers", {}).get("mnemos")
-    assert isinstance(entry, dict), f"no [mcp_servers.mnemos] table in: {block!r}"
+    entry = data.get("mcp_servers", {}).get("vesma")
+    assert isinstance(entry, dict), f"no [mcp_servers.vesma] table in: {block!r}"
     assert entry.get("command") == CANONICAL_COMMAND
     assert entry.get("args") == CANONICAL_ARGS
 
@@ -154,7 +154,7 @@ def test_presets_json_blocks_match_wire_contract() -> None:
     for block in blocks:
         stripped = block.strip()
         if stripped.startswith('"'):
-            entry = parse_json_fragment(stripped)["mnemos"]
+            entry = parse_json_fragment(stripped)["vesma"]
         else:
             entry = dig_server(json.loads(stripped))
         if isinstance(entry, dict) and entry.get("type") == CANONICAL_OPENCODE_TYPE:
@@ -187,7 +187,7 @@ def test_presets_claude_one_liner_shape() -> None:
     add_blocks = [b for b in blocks if "claude mcp add" in b]
     assert add_blocks, "no `claude mcp add` one-liner found"
     for block in add_blocks:
-        assert "-- mnemos mcp-server" in block
+        assert "-- vesma mcp-server" in block
 
 
 def test_presets_no_secrets_in_examples() -> None:
@@ -223,7 +223,7 @@ def test_template_config_blocks_match_wire_contract() -> None:
     for block in json_blocks:
         stripped = block.strip()
         if stripped.startswith('"'):
-            entry = parse_json_fragment(stripped)["mnemos"]
+            entry = parse_json_fragment(stripped)["vesma"]
         else:
             entry = dig_server(json.loads(stripped))
         assert_json_server_entry(entry)

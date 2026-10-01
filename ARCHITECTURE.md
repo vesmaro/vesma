@@ -1,10 +1,10 @@
-# Mnemos — architecture
+# Vesma — architecture
 
 > Companion to [PLAN.md](PLAN.md). PLAN is the *how* (phases, tasks, ordering). ARCHITECTURE is the *what* (components, interfaces, data, decisions).
 
 ## 1. System overview
 
-Mnemos is a single-tenant memory/knowledge service for AI agents (primarily Copilot agents in VS Code, via MCP). It is forked from `ai-brain` and retains its core stack:
+Vesma is a single-tenant memory/knowledge service for AI agents (primarily Copilot agents in VS Code, via MCP). It is forked from `ai-brain` and retains its core stack:
 
 - **Runtime**: Python 3.11+, FastAPI HTTP API, Typer CLI, MCP server (stdio).
 - **Storage**: SQLite (FTS5) for raw + processing + processed, SQLite + NumPy vector store (`vectors.db`) only for `published` knowledge units, Obsidian-compatible vault on disk for human-readable mirror.
@@ -17,7 +17,7 @@ Mnemos is a single-tenant memory/knowledge service for AI agents (primarily Copi
 flowchart TB
     subgraph CLIENTS["Clients"]
         C1(["VS Code · Copilot\n(stdio MCP)"])
-        C2(["CLI — mnemos …"])
+        C2(["CLI — vesma …"])
         C3(["HTTP API client"])
     end
 
@@ -200,7 +200,7 @@ Mirrors MCP tools (`POST /memories`, `GET /recall/agent/{name}`, `POST /search`,
 
 ### CLI
 
-`mnemos add`, `mnemos search`, `mnemos recall --agent <x>`, `mnemos tags validate`, `mnemos migrate from-ai-brain`. Pipeline and DLQ operations (cluster, synthesize, publish, dlq retry/discard) are exposed over HTTP (`POST /process`, `POST /synthesize`, `POST /publish/{id}`, `/dlq/*`) and via `mnemos processor run`, not as dedicated CLI verbs.
+`vesma add`, `vesma search`, `vesma recall --agent <x>`, `vesma tags validate`, `vesma migrate from-ai-brain`. Pipeline and DLQ operations (cluster, synthesize, publish, dlq retry/discard) are exposed over HTTP (`POST /process`, `POST /synthesize`, `POST /publish/{id}`, `/dlq/*`) and via `vesma processor run`, not as dedicated CLI verbs.
 
 ## 4. Knowledge pipeline (M4) — the core architectural addition
 
@@ -354,7 +354,7 @@ flowchart LR
 
 ## 10. Migration & deprecation
 
-- `mnemos migrate from-ai-brain` (M13): SQLite + vault import; lax tag mode for legacy data; backup first; dry-run flag.
+- `vesma migrate from-ai-brain` (M13): SQLite + vault import; lax tag mode for legacy data; backup first; dry-run flag.
 - ai-brain (M14): README header marks it `DEPRECATED`; tag `final-v0.2.x`; main branch frozen.
 
 ## 11. Module layout (Python)
@@ -364,7 +364,7 @@ flowchart LR
 ```
 pyproject.toml
 src/
-  mnemos/                # compat shim → vesmaro (dual-import window, ADR-0031)
+  mnemos/                # compat shim → vesma (dual-import window, ADR-0031)
     __init__.py
   vesmaro/
     __init__.py
@@ -372,7 +372,7 @@ src/
     models.py            # Memory, TagContract, Trace data models
     manager.py           # MemoryManager — core CRUD + search orchestrator
     mcp_server.py        # MCP server over stdio — 38 mnemos_* tools
-    sdk.py               # MnemosSDK — thin typed facade over MemoryManager
+    sdk.py               # VesmaSDK — thin typed facade over MemoryManager
     workflow.py          # workflow lifecycle state machine for memories (#96)
     traces.py            # explainability / trace layer (M6)
     auto_collect.py      # compaction detection signals (M7)
@@ -389,16 +389,16 @@ src/
       federation.py      #   federation mediated-pull endpoint (Phase 2)
     cli/                 # Typer CLI
       main.py            #   entry point + core subcommands
-      doctor.py          #   `mnemos doctor` health checks + auto-fix
-      completion.py      #   `mnemos completion` shell completion installer
-      integration.py     #   `mnemos integration` deployment layer
+      doctor.py          #   `vesma doctor` health checks + auto-fix
+      completion.py      #   `vesma completion` shell completion installer
+      integration.py     #   `vesma integration` deployment layer
       agent_wiring.py    #   agent MCP wiring helpers
       agent_token_cmd.py #   `agent-token` issue/rotate/revoke/list (W3-v1, ADR-0018-T §5)
       export.py / export_cmd.py    # export logic + Typer wrapper
       import_.py / import_cmd.py   # import logic + Typer wrapper
       sync.py / sync_cmd.py        # federation batch sync + Typer wrapper
-      scanner_cmd.py     #   `mnemos scanner` manual trigger + status
-      logs.py            #   `mnemos logs` trace viewer
+      scanner_cmd.py     #   `vesma scanner` manual trigger + status
+      logs.py            #   `vesma logs` trace viewer
       migrate.py         #   ai-brain migration logic
       _manager.py        #   shared get_manager() helper
       util.py            #   shared CLI utilities
@@ -479,7 +479,7 @@ src/
     federation_server.py # federation server (B-side) — mediated pull endpoint
     federation_a2a.py    # federation A2A handler — mediated pull over A2A
     federation_access_log.py  # federation access log (B-side audit)
-    mesh_client.py       # mnemos-mesh gRPC client (Unix-socket transport, #105)
+    mesh_client.py       # vesma-mesh gRPC client (Unix-socket transport, #105)
     mesh_server.py       # MnemosCore gRPC server on Unix socket (#105)
     agent_tokens.py      # W3-v1 agent-token scheme, Ed25519 (ADR-0018-T)
     _mesh_gen.py         # import shim for gRPC-generated stubs
@@ -487,17 +487,17 @@ src/
 
 `tests/` mirrors the modules; user-facing documentation lives under `docs/en/` and `docs/ru/`.
 
-### M1 Git bootstrap commands (run once in mnemos/ dir)
+### M1 Git bootstrap commands (run once at repo creation)
 
 ```bash
 # Step 1: clone ai-brain history into a temp directory
-git clone /var/home/abyss/LABs/AI/ai-brain /tmp/mnemos-bootstrap
+git clone /var/home/abyss/LABs/AI/ai-brain /tmp/vesma-bootstrap
 
 # Step 2: copy planning docs into temp clone
-cp README.md PLAN.md ARCHITECTURE.md /tmp/mnemos-bootstrap/
+cp README.md PLAN.md ARCHITECTURE.md /tmp/vesma-bootstrap/
 
-# Step 3: copy .git from temp clone into mnemos/
-cp -r /tmp/mnemos-bootstrap/.git .
+# Step 3: copy .git from temp clone into the repo dir
+cp -r /tmp/vesma-bootstrap/.git .
 
 # Step 4: rename origin → upstream-ai-brain (read-only reference)
 git remote rename origin upstream-ai-brain
@@ -505,17 +505,17 @@ git remote set-url --push upstream-ai-brain DISABLED  # prevent accidental push
 
 # Step 5: stage all changes and commit the fork baseline
 git add -A
-git commit -m "chore(m1): fork from ai-brain; add Mnemos planning documents"
+git commit -m "chore(m1): fork from ai-brain; add Vesma planning documents"
 
-# Step 6: (optional) set a new origin when you have a Mnemos repo
-# git remote add origin <your-mnemos-remote-url>
+# Step 6: (optional) set a new origin when you have a Vesma repo
+# git remote add origin <your-remote-url>
 ```
 
 ## 12. Out of scope for v1 (explicit)
 
 - **Cache Center** (M11) — *shipped under different names.* The original v1 deferral is resolved: reversible compression landed as **CCR** (`src/mnemos/ccr.py` — compress → cache original in `ccr_cache` by SHA-256 → retrieve via marker; tools `mnemos_compress` / `mnemos_retrieve`; `ccr` config section) and prefix stabilization as the **CacheAligner** (`src/mnemos/cache_aligner.py` — relocate dynamic spans for byte-stable prefixes; tool `mnemos_align_prefix`; `cache_aligner` config section). Both are wired into `mnemos_assemble_context` (optional CCR expansion + alignment stage). Nothing of the original Cache Center vision remains open.
 - **New Web UI from scratch** — if ai-brain has one, we extend; if not, Swagger + mkdocs only.
-- **Multi-tenant / multi-user auth** — Mnemos is single-tenant by design.
+- **Multi-tenant / multi-user auth** — Vesma is single-tenant by design.
 - **Cloud-managed embeddings** — local ONNX only.
 - **Cross-machine sync** — out of scope; v2 if demanded.
 
@@ -731,4 +731,4 @@ flowchart TD
 - ai-brain repo: `/var/home/abyss/LABs/AI/ai-brain/`
 - ai-brain knowledge-pipeline concept: `ai-brain/docs/knowledge-pipeline-concept.md` (v0.4 roadmap)
 - Hermes Agent plugin: `integrations/hermes/` in this repo
-- Mnemos tag contract skill: `integrations/skills/mnemos-tag-contract.md` in this repo
+- Vesma tag contract skill: `integrations/skills/vesma-tag-contract.md` in this repo

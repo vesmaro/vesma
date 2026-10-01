@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate gRPC stubs from federation/proto/*.proto.
-# Source of truth: federation/proto/*.proto (contract-first, mnemos-mesh Phase 3).
+# Source of truth: federation/proto/*.proto (contract-first, vesma-mesh Phase 3).
 # Output: federation/gen/python/ (gitignored — regenerate after any proto change).
 #
-# gencode guard (W2 stitch fixes, mnemos-mesh#20): the generated *_pb2.py
+# gencode guard (W2 stitch fixes, vesma-mesh#20): the generated *_pb2.py
 # files embed the protobuf version of the protoc that produced them
 # ("Protobuf Python Version: X.Y.Z" header). At import time
 # google.protobuf raises VersionError when the *installed runtime* is
@@ -82,7 +82,7 @@ environment first, e.g.:
   # or: pip install "protobuf==<gencode-major>.*" matching grpc_tools
 
 Nothing was written to ${GEN_DIR}/ — the existing stubs remain importable.
-Rationale: header of this script; mnemos-mesh#20.
+Rationale: header of this script; vesma-mesh#20.
 EOF
   exit 1
 fi

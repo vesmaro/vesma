@@ -5,7 +5,7 @@ geometry; a mixed-space index silently degrades vector search. The
 doctor's Vector store check counts rows whose metadata
 ``model_fingerprint`` is missing (pre-swap vintage) or differs from the
 configured embedder, and points at the two remediation paths (the
-background heal sweeper / ``mnemos reindex``). Diagnostics ONLY: the
+background heal sweeper / ``vesma reindex``). Diagnostics ONLY: the
 doctor must never re-embed itself.
 """
 
@@ -88,7 +88,7 @@ def test_vintage_mismatch_warns_with_count(tmp_path: Path) -> None:
     assert result.status == CheckStatus.WARN
     assert "2 " in result.detail, "one mismatched + one pre-fingerprint row"
     assert "another embedder" in result.detail
-    assert "mnemos reindex" in result.detail, "the recommendation names the fix"
+    assert "vesma reindex" in result.detail, "the recommendation names the fix"
 
 
 def test_corrupt_metadata_counts_as_stale(tmp_path: Path) -> None:

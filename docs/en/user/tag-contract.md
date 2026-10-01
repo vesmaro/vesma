@@ -87,7 +87,7 @@ doctrine forbids.
 of the contract is the optional `task` parameter of
 `assemble_context(..., task=<slug>)` (the `pre_llm_call` hook and the
 REST/MCP hook twins thread it; SDK callers pass it through
-`MnemosSDK.assemble_context`). It takes the **bare slug** —
+`VesmaSDK.assemble_context`). It takes the **bare slug** —
 `[a-z0-9_-]{1,64}`, no `task:` prefix (the prefix is added internally).
 The parameter narrows recall to entries carrying `task:<slug>` — through
 the whole six-stage pipeline (knowledge leg, graph edge leg and, when
@@ -299,7 +299,7 @@ The report returned (and printed by the CLI) has the shape:
 ## Grouped tag tool: `mnemos_tags` (rename / remove / add)
 
 `mnemos_tags` is a **pilot** for consolidating MCP tools via an `action: enum`
-dispatch (mnemos #97). It groups three bulk tag operations behind one tool
+dispatch (vesma #97). It groups three bulk tag operations behind one tool
 name, selected by the `action` parameter — **not** dot-notation and **not**
 `oneOf`/discriminated unions (which MCP clients do not render reliably).
 `action: enum` + flat properties was verified to work in VS Code, Claude

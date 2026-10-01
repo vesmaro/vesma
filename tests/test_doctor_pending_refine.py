@@ -4,7 +4,7 @@ The B1 migration backfilled bypass-era PUBLISHED rows as
 ``pipeline_state='pending'``, and the B2a engine only drains them when
 the background processor runs. A CLI-only deployment (no daemon) can
 accumulate a queue that never drains — the doctor makes it visible
-(WARN + the ``mnemos processor start`` recommendation). Diagnostics
+(WARN + the ``vesma processor start`` recommendation). Diagnostics
 ONLY: the doctor must never start the processor itself.
 """
 
@@ -76,7 +76,7 @@ def test_pending_rows_warn_with_processor_recommendation(tmp_path: Path, pending
     assert result.status == CheckStatus.WARN
     assert f"{pending} " in result.detail
     assert "pipeline_state=pending" in result.detail
-    assert "mnemos processor start" in result.detail, "the recommendation names the fix"
+    assert "vesma processor start" in result.detail, "the recommendation names the fix"
 
 
 def test_pre_adr19_schema_is_pass(tmp_path: Path) -> None:
@@ -124,4 +124,4 @@ def test_doctor_json_includes_pending_check(
     checks = {c["name"]: c for c in payload["checks"]}
     assert "Pending refine" in checks
     assert checks["Pending refine"]["status"] == "warn"
-    assert "mnemos processor start" in checks["Pending refine"]["detail"]
+    assert "vesma processor start" in checks["Pending refine"]["detail"]

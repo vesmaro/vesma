@@ -2061,7 +2061,7 @@ class TestPiTarget:
         bridge.write_text("// user's own bridge\n", encoding="utf-8")
         ok, note = pi_manager.register_mcp("pi")
         assert not ok
-        assert "no mnemos stamp" in note
+        assert "no vesma stamp" in note
 
     def test_setup_pi_end_to_end(self, pi_manager: IntegrationManager) -> None:
         result = pi_manager.setup("pi")
@@ -2211,7 +2211,7 @@ class TestCanonPack:
         # Canon §9 scope rule, warn semantics and the SSOT pointer must be stated.
         assert "metadata.canon" in text
         assert "canon_warnings" in text
-        assert "vesmaro-canon" in text
+        assert "vesma-canon" in text
 
     def test_canon_skill_present_and_wellformed(self) -> None:
         path = self._pack_file("skills", "vesma-canon-write.md")
@@ -2363,7 +2363,7 @@ class TestSchemasPack:
         return self._repo_root().joinpath("integrations", *parts)
 
     def _canon_repo(self) -> Path:
-        """Locate the ``vesmaro-canon`` sibling checkout, worktree-safe (#433).
+        """Locate the ``vesma-canon`` sibling checkout, worktree-safe (#433).
 
         The primary anchor is derived from the repo's COMMON git dir —
         ``git rev-parse --path-format=absolute --git-common-dir`` resolves to
@@ -2388,8 +2388,8 @@ class TestSchemasPack:
         ).stdout.strip()
         # <primary-worktree>/ .git → primary worktree root → its parent dir
         candidates = (
-            Path(common_dir).parent.parent / "vesmaro-canon",
-            self._repo_root().parent / "vesmaro-canon",
+            Path(common_dir).parent.parent / "vesma-canon",
+            self._repo_root().parent / "vesma-canon",
         )
         for candidate in candidates:
             if (candidate / ".git").exists():
@@ -2402,7 +2402,7 @@ class TestSchemasPack:
         text = readme.read_text(encoding="utf-8")
         assert "canon-v1.0.0" in text, "README pins the source tag"
         assert "d4e9980" in text, "README pins the source commit"
-        assert "vesmaro-canon" in text, "README names the source repo"
+        assert "vesma-canon" in text, "README names the source repo"
         assert "Do not edit" in text, "README forbids hand edits"
         for name in self.CANON_SCHEMA_NAMES:
             path = self._pack_file("schemas", name)
@@ -2472,7 +2472,7 @@ class TestSchemasPack:
         repo_root = self._repo_root()
         reference = self._canon_repo()
         if not (reference / ".git").exists():
-            pytest.skip("no vesmaro-canon sibling checkout — live-tag leg not active")
+            pytest.skip("no vesma-canon sibling checkout — live-tag leg not active")
 
         worktree = tmp_path / "secondary-worktree"
         subprocess.run(  # nosec B603

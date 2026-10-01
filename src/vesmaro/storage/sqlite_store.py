@@ -456,7 +456,7 @@ EDGE_STATS_EVENTS_PER_PRINCIPAL_CAP: Final[int] = 10_000
 #: (same ``cap_dropped`` outcome, never an error). NOT automatic
 #: eviction: once the ceiling is reached, capture stays dropped until
 #: an operator reclaims rows via ``purge_edge_stats_oldest`` (the
-#: ``vesmaro edge-stats purge`` CLI path, dry-run by default). Sized so
+#: ``vesma edge-stats purge`` CLI path, dry-run by default). Sized so
 #: a legitimate deployment never touches it (10k x principals << 1M);
 #: revisit together with APPLY (#325) when real volume telemetry exists.
 EDGE_STATS_TOTAL_ROWS_CAP: Final[int] = 1_000_000
@@ -593,7 +593,7 @@ CREATE TABLE IF NOT EXISTS memories (
     filter_profile   TEXT,
     filter_stats     TEXT,
     filter_version   TEXT,
-    -- Workflow lifecycle (mnemos #96). Managed EXCLUSIVELY by the
+    -- Workflow lifecycle (vesma #96). Managed EXCLUSIVELY by the
     -- set_workflow_status method — never by save()/update_fields() — so the
     -- state machine in MemoryManager.workflow_set cannot be bypassed.
     workflow_status  TEXT,
@@ -682,7 +682,7 @@ CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
 -- reach legacy DBs via ALTER TABLE in that same routine, and this script
 -- runs BEFORE it (an index over a missing column would abort the connect).
 
--- mnemos #96: workflow lifecycle audit log. Every state transition is
+-- vesma #96: workflow lifecycle audit log. Every state transition is
 -- recorded here (actor, from->to, reason, force_used). The workflow_status /
 -- locked_by / locked_at columns on `memories` are the *current* projection;
 -- this table is the immutable history that makes the audit + rate-limit
@@ -956,7 +956,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_edges_to   ON memory_edges(to_memory_id, k
 -- at EDGE_STATS_TOTAL_ROWS_CAP in record_edge_stat_event (I5:
 -- storage-DoS + APPLY pre-poisoning). Reclaiming rows past the global
 -- cap is an explicit operator path (purge_edge_stats_oldest / the
--- `vesmaro edge-stats purge` CLI), never automatic eviction.
+-- `vesma edge-stats purge` CLI), never automatic eviction.
 -- CAPTURE ONLY — zero ranking influence in A0 (APPLY is #325).
 CREATE TABLE IF NOT EXISTS edge_stats (
     event_id    TEXT PRIMARY KEY,
@@ -1045,7 +1045,7 @@ _MIGRATIONS: list[tuple[str, str]] = [
     ("filter_stats", "ALTER TABLE memories ADD COLUMN filter_stats TEXT"),
     ("filter_version", "ALTER TABLE memories ADD COLUMN filter_version TEXT"),
     ("category", "ALTER TABLE memories ADD COLUMN category TEXT"),
-    # mnemos #96 — workflow lifecycle columns. Added via ALTER so existing
+    # vesma #96 — workflow lifecycle columns. Added via ALTER so existing
     # DBs gain the columns on next connect; fresh DBs get them from
     # _DB_SCHEMA. The history table is CREATE TABLE IF NOT EXISTS in
     # _DB_SCHEMA so it does not need an entry here.
@@ -1120,7 +1120,7 @@ _BACKFILL_REWRITE_EVENT_KEY_FLAG: Final[str] = "schema_backfill_rewrite_event_ke
 # pipeline_state / processed_at (same commit as the backfill).
 _BACKFILL_PIPELINE_STATE_FLAG: Final[str] = "schema_backfill_pipeline_state_v1"
 
-# mnemos #251 D0 — meta-table key namespace for the first-writer-wins
+# vesma #251 D0 — meta-table key namespace for the first-writer-wins
 # session→agent binding of the checkpoint channel. Lives in the existing
 # ``meta`` table (additive, migration-free): a dedicated column on
 # ``sessions`` would require callers to present SessionStore-issued ids,
@@ -1629,7 +1629,7 @@ class SQLiteStore:
             filter_profile=_get("filter_profile"),
             filter_stats=json.loads(_get("filter_stats")) if _get("filter_stats") else None,
             filter_version=_get("filter_version"),
-            # mnemos #96 — workflow projection (read-only here; writes go
+            # vesma #96 — workflow projection (read-only here; writes go
             # through set_workflow_status so the state machine cannot be
             # bypassed). NULL on legacy rows created before the migration.
             workflow_status=_get("workflow_status"),
@@ -2214,7 +2214,7 @@ class SQLiteStore:
         )
         return {str(r[0]): int(r[1]) for r in rows}
 
-    # ── Workflow lifecycle (mnemos #96) ────────────────────────────────────
+    # ── Workflow lifecycle (vesma #96) ────────────────────────────────────
     #
     # These methods are the ONLY writers of the workflow_status / locked_by /
     # locked_at columns and the memory_workflow_history table. They are
@@ -2528,7 +2528,7 @@ class SQLiteStore:
     def wipe_all(self) -> int:
         """Delete every memory row (and FTS shadow rows via triggers).
 
-        Used by ``mnemos import --mode restore`` (CLI legacy name). Returns the number of
+        Used by ``vesma import --mode restore`` (CLI legacy name). Returns the number of
         deleted memory rows. Schema, indexes, projects, traces, and DLQ
         are preserved — only the ``memories`` table is cleared.
         """
@@ -3066,12 +3066,12 @@ class SQLiteStore:
         row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
         return row["value"] if row else None
 
-    # ── Checkpoint channel identity (mnemos #251 D0) ─────────────────────
+    # ── Checkpoint channel identity (vesma #251 D0) ─────────────────────
 
     def bind_session_agent(self, session_id: str, agent: str) -> str:
         """Atomically bind ``session_id`` to ``agent``; first writer wins.
 
-        mnemos #251 D0 — the session→agent binding lives in the existing
+        vesma #251 D0 — the session→agent binding lives in the existing
         ``meta`` key-value table (additive, migration-free surface; no
         destructive schema change). INSERT OR IGNORE + SELECT inside one
         transaction close the TOCTOU window: two racing first calls with
@@ -3098,7 +3098,7 @@ class SQLiteStore:
     def find_checkpoint_by_dedup_key(
         self, *, project: str, agent: str, dedup_key: str
     ) -> Memory | None:
-        """Issuer-keyed checkpoint dedup lookup (mnemos #251 D0).
+        """Issuer-keyed checkpoint dedup lookup (vesma #251 D0).
 
         Finds the newest ``mnemos:checkpoint`` memory of the exact
         ``(project, agent)`` issuer whose server-written metadata carries
@@ -3107,7 +3107,7 @@ class SQLiteStore:
         replay control: a copy of a victim's checkpoint re-issued by a
         different agent must NOT collide).
 
-        mnemos #251 security review (P1, defense in depth): the lookup
+        vesma #251 security review (P1, defense in depth): the lookup
         also requires the row's ``checkpoint_agent`` metadata stamp to
         equal the claimed agent — only ``save_checkpoint`` mints that
         stamp, so a row whose dedup key slipped in through any other
@@ -3134,10 +3134,10 @@ class SQLiteStore:
     def find_federated_duplicate(
         self, *, fed_id: str = "", title: str = "", source_agent: str = ""
     ) -> Memory | None:
-        """Idempotent mesh-import duplicate lookup (vesmaro #359).
+        """Idempotent mesh-import duplicate lookup (vesma #359).
 
         Called by :rpc:`WriteMemory` BEFORE any create so a replayed
-        one-shot pull (mnemos-mesh #34) performs no duplicate writes.
+        one-shot pull (vesma-mesh #34) performs no duplicate writes.
         Match keys, priority order:
 
         1. ``fed_id`` — the incoming ``CompactRecord.id`` vs the stored
@@ -3487,7 +3487,7 @@ class SQLiteStore:
         ``--id`` list the operator asked for, return the mirrored
         metadata rows keyed by ``id``. Ids with no row are simply
         absent from the result — the CALLER decides whether a miss is
-        an error (the ``mnemos fetch`` CLI treats it as one: the command is
+        an error (the ``vesma fetch`` CLI treats it as one: the command is
         driven by ids the mirror advertised, so an unknown id means
         the operator and the index disagree).
 
@@ -3524,10 +3524,10 @@ class SQLiteStore:
     def index_head(self, projects: Sequence[str] | None = None) -> int:
         """Return the max ``federation_index`` rowid under the projects filter.
 
-        The scope HEAD for the SyncMetadata watermark (mnemos-mesh#46):
+        The scope HEAD for the SyncMetadata watermark (vesma-mesh#46):
         the highest storage position a scope-filtered rowid walk can
         ever have delivered. The SyncMetadata body
-        (:meth:`MnemosCoreServicer.build_metadata_sync_response` in
+        (:meth:`VesmaCoreServicer.build_metadata_sync_response` in
         ``mesh_server``) parks ``latest_rev`` here on an EMPTY page
         instead of echoing ``since_rev`` — a MIN-aggregating poller
         (the mesh CLI folds the per-scope ``latest_rev`` into one
@@ -3964,7 +3964,7 @@ class SQLiteStore:
         return [{"snippet": str(r["snip"]), "rank": float(r["rank"])} for r in rows]
 
     def ccr_delete_all(self) -> int:
-        """Drop every CCR cache entry. Used by tests and `mnemos ccr purge` (CLI legacy name)."""
+        """Drop every CCR cache entry. Used by tests and `vesma ccr purge` (CLI legacy name)."""
         conn = self._get_conn()
         cur = conn.execute("DELETE FROM ccr_cache")
         conn.commit()
@@ -4495,7 +4495,7 @@ class SQLiteStore:
         the table is unbounded across minted principals, and the
         append-only triggers forbid DELETE. This is the ONE sanctioned
         shrink path, and it is explicitly an OPERATOR action (the
-        ``vesmaro edge-stats purge`` CLI wraps it, dry-run by default) —
+        ``vesma edge-stats purge`` CLI wraps it, dry-run by default) —
         NEVER automatic eviction.
 
         Mechanics (all inside ONE explicit transaction, opened with
@@ -4612,7 +4612,7 @@ class SQLiteStore:
         """Return the memory id carrying ``rewrite_event_key``.
 
         Idempotency lookup for the ``on_context_rewrite`` event (ADR-0018,
-        mnemos #125 Wave 2): the event handler computes a content-addressed
+        vesma #125 Wave 2): the event handler computes a content-addressed
         key and consults this BEFORE any write, so a re-delivered event
         performs no duplicate writes. Deliberately a specific method, not a
         generic metadata query — the surface stays minimal (same philosophy

@@ -209,7 +209,7 @@ curl -s http://127.0.0.1:8000/tags
 
 ### `POST /tags/rename` — bulk rename a tag prefix
 
-Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → mnemos migration case). Mirrors the `mnemos_tags_rename` MCP tool and `vesma tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
+Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → vesma migration case). Mirrors the `mnemos_tags_rename` MCP tool and `vesma tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
 
 **Request body**
 
@@ -573,7 +573,7 @@ curl -s -X POST http://127.0.0.1:8000/context/recall \
 ### `POST /context/assemble` — assemble the pre-LLM-call context block
 
 Mirrors the `mnemos_assemble_context` MCP tool over the same manager path
-(mnemos #125, Wave 1). Fixed pipeline: hybrid RRF recall (entry-invariant
+(vesma #125, Wave 1). Fixed pipeline: hybrid RRF recall (entry-invariant
 status gate — only `published`/`processed` surface) → optional CCR marker
 expansion → context filter → **mandatory** secret scan (per-block redaction
 counts; refuse mode drops the block) → CacheAligner → token budget. Every
@@ -623,7 +623,7 @@ Full field-by-field documentation: [`mcp-tools.md` → `mnemos_assemble_context`
 ### `POST /context/rewrite` — report a context rewrite (ADR-0018)
 
 Mirrors the `mnemos_context_rewrite` MCP tool over the same manager path
-(mnemos #125, Wave 2). The harness reports that it rewrote a block of its
+(vesma #125, Wave 2). The harness reports that it rewrote a block of its
 working context; the original is stored to LTM through the normal
 knowledge pipeline (enters `raw`, context-reachable only after the
 pipeline advances it), idempotent by content-addressed event key,
@@ -707,7 +707,7 @@ validation can later prove provenance.
 | `tool_name` | string | `post_tool_call` | — | The tool that produced the output. |
 | `output_text` | string | `post_tool_call` | — | The raw tool output to compress. |
 | `auto_compress` | boolean | no | knob | `post_tool_call`: per-call override of `hooks.auto_compress` (default `false`). |
-| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (mnemos #254): compose the awareness delta section AND the swarm v0a/v0b operational picture (observed counts/ids/timestamps plus each peer's claimed task — a self-reported `[unverified]`-labeled claim) — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
+| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (vesma #254): compose the awareness delta section AND the swarm v0a/v0b operational picture (observed counts/ids/timestamps plus each peer's claimed task — a self-reported `[unverified]`-labeled claim) — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
 | `profile` | string | no | auto | `post_tool_call`: filter profile hint. |
 
 **Example**
@@ -1129,7 +1129,7 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
   "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1168,8 +1168,8 @@ BFS over project edges from one symbol (resolve by qname; ambiguous refusals nam
   "project": "vesma",
   "start": "vesmaro.codegraph.service.window_rows",
   "depth": 2,
-  "nodes": [ { "id": "mnemos#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
-  "edges": [ { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
+  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
+  "edges": [ { "from": "vesma#…#window_rows#158", "to": "vesma#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
   "truncated": false,
   "cursor": 0,
   "has_more": false,
@@ -1808,9 +1808,9 @@ The full machine-readable schema is available at `/openapi.json` (3.1.0) and ren
 If you need to generate a static client, fetch the schema and run [`openapi-generator`](https://openapi-generator.tech/) against it:
 
 ```bash
-curl -s http://127.0.0.1:8000/openapi.json -o mnemos-openapi.json
+curl -s http://127.0.0.1:8000/openapi.json -o vesma-openapi.json
 npx @openapitools/openapi-generator-cli generate \
-  -i mnemos-openapi.json -g typescript-fetch -o ./mnemos-client
+  -i vesma-openapi.json -g typescript-fetch -o ./mnemos-client
 ```
 
 ---

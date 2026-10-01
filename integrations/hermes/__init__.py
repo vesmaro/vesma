@@ -1,9 +1,9 @@
-"""Hermes Agent MemoryProvider plugin for Mnemos — contract shim (#125 W5).
+"""Hermes Agent MemoryProvider plugin for Vesma — contract shim (#125 W5).
 
 MIGRATED onto the ADR-0017 D1 provider contract (Wave 5): this plugin is
 now a THIN Hermes-side shim. Every memory operation routes in-process
 through :class:`mnemos.adapters.hermes.HermesMemoryAdapter` — the
-``MnemosSDK`` facade + the W3 lifecycle hooks — and the ``MemoryManager``
+``VesmaSDK`` facade + the W3 lifecycle hooks — and the ``MemoryManager``
  beneath them. The legacy bespoke path (raw urllib HTTP client, own
 TOTP/login/session-auth flow, circuit breaker, sync/prefetch thread pool,
 auto-publish bypass) is GONE; see the adapter module docstring for the
@@ -14,27 +14,27 @@ Architecture::
     Hermes MemoryManager
         ↓ MemoryProvider ABC (THIS shim, deploy-only)
     HermesMemoryAdapter (mnemos.adapters.hermes)
-        ↓ MnemosSDK facade + mnemos.hooks (the D1 contract)
+        ↓ VesmaSDK facade + mnemos.hooks (the D1 contract)
     MemoryManager → SQLite + vectors + Obsidian vault
 
 Installation::
 
-    # 1. mnemos importable in the Hermes Python env (pip install mnemos-memory-server)
-    #    — no separate ``mnemos serve`` process is needed anymore
+    # 1. vesma importable in the Hermes Python env (pip install mnemos-memory-server)
+    #    — no separate ``vesma serve`` process is needed anymore
     # 2. Copy this plugin into the Hermes plugins dir
     cp -r integrations/hermes ~/.hermes/plugins/mnemos
     # 3. Activate via the interactive wizard (recommended)
     hermes memory setup
-    # Select "mnemos", configure project/agent slugs and store paths
-    # OR: hermes config set memory.provider mnemos
+    # Select "vesma", configure project/agent slugs and store paths
+    # OR: hermes config set memory.provider vesma
 
 Config (in $HERMES_HOME/config.yaml under ``memory.mnemos``)::
 
     memory:
-      provider: mnemos
+      provider: vesma
       mnemos:
-        data_dir: ""            # Mnemos data dir ("" = mnemos default)
-        vault_path: ""          # Obsidian vault path ("" = mnemos default)
+        data_dir: ""            # Vesma data dir ("" = vesma default)
+        vault_path: ""          # Obsidian vault path ("" = vesma default)
         project: "hermes"       # project tag slug
         agent: "hermes-default" # agent tag slug
         auto_sync: true         # mirror builtin writes + sync significant turns
@@ -81,7 +81,7 @@ from agent.memory_provider import MemoryProvider
 from mnemos.adapters.hermes import HermesMemoryAdapter
 from mnemos.config import Settings
 from mnemos.models import MemoryType
-from mnemos.sdk import MnemosSDK
+from mnemos.sdk import VesmaSDK
 from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ def _load_config() -> dict:
 
         raw = load_config()
         merged: dict[str, Any] = {}
-        for section in (cfg_get(raw, "plugins", "mnemos"), cfg_get(raw, "memory", "mnemos")):
+        for section in (cfg_get(raw, "plugins", "vesma"), cfg_get(raw, "memory", "vesma")):
             for k, v in (section or {}).items():
                 if v is not None and v != "":
                     merged[k] = v
@@ -147,7 +147,7 @@ def _load_config() -> dict:
 MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
     "name": "mnemos_search",
     "description": (
-        "Search Mnemos memory using hybrid vector + FTS5 search. Results are "
+        "Search Vesma memory using hybrid vector + FTS5 search. Results are "
         "secret-scanned at issuance. Use before architectural decisions, "
         "before web searches, and when resuming a topic.\n\n"
         "Returns: list of {id, title, content, tags, status, score, "
@@ -171,11 +171,11 @@ MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
 MNEMOS_ADD_SCHEMA: dict[str, Any] = {
     "name": "mnemos_add",
     "description": (
-        "Add a memory entry to Mnemos. Tag contract is mandatory: "
+        "Add a memory entry to Vesma. Tag contract is mandatory: "
         "exactly one project:<slug>, one agent:<slug>, and at least one "
         "mnemos:<subtype>. Write what you would want to read back in 30 days. "
         "One idea per entry.\n\n"
-        "mnemos subtypes: session, checkpoint, bug-pattern, learning, "
+        "vesma subtypes: session, checkpoint, bug-pattern, learning, "
         "decision, rule, open-question, legacy."
     ),
     "parameters": {
@@ -386,11 +386,11 @@ MNEMOS_WATCH_STATUS_SCHEMA: dict[str, Any] = {
 # ── Provider ──────────────────────────────────────────────────────────────────
 
 
-class MnemosMemoryProvider(MemoryProvider):
-    """Hermes MemoryProvider shim over the Mnemos contract adapter.
+class VesmaMemoryProvider(MemoryProvider):
+    """Hermes MemoryProvider shim over the Vesma contract adapter.
 
     All memory operations delegate to
-    :class:`mnemos.adapters.hermes.HermesMemoryAdapter` (MnemosSDK facade
+    :class:`mnemos.adapters.hermes.HermesMemoryAdapter` (VesmaSDK facade
     + lifecycle hooks, in-process). This class owns ONLY the Hermes ABC
     glue: config loading, tool schemas/dispatch, the prefetch thread, and
     the harness-never-blocks error guard (memory failures degrade to
@@ -399,7 +399,7 @@ class MnemosMemoryProvider(MemoryProvider):
 
     def __init__(self, config: dict | None = None):
         self._config = config or _load_config()
-        self._sdk: MnemosSDK | None = None
+        self._sdk: VesmaSDK | None = None
         self._adapter: HermesMemoryAdapter | None = None
 
         self._session_id = ""
@@ -418,7 +418,7 @@ class MnemosMemoryProvider(MemoryProvider):
 
     @property
     def name(self) -> str:
-        return "mnemos"
+        return "vesma"
 
     # -- Construction / availability -----------------------------------------
 
@@ -431,9 +431,9 @@ class MnemosMemoryProvider(MemoryProvider):
             mnemos_cfg["data_dir"] = str(self._config["data_dir"])
         if self._config.get("vault_path"):
             mnemos_cfg["vault_path"] = str(self._config["vault_path"])
-        settings = Settings(mnemos=mnemos_cfg)
+        settings = Settings(vesma=mnemos_cfg)
         settings.resolve_paths()
-        self._sdk = MnemosSDK(settings)
+        self._sdk = VesmaSDK(settings)
         self._adapter = HermesMemoryAdapter(
             self._sdk,
             project=str(self._config.get("project", "hermes")),
@@ -473,7 +473,7 @@ class MnemosMemoryProvider(MemoryProvider):
             self._ensure()
             return True
         except Exception as e:
-            logger.warning("Mnemos provider unavailable: %s", e)
+            logger.warning("Vesma provider unavailable: %s", e)
             return False
 
     def initialize(self, session_id: str, **kwargs) -> None:
@@ -485,7 +485,7 @@ class MnemosMemoryProvider(MemoryProvider):
             self._config["agent"] = agent_identity
         self._rebind_adapter(session_id, reset=True)
         logger.info(
-            "Mnemos provider initialized (contract): session=%s platform=%s agent=%s",
+            "Vesma provider initialized (contract): session=%s platform=%s agent=%s",
             self._session_id,
             self._platform,
             self._config.get("agent"),
@@ -493,8 +493,8 @@ class MnemosMemoryProvider(MemoryProvider):
 
     def system_prompt_block(self) -> str:
         return (
-            "# Mnemos Memory\n"
-            "Long-term memory (Mnemos, in-process on the provider contract). "
+            "# Vesma Memory\n"
+            "Long-term memory (Vesma, in-process on the provider contract). "
             "Use mnemos_search before architectural decisions and web "
             "searches. Use mnemos_add to persist non-obvious learnings, "
             "decisions, and bug-patterns. Use mnemos_recall_context at "
@@ -528,16 +528,16 @@ class MnemosMemoryProvider(MemoryProvider):
                 result = adapter.pre_llm_call(query=query)
                 lines = []
                 for block in result.get("blocks", []):
-                    title = block.get("provenance", "mnemos")
+                    title = block.get("provenance", "vesma")
                     excerpt = block.get("content", "")[:200]
                     lines.append(f"- {title}: {excerpt}")
                 if lines:
                     with self._prefetch_lock:
                         self._prefetch_result = "\n".join(lines)
             except Exception as e:
-                logger.debug("Mnemos prefetch failed: %s", e)
+                logger.debug("Vesma prefetch failed: %s", e)
 
-        self._prefetch_thread = threading.Thread(target=_run, daemon=True, name="mnemos-prefetch")
+        self._prefetch_thread = threading.Thread(target=_run, daemon=True, name="vesma-prefetch")
         self._prefetch_thread.start()
 
     # -- Lifecycle (all on the contract adapter; never block the harness) --
@@ -555,7 +555,7 @@ class MnemosMemoryProvider(MemoryProvider):
         try:
             self._ensure().sync_turn(user_content, assistant_content)
         except Exception as e:
-            logger.debug("Mnemos sync_turn failed: %s", e)
+            logger.debug("Vesma sync_turn failed: %s", e)
 
     def on_memory_write(
         self,
@@ -567,7 +567,7 @@ class MnemosMemoryProvider(MemoryProvider):
         try:
             self._ensure().mirror_memory_write(action, target, content, metadata)
         except Exception as e:
-            logger.debug("Mnemos memory_write mirror failed: %s", e)
+            logger.debug("Vesma memory_write mirror failed: %s", e)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         """ADR-0018 bridge: report what the compressor is about to discard.
@@ -587,9 +587,9 @@ class MnemosMemoryProvider(MemoryProvider):
             try:
                 self._ensure().report_context_rewrite(original)
             except Exception as e:
-                logger.debug("Mnemos context_rewrite report failed: %s", e)
+                logger.debug("Vesma context_rewrite report failed: %s", e)
             hint = (
-                "[Mnemos] Discarded conversation preserved in LTM "
+                "[Vesma] Discarded conversation preserved in LTM "
                 "(on_context_rewrite); recall via mnemos_search."
             )
         return hint
@@ -600,7 +600,7 @@ class MnemosMemoryProvider(MemoryProvider):
         try:
             self._ensure().session_end(messages or [])
         except Exception as e:
-            logger.debug("Mnemos on_session_end failed: %s", e)
+            logger.debug("Vesma on_session_end failed: %s", e)
 
     def on_session_switch(
         self,
@@ -614,7 +614,7 @@ class MnemosMemoryProvider(MemoryProvider):
         try:
             self._rebind_adapter(new_session_id, reset=reset)
         except Exception as e:
-            logger.debug("Mnemos on_session_switch failed: %s", e)
+            logger.debug("Vesma on_session_switch failed: %s", e)
 
     # -- Tools ─────────────────────────────────────────────────────────────
 
@@ -642,8 +642,8 @@ class MnemosMemoryProvider(MemoryProvider):
         try:
             return self._dispatch_tool(tool_name, args)
         except Exception as e:
-            logger.warning("Mnemos tool %s failed: %s", tool_name, e)
-            return tool_error(f"Mnemos tool error: {e}")
+            logger.warning("Vesma tool %s failed: %s", tool_name, e)
+            return tool_error(f"Vesma tool error: {e}")
 
     def _dispatch_tool(self, tool_name: str, args: dict) -> str:
         adapter = self._ensure()
@@ -817,13 +817,13 @@ class MnemosMemoryProvider(MemoryProvider):
         return [
             {
                 "key": "data_dir",
-                "description": "Mnemos data dir (empty = mnemos default)",
+                "description": "Vesma data dir (empty = vesma default)",
                 "default": "",
                 "env_var": "MNEMOS_DATA_DIR",
             },
             {
                 "key": "vault_path",
-                "description": "Obsidian vault path (empty = mnemos default)",
+                "description": "Obsidian vault path (empty = vesma default)",
                 "default": "",
                 "env_var": "MNEMOS_VAULT__VAULT_PATH",
             },
@@ -883,11 +883,11 @@ class MnemosMemoryProvider(MemoryProvider):
                 with open(config_path, encoding="utf-8-sig") as f:
                     existing = yaml.safe_load(f) or {}
             existing.setdefault("memory", {})
-            existing["memory"]["mnemos"] = values
+            existing["memory"]["vesma"] = values
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.dump(existing, f, default_flow_style=False)
         except Exception as e:
-            logger.warning("Failed to save Mnemos config: %s", e)
+            logger.warning("Failed to save Vesma config: %s", e)
 
     # -- Shutdown ──────────────────────────────────────────────────────────
 
@@ -898,7 +898,7 @@ class MnemosMemoryProvider(MemoryProvider):
             try:
                 self._sdk.close()
             except Exception as e:
-                logger.debug("Mnemos SDK close failed: %s", e)
+                logger.debug("Vesma SDK close failed: %s", e)
             self._sdk = None
             self._adapter = None
 
@@ -907,5 +907,5 @@ class MnemosMemoryProvider(MemoryProvider):
 
 
 def register(ctx) -> None:
-    """Register Mnemos as a Hermes memory provider plugin."""
-    ctx.register_memory_provider(MnemosMemoryProvider())
+    """Register Vesma as a Hermes memory provider plugin."""
+    ctx.register_memory_provider(VesmaMemoryProvider())

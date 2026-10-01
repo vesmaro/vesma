@@ -553,7 +553,7 @@ federation:
     enabled: true                      # по умолчанию false — явный opt-in
     interval_seconds: 300              # по умолчанию 300; клэмпится в [60, 86400]
     peers: all                         # "all" (все ключи federation.peers) или явный список
-    mesh_config_path: /etc/vesmaro/mesh.yaml  # ОБЯЗАТЕЛЕН при enabled (передаётся CLI как --config)
+    mesh_config_path: /etc/vesma/mesh.yaml  # ОБЯЗАТЕЛЕН при enabled (передаётся CLI как --config)
     mesh_bin: mnemos-mesh              # имя бинарника (PATH) или абсолютный путь
 ```
 
@@ -699,7 +699,7 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Установить shell-автодополнение для CLI `vesma`. Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/mnemos.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc`; fish автоматически подхватывает свою директорию дополнений). Идемпотентно — повторный запуск не дублирует строку source и мигрирует со старого формата на `eval`.
+Установить shell-автодополнение для CLI `vesma`. Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/vesma.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc`; fish автоматически подхватывает свою директорию дополнений). Идемпотентно — повторный запуск не дублирует строку source и мигрирует со старого формата на `eval`.
 
 ```text
 vesma completion [SHELL] [OPTIONS]

@@ -1,4 +1,4 @@
-"""ADR-0017 D1 / ADR-0018 — server-side lifecycle hooks (mnemos #125, Wave 3).
+"""ADR-0017 D1 / ADR-0018 — server-side lifecycle hooks (vesma #125, Wave 3).
 
 Three integration points the harness / automation calls at the moments
 of its own lifecycle. Each is a THIN wrapper over an existing manager
@@ -59,12 +59,12 @@ add no capability the server surfaces do not already expose.
 
 Surfaces: one grouped MCP tool ``mnemos_hooks`` with
 ``action: enum [pre_llm_call, on_session_start, post_tool_call]``
-(the mnemos #97 action:enum pattern — NOT oneOf), and REST
+(the vesma #97 action:enum pattern — NOT oneOf), and REST
 ``POST /hooks/{action}`` (one parametric route — the three actions
 share the session/project/agent spine; three literal routes would
 triplicate the same body model). Both call :func:`dispatch_hook`.
 
-Awareness composition (mnemos #254, R3): ``pre_llm_call`` and
+Awareness composition (vesma #254, R3): ``pre_llm_call`` and
 ``on_session_start`` take ``include_awareness`` (default False) — the
 awareness presence/delta section composes HERE, at the hook, never as
 a seventh assemble stage. See :mod:`vesmaro.awareness` for the R3
@@ -142,7 +142,7 @@ def pre_llm_call(
     wrapped, filter-cleaned, secret-scanned, budget-bounded. The
     harness decides whether and where to inject it.
 
-    ``include_awareness=True`` (mnemos #254, R3 — default False)
+    ``include_awareness=True`` (vesma #254, R3 — default False)
     composes the awareness delta section AFTER the assembled output:
     per-agent delta blocks are appended to ``blocks`` and the rendered
     section to ``text`` — awareness renders LAST, never inside the
@@ -226,7 +226,7 @@ def on_session_start(
     the response; refuse mode drops the checkpoint (logged with the
     memory id), redactions are counted per checkpoint.
 
-    ``include_awareness=True`` (mnemos #254, R3 — default False) adds a
+    ``include_awareness=True`` (vesma #254, R3 — default False) adds a
     ``presence`` section: server-observed neighbor activity in the
     presence window plus deterministic conflict-hints against my last
     checkpoint goal. Pure read — the awareness cursor is NOT touched
@@ -340,7 +340,7 @@ def post_tool_call(
 
     Memory capture (ADR-0017 D1 "capture results as memories, opt-in")
     is deliberately NOT wired to a knob in this wave: an explicit
-    ``MnemosSDK.remember`` call is strictly more controllable than an
+    ``VesmaSDK.remember`` call is strictly more controllable than an
     implicit write on every tool result. Flagged for ratification.
 
     Size cap (W3 review F3): ``hooks.max_output_chars`` (default

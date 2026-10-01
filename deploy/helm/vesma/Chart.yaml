@@ -1,6 +1,6 @@
 apiVersion: v2
-name: vesmaro
-description: Vesmaro (Mnemos) — local-first memory & knowledge server for AI agents
+name: vesma
+description: Vesma (Vesma) — local-first memory & knowledge server for AI agents
 type: application
 
 # Chart version — bump on any template or default change (semver).
@@ -22,10 +22,10 @@ keywords:
   - sqlite
 maintainers:
   - name: abyss
-    email: abyss@vesmaro.dev
+    email: abyss@vesma.dev
 
 annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/images: |
-    - name: vesmaro
+    - name: vesma
       image: ghcr.io/vesmaro/vesma:5.1.2

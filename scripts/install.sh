@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/install.sh — one-command Mnemos install
+# scripts/install.sh — one-command Vesma install
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh | bash
@@ -7,7 +7,7 @@
 #   curl -fsSL .../install.sh | bash -s -- --venv ~/.mnemos-venv --extra mcp,ollama
 #
 # Flags:
-#   --version VERSION   Mnemos version to install (default: latest from PyPI)
+#   --version VERSION   Vesma version to install (default: latest from PyPI)
 #   --extra EXTRAS      Comma-separated extras: ollama,openai,anthropic,gemini,dev,all
 #                       (default: none — the MCP server ships in the base package since 4.1.0)
 #   --venv PATH         Create a venv at PATH and install there (default: ~/.mnemos/venv)
@@ -17,13 +17,13 @@
 #   --no-mcp            Skip VS Code MCP integration (no prompt)
 #   --instructions      Deploy agent integration pack (instructions+skills+prompts) automatically (no prompt)
 #   --no-instructions   Skip agent integration pack deployment (no prompt)
-#   --wire-agents       Wire mnemos/* into Copilot agent tools: frontmatter automatically (no prompt)
+#   --wire-agents       Wire the Vesma MCP tools into Copilot agent tools: frontmatter automatically (no prompt)
 #   --no-wire-agents    Skip Copilot agent MCP wiring (no prompt)
 #   --container         Pull and run the container image instead of a Python install
 #   --port PORT         Container host port (default: 8787, only with --container)
 #   --help              Show this help
 #
-# The installer drops a `mnemos` launcher into ~/.local/bin so the CLI works in
+# The installer drops a `vesma` launcher into ~/.local/bin so the CLI works in
 # any shell — no venv activation needed. If MCP is enabled it can wire VS Code
 # for you (interactively, or via --mcp / --no-mcp).
 set -euo pipefail
@@ -102,7 +102,7 @@ fi
 VERSION_EXPLICIT=true
 if [[ -z "$VERSION" ]]; then
   VERSION_EXPLICIT=false
-  info "Detecting latest Mnemos version on PyPI…"
+  info "Detecting latest Vesma version on PyPI…"
   VERSION="$(curl -fsSL "https://pypi.org/pypi/vesma-memory-server/json" 2>/dev/null \
     | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || true)"
   [[ -z "$VERSION" ]] && die "Could not detect latest version. Specify --version manually."
@@ -129,13 +129,13 @@ if [[ "$CONTAINER" == true ]]; then
     "$RUNTIME" pull "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to pull image."
   fi
 
-  if "$RUNTIME" ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^mnemos$'; then
-    warn "Container 'mnemos' already exists. Remove it first: $RUNTIME rm -f mnemos"
+  if "$RUNTIME" ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^vesma$'; then
+    warn "Container 'vesma' already exists. Remove it first: $RUNTIME rm -f vesma"
     die "Aborting to avoid clobbering existing container."
   fi
 
-  "$RUNTIME" volume create mnemos-data 2>/dev/null || true
-  "$RUNTIME" volume create mnemos-vault 2>/dev/null || true
+  "$RUNTIME" volume create vesma-data 2>/dev/null || true
+  "$RUNTIME" volume create vesma-vault 2>/dev/null || true
 
   if [[ -z "${MNEMOS_API__TOTP_MASTER_KEY:-}" ]]; then
     warn "MNEMOS_API__TOTP_MASTER_KEY is not set."
@@ -145,20 +145,20 @@ if [[ "$CONTAINER" == true ]]; then
   fi
 
   "$RUNTIME" run -d \
-    --name mnemos \
+    --name vesma \
     -p "${CONTAINER_PORT}:8787" \
-    -v mnemos-data:/data \
-    -v mnemos-vault:/vault \
+    -v vesma-data:/data \
+    -v vesma-vault:/vault \
     -e MNEMOS_API__TOTP_MASTER_KEY="${MNEMOS_API__TOTP_MASTER_KEY}" \
     "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to start container."
 
-  ok "Mnemos container started on port ${CONTAINER_PORT}."
+  ok "Vesma container started on port ${CONTAINER_PORT}."
   echo ""
   ok "Done. Next steps:"
   printf "    curl -s http://localhost:%s/health | jq\n" "$CONTAINER_PORT"
   printf "    # Swagger UI: http://localhost:%s/docs\n" "$CONTAINER_PORT"
-  printf "    # Logs: %s logs -f mnemos\n" "$RUNTIME"
-  printf "    # Stop: %s stop mnemos\n" "$RUNTIME"
+  printf "    # Logs: %s logs -f vesma\n" "$RUNTIME"
+  printf "    # Stop: %s stop vesma\n" "$RUNTIME"
   printf "    Docs: docs/en/admin/runbooks/container-deployment.md\n"
   exit 0
 fi
@@ -193,11 +193,11 @@ else
   pip install --force-reinstall "${PKG_SPEC}"
 fi
 
-# ── Resolve the mnemos binary ─────────────────────────────────────
+# ── Resolve the vesma binary ─────────────────────────────────────
 if [[ "$NO_VENV" == false ]]; then
   MNEMOS_BIN="${VENV_PATH}/bin/mnemos"
 else
-  MNEMOS_BIN="$(command -v mnemos 2>/dev/null || true)"
+  MNEMOS_BIN="$(command -v vesma 2>/dev/null || true)"
 fi
 
 # ── Drop a launcher into ~/.local/bin (no venv activation needed) ──
@@ -210,10 +210,10 @@ if [[ "$NO_VENV" == false && -x "$MNEMOS_BIN" ]]; then
 fi
 
 # ── Verify ────────────────────────────────────────────────────────
-if [[ -x "$MNEMOS_BIN" ]] || command -v mnemos &>/dev/null; then
-  ok "Mnemos v${VERSION} installed successfully!"
+if [[ -x "$MNEMOS_BIN" ]] || command -v vesma &>/dev/null; then
+  ok "Vesma v${VERSION} installed successfully!"
 else
-  warn "mnemos CLI not found — check the install output above."
+  warn "vesma CLI not found — check the install output above."
 fi
 
 # ── Optional: VS Code MCP integration ─────────────────────────────
@@ -255,7 +255,7 @@ setup_instructions() {
     ok "Agent integration pack deployed — reload your VS Code window."
   else
     warn "Integration pack deployment didn't complete. Run it later:"
-    printf "    mnemos integration setup --target all\n"
+    printf "    vesma integration setup --target all\n"
   fi
 }
 
@@ -268,21 +268,21 @@ case "$INSTRUCTIONS_SETUP" in
       prompt_ask "Deploy agent integration pack (instructions+skills+prompts)? [Y/n]"
       read -r reply < /dev/tty || reply=""
       case "$reply" in
-        [Nn]*) info "Skipped integration pack. You can deploy it anytime: mnemos integration setup" ;;
+        [Nn]*) info "Skipped integration pack. You can deploy it anytime: vesma integration setup" ;;
         *)     setup_instructions; INSTRUCTIONS_DONE=true ;;
       esac
     fi
     ;;
 esac
 
-# ── Optional: wire Mnemos MCP into Copilot agent tools: frontmatter ────
+# ── Optional: wire Vesma MCP into Copilot agent tools: frontmatter ────
 setup_wire_agents() {
-  info "Wiring Mnemos MCP into Copilot agent tools: frontmatter…"
+  info "Wiring Vesma MCP into Copilot agent tools: frontmatter…"
   if "$MNEMOS_BIN" integration setup --wire-agents --all --no-mcp; then
     ok "Agent MCP wiring complete — reload your VS Code window."
   else
     warn "Agent wiring didn't complete. Run it later:"
-    printf "    mnemos integration setup --wire-agents --all\n"
+    printf "    vesma integration setup --wire-agents --all\n"
   fi
 }
 
@@ -291,10 +291,10 @@ case "$WIRE_AGENTS" in
   no)  : ;;
   ask)
     if [[ -r /dev/tty ]]; then
-      prompt_ask "Wire Mnemos MCP to all Copilot agents? [Y/n]"
+      prompt_ask "Wire Vesma MCP to all Copilot agents? [Y/n]"
       read -r reply < /dev/tty || reply=""
       case "$reply" in
-        [Nn]*) info "Skipped agent wiring. Run it anytime: mnemos integration setup --wire-agents --all" ;;
+        [Nn]*) info "Skipped agent wiring. Run it anytime: vesma integration setup --wire-agents --all" ;;
         *)     setup_wire_agents ;;
       esac
     fi
@@ -303,14 +303,14 @@ esac
 
 # ── Done ──────────────────────────────────────────────────────────
 echo ""
-ok "Mnemos installed. Next steps:"
-echo "  • Run 'mnemos completion' to enable shell autocompletion"
-echo "  • Run 'mnemos integration setup' to deploy behavioral instructions to your agent harness"
-echo "  • Run 'mnemos doctor' to verify your installation"
+ok "Vesma installed. Next steps:"
+echo "  • Run 'vesma completion' to enable shell autocompletion"
+echo "  • Run 'vesma integration setup' to deploy behavioral instructions to your agent harness"
+echo "  • Run 'vesma doctor' to verify your installation"
 echo ""
 ok "Try it:"
-printf "    mnemos add 'Hello' --tags project:test,agent:setup,mnemos:learning\n"
-printf "    mnemos search 'Hello'\n"
+printf "    vesma add 'Hello' --tags project:test,agent:setup,mnemos:learning\n"
+printf "    vesma search 'Hello'\n"
 if [[ "$MCP_DONE" == false ]]; then
   echo ""
   info "Enable VS Code MCP integration later:"
@@ -320,7 +320,7 @@ fi
 if [[ "$INSTRUCTIONS_DONE" == false ]]; then
   echo ""
   info "Deploy the agent integration pack later:"
-  printf "    mnemos integration setup --target all\n"
+  printf "    vesma integration setup --target all\n"
 fi
 
 # ── PATH hint (only if ~/.local/bin isn't already on PATH) ─────────
@@ -329,7 +329,7 @@ if [[ "$LINKED" == true ]]; then
     *":${LOCAL_BIN}:"*) : ;;  # already reachable — nothing to do
     *)
       echo ""
-      warn "Add ~/.local/bin to your PATH so 'mnemos' works in every shell:"
+      warn "Add ~/.local/bin to your PATH so 'vesma' works in every shell:"
       printf "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc\n"
       ;;
   esac

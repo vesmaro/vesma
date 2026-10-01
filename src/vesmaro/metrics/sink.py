@@ -322,7 +322,7 @@ class MetricsStore(VerbLedgerMixin):
         """Record one assemble call + its injected blocks. Non-fatal.
 
         ``result`` is the ContextBlock dict returned by the host's
-        ``assemble_context`` (see vesmaro ``assemble.py``): ``text``,
+        ``assemble_context`` (see vesma ``assemble.py``): ``text``,
         ``blocks`` (with memory_id/score/tokens/redactions/ccr_hashes),
         ``tokens`` and ``stats``. This is the ONLY place the host needs
         to call; the boundary rule (§3) keeps the assemble pipeline

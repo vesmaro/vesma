@@ -1,4 +1,4 @@
-"""``mnemos export`` CLI subcommand — thin Typer wrapper over export logic.
+"""``vesma export`` CLI subcommand — thin Typer wrapper over export logic.
 
 Delegates to :mod:`vesmaro.cli.export` for the actual export logic so the
 logic stays testable without Typer's CliRunner.
@@ -43,7 +43,7 @@ def _parse_since(value: str | None) -> datetime | None:
 @export_app.callback(invoke_without_command=True)
 def export_cmd(
     output: Annotated[Path, typer.Option("--output", "-o", help="Output file path")] = Path(
-        "mnemos-export.json"
+        "vesma-export.json"
     ),
     format: Annotated[
         ExportFormat, typer.Option("--format", "-f", help="Export format")

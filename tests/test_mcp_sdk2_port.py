@@ -256,7 +256,7 @@ def test_in_memory_handshake_lists_full_tool_manifest() -> None:
                     tg.start_soon(_run_server)
                     async with ClientSession(client_read, client_write) as session:
                         init = await session.initialize()
-                        assert init.server_info.name == "mnemos"
+                        assert init.server_info.name == "vesma"
                         result = await session.list_tools()
                         return sorted(t.name for t in result.tools)
 
@@ -281,7 +281,7 @@ def test_server_registers_handlers_via_constructor() -> None:
     """
     from vesmaro import mcp_server
 
-    assert mcp_server.server.name == "mnemos"
+    assert mcp_server.server.name == "vesma"
     if hasattr(mcp_server.server, "get_request_handler"):
         # Real SDK 2.x surface.
         entry = mcp_server.server.get_request_handler("tools/list")

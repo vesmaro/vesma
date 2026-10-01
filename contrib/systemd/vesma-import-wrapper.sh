@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# mnemos-import-wrapper.sh — restricted import trigger guard on B (#104).
+# vesma-import-wrapper.sh — restricted import trigger guard on B (#104).
 #
 # Pinned in ~mnemos-sync/.ssh/authorized_keys via command="" for the TRIGGER
 # key (ssh-sync-hardening.md §2). SSH invokes this wrapper instead of a shell;
 # the real import command arrives in $SSH_ORIGINAL_COMMAND. This wrapper:
 #
-#   1. Rejects anything that is not a `mnemos sync import` invocation.
+#   1. Rejects anything that is not a `vesma sync import` invocation.
 #   2. Rewrites the positional source path to an absolute path under INCOMING_DIR
 #      (the caller cannot read outside it).
 #   3. Pins --passphrase-env to PASSPHRASE_ENV_NAME — the caller cannot inject
 #      an arbitrary env var name to read another secret.
 #   4. Appends an audit line to AUDIT_LOG for every invocation (§6).
-#   5. Resolves the mnemos CLI on B via VESMARO_SYNC_REMOTE_MNEMOS_BIN or PATH.
+#   5. Resolves the vesma CLI on B via VESMARO_SYNC_REMOTE_MNEMOS_BIN or PATH.
 #
-# mnemos itself stays offline — this runs on B's host SSH layer. Per ArchCom
-# 2026-07-20 (mnemos memory 4dc7d96e).
+# vesma itself stays offline — this runs on B's host SSH layer. Per ArchCom
+# 2026-07-20 (vesma memory 4dc7d96e).
 #
-# Install: chmod 0755, place at /usr/local/sbin/mnemos-import-wrapper.sh, pin in
+# Install: chmod 0755, place at /usr/local/sbin/vesma-import-wrapper.sh, pin in
 # authorized_keys as:
-#   command="/usr/local/sbin/mnemos-import-wrapper.sh",no-pty,no-agent-forwarding,... \
+#   command="/usr/local/sbin/vesma-import-wrapper.sh",no-pty,no-agent-forwarding,... \
 #   ssh-ed25519 AAAA... mnemos-sync-trigger@A
 #
 # Exit codes: 0 success, 1 import failed, 2 policy violation / parse error.
@@ -27,7 +27,7 @@ set -euo pipefail
 
 # ── config ────────────────────────────────────────────────────────────────────
 # INCOMING_DIR MUST match VESMARO_SYNC_REMOTE_IMPORT_DIR on A and rsync-wrapper.sh.
-# PASSPHRASE_ENV_NAME is the env var name that `mnemos sync import` reads the
+# PASSPHRASE_ENV_NAME is the env var name that `vesma sync import` reads the
 # passphrase from on B. Provision the VALUE on B's systemd environment — never
 # on A and never inline in this file. Override via /etc/mnemos/import-wrapper.env.
 # ── legacy env compatibility (ADR-0031 dual period) ─────────────────────────
@@ -44,7 +44,7 @@ if [ -z "${VESMARO_EXPORT_PASSPHRASE:-}" ] && [ -n "${MNEMOS_EXPORT_PASSPHRASE:-
 fi
 INCOMING_DIR="${VESMARO_SYNC_INCOMING_DIR:-/var/lib/mnemos-sync/incoming}"
 PASSPHRASE_ENV_NAME="${VESMARO_SYNC_PASSPHRASE_ENV:-MNEMOS_EXPORT_PASSPHRASE}"
-AUDIT_LOG="${VESMARO_SYNC_AUDIT_LOG:-/var/log/mnemos-sync.log}"
+AUDIT_LOG="${VESMARO_SYNC_AUDIT_LOG:-/var/log/vesma-sync.log}"
 MNEMOS_BIN="${VESMARO_SYNC_REMOTE_MNEMOS_BIN:-}"
 
 # ── audit helper (§6) ─────────────────────────────────────────────────────────
@@ -56,38 +56,38 @@ _audit() {
     [[ -n "$src_ip" ]] || src_ip="unknown"
     local ts
     ts="$(date -u +%FT%TZ)"
-    printf '[%s] mnemos-import-wrapper src=%s %s %s\n' "$ts" "$src_ip" "$1" "${2:-}" \
+    printf '[%s] vesma-import-wrapper src=%s %s %s\n' "$ts" "$src_ip" "$1" "${2:-}" \
         >>"$AUDIT_LOG" 2>/dev/null || true
 }
 
 _err() {
-    printf '[%s] mnemos-import-wrapper: ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >&2
+    printf '[%s] vesma-import-wrapper: ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >&2
     _audit "REJECT" "$*"
 }
 
-# ── 1. only `mnemos sync import` is allowed ───────────────────────────────────
+# ── 1. only `vesma sync import` is allowed ───────────────────────────────────
 if [[ -z "${SSH_ORIGINAL_COMMAND:-}" ]]; then
     _err "no command provided — interactive shell refused."
     exit 2
 fi
 
-# Accept:  mnemos sync import <path> [--passphrase-env <name>] [--dry-run]
-# Reject anything else (including `mnemos sync export`, shells, other CLIs).
-if [[ "$SSH_ORIGINAL_COMMAND" != "mnemos sync import "* ]]; then
+# Accept:  vesma sync import <path> [--passphrase-env <name>] [--dry-run]
+# Reject anything else (including `vesma sync export`, shells, other CLIs).
+if [[ "$SSH_ORIGINAL_COMMAND" != "vesma sync import "* ]]; then
     _err "non-import command refused: ${SSH_ORIGINAL_COMMAND}"
     exit 2
 fi
 
-# ── 2. discover the mnemos CLI on B ───────────────────────────────────────────
+# ── 2. discover the vesma CLI on B ───────────────────────────────────────────
 if [[ -z "$MNEMOS_BIN" ]]; then
-    if command -v mnemos >/dev/null 2>&1; then
-        MNEMOS_BIN="$(command -v mnemos)"
+    if command -v vesma >/dev/null 2>&1; then
+        MNEMOS_BIN="$(command -v vesma)"
     elif [[ -x /usr/local/bin/mnemos ]]; then
         MNEMOS_BIN=/usr/local/bin/mnemos
     elif [[ -x /opt/mnemos/.venv/bin/mnemos ]]; then
         MNEMOS_BIN=/opt/mnemos/.venv/bin/mnemos
     else
-        _err "mnemos CLI not found on B. Set VESMARO_SYNC_REMOTE_MNEMOS_BIN."
+        _err "vesma CLI not found on B. Set VESMARO_SYNC_REMOTE_MNEMOS_BIN."
         exit 2
     fi
 fi
@@ -108,7 +108,7 @@ _dry_run_seen=0
 # A shell-quote-aware parser is a future hardening option; low priority
 # because the policy gates already close the injection surface.
 _tokens=($SSH_ORIGINAL_COMMAND)
-# Drop the leading "mnemos sync import" — already validated above.
+# Drop the leading "vesma sync import" — already validated above.
 _shift=3
 for (( _i=$_shift; _i<${#_tokens[@]}; _i++ )); do
     _t="${_tokens[$_i]}"
@@ -121,7 +121,7 @@ for (( _i=$_shift; _i<${#_tokens[@]}; _i++ )); do
             ;;
         --*)
             # ── B3 hardening (CWE-78): whitelist import flags ─────────────
-            # Only --dry-run is forwarded to `mnemos sync import`. --passphrase-env
+            # Only --dry-run is forwarded to `vesma sync import`. --passphrase-env
             # is pinned by the wrapper itself (above). Any other --* flag is
             # refused — a compromised A could otherwise redirect the import
             # source via --config or other file-reading flags.

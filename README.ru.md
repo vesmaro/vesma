@@ -62,8 +62,8 @@ pip install vesma
 
 > ⚠️ **Имена.** Продукт и CLI — `vesma` (`pip install vesma`, слот PyPI `project/vesma`).
 > Доребрендинговые пакеты живут до момента deprecation: `pip install mnemos-memory-server`
-> ставит тот же сервер под старым именем (легаси-написание его CLI было `mnemos`, теперь это
-> алиас). Голый `pip install mnemos` — посторонний проект, не используйте его.
+> ставит тот же сервер под старым именем (легаси-написание его CLI было `vesma`, теперь это
+> алиас). Голый `pip install vesma` — посторонний проект, не используйте его.
 
 #### Или возьмите готовый образ — Docker, Podman или кластер Kubernetes
 
@@ -74,12 +74,12 @@ pip install vesma
 <summary><strong>☸️ Kubernetes / K3s — helm-чарт с ингрессом</strong></summary>
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.example.com'
-kubectl -n vesmaro rollout status deploy/vesmaro
+kubectl -n vesma rollout status deploy/vesma
 ```
 
 В K3s Traefik и local-path хранилище есть из коробки — команды работают как есть.
@@ -109,7 +109,7 @@ cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesmaro.env (оба имени переменной), затем:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet выводит имя unit из имени файла — пока это mnemos.service
-systemctl --user daemon-reload && systemctl --user start mnemos
+systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
 ```
 

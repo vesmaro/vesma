@@ -1,8 +1,8 @@
-# vesmaro-mesh.container — quadlet for the mesh daemon of the CONTAINER
-# install (rootless, systemd --user). Rendered by `vesmaro-node
+# vesma-mesh.container — quadlet for the mesh daemon of the CONTAINER
+# install (rootless, systemd --user). Rendered by `vesma-node
 # container-install`; only deployed when the mTLS material is present.
 [Unit]
-Description=vesmaro mesh container — federation transport (@@NODE_ID@@)
+Description=vesma mesh container — federation transport (@@NODE_ID@@)
 Documentation=https://github.com/vesmaro/vesma-mesh
 After=network-online.target
 Wants=network-online.target
@@ -15,11 +15,11 @@ ContainerName=@@NAME@@-mesh
 # v1 COMPROMISE: host networking — dials the core on 127.0.0.1:8790 and
 # serves peers on :8443 (see the core quadlet note).
 Network=host
-Volume=@@CONFDIR@@/mesh.container.yaml:/etc/vesmaro/mesh.yaml:ro
-Volume=@@CONFDIR@@/pki:/etc/vesmaro/pki:ro
-Volume=@@STATEDIR@@/container-run:/run/vesmaro
+Volume=@@CONFDIR@@/mesh.container.yaml:/etc/vesma/mesh.yaml:ro
+Volume=@@CONFDIR@@/pki:/etc/vesma/pki:ro
+Volume=@@STATEDIR@@/container-run:/run/vesma
 # Image entrypoint is /usr/local/bin/mnemos-mesh — Exec supplies args.
-Exec=serve -config /etc/vesmaro/mesh.yaml
+Exec=serve -config /etc/vesma/mesh.yaml
 
 [Service]
 Restart=on-failure

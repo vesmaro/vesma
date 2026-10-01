@@ -510,7 +510,7 @@ def verify_cmd(
 
     # ── Agent wiring section (informational — does not affect exit code) ────
     # Agent wiring status is reported here for visibility, but it does not
-    # change the verify exit code. The dedicated ``mnemos doctor`` check
+    # change the verify exit code. The dedicated ``vesma doctor`` check
     # governs the wiring health gate. This keeps ``verify`` focused on file
     # staleness/missing, which is what CI pipelines expect.
     agent_summary = verify_agents()

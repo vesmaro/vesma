@@ -1,7 +1,7 @@
 """Secrets detection scanner for the Vesma federation defence-in-depth.
 
 This module is the **single source of truth** for secret-pattern detection
-across vesmaro. It is consumed by three defence-in-depth layers
+across vesma. It is consumed by three defence-in-depth layers
 (ArchCom 2026-07-17 federation contract §2.2.1):
 
 * **Layer 1 — write-path scanner** (this issue, #86): wired into

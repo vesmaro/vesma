@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# local-release.sh — full local release pipeline for mnemos.
+# local-release.sh — full local release pipeline for vesma.
 #
 # DEPRECATED (owner directive ecc205fc): superseded by Korrnals/release-pipeline
 # (local symlink mode, connected 2026-08-30). Use instead:
@@ -26,7 +26,7 @@
 # Prereqs: on release tag, clean tree, venv with dev extras, gh CLI auth,
 # docker or buildah for image, python -m build available.
 #
-# See: memory ef56d3b5 (CI billing), b9f022f8 (mnemos local-CI workaround)
+# See: memory ef56d3b5 (CI billing), b9f022f8 (vesma local-CI workaround)
 
 set -euo pipefail
 
@@ -79,7 +79,7 @@ print_summary() {
 }
 
 # pre-flight
-echo "=== Local release — mnemos (replica of release.yml) ==="
+echo "=== Local release — vesma (replica of release.yml) ==="
 echo "Reason: GitHub Actions billing-locked. See memory ef56d3b5."
 echo ""
 
@@ -175,7 +175,7 @@ if ! $NO_RELEASE; then
       gh release create "$TAG" dist/* --generate-notes --title "v$VERSION"; rc=$?
     fi
     set -e
-    [[ $rc -eq 0 ]] && { record "GitHub Release" "PASS"; echo "  https://github.com/vesmaro/vesmaro/releases/tag/$TAG"; } || { record "GitHub Release" "FAIL"; echo "  Check: gh auth status" >&2; }
+    [[ $rc -eq 0 ]] && { record "GitHub Release" "PASS"; echo "  https://github.com/vesmaro/vesma/releases/tag/$TAG"; } || { record "GitHub Release" "FAIL"; echo "  Check: gh auth status" >&2; }
   fi
 fi
 

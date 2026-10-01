@@ -1,12 +1,12 @@
 # Deploy
 
-Deployment assets for the Vesmaro (Mnemos) memory server, grouped by target:
+Deployment assets for the Vesma (Vesma) memory server, grouped by target:
 
 | Directory | Target | Entry point |
 |-----------|--------|-------------|
-| [`helm/vesmaro/`](helm/vesmaro/) | **Kubernetes / K3s** (any 1.25+ cluster) | `helm install vesmaro deploy/helm/vesmaro --set auth.totpMasterKey=$(openssl rand -hex 32)` — Deployment + Service + **Ingress** + 2×PVC + Secret |
+| [`helm/vesma/`](helm/vesma/) | **Kubernetes / K3s** (any 1.25+ cluster) | `helm install vesma deploy/helm/vesma --set auth.totpMasterKey=$(openssl rand -hex 32)` — Deployment + Service + **Ingress** + 2×PVC + Secret |
 | [`docker/`](docker/) | **Docker / Docker Compose** (pre-built image) | `cp .env.example .env && docker compose up -d` (podman-compose compatible) |
-| [`podman/quadlet/`](podman/quadlet/) | **Podman** as a systemd user unit | copy unit + `systemctl --user start mnemos` |
+| [`podman/quadlet/`](podman/quadlet/) | **Podman** as a systemd user unit | copy unit + `systemctl --user start vesma` |
 | [`podman/kube/`](podman/kube/) | **Podman** `kube play` (single-host pod) | `podman kube play deploy/podman/kube/mnemos-pod.yaml` |
 | [`../../compose.yaml`](../compose.yaml) | Compose from the repo root (published image, historic `mnemos-*` names) | `TOTP_MASTER_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
@@ -33,8 +33,8 @@ Full documentation:
 
 ## RU — кратко
 
-Каталог деплоя Vesmaro (Mnemos): **K8s/K3s** — Helm-чарт с ингрессом
-(`helm/vesmaro/`), **Docker** — docker-compose с готовым образом
+Каталог деплоя Vesma (Vesma): **K8s/K3s** — Helm-чарт с ингрессом
+(`helm/vesma/`), **Docker** — docker-compose с готовым образом
 (`docker/`), **Podman** — quadlet-юнит и kube-play манифест (`podman/`).
 Полные руководства — в docs (EN/RU, ссылки выше). Обязательное для любого
 не-loopback деплоя: TOTP-ключ (`openssl rand -hex 32`); образ публичный —

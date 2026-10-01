@@ -61,7 +61,7 @@ federation:
 
 ```bash
 vesma sync export \
-  --output /var/tmp/mnemos-sync.json \
+  --output /var/tmp/vesma-sync.json \
   --shared-projects "project-umbra project-vesma"
 ```
 
@@ -69,7 +69,7 @@ vesma sync export \
 
 | Опция | По умолчанию | Назначение |
 |-------|--------------|------------|
-| `--output` / `-o` | `mnemos-sync.json` | Путь выходного файла (рекомендуется абсолютный). Родительские директории создаются. |
+| `--output` / `-o` | `vesma-sync.json` | Путь выходного файла (рекомендуется абсолютный). Родительские директории создаются. |
 | `--encrypt` | выкл | Шифровать payload через AES-256-GCM. Пароль читается из `MNEMOS_EXPORT_PASSPHRASE`. |
 | `--shared-projects` | config `federation.shared_projects` | Список slug'ов через пробел/запятую (переопределяет конфиг). |
 | `--dry-run` | выкл | Собрать payload и вывести сводку; файл НЕ записывать. |
@@ -97,7 +97,7 @@ vesma sync export \
   pii_anonymized: 2
   encrypted: false
   shared_projects: project-umbra, project-vesma
-  path: /var/tmp/mnemos-sync.json
+  path: /var/tmp/vesma-sync.json
 ```
 
 ### Шифрование
@@ -120,7 +120,7 @@ vesma sync export --output sync.enc --encrypt
 ## Импорт — `vesma sync import`
 
 ```bash
-vesma sync import /var/tmp/mnemos-sync.json
+vesma sync import /var/tmp/vesma-sync.json
 ```
 
 Опции:
@@ -192,7 +192,7 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
 | `MNEMOS_SYNC_MNEMOS_BIN` | auto-discover | Путь к CLI `vesma` на A. |
 
 Путь к CLI `vesma` на B (`MNEMOS_SYNC_REMOTE_MNEMOS_BIN`) задаётся на B в
-`/etc/vesmaro/sync.env` — на A он не нужен, обёртка `mnemos-import-wrapper` на B
+`/etc/vesma/sync.env` — на A он не нужен, обёртка `vesma-import-wrapper` на B
 находит бинарник сама. Парольная фраза никогда не передаётся в командной строке:
 на A она читается из переменной, имя которой задано в `MNEMOS_SYNC_PASSPHRASE_ENV`,
 на B независимо прописывается в окружении systemd.
@@ -207,13 +207,13 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
           MNEMOS_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
           MNEMOS_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
           MNEMOS_SYNC_ENCRYPT=true MNEMOS_SYNC_PASSPHRASE_ENV=MNEMOS_EXPORT_PASSPHRASE \
-          /opt/vesma/scripts/sync-peers.sh >> /var/log/mnemos-sync.log 2>&1
+          /opt/vesma/scripts/sync-peers.sh >> /var/log/vesma-sync.log 2>&1
 ```
 
 Перенос — rsync поверх ssh, на B ограничен обёрткой `rsync-wrapper.sh`; запуск
-импорта на B защищён обёрткой `mnemos-import-wrapper.sh` (обе — в
+импорта на B защищён обёрткой `vesma-import-wrapper.sh` (обе — в
 `contrib/systemd/`). Тот же скрипт — это `ExecStart` юнита
-`contrib/systemd/mnemos-sync.service`, который подхватывает `/etc/vesmaro/sync.env`.
+`contrib/systemd/vesma-sync.service`, который подхватывает `/etc/vesma/sync.env`.
 
 ---
 
@@ -226,8 +226,8 @@ JSONL-запись в `~/.mnemos/logs/sync-audit.jsonl`. Лог append-only —
 Формат записей (только **счётчики** — без сырого контента, секретов, PII):
 
 ```json
-{"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/mnemos-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
-{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/mnemos-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
+{"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/vesma-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
+{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
 ```
 
 Audit-лог — операционный след: какие проекты синхронизировались, сколько

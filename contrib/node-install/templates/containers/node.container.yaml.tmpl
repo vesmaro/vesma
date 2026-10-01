@@ -1,5 +1,5 @@
 # node.container.yaml — core face config for the CONTAINER install
-# (rendered by `vesmaro-node container-install`; replace-mounts the
+# (rendered by `vesma-node container-install`; replace-mounts the
 # image's /app/config.yaml via MNEMOS_CONFIG/VESMARO_CONFIG — a YAML
 # file value beats env vars, so the bind-mounted file is the only way
 # to re-bind host/port/auth).
@@ -39,13 +39,13 @@ mesh:
   # material is present (the core fails fast on a TCP leg without
   # readable certs — MeshTCPLegError).
   enabled: @@MESH_ENABLED@@
-  socket_path: /run/vesmaro/core.sock
+  socket_path: /run/vesma/core.sock
   timeout_s: 5.0
   tcp:
     enabled: @@MESH_ENABLED@@
     port: 8790
     bind: "127.0.0.1"
     tls:
-      cert_file: /etc/vesmaro/pki/core.pem
-      key_file: /etc/vesmaro/pki/core.key
-      ca_file: /etc/vesmaro/pki/ca.pem
+      cert_file: /etc/vesma/pki/core.pem
+      key_file: /etc/vesma/pki/core.key
+      ca_file: /etc/vesma/pki/ca.pem

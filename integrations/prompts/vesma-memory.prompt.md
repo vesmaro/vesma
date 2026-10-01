@@ -73,7 +73,7 @@ Every write must carry:
 | `agent:<slug>` | **exactly 1** | `agent:tech-lead` (or `agent:user`) |
 | `mnemos:<subtype>` | **at least 1** | `mnemos:decision` |
 
-### Valid mnemos subtypes
+### Valid vesma subtypes
 
 `session`, `checkpoint`, `bug-pattern`, `learning`, `decision`, `rule`,
 `open-question`, `legacy`

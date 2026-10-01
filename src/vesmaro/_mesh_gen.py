@@ -1,10 +1,10 @@
-"""Import shim for gRPC-generated stubs (mnemos-mesh Phase 3, issue #105 M3).
+"""Import shim for gRPC-generated stubs (vesma-mesh Phase 3, issue #105 M3).
 
 The gRPC Python plugin emits flat top-level imports
 (``import mnemos_core_api_pb2 as ...``) inside the generated
 ``*_pb2_grpc.py`` files. The generated directory
 (``federation/gen/python/``) is gitignored and lives outside the
-``vesmaro`` package tree, so the generated modules are not importable as
+``vesma`` package tree, so the generated modules are not importable as
 ordinary package members.
 
 This shim resolves that by inserting the generated directory on
@@ -57,7 +57,7 @@ _ensure_gen_dir_on_path()
 #: service (ListMemories, WriteMemory, GetSubscriptionState, Heartbeat).
 core_pb2: Any = importlib.import_module("mnemos_core_api_pb2")
 
-#: ``mnemos_core_api_pb2_grpc`` — ``MnemosCoreStub`` / ``MnemosCoreServicer``
+#: ``mnemos_core_api_pb2_grpc`` — ``MnemosCoreStub`` / ``VesmaCoreServicer``
 #: for the core service over the Unix socket.
 core_pb2_grpc: Any = importlib.import_module("mnemos_core_api_pb2_grpc")
 
@@ -69,7 +69,7 @@ fed_pb2: Any = importlib.import_module("federation_pb2")
 #: ADR-0018 variant (c)). Loaded LAZILY via module ``__getattr__`` (PEP
 #: 562): the generated stubs are gitignored and environments that have not
 #: re-run ``scripts/gen-proto.sh`` since W3 do not have the file — an eager
-#: import here would break them at ``vesmaro`` import time. The bare
+#: import here would break them at ``vesma`` import time. The bare
 #: annotations below (no assignment) document the lazy names for static
 #: tools without creating the attributes.
 _AGENT_LAZY_MODULES: Final[dict[str, str]] = {

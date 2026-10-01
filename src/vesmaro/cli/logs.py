@@ -1,4 +1,4 @@
-"""``mnemos logs`` — view pipeline traces (M6 explainability layer).
+"""``vesma logs`` — view pipeline traces (M6 explainability layer).
 
 Reads the ``traces`` table via :meth:`SQLiteStore.list_traces` and prints
 a compact, ``tail -f``-style table. Supports filtering by task label,
@@ -6,11 +6,11 @@ project, and a time boundary.
 
 Usage::
 
-    mnemos logs                       # last 50 traces
-    mnemos logs --task cluster        # only cluster traces
-    mnemos logs --project mnemos      # filter by project
-    mnemos logs --limit 100           # more rows
-    mnemos logs --follow              # poll for new traces (tail -f)
+    vesma logs                       # last 50 traces
+    vesma logs --task cluster        # only cluster traces
+    vesma logs --project vesma      # filter by project
+    vesma logs --limit 100           # more rows
+    vesma logs --follow              # poll for new traces (tail -f)
 """
 
 from __future__ import annotations

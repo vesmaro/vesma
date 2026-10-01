@@ -1,4 +1,4 @@
-"""ADR-0025 E1 — deterministic retrieval lanes (mnemos #253).
+"""ADR-0025 E1 — deterministic retrieval lanes (vesma #253).
 
 Lanes are a **recall SUB-STAGE** of ``assemble_context`` (``assemble.py``):
 when ``LanesConfig.enabled`` is on, several candidate sources merge into

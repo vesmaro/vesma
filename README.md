@@ -62,8 +62,8 @@ offline, no API keys, nothing downloaded.
 
 > ⚠️ **Names.** The product and the CLI are `vesma` (`pip install vesma`, PyPI slot `project/vesma`).
 > The pre-rebrand packages remain live until deprecation: `pip install mnemos-memory-server`
-> installs the same server under the legacy name (its legacy CLI spelling was `mnemos`, now an
-> alias). The bare `pip install mnemos` is an unrelated project — do not use it.
+> installs the same server under the legacy name (its legacy CLI spelling was `vesma`, now an
+> alias). The bare `pip install vesma` is an unrelated project — do not use it.
 
 #### Or take the prebuilt image — Docker, Podman, or a Kubernetes cluster
 
@@ -74,12 +74,12 @@ no login. Full guides live in the admin docs.
 <summary><strong>☸️ Kubernetes / K3s — Helm chart with ingress</strong></summary>
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.example.com'
-kubectl -n vesmaro rollout status deploy/vesmaro
+kubectl -n vesma rollout status deploy/vesma
 ```
 
 K3s ships Traefik and local-path storage, so the commands work as-is — chart, values and
@@ -109,7 +109,7 @@ cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesmaro.env (both env spellings), then:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet derives the unit name from the file name — the unit is mnemos.service for now
-systemctl --user daemon-reload && systemctl --user start mnemos
+systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
 ```
 
@@ -345,7 +345,7 @@ conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/
 | [tag-contract.md](docs/en/user/tag-contract.md) | The `project:` / `agent:` / `mnemos:` tag schema (namespace — unchanged data contract) enforced on every memory |
 | [security.md](docs/en/admin/security.md) | Threat model, SSRF guard, FTS5 escape, auth model |
 | [kubernetes-deployment.md](docs/en/admin/kubernetes-deployment.md) | Helm chart for K8s/K3s clusters: ingress, storage, TLS, TOTP secret |
-| [contrib/node-install/](contrib/node-install/) | `vesmaro-node` — one-command bare-metal node bundle: venv + mesh binary + units, with adopt / atomic pair upgrade / uninstall |
+| [contrib/node-install/](contrib/node-install/) | `vesma-node` — one-command bare-metal node bundle: venv + mesh binary + units, with adopt / atomic pair upgrade / uninstall |
 | [runbooks/](docs/en/admin/runbooks/) | Install, migrate, backup / restore, dependency updates, container deployment |
 | [adr/](docs/project/adr/) | Architectural decision records — the *why* behind the design |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes — Keep a Changelog format |

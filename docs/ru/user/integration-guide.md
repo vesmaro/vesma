@@ -19,7 +19,7 @@
 |-------------|---------|--------------|--------|
 | **Инструкции** | `*.instructions.md` с `applyTo: '**'` | Пассивные правила — загружаются в контекст каждого агента безусловно. Описывают КОГДА и КАК. | "Recall в начале сессии, перед чтением файлов" |
 | **Скиллы** | файлы `SKILL.md` | Workflow-гайды — пошаговые процедуры, загружаются по требованию. | "Как эффективно искать: узко → широко" |
-| **Промпт-режим** | `*.prompt.md` | Активный режим — более строгий контракт, меняющий поведение агента для работы с памятью. | Режим `mnemos-memory` с обязательным recall + checkpoint |
+| **Промпт-режим** | `*.prompt.md` | Активный режим — более строгий контракт, меняющий поведение агента для работы с памятью. | Режим `vesma-memory` с обязательным recall + checkpoint |
 
 ### Инструкции vs скиллы vs промпты
 
@@ -385,7 +385,7 @@ compress, tokens), который очищает сырой контент от 
 ## Хуки и SDK для автоматизации
 
 В vesma есть две выделенные поверхности для интеграции харнессов и
-автоматизации (ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3):
+автоматизации (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3):
 
 - **Хуки жизненного цикла** — групповой MCP-инструмент `mnemos_hooks` и
   REST-близнец `POST /hooks/{action}` с тремя действиями: `pre_llm_call`
@@ -400,7 +400,7 @@ compress, tokens), который очищает сырой контент от 
   обязательна на каждом вызове хука. Полный справочник:
   [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
   / [http-api.md → Хуки жизненного цикла](http-api.md).
-- **`MnemosSDK`** (`from mnemos.sdk import MnemosSDK`) — тонкая типизированная
+- **`VesmaSDK`** (`from mnemos.sdk import VesmaSDK`) — тонкая типизированная
   Python-обёртка над `MemoryManager` для in-process адаптеров:
   `remember` / `recall` / `forget` / `stats` / `assemble_context` /
   `rewrite`. Доменная логика живёт в путях менеджера (те же сканы, гейты и
@@ -409,8 +409,8 @@ compress, tokens), который очищает сырой контент от 
   `recall` сканирует каждый эхо-элемент на выдаче (контент + заголовок,
   по-элементные редакции, отбрасывание в refuse-режиме), а `remember`
   валидирует теги вызывающего по контракту тегов до любой записи.
-  Local-first: `MnemosSDK(settings)` строит свой менеджер,
-  `MnemosSDK(manager=…)` переиспользует ваш.
+  Local-first: `VesmaSDK(settings)` строит свой менеджер,
+  `VesmaSDK(manager=…)` переиспользует ваш.
 
 Полная документация адаптеров для интеграторов харнессов — раздел
 [Hermes Agent ниже](#hermes-agent): эталонная миграция на контракт.
@@ -620,14 +620,14 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 - **минимум один** `vesma:<subtype>`
 
 Полная схема — в [tag-contract.md](tag-contract.md). Слой интеграции
-подкрепляет это в трёх местах: инструкция `mnemos-tag-contract`, скилл
-`mnemos-tag-contract` и промпт-режим `mnemos-memory`.
+подкрепляет это в трёх местах: инструкция `vesma-tag-contract`, скилл
+`vesma-tag-contract` и промпт-режим `vesma-memory`.
 
 ---
 
 ## Hermes Agent
 
-Vesma предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `mnemos.adapters.hermes.HermesMemoryAdapter` — фасад `MnemosSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
+Vesma предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `mnemos.adapters.hermes.HermesMemoryAdapter` — фасад `VesmaSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
 
 ### Установка
 
@@ -655,18 +655,18 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 
 ### Инструменты
 
-Плагин экспонирует инструменты `vesma_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`MnemosSDK.remember` / `recall`, хуки) вместо сырого HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
+Плагин экспонирует инструменты `vesma_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`VesmaSDK.remember` / `recall`, хуки) вместо сырого HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
 
 | Инструмент | Поверхность контракта |
 |------------|----------------------|
-| `mnemos_search` | `MnemosSDK.recall` (скан выдачи) |
-| `mnemos_add` | `MnemosSDK.remember` (контракт тегов на канале) |
+| `mnemos_search` | `VesmaSDK.recall` (скан выдачи) |
+| `mnemos_add` | `VesmaSDK.remember` (контракт тегов на канале) |
 | `mnemos_recall_context` | recall чекпоинтов + скан канала |
-| `mnemos_save_context` | `MnemosSDK.remember` (`mnemos:checkpoint`) |
+| `mnemos_save_context` | `VesmaSDK.remember` (`mnemos:checkpoint`) |
 | `mnemos_agent_recall` | агентский recall + скан канала |
 | `mnemos_list_recent` | `MemoryManager.list_recent` (скан только заголовков) |
 | `mnemos_list_tags` | `MemoryManager.list_tags` |
-| `mnemos_stats` | `MnemosSDK.stats` (срез проекта) |
+| `mnemos_stats` | `VesmaSDK.stats` (срез проекта) |
 | `mnemos_auto_collect_status` | in-process счётчик вызовов (та же форма) |
 | `mnemos_ingest_url` | `MemoryManager.ingest_url` |
 | `mnemos_compress` | хук `post_tool_call` (идентичность N2) |
@@ -697,10 +697,10 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 Плагин реализует ABC `MemoryProvider` Hermes как тонкий шим над `HermesMemoryAdapter`:
 
 - **prefetch()** — хук `pre_llm_call` → `assemble_context` (recall → фильтр → скан секретов → align → бюджет, провенанс на каждом блоке), вне цикла хода
-- **sync_turn()** — `MnemosSDK.remember` (`mnemos:session`) для значимых ходов (пользователь > 50 символов или каждый N-й)
-- **on_memory_write()** — зеркало записей MEMORY.md/USER.md через `MnemosSDK.remember` (`mnemos:learning` / `mnemos:rule`)
+- **sync_turn()** — `VesmaSDK.remember` (`mnemos:session`) для значимых ходов (пользователь > 50 символов или каждый N-й)
+- **on_memory_write()** — зеркало записей MEMORY.md/USER.md через `VesmaSDK.remember` (`mnemos:learning` / `mnemos:rule`)
 - **on_session_end()** — один итог `mnemos:session` на сессию через `remember`
-- **on_pre_compress()** — мост ADR-0018: отбрасываемый блок репортится через `MnemosSDK.rewrite` (`on_context_rewrite`), оригинал попадает в LTM без потерь
+- **on_pre_compress()** — мост ADR-0018: отбрасываемый блок репортится через `VesmaSDK.rewrite` (`on_context_rewrite`), оригинал попадает в LTM без потерь
 - **Идентичность** — `project`+`agent` фиксируются при construction (с валидацией контракта тегов заранее), `session` привязывается на сессию Hermes и прошивается в каждый глагол (включая A2-гейт CCR-эмитента и мандат N2 на сжатие)
 
 Приёмка адаптера закреплена in-process тестом `tests/test_hermes_adapter.py` (гейт фазы 1 ADR-0017 — «Hermes e2e на контракте»).

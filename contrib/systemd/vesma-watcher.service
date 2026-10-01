@@ -1,12 +1,12 @@
 [Unit]
-Description=Mnemos — Memory & Knowledge Server (HTTP API)
+Description=Vesma — File Watcher
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/LABs/AI/mnemos/.venv/bin/mnemos serve
+ExecStart=%h/LABs/AI/mnemos/.venv/bin/mnemos watch
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

@@ -1,7 +1,4 @@
-"""Vesmaro — standalone memory & knowledge server for AI agents.
-
-Formerly "mnemos". Productionised for the GCW agent family and Hermes Agent.
-"""
+"""Vesma — standalone memory & knowledge server for AI agents."""
 
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ except PackageNotFoundError:
         __version__ = _pkg_version("vesma-memory-server")
     except PackageNotFoundError:
         try:
-            __version__ = _pkg_version("vesmaro")
+            __version__ = _pkg_version("vesma")
         except PackageNotFoundError:
             try:
                 __version__ = _pkg_version("mnemos-memory-server")

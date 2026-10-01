@@ -1,4 +1,4 @@
-"""Awareness v0 — presence + delta + conflict-hints (mnemos #254, R3).
+"""Awareness v0 — presence + delta + conflict-hints (vesma #254, R3).
 
 ArchCom 2026-09-09 (R3, consensus 4/4): pull-based awareness as a HOOKS
 COMPOSITION — never a seventh assemble stage (the D1 contract
@@ -12,7 +12,7 @@ The engine is two PURE read functions over the existing flat store
 * :func:`project_delta` — WHAT changed since a cursor, aggregated to
   ONE LINE PER NEIGHBOR AGENT (the E1 per-agent delta slot — the
   structural anti-DoS bound: one agent cannot flood the context with
-  N delta blocks, mnemos #253 "awareness-ready contracts").
+  N delta blocks, vesma #253 "awareness-ready contracts").
 
 plus the lexical :func:`conflict_hints` (deterministic overlap between
 my last checkpoint goal and active neighbors' goals — the anti-#224
@@ -672,7 +672,7 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
     write. Returns ``None`` for non-checkpoint rows or checkpoints with
     an empty Goals section. Bounded to :data:`GOAL_TITLE_MAX_CHARS`.
 
-    vesmaro-canon v1.0.0 (ArchCom option A): ``save_checkpoint`` now
+    vesma-canon v1.0.0 (ArchCom option A): ``save_checkpoint`` now
     renders ALL five sections, so an empty Goals field carries the
     deterministic placeholder line instead of an empty section — the
     placeholder is template text, NOT a goal, so it never becomes a
@@ -680,7 +680,7 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
     tokenizer as a false peer goal; the pre-W2 "no Goals section →
     None" contract is preserved by treating the placeholder as absent).
 
-    Two read modes (vesmaro-canon W2-S4, canon §9 transitional):
+    Two read modes (vesma-canon W2-S4, canon §9 transitional):
 
     * ``metadata.canon`` present (canon record) — the section is located
       by the FROZEN ``CHECKPOINT_SECTION_TITLES`` H2 map (never regex
@@ -714,7 +714,7 @@ def checkpoint_goal_title(memory: Memory) -> str | None:
         collapsed = " ".join(line.split())
         if collapsed:
             # Placeholder-only Goals section — template, not a goal
-            # (vesmaro-canon v1.0.0; the placeholder set lives in
+            # (vesma-canon v1.0.0; the placeholder set lives in
             # vesmaro.models so render and reads share one source).
             if collapsed in CHECKPOINT_PLACEHOLDER_LINES:
                 continue
@@ -1340,7 +1340,7 @@ def delta_blocks(delta: dict[str, Any]) -> list[dict[str, Any]]:
 def assert_awareness_tail(blocks: list[dict[str, Any]]) -> None:
     """Wire the E1 guard over a COMPOSED block list (awareness included).
 
-    ``assert_foreign_lanes_tail_only`` (mnemos #253) is the
+    ``assert_foreign_lanes_tail_only`` (vesma #253) is the
     awareness-ready invariant guard; lane-less blocks are pre-E1
     knowledge blocks, so they map to the pinned ``knowledge`` lane.
     Awareness blocks must form a contiguous tail — never inside the

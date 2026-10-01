@@ -3,9 +3,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "vesmaro.fullname" $ }}-{{ $name }}
+  name: {{ include "vesma.fullname" $ }}-{{ $name }}
   labels:
-    {{- include "vesmaro.labels" $ | nindent 4 }}
+    {{- include "vesma.labels" $ | nindent 4 }}
 spec:
   accessModes:
     {{- toYaml $vol.accessModes | nindent 4 }}

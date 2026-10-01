@@ -46,7 +46,7 @@ S2 meta-mirror (ADR-0021 Q10.2/Q10.3, chairman ruling 2026-09-20)
 -------------------------------------------------------------------
 :rpc:`SyncMetadata` serves metadata-only pages of the
 ``federation_index`` (the S2 poll-first export leg; body factored into
-:meth:`MnemosCoreServicer.build_metadata_sync_response` for unit
+:meth:`VesmaCoreServicer.build_metadata_sync_response` for unit
 testing), :rpc:`UpsertIndexEntries` imports peer metadata into the index
 (S2 import leg, per-entry gate counters + fail-closed ACL). Both reuse
 the ``FederationPeer`` wire messages — the mesh relays them verbatim.
@@ -98,7 +98,7 @@ compromised node calling the data RPCs directly):
 * **T7 logging**: agent_id / jti / coarse reason only — never token
   values, never record content.
 
-Fail-closed contract (ACL hardening, vesmaro#371/#369 family):
+Fail-closed contract (ACL hardening, vesma#371/#369 family):
 
 * **No implicit "all".** The EFFECTIVE allowed set of a peer is its
   ``allowed_projects`` verbatim, or — for the explicit ``["*"]``
@@ -132,7 +132,7 @@ Security notes:
       :attr:`vesmaro.config.PeerConfig.mtls_cert_fingerprint` is set,
       the presented client-cert fingerprint is additionally PINNED
       (``sha256:<hex>`` of the DER leaf, symmetric to the mesh's peer
-      leg, ``mnemos-mesh/internal/mtls``) — enforced in the servicer on
+      leg, ``vesma-mesh/internal/mtls``) — enforced in the servicer on
       every data RPC over TLS connections.
     * The secrets scanner runs on :rpc:`WriteMemory` via the
       :class:`~vesmaro.manager.MemoryManager.add` Layer 1 path; a
@@ -198,7 +198,7 @@ __all__ = [
     "AgentIdentity",
     "MeshServer",
     "MeshTCPLegError",
-    "MnemosCoreServicer",
+    "VesmaCoreServicer",
 ]
 
 #: Default page size for :rpc:`ListMemories` when the request omits ``limit``.
@@ -276,7 +276,7 @@ class CompactImportStatus(Enum):
 
 @dataclass(frozen=True, slots=True)
 class CompactImportResult:
-    """One :meth:`MnemosCoreServicer.import_compact_record` outcome.
+    """One :meth:`VesmaCoreServicer.import_compact_record` outcome.
 
     ``written_id`` carries the storage id on WRITTEN and the EXISTING
     id on DUPLICATE; ``reason`` is an operator-actionable refusal
@@ -289,7 +289,7 @@ class CompactImportResult:
 
 
 #: Prefix on pinned fingerprint strings — the same convention as the
-#: mesh's peer leg (``mnemos-mesh/internal/mtls.FingerprintPrefix``):
+#: mesh's peer leg (``vesma-mesh/internal/mtls.FingerprintPrefix``):
 #: ``sha256:<hex-of-DER-leaf>``. Bare hex (no prefix) is accepted for
 #: operator convenience and normalised before the constant-time compare.
 _FINGERPRINT_PREFIX: str = "sha256:"
@@ -306,7 +306,7 @@ _AGENT_ID_METADATA_KEY: str = "x-mnemos-agent-id"
 class AgentIdentity:
     """The authenticated agent identity resolved for one data RPC.
 
-    Produced by :meth:`MnemosCoreServicer._agent_data_gate` (W3 part 3):
+    Produced by :meth:`VesmaCoreServicer._agent_data_gate` (W3 part 3):
     every field comes from the re-validated token verdict — identity is
     derived ONLY from the signature (ADR-0018-T T3), never from the
     caller-asserted ``x-mnemos-agent-id`` (which is matched against the
@@ -685,7 +685,7 @@ def _tag_value(tags: list[str], prefix: str) -> str:
 # ── Servicer ──────────────────────────────────────────────────────────────────
 
 
-class MnemosCoreServicer:
+class VesmaCoreServicer:
     """gRPC servicer implementing the six ``MnemosCore`` RPCs.
 
     The servicer holds a reference to the :class:`MemoryManager` (for
@@ -1036,7 +1036,7 @@ class MnemosCoreServicer:
                 records=[], total=0, has_more=False, cursor=""
             )
 
-        # ACL GATE — every request, scoped OR unscoped (vesmaro#371/#369
+        # ACL GATE — every request, scoped OR unscoped (vesma#371/#369
         # hardening): the effective allowed set is resolved
         # UNCONDITIONALLY. An empty set (unknown peer, empty allow-list,
         # or "*" with an empty shared_projects) DENIES — it never widens
@@ -1414,7 +1414,7 @@ class MnemosCoreServicer:
         """Import one :class:`CompactRecord` under a peer identity (shared path).
 
         The transport-free core of :rpc:`WriteMemory`, extracted so the
-        S2 lazy-fetch command (``mnemos fetch``) imports through the
+        S2 lazy-fetch command (``vesma fetch``) imports through the
         VERY SAME mechanism — ACL gate, #359/#362 duplicate gate,
         moderation, :meth:`MemoryManager.add` (Layer 1 secrets scanner)
         — without spinning up a gRPC server. The RPC handler resolves
@@ -1499,7 +1499,7 @@ class MnemosCoreServicer:
                 reason=f"ACL REFUSED: project {project!r} not allowed for peer {peer_id!r}",
             )
         # #359 idempotent import — duplicate gate BEFORE moderation and
-        # create. The mesh replays one-shot pulls (mnemos-mesh #34);
+        # create. The mesh replays one-shot pulls (vesma-mesh #34);
         # without this gate every replay would mint a fresh row. Placed
         # after the ACL (fail-closed security first) and before the
         # moderation call: a duplicate performs no write, so the
@@ -1579,7 +1579,7 @@ class MnemosCoreServicer:
         request: Any,
         context: grpc.ServicerContext[Any, Any],
     ) -> Any:
-        """Import a :class:`CompactRecord` from a peer into vesmaro.
+        """Import a :class:`CompactRecord` from a peer into vesma.
 
         Steps (contract §3.1, #86 import validation, #359 idempotency):
 
@@ -1789,7 +1789,7 @@ class MnemosCoreServicer:
           state (ADR-0020: core keeps no cursor state at all). An empty
           page parks ``latest_rev`` at the SCOPE HEAD — the max rowid
           under the effective-projects filter
-          (:meth:`SQLiteStore.index_head`, mnemos-mesh#46) — instead of
+          (:meth:`SQLiteStore.index_head`, vesma-mesh#46) — instead of
           echoing ``since_rev``: nothing undelivered exists beyond the
           head, and a MIN-aggregating poller (the mesh CLI folds the
           per-scope ``latest_rev`` into one watermark) otherwise sticks
@@ -1894,7 +1894,7 @@ class MnemosCoreServicer:
                 continue
             records.append(_metadata_to_proto(entry))
         if not rows:
-            # mnemos-mesh#46/#49: an EMPTY page parks the watermark at
+            # vesma-mesh#46/#49: an EMPTY page parks the watermark at
             # the PEER head — max rowid over the peer's whole allowed
             # set — not the scope-filtered head. The mesh CLI folds
             # per-scope latest_rev into one MIN watermark, so a scoped
@@ -2147,12 +2147,12 @@ class MnemosCoreServicer:
 
         Cheap unary call. The ACL is NOT enforced on heartbeat — it is
         a liveness probe, not a data RPC, and refusing it would prevent
-        the mesh from detecting a healthy vesmaro.
+        the mesh from detecting a healthy vesma.
         """
         uptime = int(time.monotonic() - self._start_time)
         return _mesh_gen.core_pb2.HeartbeatResponse(
             healthy=True,
-            version=f"mnemos {_mnemos_version}",
+            version=f"vesma {_mnemos_version}",
             uptime_seconds=uptime,
         )
 
@@ -2254,7 +2254,7 @@ class MeshServer:
 
     Binds a Unix socket (always) and — when ``settings.mesh.tcp.enabled``
     is set — an additional mTLS TCP port on the SAME grpcio server
-    (W2.5, ADR-0019 option 1). Registers the :class:`MnemosCoreServicer`
+    (W2.5, ADR-0019 option 1). Registers the :class:`VesmaCoreServicer`
     and exposes :meth:`start` / :meth:`stop` for clean lifecycle control.
     Designed to be owned by the Vesma process (or a test fixture) and
     stopped on shutdown.
@@ -2300,7 +2300,7 @@ class MeshServer:
         self._settings: Settings = settings
         self._max_workers: int = max_workers
         self._server: grpc.Server | None = None
-        self._servicer: MnemosCoreServicer | None = None
+        self._servicer: VesmaCoreServicer | None = None
         self._tcp_bound_port: int | None = None
 
     @property
@@ -2324,7 +2324,7 @@ class MeshServer:
         return self._server is not None
 
     @property
-    def servicer(self) -> MnemosCoreServicer | None:
+    def servicer(self) -> VesmaCoreServicer | None:
         """The active servicer (``None`` before :meth:`start` / after :meth:`stop`)."""
         return self._servicer
 
@@ -2371,7 +2371,7 @@ class MeshServer:
                 "mesh_server: could not chmod parent %s — operator must secure it",
                 parent,
             )
-        self._servicer = MnemosCoreServicer(
+        self._servicer = VesmaCoreServicer(
             self._manager,
             settings=self._settings,
         )

@@ -11,8 +11,8 @@
 #      to INCOMING_DIR — the caller cannot write outside it.
 #   4. Appends an audit line to AUDIT_LOG for every invocation (§6).
 #
-# mnemos itself stays offline — this runs on B's host SSH layer, not inside
-# mnemos. Per ArchCom 2026-07-20 (mnemos memory 4dc7d96e).
+# vesma itself stays offline — this runs on B's host SSH layer, not inside
+# vesma. Per ArchCom 2026-07-20 (vesma memory 4dc7d96e).
 #
 # Install: chmod 0755, place at /usr/local/sbin/rsync-wrapper.sh, pin in
 # authorized_keys as:
@@ -40,7 +40,7 @@ if [ -z "${VESMARO_EXPORT_PASSPHRASE:-}" ] && [ -n "${MNEMOS_EXPORT_PASSPHRASE:-
     export VESMARO_EXPORT_PASSPHRASE="$MNEMOS_EXPORT_PASSPHRASE"
 fi
 INCOMING_DIR="${VESMARO_SYNC_INCOMING_DIR:-/var/lib/mnemos-sync/incoming}"
-AUDIT_LOG="${VESMARO_SYNC_AUDIT_LOG:-/var/log/mnemos-sync.log}"
+AUDIT_LOG="${VESMARO_SYNC_AUDIT_LOG:-/var/log/vesma-sync.log}"
 RSYNC_BIN="${RSYNC_BIN:-rsync}"
 
 # ── audit helper (§6) ─────────────────────────────────────────────────────────

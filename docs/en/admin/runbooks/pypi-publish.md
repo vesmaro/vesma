@@ -27,7 +27,7 @@ matrix below is kept as decision history; it was last re-checked
 | `vesma` | ❌ taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
 | `mnemos-memory` | ❌ taken (v0.6.0) | "Biomimetic memory architectures for LLMs" |
 | `mnemos-memory-server` | ✅ free | — |
-| `mnemos-server` | ✅ free | — |
+| `vesma-server` | ✅ free | — |
 | `vesma-mcp` | ✅ free | — |
 | `vesma-ai` | ✅ free | — |
 | `vesma-agent-memory` | ✅ free | — |

@@ -1,13 +1,13 @@
-# vesmaro-node compatibility ledger — known-good (core, mesh) pairs.
+# vesma-node compatibility ledger — known-good (core, mesh) pairs.
 # Format (tab-separated, # = comment):
 #   core_tag <TAB> mesh_ref <TAB> mesh_version <TAB> verified <TAB> date
 #
-#   core_tag      git tag in the vesmaro repo (server venv/image is built from it)
-#   mesh_ref      git tag OR commit sha in the mnemos-mesh repo
+#   core_tag      git tag in the vesma repo (server venv/image is built from it)
+#   mesh_ref      git tag OR commit sha in the vesma-mesh repo
 #   mesh_version  what `mnemos-mesh version` must print for that ref
 #   verified      how the pair was verified (live-laptop | staging | ...)
 #
-# vesmaro-node resolves the DEFAULT install/upgrade pair from the LAST
+# vesma-node resolves the DEFAULT install/upgrade pair from the LAST
 # data row of this file. An unknown (core, mesh) combination makes
 # `upgrade` refuse with a hint (add a row or --force).
 #
@@ -22,7 +22,7 @@
 #                  ghcr.io/vesmaro/vesma:<core_tag>,
 #                  ghcr.io/vesmaro/vesma-mesh:<mesh_ref>.
 #
-# Seeded with the live laptop pair (2026-09-22). NOTE: the vesmaro
+# Seeded with the live laptop pair (2026-09-22). NOTE: the vesma
 # pyproject still says 4.3.0 under tag v4.3.7-mesh.2 — the LEDGER is
 # tag-based (core_tag is the identity); the binary version string is
 # informational only (see status output for both).

@@ -448,11 +448,11 @@ class TestIngestUrlTitleScanHermes:
         repo_root = str(Path(__file__).resolve().parent.parent)
         if repo_root not in sys.path:
             sys.path.insert(0, repo_root)
-        from integrations.hermes import MnemosMemoryProvider
+        from integrations.hermes import VesmaMemoryProvider
 
         mgr = _manager(_settings(tmp_path))
         fake = _fake_url_memory(mgr, f"hermes page {FAKE_AWS_KEY} end")
-        provider = MnemosMemoryProvider({"project": PROJECT, "agent": AGENT})
+        provider = VesmaMemoryProvider({"project": PROJECT, "agent": AGENT})
         adapter = MagicMock()
         adapter.project = PROJECT
         adapter.agent = AGENT
@@ -476,11 +476,11 @@ class TestIngestUrlTitleScanHermes:
         repo_root = str(Path(__file__).resolve().parent.parent)
         if repo_root not in sys.path:
             sys.path.insert(0, repo_root)
-        from integrations.hermes import MnemosMemoryProvider
+        from integrations.hermes import VesmaMemoryProvider
 
         mgr = _manager(_settings(tmp_path, retrieve_refuse_on_secret=True))
         fake = _fake_url_memory(mgr, f"hermes {FAKE_AWS_KEY} leak")
-        provider = MnemosMemoryProvider({"project": PROJECT, "agent": AGENT})
+        provider = VesmaMemoryProvider({"project": PROJECT, "agent": AGENT})
         adapter = MagicMock()
         adapter.project = PROJECT
         adapter.agent = AGENT

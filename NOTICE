@@ -1,15 +1,15 @@
-Mnemos NOTICE
+Vesma NOTICE
 Copyright 2026 Korrnals
 
-This product includes software developed by the Mnemos project
-(https://github.com/vesmaro/vesmaro), licensed under the Apache
+This product includes software developed by the Vesma project
+(https://github.com/vesmaro/vesma), licensed under the Apache
 License, Version 2.0.
 
 Bundled model artifacts
 =======================
 
-src/mnemos/models/mnema-embed-v1/
-  - mnema-embed-v1 is a proprietary-free embedded sentence-embedding model
+src/vesmaro/models/vesma-embed-v1/
+  - vesma-embed-v1 is a proprietary-free embedded sentence-embedding model
     trained in this project by distillation from the teacher
     paraphrase-multilingual-MiniLM-L12-v2 (Apache-2.0, released by
     Sentence-Transformers) on the project's own memory-shaped corpus

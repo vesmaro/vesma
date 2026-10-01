@@ -1,4 +1,4 @@
-"""``mnemos doctor`` CLI subcommand — health check.
+"""``vesma doctor`` CLI subcommand — health check.
 
 Runs a series of checks against the local Vesma installation and reports
 status. Exit codes:
@@ -118,7 +118,7 @@ def _check_sqlite(settings: Any) -> CheckResult:
         return CheckResult(
             "SQLite DB",
             CheckStatus.WARN,
-            f"{db_path} (missing — run `mnemos add` to create)",
+            f"{db_path} (missing — run `vesma add` to create)",
         )
     try:
         conn = sqlite3.connect(str(db_path))
@@ -139,7 +139,7 @@ def _check_vector_store(settings: Any) -> CheckResult:
     ``model_fingerprint`` differs from the fingerprint of the configured
     embedder were cut by another embedding geometry. Mixing spaces in
     one index silently degrades vector search; the background heal
-    sweeper re-embeds them gradually, or `mnemos reindex` rebuilds in
+    sweeper re-embeds them gradually, or `vesma reindex` rebuilds in
     one pass. Diagnostics only — the doctor never re-embeds.
     """
     vectors_path = settings.mnemos.data_dir / "vectors.db"
@@ -191,7 +191,7 @@ def _check_vector_store(settings: Any) -> CheckResult:
             CheckStatus.WARN,
             f"{vectors_path} (healthy, {count:,} embeddings, "
             f"{vintage_stale:,} cut by another embedder — the background heal "
-            "re-embeds them gradually; `mnemos reindex` rebuilds in one pass)",
+            "re-embeds them gradually; `vesma reindex` rebuilds in one pass)",
         )
     detail_suffix = "" if current_fp is None else ", vintage current"
     return CheckResult(
@@ -272,7 +272,7 @@ def mcp_sdk_version() -> str:
 
 
 def _check_mcp_server() -> CheckResult:
-    """Check known harness MCP configs for a `mnemos` entry."""
+    """Check known harness MCP configs for a `vesma` entry."""
     candidates = [
         (Path.home() / ".config" / "Code" / "User" / "mcp.json", "VS Code, user scope"),
         (Path.cwd() / ".vscode" / "mcp.json", "VS Code, workspace scope"),
@@ -298,7 +298,7 @@ def _check_mcp_server() -> CheckResult:
                 or data.get("mcpServers")
                 or {}
             )
-        if "mnemos" in servers:
+        if "vesma" in servers:
             return CheckResult(
                 "MCP server",
                 CheckStatus.PASS,
@@ -373,7 +373,7 @@ def _check_pending_refine(settings: Any) -> CheckResult:
     daemon running) can accumulate a queue that never drains — entries
     stay visible-raw but never refine. This check makes the queue
     visible. Diagnostics ONLY: the doctor deliberately does not run the
-    processor — it is a server-side service (``mnemos processor start``).
+    processor — it is a server-side service (``vesma processor start``).
     """
     db_path = settings.db_path
     if not db_path.exists():
@@ -405,7 +405,7 @@ def _check_pending_refine(settings: Any) -> CheckResult:
             "Pending refine",
             CheckStatus.WARN,
             f"{count:,} {plural} awaiting async refinement (pipeline_state=pending) "
-            "— start the background processor: `mnemos processor start` "
+            "— start the background processor: `vesma processor start` "
             "(CLI-only deployments have no daemon; the queue never drains on its own)",
         )
     return CheckResult("Pending refine", CheckStatus.PASS, "0 entries awaiting refinement")
@@ -462,7 +462,7 @@ def _check_tag_contract(settings: Any) -> CheckResult:
 def _check_agent_wiring() -> CheckResult:
     """Check Copilot agent MCP wiring status in ``~/.copilot/agents``.
 
-    * PASS — all detected agents have mnemos tools wired (or are skipped
+    * PASS — all detected agents have vesma tools wired (or are skipped
       via ``tool_profile``).
     * WARN — some agents are unwired (lists the count).
     * SKIP — no agents directory found (non-Copilot setup).

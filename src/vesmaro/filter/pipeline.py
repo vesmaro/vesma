@@ -607,7 +607,7 @@ def _estimate_tokens(text: str) -> int:
 
 #: Public alias for :func:`_estimate_tokens` — single source of the token
 #: estimation heuristic, shared with the ``assemble_context`` budget stage
-#: (ADR-0017 D1, mnemos #125). Import this name, not the underscore one.
+#: (ADR-0017 D1, vesma #125). Import this name, not the underscore one.
 estimate_tokens = _estimate_tokens
 
 

@@ -61,7 +61,7 @@ over the config value.
 
 ```bash
 vesma sync export \
-  --output /var/tmp/mnemos-sync.json \
+  --output /var/tmp/vesma-sync.json \
   --shared-projects "project-umbra project-vesma"
 ```
 
@@ -69,7 +69,7 @@ Options:
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| `--output` / `-o` | `mnemos-sync.json` | Output file path (absolute recommended). Parent dirs are created. |
+| `--output` / `-o` | `vesma-sync.json` | Output file path (absolute recommended). Parent dirs are created. |
 | `--encrypt` | off | Encrypt the payload with AES-256-GCM. Passphrase read from `MNEMOS_EXPORT_PASSPHRASE`. |
 | `--shared-projects` | config `federation.shared_projects` | Space/comma-separated project slugs (overrides config). |
 | `--dry-run` | off | Build the payload and print the summary; do NOT write the file. |
@@ -96,7 +96,7 @@ Output summary:
   pii_anonymized: 2
   encrypted: false
   shared_projects: project-umbra, project-vesma
-  path: /var/tmp/mnemos-sync.json
+  path: /var/tmp/vesma-sync.json
 ```
 
 ### Encryption
@@ -119,7 +119,7 @@ can detect it automatically.
 ## Import — `vesma sync import`
 
 ```bash
-vesma sync import /var/tmp/mnemos-sync.json
+vesma sync import /var/tmp/vesma-sync.json
 ```
 
 Options:
@@ -192,7 +192,7 @@ Optional env vars:
 | `MNEMOS_SYNC_MNEMOS_BIN` | auto-discover | Path to the `vesma` CLI on A. |
 
 The `vesma` CLI path on B (`MNEMOS_SYNC_REMOTE_MNEMOS_BIN`) is set on B in
-`/etc/vesmaro/sync.env` — A does not need it, the `mnemos-import-wrapper` on B
+`/etc/vesma/sync.env` — A does not need it, the `vesma-import-wrapper` on B
 resolves the binary. The passphrase is never passed on the command line: on A
 it is read from the env var named by `MNEMOS_SYNC_PASSPHRASE_ENV`, on B it is
 provisioned independently in the systemd environment.
@@ -207,13 +207,13 @@ Crontab example (hourly encrypted sync to a peer host):
           MNEMOS_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
           MNEMOS_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
           MNEMOS_SYNC_ENCRYPT=true MNEMOS_SYNC_PASSPHRASE_ENV=MNEMOS_EXPORT_PASSPHRASE \
-          /opt/vesma/scripts/sync-peers.sh >> /var/log/mnemos-sync.log 2>&1
+          /opt/vesma/scripts/sync-peers.sh >> /var/log/vesma-sync.log 2>&1
 ```
 
 Transfer is rsync over ssh, restricted on B by `rsync-wrapper.sh`; the import
-trigger on B is guarded by `mnemos-import-wrapper.sh` (both under
+trigger on B is guarded by `vesma-import-wrapper.sh` (both under
 `contrib/systemd/`). The same script is the `ExecStart` of
-`contrib/systemd/mnemos-sync.service`, which loads `/etc/vesmaro/sync.env`.
+`contrib/systemd/vesma-sync.service`, which loads `/etc/vesma/sync.env`.
 
 ---
 
@@ -226,8 +226,8 @@ entry to `~/.mnemos/logs/sync-audit.jsonl`. The log is append-only —
 Entry shapes (counters **only** — no raw content, no secrets, no PII):
 
 ```json
-{"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/mnemos-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
-{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/mnemos-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
+{"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/vesma-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
+{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
 ```
 
 The audit log is the operational trail: which projects synced, how many

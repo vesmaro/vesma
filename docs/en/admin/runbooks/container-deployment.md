@@ -24,7 +24,7 @@ One published image — `ghcr.io/vesmaro/vesmaro` — covers every path. Pick by
 | Build from source | podman / buildah | Fallback: development, patches, air-gapped |
 
 The container exposes **port 8787** and uses two named volumes — `vesma-data` (SQLite + vector index)
-and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesmaro-data`/`vesmaro-vault`.
+and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesma-data`/`vesma-vault`.
 
 ---
 
@@ -75,7 +75,7 @@ the published image — no build step:
 cd deploy/docker
 cp .env.example .env          # then edit: TOTP_MASTER_KEY=$(openssl rand -hex 32)
 docker compose up -d          # or: podman-compose up -d
-podman-compose logs -f vesmaro
+podman-compose logs -f vesma
 podman-compose down
 ```
 
@@ -85,7 +85,7 @@ Optional local-embeddings sidecar:
 
 ```bash
 docker compose --profile ollama up -d
-docker exec vesmaro-ollama ollama pull nomic-embed-text
+docker exec vesma-ollama ollama pull nomic-embed-text
 ```
 
 To activate Ollama as the embedding provider, set `embedding.provider: ollama`
@@ -104,11 +104,11 @@ Use the Helm chart — it deploys the published image with an ingress, TLS and
 persistent storage:
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 ```
 
 Full guide with values, TLS and troubleshooting:
@@ -126,7 +126,7 @@ podman secret, and defines health probes.
 
 ```bash
 printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
-  | podman secret create vesmaro-totp -
+  | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
 podman kube play deploy/podman/kube/mnemos-pod.yaml
@@ -321,4 +321,4 @@ Prints running containers (name, status, ports) and named volumes.
 
 _Source files: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
 `deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/mnemos-pod.yaml`,
-`deploy/docker/`, `deploy/helm/vesmaro/`_
+`deploy/docker/`, `deploy/helm/vesma/`_

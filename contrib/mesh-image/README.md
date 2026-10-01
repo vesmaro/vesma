@@ -2,7 +2,7 @@
 
 Builds the release image with the gencode the `vesmaro._mesh_gen` shim
 expects. This institutionalizes recipe #354 and the verification gate
-added after the `v4.3.4-mesh.1` regression (mnemos-mesh#44: the build
+added after the `v4.3.4-mesh.1` regression (vesma-mesh#44: the build
 copied stale gitignored stubs — the image's gencode lacked
 `ListMemoriesRequest.resume_cursor` and every pull to the cluster died
 on `AttributeError`).
@@ -26,7 +26,7 @@ in effect on the registry side):
 
 ## Full release flow (tag → build same tag → gate → push, one block)
 
-Run from the vesmaro repo on the dev laptop (host-built — GH Actions
+Run from the vesma repo on the dev laptop (host-built — GH Actions
 billing-locked, recipe #354/#374; podman is reached through
 `distrobox-host-exec` when working from the dev box):
 
@@ -49,7 +49,7 @@ distrobox-host-exec podman run --rm --entrypoint python "ghcr.io/vesmaro/vesma:$
 distrobox-host-exec podman push "ghcr.io/vesmaro/vesma:$TAG"
 ```
 
-Pair it with the mesh release the same way: tag `mnemos-mesh`
+Pair it with the mesh release the same way: tag `vesma-mesh`
 (`vA.B.C`), build/push `ghcr.io/vesmaro/vesma-mesh:<tag>`, then
 append the pair to `contrib/node-install/compatibility.tsv` (see the
 node-install README — "Version cycle").

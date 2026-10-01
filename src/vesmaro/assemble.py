@@ -1,4 +1,4 @@
-"""ADR-0017 D1 / ADR-0018 — ``assemble_context`` provider contract (mnemos #125).
+"""ADR-0017 D1 / ADR-0018 — ``assemble_context`` provider contract (vesma #125).
 
 One API assembles the model-facing context block:
 
@@ -968,7 +968,7 @@ def assemble_context(
 
     delivery = "async" if mode == "async" else "sync"
     content_type: str | None = mode if mode in _CONTENT_TYPE_MODES else None
-    # mnemos #282 — session-scoped first-assembly stamp (NOT per-call):
+    # vesma #282 — session-scoped first-assembly stamp (NOT per-call):
     # stable across this session's assemblies so the block prefix stays
     # byte-identical for harness-side KV caching; distinct across sessions.
     # The bounded registry lives on the manager (MemoryManager.retrieval_iso).

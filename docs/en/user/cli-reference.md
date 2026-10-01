@@ -554,7 +554,7 @@ federation:
     enabled: true                      # default false — opt-in
     interval_seconds: 300              # default 300; clamped to [60, 86400]
     peers: all                         # "all" (every federation.peers key) or an explicit list
-    mesh_config_path: /etc/vesmaro/mesh.yaml  # REQUIRED when enabled (passed as --config to the CLI)
+    mesh_config_path: /etc/vesma/mesh.yaml  # REQUIRED when enabled (passed as --config to the CLI)
     mesh_bin: mnemos-mesh              # binary name (PATH) or absolute path
 ```
 
@@ -700,7 +700,7 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Install shell completion for the `vesma` CLI. With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/mnemos.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc`; fish auto-sources its completions directory). Idempotent — re-running does not duplicate the source line and migrates away the old `eval`-based format.
+Install shell completion for the `vesma` CLI. With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc`; fish auto-sources its completions directory). Idempotent — re-running does not duplicate the source line and migrates away the old `eval`-based format.
 
 ```text
 vesma completion [SHELL] [OPTIONS]

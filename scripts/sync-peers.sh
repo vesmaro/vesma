@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# sync-peers.sh — auto-cron federation bridge (#104) for mnemos Phase 0.
+# sync-peers.sh — auto-cron federation bridge (#104) for vesma Phase 0.
 #
 # Automates the operator step that Phase 0 batch sync (#85 part 2b) left
-# manual: it runs `mnemos sync export` on A, pushes the encrypted payload
-# to B over rsync+ssh, then triggers `mnemos sync import` on B over ssh.
-# mnemos ITSELF stays offline — there is no inbound endpoint on mnemos.
+# manual: it runs `vesma sync export` on A, pushes the encrypted payload
+# to B over rsync+ssh, then triggers `vesma sync import` on B over ssh.
+# vesma ITSELF stays offline — there is no inbound endpoint on vesma.
 # All automation is at the host/SSH layer, per ArchCom 2026-07-20 decision
-# (mnemos memory 4dc7d96e, protocol .archcom/sessions/2026-07-20-automated-channel.md).
+# (vesma memory 4dc7d96e, protocol .archcom/sessions/2026-07-20-automated-channel.md).
 #
-# This script is the ExecStart of contrib/systemd/mnemos-sync.service. It is
+# This script is the ExecStart of contrib/systemd/vesma-sync.service. It is
 # also runnable by hand for testing. It reads its config from env vars —
-# the systemd unit loads /etc/vesmaro/sync.env via EnvironmentFile=.
+# the systemd unit loads /etc/vesma/sync.env via EnvironmentFile=.
 #
 # Required env (refuse to run if any is missing — exit 2):
 #   VESMARO_SYNC_PEER_HOST          — peer (TARGET) host B
@@ -25,19 +25,19 @@
 # Optional env:
 #   VESMARO_SYNC_PEER_USER           — ssh user on B (default: mnemos-sync)
 #   VESMARO_SYNC_DRY_RUN             — "1" logs commands only, no writes/ssh
-#   VESMARO_SYNC_SOURCE_CONFIG       — path to A's mnemos config.yaml
-#   VESMARO_SYNC_REMOTE_FILE         — basename on B (default: mnemos-sync-<ts>.json)
-#   VESMARO_SYNC_MNEMOS_BIN          — mnemos CLI on A (default: auto-discover)
+#   VESMARO_SYNC_SOURCE_CONFIG       — path to A's vesma config.yaml
+#   VESMARO_SYNC_REMOTE_FILE         — basename on B (default: vesma-sync-<ts>.json)
+#   VESMARO_SYNC_MNEMOS_BIN          — vesma CLI on A (default: auto-discover)
 #
-# The path to the mnemos CLI on B (VESMARO_SYNC_REMOTE_MNEMOS_BIN) is set on B
-# in /etc/vesmaro/sync.env — A does not need it because the mnemos-import-wrapper
+# The path to the vesma CLI on B (VESMARO_SYNC_REMOTE_MNEMOS_BIN) is set on B
+# in /etc/vesma/sync.env — A does not need it because the vesma-import-wrapper
 # on B resolves the binary.
 #
 # Security: the passphrase is NEVER passed on the command line. On A it is read
-# by `mnemos sync export` from $VESMARO_SYNC_PASSPHRASE_ENV (which must be set in
-# the service environment). On B it is read by `mnemos sync import` from the
+# by `vesma sync export` from $VESMARO_SYNC_PASSPHRASE_ENV (which must be set in
+# the service environment). On B it is read by `vesma sync import` from the
 # env var NAME passed via --passphrase-env — that name is pinned on B by the
-# mnemos-import-wrapper guard (contrib/systemd/mnemos-import-wrapper.sh) and
+# vesma-import-wrapper guard (contrib/systemd/vesma-import-wrapper.sh) and
 # the value must be provisioned on B's systemd environment independently.
 #
 # Exit codes:
@@ -49,7 +49,7 @@ set -euo pipefail
 
 # ── logging ──────────────────────────────────────────────────────────────────
 # All output goes to stderr with ISO-8601 UTC timestamps. The systemd journal
-# captures it; for cron/manual runs the operator redirects 2>>/var/log/mnemos-sync.log.
+# captures it; for cron/manual runs the operator redirects 2>>/var/log/vesma-sync.log.
 _log() {
     printf '[%s] sync-peers: %s\n' "$(date -u +%FT%TZ)" "$*" >&2
 }
@@ -76,7 +76,7 @@ fi
 
 # ── env-var validation ───────────────────────────────────────────────────────
 # Refuse to run if any required var is missing. Print a clear error pointing
-# the operator at /etc/vesmaro/sync.env (the EnvironmentFile the service loads).
+# the operator at /etc/vesma/sync.env (the EnvironmentFile the service loads).
 
 _required_vars=(
     VESMARO_SYNC_PEER_HOST
@@ -98,7 +98,7 @@ done
 
 if [[ ${#_missing[@]} -gt 0 ]]; then
     _err "missing required env var(s): ${_missing[*]}"
-    _err "configure them in /etc/vesmaro/sync.env (see contrib/systemd/vesmaro-sync.env.example)."
+    _err "configure them in /etc/vesma/sync.env (see contrib/systemd/sync.env.example)."
     exit 2
 fi
 
@@ -121,7 +121,7 @@ esac
 
 if [[ "$ENCRYPT" == "true" ]]; then
     # The passphrase must be available in the env var NAME we advertise. If the
-    # named env var is not set on A, refuse — mnemos sync export would fail.
+    # named env var is not set on A, refuse — vesma sync export would fail.
     if [[ -z "${!VESMARO_SYNC_PASSPHRASE_ENV:-}" ]]; then
         _err "ENCRYPT=true but \${${VESMARO_SYNC_PASSPHRASE_ENV}} is not set on A."
         _err "provision the passphrase in the service environment (systemd LoadCredential or drop-in)."
@@ -129,15 +129,15 @@ if [[ "$ENCRYPT" == "true" ]]; then
     fi
 fi
 
-# Discover the mnemos CLI on A if not set.
+# Discover the vesma CLI on A if not set.
 if [[ -z "$MNEMOS_BIN" ]]; then
-    if command -v mnemos >/dev/null 2>&1; then
-        MNEMOS_BIN="$(command -v mnemos)"
+    if command -v vesma >/dev/null 2>&1; then
+        MNEMOS_BIN="$(command -v vesma)"
     elif [[ -x "$(dirname "$0")/../.venv/bin/mnemos" ]]; then
         MNEMOS_BIN="$(cd "$(dirname "$0")/.." && pwd)/.venv/bin/mnemos"
     else
-        _err "mnemos CLI not found on PATH and no .venv next to the script."
-        _err "set VESMARO_SYNC_MNEMOS_BIN in /etc/vesmaro/sync.env."
+        _err "vesma CLI not found on PATH and no .venv next to the script."
+        _err "set VESMARO_SYNC_MNEMOS_BIN in /etc/vesma/sync.env."
         exit 2
     fi
 fi
@@ -161,7 +161,7 @@ fi
 # Build the ssh base options for BatchMode (no password prompt — fail loudly).
 _ssh_opts=(-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o PasswordAuthentication=no)
 
-# Build the export args for `mnemos sync export` on A.
+# Build the export args for `vesma sync export` on A.
 _export_args=(sync export --output "${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" --shared-projects "$VESMARO_SYNC_SHARED_PROJECTS")
 if [[ -n "$SOURCE_CONFIG" ]]; then
     _export_args+=(--config "$SOURCE_CONFIG")
@@ -178,14 +178,14 @@ _log "step 1/3 — export on A: ${MNEMOS_BIN} ${_export_args[*]}"
 if [[ "$DRY_RUN" == "1" ]]; then
     _log "dry-run: skipping actual export."
 else
-    # mnemos sync export reads the passphrase from $VESMARO_SYNC_PASSPHRASE_ENV
+    # vesma sync export reads the passphrase from $VESMARO_SYNC_PASSPHRASE_ENV
     # (the NAME), which must be set in this process's environment.
     set +e
     "$MNEMOS_BIN" "${_export_args[@]}"
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then
-        _err "mnemos sync export failed (exit $rc)."
+        _err "vesma sync export failed (exit $rc)."
         exit 1
     fi
 fi
@@ -221,16 +221,16 @@ else
     fi
 fi
 
-# ── 3. IMPORT: trigger `mnemos sync import` on B via ssh ──────────────────────
-# The remote command is `mnemos sync import <path> --passphrase-env <NAME>` —
-# `source` is a POSITIONAL argument in the mnemos CLI (see `mnemos sync import
-# --help`). On B, mnemos-import-wrapper.sh (pinned in authorized_keys for the
+# ── 3. IMPORT: trigger `vesma sync import` on B via ssh ──────────────────────
+# The remote command is `vesma sync import <path> --passphrase-env <NAME>` —
+# `source` is a POSITIONAL argument in the vesma CLI (see `vesma sync import
+# --help`). On B, vesma-import-wrapper.sh (pinned in authorized_keys for the
 # import key) rewrites the positional path to the absolute incoming path, pins
 # --passphrase-env to the configured name, and rejects any other command. The
 # passphrase value itself lives on B's environment (provisioned independently —
 # never crosses the wire).
 _remote_import_path="${VESMARO_SYNC_REMOTE_IMPORT_DIR%/}/${REMOTE_FILE}"
-_import_remote_cmd=(mnemos sync import "$_remote_import_path" --passphrase-env "$VESMARO_SYNC_PASSPHRASE_ENV")
+_import_remote_cmd=(vesma sync import "$_remote_import_path" --passphrase-env "$VESMARO_SYNC_PASSPHRASE_ENV")
 if [[ "$DRY_RUN" == "1" ]]; then
     _import_remote_cmd+=(--dry-run)
 fi
@@ -246,7 +246,7 @@ else
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then
-        _err "remote mnemos sync import failed (exit $rc)."
+        _err "remote vesma sync import failed (exit $rc)."
         exit 1
     fi
 fi

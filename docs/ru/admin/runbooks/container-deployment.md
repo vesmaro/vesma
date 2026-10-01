@@ -24,7 +24,7 @@
 | Сборка из исходников | podman / buildah | Фолбэк: разработка, патчи, air-gapped |
 
 Контейнер открывает **порт 8787** и использует два named volume — `vesma-data` (SQLite + векторный
-индекс) и `vesma-vault` (Obsidian markdown mirror); путь compose называет их `vesmaro-data`/`vesmaro-vault`.
+индекс) и `vesma-vault` (Obsidian markdown mirror); путь compose называет их `vesma-data`/`vesma-vault`.
 
 ---
 
@@ -74,7 +74,7 @@ curl -fsS http://localhost:8787/health    # → {"status":"ok"}
 cd deploy/docker
 cp .env.example .env          # затем впишите: TOTP_MASTER_KEY=$(openssl rand -hex 32)
 docker compose up -d          # или: podman-compose up -d
-podman-compose logs -f vesmaro
+podman-compose logs -f vesma
 podman-compose down
 ```
 
@@ -84,7 +84,7 @@ Ollama sidecar (опциональные embeddings):
 
 ```bash
 docker compose --profile ollama up -d
-docker exec vesmaro-ollama ollama pull nomic-embed-text
+docker exec vesma-ollama ollama pull nomic-embed-text
 ```
 
 Чтобы активировать Ollama как провайдер эмбеддингов, задайте `embedding.provider: ollama`
@@ -103,11 +103,11 @@ docker exec vesmaro-ollama ollama pull nomic-embed-text
 и постоянным хранилищем:
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
-  --set 'ingress.hosts[0].host=mnemos.example.com'
+  --set 'ingress.hosts[0].host=vesma.example.com'
 ```
 
 Полное руководство по values, TLS и разбору неполадок:
@@ -125,7 +125,7 @@ podman-секрета и определяет пробы здоровья.
 
 ```bash
 printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
-  | podman secret create vesmaro-totp -
+  | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
 podman kube play deploy/podman/kube/mnemos-pod.yaml
@@ -323,4 +323,4 @@ podman inspect --format '{{.State.Health.Status}}' vesma
 
 _Исходные файлы: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
 `deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/mnemos-pod.yaml`,
-`deploy/docker/`, `deploy/helm/vesmaro/`_
+`deploy/docker/`, `deploy/helm/vesma/`_

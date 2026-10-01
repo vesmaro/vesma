@@ -8,7 +8,7 @@
 
 ```bash
 # Vesma data + vault
-tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
+tar czf vesma-backup-$(date +%Y%m%d).tar.gz \
   ~/.mnemos/data \
   ~/.mnemos/vault
 ```
@@ -26,11 +26,11 @@ tar czf mnemos-backup-$(date +%Y%m%d).tar.gz \
 # Stop MCP server / API if running
 
 # Extract backup
-tar xzf mnemos-backup-20260115.tar.gz -C /
+tar xzf vesma-backup-20260115.tar.gz -C /
 
 # Or selective restore
-cp mnemos-backup-20260115/.mnemos/data/mnemos.db ~/.mnemos/data/
-rsync -a mnemos-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
+cp vesma-backup-20260115/.mnemos/data/mnemos.db ~/.mnemos/data/
+rsync -a vesma-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
 ```
 
 ## Point-in-time recovery
@@ -54,7 +54,7 @@ import json, os, sqlite3
 conn = sqlite3.connect(os.path.expanduser('~/.mnemos/data/mnemos.db'))
 rows = conn.execute('SELECT * FROM memories').fetchall()
 print(json.dumps([dict(r) for r in rows], indent=2, default=str))
-" > mnemos-export.json
+" > vesma-export.json
 ```
 
 ### Import from JSON

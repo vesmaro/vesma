@@ -86,7 +86,7 @@ vesma export \
   --format json \
   --project vesma \
   --status published \
-  --output mnemos-published.json
+  --output vesma-published.json
 ```
 
 ---
@@ -219,7 +219,7 @@ vesma export [OPTIONS]
 
 | Опция | По умолчанию | Описание |
 |-------|--------------|----------|
-| `--output`, `-o` | `mnemos-export.json` | Путь к файлу вывода |
+| `--output`, `-o` | `vesma-export.json` | Путь к файлу вывода |
 | `--format`, `-f` | `json` | `json` или `sqlite` |
 | `--compress` | `none` | `none`, `gzip`, `zstd` |
 | `--encrypt` | выкл | Шифровать паролем (AES-256-GCM) |
@@ -291,7 +291,7 @@ vesma import SOURCE [OPTIONS]
 `{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Ответ** — `StreamingResponse` с `Content-Disposition:
-attachment; filename="mnemos-export.<suffix>"`. Суффикс зависит от
+attachment; filename="vesma-export.<suffix>"`. Суффикс зависит от
 формата + сжатия + шифрования (`json`, `json.gz`, `tar.gz`, `enc`).
 
 ### `POST /api/v1/import`
@@ -347,7 +347,7 @@ vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
 
 ```bash
 # Исходный инстанс
-vesma export --format json --project vesma --output mnemos-project.json
+vesma export --format json --project vesma --output vesma-project.json
 
 # Целевой инстанс
 vesma import mnemos-project.json --mode merge

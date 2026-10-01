@@ -1,10 +1,10 @@
-"""``mnemos sync`` CLI subcommand — thin Typer wrapper over sync logic.
+"""``vesma sync`` CLI subcommand — thin Typer wrapper over sync logic.
 
 Delegates to :mod:`vesmaro.cli.sync` for the actual sync logic so the
 logic stays testable without Typer's CliRunner. Two subcommands:
 
-* ``mnemos sync export`` — build + write a compact federation payload.
-* ``mnemos sync import`` — read + validate + merge a compact payload.
+* ``vesma sync export`` — build + write a compact federation payload.
+* ``vesma sync import`` — read + validate + merge a compact payload.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def sync_export_cmd(
     output: Annotated[
         Path,
         typer.Option("--output", "-o", help="Output file path (absolute recommended)."),
-    ] = Path("mnemos-sync.json"),
+    ] = Path("vesma-sync.json"),
     encrypt: Annotated[
         bool,
         typer.Option(

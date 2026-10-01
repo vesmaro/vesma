@@ -7,7 +7,7 @@ threads, and an auto-publish bypass — adapter-private context delivery,
 exactly what ADR-0017 gap 1 names. This module replaces that path: the
 Hermes-side plugin becomes a thin shim over THIS adapter, and every memory
 operation routes through the D1 contract surfaces — the
-:class:`vesmaro.sdk.MnemosSDK` facade (``remember`` / ``recall`` /
+:class:`vesmaro.sdk.VesmaSDK` facade (``remember`` / ``recall`` /
 ``stats`` / ``rewrite``) and the W3 lifecycle hooks
 (:mod:`vesmaro.hooks` — ``pre_llm_call`` / ``on_session_start`` /
 ``post_tool_call``) — in-process, no HTTP hop::
@@ -15,7 +15,7 @@ operation routes through the D1 contract surfaces — the
     Hermes MemoryProvider ABC
         ↓ (thin shim, deploy-only: integrations/hermes/__init__.py)
     HermesMemoryAdapter                      ← THIS module (no Hermes imports)
-        ↓ MnemosSDK facade + vesmaro.hooks
+        ↓ VesmaSDK facade + vesmaro.hooks
     MemoryManager
         ↓
     SQLite + vectors + Obsidian vault
@@ -30,11 +30,11 @@ Where each legacy duty went:
   pipeline: recall → filter → MANDATORY scan → align → budget — provenance
   on every block). The raw ``/search`` prefetch could leak secrets; the
   contract pipeline cannot.
-* sync_turn / on_memory_write / on_session_end writes → ``MnemosSDK.remember``
+* sync_turn / on_memory_write / on_session_end writes → ``VesmaSDK.remember``
   (tag contract validated at the channel BEFORE any write; the write-path
   secret scan runs inside ``add``).
 * on_pre_compress (facts lost to Hermes' context compression) → the
-  ADR-0018 ``on_context_rewrite`` event via ``MnemosSDK.rewrite`` — the
+  ADR-0018 ``on_context_rewrite`` event via ``VesmaSDK.rewrite`` — the
   original lands in LTM losslessly and idempotently.
 * auto-publish with ``skip_quality_check`` → GONE (ADR-0019 Phase D).
   Immediate visibility is honest SERVER semantics since B2b: the adapter
@@ -72,7 +72,7 @@ from vesmaro.models import (
     MemoryType,
     validate_tag_contract,
 )
-from vesmaro.sdk import MnemosSDK
+from vesmaro.sdk import VesmaSDK
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class HermesMemoryAdapter:
 
     The adapter is Hermes-shaped (the verb names mirror the Hermes
     ``MemoryProvider`` lifecycle) but imports NO Hermes code — it is
-    constructible and testable in-process over any ``MnemosSDK``.
+    constructible and testable in-process over any ``VesmaSDK``.
 
     Identity threading: ``project`` + ``agent`` are fixed at construction
     (validated against the tag contract up front — a bad slug fails HERE,
@@ -138,7 +138,7 @@ class HermesMemoryAdapter:
 
     def __init__(
         self,
-        sdk: MnemosSDK,
+        sdk: VesmaSDK,
         *,
         project: str,
         agent: str,
@@ -151,7 +151,7 @@ class HermesMemoryAdapter:
         _require_str(agent, "agent")
         # Fail fast on contract-breaking slugs: this is the exact tag set
         # every write below composes, validated with the deployment's own
-        # strictness knob (the same call MnemosSDK.remember makes later).
+        # strictness knob (the same call VesmaSDK.remember makes later).
         validate_tag_contract(
             [f"project:{project}", f"agent:{agent}", "mnemos:session"],
             strict=sdk.manager.settings.mnemos.strict_tag_contract,
@@ -199,7 +199,7 @@ class HermesMemoryAdapter:
         return self._agent
 
     @property
-    def sdk(self) -> MnemosSDK:
+    def sdk(self) -> VesmaSDK:
         """The underlying SDK (surfaced-operations escape hatch for shims)."""
         return self._sdk
 
@@ -287,7 +287,7 @@ class HermesMemoryAdapter:
             profile=profile,
         )
 
-    # ── Writes (MnemosSDK.remember — tag contract at the channel) ───────
+    # ── Writes (VesmaSDK.remember — tag contract at the channel) ───────
 
     def add_memory(
         self,
@@ -300,7 +300,7 @@ class HermesMemoryAdapter:
     ) -> Memory:
         """Store one caller-tagged memory (the ``mnemos_add`` counterpart).
 
-        Tags pass through ``MnemosSDK.remember``'s channel validation —
+        Tags pass through ``VesmaSDK.remember``'s channel validation —
         contract-breaking tags raise before any write. No explicit
         ``status``: the ``vesmaro.visibility`` server policy owns the
         initial visibility (ADR-0019 Phase D).
@@ -495,7 +495,7 @@ class HermesMemoryAdapter:
         logger.info("hermes_adapter.save_checkpoint: project=%s id=%s", self._project, memory.id)
         return memory
 
-    # ── Reads (MnemosSDK.recall / stats — issuance-scanned channels) ────
+    # ── Reads (VesmaSDK.recall / stats — issuance-scanned channels) ────
 
     def search(
         self,

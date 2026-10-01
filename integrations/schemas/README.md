@@ -1,11 +1,11 @@
 # Vendored canon JSON Schemas — provenance
 
-Vendored copies of the canon record schemas, shipped by the Mnemos
-integration pack so consumers (e.g. the mnemos-eyes Go validator) can
+Vendored copies of the canon record schemas, shipped by the Vesma
+integration pack so consumers (e.g. the vesma-eyes Go validator) can
 receive pinned schemas natively from the engine deploy
-(`mnemos integration setup`, kind `schemas`).
+(`vesma integration setup`, kind `schemas`).
 
-- Source of truth: `github.com/vesmaro/vesmaro-canon`
+- Source of truth: `github.com/vesmaro/vesma-canon`
 - Pin tag: `canon-v1.0.0` (commit `d4e998089acde88a9d57551fa71cfa2ef3c23fdf`)
 - **Do not edit.** JSON cannot carry comments, so provenance lives here
   instead of a header inside the files. The deployed copies are
@@ -25,7 +25,7 @@ receive pinned schemas natively from the engine deploy
 ## How these copies were produced
 
 ```
-git -C <vesmaro-canon> show canon-v1.0.0:schemas/<name>.schema.json \
+git -C <vesma-canon> show canon-v1.0.0:schemas/<name>.schema.json \
   > integrations/schemas/<name>.schema.json
 ```
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# pypi-publish.sh — local PyPI publish pipeline for the mnemos
-# distribution (mnemos-memory-server on PyPI; import package: mnemos).
+# pypi-publish.sh — local PyPI publish pipeline for the vesma
+# distribution (mnemos-memory-server on PyPI; import package: vesma).
 #
 # WHY: GitHub Actions is billing-locked (#117) so the release workflow
 # does not fire, and a first PyPI publish is an IRREVERSIBLE owner
@@ -11,7 +11,7 @@
 #
 # Usage:
 #   scripts/pypi-publish.sh                 # check mode (default): gates + build + twine check + metadata smoke
-#   scripts/pypi-publish.sh --full-smoke    # + install wheel into a throwaway venv WITH deps, run `mnemos --version`
+#   scripts/pypi-publish.sh --full-smoke    # + install wheel into a throwaway venv WITH deps, run `vesma --version`
 #   scripts/pypi-publish.sh --publish       # run all checks, then twine upload (requires release tag + creds)
 #   scripts/pypi-publish.sh --publish --full-smoke    # recommended pre-upload combination
 #   scripts/pypi-publish.sh --i-own-name    # allow upload when the PyPI project already exists (updates only)
@@ -91,7 +91,7 @@ fi
 
 # --- pre-flight: tree, tag, versions --------------------------------------
 
-echo "=== PyPI publish pipeline — mnemos ==="
+echo "=== PyPI publish pipeline — vesma ==="
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "ERROR: dirty working tree" >&2; git status --short; exit 2
 fi
@@ -261,7 +261,7 @@ from importlib.metadata import version
 name, expected = os.environ["NAME"], os.environ["EXPECTED"]
 v = version(name)
 assert v == expected, f"installed {v} != expected {expected}"
-p = r.files("vesmaro")
+p = r.files("vesma")
 assert (p / "integrations").is_dir(), "integrations/ missing from wheel — integration setup would break on pip installs"
 assert (p / "scripts").is_dir(), "scripts/ missing from wheel — mcp-setup.sh would not be found"
 print(f"✓ installed {name} {v}; integrations/ + scripts/ shipped")
@@ -278,7 +278,7 @@ fi
 if $FULL_SMOKE; then
   IDX=$((IDX+1))
   echo ""; echo "=== [$IDX/$TOTAL] Full smoke (throwaway venv, full deps, CLI) ==="
-  if $DRY_RUN; then echo "→ DRY-RUN: venv install + mnemos --version"; record "Full smoke" "SKIP"
+  if $DRY_RUN; then echo "→ DRY-RUN: venv install + vesma --version"; record "Full smoke" "SKIP"
   else
     SMOKE_DIR=$(mktemp -d /tmp/mnemos-pypi-fullsmoke.XXXXXX)
     SMV="$SMOKE_DIR/.venv"

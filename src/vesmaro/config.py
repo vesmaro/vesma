@@ -17,7 +17,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 logger = logging.getLogger(__name__)
 
 
-class MnemosConfig(BaseModel):
+class VesmaConfig(BaseModel):
     # Consolidated layout (v2.1): everything lives under ~/.mnemos/.
     # Old scattered paths (~/mnemos-vault, ~/.mnemos as data_dir) are
     # auto-migrated by ``Settings.migrate_layout()`` on first load.
@@ -81,7 +81,7 @@ class MnemosConfig(BaseModel):
     # telemetry validated in the A0 7-day window.
     # Canonical env override: VESMARO_MNEMOS__FEEDBACK_APPLY=false.
     feedback_apply: bool = True
-    # mnemos #96: workflow lifecycle guardrails. Stale-lock threshold governs
+    # vesma #96: workflow lifecycle guardrails. Stale-lock threshold governs
     # how long a lock survives before a different actor can take it over
     # without ``force`` (guardrail 2). Rate limit caps transitions per memory
     # per minute to prevent churn (guardrail 5) — it is per-memory, NOT
@@ -89,7 +89,7 @@ class MnemosConfig(BaseModel):
     # actor drives the transitions.
     workflow_stale_lock_threshold_hours: int = Field(default=24, ge=1, le=720)
     workflow_rate_limit_per_minute: int = Field(default=30, ge=1, le=1000)
-    # mnemos #125 W2 review F1: on_context_rewrite write-surface guardrails.
+    # vesma #125 W2 review F1: on_context_rewrite write-surface guardrails.
     # The rate limit counts STORED rewrite events per (project, session) per
     # minute — a deduplicated re-delivery performs no write and consumes no
     # quota, so at-least-once retry storms stay harmless. 0 disables the
@@ -121,7 +121,7 @@ class MnemosConfig(BaseModel):
     # Canonical env override: VESMARO_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
     awareness_picture_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
-    # vesmaro-canon v1.0.0 (ADR-0003 engine obligation 4) — the
+    # vesma-canon v1.0.0 (ADR-0003 engine obligation 4) — the
     # server-minted canon envelope ``metadata.canon.language`` for
     # checkpoints written by ``save_checkpoint``. One language per record
     # (canon §6): the operator declares the deployment's checkpoint body
@@ -134,7 +134,7 @@ class MnemosConfig(BaseModel):
     # mistyped config value surfaces on the first save, not silently.
     # Canonical env override: VESMARO_MNEMOS__CHECKPOINT_LANGUAGE=ru.
     checkpoint_language: Literal["ru", "en"] = "ru"
-    # vesmaro-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
+    # vesma-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
     # write-path canon enforcement level. The validator
     # (``vesmaro.canon_validate``) runs on every record that CARRIES
     # ``metadata.canon`` at the write path (manager add/update incl. the
@@ -149,7 +149,7 @@ class MnemosConfig(BaseModel):
     #     §10 "new records only"): a legacy row's update must succeed even
     #     in strict mode.
     #   * "off" — no canon validation at all.
-    # Strict stays default-off until vesmaro 6.0 (canon §9 freeze: the
+    # Strict stays default-off until vesma 6.0 (canon §9 freeze: the
     # warn telemetry decides the strict default, owner directive).
     # Canonical env override: VESMARO_MNEMOS__CANON_MODE=strict.
     canon_mode: Literal["off", "warn", "strict"] = "warn"
@@ -248,7 +248,7 @@ class SearchConfig(BaseModel):
 class ApiConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8787
-    # T-CORS: browser cross-origin allow-list for mnemos-eyes
+    # T-CORS: browser cross-origin allow-list for vesma-eyes
     # Default is strict - CORS disabled, no origin permitted.
     cors_enabled: bool = False
     cors_allow_origins: list[str] = []
@@ -346,7 +346,7 @@ class AutomationConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     # Hard cap for CPU-bound thread pools (BLAS/OMP/ONNX/tokenizers)
     cpu_threads: int = Field(default=4, ge=1, le=64)
-    # Uvicorn worker processes for `vesma serve` (binary: legacy `mnemos serve`)
+    # Uvicorn worker processes for `vesma serve` (binary: legacy `vesma serve`)
     uvicorn_workers: int = Field(default=1, ge=1, le=8)
 
 
@@ -404,7 +404,7 @@ class CCRConfig(BaseModel):
 
 
 class HooksConfig(BaseModel):
-    """ADR-0017 D1 lifecycle hooks (mnemos #125, Wave 3).
+    """ADR-0017 D1 lifecycle hooks (vesma #125, Wave 3).
 
     The hooks themselves (``pre_llm_call`` / ``on_session_start`` /
     ``post_tool_call``) are stateless thin wrappers over the manager's
@@ -432,7 +432,7 @@ class HooksConfig(BaseModel):
 
 
 class LanesConfig(BaseModel):
-    """ADR-0025 E1 — deterministic retrieval lanes (mnemos #253).
+    """ADR-0025 E1 — deterministic retrieval lanes (vesma #253).
 
     Lanes dispatch is a recall SUB-STAGE of ``assemble_context``
     (``mnemos/lanes.py``): rules/decisions ride deterministic SQL
@@ -538,7 +538,7 @@ def _reject_degenerate_project_slugs(
     effective-set resolution into ``_intersect_projects``, whose
     wildcard branch returns the requested list verbatim — handing a
     scoped read ANY project while the write path stays bounded
-    (read/write asymmetry, vesmaro#371/#369 review).
+    (read/write asymmetry, vesma#371/#369 review).
     """
     for item in projects:
         if not item.strip():
@@ -628,7 +628,7 @@ class MetaPollConfig(BaseModel):
 
     Fields:
         enabled: Master switch. Default ``False`` — the background
-            poller task is only started (in ``vesmaro serve``) when
+            poller task is only started (in ``vesma serve``) when
             this is explicitly set to ``true``.
         interval_seconds: Wall-clock seconds between background ticks.
             Default 300 (5 min). Clamped to ``[60, 86400]`` — below one
@@ -703,7 +703,7 @@ class FetchConfig(BaseModel):
 
     Lazy fetch is the EXPLICIT, operator-confirmed content fetch: the
     index mirror (``federation_index``, populated by the meta-poller)
-    carries metadata-only rows; ``mnemos fetch --id <fed-id>`` resolves
+    carries metadata-only rows; ``vesma fetch --id <fed-id>`` resolves
     a row's origin peer and pulls the full :class:`CompactRecord` from
     it through the mesh CLI
 
@@ -721,7 +721,7 @@ class FetchConfig(BaseModel):
 
     Fields:
         mesh_config_path: Path to the mesh ``yaml`` passed to the CLI
-            via ``--config``. REQUIRED to run ``mnemos fetch`` (the
+            via ``--config``. REQUIRED to run ``vesma fetch`` (the
             CLI cannot dial the peer leg without it) — enforced at the
             command boundary, not here (unlike ``meta_poll`` there is
             no ``enabled`` to gate at startup).
@@ -750,7 +750,7 @@ class FederationConfig(BaseModel):
             is a per-peer ``allowed_projects`` concept — a wildcard here
             would bypass the shared-union bound on scoped reads.
             Only records whose ``project:`` tag matches a slug in this
-            list are included in ``mnemos sync export``. Empty list =
+            list are included in ``vesma sync export``. Empty list =
             no projects are eligible (sync exports nothing). The
             receiving side re-applies the same filter on import.
         moderation_mapping_ttl_hours: TTL for the per-run moderation
@@ -793,7 +793,7 @@ class FederationConfig(BaseModel):
             OFF; see :class:`MetaPollConfig`. Additive: configs without
             the key parse unchanged (bit-for-bit S1/phase-1 behaviour).
         fetch: S2 lazy-fetch (Q10.3) — keys for the explicit
-            ``vesma fetch`` (legacy ``mnemos fetch``) command: mesh CLI binary + mesh yaml
+            ``vesma fetch`` (legacy ``vesma fetch``) command: mesh CLI binary + mesh yaml
             path); see :class:`FetchConfig`. Additive; no background
             behaviour.
         agent_token_key_path: Optional override for the W3 AgentGateway
@@ -802,7 +802,7 @@ class FederationConfig(BaseModel):
             on first use with mode 0600, never leaves this host. Additive:
             configs without the key parse unchanged.
         agent_token_issuer: ``iss`` claim stamped into minted agent tokens
-            (ADR-0018-T §3). Default ``"mnemos"``. Informational for
+            (ADR-0018-T §3). Default ``"vesma"``. Informational for
             routing/audit — validation relies on the Ed25519 signature,
             not on this string.
     """
@@ -815,7 +815,7 @@ class FederationConfig(BaseModel):
     index_title_blocklist: list[str] = Field(default_factory=list, max_length=256)
     meta_poll: MetaPollConfig = Field(default_factory=MetaPollConfig)
     agent_token_key_path: str | None = Field(default=None, max_length=4096)
-    agent_token_issuer: str = Field(default="mnemos", min_length=1, max_length=64)
+    agent_token_issuer: str = Field(default="vesma", min_length=1, max_length=64)
     fetch: FetchConfig = Field(default_factory=FetchConfig)
 
     @field_validator("shared_projects")
@@ -1264,7 +1264,7 @@ class MeshConfig(BaseModel):
 # ── Issue #139: legacy short env-name compatibility ──────────────────────────
 #
 # ``Settings`` maps env vars with the ``VESMARO_`` prefix + ``__`` nesting, so
-# the canonical names for the nested ``mnemos`` section fields are
+# the canonical names for the nested ``vesma`` section fields are
 # ``VESMARO_MNEMOS__DATA_DIR`` / ``VESMARO_MNEMOS__VAULT_PATH``. Historically the
 # repo docs and ``scripts/mcp-setup.sh`` advertised the shorter
 # ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` forms, which
@@ -1303,7 +1303,7 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
 
 
 class Settings(BaseSettings):
-    mnemos: MnemosConfig = MnemosConfig()
+    mnemos: VesmaConfig = VesmaConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     search: SearchConfig = SearchConfig()
     api: ApiConfig = ApiConfig()
@@ -1469,7 +1469,7 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
     Zero-config support (ADR-0017 Phase 0, D6): a ``None`` return means no
     user config exists anywhere on the search path, so ``load_settings``
     falls back to the built-in safe defaults (loopback bind, storage under
-    ``~/.mnemos/``). Surfaces such as ``mnemos serve`` use this to tell the
+    ``~/.mnemos/``). Surfaces such as ``vesma serve`` use this to tell the
     zero-config profile apart from an explicit config.
 
     Search order (identical to :func:`load_settings`):

@@ -2,9 +2,9 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/admin/kubernetes-deployment.md)
 
-> Admin-tier guide for deploying the full Vesmaro (Vesma) server into any
+> Admin-tier guide for deploying the full Vesma (Vesma) server into any
 > Kubernetes 1.25+ cluster — vanilla K8s, K3s, kind, k0s — with the bundled
-> Helm chart (`deploy/helm/vesmaro/`): Deployment, Service, **Ingress**,
+> Helm chart (`deploy/helm/vesma/`): Deployment, Service, **Ingress**,
 > two PersistentVolumeClaims and the TOTP secret.
 
 ---
@@ -35,8 +35,8 @@ Health surface: unauthenticated `GET /health` (used by probes and `helm test`).
 ## Quick start
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -45,19 +45,19 @@ helm install vesmaro deploy/helm/vesmaro \
 K3s (Traefik + local-path are the defaults, so nothing extra is needed):
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
-  --set 'ingress.hosts[0].host=mnemos.home.lan'
+  --set 'ingress.hosts[0].host=vesma.home.lan'
 ```
 
 Verify:
 
 ```bash
-kubectl -n vesmaro rollout status deploy/vesmaro
-helm -n vesmaro test vesmaro            # in-cluster wget against /health
-kubectl -n vesmaro port-forward svc/vesmaro 8787:8787
+kubectl -n vesma rollout status deploy/vesma
+helm -n vesma test vesma            # in-cluster wget against /health
+kubectl -n vesma port-forward svc/vesma 8787:8787
 curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 ```
 
@@ -70,10 +70,10 @@ supported ways, in order of preference:
 1. **Pre-created secret (production):**
 
    ```bash
-   kubectl -n vesmaro create secret generic vesmaro-totp \
+   kubectl -n vesma create secret generic vesma-totp \
      --from-literal=totp-master-key="$(openssl rand -hex 32)"
-   helm install vesmaro deploy/helm/vesmaro -n vesmaro \
-     --set auth.existingSecret=vesmaro-totp
+   helm install vesma deploy/helm/vesma -n vesma \
+     --set auth.existingSecret=vesma-totp
    ```
 
 2. **`--set` at install time** (kept in Helm release history — acceptable for
@@ -102,7 +102,7 @@ ingress:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: vesmaro-tls
+    - secretName: vesma-tls
       hosts:
         - vesma.example.com
 ```
@@ -112,7 +112,7 @@ The server runs with `behind_tls_proxy: true` by default and trusts
 ingress controller pods run in a different CIDR, add it:
 
 ```bash
-helm upgrade vesmaro deploy/helm/vesmaro -n vesmaro --reuse-values \
+helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
   --set 'api.trustedProxies={10.0.0.0/8,172.16.0.0/12,10.42.0.0/16}'
 ```
 
@@ -145,9 +145,9 @@ releases are backfilled to the org namespace manually in the meantime.
 ## Upgrades & uninstall
 
 ```bash
-helm upgrade vesmaro deploy/helm/vesmaro -n vesmaro --reuse-values \
+helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
   --set image.tag=4.4.0              # data volumes survive upgrades
-helm uninstall vesmaro -n vesmaro    # PVCs are kept; delete them explicitly if needed
+helm uninstall vesma -n vesma    # PVCs are kept; delete them explicitly if needed
 ```
 
 The `Recreate` strategy is deliberate: the old pod must release the

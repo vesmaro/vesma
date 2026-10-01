@@ -1,4 +1,4 @@
-# Участие в разработке Mnemos
+# Участие в разработке Vesma
 
 Спасибо, что хотите внести вклад. Эта страница — весь контракт: как настроить окружение
 разработки, как изменения попадают в `main` и какой гейт должно пройти каждое изменение.
@@ -11,11 +11,11 @@
 ## Настройка окружения
 
 ```bash
-git clone https://github.com/vesmaro/vesmaro.git
-cd vesmaro
+git clone https://github.com/vesmaro/vesma.git
+cd vesma
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-mnemos --help        # проверка, что всё живо
+vesma --help        # проверка, что всё живо
 ```
 
 - Python **3.11+** (рекомендуется `uv`; обычный `python -m venv` тоже работает).
@@ -38,7 +38,7 @@ make verify
 | 3 | `pytest` | Набор тестов (2300+ тестов) |
 | 4 | `bandit` + `pip-audit` | Security-линт + скан CVE в зависимостях |
 | 5 | `bench-s1` | Quality gate ADR-0020 (коридоры + инварианты против базлайна) |
-| 6 | `mnemos doctor` | Проверки здоровья (предупреждения не блокируют в CI-подобных окружениях) |
+| 6 | `vesma doctor` | Проверки здоровья (предупреждения не блокируют в CI-подобных окружениях) |
 | 7 | version guard | `VERSION` и `pyproject.toml` согласованы |
 
 Зелено — изменение готово к публикации. Если `pip-audit` помечает закреплённую CVE,
@@ -82,6 +82,6 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
 
 ## Сообщение об ошибках
 
-Откройте [GitHub issue](https://github.com/vesmaro/vesmaro/issues) с командой, которую
-запускали, точным выводом и отчётом `mnemos doctor` (замаскируйте всё, что похоже на
+Откройте [GitHub issue](https://github.com/vesmaro/vesma/issues) с командой, которую
+запускали, точным выводом и отчётом `vesma doctor` (замаскируйте всё, что похоже на
 секрет — issue-трекер публичный).

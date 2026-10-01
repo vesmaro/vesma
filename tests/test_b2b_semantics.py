@@ -48,7 +48,7 @@ from vesmaro.api import main as api_main
 from vesmaro.api.main import app, lifespan
 from vesmaro.cli.import_ import _reembed
 from vesmaro.cli.sync import run_sync_export, run_sync_import
-from vesmaro.config import MnemosConfig, Settings
+from vesmaro.config import Settings, VesmaConfig
 from vesmaro.danger_detectors import DetectionResult
 from vesmaro.manager import MemoryManager
 from vesmaro.models import (
@@ -159,15 +159,15 @@ def _quarantined(mgr: MemoryManager, memory_id: str, *, reason: str = "secret") 
 
 class TestVisibilityConfig:
     def test_default_is_immediate(self) -> None:
-        assert MnemosConfig().visibility == "immediate"
+        assert VesmaConfig().visibility == "immediate"
         assert Settings().mnemos.visibility == "immediate"
 
     def test_curated_accepted(self) -> None:
-        assert MnemosConfig(visibility="curated").visibility == "curated"
+        assert VesmaConfig(visibility="curated").visibility == "curated"
 
     def test_unknown_value_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            MnemosConfig(visibility="curved")
+            VesmaConfig(visibility="curved")
 
     def test_env_override_canonical_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("VESMARO_MNEMOS__VISIBILITY", "curated")

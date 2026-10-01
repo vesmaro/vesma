@@ -1,12 +1,12 @@
-<!-- mnemos-adapter-template: v1 -->
-# Mnemos adapter template — Connect / Expose / Configure
+<!-- vesma-adapter-template: v1 -->
+# Vesma adapter template — Connect / Expose / Configure
 
-Copy this template to wire **any** MCP-capable agent harness to Mnemos
+Copy this template to wire **any** MCP-capable agent harness to Vesma
 (ADR-0017 D1: MCP stdio is the wire — no proprietary protocol). It is
 harness-agnostic: wherever your tool reads server configs from, the entry
 below is the whole contract. Target size: one screen; keep it that way.
 
-Prerequisite: `mnemos` on `PATH` (one-line install):
+Prerequisite: `vesma` on `PATH` (one-line install):
 `curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash`
 
 ## 1 · Connect — point your harness at the server
@@ -25,12 +25,12 @@ configs. Common locations:
 The entry itself (JSON form for `mcpServers` maps; TOML form below for Codex):
 
 ```json
-"mnemos": { "type": "stdio", "command": "mnemos", "args": ["mcp-server"] }
+"vesma": { "type": "stdio", "command": "vesma", "args": ["mcp-server"] }
 ```
 
 ```toml
-[mcp_servers.mnemos]
-command = "mnemos"
+[mcp_servers.vesma]
+command = "vesma"
 args = ["mcp-server"]
 ```
 
@@ -72,7 +72,7 @@ Before compaction or session end, call mnemos_save_context.
 
 Pick two slugs once and reuse them everywhere (keeps recall scoped):
 
-- `project:<slug>` — the repo/product this harness works on (e.g. `project:mnemos`)
+- `project:<slug>` — the repo/product this harness works on (e.g. `project:vesma`)
 - `agent:<slug>` — this harness's identity (e.g. `agent:cursor`, or `agent:user`)
 
 Every write must carry exactly one of each plus at least one
@@ -87,19 +87,19 @@ Run through this list after wiring; every item must pass. Item 5 uses this
 wire probe (works for every harness — it talks stdio directly):
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | mnemos mcp-server
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | vesma mcp-server
 ```
 
-- [ ] The Connect entry is pasted verbatim: `command = "mnemos"`, `args = ["mcp-server"]`, stdio.
-- [ ] The harness restarted and lists the `mnemos` server as connected/healthy.
+- [ ] The Connect entry is pasted verbatim: `command = "vesma"`, `args = ["mcp-server"]`, stdio.
+- [ ] The harness restarted and lists the `vesma` server as connected/healthy.
 - [ ] `mnemos_*` tools from the Expose table are visible to the agent.
 - [ ] `mnemos_agent_recall` returns (possibly empty) results at session start.
-- [ ] The wire probe above replies with a JSON-RPC result whose `serverInfo.name` is `mnemos`.
+- [ ] The wire probe above replies with a JSON-RPC result whose `serverInfo.name` is `vesma`.
 - [ ] A test write roundtrips: `mnemos_add` with `project:test,agent:<slug>,mnemos:learning`,
       then `mnemos_search "test"` finds it.
 - [ ] A write missing `project:` is rejected — the tag contract is active.
-- [ ] `mnemos doctor` (in a shell) reports no FAIL-level checks.
+- [ ] `vesma doctor` (in a shell) reports no FAIL-level checks.
 - [ ] The behavioural rule from Expose is present in the agent's instruction channel.
 
-When all boxes tick, your harness is on the Mnemos wire. Drift between this
+When all boxes tick, your harness is on the Vesma wire. Drift between this
 template and the repo is guarded by `tests/test_mcp_presets.py`.

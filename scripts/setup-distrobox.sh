@@ -3,7 +3,7 @@
 # Run from host: ./scripts/setup-distrobox.sh
 set -euo pipefail
 
-CONTAINER_NAME="mnemos"
+CONTAINER_NAME="vesma"
 IMAGE="docker.io/library/ubuntu:24.04"
 MNEMOS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -41,7 +41,7 @@ distrobox enter "$CONTAINER_NAME" -- bash -c "
     python3 -m venv .venv
     source .venv/bin/activate
 
-    echo '--- Installing mnemos (core, no torch) ---'
+    echo '--- Installing vesma (core, no torch) ---'
     pip install -e '.[dev]'
 
     echo '--- Copying default config ---'
@@ -51,18 +51,18 @@ distrobox enter "$CONTAINER_NAME" -- bash -c "
     fi
 
     echo '--- Creating vault directory ---'
-    mkdir -p ~/mnemos-vault
+    mkdir -p ~/vesma-vault
     mkdir -p ~/.mnemos
 
     echo ''
     echo '============================================='
-    echo '  Mnemos setup complete!'
+    echo '  Vesma setup complete!'
     echo '============================================='
     echo ''
     echo 'Usage:'
     echo '  distrobox enter $CONTAINER_NAME'
     echo '  cd $MNEMOS_DIR && source .venv/bin/activate'
-    echo '  mnemos --help'
+    echo '  vesma --help'
     echo ''
     echo 'Or run as container:'
     echo '  podman-compose up -d'

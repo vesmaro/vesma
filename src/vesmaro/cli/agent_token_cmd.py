@@ -1,4 +1,4 @@
-"""``vesmaro agent-token`` CLI — W3-v1 agent token issuance UX (ADR-0018-T §5).
+"""``vesma agent-token`` CLI — W3-v1 agent token issuance UX (ADR-0018-T §5).
 
 Launch condition (Product Architect amendment 5): without usable issuance,
 owners share tokens. Four commands over

@@ -3,7 +3,7 @@
 Chairman ruling (ADR-0021 Q10.3): the sync is RARE and EXPLICIT. The
 ``federation_index`` mirror (populated by the meta-poller,
 :mod:`vesmaro.meta_poller`) carries metadata-only rows; this module
-turns an operator's ``mnemos fetch --id <fed-id>...`` into
+turns an operator's ``vesma fetch --id <fed-id>...`` into
 
 1. **Resolution** — each id is looked up in ``federation_index``; the
    row's ``origin_peer`` (re-stamped by the import gate to the
@@ -23,14 +23,14 @@ turns an operator's ``mnemos fetch --id <fed-id>...`` into
    project) is printed and confirmed interactively: ``y/N`` on a TTY.
    A non-TTY stdin without ``--yes`` REFUSES to run (same gate as
    ``mnemos-mesh pull``: confirmation is a human at a terminal or an
-   explicit flag, never ``echo y | mnemos fetch``).
+   explicit flag, never ``echo y | vesma fetch``).
 3. **Execution** — one mesh CLI invocation per origin peer
    (``<mesh_bin> fetch --config <mesh.yaml> --peer <origin> --id ...
    --json``; the Go-track subcommand, coded against its JSON contract
    ``{"records": [CompactRecord...], "not_found": [...]}`` — never
    imported).
 4. **Import** — IN-PROCESS through the very same path :rpc:`WriteMemory`
-   uses (:meth:`MnemosCoreServicer.import_compact_record`): the ACL
+   uses (:meth:`VesmaCoreServicer.import_compact_record`): the ACL
    gate, the #359/#362 duplicate gate, moderation and the Layer 1
    secrets scanner all apply unchanged. There is deliberately NO
    dedup logic here — the shared import path owns it.
@@ -59,7 +59,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from vesmaro.compact import CompactRecord, FederationIndexEntry
 from vesmaro.config import FederationConfig, Settings
 from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import CompactImportStatus, MnemosCoreServicer
+from vesmaro.mesh_server import CompactImportStatus, VesmaCoreServicer
 from vesmaro.storage.sqlite_store import SQLiteStore
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ class FetchPlan:
 
 @dataclass(slots=True)
 class FetchStats:
-    """Counters for one ``mnemos fetch`` run (the summary line).
+    """Counters for one ``vesma fetch`` run (the summary line).
 
     ``aborted`` marks a DECLINED confirmation (all-zero counters, the
     CLI turns it into a non-zero exit) — distinct from a clean
@@ -198,7 +198,7 @@ def resolve_fetch_plan(
         raise FetchResolutionError(
             f"id(s) not present in the local federation_index mirror: {missing} — "
             "the mirror only knows what the meta-poller imported "
-            "(run `mnemos meta-poll` first)"
+            "(run `vesma meta-poll` first)"
         )
     items: list[FetchPlanItem] = []
     for fed_id in ids:
@@ -414,7 +414,7 @@ def run_fetch(
         if not confirm_fetch(stdin, stdout, tty_probe):
             stats.aborted = True
             return stats
-    servicer = MnemosCoreServicer(manager, settings=settings)
+    servicer = VesmaCoreServicer(manager, settings=settings)
     for peer_id, ids in plan.peer_groups().items():
         try:
             envelope = fetch_from_peer(

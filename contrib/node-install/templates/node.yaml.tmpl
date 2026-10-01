@@ -1,10 +1,10 @@
-# node.yaml — vesmaro node, core face (rendered by vesmaro-node).
+# node.yaml — vesma node, core face (rendered by vesma-node).
 # Profile: @@PROFILE@@ | Style: @@STYLE@@ | Run user: @@RUN_USER@@
 #
 # SECRETS: never in this file. Env overrides live in @@ENVDIR@@/node.env
 # (mode 0600), wired into the unit via EnvironmentFile=-... (optional).
 #
-# Full field reference: config.example.yaml in the vesmaro repo.
+# Full field reference: config.example.yaml in the vesma repo.
 
 mnemos:
   # Classic package layout for the node store.
@@ -38,9 +38,9 @@ mesh:
       key_file: @@PKIDIR@@/core.key
       ca_file: @@PKIDIR@@/ca.pem
   # Peer-leg mode (RESERVED — future slice "mesh as child of serve"):
-  #   external — mesh runs as its own systemd unit (mnemos-mesh.service);
+  #   external — mesh runs as its own systemd unit (vesma-mesh.service);
   #              this is the topology the bundle installs today.
-  #   child    — mesh spawned as a child process of `mnemos serve`.
+  #   child    — mesh spawned as a child process of `vesma serve`.
   #              NOT IMPLEMENTED yet; the field below is a placeholder
   #              so configs carry it early. Keep it commented.
   #peer_leg:

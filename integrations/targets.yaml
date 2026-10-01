@@ -1,7 +1,7 @@
-# Mnemos integration targets — harness detection + deploy maps.
+# Vesma integration targets — harness detection + deploy maps.
 #
 # A target is "detected" if ANY of its detect paths exist (after ~ expansion).
-# The deploy map tells `mnemos util-setup` where to copy each artefact kind.
+# The deploy map tells `vesma util-setup` where to copy each artefact kind.
 #
 # `format: copy` means files are copied verbatim (no templating).
 # Future formats (symlink, template) can be added without breaking the schema.
@@ -22,7 +22,7 @@ targets:
       skills: "~/.copilot/skills/"
       # Canon JSON Schemas (kind: schemas) — byte-identical copies plus a
       # stamped sidecar manifest (vesma-schemas.manifest.json); consumers
-      # like the mnemos-eyes Go validator read them straight from here.
+      # like the vesma-eyes Go validator read them straight from here.
       schemas: "~/.copilot/schemas/"
     format: copy
     precedence: overlay+mirror
@@ -132,7 +132,7 @@ targets:
   # Pi coding agent (@earendil-works/pi-coding-agent). Pi has no built-in
   # MCP client by design — tools arrive via TypeScript extensions, so the
   # shipped bridge extension IS the MCP registration: deploying it connects
-  # Pi to the mnemos server (spawn `mnemos mcp-server`, stdio JSON-RPC).
+  # Pi to the vesma server (spawn `vesma mcp-server`, stdio JSON-RPC).
   # The bridge also injects the always-on behavioral pack into Pi's system
   # prompt via its before_agent_start hook (Pi has no AGENTS.md surface).
   # Skills use the native nested layout under ~/.pi/agent/skills/.

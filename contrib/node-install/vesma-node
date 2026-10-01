@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# vesmaro-node — one-command installer for a vesmaro memory node.
+# vesma-node — one-command installer for a vesma memory node.
 #
-# Bundle = server venv (vesmaro, from a RELEASE TAG) + mesh binary
-# (mnemos-mesh, from the paired release ref) + configs (/etc/vesmaro,
+# Bundle = server venv (vesma, from a RELEASE TAG) + mesh binary
+# (mnemos-mesh, from the paired release ref) + configs (/etc/vesma,
 # secrets in 0600 env files) + systemd units + cert-gen hook.
 # Idempotent: re-running install at the SAME pair is a re-provision;
 # a CHANGED pair routes through the upgrade path. Restarts happen only
@@ -22,10 +22,10 @@
 #                     also removes a container install when one is recorded
 #
 # Layout styles:
-#   system (default)  /opt/vesmaro/venv, /usr/local/bin/mnemos-mesh,
-#                     /etc/vesmaro, /etc/systemd/system, /var/lib/vesmaro
-#   --user NAME       ~NAME/.local/share/vesmaro/venv, ~NAME/.local/bin,
-#                     ~NAME/.config/vesmaro — same unit NAMES (system
+#   system (default)  /opt/vesma/venv, /usr/local/bin/mnemos-mesh,
+#                     /etc/vesma, /etc/systemd/system, /var/lib/vesma
+#   --user NAME       ~NAME/.local/share/vesma/venv, ~NAME/.local/bin,
+#                     ~NAME/.config/vesma — same unit NAMES (system
 #                     units with User=NAME), mirroring the legacy laptop
 #                     prod topology.
 #
@@ -39,7 +39,7 @@ set -Eeuo pipefail
 shopt -s inherit_errexit 2>/dev/null || true
 umask 077   # everything not explicitly chmod'd (manifests, staging) is private
 
-SCRIPT_NAME="vesmaro-node"
+SCRIPT_NAME="vesma-node"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TSV="$SCRIPT_DIR/compatibility.tsv"
 
@@ -74,7 +74,7 @@ RELEASE=""
 MESH_RELEASE=""
 DEV_REF=""
 DEV_MESH_REF=""
-VESMARO_REPO_FLAG=""
+VESMA_REPO_FLAG=""
 MESH_REPO_FLAG=""
 MESH_BIN_FLAG=""
 NODE_ID=""
@@ -91,7 +91,7 @@ PURGE=false
 KEEP_DATA=false
 ASSUME_YES=false
 INCLUDE_ADOPTED=false
-WORKDIR="${XDG_CACHE_HOME:-$HOME/.cache}/vesmaro-node"
+WORKDIR="${XDG_CACHE_HOME:-$HOME/.cache}/vesma-node"
 PYBIN_FLAG=""
 
 # container-install state
@@ -196,7 +196,7 @@ distrobox_enter_cmd() {  # echoes "" or a usable distrobox-enter command
   if [[ -x "$c" ]]; then echo "$c"; fi
 }
 
-version_core() {  # $1 = mnemos bin -> "4.3.0" or ""
+version_core() {  # $1 = vesma bin -> "4.3.0" or ""
   [[ -x "$1" ]] || { echo ""; return; }
   local v=""
   v="$("$1" --version 2>/dev/null | awk '{print $NF}' || true)"
@@ -237,7 +237,7 @@ pick_python() {
 
 # ── repo resolution ──────────────────────────────────────────────────
 default_vesmaro_repo() {
-  if [[ -n "$VESMARO_REPO_FLAG" ]]; then echo "$VESMARO_REPO_FLAG"; return; fi
+  if [[ -n "$VESMA_REPO_FLAG" ]]; then echo "$VESMA_REPO_FLAG"; return; fi
   if [[ -n "${VESMARO_REPO:-}" ]]; then echo "$VESMARO_REPO"; return; fi
   local p="$HOME/LABs/Projects/Project-Vesma/vesma"
   if [[ -d "$p/.git" ]]; then echo "$p"; return; fi
@@ -350,21 +350,21 @@ compute_paths() {
     home="$(user_home "$USER_NAME")"
     [[ -n "$home" && -d "$home" ]] || die "user $USER_NAME has no home"
     LEG_HOME="$home"
-    VENV="$home/.local/share/vesmaro/venv"
+    VENV="$home/.local/share/vesma/venv"
     MESHBIN="$home/.local/bin/mnemos-mesh"
-    CONFDIR="$home/.config/vesmaro"
-    DATADIR="$home/.local/share/vesmaro/data"
+    CONFDIR="$home/.config/vesma"
+    DATADIR="$home/.local/share/vesma/data"
     RUNDIR="$home/.run/vesmaro"
-    STATEDIR="$home/.local/state/vesmaro"
-    BUNDLE_DIR="$home/.local/share/vesmaro/node-install"
+    STATEDIR="$home/.local/state/vesma"
+    BUNDLE_DIR="$home/.local/share/vesma/node-install"
   else
-    VENV="/opt/vesmaro/venv"
+    VENV="/opt/vesma/venv"
     MESHBIN="/usr/local/bin/mnemos-mesh"
-    CONFDIR="/etc/vesmaro"
-    DATADIR="/var/lib/vesmaro"
-    RUNDIR="/run/vesmaro"
-    STATEDIR="/var/lib/vesmaro"
-    BUNDLE_DIR="/opt/vesmaro/node-install"
+    CONFDIR="/etc/vesma"
+    DATADIR="/var/lib/vesma"
+    RUNDIR="/run/vesma"
+    STATEDIR="/var/lib/vesma"
+    BUNDLE_DIR="/opt/vesma/node-install"
   fi
   ENVDIR="$CONFDIR/env"
   PKIDIR="$CONFDIR/pki"
@@ -393,7 +393,7 @@ build_venv() {  # build_venv <repo> <ref> -> echoes cache path
   git -C "$repo" archive --format=tar "${ref}^{commit}" | tar -x -C "$src"
   ( cd "$src" && UV_PROJECT_ENVIRONMENT="$cache" uv sync --frozen --no-editable --no-dev --python "$PYBIN" ) \
     || die "uv sync failed for $ref"
-  [[ -x "$cache/bin/mnemos" ]] || die "venv build produced no mnemos binary"
+  [[ -x "$cache/bin/mnemos" ]] || die "venv build produced no vesma binary"
   echo "$cache"
 }
 
@@ -489,9 +489,9 @@ profile_units() {  # echoes unit names for the profile
   if [[ "$PROFILE" == "laptop" ]]; then
     printf '%s\n%s\n' mnemos-prod-laptop.service mnemos-board-laptop.service
   else
-    echo "mnemos-node.service"
+    echo "vesma-node.service"
   fi
-  $WITHOUT_MESH || echo "mnemos-mesh.service"
+  $WITHOUT_MESH || echo "vesma-mesh.service"
 }
 
 unit_user_line() {
@@ -508,9 +508,9 @@ emit_server_unit() {  # $1 name, $2 desc, $3 port, $4 conf, $5 envfile
   if [[ "$STYLE" == "user" ]]; then
     mkdir_line="ExecStartPre=/usr/bin/mkdir -p @@RUNDIR@@"
   else
-    harden=$'ProtectSystem=strict\nReadWritePaths=@@DATADIR@@\nRuntimeDirectory=vesmaro'
+    harden=$'ProtectSystem=strict\nReadWritePaths=@@DATADIR@@\nRuntimeDirectory=vesma'
   fi
-  render "$td/units/mnemos-server.service.tmpl" "${DEST}${UNITDIR}/$1.gen" \
+  render "$td/units/vesma-server.service.tmpl" "${DEST}${UNITDIR}/$1.gen" \
     "@@UNIT_NAME@@=$1" "@@DESCRIPTION@@=$2" "@@USER_LINE@@=$uline" \
     "@@ENVFILE@@=$5" "@@MKDIR_LINE@@=$mkdir_line" "@@HARDENING@@=$harden" \
     "@@VENV@@=$VENV" "@@CONF@@=${CONFDIR}/$4" "@@PORT@@=$3" "@@RUNDIR@@=$RUNDIR" \
@@ -525,9 +525,9 @@ emit_mesh_unit() {
   if [[ "$STYLE" == "user" ]]; then
     mkdir_line="ExecStartPre=/usr/bin/mkdir -p @@RUNDIR@@"
   else
-    harden=$'ProtectSystem=strict\nRuntimeDirectory=vesmaro'
+    harden=$'ProtectSystem=strict\nRuntimeDirectory=vesma'
   fi
-  render "$td/units/mnemos-mesh.service.tmpl" "${DEST}${UNITDIR}/mnemos-mesh.service.gen" \
+  render "$td/units/vesma-mesh.service.tmpl" "${DEST}${UNITDIR}/vesma-mesh.service.gen" \
     "@@USER_LINE@@=$uline" "@@MKDIR_LINE@@=$mkdir_line" "@@HARDENING@@=$harden" \
     "@@MESHBIN@@=$MESHBIN" "@@MESHCONF@@=${CONFDIR}/mesh.yaml" "@@RUNDIR@@=$RUNDIR"
 }
@@ -535,17 +535,17 @@ emit_mesh_unit() {
 install_units() {  # returns (echo) list of units whose files changed
   local changed="" u gen
   for u in $(profile_units); do
-    if [[ "$u" == mnemos-mesh.service ]]; then
+    if [[ "$u" == vesma-mesh.service ]]; then
       $WITHOUT_MESH && continue
       emit_mesh_unit
     elif [[ "$PROFILE" == "laptop" && "$u" == mnemos-prod-laptop.service ]]; then
-      emit_server_unit "$u" "vesmaro node core (laptop) — HTTP 127.0.0.1:8787 + mesh tcp 8790" \
+      emit_server_unit "$u" "vesma node core (laptop) — HTTP 127.0.0.1:8787 + mesh tcp 8790" \
         8787 node.yaml "${ENVDIR}/node.env"
     elif [[ "$PROFILE" == "laptop" && "$u" == mnemos-board-laptop.service ]]; then
-      emit_server_unit "$u" "vesmaro node board face (laptop) — HTTP 0.0.0.0:8788, bearer auth" \
+      emit_server_unit "$u" "vesma node board face (laptop) — HTTP 0.0.0.0:8788, bearer auth" \
         8788 board.yaml "${ENVDIR}/board.env"
     else
-      emit_server_unit "$u" "vesmaro node — memory server (HTTP 127.0.0.1:8787)" \
+      emit_server_unit "$u" "vesma node — memory server (HTTP 127.0.0.1:8787)" \
         8787 node.yaml "${ENVDIR}/node.env"
     fi
     gen="${DEST}${UNITDIR}/$u.gen"
@@ -699,19 +699,19 @@ faces_for_profile() {
 install_bundle_copy() {
   if [[ "${DEST}${BUNDLE_DIR}" == "$SCRIPT_DIR" ]]; then return; fi
   mkdir -p "${DEST}${BUNDLE_DIR}"
-  cp -f "$SCRIPT_DIR/vesmaro-node" "${DEST}${BUNDLE_DIR}/vesmaro-node"
+  cp -f "$SCRIPT_DIR/vesma-node" "${DEST}${BUNDLE_DIR}/vesma-node"
   cp -f "$TSV" "${DEST}${BUNDLE_DIR}/compatibility.tsv"
   if [[ -d "$SCRIPT_DIR/templates" ]]; then
     rm -rf "${DEST}${BUNDLE_DIR}/templates"
     cp -a "$SCRIPT_DIR/templates" "${DEST}${BUNDLE_DIR}/templates"
   fi
   if [[ -f "$SCRIPT_DIR/README.md" ]]; then cp -f "$SCRIPT_DIR/README.md" "${DEST}${BUNDLE_DIR}/"; fi
-  chmod 0755 "${DEST}${BUNDLE_DIR}/vesmaro-node"
+  chmod 0755 "${DEST}${BUNDLE_DIR}/vesma-node"
   local bindir="${DEST}/usr/local/sbin"
   [[ "$STYLE" == "user" ]] && bindir="$(dst "$(user_home "${USER_NAME:-$RUN_USER}")/.local/bin")"
   mkdir -p "$bindir"
-  ln -sf "${BUNDLE_DIR}/vesmaro-node" "$bindir/vesmaro-node"
-  ok "bundle copy: $BUNDLE_DIR (CLI: $bindir/vesmaro-node)"
+  ln -sf "${BUNDLE_DIR}/vesma-node" "$bindir/vesma-node"
+  ok "bundle copy: $BUNDLE_DIR (CLI: $bindir/vesma-node)"
 }
 
 # ── adopt (legacy laptop prod) ───────────────────────────────────────
@@ -749,7 +749,7 @@ adopt_legacy() {
     "units.core=mnemos-prod-laptop.service" \
     "units.board=mnemos-board-laptop.service" "units.mesh=mnemos-mesh.service"
   ok "adopted legacy laptop node into $MANIFEST (NOTHING was modified on disk)"
-  info "vesmaro $cv | mesh $mv | units: $enabled/3 enabled"
+  info "vesma $cv | mesh $mv | units: $enabled/3 enabled"
   info "manage the adopted node with: $SCRIPT_NAME status | upgrade --check"
   warn "adopted nodes refuse bundle upgrades — migration to managed paths is a separate op"
 }
@@ -883,9 +883,9 @@ compute_container_paths() {
   [[ "$(id -u)" == 0 ]] && die "container-install is ROOTLESS-only (systemd --user + rootless podman) — run as the owning user"
   CT_HOME="$(host_getent_home "$who")"
   [[ -n "$CT_HOME" && "$CT_HOME" != "/" ]] || die "no home resolved for $who (host getent)"
-  CT_CONFDIR="$CT_HOME/.config/vesmaro"
-  CT_DATADIR="${CT_DATA_DIR:-$CT_HOME/.local/share/vesmaro/data}"
-  CT_STATEDIR="$CT_HOME/.local/state/vesmaro"
+  CT_CONFDIR="$CT_HOME/.config/vesma"
+  CT_DATADIR="${CT_DATA_DIR:-$CT_HOME/.local/share/vesma/data}"
+  CT_STATEDIR="$CT_HOME/.local/state/vesma"
   CT_QUADDIR="$CT_HOME/.config/containers/systemd"
   CT_RUNDIR="$CT_STATEDIR/container-run"
   CT_MANIFEST="${DEST}${CT_STATEDIR}/container-manifest.json"
@@ -977,17 +977,17 @@ cmd_container_install() {
   # ── quadlets (ours by construction: namespaced <name>-{core,mesh}) ─
   local mesh_vols=""
   if $CT_MESH_ON; then
-    mesh_vols="Volume=${CT_CONFDIR}/pki:/etc/vesmaro/pki:ro
-Volume=${CT_STATEDIR}/container-run:/run/vesmaro"
+    mesh_vols="Volume=${CT_CONFDIR}/pki:/etc/vesma/pki:ro
+Volume=${CT_STATEDIR}/container-run:/run/vesma"
   fi
   local changed_units="" q final gen
-  render_quadlet "$td/containers/vesmaro-core.container.tmpl" "${DEST}${CT_QUADDIR}/${CT_NAME}-core.container.gen" \
+  render_quadlet "$td/containers/vesma-core.container.tmpl" "${DEST}${CT_QUADDIR}/${CT_NAME}-core.container.gen" \
     "@@CORE_TAG@@=$CT_TAG" "@@NAME@@=$CT_NAME" "@@PORT@@=$CT_PORT" \
     "@@CONFDIR@@=$CT_CONFDIR" "@@DATADIR@@=$CT_DATADIR" "@@MESH_VOLUMES@@=$mesh_vols"
   local -a tmpls=( "core" )
   $CT_MESH_ON && tmpls+=( "mesh" )
   if $CT_MESH_ON; then
-    render_quadlet "$td/containers/vesmaro-mesh.container.tmpl" "${DEST}${CT_QUADDIR}/${CT_NAME}-mesh.container.gen" \
+    render_quadlet "$td/containers/vesma-mesh.container.tmpl" "${DEST}${CT_QUADDIR}/${CT_NAME}-mesh.container.gen" \
       "@@MESH_TAG@@=$CT_MESH_TAG" "@@NAME@@=$CT_NAME" "@@NODE_ID@@=${NODE_ID:-$(hostname -s)}" \
       "@@CONFDIR@@=$CT_CONFDIR" "@@STATEDIR@@=$CT_STATEDIR"
   fi
@@ -1130,7 +1130,7 @@ require_host_context() {
     die "refusing to run a mutating command from inside a container \
 (distrobox \$HOME differs from the host's — the manifest and the \
 adopted-gate would be bypassed). Run from the host: \
-distrobox-host-exec bash .../vesmaro-node $SCRIPT_CMD --user abyss \
+distrobox-host-exec bash .../vesma-node $SCRIPT_CMD --user abyss \
 (see the Context section of contrib/node-install/README.md)."
   fi
 }
@@ -1194,14 +1194,14 @@ cmd_install() {
   fi
 
   local vrepo mrepo vcache mbin new_cv new_mv changed_units=""
-  vrepo="$(ensure_repo vesmaro "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
   $WITHOUT_MESH || mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
 
   info "target pair: core $CORE_TAG + mesh $MESH_REF (${PAIR_MODE})"
 
   vcache="$(build_venv "$vrepo" "$CORE_REF")"
   new_cv="$(version_core "$vcache/bin/mnemos")"
-  [[ -n "$new_cv" ]] || die "built venv has no working mnemos CLI"
+  [[ -n "$new_cv" ]] || die "built venv has no working vesma CLI"
   if ! $WITHOUT_MESH; then
     mbin="$(build_mesh "$mrepo" "$MESH_REF" "$EXPECT_MESHV")"
     new_mv="$(version_mesh "$mbin")"
@@ -1284,7 +1284,7 @@ cmd_install() {
     if [[ "$PROFILE" == "laptop" ]]; then
       mf_write "units.core=mnemos-prod-laptop.service" "units.board=mnemos-board-laptop.service"
     else
-      mf_write "units.core=mnemos-node.service"
+      mf_write "units.core=vesma-node.service"
     fi
     $WITHOUT_MESH || mf_write "units.mesh=mnemos-mesh.service"
   fi
@@ -1295,7 +1295,7 @@ cmd_install() {
   if $venv_changed; then
     for u in $(profile_units | grep -v mesh); do restart_set="$restart_set $u"; done
   fi
-  $mesh_changed && restart_set="$restart_set mnemos-mesh.service"
+  $mesh_changed && restart_set="$restart_set vesma-mesh.service"
   if ! $NO_ENABLE && ! $SYS_DRY; then
     for u in $(profile_units); do
       if ! sys_real is-enabled "$u" >/dev/null 2>&1; then
@@ -1312,7 +1312,7 @@ cmd_install() {
   fi
 
   echo
-  ok "install complete — pair (vesmaro $new_cv, mesh ${new_mv:-n/a}), profile $PROFILE, style $STYLE"
+  ok "install complete — pair (vesma $new_cv, mesh ${new_mv:-n/a}), profile $PROFILE, style $STYLE"
   $SANDBOX && info "SANDBOX: layout under $DEST — nothing enabled, no systemd calls"
 }
 
@@ -1413,7 +1413,7 @@ cmd_upgrade() {
 
   # ── build both artifacts BEFORE touching the node ───────────────
   local vrepo vcache new_cv
-  vrepo="$(ensure_repo vesmaro "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
   vcache="$(build_venv "$vrepo" "$CORE_REF")"
   new_cv="$(version_core "$vcache/bin/mnemos")"
   local mrepo="" mbin="" new_mv=""
@@ -1489,7 +1489,7 @@ cmd_upgrade() {
   if $have_mesh; then
     mf_write "mesh_version=$new_mv" "mesh_ref=$MESH_REF" "mesh_sha256=$(sha256_of "$dst_bin")"
   fi
-  ok "upgrade complete: (vesmaro $new_cv, mesh ${new_mv:-n/a}), rollback copies kept (*.prev-<ts>)"
+  ok "upgrade complete: (vesma $new_cv, mesh ${new_mv:-n/a}), rollback copies kept (*.prev-<ts>)"
 }
 
 # ── STATUS ───────────────────────────────────────────────────────────
@@ -1500,7 +1500,7 @@ cmd_status() {
   if ! manifest_exists; then
     # container-only node? print its block and stop
     if [[ -f "$CT_MANIFEST" ]]; then
-      echo "vesmaro-node status (container install) — $(date '+%Y-%m-%d %H:%M:%S')"
+      echo "vesma-node status (container install) — $(date '+%Y-%m-%d %H:%M:%S')"
       container_status
       return 0
     fi
@@ -1516,7 +1516,7 @@ cmd_status() {
   cv="$(version_core "$cvbin")"; mv="$(version_mesh "$mvbin")"
   PROFILE="$(mf_get profile)"
 
-  echo "vesmaro-node status — $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "vesma-node status — $(date '+%Y-%m-%d %H:%M:%S')"
   echo "  node      : profile=$(mf_get profile) style=$(mf_get style) user=$(mf_get user) adopted=$adopted"
   echo "  installed : $(mf_get installed_at) (updated $(mf_get updated_at))"
   echo "  versions  : core ${cv:-?} [tag $(mf_get core_tag)]  mesh ${mv:-?} [$(mf_get mesh_ref)]"
@@ -1677,7 +1677,7 @@ while [[ $# -gt 0 ]]; do
     --mesh-release) MESH_RELEASE="$2"; shift 2 ;;
     --ref) DEV_REF="$2"; shift 2 ;;
     --mesh-ref) DEV_MESH_REF="$2"; shift 2 ;;
-    --vesmaro-repo) VESMARO_REPO_FLAG="$2"; shift 2 ;;
+    --vesma-repo) VESMA_REPO_FLAG="$2"; shift 2 ;;
     --mesh-repo) MESH_REPO_FLAG="$2"; shift 2 ;;
     --mesh-bin) MESH_BIN_FLAG="$2"; shift 2 ;;
     --node-id) NODE_ID="$2"; shift 2 ;;

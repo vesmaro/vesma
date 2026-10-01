@@ -108,7 +108,7 @@ MAX_KEY_POINTS: int = 5
 #
 # Map a memory's ``mnemos:<subtype>`` tag to the compact record ``type``
 # field. The compact format's type vocabulary (contract §2.3) is a
-# subset of the mnemos tag subtypes. ``mnemos:legacy`` and
+# subset of the vesma tag subtypes. ``mnemos:legacy`` and
 # ``mnemos:synthesized`` (pipeline artefacts) fall back to ``session``
 # (sensible default — they are not categorical decisions). The
 # ``mnemos:no-federate`` tag is NOT mapped — records with that tag are

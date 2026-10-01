@@ -144,7 +144,7 @@ SCHEMAS_MANIFEST_NAME = "vesma-schemas.manifest.json"
 LEGACY_SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
 
 #: Registered MCP server key per config format. Brand-primary key is
-#: ``vesma``; the legacy ``mnemos`` key is recognized (and migrated on
+#: ``vesma``; the legacy ``vesma`` key is recognized (and migrated on
 #: register, removed on unregister) during the migration window.
 MCP_SERVER_KEY = "vesma"
 MCP_LEGACY_SERVER_KEY = "mnemos"
@@ -192,7 +192,7 @@ ENGINE_MANIFEST_NAME = "engine-manifest.yaml"
 #: ``integrations/schemas/`` and their sha256 table in
 #: ``integrations/schemas/README.md`` — in the same change.
 SCHEMAS_SOURCE_PIN = {
-    "repo": "github.com/vesmaro/vesmaro-canon",
+    "repo": "github.com/vesmaro/vesma-canon",
     "tag": "canon-v1.0.0",
     "commit": "d4e998089acde88a9d57551fa71cfa2ef3c23fdf",
     # Per-file sha256 of the pinned schema content. Kept as a nested dict
@@ -630,7 +630,7 @@ def render_agents_md_block(content: str, version: str) -> str:
 
 
 def strip_agents_md_block(content: str) -> tuple[str, str | None]:
-    """Remove every paired mnemos block from ``content``.
+    """Remove every paired vesma block from ``content``.
 
     Returns ``(cleaned_content, version_of_first_removed_block)``. Only
     PAIRED blocks (BEGIN … END, any versions) are removed — an unpaired
@@ -638,7 +638,7 @@ def strip_agents_md_block(content: str) -> tuple[str, str | None]:
     removing text without its terminator could eat user content. Note the
     scope: EVERY paired mnemos-marked block is removed, including one a
     user has quoted inside their own notes — the markers are treated as
-    owned by vesmaro.
+    owned by vesma.
 
     Everything outside the removed regions is preserved byte-for-byte.
     """
@@ -651,7 +651,7 @@ def strip_agents_md_block(content: str) -> tuple[str, str | None]:
 
 
 def read_agents_md_version(content: str) -> str | None:
-    """Extract the version from the first mnemos block, or ``None``."""
+    """Extract the version from the first vesma block, or ``None``."""
     match = AGENTS_MD_BLOCK_RE.search(content)
     return match.group("version") if match else None
 
@@ -1308,7 +1308,7 @@ class IntegrationManager:
 
         For each pack file, checks if the deployed copy exists and is current.
         Also scans deploy directories for extra files (user-created or stale
-        mnemos files no longer in the pack) and reports them as SKIPPED.
+        vesma files no longer in the pack) and reports them as SKIPPED.
         """
         target = self.targets.get(target_name)
         if target is None:
@@ -1339,7 +1339,7 @@ class IntegrationManager:
                 dest = target.dest_for(kind.value, rel)
                 result.files.append(self._verify_file(src, dest))
 
-            # Scan for extra files in the deploy dir (user files or stale mnemos files).
+            # Scan for extra files in the deploy dir (user files or stale vesma files).
             if dest_dir.exists():
                 for path in sorted(dest_dir.rglob("*")):
                     if not path.is_file() or path in expected_dests:
@@ -1349,7 +1349,7 @@ class IntegrationManager:
                     content = path.read_text(encoding="utf-8", errors="replace")
                     deployed_version = read_stamp(content)
                     if deployed_version is not None:
-                        # Stamped but not in pack — stale mnemos file (removed from pack).
+                        # Stamped but not in pack — stale vesma file (removed from pack).
                         result.files.append(
                             FileResult(
                                 source=Path("<not-in-pack>"),
@@ -1694,7 +1694,7 @@ class IntegrationManager:
         stamp on an in-pack file (handled by ``deploy``) or a stamped file
         removed from the pack (handled here).
 
-        User files (no mnemos stamp) are never touched.
+        User files (no vesma stamp) are never touched.
         """
         # deploy() already updates stale in-pack files in place.
         result = self.deploy(target_name, dry_run=dry_run)
@@ -1888,10 +1888,10 @@ class IntegrationManager:
             self._cleanup_empty_parents(manifest_path, dest_dir)
 
     def _uninstall_agents_md(self, dest: Path, *, dry_run: bool) -> Path | None:
-        """Remove the mnemos block(s) from a shared AGENTS.md file.
+        """Remove the vesma block(s) from a shared AGENTS.md file.
 
         Removes every PAIRED mnemos-marked block (any version — markers are
-        treated as owned by mnemos, including one a user has quoted); see
+        treated as owned by vesma, including one a user has quoted); see
         :func:`strip_agents_md_block`. Returns the destination path when a
         block was found (the removal target), or ``None`` when there is
         nothing of ours in the file. If
@@ -2003,7 +2003,7 @@ class IntegrationManager:
             return False, f"bridge extension missing: {ext} — run deploy first"
         deployed_version = read_stamp(ext.read_text(encoding="utf-8", errors="replace"))
         if deployed_version is None:
-            return False, f"{ext} carries no mnemos stamp — not our file"
+            return False, f"{ext} carries no vesma stamp — not our file"
         if deployed_version != self.version:
             return False, f"{ext} is stale (v{deployed_version} != v{self.version})"
         return True, f"MCP bridge deployed: {ext} (restart Pi or /reload to connect)"
@@ -2199,7 +2199,7 @@ class IntegrationManager:
 
         The merge is additive: unknown top-level keys and other MCP servers
         are preserved untouched. An existing entry keeps its user-tuned
-        ``env`` values (only missing keys are filled in). A legacy ``mnemos``
+        ``env`` values (only missing keys are filled in). A legacy ``vesma``
         key written by pre-rebrand packs is migrated to ``vesma`` in the
         same pass (stamp-migration window discipline).
         """
@@ -2249,7 +2249,7 @@ class IntegrationManager:
         """Evidence check that an MCP server entry was written by this pack.
 
         An entry is ours when its command resolves to the memory-server
-        binary (``vesma``/``mnemos`` basename) or its argv carries the
+        binary (``vesma``/``vesma`` basename) or its argv carries the
         ``mcp-server`` subcommand. A foreign entry that merely REUSES the
         ``vesma`` server key but points elsewhere does NOT match and is
         never touched by :meth:`unregister_mcp`.
@@ -2278,7 +2278,7 @@ class IntegrationManager:
         agents, cursor, claude-code, windsurf, opencode) and, via the TOML
         engine, the codex target. Ownership rules:
 
-        * only the pack's server keys (``vesma``, legacy ``mnemos``) are
+        * only the pack's server keys (``vesma``, legacy ``vesma``) are
           considered;
         * a key is removed only when the entry passes the
           :meth:`_mcp_entry_is_ours` evidence check — a foreign tool that
@@ -2375,7 +2375,12 @@ class IntegrationManager:
 
     def _resolve_mnemos_bin(self, mnemos_bin: str | None) -> str:
         """Explicit bin > ``which`` > the installer's well-known venv path."""
-        return mnemos_bin or shutil.which("mnemos") or str(self.home / ".mnemos/venv/bin/mnemos")
+        return (
+            mnemos_bin
+            or shutil.which("vesma")
+            or shutil.which("mnemos")
+            or str(self.home / ".mnemos/venv/bin/vesma")
+        )
 
     def _mcp_env_defaults(self) -> dict[str, str]:
         """Env defaults shared by every MCP entry shape (mirror mcp-setup.sh)."""

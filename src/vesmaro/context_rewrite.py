@@ -1,4 +1,4 @@
-"""ADR-0018 — ``on_context_rewrite`` lifecycle event (mnemos #125, Wave 2).
+"""ADR-0018 — ``on_context_rewrite`` lifecycle event (vesma #125, Wave 2).
 
 The harness (zcode or any MCP-capable peer) owns the *replacement policy*:
 when it rewrites a block inside its own context window it emits this event

@@ -534,9 +534,9 @@ def test_fixing_content_edit_clears_canon_warnings(mgr: MemoryManager) -> None:
 def test_sdk_remember_task_envelope_persists_and_validates(mgr: MemoryManager) -> None:
     """SDK remember with a task envelope: a VALID one persists silently
     (no canon_warnings); an INVALID one persists WITH canon_warnings."""
-    from vesmaro.sdk import MnemosSDK
+    from vesmaro.sdk import VesmaSDK
 
-    sdk = MnemosSDK(manager=mgr)
+    sdk = VesmaSDK(manager=mgr)
 
     valid = sdk.remember(
         _TASK_BODY,
@@ -955,9 +955,9 @@ def test_validator_literals_pinned_to_vendored_schemas() -> None:
 def test_sdk_remember_echoes_codes_through_real_channel(
     mgr: MemoryManager, caplog: pytest.LogCaptureFixture
 ) -> None:
-    from vesmaro.sdk import MnemosSDK
+    from vesmaro.sdk import VesmaSDK
 
-    sdk = MnemosSDK(manager=mgr)
+    sdk = VesmaSDK(manager=mgr)
     with caplog.at_level(logging.WARNING):
         memory = sdk.remember(
             "встреча вчера",

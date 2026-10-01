@@ -117,7 +117,7 @@ SCOPE_RW: Final[str] = "rw"
 #: lives in Vesma config territory and never leaves the host).
 DEFAULT_KEY_FILENAME: Final[str] = "agent-token-signing.key"
 
-_DEFAULT_ISSUER: Final[str] = "mnemos"
+_DEFAULT_ISSUER: Final[str] = "vesma"
 
 _MAX_AGENT_ID_LEN: Final[int] = 128
 _MAX_NODE_ID_LEN: Final[int] = 128

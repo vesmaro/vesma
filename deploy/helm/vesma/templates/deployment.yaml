@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "vesmaro.fullname" . }}
+  name: {{ include "vesma.fullname" . }}
   labels:
-    {{- include "vesmaro.labels" . | nindent 4 }}
+    {{- include "vesma.labels" . | nindent 4 }}
 spec:
   # SQLite + ReadWriteOnce storage allow a single live pod; Recreate avoids
   # a stuck rollout where the old pod holds the volume.
@@ -12,7 +12,7 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "vesmaro.selectorLabels" . | nindent 6 }}
+      {{- include "vesma.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -22,17 +22,17 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
-        {{- include "vesmaro.selectorLabels" . | nindent 8 }}
+        {{- include "vesma.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "vesmaro.serviceAccountName" . }}
+      serviceAccountName: {{ include "vesma.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: vesmaro
+        - name: vesma
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -47,12 +47,12 @@ spec:
             - name: MNEMOS_API__TOTP_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "vesmaro.secretName" . }}
+                  name: {{ include "vesma.secretName" . }}
                   key: {{ .Values.auth.existingSecretKey }}
             - name: VESMARO_API__TOTP_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "vesmaro.secretName" . }}
+                  name: {{ include "vesma.secretName" . }}
                   key: {{ .Values.auth.existingSecretKey }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
@@ -81,18 +81,18 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "vesmaro.fullname" . }}
+            name: {{ include "vesma.fullname" . }}
         - name: data
           {{- if .Values.persistence.data.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "vesmaro.fullname" . }}-data
+            claimName: {{ include "vesma.fullname" . }}-data
           {{- else }}
           emptyDir: {}
           {{- end }}
         - name: vault
           {{- if .Values.persistence.vault.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "vesmaro.fullname" . }}-vault
+            claimName: {{ include "vesma.fullname" . }}-vault
           {{- else }}
           emptyDir: {}
           {{- end }}

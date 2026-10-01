@@ -1,13 +1,13 @@
-"""``mnemos scanner`` CLI — manual trigger + status for the background scanner.
+"""``vesma scanner`` CLI — manual trigger + status for the background scanner.
 
 Thin Typer wrapper over :class:`vesmaro.scanner.BackgroundScanner`. Two
 subcommands:
 
-* ``mnemos scanner run [--full]`` — run one scan pass synchronously and
+* ``vesma scanner run [--full]`` — run one scan pass synchronously and
   print the :class:`~vesmaro.scanner.ScanResult` summary. ``--full``
   forces a non-incremental scan (every record in the corpus). Default
   is incremental (only records modified since the last successful scan).
-* ``mnemos scanner status`` — print the scanner's current state: last
+* ``vesma scanner status`` — print the scanner's current state: last
   scan timestamp, cumulative records tagged, configured interval,
   enabled/disabled, background thread running/stopped.
 """

@@ -35,7 +35,7 @@ Vesma опубликован на PyPI пакетом **`vesma`** (голый с
 > ⚠️ **Имена.** Продукт и CLI — `vesma` (`pip install vesma`). Доребрендинговый пакет
 > `mnemos-memory-server` живёт до deprecation и ставит тот же сервер
 > (`pip install "mnemos-memory-server[ollama]"` работает весь двойной период). Голый
-> `pip install mnemos` — посторонний сторонний проект, не используйте его.
+> `pip install vesma` — посторонний сторонний проект, не используйте его.
 
 ### Скриптовый вариант (без решений)
 

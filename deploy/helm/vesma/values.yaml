@@ -1,4 +1,4 @@
-# Default values for the vesmaro chart.
+# Default values for the vesma chart.
 # Full walkthrough: docs/en/admin/kubernetes-deployment.md (RU mirror in docs/ru).
 
 # Must stay 1: the store is SQLite + a local vector index (single writer).
@@ -33,14 +33,14 @@ ingress:
   className: ""
   annotations: {}
   hosts:
-    - host: vesmaro.local
+    - host: vesma.local
       paths:
         - path: /
           pathType: Prefix
   tls: []
-  # - secretName: vesmaro-tls
+  # - secretName: vesma-tls
   #   hosts:
-  #     - vesmaro.example.com
+  #     - vesma.example.com
 
 auth:
   # TOTP master key. Deployed pods read it from BOTH env spellings

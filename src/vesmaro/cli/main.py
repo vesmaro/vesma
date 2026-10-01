@@ -1,6 +1,6 @@
 """Vesma CLI — Typer-based command interface.
 
-Entry point: mnemos (declared in pyproject.toml [project.scripts]).
+Entry point: vesma (declared in pyproject.toml [project.scripts]).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from vesmaro.api.auth_store import AuthStore
 
 app = typer.Typer(
-    name="mnemos",
+    name="vesma",
     help="Vesma — standalone memory & knowledge server for AI agents.",
     no_args_is_help=True,
 )
@@ -309,7 +309,7 @@ def recall(
 
 # ── tags (M2) ─────────────────────────────────────────────────────────────────
 # Subcommand tree:
-#   mnemos tags validate <vault>   — validate tag contract across a vault
+#   vesma tags validate <vault>   — validate tag contract across a vault
 
 _tags_app = typer.Typer(name="tags", help="Manage and validate memory tags.", no_args_is_help=True)
 app.add_typer(_tags_app, name="tags")
@@ -490,7 +490,7 @@ def tags_rename(
 ) -> None:
     """Bulk rename tags matching ``--from <prefix>`` → ``--to <prefix>``.
 
-    Safe replacement for ``mnemos migrate tags``. Uses ``update_fields``
+    Safe replacement for ``vesma migrate tags``. Uses ``update_fields``
     (plain UPDATE) so the FTS5 external-content index stays consistent.
     Idempotent — a second run with the same args reports ``renamed=0``.
 
@@ -807,9 +807,9 @@ def edge_stats_cmd(
 
     \b
     Examples:
-      vesmaro edge-stats stats
-      vesmaro edge-stats purge --keep-last 100000          (dry run)
-      vesmaro edge-stats purge --keep-last 100000 --apply  (executes)
+      vesma edge-stats stats
+      vesma edge-stats purge --keep-last 100000          (dry run)
+      vesma edge-stats purge --keep-last 100000 --apply  (executes)
     """
     mgr = get_manager(config)
     try:
@@ -924,7 +924,7 @@ def serve(
     ] = None,
     config: str = ConfigOption,
 ) -> None:
-    """Start the Mnemos HTTP API server (+ the MnemosCore mesh gRPC server when mesh is enabled)."""
+    """Start the Vesma HTTP API server (+ the MnemosCore mesh gRPC server when mesh is enabled)."""
     import os
 
     import uvicorn
@@ -962,7 +962,7 @@ def serve(
     # enabled, serve the MnemosCore gRPC server on the configured Unix
     # socket in THIS process, next to the HTTP API — the mnemos-mesh Go
     # binary dials that socket. Mirrors the reference wiring in
-    # mnemos-mesh/test/integration/serve-with-mesh.py. Additive: with
+    # vesma-mesh/test/integration/serve-with-mesh.py. Additive: with
     # ``mesh.enabled: false`` (the default) the command behaves exactly
     # as before (uvicorn only).
     mesh_server = None
@@ -1218,8 +1218,8 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 
 # ── migrate (M13) ──────────────────────────────────────────────────────────────
 # Subcommand tree:
-#   mnemos migrate from-ai-brain   — migrate ai-brain data to Vesma format
-#   mnemos migrate tags            — migrate gcw: tags → mnemos: tags
+#   vesma migrate from-ai-brain   — migrate ai-brain data to Vesma format
+#   vesma migrate tags            — migrate gcw: tags → mnemos: tags
 
 _migrate_app = typer.Typer(
     name="migrate", help="Migrate data from other memory systems.", no_args_is_help=True
@@ -1272,7 +1272,7 @@ def migrate_tags(
     """Migrate legacy gcw: tags to mnemos: tags in the database.
 
     .. deprecated::
-        Use ``mnemos tags rename --from gcw: --to mnemos: --no-dry-run``
+        Use ``vesma tags rename --from gcw: --to mnemos: --no-dry-run``
         instead. This command now delegates to the safe ``tags_rename``
         path (plain UPDATE via ``update_fields``) so the FTS5 index stays
         consistent. The old raw-``sqlite3`` implementation in
@@ -1280,7 +1280,7 @@ def migrate_tags(
     """
     console.print(
         "[yellow]⚠ migrate tags is deprecated — use "
-        "`mnemos tags rename --from gcw: --to mnemos: --no-dry-run` instead.[/yellow]"
+        "`vesma tags rename --from gcw: --to mnemos: --no-dry-run` instead.[/yellow]"
     )
 
     mgr = get_manager(config)
@@ -1311,12 +1311,12 @@ def migrate_tags(
 
 # ── auth (T-AUTH, ADR-0014) ───────────────────────────────────────────────────
 # Subcommand tree:
-#   mnemos auth token create [--name <label>] [--expires <iso8601>]
-#   mnemos auth token list
-#   mnemos auth token revoke <token_id>
-#   mnemos auth totp enroll  --token-id <id>
-#   mnemos auth totp disable --token-id <id>
-#   mnemos auth totp test    --token-id <id> --code <123456>
+#   vesma auth token create [--name <label>] [--expires <iso8601>]
+#   vesma auth token list
+#   vesma auth token revoke <token_id>
+#   vesma auth totp enroll  --token-id <id>
+#   vesma auth totp disable --token-id <id>
+#   vesma auth totp test    --token-id <id> --code <123456>
 
 _auth_app = typer.Typer(
     name="auth", help="Manage API auth tokens and TOTP 2FA.", no_args_is_help=True
@@ -1449,7 +1449,7 @@ def totp_enroll(
 
     totp_secret = pyotp.random_base32(32)
     totp = pyotp.TOTP(totp_secret)
-    uri = totp.provisioning_uri(name="operator", issuer_name="mnemos")
+    uri = totp.provisioning_uri(name="operator", issuer_name="vesma")
 
     store = _auth_store(config)
     try:

@@ -11,14 +11,14 @@ description: Canon record standards — when a memory entry carries a canon enve
 
 # Canon Records
 
-vesmaro-canon v1.0.0 defines what a memory record looks like: a machine-readable
+vesma-canon v1.0.0 defines what a memory record looks like: a machine-readable
 envelope (`metadata.canon`) plus a body with fixed English section headers. The
 engine validates canon-carrying records on every write (warn mode by default);
 this instruction tells an agent WHEN a record is a canon record, HOW to compose
 it, and WHAT the validator will flag.
 
-Single source of truth: the canon repo `vesmaro-canon/docs/canon.md`
-(repo `vesmaro/vesmaro-canon`, pin tag `canon-v1.0.0`). This file teaches the
+Single source of truth: the canon repo `vesma-canon/docs/canon.md`
+(repo `vesmaro/vesma-canon`, pin tag `canon-v1.0.0`). This file teaches the
 ratified v1.0.0 shapes; the canon repo defines them.
 
 ---

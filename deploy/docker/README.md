@@ -20,8 +20,8 @@ curl -fsS http://localhost:8787/health    # → {"status":"ok"}
 ## Notes
 
 - The published image is **public** — no login required for pulls.
-- Data lives in named volumes `vesmaro-data` (SQLite + vector index) and
-  `vesmaro-vault` (markdown mirror).
+- Data lives in named volumes `vesma-data` (SQLite + vector index) and
+  `vesma-vault` (markdown mirror).
 - Optional local-embeddings sidecar: `docker compose --profile ollama up -d`.
 - Building from source is a development fallback — `podman build -f Containerfile .`
   (see the runbook's *Build from source* section); every compose file in the

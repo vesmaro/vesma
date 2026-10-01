@@ -626,9 +626,9 @@ class TestSizeCaps:
         assert receipt["status"] == "stored"
 
     def test_documented_defaults(self) -> None:
-        from vesmaro.config import MnemosConfig
+        from vesmaro.config import VesmaConfig
 
-        cfg = MnemosConfig()
+        cfg = VesmaConfig()
         assert cfg.context_rewrite_rate_limit_per_minute == 30
         assert cfg.context_rewrite_max_content_chars == 1_048_576  # 1 MiB
         assert cfg.context_rewrite_max_diff_chars == 262_144  # 256 KiB

@@ -1,4 +1,4 @@
-"""``mnemos completion`` CLI subcommand — shell completion auto-install.
+"""``vesma completion`` CLI subcommand — shell completion auto-install.
 
 Generates a shell completion script for bash/zsh/fish, stores it as a file
 under ``~/.mnemos/completion/`` (alongside data, vault, logs, cache), and adds
@@ -19,9 +19,9 @@ File layout::
 
 Subcommand tree::
 
-    mnemos completion                     — auto-detect shell + auto-install
-    mnemos completion bash|zsh|fish        — explicit shell + auto-install
-    mnemos completion --show-instructions — print manual steps, no file changes
+    vesma completion                     — auto-detect shell + auto-install
+    vesma completion bash|zsh|fish        — explicit shell + auto-install
+    vesma completion --show-instructions — print manual steps, no file changes
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ console = Console()
 
 completion_app = typer.Typer(
     name="completion",
-    help="Install shell completion for mnemos (auto-detect + auto-install).",
+    help="Install shell completion for vesma (auto-detect + auto-install).",
     no_args_is_help=False,
 )
 
@@ -92,7 +92,7 @@ def _rc_path(shell: str) -> Path:
 def _completion_file_path(shell: str) -> Path:
     """Return the path to the stored completion script for the given shell.
 
-    All shells get a copy under ``~/.mnemos/completion/vesmaro.{shell}`` for
+    All shells get a copy under ``~/.mnemos/completion/vesma.{shell}`` for
     discoverability. Fish additionally uses the auto-sourced completions dir.
     """
     return Path.home() / ".mnemos" / "completion" / f"{_PROG_NAME}.{shell}"
@@ -154,8 +154,8 @@ def _is_installed(shell: str, rc: Path) -> bool:
 def _remove_old_completion_entries(rc: Path) -> None:
     """Remove legacy ``eval "$(mnemos --show-completion ...)"`` lines.
 
-    Strips any line containing ``mnemos --show-completion`` (commented or
-    not) and the ``# Added by `mnemos completion` ...`` marker comments left
+    Strips any line containing ``vesma --show-completion`` (commented or
+    not) and the ``# Added by `vesma completion` ...`` marker comments left
     by the old installer. This keeps the rc file clean during migration.
     """
     if not rc.exists():
@@ -165,7 +165,7 @@ def _remove_old_completion_entries(rc: Path) -> None:
     except OSError:
         return
     old_marker_re = re.compile(r"mnemos --show-completion", re.IGNORECASE)
-    added_by_re = re.compile(r"#\s*Added by `mnemos completion`")
+    added_by_re = re.compile(r"#\s*Added by `vesma completion`")
     kept: list[str] = []
     for line in content.splitlines(keepends=True):
         if old_marker_re.search(line) or added_by_re.search(line):
@@ -180,7 +180,7 @@ def _remove_old_completion_entries(rc: Path) -> None:
 def _install(shell: str) -> bool:
     """Install completion for the given shell.
 
-    Writes the completion script to ``~/.mnemos/completion/vesmaro.{shell}``
+    Writes the completion script to ``~/.mnemos/completion/vesma.{shell}``
     and adds a single ``source`` line to the rc file (bash/zsh). For fish,
     writes the script to the auto-sourced completions directory and a copy
     to ``~/.mnemos/completion/`` for discoverability.
@@ -191,7 +191,7 @@ def _install(shell: str) -> bool:
     script_file = _completion_file_path(shell)
 
     # Always (re)write the completion script file so it stays in sync with
-    # the current mnemos version.
+    # the current vesma version.
     try:
         script_file.parent.mkdir(parents=True, exist_ok=True)
         script_file.write_text(_completion_script(shell), encoding="utf-8")
@@ -223,7 +223,7 @@ def _install(shell: str) -> bool:
     try:
         rc.parent.mkdir(parents=True, exist_ok=True)
         with rc.open("a", encoding="utf-8") as fh:
-            fh.write(f"\n# Added by `mnemos completion` ({shell})\n{line}\n")
+            fh.write(f"\n# Added by `vesma completion` ({shell})\n{line}\n")
     except OSError as exc:
         console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
         return False
@@ -272,7 +272,7 @@ def completion(
         ),
     ] = False,
 ) -> None:
-    """Install shell completion for vesmaro.
+    """Install shell completion for vesma.
 
     With no arguments: auto-detects the current shell from ``$SHELL`` and
     auto-installs the completion script into ``~/.mnemos/completion/`` plus
@@ -292,8 +292,8 @@ def completion(
     if target is None:
         console.print(
             "[red]Could not auto-detect your shell from $SHELL.[/red]\n"
-            "Pass an explicit shell: [bold]mnemos completion bash|zsh|fish[/bold]\n"
-            "Or see manual steps: [bold]mnemos completion --show-instructions[/bold]"
+            "Pass an explicit shell: [bold]vesma completion bash|zsh|fish[/bold]\n"
+            "Or see manual steps: [bold]vesma completion --show-instructions[/bold]"
         )
         raise typer.Exit(1)
 

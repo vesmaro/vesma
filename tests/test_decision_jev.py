@@ -26,7 +26,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from vesmaro.config import MnemosConfig
+from vesmaro.config import VesmaConfig
 from vesmaro.danger_detectors import PROMPT_INJECTION_PATTERNS
 from vesmaro.decision_jev import (
     DEFAULT_JEV_KEY_ENV,
@@ -301,7 +301,7 @@ def test_no_federate_tag_refuses_whole_call(side: str) -> None:
 
 
 def test_config_defaults_pin_deterministic_and_env_name() -> None:
-    config = MnemosConfig()
+    config = VesmaConfig()
     assert config.decision_provider == "deterministic"  # default-off posture
     assert config.decision_jev_api_key_env == DEFAULT_JEV_KEY_ENV
     assert DEFAULT_JEV_KEY_ENV == "VESMARO_OPENROUTER_API_KEY"
@@ -309,17 +309,17 @@ def test_config_defaults_pin_deterministic_and_env_name() -> None:
 
 def test_config_rejects_empty_env_name() -> None:
     with pytest.raises(ValidationError):
-        MnemosConfig(decision_jev_api_key_env="")
+        VesmaConfig(decision_jev_api_key_env="")
 
 
 def test_resolve_default_is_deterministic() -> None:
-    provider = resolve_decision_provider(MnemosConfig())
+    provider = resolve_decision_provider(VesmaConfig())
     assert isinstance(provider, DeterministicProvider)
     assert isinstance(provider, DecisionProvider)  # the ADR-0004 protocol
 
 
 def test_resolve_off_returns_none() -> None:
-    assert resolve_decision_provider(MnemosConfig(decision_provider="off")) is None
+    assert resolve_decision_provider(VesmaConfig(decision_provider="off")) is None
 
 
 def test_resolve_jev_without_key_fails_closed_before_network(
@@ -335,7 +335,7 @@ def test_resolve_jev_without_key_fails_closed_before_network(
 
     monkeypatch.setattr(socket, "socket", _no_sockets)
     with pytest.raises(JevConfigError, match="VESMARO_OPENROUTER_API_KEY"):
-        resolve_decision_provider(MnemosConfig(decision_provider="jev"))
+        resolve_decision_provider(VesmaConfig(decision_provider="jev"))
 
 
 def test_resolve_jev_reads_key_from_env_name_indirection(
@@ -343,7 +343,7 @@ def test_resolve_jev_reads_key_from_env_name_indirection(
 ) -> None:
     env_name = "VESMARO_TEST_JEV_KEY"
     monkeypatch.setenv(env_name, FAKE_KEY)
-    config = MnemosConfig(decision_provider="jev", decision_jev_api_key_env=env_name)
+    config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env=env_name)
     provider = resolve_decision_provider(config)
     assert isinstance(provider, JevRouterProvider)
     assert isinstance(provider, DecisionProvider)
@@ -355,7 +355,7 @@ def test_key_value_never_enters_config_dump(monkeypatch: pytest.MonkeyPatch) -> 
     serialized form carries the env NAME only — the VALUE must not appear
     anywhere in ``model_dump_json``."""
     monkeypatch.setenv("VESMARO_TEST_JEV_KEY", FAKE_KEY)
-    config = MnemosConfig(decision_provider="jev", decision_jev_api_key_env="VESMARO_TEST_JEV_KEY")
+    config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env="VESMARO_TEST_JEV_KEY")
     dump = json.dumps(json.loads(config.model_dump_json()))
     assert FAKE_KEY not in dump
     assert "VESMARO_TEST_JEV_KEY" in dump

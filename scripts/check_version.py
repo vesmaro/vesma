@@ -2,7 +2,7 @@
 """check-version gate: __version__ must match the installed dist metadata.
 
 Tries the canonical distribution name first (`vesma`, 5.0.0 rebrand #333),
-falls back to the legacy `vesmaro` / `mnemos-memory-server` names for
+falls back to the legacy `vesma` / `mnemos-memory-server` names for
 pre-rename environments — the same lookup chain as `vesmaro.__init__`
 and `tests/test_version.py`. A missing metadata is a hard error — the
 gate is meaningless without an editable/installed dist.
@@ -27,7 +27,7 @@ def main() -> None:
     if v is None:
         raise SystemExit(
             "check-version: no distribution metadata found for "
-            "vesmaro (or legacy mnemos-memory-server) — install with `pip install -e .`"
+            "vesma (or legacy mnemos-memory-server) — install with `pip install -e .`"
         )
     assert __version__ == v, f"mismatch: __init__={__version__}, metadata={v}"
     print(f"✓ version {v} consistent")

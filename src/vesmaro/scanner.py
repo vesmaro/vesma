@@ -153,7 +153,7 @@ class BackgroundScanner:
         # very old timestamp so the SQL ``>=`` comparison is uniform.
         self._last_scan_ts: datetime | None = None
         # Cumulative counter — total records tagged across all passes.
-        # Used by ``mnemos scanner status`` (CLI name). Reset only on process
+        # Used by ``vesma scanner status`` (CLI name). Reset only on process
         # restart (intentional — the counter is operational telemetry,
         # not a persisted metric).
         self._total_tagged: int = 0

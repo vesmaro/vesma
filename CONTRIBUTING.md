@@ -1,4 +1,4 @@
-# Contributing to Mnemos
+# Contributing to Vesma
 
 Thanks for thinking about contributing. This page is the whole contract: how to set up a dev
 environment, how changes flow to `main`, and the gate every change must pass. For the product
@@ -11,11 +11,11 @@ itself, start at the [README](README.md) and the [docs](docs/README.md).
 ## Development setup
 
 ```bash
-git clone https://github.com/vesmaro/vesmaro.git
-cd vesmaro
+git clone https://github.com/vesmaro/vesma.git
+cd vesma
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-mnemos --help        # sanity check
+vesma --help        # sanity check
 ```
 
 - Python **3.11+** (`uv` recommended; plain `python -m venv` works too).
@@ -38,7 +38,7 @@ One command, the full gate — the same composition the release pipeline trusts:
 | 3 | `pytest` | The test suite (2300+ tests) |
 | 4 | `bandit` + `pip-audit` | Security lint + dependency CVE scan |
 | 5 | `bench-s1` | The ADR-0020 quality gate (corridors + invariants vs the baseline) |
-| 6 | `mnemos doctor` | Health checks (warnings are non-blocking in CI-like environments) |
+| 6 | `vesma doctor` | Health checks (warnings are non-blocking in CI-like environments) |
 | 7 | version guard | `VERSION` and `pyproject.toml` agree |
 
 If it's green, the change is good to ship. If `pip-audit` flags a pinned CVE, follow the
@@ -81,6 +81,6 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
 
 ## Reporting issues
 
-Open a [GitHub issue](https://github.com/vesmaro/vesmaro/issues) with the command you ran, the
-exact output, and your `mnemos doctor` report (mask anything that looks like a secret — the
+Open a [GitHub issue](https://github.com/vesmaro/vesma/issues) with the command you ran, the
+exact output, and your `vesma doctor` report (mask anything that looks like a secret — the
 issue tracker is public).

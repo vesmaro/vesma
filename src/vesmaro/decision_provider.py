@@ -1,7 +1,7 @@
 """ADR-0004 decision-provider seam — the typed «semantic if» interface.
 
-The FIRST implementation of the interface ratified in vesmaro-canon
-[ADR 0004](https://github.com/vesmaro/vesmaro-canon/blob/main/docs/decisions/0004-decision-provider.md):
+The FIRST implementation of the interface ratified in vesma-canon
+[ADR 0004](https://github.com/vesmaro/vesma-canon/blob/main/docs/decisions/0004-decision-provider.md):
 a decision provider answers TYPED questions (``Choice`` / ``Score`` /
 ``Noul``) over PREPARED canon state, never raw memory dumps. Three
 implementations are planned on this one interface — deterministic
@@ -377,7 +377,7 @@ class DeterministicProvider:
 
 #: Bundled cortex artifact directory under ``vesmaro/models/`` — ships in
 #: the wheel by the same mechanism as vesma-embed-v1 (package data inside
-#: the ``vesmaro`` package directory; hatchling includes it with the
+#: the ``vesma`` package directory; hatchling includes it with the
 #: package, no force-include entry needed). Loaded via
 #: ``importlib.resources`` per the ``_mnema_artifact_dir`` pattern.
 CORTEX_ARTIFACT_DIR: Final[str] = "vesma-cortex-v1"

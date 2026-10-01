@@ -1031,7 +1031,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
   "results": [
     {
       "score": 3,
-      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
       "project": "vesma",
       "kind": "Function",
       "name": "window_rows",
@@ -1081,7 +1081,7 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
   "depth": 2,
   "nodes": [
     {
-      "id": "mnemos#src/vesmaro/codegraph/service.py#window_rows#158",
+      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
       "qname": "vesmaro.codegraph.service.window_rows",
       "kind": "Function",
       "path": "src/vesmaro/codegraph/service.py",
@@ -1091,7 +1091,7 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
     }
   ],
   "edges": [
-    { "from": "mnemos#…#window_rows#158", "to": "mnemos#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" }
+    { "from": "vesma#…#window_rows#158", "to": "vesma#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" }
   ],
   "truncated": false,
   "cursor": 0,
@@ -1876,7 +1876,7 @@ The tool result carries the normal payload **plus** a short guidance suffix:
 
 ## `mnemos_assemble_context`
 
-**ADR-0017 D1 provider contract (mnemos #125, Wave 1)** — one call assembles the model-facing context block for a pre-LLM-call injection. Any MCP-capable harness gains standardized context assembly instead of adapter-private recall.
+**ADR-0017 D1 provider contract (vesma #125, Wave 1)** — one call assembles the model-facing context block for a pre-LLM-call injection. Any MCP-capable harness gains standardized context assembly instead of adapter-private recall.
 
 Fixed pipeline, in order (recorded verbatim in `stats.stages`):
 
@@ -1976,7 +1976,7 @@ For `mode="async"` the call returns only a handle envelope (`{"mode": "async", "
 
 ## `mnemos_context_rewrite`
 
-**ADR-0018 `on_context_rewrite` lifecycle event (mnemos #125, Wave 2)** — the harness reports that it *rewrote* a block of its working context. The original of the replaced block is the source of truth: it is stored to long-term memory losslessly through the **normal knowledge pipeline** and becomes rehydratable through the **existing** scanned/gated channels. Harness compaction becomes lossless when originals land in the provider.
+**ADR-0018 `on_context_rewrite` lifecycle event (vesma #125, Wave 2)** — the harness reports that it *rewrote* a block of its working context. The original of the replaced block is the source of truth: it is stored to long-term memory losslessly through the **normal knowledge pipeline** and becomes rehydratable through the **existing** scanned/gated channels. Harness compaction becomes lossless when originals land in the provider.
 
 Semantics (ADR-0018, verbatim):
 
@@ -2033,9 +2033,9 @@ Semantics (ADR-0018, verbatim):
 
 ## `mnemos_hooks`
 
-**Lifecycle hooks (ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3)** — the automation integration points, grouped behind `action:enum` (the mnemos #97 grouped-tool pattern). Three actions, one tool:
+**Lifecycle hooks (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3)** — the automation integration points, grouped behind `action:enum` (the vesma #97 grouped-tool pattern). Three actions, one tool:
 
-- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `mnemos_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (mnemos #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`mnemos_awareness`](#mnemos_awareness)).
+- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `mnemos_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (vesma #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`mnemos_awareness`](#mnemos_awareness)).
 - **`on_session_start`** — recall recent checkpoints for session bootstrap (thin wrapper over the recall path; the echoed content is scanned at issuance on this channel, mirroring `mnemos_recall_context`).
 - **`post_tool_call`** — the **autocompression entry point** (ADR-0018): when `auto_compress` resolves true (per-call argument, else the `hooks.auto_compress` config knob, default `false`), the tool output is compressed via CCR and the marker-headed `compressed_text` is returned — the caller **substitutes** it for the raw output in its window. Off by default: the envelope says so and nothing is written.
 
@@ -2067,20 +2067,20 @@ Semantics (ADR-0018, verbatim):
 
 - **Config** — two knobs: `hooks.auto_compress` (default `false`) and `hooks.max_output_chars` (default 1,048,576 chars — `post_tool_call` rejects an oversized `output_text` at the boundary BEFORE any write, mirroring the context-rewrite caps convention; `0` disables). The read-only hooks need no enablement; they expose no capability the server surfaces do not already have.
 - **Sync only (this wave)** — ADR-0017 D1 names sync/async hook modes; async delivery waits for a consumer that needs it. Harnesses needing `async`/`code`/`prose` assembly modes call `mnemos_assemble_context` directly.
-- **Memory capture is explicit** — `post_tool_call` does not silently store tool outputs as memories; use `MnemosSDK.remember` (or `mnemos_add`/REST) when a result is worth keeping.
+- **Memory capture is explicit** — `post_tool_call` does not silently store tool outputs as memories; use `VesmaSDK.remember` (or `mnemos_add`/REST) when a result is worth keeping.
 - **Errors** — boundary violations return `{"error": …}` (REST twin answers 422; unknown action is 404 there). An over-cap `output_text` is a boundary violation: `{"error": "output_text exceeds hooks.max_output_chars (N > M)"}`, nothing written.
 
 ### Related
 
 - REST twin: `POST /hooks/{action}` — [http-api.md](http-api.md)
-- Programmatic surface: `MnemosSDK` ([integration-guide.md](integration-guide.md))
+- Programmatic surface: `VesmaSDK` ([integration-guide.md](integration-guide.md))
 - Rationale: ADR-0017 D1 (lifecycle integration), ADR-0018 (post_tool_call autocompression, residual register N2)
 
 ---
 
 ## `mnemos_awareness`
 
-**Awareness pre-flight (mnemos #254, R3; swarm v0a — ArchCom 2026-09-27)** — the surface a parallel session calls BEFORE a risky operation (the PR #224 contract: a release closed by an invisible parallel session). Two actions, one tool:
+**Awareness pre-flight (vesma #254, R3; swarm v0a — ArchCom 2026-09-27)** — the surface a parallel session calls BEFORE a risky operation (the PR #224 contract: a release closed by an invisible parallel session). Two actions, one tool:
 
 - **`pre_flight`** (read-only) — server-observed neighbor activity: presence (who is active), delta (what changed since your cursor — one line per neighbor agent), lexical conflict hints against your last checkpoint goal, and the **operational picture** (swarm v0a/v0b): an explicit block of same-project peers where each observed line carries the agent id, last observed activity, record count in the 900 s presence window, and checkpoint presence — **counts, agent ids and timestamps only**. No title, no body, no tag of a peer record ever enters the OBSERVED layer. Swarm v0b adds each peer's CLAIMED active task — the `task:<slug>` tag (ADR-0027) of its most recent task-tagged row: a client-supplied claim that rides the two-level-trust machinery exactly like goals (issuance-scanned fail-closed, policy markers stripped, rendered in a separate labeled `self-reported` sub-section with an inline `[unverified]` qualifier, never inside the observed header or the blocks, and named by the picture's disclaimer as a self-reported claim). Strictly project-scoped (`project=None` fails closed; cross-project visibility does not exist — no parameter, no flag). The awareness cursor advances ONLY via `mnemos_hooks` `pre_llm_call` with `include_awareness=true` — a pre-flight never marks neighbor entries as consumed.
 - **`record_abstention`** — attribute an abstention-on-presence as an ACTION with a reconstructable provenance chain (abstention → delta-block → checkpoint-id → writer-session); pass `basis_checkpoint_id` from the pre-flight response.
@@ -2315,7 +2315,7 @@ Encrypted import (with `MNEMOS_IMPORT_PASS` set in the server's environment):
 
 ## `mnemos_workflow`
 
-Workflow lifecycle management for a memory (mnemos #96). Separates mutable **workflow state** (open → in-progress → done, blocked/resolved, terminal states) from the append-only **tag classification** (`project:X`, `mnemos:decision`). The tag layer stays append-only; this layer is the mutable work lifecycle.
+Workflow lifecycle management for a memory (vesma #96). Separates mutable **workflow state** (open → in-progress → done, blocked/resolved, terminal states) from the append-only **tag classification** (`project:X`, `mnemos:decision`). The tag layer stays append-only; this layer is the mutable work lifecycle.
 
 Action-based dispatch — the same `action: enum` pattern as `mnemos_tags`. The state machine and the five guardrails are enforced **server-side** in `MemoryManager.workflow_set`; this tool (and the REST `POST /memories/{id}/workflow`) are thin wrappers that cannot bypass it.
 

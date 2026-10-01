@@ -137,7 +137,7 @@ if $PUSH; then
   echo ""
   echo "✅ Released v$VERSION"
   echo "   Release workflow will build wheel + sdist + Docker image."
-  echo "   Check: https://github.com/vesmaro/vesmaro/actions"
+  echo "   Check: https://github.com/vesmaro/vesma/actions"
 else
   echo ""
   echo "✅ Prepared v$VERSION (--no-push)"

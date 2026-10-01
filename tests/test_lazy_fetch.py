@@ -15,7 +15,7 @@ Coverage map (task brief):
   subprocess script double (injected via ``federation.fetch.mesh_bin``):
   argv shape, non-zero exit, broken JSON, noisy stdout;
 * import — the in-process path reuses :rpc:`WriteMemory`'s core
-  (``MnemosCoreServicer.import_compact_record``): written / duplicate
+  (``VesmaCoreServicer.import_compact_record``): written / duplicate
   (#359/#362 by fed_id) / gated (ACL/moderation) outcomes, all against
   the REAL MemoryManager (moderation + Layer 1 scanner run for real);
 * CLI — ``mnemos fetch`` happy path, --yes requirement under CliRunner
@@ -56,7 +56,7 @@ from vesmaro.lazy_fetch import (
     run_fetch,
 )
 from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import MnemosCoreServicer
+from vesmaro.mesh_server import VesmaCoreServicer
 from vesmaro.models import MemoryCreate, MemorySource
 from vesmaro.storage.sqlite_store import SQLiteStore
 
@@ -636,7 +636,7 @@ class TestRunFetch:
 
 class TestImportPathReuse:
     def test_servicer_import_matches_writememory_semantics(self, manager: MemoryManager) -> None:
-        servicer = MnemosCoreServicer(manager, settings=manager.settings)
+        servicer = VesmaCoreServicer(manager, settings=manager.settings)
         result = servicer.import_compact_record(_record("fed:agent-x:imp"), peer_id=_PEER)
         assert result.status.value == "written"
         assert result.written_id
@@ -794,7 +794,7 @@ class TestFetchCLI:
         mock_embedder.embed.return_value = [0.1] * 384
         mgr._embedder = mock_embedder
         try:
-            servicer = MnemosCoreServicer(mgr, settings=settings)
+            servicer = VesmaCoreServicer(mgr, settings=settings)
             servicer.import_compact_record(_record("fed:agent-x:loc"), peer_id=_PEER)
         finally:
             mgr.close()

@@ -132,4 +132,4 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 - Skill `vesma-write` — non-canon everyday entries (bug-pattern, learning, rule)
 - Skill `vesma-tag-contract` — the mandatory tag trio
 - Skill `vesma-checkpoint` — checkpoint saves (envelope auto-minted)
-- Canon SSOT: `vesmaro-canon/docs/canon.md` (repo `vesmaro/vesmaro-canon`, tag `canon-v1.0.0`)
+- Canon SSOT: `vesma-canon/docs/canon.md` (repo `vesmaro/vesma-canon`, tag `canon-v1.0.0`)

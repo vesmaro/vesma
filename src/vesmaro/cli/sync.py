@@ -1,4 +1,4 @@
-"""``mnemos sync`` — federation Phase 0 batch sync CLI logic.
+"""``vesma sync`` — federation Phase 0 batch sync CLI logic.
 
 ArchCom 2026-07-17 federation contract §3.1 — operator-curated, offline,
 cron-triggered batch sync between two Vesma instances. **No network** —
@@ -7,12 +7,12 @@ transfer is out-of-band (rsync / scp / shared volume via
 
 Two subcommands, wired into ``cli/main.py`` as a Typer sub-app:
 
-* ``mnemos sync export`` — build a compact ``vesmaro.federation.v1``
+* ``vesma sync export`` — build a compact ``vesmaro.federation.v1``
   payload from memories in the configured ``shared_projects``, run the
   moderation pipeline (Part 1) on each, and write the result to a file
   (optionally AES-256-GCM encrypted with a passphrase from
   ``VESMARO_EXPORT_PASSPHRASE``).
-* ``mnemos sync import`` — read a compact payload (decrypting if
+* ``vesma sync import`` — read a compact payload (decrypting if
   needed), validate each record (reusing the #86 import-validation
   logic, adapted for the compact ``CompactRecord`` shape), and merge
   idempotently by record ``id`` (``fed:<source_agent>:<uuid>`` prefix
@@ -233,13 +233,13 @@ def _query_memories_for_sync(
     return unique
 
 
-def _derive_source_agent(memories: list[Memory], fallback: str = "mnemos") -> str:
+def _derive_source_agent(memories: list[Memory], fallback: str = "vesma") -> str:
     """Derive a single ``source_agent`` slug for the compact payload.
 
     The compact format's ``id`` is ``fed:<source_agent>:<uuid>``. A
     batch may contain memories from multiple agents; we pick the most
     common ``agent:``-tag slug so the prefix is meaningful. When no
-    memory carries an ``agent:`` tag, fall back to ``"mnemos"`` (the
+    memory carries an ``agent:`` tag, fall back to ``"vesma"`` (the
     instance-level slug). The slug is sanitised to the
     ``[a-z0-9_-]{1,64}`` shape required by the tag contract.
     """
@@ -264,7 +264,7 @@ def _sanitise_agent_slug(slug: str) -> str:
     replace runs of disallowed chars with ``-``, truncate to 64 chars.
     """
     cleaned = re.sub(r"[^a-z0-9_-]+", "-", slug.lower()).strip("-")
-    return cleaned[:64] or "mnemos"
+    return cleaned[:64] or "vesma"
 
 
 # ── CompactRecord validation (adapted from #86 validate_import_record) ───────

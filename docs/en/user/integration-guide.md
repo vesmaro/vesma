@@ -18,7 +18,7 @@ Three surfaces, each with a different strength:
 |---------|------------|--------------|---------|
 | **Instructions** | `*.instructions.md` with `applyTo: '**'` | Passive rules — loaded into every agent's context unconditionally. State WHEN and HOW. | "Recall at session start, before reading files" |
 | **Skills** | `SKILL.md` files | Workflow guides — step-by-step procedures loaded on-demand. | "How to recall effectively: narrow → broaden" |
-| **Prompt mode** | `*.prompt.md` | Active mode — a stronger contract that reshapes the agent's behavior for memory-heavy work. | `mnemos-memory` mode with mandatory recall + checkpoint |
+| **Prompt mode** | `*.prompt.md` | Active mode — a stronger contract that reshapes the agent's behavior for memory-heavy work. | `vesma-memory` mode with mandatory recall + checkpoint |
 
 ### Instructions vs skills vs prompts
 
@@ -375,7 +375,7 @@ configuration, see [context-filter.md](context-filter.md).
 ## Hooks & SDK for automation
 
 Vesma ships two dedicated surfaces for harness/automation integrations
-(ADR-0017 D1 / ADR-0018, mnemos #125 Wave 3):
+(ADR-0017 D1 / ADR-0018, vesma #125 Wave 3):
 
 - **Lifecycle hooks** — the grouped `mnemos_hooks` MCP tool and the REST
   twin `POST /hooks/{action}` with three actions: `pre_llm_call`
@@ -390,7 +390,7 @@ Vesma ships two dedicated surfaces for harness/automation integrations
   window). Identity (`session`/`project`/`agent`) is required on every
   hook call. Full reference: [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
   / [http-api.md → Lifecycle hooks](http-api.md).
-- **`MnemosSDK`** (`from mnemos.sdk import MnemosSDK`) — the thin typed
+- **`VesmaSDK`** (`from mnemos.sdk import VesmaSDK`) — the thin typed
   Python facade over `MemoryManager` for in-process adapters:
   `remember` / `recall` / `forget` / `stats` / `assemble_context` /
   `rewrite`. The domain logic lives in the manager paths (the same
@@ -399,8 +399,8 @@ Vesma ships two dedicated surfaces for harness/automation integrations
   surfaced channel: `recall` scans every echoed item at issuance
   (content + title, per-item redactions, refuse-mode drop) and
   `remember` validates caller tags against the tag contract before any
-  write. Local-first: `MnemosSDK(settings)` builds its own manager,
-  `MnemosSDK(manager=…)` reuses yours.
+  write. Local-first: `VesmaSDK(settings)` builds its own manager,
+  `VesmaSDK(manager=…)` reuses yours.
 
 The full adapter documentation for harness integrators is the [Hermes Agent
 section below](#hermes-agent) — the reference migration onto the contract.
@@ -599,14 +599,14 @@ Every `mnemos_add` and `mnemos_ingest_url` call must carry:
 - **at least one** `vesma:<subtype>`
 
 See [tag-contract.md](tag-contract.md) for the full schema. The integration
-layer reinforces this in three places: the `mnemos-tag-contract` instruction,
-the `mnemos-tag-contract` skill, and the `mnemos-memory` prompt mode.
+layer reinforces this in three places: the `vesma-tag-contract` instruction,
+the `vesma-tag-contract` skill, and the `vesma-memory` prompt mode.
 
 ---
 
 ## Hermes Agent
 
-Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `mnemos.adapters.hermes.HermesMemoryAdapter` — the `MnemosSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
+Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `mnemos.adapters.hermes.HermesMemoryAdapter` — the `VesmaSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
 
 ### Installation
 
@@ -634,18 +634,18 @@ Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://herme
 
 ### Tools
 
-The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the contract verbs (`MnemosSDK.remember` / `recall`, the hooks) instead of raw HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
+The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the contract verbs (`VesmaSDK.remember` / `recall`, the hooks) instead of raw HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
 
 | Tool | Contract surface |
 |------|------------------|
-| `mnemos_search` | `MnemosSDK.recall` (issuance-scanned) |
-| `mnemos_add` | `MnemosSDK.remember` (tag contract at the channel) |
+| `mnemos_search` | `VesmaSDK.recall` (issuance-scanned) |
+| `mnemos_add` | `VesmaSDK.remember` (tag contract at the channel) |
 | `mnemos_recall_context` | checkpoint recall + channel scan |
-| `mnemos_save_context` | `MnemosSDK.remember` (`mnemos:checkpoint`) |
+| `mnemos_save_context` | `VesmaSDK.remember` (`mnemos:checkpoint`) |
 | `mnemos_agent_recall` | agent-scoped recall + channel scan |
 | `mnemos_list_recent` | `MemoryManager.list_recent` (title-only scan) |
 | `mnemos_list_tags` | `MemoryManager.list_tags` |
-| `mnemos_stats` | `MnemosSDK.stats` (project slice) |
+| `mnemos_stats` | `VesmaSDK.stats` (project slice) |
 | `mnemos_auto_collect_status` | in-process call counter (same shape) |
 | `mnemos_ingest_url` | `MemoryManager.ingest_url` |
 | `mnemos_compress` | `post_tool_call` hook (N2 identity threaded) |
@@ -676,10 +676,10 @@ Config is stored in `~/.hermes/config.yaml` under `memory.vesma`:
 The plugin implements the Hermes `MemoryProvider` ABC as a thin shim over `HermesMemoryAdapter`:
 
 - **prefetch()** — `pre_llm_call` hook → `assemble_context` (recall → filter → secret scan → align → budget, provenance on every block), run off the turn loop
-- **sync_turn()** — `MnemosSDK.remember` (`mnemos:session`) for significant turns (user > 50 chars or every Nth)
-- **on_memory_write()** — `MnemosSDK.remember` mirror of MEMORY.md/USER.md writes (`mnemos:learning` / `mnemos:rule`)
+- **sync_turn()** — `VesmaSDK.remember` (`mnemos:session`) for significant turns (user > 50 chars or every Nth)
+- **on_memory_write()** — `VesmaSDK.remember` mirror of MEMORY.md/USER.md writes (`mnemos:learning` / `mnemos:rule`)
 - **on_session_end()** — one `mnemos:session` summary per session via `remember`
-- **on_pre_compress()** — the ADR-0018 bridge: the to-be-discarded block is reported via `MnemosSDK.rewrite` (`on_context_rewrite`), so the original lands in LTM losslessly
+- **on_pre_compress()** — the ADR-0018 bridge: the to-be-discarded block is reported via `VesmaSDK.rewrite` (`on_context_rewrite`), so the original lands in LTM losslessly
 - **Identity threading** — `project`+`agent` fixed at construction (tag-contract-validated up front), `session` bound per Hermes session and threaded onto every verb (incl. the A2 CCR issuer gate and the N2 compress mandate)
 
 Adapter acceptance is pinned in-process by `tests/test_hermes_adapter.py` (the ADR-0017 Phase 1 gate "Hermes e2e on contract").

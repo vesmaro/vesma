@@ -137,7 +137,7 @@ print_summary_and_exit() {
 }
 
 # ── venv setup ─────────────────────────────────────────────────────────
-echo "=== Local CI — mnemos (replica of .github/workflows/ci.yml) ==="
+echo "=== Local CI — vesma (replica of .github/workflows/ci.yml) ==="
 echo "Reason: GitHub Actions billing-locked. See memory entry b9f022f8."
 echo ""
 
@@ -284,8 +284,8 @@ if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
 #
 # Doctor distinguishes two classes of finding:
 #   ⚠ warnings — dev-environment hygiene (integration version stale,
-#     agent wiring incomplete). Remediation: `mnemos integration update`
-#     + `mnemos integration setup --wire-agents --all`. These reflect the
+#     agent wiring incomplete). Remediation: `vesma integration update`
+#     + `vesma integration setup --wire-agents --all`. These reflect the
 #     state of the developer's local integration install, NOT a defect in
 #     the code under test. Failing a code CI gate because the dev hasn't
 #     refreshed integration targets would couple unrelated concerns.
@@ -297,38 +297,38 @@ if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
 # (⚠) without ❌ → warn + continue. Any ❌ → fail. Exit 0 → pass.
 # This does NOT suppress real errors (lint-and-validate.instructions.md):
 # ❌ still fails the gate; only ⚠ env-hygiene warnings are non-blocking.
-if command -v mnemos >/dev/null 2>&1; then
+if command -v vesma >/dev/null 2>&1; then
   echo ""
-  echo "=== [8/$TOTAL_STEPS] Doctor (mnemos doctor) ==="
+  echo "=== [8/$TOTAL_STEPS] Doctor (vesma doctor) ==="
   DOCTOR_LOG="$(mktemp)"
   set +e
-  mnemos doctor > "$DOCTOR_LOG" 2>&1
+  vesma doctor > "$DOCTOR_LOG" 2>&1
   doc_rc=$?
   set -e
   cat "$DOCTOR_LOG"
   if [[ $doc_rc -eq 0 ]]; then
-    record "Doctor (mnemos doctor)" "PASS"
-    echo "→ Doctor (mnemos doctor): PASS"
+    record "Doctor (vesma doctor)" "PASS"
+    echo "→ Doctor (vesma doctor): PASS"
     rm -f "$DOCTOR_LOG"
   elif grep -q "❌" "$DOCTOR_LOG"; then
     # Real error (Config invalid, DB unhealthy, vector store corrupt, etc.)
     # — fail the gate. This is a code/data defect, not env hygiene.
-    record "Doctor (mnemos doctor)" "FAIL"
-    echo "→ Doctor (mnemos doctor): FAIL (exit $doc_rc — ❌ error(s) detected)" >&2
+    record "Doctor (vesma doctor)" "FAIL"
+    echo "→ Doctor (vesma doctor): FAIL (exit $doc_rc — ❌ error(s) detected)" >&2
     echo "  Doctor reported real error(s) — fix before merge/release." >&2
     rm -f "$DOCTOR_LOG"
   else
     # Only ⚠ warnings (Integration stale, Agent wiring) — dev-environment
     # hygiene, not a code defect. Warn + continue; do not block the gate.
-    record "Doctor (mnemos doctor)" "PASS"
-    echo "⚠️ WARN — Doctor (mnemos doctor): warnings only (dev env hygiene)"
+    record "Doctor (vesma doctor)" "PASS"
+    echo "⚠️ WARN — Doctor (vesma doctor): warnings only (dev env hygiene)"
     grep -E "⚠|Integration|Agent wiring" "$DOCTOR_LOG" | head -5 | sed 's/^/   /' || true
-    echo "   Run: mnemos integration update && mnemos integration setup --wire-agents --all"
+    echo "   Run: vesma integration update && vesma integration setup --wire-agents --all"
     echo "   These are dev-environment warnings, not code defects — gate continues."
     rm -f "$DOCTOR_LOG"
   fi
 else
-  skip_step 8 $TOTAL_STEPS "Doctor (mnemos doctor)" "mnemos CLI not installed in venv — run \`pip install -e .\`"
+  skip_step 8 $TOTAL_STEPS "Doctor (vesma doctor)" "vesma CLI not installed in venv — run \`pip install -e .\`"
 fi
 
 # ── step 9: build (optional, release.yml replica) ──────────────────────

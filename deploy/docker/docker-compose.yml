@@ -1,18 +1,18 @@
-# Vesmaro (Mnemos) — Docker / Docker Compose deployment (pre-built image)
+# Vesma (Vesma) — Docker / Docker Compose deployment (pre-built image)
 #
 # Full docs: docs/en/admin/runbooks/container-deployment.md
 # Umbrella:  deploy/README.md
 #
 # Start:   cp .env.example .env  (fill TOTP_MASTER_KEY), then
 #          docker compose up -d        # or: podman-compose up -d
-# Logs:    docker compose logs -f vesmaro
+# Logs:    docker compose logs -f vesma
 # Stop:    docker compose down
 
 services:
   vesmaro:
     image: ghcr.io/vesmaro/vesma:${VESMARO_IMAGE_TAG:-5.1.2}
     # Legacy namespace (pre-rebrand releases): ghcr.io/korrnals/mnemos
-    container_name: vesmaro
+    container_name: vesma
     restart: unless-stopped
     ports:
       - "8787:8787"
@@ -24,8 +24,8 @@ services:
       - MNEMOS_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY in .env}
       - VESMARO_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY in .env}
     volumes:
-      - vesmaro-data:/data
-      - vesmaro-vault:/vault
+      - vesma-data:/data
+      - vesma-vault:/vault
     healthcheck:
       # Unauthenticated /health endpoint; kept CLI-independent on purpose
       # (the CLI binary name changes in the 5.0.0 rebrand).
@@ -37,11 +37,11 @@ services:
 
   # Optional: local Ollama for embeddings (CPU mode)
   #   docker compose --profile ollama up -d
-  #   docker exec vesmaro-ollama ollama pull nomic-embed-text
+  #   docker exec vesma-ollama ollama pull nomic-embed-text
   # then set embedding.provider=ollama in the container config.
   ollama:
     image: docker.io/ollama/ollama:latest
-    container_name: vesmaro-ollama
+    container_name: vesma-ollama
     profiles:
       - ollama
     restart: unless-stopped
@@ -51,6 +51,6 @@ services:
       - ollama-data:/root/.ollama
 
 volumes:
-  vesmaro-data:
-  vesmaro-vault:
+  vesma-data:
+  vesma-vault:
   ollama-data:

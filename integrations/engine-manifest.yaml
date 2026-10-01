@@ -41,8 +41,8 @@ capabilities:
 mcp:
   transport: stdio
   server_key: vesma          # brand-primary key in harness MCP configs
-  legacy_server_key: mnemos  # recognized during the dual-period (until 6.0)
-  command: vesma             # entry point; `mnemos` accepted in the dual period
+  legacy_server_key: vesma  # recognized during the dual-period (until 6.0)
+  command: vesma             # entry point; `vesma` accepted in the dual period
   args: [mcp-server]
 
 # Memory-switch precedence (ADR-0034). MS-0 ships exactly one ENFORCED mode;

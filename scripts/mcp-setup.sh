@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# scripts/mcp-setup.sh — register Mnemos as an MCP server in VS Code
+# scripts/mcp-setup.sh — register Vesma as an MCP server in VS Code
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh | bash
 #   curl -fsSL .../mcp-setup.sh | bash -s -- --scope workspace
-#   curl -fsSL .../mcp-setup.sh | bash -s -- --scope user --data-dir ~/.mnemos --vault ~/mnemos-vault
+#   curl -fsSL .../mcp-setup.sh | bash -s -- --scope user --data-dir ~/.mnemos --vault ~/vesma-vault
 #
 # Flags:
 #   --scope SCOPE       VS Code config scope: user | workspace (default: user)
 #   --data-dir PATH     VESMARO_DATA_DIR (default: ~/.mnemos/data)
 #   --vault PATH        VESMARO_VAULT__VAULT_PATH (default: ~/.mnemos/vault)
-#   --command CMD       Command to launch mnemos (default: auto-detect: venv → system → mnemos)
+#   --command CMD       Command to launch vesma (default: auto-detect: venv → system → vesma)
 #   --auto-collect      Set VESMARO_AUTO_COLLECT=1 (nag agent to save context)
-#   --force             Overwrite an existing 'mnemos' entry even if already present
+#   --force             Overwrite an existing 'vesma' entry even if already present
 #   --dry-run           Show what would be written, don't modify files
 #   --help              Show this help
 set -euo pipefail
@@ -54,12 +54,12 @@ done
 if [[ -z "$MNEMOS_CMD" ]]; then
   candidate="${HOME}/.mnemos/venv/bin/mnemos"
   if [[ -x "$candidate" ]]; then
-    MNEMOS_CMD="$candidate"; info "Found mnemos at: ${MNEMOS_CMD}"
-  elif command -v mnemos &>/dev/null; then
-    MNEMOS_CMD="$(command -v mnemos)"; info "Found mnemos on PATH: ${MNEMOS_CMD}"
+    MNEMOS_CMD="$candidate"; info "Found vesma at: ${MNEMOS_CMD}"
+  elif command -v vesma &>/dev/null; then
+    MNEMOS_CMD="$(command -v vesma)"; info "Found vesma on PATH: ${MNEMOS_CMD}"
   fi
 fi
-[[ -z "$MNEMOS_CMD" ]] && die "mnemos executable not found. Install first: curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash"
+[[ -z "$MNEMOS_CMD" ]] && die "vesma executable not found. Install first: curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash"
 
 case "$(uname -s)" in
   Darwin)  VSCODE_USER_DIR="${HOME}/Library/Application Support/Code/User" ;;
@@ -77,13 +77,13 @@ info "Target: ${SCOPE} scope → ${MCP_FILE}"
 if [[ ! -f "$MCP_FILE" ]]; then
   info "mcp.json does not exist — creating."
   if [[ "$DRY_RUN" == true ]]; then
-    info "[dry-run] Would create ${MCP_FILE} with mnemos server entry."
+    info "[dry-run] Would create ${MCP_FILE} with vesma server entry."
   else
     mkdir -p "$(dirname "$MCP_FILE")"
     cat > "$MCP_FILE" <<JSONEOF
 {
   "servers": {
-    "mnemos": {
+    "vesma": {
       "type": "stdio",
       "command": "${MNEMOS_CMD}",
       "args": ["mcp-server"],
@@ -98,12 +98,12 @@ JSONEOF
     ok "Created ${MCP_FILE}"
   fi
 else
-  info "mcp.json exists — checking for existing 'mnemos' entry…"
-  if grep -q '"mnemos"' "$MCP_FILE" 2>/dev/null; then
+  info "mcp.json exists — checking for existing 'vesma' entry…"
+  if grep -q '"vesma"' "$MCP_FILE" 2>/dev/null; then
     if [[ "$FORCE" == true ]]; then
-      warn "Existing 'mnemos' entry found — overwriting (--force)."
+      warn "Existing 'vesma' entry found — overwriting (--force)."
     else
-      ok "MCP server 'mnemos' is already registered in ${MCP_FILE} — no changes needed."
+      ok "MCP server 'vesma' is already registered in ${MCP_FILE} — no changes needed."
       ok "Skipping MCP setup (already configured). Use --force to overwrite or --dry-run to inspect."
       exit 0
     fi
@@ -115,7 +115,7 @@ else
 import json
 with open('$MCP_FILE') as f:
     cfg = json.load(f)
-cfg.setdefault('servers', {})['mnemos'] = {
+cfg.setdefault('servers', {})['vesma'] = {
     'type': 'stdio', 'command': '$MNEMOS_CMD', 'args': ['mcp-server'],
     'env': {'VESMARO_DATA_DIR': '$DATA_DIR', 'VESMARO_VAULT__VAULT_PATH': '$VAULT_PATH'$([ "$AUTO_COLLECT" == true ] && echo ", 'VESMARO_AUTO_COLLECT': '1'")}
 }
@@ -126,24 +126,24 @@ print(json.dumps(cfg, indent=2))
 import json
 with open('$MCP_FILE') as f:
     cfg = json.load(f)
-cfg.setdefault('servers', {})['mnemos'] = {
+cfg.setdefault('servers', {})['vesma'] = {
     'type': 'stdio', 'command': '$MNEMOS_CMD', 'args': ['mcp-server'],
     'env': {'VESMARO_DATA_DIR': '$DATA_DIR', 'VESMARO_VAULT__VAULT_PATH': '$VAULT_PATH'$([ "$AUTO_COLLECT" == true ] && echo ", 'VESMARO_AUTO_COLLECT': '1'")}
 }
 with open('$MCP_FILE', 'w') as f:
     json.dump(cfg, f, indent=2); f.write('\n')
 "
-      ok "Merged 'mnemos' into ${MCP_FILE}"
+      ok "Merged 'vesma' into ${MCP_FILE}"
     fi
   else
     warn "python3 not found — using sed fallback (less safe for complex JSON)."
     if [[ "$DRY_RUN" == true ]]; then
-      info "[dry-run] Would insert mnemos entry."
+      info "[dry-run] Would insert vesma entry."
     else
       sed -i.bak "/\"servers\"[[:space:]]*:[[:space:]]*{/a\\
-    \"mnemos\": { \"type\": \"stdio\", \"command\": \"${MNEMOS_CMD}\", \"args\": [\"mcp-server\"], \"env\": { \"VESMARO_DATA_DIR\": \"${DATA_DIR}\", \"VESMARO_VAULT__VAULT_PATH\": \"${VAULT_PATH}\" } },
+    \"vesma\": { \"type\": \"stdio\", \"command\": \"${MNEMOS_CMD}\", \"args\": [\"mcp-server\"], \"env\": { \"VESMARO_DATA_DIR\": \"${DATA_DIR}\", \"VESMARO_VAULT__VAULT_PATH\": \"${VAULT_PATH}\" } },
 " "$MCP_FILE"
-      ok "Inserted 'mnemos' into ${MCP_FILE} (backup: ${MCP_FILE}.bak)"
+      ok "Inserted 'vesma' into ${MCP_FILE} (backup: ${MCP_FILE}.bak)"
     fi
   fi
 fi

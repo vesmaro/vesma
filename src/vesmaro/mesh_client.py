@@ -1,4 +1,4 @@
-"""mnemos-mesh gRPC client — dumb transport for the MnemosCore API (#105 M3).
+"""vesma-mesh gRPC client — dumb transport for the MnemosCore API (#105 M3).
 
 Wraps the gRPC Unix-socket channel to ``mnemos-mesh`` and exposes the four
 ``MnemosCore`` RPCs (:rpc:`ListMemories`, :rpc:`WriteMemory`,
@@ -18,14 +18,14 @@ Architectural invariants (ArchCom 2026-07-17 federation contract):
       boundary. This client speaks ``vesmaro.core.v1``; future versions
       will be a separate client class.
     * **Criterion 11 — local-first preserved.** This client is a thin
-      transport adapter; storage and moderation remain local to vesmaro.
+      transport adapter; storage and moderation remain local to vesma.
 
 Import strategy for generated stubs
 ------------------------------------
 The gRPC Python plugin emits flat top-level imports
 (``import mnemos_core_api_pb2``) inside the generated ``*_pb2_grpc.py``
 files, and the generated directory (``federation/gen/python/``) is
-gitignored and lives outside the ``vesmaro`` package tree. The shim
+gitignored and lives outside the ``vesma`` package tree. The shim
 :mod:`vesmaro._mesh_gen` inserts the generated directory on ``sys.path``
 once and re-exports the four generated modules under stable names
 (``core_pb2``, ``core_pb2_grpc``, ``fed_pb2``). This module imports from
@@ -174,7 +174,7 @@ class MeshClient:
 
         with MeshClient("/run/mnemos/core.sock") as client:
             healthy, version, uptime = client.heartbeat("peer-a")
-            records = client.list_memories(projects=["mnemos"])
+            records = client.list_memories(projects=["vesma"])
     """
 
     def __init__(self, socket_path: str, *, timeout: float = 2.0) -> None:
@@ -319,7 +319,7 @@ class MeshClient:
     def heartbeat(
         self,
         peer_id: str,
-        component: str = "mnemos",
+        component: str = "vesma",
     ) -> tuple[bool, str, int]:
         """Call ``MnemosCore.Heartbeat`` and return the liveness reply.
 
@@ -328,7 +328,7 @@ class MeshClient:
 
         Args:
             peer_id: A2A id of the probing peer.
-            component: Which component is probing — ``"mnemos"`` (default)
+            component: Which component is probing — ``"vesma"`` (default)
                 or ``"mesh"``. Lets the receiver record provenance without
                 guessing from the socket.
 

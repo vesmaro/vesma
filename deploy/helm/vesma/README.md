@@ -1,6 +1,6 @@
-# vesmaro Helm chart
+# vesma Helm chart
 
-Deploys the full Vesmaro (Mnemos) memory server — HTTP API + bundled vesma-embed-v1
+Deploys the full Vesma (Vesma) memory server — HTTP API + bundled vesma-embed-v1
 embedder — into any Kubernetes 1.25+ cluster (vanilla K8s, K3s, kind, k0s) behind
 an ingress.
 
@@ -11,15 +11,15 @@ an ingress.
 ## Quick start
 
 ```bash
-helm install vesmaro deploy/helm/vesmaro \
-  --namespace vesmaro --create-namespace \
+helm install vesma deploy/helm/vesma \
+  --namespace vesma --create-namespace \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
-  --set ingress.hosts[0].host=mnemos.example.com
+  --set ingress.hosts[0].host=vesma.example.com
 ```
 
-Then `kubectl -n vesmaro port-forward svc/vesmaro 8787:8787` or use the ingress
-address. `helm test vesmaro` runs an in-cluster health check.
+Then `kubectl -n vesma port-forward svc/vesma 8787:8787` or use the ingress
+address. `helm test vesma` runs an in-cluster health check.
 
 ## What it creates
 
@@ -30,7 +30,7 @@ address. `helm test vesmaro` runs an in-cluster health check.
 | Ingress (optional, on by default) | `/` → service; TLS via `ingress.tls` |
 | ConfigMap | Renders `/app/config.yaml` from `api.*`, `embedding.*`, `search.*`, `mcp.*` values |
 | Secret (optional) | TOTP master key; `auth.existingSecret` skips rendering |
-| PVC ×2 | `mnemos-data` (SQLite + vector index) and `mnemos-vault` (markdown mirror) |
+| PVC ×2 | `vesma-data` (SQLite + vector index) and `vesma-vault` (markdown mirror) |
 
 ## Image registry status
 

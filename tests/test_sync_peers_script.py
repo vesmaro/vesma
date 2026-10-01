@@ -1,7 +1,7 @@
 """Tests for the auto-cron federation bridge (#104).
 
 Covers ``scripts/sync-peers.sh`` (the ExecStart of
-``contrib/systemd/mnemos-sync.service``) and the two systemd unit files. The
+``contrib/systemd/vesma-sync.service``) and the two systemd unit files. The
 script reads its config from ``VESMARO_SYNC_*`` env vars; these tests exercise
 the env-var validation, the dry-run command logging, and the unit file
 shape. They do NOT run a real mnemos CLI, rsync, or ssh — dry-run mode
@@ -27,10 +27,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "sync-peers.sh"
-SERVICE = REPO_ROOT / "contrib" / "systemd" / "mnemos-sync.service"
-TIMER = REPO_ROOT / "contrib" / "systemd" / "mnemos-sync.timer"
+SERVICE = REPO_ROOT / "contrib" / "systemd" / "vesma-sync.service"
+TIMER = REPO_ROOT / "contrib" / "systemd" / "vesma-sync.timer"
 RSYNC_WRAPPER = REPO_ROOT / "contrib" / "systemd" / "rsync-wrapper.sh"
-IMPORT_WRAPPER = REPO_ROOT / "contrib" / "systemd" / "mnemos-import-wrapper.sh"
+IMPORT_WRAPPER = REPO_ROOT / "contrib" / "systemd" / "vesma-import-wrapper.sh"
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ def test_rsync_wrapper_rejects_unknown_option(tmp_path: Path) -> None:
 
 
 def test_import_wrapper_rejects_unknown_flag(tmp_path: Path) -> None:
-    """An unknown ``--*`` flag on ``mnemos sync import`` → exit 2 + REJECT.
+    """An unknown ``--*`` flag on ``vesma sync import`` → exit 2 + REJECT.
 
     Only ``--dry-run`` is forwarded; ``--passphrase-env`` is pinned by the
     wrapper itself. A compromised A could otherwise redirect the import
@@ -283,7 +283,7 @@ def test_import_wrapper_rejects_unknown_flag(tmp_path: Path) -> None:
     src.write_text('{"x":1}')
     result = _run_wrapper(
         IMPORT_WRAPPER,
-        f"mnemos sync import {src} --config /etc/shadow",
+        f"vesma sync import {src} --config /etc/shadow",
         env=env,
     )
     assert result.returncode == 2, (

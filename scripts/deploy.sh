@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mnemos — container deployment helper
+# Vesma — container deployment helper
 # Usage: ./scripts/deploy.sh [command]
 set -euo pipefail
 
@@ -11,7 +11,7 @@ cd "$PROJECT_DIR"
 
 usage() {
     cat <<EOF
-Mnemos container deployment
+Vesma container deployment
 
 Usage: $0 <command>
 
@@ -25,7 +25,7 @@ Commands:
   kube-down      Stop kube deployment
   quadlet        Install systemd quadlet unit
   shell          Open shell in running container
-  cli <args>     Run mnemos CLI in container
+  cli <args>     Run vesma CLI in container
   status         Show container status
 
 EOF
@@ -39,7 +39,7 @@ cmd_build() {
 
 cmd_up() {
     podman-compose up -d
-    echo "Mnemos API:   http://localhost:8787"
+    echo "Vesma API:   http://localhost:8787"
     echo "Swagger UI:   http://localhost:8787/docs"
 }
 
@@ -48,15 +48,15 @@ cmd_down() {
 }
 
 cmd_logs() {
-    podman-compose logs -f mnemos
+    podman-compose logs -f vesma
 }
 
 cmd_up_ollama() {
     podman-compose --profile ollama up -d
     echo "Pulling nomic-embed-text model..."
-    podman exec mnemos-ollama ollama pull nomic-embed-text
+    podman exec vesma-ollama ollama pull nomic-embed-text
     echo ""
-    echo "Mnemos API:   http://localhost:8787"
+    echo "Vesma API:   http://localhost:8787"
     echo "Ollama:       http://localhost:11434"
     echo ""
     echo "Update config.container.yaml:"
@@ -66,10 +66,10 @@ cmd_up_ollama() {
 
 cmd_kube_up() {
     # Ensure volumes exist
-    podman volume create mnemos-data 2>/dev/null || true
-    podman volume create mnemos-vault 2>/dev/null || true
+    podman volume create vesma-data 2>/dev/null || true
+    podman volume create vesma-vault 2>/dev/null || true
     podman kube play deploy/podman/kube/mnemos-pod.yaml
-    echo "Mnemos API:   http://localhost:8787"
+    echo "Vesma API:   http://localhost:8787"
 }
 
 cmd_kube_down() {
@@ -82,24 +82,24 @@ cmd_quadlet() {
     cp deploy/podman/quadlet/mnemos.container "$target_dir/"
     systemctl --user daemon-reload
     echo "Quadlet installed. Start with:"
-    echo "  systemctl --user start mnemos"
-    echo "  systemctl --user enable mnemos  # autostart"
+    echo "  systemctl --user start vesma"
+    echo "  systemctl --user enable vesma  # autostart"
 }
 
 cmd_shell() {
-    podman exec -it mnemos /bin/bash
+    podman exec -it vesma /bin/bash
 }
 
 cmd_cli() {
-    podman exec mnemos mnemos "$@"
+    podman exec vesma vesma "$@"
 }
 
 cmd_status() {
     echo "=== Containers ==="
-    podman ps --filter name=mnemos --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    podman ps --filter name=vesma --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "=== Volumes ==="
-    podman volume ls --filter name=mnemos
+    podman volume ls --filter name=vesma
 }
 
 case "${1:-}" in

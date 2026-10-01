@@ -166,7 +166,7 @@ def get_manager() -> Any:
 def _detect_project() -> str:
     """Auto-detect project name from current working directory.
 
-    mnemos #400 — normalize at the entry point: a PascalCase folder name
+    vesma #400 — normalize at the entry point: a PascalCase folder name
     (``Project-Umbra``) must not become a different store key than the
     same project saved with a typed slug. Same normalization as the
     save/query boundaries (:func:`vesmaro.models.normalize_project_slug`).
@@ -213,7 +213,7 @@ def _checkpoint_reminder() -> str | None:
     )
     if calls >= _remind_calls() or (elapsed > _remind_secs() and calls > 0):
         return (
-            f"\n\n⚠️ [mnemos] {calls} tool calls since last checkpoint "
+            f"\n\n⚠️ [vesma] {calls} tool calls since last checkpoint "
             f"({int(elapsed)}s ago). Consider calling mnemos_save_context "
             f"to preserve your current progress."
         )
@@ -722,7 +722,7 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["ru", "en"],
                         "description": (
-                            "Primary language of the checkpoint body (vesmaro-canon "
+                            "Primary language of the checkpoint body (vesma-canon "
                             "envelope). Omitted → the server config default; no "
                             "language guessing is performed."
                         ),
@@ -840,7 +840,7 @@ async def _canonical_tools() -> list[Tool]:
             description=(
                 "Bulk tag operations across memories: rename a prefix, "
                 "remove tags, or add tags. Action-based dispatch — the "
-                "grouped pilot tool (mnemos #97). action='rename' is the "
+                "grouped pilot tool (vesma #97). action='rename' is the "
                 "same as mnemos_tags_rename; 'remove' drops exact (or, "
                 "with wildcard=true, prefix-matched) tags; 'add' appends "
                 "tags to memories matching a project/agent filter."
@@ -1362,7 +1362,7 @@ async def _canonical_tools() -> list[Tool]:
             name="mnemos_hooks",
             description=(
                 "ADR-0017 D1 / ADR-0018 lifecycle hooks — the automation "
-                "integration points, grouped behind action:enum (mnemos #97 "
+                "integration points, grouped behind action:enum (vesma #97 "
                 "pattern). action='pre_llm_call': assemble the context block "
                 "to INJECT before a model call (sync delivery; "
                 "context_hint = what the call is about, used as the recall "
@@ -1463,7 +1463,7 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "boolean",
                         "default": False,
                         "description": (
-                            "pre_llm_call/on_session_start only (mnemos #254): "
+                            "pre_llm_call/on_session_start only (vesma #254): "
                             "compose the awareness delta/presence section — "
                             "appended LAST, never pinnable, cursor advances "
                             "on pre_llm_call only. Default false: output is "
@@ -1477,7 +1477,7 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_awareness",
             description=(
-                "Awareness pre-flight (mnemos #254, R3): presence + delta + "
+                "Awareness pre-flight (vesma #254, R3): presence + delta + "
                 "conflict-hints for PARALLEL sessions over one project. Call "
                 "BEFORE risky operations (writes to a component/task another "
                 "active session may have claimed — the PR #224 contract: a "
@@ -1674,7 +1674,7 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_workflow",
             description=(
-                "Workflow lifecycle management for a memory (mnemos #96). "
+                "Workflow lifecycle management for a memory (vesma #96). "
                 "Separates mutable workflow state (open/in-progress/blocked/"
                 "resolved/done/withdrawn) from append-only tag classification. "
                 "Action-based dispatch — same pattern as mnemos_tags. "
@@ -2165,7 +2165,7 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
 
 
 def _handle_awareness(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """``mnemos_awareness`` action dispatch (mnemos #254, R3).
+    """``mnemos_awareness`` action dispatch (vesma #254, R3).
 
     Boundary type guards (the ``mnemos_hooks`` pattern): a malformed
     caller gets a clean error dict; ValueError from the awareness
@@ -2624,7 +2624,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "mnemos_list_tags":
         return mgr.list_tags()
 
-    # ── mnemos_tags (grouped: rename/remove/add) — pilot (mnemos #97) ───────
+    # ── mnemos_tags (grouped: rename/remove/add) — pilot (vesma #97) ───────
     # Also serves as the backing dispatch for the legacy mnemos_tags_rename
     # tool (non-breaking alias). When the LLM calls mnemos_tags_rename we
     # inject action="rename" and fall through to the same handler.
@@ -2669,7 +2669,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             )
         return {"error": f"unknown action {action!r}. Valid actions: 'rename', 'remove', 'add'"}
 
-    # ── mnemos_workflow (grouped: set/get/history) — mnemos #96 ────────────
+    # ── mnemos_workflow (grouped: set/get/history) — vesma #96 ────────────
     # Thin wrapper over MemoryManager.workflow_set / workflow_get /
     # workflow_history. The state machine + 5 guardrails are enforced
     # server-side in the manager, so this dispatch only translates
@@ -3088,7 +3088,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # Boundary + per-hook validation — clean error dict.
             return {"error": str(exc)}
 
-    # ── mnemos_awareness (mnemos #254, R3 — awareness pre-flight) ──────────
+    # ── mnemos_awareness (vesma #254, R3 — awareness pre-flight) ──────────
     if name == "mnemos_awareness":
         return _handle_awareness(mgr, args)
 
@@ -3320,7 +3320,7 @@ async def _on_call_tool(ctx: _CTX_T, params: CallToolRequestParams) -> CallToolR
 
 
 server = Server(
-    "mnemos",
+    "vesma",
     version=__version__,
     on_list_tools=_on_list_tools,
     on_call_tool=_on_call_tool,
