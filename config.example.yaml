@@ -247,6 +247,31 @@ updates:
   # version checks. Default: on.
   check_enabled: true
 
+# ── Native awareness heartbeat (ADR-0035, W2a wave 0) ─────────────────────────
+# The "eye/swarm" delivery contour: a delta-gated, observed-only awareness
+# tail riding EVERY MCP tool response through the single call_tool
+# injection point — no manual invocation, zero changes in foreign
+# harnesses. Delivery fires on the first tool call after a peer write;
+# the delta check is a sub-millisecond SELECT EXISTS probe. See
+# docs/*/user/mcp-tools.md ("Native awareness heartbeat") and
+# docs/project/adr/0035-native-awareness-delivery.md.
+awareness:
+  # The shadow -> canary -> default-on ladder. off (default) is the kill
+  # switch: engine behaviour byte-identical to the pre-ADR-0035 build.
+  #   off    — fully inert (no probe, no cursor, no events, no tail)
+  #   shadow — wave 0: compose + events in the metrics sidecar, nothing
+  #            rendered into agent responses (the measuring wave)
+  #   canary — wave 1: the envelope renders as the last TextContent
+  #   on     — wave 2: the default flips after the wave 0/1 gates close
+  # Env: VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow
+  native_heartbeat_mode: "off"
+  # C14 rate cap: heartbeat compositions per (project, agent) per minute
+  # (in-process; the key carries no session — session churn must not
+  # reopen the window). 0 disables. Over-limit suppresses the tail with
+  # a heartbeat_suppressed{rate_cap} event, never an error.
+  # Env: VESMARO_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0
+  heartbeat_rate_limit_per_minute: 30
+
 # ── Logging (v2.1) ───────────────────────────────────────────────────────────
 # File logging with rotation. Set log_file to empty ("") for stderr-only output.
 logging:
