@@ -44,6 +44,7 @@ from mcp.types import (
 from vesmaro import __version__
 from vesmaro.config import load_settings
 from vesmaro.context_rewrite import ContextRewriteRateLimitError
+from vesmaro.heartbeat import native_heartbeat_tail
 from vesmaro.hooks import HOOK_ACTIONS, dispatch_hook
 from vesmaro.models import (
     CHECKPOINT_FIELDS,
@@ -81,7 +82,9 @@ _brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
 if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
     logger.warning(
         "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
-        _BRAND_ENV_CANON, _brand_canon_val, _brand_depr_val,
+        _BRAND_ENV_CANON,
+        _brand_canon_val,
+        _brand_depr_val,
     )
 _raw_brand = (_brand_canon_val or _brand_depr_val).lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
@@ -89,7 +92,8 @@ _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand
 if _raw_brand and not _MCP_BRAND:
     logger.warning(
         "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _BRAND_ENV_CANON, _raw_brand,
+        _BRAND_ENV_CANON,
+        _raw_brand,
     )
 
 
@@ -1983,13 +1987,19 @@ async def _known_tool_names() -> frozenset[str]:
 
 
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    """Time one MCP tool call and record it as a verb (A2 boundary #1).
+    """Time one MCP tool call, record it as a verb, attach the heartbeat.
 
     Thin shell over :func:`_call_tool_dispatch` — every tool, including
     ``mnemos_assemble_context``, lands in the verb ledger here (the
     assemble row is a SEPARATE plane written inside the assemble
     handler: ledger says who/what/how-long, the domain table says what
     was assembled — two planes of fact, not double counting).
+
+    W2a (ADR-0035): this is also the SINGLE injection point of the
+    native awareness heartbeat — one appended ``TextContent`` after the
+    handler (canary/on modes only; ``off``/``shadow`` leave the response
+    bytes untouched). The heartbeat glue never raises and never alters
+    the dispatch result.
     """
     import time as _time
 
@@ -2012,6 +2022,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             status="ok",
             latency_ms=(_time.monotonic() - t0) * 1000,
         )
+    # W2a (ADR-0035): native awareness heartbeat — the single injection
+    # point. Returns the tail TextContent (canary/on) or None (off /
+    # shadow / suppressed); never raises, never touches `result` bytes.
+    heartbeat_tail = native_heartbeat_tail(_canonicalize_tool_name(name), arguments)
+    if heartbeat_tail is not None:
+        result = [*result, heartbeat_tail]
     return result
 
 

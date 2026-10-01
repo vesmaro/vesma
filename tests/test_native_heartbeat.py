@@ -21,16 +21,27 @@ The six CI pins from the wave brief:
 
 from __future__ import annotations
 
+import re
+import sqlite3
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from vesmaro import mcp_server as mcp_server_module
+from vesmaro.awareness import (
+    AWARENESS_DISCLAIMER,
+    HEARTBEAT_CALM_LINE,
+    HEARTBEAT_ENVELOPE_TOKEN_CEILING,
+    HEARTBEAT_FLAG_LINE,
+    compose_heartbeat,
+)
 from vesmaro.config import AwarenessConfig, Settings
+from vesmaro.heartbeat import HEARTBEAT_DENY_TOOLS
 from vesmaro.lanes import (
     AWARENESS_CURSOR_PREFIX,
     AWARENESS_HEARTBEAT_CURSOR_PREFIX,
@@ -40,6 +51,8 @@ from vesmaro.lanes import (
     write_awareness_heartbeat_cursor,
 )
 from vesmaro.manager import MemoryManager
+from vesmaro.mcp_server import _call_tool_dispatch, call_tool
+from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
 from vesmaro.storage.sqlite_store import SQLiteStore
 
 PROJECT = "awrh-proj"
@@ -298,3 +311,344 @@ class TestHeartbeatConfig:
         assert AwarenessConfig().heartbeat_rate_limit_per_minute == 30
         with pytest.raises(ValidationError):
             AwarenessConfig(heartbeat_rate_limit_per_minute=-1)
+
+
+# ── compose_heartbeat: the contour ────────────────────────────────────────────
+
+
+class TestComposeHeartbeat:
+    def test_empty_store_is_calm_literal(self, manager: MemoryManager) -> None:
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT, tool="mnemos_list_recent")
+        assert result["state"] == "calm"
+        assert result["text"] == HEARTBEAT_CALM_LINE
+        assert result["lines"] == 1
+        # Probe-negative calm: NO cursor write happened at all.
+        assert read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT) is None
+        assert result["cursor_before"] is None and result["cursor_after"] is None
+        kinds = [kind for kind, _meta in result["events"]]
+        assert kinds == ["heartbeat_delivery"]
+        assert result["events"][0][1]["state"] == "calm"
+
+    def test_peer_delta_renders_envelope_and_advances_cursor(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "neighbor writes about the deploy pipeline")
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT, tool="mnemos_search")
+        assert result["state"] == "delta"
+        text = result["text"]
+        assert text.startswith(f"## Peer awareness — heartbeat (project {PROJECT})")
+        assert AWARENESS_DISCLAIMER in text
+        assert HEARTBEAT_FLAG_LINE in text
+        assert f"- {NEIGHBOR_A}: 1 entries, last " in text
+        # Cursor advanced BEFORE the return: readable back, identity in log.
+        stored = read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT)
+        assert stored == result["cursor_after"]
+        assert result["cursor_after"] > (result["cursor_before"] or "")
+        kinds = [kind for kind, _meta in result["events"]]
+        assert kinds == ["delta_available", "heartbeat_delivery"]
+        meta = result["events"][1][1]
+        assert meta["state"] == "delta"
+        assert meta["tool"] == "mnemos_search"
+        assert meta["cursor_before"] is None and meta["cursor_after"] == stored
+
+    def test_second_compose_after_advance_is_calm(self, manager: MemoryManager) -> None:
+        """At-most-once: after a delivery consumed the delta, a retry (the
+        same call again) sees no delta — the calm-line, not a re-delivery."""
+        _knowledge(manager, "one delta row is enough")
+        first = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert first["state"] == "delta"
+        second = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert second["state"] == "calm"
+        assert second["text"] == HEARTBEAT_CALM_LINE
+        # No further advancement on the calm leg.
+        assert second["cursor_after"] == first["cursor_after"]
+
+    def test_caller_own_rows_only_is_calm_with_cursor_past_self_writes(
+        self, manager: MemoryManager
+    ) -> None:
+        """The probe is agent-agnostic (fires on own rows), the delta is not
+        (excludes the caller): consumed-and-quiet — calm-line, cursor moved
+        past the self-writes so the probe stops re-firing on them."""
+        _knowledge(manager, "my own write", agent=AGENT)
+        first = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert first["state"] == "calm"
+        assert first["cursor_after"] is not None
+        second = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert second["state"] == "calm"
+
+    def test_calm_line_is_timestamp_free_deterministic_constant(self) -> None:
+        assert HEARTBEAT_CALM_LINE == "## Peer awareness — no new peer activity"
+        assert "20" not in HEARTBEAT_CALM_LINE  # no year, no clock, no nonce
+
+
+class TestEnvelope:
+    def test_agent_lines_observed_only_no_scores(self, manager: MemoryManager) -> None:
+        _checkpoint(
+            manager,
+            goals="quokka importer release window",
+            agent=NEIGHBOR_A,
+        )
+        _knowledge(manager, "neighbor wrote about deploy", agent=NEIGHBOR_A)
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        body_lines = [
+            ln
+            for ln in result["text"].splitlines()
+            if ln.startswith("- ") and "entries, last" in ln
+        ]
+        assert body_lines, "envelope must carry per-agent lines"
+        for ln in body_lines:
+            # Form pin: id, integer counter, time — and NOTHING numeric
+            # between them (no relevance scores ride the tail).
+            assert re.fullmatch(r"- [A-Za-z0-9_.\-]+: \d+ entries, last \S+", ln), ln
+
+    def test_relevance_order_is_goal_overlap_first(self, manager: MemoryManager) -> None:
+        """ORDER-only relevance (addendum §2): the neighbor whose goal
+        overlaps mine leads; ties stay deterministic regardless of write
+        order."""
+        _checkpoint(manager, goals="ship the quokka importer release", agent=AGENT, session=SESSION)
+        # Written SECOND and alphabetically FIRST — must still render SECOND
+        # (zero overlap).
+        _knowledge(manager, "aardvark unrelated note", agent="aaa-neighbor")
+        _checkpoint(manager, goals="quokka importer fix", agent="zzz-neighbor")
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        lines = [ln for ln in result["text"].splitlines() if "entries, last" in ln]
+        agents_in_order = [ln.split(":")[0][2:] for ln in lines]
+        assert agents_in_order == ["zzz-neighbor", "aaa-neighbor"]
+
+    def test_envelope_ceiling_holds_under_eight_hostile_ids(self, manager: MemoryManager) -> None:
+        for i in range(8):
+            _knowledge(
+                manager,
+                f"hostile neighbor {i} body",
+                agent=f"peer-with-a-very-long-hostile-identifier-{i:04d}",
+            )
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert result["state"] == "delta"
+        assert result["tokens_est"] <= HEARTBEAT_ENVELOPE_TOKEN_CEILING
+        # Truncation is observable, never silent.
+        assert "more peers not shown" in result["text"]
+        shown = [ln for ln in result["text"].splitlines() if "entries, last" in ln]
+        assert 1 <= len(shown) < 8
+
+    def test_sanitized_agent_ids_never_carry_markdown_or_control(
+        self, manager: MemoryManager
+    ) -> None:
+        _knowledge(manager, "hostile id body", agent="**evil**`x`\nagent")
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        text = result["text"]
+        for forbidden in ("*", "`", "\nagent"):
+            assert forbidden not in text
+        line = next(ln for ln in text.splitlines() if "entries, last" in ln)
+        assert re.fullmatch(r"- [A-Za-z0-9_.\-]+: \d+ entries, last \S+", line), line
+
+    def test_compact_seen_is_minute_utc(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "compact time body")
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        line = next(ln for ln in result["text"].splitlines() if "entries, last" in ln)
+        stamp = line.rsplit("last ", 1)[1]
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z", stamp), stamp
+
+
+class TestComposeSuppression:
+    def test_rate_cap_suppresses_with_event_not_error(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary", heartbeat_rate_limit=1))
+            _knowledge(mgr, "rate cap body")
+            first = compose_heartbeat(mgr, project=PROJECT, agent=AGENT)
+            assert first["state"] == "delta"
+            second = compose_heartbeat(mgr, project=PROJECT, agent=AGENT)
+            assert second["state"] == "suppressed"
+            assert second["reason"] == "rate_cap"
+            assert second["text"] == ""
+            assert second["events"] == [("heartbeat_suppressed", {"reason": "rate_cap"})]
+            # Refusal consumed no quota: the cursor was not advanced by it.
+            assert second["cursor_after"] is None
+            mgr.close()
+
+    def test_probe_error_suppresses_and_never_raises(
+        self, manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _knowledge(manager, "probe error body")
+
+        def _raise(self: SQLiteStore, project: str, since_iso: str) -> bool:
+            raise sqlite3.OperationalError("disk exploded")
+
+        monkeypatch.setattr(SQLiteStore, "exists_since", _raise)
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert result["state"] == "suppressed"
+        assert result["reason"] == "probe_error"
+        assert result["text"] == ""
+        # The cursor is untouched by a failed probe.
+        assert read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT) is None
+
+
+# ── The call_tool wrapper: mode ladder + deny-list (CI pins 1, 2, 4) ─────────
+
+
+def _reset_call_tracker() -> dict[str, Any]:
+    """Snapshot/restore helper for the module-global reminder tracker."""
+    return dict(mcp_server_module._checkpoint_tracker)
+
+
+class TestOffByteIdentity:
+    """CI pin 1 — mode=off: byte-identical to the pre-feature response."""
+
+    async def test_off_equals_dispatch_bytes_with_delta_present(
+        self, manager: MemoryManager
+    ) -> None:
+        _knowledge(manager, "off-path byte identity body")
+        args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+        snap = _reset_call_tracker()
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            direct = await _call_tool_dispatch("mnemos_list_recent", args)
+            mcp_server_module._checkpoint_tracker.clear()
+            mcp_server_module._checkpoint_tracker.update(snap)
+            via_wrapper = await call_tool("mnemos_list_recent", args)
+        assert [c.text for c in via_wrapper] == [c.text for c in direct]
+        assert len(via_wrapper) == 1
+
+    async def test_off_writes_no_heartbeat_state(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "off writes nothing body")
+        args = {"project": PROJECT, "agent": AGENT, "session": SESSION}
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            await call_tool("mnemos_list_recent", args)
+        assert read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT) is None
+
+
+class TestShadowByteIdentity:
+    """CI pin 2 — shadow: byte-identical to off, but the contour ran."""
+
+    async def test_shadow_response_equals_off_response(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="off"))
+            _knowledge(mgr, "shadow byte identity body")
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            snap = _reset_call_tracker()
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                off_contents = await call_tool("mnemos_list_recent", args)
+                # Same store, same rows — flip ONLY the mode.
+                mgr.settings.awareness.native_heartbeat_mode = "shadow"
+                mcp_server_module._checkpoint_tracker.clear()
+                mcp_server_module._checkpoint_tracker.update(snap)
+                shadow_contents = await call_tool("mnemos_list_recent", args)
+            assert [c.text for c in shadow_contents] == [c.text for c in off_contents]
+            assert len(shadow_contents) == 1  # no tail rendered in shadow
+            # …and the contour really ran: shadow advanced the cursor (the
+            # measurement parity — canary would have delivered this delta).
+            assert read_awareness_heartbeat_cursor(mgr, project=PROJECT, agent=AGENT) is not None
+            mgr.close()
+
+
+class TestCanaryOnRendering:
+    async def test_canary_appends_tail_last(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _knowledge(mgr, "canary tail body")
+            _checkpoint(mgr, goals="canary neighbor goal", agent=NEIGHBOR_A)
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_list_recent", args)
+            assert len(contents) == 2
+            tail = contents[-1]
+            assert tail.text.startswith(f"## Peer awareness — heartbeat (project {PROJECT})")
+            assert AWARENESS_DISCLAIMER in tail.text
+            mgr.close()
+
+    async def test_canary_calm_appends_exactly_one_line(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_list_recent", args)
+            assert len(contents) == 2
+            tail = contents[-1].text
+            assert tail == HEARTBEAT_CALM_LINE  # the pinned LITERAL, one line
+            assert "\n" not in tail
+            mgr.close()
+
+    async def test_mode_on_renders_like_canary(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="on"))
+            _knowledge(mgr, "mode on body")
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_list_recent", args)
+            assert len(contents) == 2
+            assert contents[-1].text.startswith("## Peer awareness — heartbeat")
+            mgr.close()
+
+
+class TestDenyList:
+    """CI pin 4 — assemble/export/import never carry the tail."""
+
+    async def test_deny_listed_tools_get_no_tail_in_canary(self, tmp_path: Path) -> None:
+        for tool in sorted(HEARTBEAT_DENY_TOOLS):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+                _knowledge(mgr, f"deny list body {tool}")
+                args: dict[str, Any] = {"agent": AGENT, "session": SESSION}
+                if tool == "mnemos_assemble_context":
+                    args.update({"project": PROJECT, "query": "deny", "session": SESSION})
+                with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                    contents = await call_tool(tool, args)
+                tails = [c for c in contents if "Peer awareness" in c.text]
+                assert not tails, f"{tool} must never carry the heartbeat tail"
+                # And no cursor advance happened for the denied surface.
+                assert read_awareness_heartbeat_cursor(mgr, project=PROJECT, agent=AGENT) is None
+                mgr.close()
+
+    async def test_identity_less_call_gets_no_tail_no_error(self, manager: MemoryManager) -> None:
+        _knowledge(manager, "identity-less body")
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            contents = await call_tool("mnemos_list_tags", {})
+        assert len(contents) == 1  # the plain response, untouched
+
+    async def test_heartbeat_failure_never_breaks_the_call(
+        self, manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Even a heartbeat that explodes mid-flight leaves the tool call's
+        bytes intact (the wrapper's suppress-everything contract)."""
+
+        def _boom(*_a: Any, **_kw: Any) -> Any:
+            raise RuntimeError("heartbeat exploded")
+
+        monkeypatch.setattr("vesmaro.heartbeat.compose_heartbeat", _boom)
+        # manager fixture is mode=off — patch the settings to canary in place
+        manager.settings.awareness.native_heartbeat_mode = "canary"
+        _knowledge(manager, "explosion body")
+        args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
+        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+            contents = await call_tool("mnemos_list_recent", args)
+        assert len(contents) == 1
+        assert "Peer awareness" not in contents[0].text
+
+
+# ── shared manager helpers ────────────────────────────────────────────────────
+
+
+def _knowledge(
+    mgr: MemoryManager, content: str, agent: str = NEIGHBOR_A, *, project: str = PROJECT
+) -> str:
+    memory = mgr.add(
+        MemoryCreate(
+            content=content,
+            tags=[f"project:{project}", f"agent:{agent}", "mnemos:learning"],
+            source=MemorySource.MCP,
+            status=MemoryStatus.PUBLISHED,
+        ),
+        project=project,
+        agent=agent,
+    )
+    return memory.id
+
+
+def _checkpoint(
+    mgr: MemoryManager,
+    *,
+    goals: str,
+    agent: str,
+    session: str = NEIGHBOR_SESSION,
+    project: str = PROJECT,
+) -> str:
+    memory, _dup = mgr.save_checkpoint(
+        {"goals": goals, "in_progress": "wiring"}, project=project, agent=agent, session=session
+    )
+    return memory.id
