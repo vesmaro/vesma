@@ -62,6 +62,8 @@ from vesmaro.decision_provider import (
     SPECTRUM_RECORD_QUALITY,
     CanonRecordView,
     CanonState,
+    CortexError,
+    CortexPinError,
     DecisionPrimitive,
     DecisionProvider,
     DecisionRequest,
@@ -73,6 +75,7 @@ from vesmaro.decision_provider import (
     RecordQualityRequest,
     Score,
     UnsupportedPrimitiveError,
+    VesmaProvider,
 )
 from vesmaro.http_guard import validate_url_ssrf
 from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
@@ -394,13 +397,30 @@ class JevRouterProvider:
 # ── The seam factory (the single wiring point for future call sites) ─────────
 
 
-def resolve_decision_provider(settings: MnemosConfig) -> DecisionProvider | None:
+def resolve_decision_provider(
+    settings: MnemosConfig,
+    *,
+    embedder_fingerprint: str | None = None,
+) -> DecisionProvider | None:
     """Build the configured ADR-0004 provider (or ``None`` when off).
 
     * ``off`` → ``None`` — the seam is disabled entirely.
     * ``deterministic`` (default) → the local baseline provider: zero
       I/O, so the default posture «no flag, no key, no network attempt»
       holds by construction.
+    * ``vesma`` → :class:`~vesmaro.decision_provider.VesmaProvider`, the
+      bundled vesma-cortex-v1 artifact (W5d). FAIL-OPEN (inference-v1.md
+      §7): the caller must supply the LIVE embedder fingerprint via
+      ``embedder_fingerprint`` (from ``Settings.embedding``, e.g.
+      ``config_fingerprint(settings.embedding)``) so the artifact's
+      ``embedder_pin`` can be asserted; a missing fingerprint is an
+      unassertable pin — refused loudly, degraded to deterministic. Any
+      :class:`~vesmaro.decision_provider.CortexError` degrades to the
+      deterministic provider with a machine-parseable ``code=`` warn —
+      the engine path is never blocked. A ``CORTEX-E-PIN`` failure is
+      additionally telegraphed as a RECALIBRATION EVENT (not routine
+      degradation): the artifact cannot silently run on another
+      embedding geometry.
     * ``jev`` → :class:`JevRouterProvider`; the key is read at wiring
       time from the env variable NAMED by ``decision_jev_api_key_env``.
       Missing/empty env → :class:`JevConfigError` BEFORE any network
@@ -411,6 +431,31 @@ def resolve_decision_provider(settings: MnemosConfig) -> DecisionProvider | None
         return None
     if mode == "deterministic":
         return DeterministicProvider()
+    if mode == "vesma":
+        if not embedder_fingerprint:
+            logger.warning(
+                "code=CORTEX-E-PIN decision_provider=vesma without a live embedder "
+                "fingerprint — pin unassertable (recalibration-class refusal), "
+                "degrading to deterministic"
+            )
+            return DeterministicProvider()
+        try:
+            return VesmaProvider(embedder_fingerprint=embedder_fingerprint)
+        except CortexPinError as exc:
+            logger.warning(
+                "cortex recalibration event: %s — degrading to deterministic "
+                "(re-calibrate before re-enabling decision_provider=vesma)",
+                exc,
+            )
+            return DeterministicProvider()
+        except CortexError as exc:
+            logger.warning(
+                "code=%s decision_provider=vesma failed to load, degrading to "
+                "deterministic: %s",
+                exc.code,
+                exc,
+            )
+            return DeterministicProvider()
     key_env = settings.decision_jev_api_key_env
     key = os.environ.get(key_env, "")
     if not key:
