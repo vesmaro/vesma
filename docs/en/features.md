@@ -49,6 +49,26 @@ federation, every call is audited per agent. Full guide:
 |------|--------|
 | **Autonomy (~90%)** | Storage, search, context assembly, and protection run on their own. Hook discipline in an arbitrary harness comes from the deployed instructions and skills (soft automation), not hard wiring. Hard wiring exists in the Hermes adapter and partially in zcode; a generic hook mechanism for any harness is planned |
 | **Enrichment by an LLM ("brain")** | The pipeline runs; clustering, deduplication, and the quality gate are real. Qualitative text enrichment is currently a deterministic stub; an LLM provider plugs into the reserved interface point (planned) |
+| **Decision provider — the «semantic if» seam** | One typed interface (ADR-0004, canon) with three implementations: the deterministic baseline (default), the bundled `vesma-cortex-v1` model (below), and an opt-in external Jev adapter. The seam is not yet wired into product decisions — providers are exposed and measured, call-site wiring is a later wave |
+
+### Decision provider: vesma-cortex-v1 (W5d)
+
+The **cortex model** is a ~96 KB self-contained ONNX artifact (`vesma-cortex-v1`)
+bundled inside the wheel — a gradient-boosting classifier over 13 frozen
+pair features that returns a calibrated P(duplicate) for near-duplicate
+questions over prepared record pairs. Selected by pre-registered
+calibration against the deterministic baseline (sealed holdout:
+sensitivity 1.0, specificity 0.98, Brier 0.0053 vs baseline 0.81).
+
+Hard guarantees shipped with the bundle: eager load with a full
+validation pass (identity, ≤5 MB gate, weights sha256 into telemetry, a
+frozen feature-set hash, and an **embedder pin** — the model refuses
+loudly, as a recalibration event, if the live embedding model does not
+match the one it was calibrated on); zero network imports (AST-guarded);
+any `CORTEX-E-*` failure degrades to the deterministic rule with a
+machine-parseable warning — ingest is never blocked. Enabled with
+`decision_provider = "vesma"` in config; **off by default** — flipping
+the flag is an owner decision after field experience.
 
 ## Planned
 
@@ -86,6 +106,7 @@ v4.0.0 codebase — 26 tools registered at the time, skill pack
 in `integrations/skills/`, pipeline stages in `src/vesmaro/pipeline/`,
 benchmark stands in `benchmarks/`. Updated 2026-09-05; meta-level roadmap rows
 added 2026-09-13 per ADR-0025; tool count refreshed 2026-09-28 — 38 tools in
-`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, on by default)._
+`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, on by default);
+decision-provider/cortex section added 2026-10-01 (W5d, flag off by default)._
 
-_Last updated: 2026-09-28_
+_Last updated: 2026-10-01_
