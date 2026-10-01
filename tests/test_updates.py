@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from vesmaro import updates
@@ -120,6 +121,90 @@ def test_no_update_when_latest_le_installed(cache_file: Path) -> None:
     assert info.update_available is False
 
 
+def _seed_cache(path: Path, *, latest: str, ok: bool, checked_at: datetime) -> None:
+    """Hand-write a cache payload in the on-disk schema."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "checked_at": checked_at.isoformat(),
+                "dist": "vesma-memory-server",
+                "installed": "5.0.0",
+                "latest": latest,
+                "ok": ok,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+# ── self-upgrade drift: fresh cache older than the install (#460) ────────────
+
+
+def test_fresh_positive_cache_with_installed_newer_refetches(
+    cache_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(updates, "_md_version", lambda name: "5.1.2")
+    _seed_cache(cache_file, latest="5.1.0", ok=True, checked_at=datetime.now(UTC))
+    calls: list[str] = []
+
+    def fetcher(dist: str) -> str:
+        calls.append(dist)
+        return "5.1.2"
+
+    info = check_for_update(cache_path=cache_file, fetcher=fetcher)
+    assert info is not None
+    assert info.latest == "5.1.2"
+    assert info.update_available is False
+    assert info.stale is False
+    assert calls == ["vesma-memory-server"], "stale-drift cache must re-check once"
+    payload = json.loads(cache_file.read_text())
+    assert payload["latest"] == "5.1.2"
+    assert payload["ok"] is True
+
+    def never(dist: str) -> str:  # pragma: no cover — must never run
+        raise AssertionError("fetcher called despite refreshed cache")
+
+    info2 = check_for_update(cache_path=cache_file, fetcher=never)
+    assert info2 is not None
+    assert info2.latest == "5.1.2"
+
+
+def test_fresh_positive_cache_drift_refetch_failure_serves_stale(
+    cache_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(updates, "_md_version", lambda name: "5.1.2")
+    _seed_cache(cache_file, latest="5.1.0", ok=True, checked_at=datetime.now(UTC))
+
+    def fetcher(dist: str) -> str:
+        raise OSError("no network")
+
+    info = check_for_update(cache_path=cache_file, fetcher=fetcher)
+    assert info is not None
+    assert info.stale is True
+    assert info.latest == "5.1.0"
+    assert info.update_available is False
+    payload = json.loads(cache_file.read_text())
+    assert payload["ok"] is False
+    assert payload["latest"] == "5.1.0"
+
+
+def test_fresh_negative_cache_drift_serves_stale_without_fetch(
+    cache_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(updates, "_md_version", lambda name: "5.1.2")
+    _seed_cache(cache_file, latest="5.1.0", ok=False, checked_at=datetime.now(UTC))
+
+    def never(dist: str) -> str:  # pragma: no cover — must never run
+        raise AssertionError("fresh negative cache must not be re-fetched")
+
+    info = check_for_update(cache_path=cache_file, fetcher=never)
+    assert info is not None
+    assert info.stale is True
+    assert info.latest == "5.1.0"
+
+
 # ── offline behaviour ────────────────────────────────────────────────────────
 
 
@@ -224,8 +309,7 @@ def test_config_knob_disables_check(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("fetcher called while config-disabled")
 
     assert (
-        check_for_update(settings, cache_path=Path("/nonexistent/x.json"), fetcher=fetcher)
-        is None
+        check_for_update(settings, cache_path=Path("/nonexistent/x.json"), fetcher=fetcher) is None
     )
 
 
@@ -253,7 +337,8 @@ def isolated_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: 
 
 
 def test_stats_payload_includes_update_available(
-    isolated_manager, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    isolated_manager,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     monkeypatch.setattr(updates, "check_for_update", lambda settings=None, **kw: _info())
     payload = isolated_manager.stats()
@@ -263,14 +348,16 @@ def test_stats_payload_includes_update_available(
 
 
 def test_stats_payload_none_when_check_returns_none(
-    isolated_manager, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    isolated_manager,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     monkeypatch.setattr(updates, "check_for_update", lambda settings=None, **kw: None)
     assert isolated_manager.stats()["update_available"] is None
 
 
 def test_stats_payload_none_when_config_disabled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     from vesmaro.cli._manager import get_manager, reset_manager
 
@@ -437,9 +524,7 @@ def test_update_yes_runs_pip_user_upgrade(
     assert "--upgrade" in cmd
     assert "vesma" in cmd
     assert "restart clients" in result.output
-    history = json.loads(
-        (quiet_home / ".local/share/vesma/update-history.json").read_text()
-    )
+    history = json.loads((quiet_home / ".local/share/vesma/update-history.json").read_text())
     assert history[0]["from"] == INSTALLED
     assert history[0]["rc"] == 0
 
@@ -479,9 +564,7 @@ def test_update_yes_adds_break_system_packages_under_pep668(
     assert "--break-system-packages" in recorded[0]
 
 
-def test_update_yes_records_failure_rc(
-    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_yes_records_failure_rc(quiet_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd, timeout=900):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="pip exploded")
 
@@ -489,9 +572,7 @@ def test_update_yes_records_failure_rc(
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 1
-    history = json.loads(
-        (quiet_home / ".local/share/vesma/update-history.json").read_text()
-    )
+    history = json.loads((quiet_home / ".local/share/vesma/update-history.json").read_text())
     assert history[0]["rc"] == 1
 
 
@@ -521,6 +602,248 @@ def test_update_rejects_unknown_scope(quiet_home: Path, monkeypatch: pytest.Monk
     result = _invoke_update(["--yes", "--scope=binaries"], monkeypatch)
     assert result.exit_code == 1
     assert "only --scope=user" in result.output
+
+
+# ── CLI: interactive confirm by default + -y alias (#460) ────────────────────
+
+
+@pytest.fixture
+def no_pypi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the apply path fully offline: inject the PyPI answer."""
+    monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
+
+
+@pytest.fixture
+def pending_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: _info())
+    monkeypatch.setattr(updates_cli, "_pep668_externally_managed", lambda: False)
+
+
+def _spy_confirm(monkeypatch: pytest.MonkeyPatch, answer: bool) -> list[str]:
+    calls: list[str] = []
+
+    def fake_confirm(prompt: str, **kwargs: object) -> bool:
+        calls.append(str(prompt))
+        return answer
+
+    monkeypatch.setattr(typer, "confirm", fake_confirm)
+    return calls
+
+
+@pytest.fixture
+def forbid_pip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any subprocess call in a check-only test is a failure."""
+
+    def forbidden(cmd, timeout=900):  # pragma: no cover — exercised via assertion
+        raise AssertionError(f"subprocess invoked on a check-only path: {cmd}")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", forbidden)
+
+
+def test_update_plain_tty_pending_confirm_yes_applies(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=True)
+
+    result = _invoke_update([], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert calls == ["Apply update?"], "interactive default must ask before applying"
+    assert recorded, "confirm-yes must run the pip upgrade"
+    assert "restart clients" in result.output
+    history = json.loads((quiet_home / ".local/share/vesma/update-history.json").read_text())
+    assert history[0]["rc"] == 0
+
+
+def test_update_plain_tty_confirm_no_stays_check_only(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=False)
+
+    result = _invoke_update([], monkeypatch)
+    assert result.exit_code == 0
+    assert calls == ["Apply update?"]
+    assert "UPDATE AVAILABLE" in result.output, "the report must still be shown"
+
+
+def test_update_plain_nontty_pending_check_only_with_hint(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: False)
+
+    result = _invoke_update([], monkeypatch)
+    assert result.exit_code == 0
+    assert "apply with: vesma update --yes" in result.output
+    assert "UPDATE AVAILABLE" in result.output
+
+
+def test_update_plain_no_pending_never_prompts(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(
+        updates_cli,
+        "check_for_update",
+        lambda settings=None, **kw: _info(update_available=False, latest="5.1.1"),
+    )
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=True)
+
+    result = _invoke_update([], monkeypatch)
+    assert result.exit_code == 0
+    assert not calls, "no pending update — no prompt"
+
+
+def test_update_check_flag_never_prompts_even_when_pending(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=True)
+
+    result = _invoke_update(["--check"], monkeypatch)
+    assert result.exit_code == 0
+    assert not calls, "--check is always check-only"
+    assert "apply with" not in result.output
+
+
+def test_update_y_alias_applies_without_prompt(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=True)
+
+    result = _invoke_update(["-y"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert not calls, "-y must skip the prompt"
+    assert recorded, "-y must apply"
+
+
+# ── CLI: quiet pip capture + --verbose (#460) ────────────────────────────────
+
+
+def test_update_yes_quiet_pip_success_prints_summary_line(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    firehose = "\n".join(f"Requirement already satisfied: noise-{i:02d}" for i in range(20))
+    versions = iter([("vesma", INSTALLED), ("vesma", LATEST)])
+
+    def fake_run(cmd, timeout=900):
+        return subprocess.CompletedProcess(cmd, 0, stdout=firehose, stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: next(versions))
+    result = _invoke_update(["--yes"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert f"pip: vesma {INSTALLED} → {LATEST}" in result.output
+    assert "Requirement already satisfied" not in result.output
+    assert "$ " not in result.output, "quiet mode must not echo the command lines"
+
+
+def test_update_yes_quiet_pip_already_current(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_run(cmd, timeout=900):
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: INSTALLED)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "already current" in result.output
+
+
+def test_update_yes_verbose_prints_full_pip_output(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    firehose = "\n".join(f"Requirement already satisfied: noise-{i:02d}" for i in range(20))
+
+    def fake_run(cmd, timeout=900):
+        return subprocess.CompletedProcess(cmd, 0, stdout=firehose, stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes", "--verbose"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "Requirement already satisfied: noise-00" in result.output
+    assert "Requirement already satisfied: noise-19" in result.output
+    assert "$ " in result.output, "verbose mode echoes the command lines as before"
+
+
+def test_update_yes_quiet_pip_failure_shows_tail_and_verbose_hint(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    firehose = "\n".join(f"Collecting noise-{i:02d}" for i in range(25))
+
+    def fake_run(cmd, timeout=900):
+        return subprocess.CompletedProcess(cmd, 1, stdout=firehose, stderr="pip exploded")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes"], monkeypatch)
+    assert result.exit_code == 1
+    assert "pip upgrade failed" in result.output
+    assert "pip exploded" in result.output
+    assert "Collecting noise-24" in result.output, "the captured tail must be shown"
+    assert "Collecting noise-09" not in result.output, "only the tail, not the firehose"
+    assert "re-run with --verbose" in result.output
+
+
+def test_update_check_installed_newer_than_latest_wording(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Wide console: rich would otherwise wrap the table Note cell and break
+    # the exact-phrase assertion below.
+    monkeypatch.setenv("COLUMNS", "300")
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", "5.1.2"))
+    monkeypatch.setattr(
+        updates_cli,
+        "check_for_update",
+        lambda settings=None, **kw: _info(update_available=False, latest="5.1.1"),
+    )
+    result = _invoke_update([], monkeypatch)
+    assert result.exit_code == 0
+    assert "newer than published latest (local build?)" in result.output
+    assert "up to date" not in result.output
 
 
 # ── CLI: timer install / removal ─────────────────────────────────────────────

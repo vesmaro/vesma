@@ -247,6 +247,11 @@ def check_for_update(
     offline machines pay the timeout at most once per hour. Any error —
     opt-out, missing dist, broken cache, network — returns ``None``.
 
+    Self-upgrade drift (issue #460): a fresh positive cache whose
+    ``latest`` is OLDER than the locally installed version predates the
+    install and is re-checked synchronously (one capped GET); on failure
+    the previous answer is served with ``stale=True``.
+
     ``cache_path``/``fetcher``/``now`` are injection points for tests.
     """
     try:
@@ -275,7 +280,20 @@ def check_for_update(
         moment = now or datetime.now(UTC)
         cached = _read_cache(path)
         if cached is not None and _cache_fresh(cached, moment):
-            return _info_from_cache(cached, dist, installed)
+            info = _info_from_cache(cached, dist, installed)
+            if info is None or not cached.get("ok", True):
+                # Unusable payload, or a fresh NEGATIVE-cache entry: the 1h
+                # negative TTL already bounds the re-check cost — the cached
+                # answer (possibly ``None``) stands, exactly as before #460.
+                return info
+            if version_key(installed) <= version_key(info.latest):
+                return info
+            # Installed is NEWER than the cached latest on a positive cache
+            # (issue #460): a self-upgrade landed after this entry was
+            # written — the cache predates the world change, so it is stale
+            # by definition. Fall through to ONE synchronous re-check (the
+            # fetch block below; on failure it keeps the previous answer
+            # with ``stale=True``) and the caller marks the drift honestly.
 
         do_fetch = fetcher or fetch_latest
         try:

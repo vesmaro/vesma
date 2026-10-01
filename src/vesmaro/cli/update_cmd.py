@@ -2,16 +2,22 @@
 
 Modes:
 
-* ``vesma update`` / ``vesma update --check`` — report every update
-  surface found on THIS machine: the pip dist that ``pip --user`` would
-  upgrade (installed vs latest), the global npm package, the host
-  prod-venvs and the Go binaries. Only pip (+ npm with ``--yes``) is
-  ever changed; prod-venvs and Go binaries are report-only by design.
-* ``vesma update --yes --scope=user`` — upgrade the installed dist via
+* ``vesma update`` — report every update surface found on THIS machine
+  (installed vs latest pip dist, the global npm package, the host
+  prod-venvs, the Go binaries) and — in an interactive terminal, when a
+  pip update is pending — ask ``Apply update? [y/N]`` and apply on yes
+  (issue #460). Non-TTY contexts (pipes/CI) stay check-only and print
+  ``apply with: vesma update --yes``. ``--check`` is always check-only.
+  Only pip (+ npm) is ever changed; prod-venvs and Go binaries are
+  report-only by design.
+* ``vesma update --yes`` (alias ``-y``) — skip the prompt and apply:
+  upgrade the installed dist via
   ``<python> -m pip install --user --upgrade`` (``--break-system-packages``
   appended only under a PEP 668 externally-managed interpreter), update
   the global npm package best-effort, append a record to
-  ``~/.local/share/vesma/update-history.json``.
+  ``~/.local/share/vesma/update-history.json``. Pip output is captured —
+  one summary line per surface; ``--verbose`` prints the full pip output
+  (and it is shown as a tail automatically on failure).
 * ``vesma update --to <version>`` — the rollback path: same, but pinned
   (``pip install --user <dist>==<version>``).
 * ``vesma update --install-timer`` / ``--uninstall-timer`` — install or
@@ -41,9 +47,11 @@ from rich.table import Table
 from vesmaro.updates import (
     CANDIDATE_DISTS,
     HISTORY_FILENAME,
+    UpdateInfo,
     check_for_update,
     detect_installed_dist,
     fetch_latest,
+    version_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,9 +175,7 @@ def _go_binaries() -> list[str]:
 # ── subprocess helpers (injection points for tests) ──────────────────────────
 
 
-def _run_cmd(
-    cmd: list[str], timeout: int = 900
-) -> subprocess.CompletedProcess[str] | None:
+def _run_cmd(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str] | None:
     """Run a subprocess, returning ``None`` instead of raising on failure."""
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -189,6 +195,18 @@ def _pep668_externally_managed() -> bool:
 
     stdlib = sysconfig.get_path("stdlib")
     return bool(stdlib) and (Path(stdlib) / "EXTERNALLY-MANAGED").exists()
+
+
+def _stdin_is_tty() -> bool:
+    """True when stdin is an interactive terminal (gates the confirm prompt).
+
+    Injection point for tests: CliRunner stdin is never a TTY, so tests
+    monkeypatch this to simulate an interactive ``vesma update``.
+    """
+    try:
+        return bool(sys.stdin.isatty())
+    except Exception:  # pragma: no cover — exotic stdin must never crash the CLI
+        return False
 
 
 def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -> None:
@@ -221,7 +239,8 @@ def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -
 # ── check mode ───────────────────────────────────────────────────────────────
 
 
-def _print_check(console: Console) -> None:
+def _print_check(console: Console) -> UpdateInfo | None:
+    """Print the surfaces table; return the pip update info it was built from."""
     detected = detect_installed_dist()
     info = check_for_update()
     latest = info.latest if info is not None else None
@@ -243,6 +262,10 @@ def _print_check(console: Console) -> None:
                 note = "latest unknown (offline or check disabled)"
             elif info is not None and info.update_available:
                 note = "UPDATE AVAILABLE — run 'vesma update --yes --scope=user'"
+            elif version_key(installed) > version_key(latest):
+                # installed > latest even after a fresh check (#460): the
+                # honest wording for a local build or an unpublished release.
+                note = "newer than published latest (local build?)"
             else:
                 note = "up to date"
             table.add_row(f"pip: {dist}", installed, latest or "?", note)
@@ -278,6 +301,7 @@ def _print_check(console: Console) -> None:
         "[dim]`vesma update --yes --scope=user` changes only the pip user-site "
         "(and the npm package); prod venvs and Go binaries are never touched.[/dim]"
     )
+    return info
 
 
 # ── install mode (--yes) ─────────────────────────────────────────────────────
@@ -294,7 +318,7 @@ def _build_pip_cmd(dist: str, target: str, pin: bool) -> list[str]:
     return cmd
 
 
-def _run_user_update(console: Console, to: str | None) -> None:
+def _run_user_update(console: Console, to: str | None, *, verbose: bool = False) -> None:
     detected = detect_installed_dist()
     if detected is None:
         console.print(
@@ -316,22 +340,47 @@ def _run_user_update(console: Console, to: str | None) -> None:
         pin = True
 
     cmd = _build_pip_cmd(dist, target, pin)
-    console.print(f"[cyan]$[/cyan] {' '.join(cmd)}")
+    if verbose:
+        console.print(f"[cyan]$[/cyan] {' '.join(cmd)}")
+    # Output is ALWAYS captured (#460: no pip firehose); --verbose chooses
+    # whether it is echoed in full or condensed to a one-line summary.
     proc = _run_cmd(cmd)
     rc = proc.returncode if proc is not None else 1
-    if proc is not None and proc.stdout:
-        console.print(proc.stdout.rstrip())
-    if proc is not None and proc.returncode != 0 and proc.stderr:
-        console.print(f"[red]{proc.stderr.rstrip()}[/red]")
+    if verbose:
+        if proc is not None and proc.stdout:
+            console.print(proc.stdout.rstrip())
+        if proc is not None and rc != 0 and proc.stderr:
+            console.print(f"[red]{proc.stderr.rstrip()}[/red]")
     _append_history(dist=dist, from_version=installed, to_version=target, rc=rc)
     if rc == 0:
-        console.print(f"[green]✓[/green] pip: {dist} {installed} → {target}")
+        if verbose:
+            console.print(f"[green]✓[/green] pip: {dist} {installed} → {target}")
+        else:
+            upgraded = detect_installed_dist()
+            new_version = upgraded[1] if upgraded is not None and upgraded[0] == dist else installed
+            if version_key(new_version) > version_key(installed):
+                console.print(f"[green]✓[/green] pip: {dist} {installed} → {new_version}")
+            else:
+                console.print(f"[green]✓[/green] pip: {dist} {installed} — already current")
     else:
-        console.print(f"[red]✗[/red] pip upgrade failed (rc={rc}); history recorded")
+        if verbose:
+            console.print(f"[red]✗[/red] pip upgrade failed (rc={rc}); history recorded")
+        else:
+            console.print(f"[red]✗[/red] pip upgrade failed (rc={rc}) — last pip output:")
+            if proc is not None:
+                combined = "\n".join(
+                    chunk.rstrip()
+                    for chunk in (proc.stdout or "", proc.stderr or "")
+                    if chunk.strip()
+                )
+                for line in combined.splitlines()[-15:]:
+                    console.print(line)
+            console.print("[dim]re-run with --verbose for the full pip log[/dim]")
 
     npm = shutil.which(NPM_BIN)
     if npm is not None and _npm_global_version(npm) is not None:
-        console.print(f"[cyan]$[/cyan] {npm} install -g {NPM_PACKAGE}@latest")
+        if verbose:
+            console.print(f"[cyan]$[/cyan] {npm} install -g {NPM_PACKAGE}@latest")
         npm_proc = _run_cmd([npm, "install", "-g", f"{NPM_PACKAGE}@latest"], timeout=600)
         if npm_proc is not None and npm_proc.returncode == 0:
             console.print(f"[green]✓[/green] npm: {NPM_PACKAGE} updated")
@@ -342,9 +391,7 @@ def _run_user_update(console: Console, to: str | None) -> None:
             )
 
     if rc == 0:
-        console.print(
-            "[yellow]restart clients (MCP/serve) to pick up the new version[/yellow]"
-        )
+        console.print("[yellow]restart clients (MCP/serve) to pick up the new version[/yellow]")
     else:
         raise typer.Exit(1)
 
@@ -411,7 +458,19 @@ def update(
     ] = False,
     yes: Annotated[
         bool,
-        typer.Option("--yes", help="Perform the update (pip --user; npm best-effort)."),
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Apply the update without prompting (pip --user; npm best-effort).",
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Print the full pip output instead of a one-line summary per surface "
+            "(on failure the last pip lines are shown either way).",
+        ),
     ] = False,
     scope: Annotated[
         str,
@@ -440,12 +499,14 @@ def update(
         ),
     ] = False,
 ) -> None:
-    """Check for updates / update the user-site install (issue #445).
+    """Check for updates / update the user-site install (issues #445, #460).
 
-    Without flags: a report of every update surface found on this machine
-    (pip dists, npm package, prod venvs, Go binaries). Add --yes
-    --scope=user to actually upgrade the pip user-site (and npm), or --to
-    <version> to pin a specific (rollback) version.
+    Without flags: the surfaces report, then — in an interactive terminal,
+    when a pip update is pending — a confirmation prompt before applying
+    (pipes/CI stay check-only and print ``apply with: vesma update --yes``).
+    ``--yes``/``-y`` applies without prompting; ``--verbose`` prints the
+    full pip output; ``--to <version>`` pins a specific (rollback) version
+    (apply it with ``--yes``/``-y``). ``--check`` never applies or prompts.
     """
     console = Console()
     if install_timer and uninstall_timer:
@@ -464,6 +525,15 @@ def update(
         )
         raise typer.Exit(1)
     if yes:
-        _run_user_update(console, to)
+        _run_user_update(console, to, verbose=verbose)
         return
-    _print_check(console)
+    info = _print_check(console)
+    if check:
+        return
+    if info is None or not info.update_available:
+        return  # nothing pending — the report stands as-is
+    if _stdin_is_tty():
+        if typer.confirm("Apply update?", default=False):
+            _run_user_update(console, to, verbose=verbose)
+        return
+    console.print("[dim]apply with: vesma update --yes[/dim]")

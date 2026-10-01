@@ -813,7 +813,7 @@ health gate — `doctor` and `integration verify` govern health).
 
 ## `update`
 
-One command for the whole update family: report every update surface found on this machine, upgrade the pip user-site install (plus the global npm package, best-effort), pin a version for rollback, or manage the weekly auto-update timer.
+One command for the whole update family: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) plain `vesma update` stays check-only and prints `apply with: vesma update --yes`. It can also upgrade the pip user-site install non-interactively (plus the global npm package, best-effort), pin a version for rollback, or manage the weekly auto-update timer.
 
 ```text
 vesma update [OPTIONS]
@@ -821,16 +821,19 @@ vesma update [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--check` | `false` | Report surfaces without changing anything (same as no flags). |
-| `--yes` | `false` | Perform the update: `pip install --user --upgrade`; the npm package is updated best-effort. |
+| `--check` | `false` | Report surfaces only — never applies, never prompts. |
+| `--yes`, `-y` | `false` | Apply without the confirmation prompt: `pip install --user --upgrade`; the npm package is updated best-effort. |
+| `--verbose` | `false` | Print the full pip output instead of a one-line summary per surface (on failure the last pip lines are shown either way). |
 | `--scope` | `user` | Update scope. Only `user` exists — prod venvs, Go binaries and containers are never auto-updated. |
-| `--to <version>` | — | Pin the pip target version (rollback path), e.g. `--to 5.1.1`. Requires `--yes`. |
+| `--to <version>` | — | Pin the pip target version (rollback path), e.g. `--to 5.1.1`. Requires `--yes`/`-y`. |
 | `--install-timer` | `false` | Install and enable the weekly systemd user update timer (`vesma-update.timer`, `Persistent=true`). |
 | `--uninstall-timer` | `false` | Disable and remove the timer and its service unit. |
 
+The update check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than the published latest, the report marks it `newer than published latest (local build?)` instead of `up to date`.
+
 ### Report-only surfaces
 
-The default report lists every update surface found on this machine. Only the pip user-site (and npm) is ever changed; prod venvs and Go binaries are report-only by design:
+The report lists every update surface found on this machine. Only the pip user-site (and npm) is ever changed; prod venvs and Go binaries are report-only by design:
 
 - **pip dist** — the surface `--yes` upgrades (`--break-system-packages` is appended automatically under PEP 668 externally-managed interpreters); every run appends a record to `~/.local/share/vesma/update-history.json`.
 - **npm `@vesmaro/vesma`** — upgraded best-effort with `--yes` when installed.
@@ -841,11 +844,17 @@ The default report lists every update surface found on this machine. Only the pi
 ### Example
 
 ```bash
-# Report all update surfaces
+# Report all update surfaces, then ask to apply (in a terminal)
 vesma update
 
-# Upgrade the user-site install
+# Check only (default behavior in pipes/CI)
+vesma update --check
+
+# Apply without the prompt (scripts, CI)
 vesma update --yes --scope=user
+
+# Apply with the full pip output
+vesma update -y --verbose
 
 # Roll back to a pinned version
 vesma update --yes --to 5.1.1

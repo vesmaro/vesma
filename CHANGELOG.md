@@ -5,6 +5,11 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **#460 — `vesma update` UX: interactive confirm by default, `-y` alias, quiet pip, stale-Latest drift after a self-upgrade** (`src/vesmaro/cli/update_cmd.py`, `src/vesmaro/updates.py`; docs `docs/en|ru/user/cli-reference.md`; tests `tests/test_updates.py` +14) — four defects from the owner's field test of 5.1.2. (1) Plain `vesma update` now shows the surfaces report and — in an interactive terminal, when a pip update is pending — asks `Apply update? [y/N]` and applies on yes; pipes/CI (non-TTY) keep the check-only behavior and print `apply with: vesma update --yes`; `--check` never applies or prompts. (2) `-y` is a full alias of `--yes` (both skip the prompt). (3) The pip firehose is gone: pip output is always captured — one summary line per surface (`pip: vesma-memory-server 5.1.1 → 5.1.2` or `already current`, detected by re-reading the installed version after the run); on failure the last ~15 captured lines are printed with a `re-run with --verbose` hint; the new `--verbose` flag restores the full pip output as before. (4) A fresh positive cache whose `latest` is OLDER than the installed version (written before a self-upgrade landed) is treated as stale and re-checked synchronously once (3s-capped; on failure the previous answer is served with `stale=True`); a fresh negative cache keeps its bounded no-refetch behavior; and when the installed version is still newer than the published latest, the report says `newer than published latest (local build?)` instead of `up to date`.
 
 ## [5.1.2] — 2026-10-02
 
