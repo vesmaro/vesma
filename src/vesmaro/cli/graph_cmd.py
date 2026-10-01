@@ -19,7 +19,7 @@ like the MCP surface. A service refusal prints its reason and exits 1
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -41,7 +41,7 @@ CLI_ACTOR = "cli-operator"
 ConfigOption = typer.Option(None, "--config", "-c", help="Path to config.yaml")
 
 
-def _service(config: str | None):
+def _service(config: str | None) -> Any:
     """Build the graph service over the CLI manager singleton."""
     from vesmaro.codegraph.service import get_graph_service
 
