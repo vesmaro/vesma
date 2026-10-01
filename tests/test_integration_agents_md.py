@@ -588,6 +588,46 @@ class TestRealTargetsSchema:
         assert str(target.mcp_config).endswith("opencode.json")
         assert str(target.deploy_map["agents_md"]).endswith(".config/opencode/AGENTS.md")
 
+    def test_codex_target_schema(self, real_config: TargetsConfig) -> None:
+        """H-2: codex — TOML MCP engine + ~/.codex/AGENTS.md block."""
+        target = real_config.get("codex")
+        assert target is not None
+        assert target.mcp_format == "codex"
+        assert target.mcp_config is not None
+        assert str(target.mcp_config).endswith(".codex/config.toml")
+        assert str(target.deploy_map["agents_md"]).endswith(".codex/AGENTS.md")
+        assert "skills" not in target.deploy_map  # no pack-compatible surface
+
+    def test_claude_code_target_schema(self, real_config: TargetsConfig) -> None:
+        """H-2: claude-code — user-scope mcpServers in ~/.claude.json + CLAUDE.md."""
+        target = real_config.get("claude-code")
+        assert target is not None
+        assert target.mcp_format == "agents"  # top-level mcpServers JSON
+        assert target.mcp_config is not None
+        assert str(target.mcp_config).endswith(".claude.json")
+        assert str(target.deploy_map["agents_md"]).endswith(".claude/CLAUDE.md")
+
+    def test_windsurf_target_schema(self, real_config: TargetsConfig) -> None:
+        """H-2: windsurf — MCP-only; built-in memories dir is never mapped."""
+        target = real_config.get("windsurf")
+        assert target is not None
+        assert target.mcp_format == "agents"
+        assert target.mcp_config is not None
+        assert str(target.mcp_config).endswith("windsurf/mcp_config.json")
+        assert target.deploy_map == {}
+        for mapped in target.deploy_map.values():
+            assert "memories" not in str(mapped)
+
+    def test_cursor_target_has_mcp(self, real_config: TargetsConfig) -> None:
+        """H-2: cursor gains the mcpServers JSON merge (instructions kept)."""
+        target = real_config.get("cursor")
+        assert target is not None
+        assert target.mcp_format == "agents"
+        assert target.mcp_config is not None
+        assert str(target.mcp_config).endswith(".cursor/mcp.json")
+        assert "instructions" in target.deploy_map  # pre-existing surface kept
+        assert "agents_md" not in target.deploy_map  # no .mdc guesswork
+
     def test_copilot_family_untouched(self, real_config: TargetsConfig) -> None:
         """Backward compatibility: Copilot-family targets gained no agents_md key."""
         for name in ("copilot", "generic-copilot", "cursor", "hermes", "pi"):

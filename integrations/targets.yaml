@@ -35,13 +35,23 @@ targets:
     format: copy
     precedence: overlay+mirror
 
+  # Cursor. The instructions pack copies into ~/.cursor/rules/ as stamped
+  # reference documents; the PRIMARY wiring is the MCP registration below
+  # (~/.cursor/mcp.json, top-level mcpServers — additive JSON merge).
+  # Deliberate smaller surface (ADR-0033 H-2): Cursor's native rule files
+  # are .mdc with its own frontmatter dialect, so no .mdc is generated —
+  # copy the behavioural rule from mcp-presets.md into Cursor's Rules UI.
   cursor:
     detect:
       - path: "~/.cursor/rules"
+      - path: "~/.cursor"
     deploy:
       instructions: "~/.cursor/rules/"
     format: copy
     precedence: overlay+mirror
+    mcp:
+      config: "~/.cursor/mcp.json"
+      format: agents
 
   hermes:
     detect:
@@ -81,8 +91,9 @@ targets:
   # <name>/SKILL.md; MCP registers into the top-level mcpServers key. The
   # always-on behavioral pack deploys as a stamped block inside
   # ~/.agents/AGENTS.md — the one shared channel for every harness that
-  # follows the AGENTS.md standard (Claude Code included: one mechanism,
-  # not a diverging CLAUDE.md writer).
+  # follows the AGENTS.md standard. Harnesses that want a NATIVE surface
+  # instead get a dedicated target below (claude-code → ~/.claude/CLAUDE.md,
+  # codex → ~/.codex/AGENTS.md); ~/.agents stays the portable fallback.
   agents:
     detect:
       - path: "~/.agents"
@@ -140,3 +151,60 @@ targets:
     mcp:
       config: "~/.pi/agent/extensions/vesma-mcp.ts"
       format: pi
+
+  # OpenAI Codex CLI. The always-on behavioral pack injects as a stamped
+  # block into ~/.codex/AGENTS.md (Codex reads it as global standing
+  # instructions — kind: agents_md, paired-block engine). MCP registers in
+  # ~/.codex/config.toml under [mcp_servers.vesma] — TOML, so this target
+  # uses the dedicated TOML-merge engine (ADR-0024 P-B.3): a surgical,
+  # idempotent table splice that preserves every byte outside the managed
+  # table (stdlib tomllib validates the file before and after; no
+  # third-party TOML writer). No skills/prompts dirs — Codex has no
+  # pack-compatible surface for them.
+  codex:
+    detect:
+      - path: "~/.codex/config.toml"
+      - path: "~/.codex"
+    deploy:
+      agents_md: "~/.codex/AGENTS.md"
+    format: copy
+    precedence: overlay+mirror
+    mcp:
+      config: "~/.codex/config.toml"
+      format: codex
+
+  # Claude Code. MCP registers at user scope in ~/.claude.json under the
+  # top-level mcpServers key (the documented user-scope location; the file
+  # also carries Claude Code's own state — the JSON merge is additive and
+  # preserves every other key as data, same engine as zcode/agents). The
+  # always-on behavioral pack injects as a stamped block into
+  # ~/.claude/CLAUDE.md — Claude Code's native global memory file
+  # (kind: agents_md, paired-block engine).
+  claude-code:
+    detect:
+      - path: "~/.claude.json"
+      - path: "~/.claude"
+    deploy:
+      agents_md: "~/.claude/CLAUDE.md"
+    format: copy
+    precedence: overlay+mirror
+    mcp:
+      config: "~/.claude.json"
+      format: agents
+
+  # Windsurf (Codeium). MCP-only target: the Cascade MCP config
+  # ~/.codeium/windsurf/mcp_config.json (top-level mcpServers, additive
+  # JSON merge). Two deliberate NOs (ADR-0033 H-2): Windsurf's built-in
+  # memory (~/.codeium/windsurf/memories/) is the harness's OWN canon — the
+  # engine overlays it, never edits it (precedence semantics); and Windsurf
+  # rules are workspace-level, UI-managed files with no stable global
+  # surface — no file-based instructions are deployed.
+  windsurf:
+    detect:
+      - path: "~/.codeium/windsurf"
+    deploy: {}
+    format: copy
+    precedence: overlay+mirror
+    mcp:
+      config: "~/.codeium/windsurf/mcp_config.json"
+      format: agents

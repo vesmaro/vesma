@@ -224,10 +224,10 @@ MCP-сервер — основная поверхность интеграци�
 | Харнесс | Самый быстрый путь |
 |---------|--------------------|
 | VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash`, затем перезагрузить окно |
-| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Cursor | вставить одну строку в `~/.cursor/mcp.json` |
+| Claude Code | `vesma integration setup --target claude-code` (нативный `CLAUDE.md` + MCP scope пользователя) или `claude mcp add --scope user vesma -- vesma mcp-server` |
+| Cursor | `vesma integration setup --target cursor` или вставить одну строку в `~/.cursor/mcp.json` |
 | OpenCode | вставить один блок в `~/.config/opencode/opencode.json` |
-| Codex / Windsurf | по одному TOML / JSON блоку |
+| Codex / Windsurf | `vesma integration setup --target codex` / `--target windsurf` (слияние в родной конфиг) или по одному TOML / JSON блоку |
 | ZCode, pi, Hermes Agent | `vesma integration setup --target zcode` / `--target pi` / `--target hermes` |
 | Всё остальное | [adapter-template.md](../../../integrations/adapter-template.md) |
 

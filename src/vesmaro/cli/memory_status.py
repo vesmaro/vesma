@@ -84,8 +84,16 @@ def _server_keys(cfg_path: Path | None, home: Path | None) -> dict[str, Any]:
     if not resolved.is_file():
         return {"vesma": False, "external": [], "config": None}
     try:
-        data = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        if resolved.suffix == ".toml":
+            # Codex config (~/.codex/config.toml) — TOML, server names sit
+            # under [mcp_servers.<name>]. KEYS only, as with JSON configs.
+            import tomllib
+
+            data: Any = tomllib.loads(resolved.read_text(encoding="utf-8"))
+        else:
+            data = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        # JSONDecodeError and TOMLDecodeError are both ValueError subclasses.
         return {"vesma": False, "external": [], "config": str(resolved)}
     if not isinstance(data, dict):
         return {"vesma": False, "external": [], "config": str(resolved)}
@@ -96,6 +104,8 @@ def _server_keys(cfg_path: Path | None, home: Path | None) -> dict[str, Any]:
         servers = mcp.get("servers") if isinstance(mcp.get("servers"), dict) else mcp
     if not isinstance(servers, dict):
         servers = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else None
+    if not isinstance(servers, dict):
+        servers = data.get("mcp_servers") if isinstance(data.get("mcp_servers"), dict) else None
     if not isinstance(servers, dict):
         return {"vesma": False, "external": [], "config": str(resolved)}
 

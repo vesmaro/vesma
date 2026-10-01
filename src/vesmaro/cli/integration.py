@@ -10,8 +10,13 @@ subcommands. It:
   later runs can detect stale files and safely uninstall only our own.
 * Injects the always-on behavioral pack (``agents_md`` kind) as a stamped
   BEGIN/END block INTO the user's ``AGENTS.md``-standard file (targets
-  ``agents``, ``zcode``, ``opencode``) — user content around the block is
-  never touched.
+  ``agents``, ``zcode``, ``opencode``, ``codex``, ``claude-code``) — user
+  content around the block is never touched.
+* Registers the MCP server per target: additive JSON merges that preserve
+  every other key (zcode, agents, cursor, claude-code, windsurf,
+  opencode), a surgical TOML table merge for the Codex config (stdlib
+  ``tomllib`` validation, byte-preserving outside the managed table), a
+  TypeScript bridge for Pi, and the historical ``mcp-setup.sh`` fallback.
 * Verifies deployed files against the current package version.
 * Updates stale files in place.
 * Uninstalls only stamped files — never user-created content.
@@ -43,6 +48,7 @@ import logging
 import os
 import re
 import shutil
+import tomllib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -142,6 +148,16 @@ LEGACY_SCHEMAS_MANIFEST_NAME = "mnemos-schemas.manifest.json"
 #: register, removed on unregister) during the migration window.
 MCP_SERVER_KEY = "vesma"
 MCP_LEGACY_SERVER_KEY = "mnemos"
+
+#: Codex (OpenAI Codex CLI) config root table for MCP servers —
+#: ``[mcp_servers.<name>]`` in ``~/.codex/config.toml``. Handled by the
+#: TOML-merge engine (ADR-0024 P-B.3), not the JSON one.
+CODEX_MCP_ROOT = "mcp_servers"
+
+#: A TOML table header line: ``[a.b]``, ``[[a.b]]``, optionally quoted and
+#: commented. Group ``name`` carries the raw path between the brackets
+#: (whitespace-trimmed; quotes are stripped by the caller when comparing).
+TOML_TABLE_HEADER_RE = re.compile(r"^\s*\[\s*\[?(?P<name>[^\[\]]+?)\]?\s*\]\s*(?:#.*)?$")
 
 #: Memory-switch precedence modes (ADR-0034, contract MS-0).
 #:
@@ -638,6 +654,95 @@ def read_agents_md_version(content: str) -> str | None:
     """Extract the version from the first mnemos block, or ``None``."""
     match = AGENTS_MD_BLOCK_RE.search(content)
     return match.group("version") if match else None
+
+
+# ── Codex TOML merge engine (ADR-0024 P-B.3) ──────────────────────────────────
+#
+# The Codex CLI config (``~/.codex/config.toml``) is TOML, and the stdlib
+# ``tomllib`` (3.11+) is deliberately read-only — there is no stdlib TOML
+# writer and no third-party dependency is allowed. The engine therefore
+# merges at the TEXT level: the managed ``[mcp_servers.<key>]`` region
+# (its header line through the line before the next table header) is
+# regenerated and spliced in place; every byte outside that region is
+# preserved verbatim. Both the original and the merged text are validated
+# with ``tomllib``, and the merge is additionally checked to change
+# nothing outside ``mcp_servers`` — any drift refuses the write
+# (fail-closed, never corrupt the user's config).
+
+
+def _toml_escape(value: str) -> str:
+    """Render a Python string as a TOML basic-string literal."""
+    out = value.replace("\\", "\\\\").replace('"', '\\"')
+    out = out.replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+    return f'"{out}"'
+
+
+def _toml_value(value: Any) -> str:
+    """Render a scalar as a TOML value literal (str/bool/int/float only)."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return _toml_escape(value)
+    raise ValueError(f"unsupported TOML value type: {type(value).__name__}")
+
+
+def _toml_header_name(raw: str) -> str:
+    """Normalize a TOML header path (trim whitespace, strip outer quotes)."""
+    name = raw.strip()
+    if len(name) >= 2 and name[0] == name[-1] and name[0] in ("'", '"'):
+        name = name[1:-1].strip()
+    return name
+
+
+def _toml_table_spans(text: str) -> list[tuple[str, int, int]]:
+    """All TOML table headers in *text* as ``(path, start, body_start)``.
+
+    ``start`` is the offset of the header line's first character;
+    ``body_start`` is the offset just after the header line's newline.
+    Multi-line values whose continuation lines happen to look like headers
+    can confuse this text-level scan — callers never trust it alone: every
+    produced merge is re-parsed and shape-compared before any write.
+    """
+    spans: list[tuple[str, int, int]] = []
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        match = TOML_TABLE_HEADER_RE.match(line)
+        if match:
+            spans.append((_toml_header_name(match.group("name")), offset, offset + len(line)))
+        offset += len(line)
+    return spans
+
+
+def _toml_locate_table(text: str, table: str) -> tuple[int, int] | None:
+    """Span of the ``[table]`` region: header start → next header / EOF.
+
+    Child tables (``[table.sub]``) are NOT part of the span — each has its
+    own header, so a span rewrite can never swallow their content.
+    """
+    spans = _toml_table_spans(text)
+    for i, (name, start, _) in enumerate(spans):
+        if name == table:
+            end = spans[i + 1][1] if i + 1 < len(spans) else len(text)
+            return start, end
+    return None
+
+
+def _codex_server_table(name: str, command: str, args: list[str], env: dict[str, Any]) -> str:
+    """Render the managed ``[mcp_servers.<name>]`` table text.
+
+    Shape mirrors the Codex preset (``integrations/mcp-presets.md``):
+    ``command``, ``args``, optional ``env`` inline table. Raises
+    ``ValueError`` for env values that have no minimal TOML rendering.
+    """
+    lines = [f"[{CODEX_MCP_ROOT}.{name}]"]
+    lines.append(f"command = {_toml_escape(command)}")
+    lines.append("args = [" + ", ".join(_toml_escape(a) for a in args) + "]")
+    if env:
+        body = ", ".join(f"{_toml_escape(k)} = {_toml_value(v)}" for k, v in env.items())
+        lines.append(f"env = {{ {body} }}")
+    return "\n".join(lines) + "\n"
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -1865,14 +1970,18 @@ class IntegrationManager:
     ) -> tuple[bool, str]:
         """Register the MCP server for a target (or the legacy VS Code path).
 
-        Targets that declare ``mcp.config`` in targets.yaml (zcode, agents)
-        are registered by an in-place JSON merge that preserves every other
-        key in the file. Targets without one fall back to ``mcp-setup.sh``
-        (VS Code ``mcp.json``), keeping the historical behaviour.
+        Targets that declare ``mcp.config`` in targets.yaml (zcode, agents,
+        cursor, claude-code, windsurf) are registered by an in-place JSON
+        merge that preserves every other key in the file; the ``codex``
+        target goes through the dedicated TOML-merge engine. Targets
+        without one fall back to ``mcp-setup.sh`` (VS Code ``mcp.json``),
+        keeping the historical behaviour.
         """
         target = self.targets.get(target_name) if target_name else None
         if target is not None and target.mcp_format == "pi":
             return self._register_mcp_pi(target)
+        if target is not None and target.mcp_format == "codex":
+            return self._register_mcp_toml(target, mnemos_bin=mnemos_bin)
         if target is not None and target.mcp_config is not None:
             return self._register_mcp_json(target, mnemos_bin=mnemos_bin)
         return self._register_mcp_script(mnemos_bin=mnemos_bin)
@@ -1898,6 +2007,190 @@ class IntegrationManager:
         if deployed_version != self.version:
             return False, f"{ext} is stale (v{deployed_version} != v{self.version})"
         return True, f"MCP bridge deployed: {ext} (restart Pi or /reload to connect)"
+
+    # ── MCP: Codex TOML-merge registration ────────────────────────────────────
+
+    def _register_mcp_toml(self, target: Target, *, mnemos_bin: str | None) -> tuple[bool, str]:
+        """Merge the ``vesma`` server table into the Codex TOML config.
+
+        See the module-level ``Codex TOML merge engine`` section: the merge
+        is a text-level splice of the managed ``[mcp_servers.vesma]``
+        region — every byte outside it is preserved, both texts are
+        validated with ``tomllib`` and the merged text must differ from
+        the original only inside ``mcp_servers`` (any drift refuses the
+        write). A legacy ``[mcp_servers.mnemos]`` entry that passes the
+        ownership evidence check is migrated to the brand-primary key in
+        the same pass; the user-tuned ``env`` values are kept (only
+        missing keys are filled in), mirroring the JSON engine.
+        """
+        cfg_path = target.mcp_config
+        assert cfg_path is not None  # guaranteed by register_mcp dispatch
+        try:
+            text = _read_user_text(cfg_path) if cfg_path.exists() else ""
+        except (OSError, UnicodeDecodeError) as exc:
+            return False, f"cannot read {cfg_path}: {exc}"
+        try:
+            data = tomllib.loads(text) if text.strip() else {}
+        except tomllib.TOMLDecodeError as exc:
+            return False, f"cannot parse {cfg_path}: {exc}"
+        servers = data.get(CODEX_MCP_ROOT)
+        if servers is not None and not isinstance(servers, dict):
+            return False, f"{cfg_path}: [{CODEX_MCP_ROOT}] is not a table"
+        servers = servers if isinstance(servers, dict) else {}
+
+        existing = servers.get(MCP_SERVER_KEY)
+        legacy = servers.get(MCP_LEGACY_SERVER_KEY)
+        ours = existing if isinstance(existing, dict) else None
+        if ours is None and isinstance(legacy, dict) and self._mcp_entry_is_ours(legacy):
+            ours = legacy  # stamp migration: legacy entry adopts the primary key
+        source_key = MCP_SERVER_KEY if isinstance(existing, dict) else MCP_LEGACY_SERVER_KEY
+
+        span: tuple[int, int] | None = None
+        if ours is not None:
+            span = _toml_locate_table(text, f"{CODEX_MCP_ROOT}.{source_key}")
+            if span is None:
+                # Present in parsed data but not as a plain [table]
+                # (inline table / dotted keys) — a text splice cannot edit
+                # it surgically; refuse rather than mint a redefinition.
+                return False, (
+                    f"{cfg_path}: [{CODEX_MCP_ROOT}.{source_key}] is not a plain TOML table "
+                    "(inline or dotted form) — manual merge required"
+                )
+
+        raw_env = ours.get("env") if ours else None
+        kept_env: dict[str, Any] = dict(raw_env) if isinstance(raw_env, dict) else {}
+        for key, value in self._mcp_env_defaults().items():
+            kept_env.setdefault(key, value)
+
+        bin_path = self._resolve_mnemos_bin(mnemos_bin)
+        try:
+            new_table = _codex_server_table(MCP_SERVER_KEY, bin_path, ["mcp-server"], kept_env)
+        except ValueError as exc:
+            return False, f"{cfg_path}: cannot render server table: {exc}"
+
+        if span is not None:
+            tail = text[span[1] :]
+            sep = "" if (not tail or tail.startswith("\n")) else "\n"
+            merged = text[: span[0]] + new_table + sep + tail
+        else:
+            base = text
+            if base and not base.endswith("\n"):
+                base += "\n"
+            if base.strip():
+                base += "\n"  # blank separator before the appended table
+            merged = base + new_table
+
+        ok, problem = self._validate_toml_merge(data, servers, merged)
+        if not ok:
+            return False, f"{cfg_path}: {problem}"
+        if merged == text:
+            return True, f"MCP server already registered in {cfg_path}"
+        try:
+            cfg_path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(cfg_path, merged)
+        except OSError as exc:
+            return False, f"cannot write {cfg_path}: {exc}"
+        return True, f"MCP server registered in {cfg_path}"
+
+    def _validate_toml_merge(
+        self,
+        original_data: dict[str, Any],
+        original_servers: dict[str, Any],
+        merged: str,
+    ) -> tuple[bool, str]:
+        """Fail-closed validation of a TOML merge — before any write.
+
+        The merged text must (a) parse, (b) keep every top-level table
+        outside ``mcp_servers`` equal (as parsed data) to the original and
+        (c) keep every foreign server entry inside ``mcp_servers`` equal.
+        A memory-preserving splice always satisfies all three; a violation
+        means the text scan misfired, so the merge is refused.
+        """
+        try:
+            check = tomllib.loads(merged) if merged.strip() else {}
+        except tomllib.TOMLDecodeError as exc:
+            return False, f"merged TOML failed validation ({exc}) — file left untouched"
+        before = {k: v for k, v in original_data.items() if k != CODEX_MCP_ROOT}
+        after = {k: v for k, v in check.items() if k != CODEX_MCP_ROOT}
+        if before != after:
+            return False, "merged TOML drifts outside [mcp_servers] — file left untouched"
+        merged_servers = check.get(CODEX_MCP_ROOT)
+        managed = (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY)
+        before_srv = {k: v for k, v in original_servers.items() if k not in managed}
+        after_srv = (
+            {k: v for k, v in merged_servers.items() if k not in managed}
+            if isinstance(merged_servers, dict)
+            else {}
+        )
+        if before_srv != after_srv:
+            return False, "merged TOML drifts into foreign MCP servers — file left untouched"
+        return True, ""
+
+    def _unregister_mcp_toml(self, target: Target) -> tuple[bool, str]:
+        """Remove the pack-owned ``[mcp_servers.vesma]``/``.mnemos`` tables.
+
+        The TOML mirror of :meth:`unregister_mcp`: a table is removed only
+        when its parsed entry passes the same ownership evidence check as
+        the JSON engine (:meth:`_mcp_entry_is_ours`); foreign tables,
+        unrelated config and everything outside the managed spans are
+        preserved as data. The merged text is re-validated with
+        ``tomllib`` before the atomic write.
+        """
+        cfg_path = target.mcp_config
+        assert cfg_path is not None  # guaranteed by unregister_mcp dispatch
+        if not cfg_path.exists():
+            return False, f"{cfg_path} does not exist — nothing to unregister"
+        try:
+            text = _read_user_text(cfg_path)
+        except (OSError, UnicodeDecodeError) as exc:
+            return False, f"cannot read {cfg_path}: {exc}"
+        try:
+            data = tomllib.loads(text) if text.strip() else {}
+        except tomllib.TOMLDecodeError as exc:
+            return False, f"cannot parse {cfg_path}: {exc}"
+        servers = data.get(CODEX_MCP_ROOT)
+        if not isinstance(servers, dict):
+            return False, f"{cfg_path}: no [{CODEX_MCP_ROOT}] table — nothing to unregister"
+
+        removed: list[str] = []
+        kept_foreign: list[str] = []
+        cuts: list[tuple[int, int]] = []
+        for key in (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY):
+            entry = servers.get(key)
+            if not isinstance(entry, dict):
+                continue
+            if not self._mcp_entry_is_ours(entry):
+                kept_foreign.append(key)
+                continue
+            span = _toml_locate_table(text, f"{CODEX_MCP_ROOT}.{key}")
+            if span is None:
+                return False, (
+                    f"{cfg_path}: [{CODEX_MCP_ROOT}.{key}] is not a plain TOML table "
+                    "(inline or dotted form) — manual removal required"
+                )
+            cuts.append(span)
+            removed.append(key)
+        if not removed:
+            note = "no vesma-owned MCP entry found"
+            if kept_foreign:
+                note += f" (foreign entry under {', '.join(kept_foreign)} kept untouched)"
+            return False, note
+
+        merged = text
+        for start, end in sorted(cuts, reverse=True):
+            merged = merged[:start] + merged[end:]
+
+        ok, problem = self._validate_toml_merge(data, servers, merged)
+        if not ok:
+            return False, f"{cfg_path}: {problem}"
+        try:
+            _atomic_write_text(cfg_path, merged)
+        except OSError as exc:
+            return False, f"cannot write {cfg_path}: {exc}"
+        note = f"MCP entry removed from {cfg_path}: {', '.join(removed)}"
+        if kept_foreign:
+            note += f"; foreign entry under {', '.join(kept_foreign)} kept untouched"
+        return True, note
 
     # ── MCP: JSON-merge registration (zcode / agents) ─────────────────────────
 
@@ -1982,7 +2275,8 @@ class IntegrationManager:
         """Remove the MCP server entry THIS pack registered (SEC-major #2).
 
         The reverse of :meth:`register_mcp` for JSON-merge targets (zcode,
-        agents, opencode). Ownership rules:
+        agents, cursor, claude-code, windsurf, opencode) and, via the TOML
+        engine, the codex target. Ownership rules:
 
         * only the pack's server keys (``vesma``, legacy ``mnemos``) are
           considered;
@@ -1997,6 +2291,8 @@ class IntegrationManager:
         script path manages its own registration and is not touched.
         """
         target = self.targets.get(target_name) if target_name else None
+        if target is not None and target.mcp_format == "codex":
+            return self._unregister_mcp_toml(target)
         if target is None or target.mcp_config is None or target.mcp_format in ("pi",):
             return False, "no JSON MCP registration known for this target — nothing to unregister"
 

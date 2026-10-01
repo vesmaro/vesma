@@ -32,8 +32,8 @@ Three levels — pick the strongest one your harness supports:
 
 | Level | Harnesses | How |
 |-------|-----------|-----|
-| **1 · Native target** | VS Code Copilot, Cursor, Hermes Agent, ZCode, pi, any `~/.agents`-standard tool | `mnemos integration setup --target <name>` — deploys the skill pack *and* registers the MCP server in one pass |
-| **2 · One-line preset** | Cursor, Claude Code, Codex, Windsurf, OpenCode, VS Code | paste one block from this page |
+| **1 · Native target** | VS Code Copilot, Cursor, Claude Code, Codex, Windsurf, Hermes Agent, ZCode, pi, any `~/.agents`-standard tool | `mnemos integration setup --target <name>` — deploys the skill pack *and* registers the MCP server in one pass |
+| **2 · One-line preset** | OpenCode, VS Code (or any Level-1 harness without the CLI installed) | paste one block from this page |
 | **3 · Adapter template** | anything else that speaks MCP stdio | [adapter-template.md](adapter-template.md) — Connect / Expose / Configure |
 
 The full behavioral-deployment mechanics (instructions, skills, prompt mode,
@@ -43,6 +43,9 @@ agent wiring) live in the
 ---
 
 ## Cursor
+
+Native target (deploys the pack and registers MCP in one pass):
+`mnemos integration setup --target cursor`. Manual path below.
 
 Config file: `~/.cursor/mcp.json`. Paste this one line inside the `mcpServers`
 object (create the file if it is your first server):
@@ -62,6 +65,11 @@ Then restart Cursor (or reload the window). The `mnemos_*` tools appear in the
 tools list.
 
 ## Claude Code
+
+Native target (deploys the always-on block into `~/.claude/CLAUDE.md` and
+merges the server into `~/.claude.json` at user scope — preserving Claude
+Code's own state keys): `mnemos integration setup --target claude-code`.
+Manual path below.
 
 One shell line (registers at user scope — available in every project):
 
@@ -83,6 +91,11 @@ Verify with `claude mcp list`. Restart running sessions to pick the server up.
 
 ## Codex
 
+Native target (injects the always-on block into `~/.codex/AGENTS.md` and
+merges the `[mcp_servers.vesma]` table into `config.toml`, byte-preserving
+everything else): `mnemos integration setup --target codex`. Manual path
+below.
+
 Config file: `~/.codex/config.toml`. Paste this block (note the underscore
 key — `mcp_servers`, not `mcp.servers`):
 
@@ -99,6 +112,10 @@ mkdir -p ~/.codex && printf '\n[mcp_servers.mnemos]\ncommand = "mnemos"\nargs = 
 ```
 
 ## Windsurf
+
+Native target (MCP-only — Windsurf's built-in `memories/` directory and its
+UI-managed workspace rules are never touched):
+`mnemos integration setup --target windsurf`. Manual path below.
 
 Config file: `~/.codeium/windsurf/mcp_config.json` (reachable from the Cascade
 toolbar: hammer icon → Configure). Paste inside `mcpServers`:

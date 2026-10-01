@@ -56,4 +56,4 @@ precedence_modes:
 attach_points:
   targets_config: integrations/targets.yaml
   artefact_kinds: [instructions, skills, prompts, extensions, schemas, agents_md]
-  mcp_registration: per-target (targets.yaml `mcp:` key; JSON merge or bridge)
+  mcp_registration: per-target (targets.yaml `mcp:` key; JSON merge, Codex TOML merge, or bridge)

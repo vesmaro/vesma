@@ -201,10 +201,10 @@ The MCP server is the primary integration surface: your agent harness spawns `ve
 | Harness | Fastest path |
 |---------|--------------|
 | VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash`, then reload the window |
-| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Cursor | paste one line into `~/.cursor/mcp.json` |
+| Claude Code | `vesma integration setup --target claude-code` (native `CLAUDE.md` + user-scope MCP), or `claude mcp add --scope user vesma -- vesma mcp-server` |
+| Cursor | `vesma integration setup --target cursor`, or paste one line into `~/.cursor/mcp.json` |
 | OpenCode | paste one block into `~/.config/opencode/opencode.json` |
-| Codex / Windsurf | one TOML / JSON block each |
+| Codex / Windsurf | `vesma integration setup --target codex` / `--target windsurf` (native config merge), or one TOML / JSON block each |
 | ZCode, pi, Hermes Agent | `vesma integration setup --target zcode` / `--target pi` / `--target hermes` |
 | Anything else | [adapter-template.md](../../../integrations/adapter-template.md) |
 

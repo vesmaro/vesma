@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import ClassVar
 
@@ -34,6 +35,7 @@ from vesmaro.cli.integration import (
     load_engine_manifest,
     load_targets,
     make_stamp,
+    read_agents_md_version,
     read_stamp,
     schemas_manifest,
     stamp_content,
@@ -3946,3 +3948,496 @@ class TestCliBrandStrings:
         assert "vesma integration update" in result.output
         assert "mnemos integration update" not in result.output
         assert "mnemos util-setup" not in result.output
+
+
+# ── H-2 harness targets: codex / cursor / claude-code / windsurf ─────────────
+
+
+class TestCodexTarget:
+    """OpenAI Codex CLI — TOML MCP merge + AGENTS.md block (ADR-0033 H-2).
+
+    The Codex config (``~/.codex/config.toml``) is TOML and stdlib
+    ``tomllib`` is read-only, so registration goes through a surgical
+    text-level table splice. The contract pinned here: user bytes outside
+    the managed ``[mcp_servers.vesma]`` table survive verbatim, the merge
+    is idempotent, refuses anything it cannot prove safe, and uninstalls
+    only evidence-owned entries.
+    """
+
+    USER_CONFIG: ClassVar[str] = (
+        "# user's codex config\n"
+        'model = "gpt-5"\n'
+        "\n"
+        "[profiles.fast]\n"
+        'model = "gpt-5-mini"\n'
+        "\n"
+        "[mcp_servers.foreign]\n"
+        'command = "/opt/foreign/x"\n'
+    )
+
+    @pytest.fixture
+    def codex_env(self, tmp_path: Path) -> tuple[IntegrationManager, Path, Path]:
+        """Fake home with ~/.codex + a pack carrying skills and agents_md."""
+        home = tmp_path / "home"
+        (home / ".codex").mkdir(parents=True)
+        pack = tmp_path / "integrations"
+        (pack / "skills").mkdir(parents=True)
+        (pack / "skills" / "probe-skill.md").write_text("# probe\n", encoding="utf-8")
+        (pack / "agents_md").mkdir()
+        (pack / "agents_md" / "vesma-always-on.md").write_text(
+            "# Always-on\n\nRecall at session start.\n", encoding="utf-8"
+        )
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "codex": {
+                            "detect": [{"path": str(home / ".codex")}],
+                            "deploy": {
+                                "skills": str(home / ".codex" / "skills") + "/",
+                                "agents_md": str(home / ".codex" / "AGENTS.md"),
+                            },
+                            "format": "copy",
+                            "precedence": "overlay+mirror",
+                            "mcp": {
+                                "config": str(home / ".codex" / "config.toml"),
+                                "format": "codex",
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_targets(pack / "targets.yaml", home=home)
+        mgr = IntegrationManager(version="9.9.9", pack_root=pack, targets_config=cfg, home=home)
+        return mgr, home, home / ".codex" / "config.toml"
+
+    def test_codex_target_schema(self, codex_env: tuple) -> None:
+        mgr, home, _ = codex_env
+        target = mgr.targets.get("codex")
+        assert target is not None
+        assert target.mcp_format == "codex"
+        assert target.mcp_config == home / ".codex" / "config.toml"
+        assert str(target.deploy_map["agents_md"]).endswith(".codex/AGENTS.md")
+        assert target.precedence == "overlay+mirror"
+
+    def test_register_mcp_codex_creates_config(self, codex_env: tuple) -> None:
+        mgr, home, cfg_path = codex_env
+        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert ok, note
+        data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        entry = data["mcp_servers"]["vesma"]
+        assert entry["command"] == "/bin/vesma"
+        assert entry["args"] == ["mcp-server"]
+        assert entry["env"]["VESMARO_DATA_DIR"] == str(home / ".mnemos/data")
+
+    def test_register_mcp_codex_merges_preserving_user_bytes(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        cfg_path.write_text(self.USER_CONFIG, encoding="utf-8")
+
+        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert ok, note
+
+        merged = cfg_path.read_text(encoding="utf-8")
+        # User bytes outside the managed table survive verbatim.
+        assert merged.startswith(self.USER_CONFIG)
+        data = tomllib.loads(merged)
+        assert data["model"] == "gpt-5"
+        assert data["profiles"]["fast"]["model"] == "gpt-5-mini"
+        assert data["mcp_servers"]["foreign"] == {"command": "/opt/foreign/x"}
+        assert data["mcp_servers"]["vesma"]["command"] == "/bin/vesma"
+
+    def test_register_mcp_codex_preserves_existing_env(self, codex_env: tuple) -> None:
+        mgr, home, cfg_path = codex_env
+        cfg_path.write_text(
+            '[mcp_servers.vesma]\ncommand = "old"\nenv = { VESMARO_DATA_DIR = "/custom/data" }\n',
+            encoding="utf-8",
+        )
+        ok, _ = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert ok
+        entry = tomllib.loads(cfg_path.read_text(encoding="utf-8"))["mcp_servers"]["vesma"]
+        assert entry["env"]["VESMARO_DATA_DIR"] == "/custom/data"  # user tuning kept
+        assert entry["env"]["VESMARO_VAULT__VAULT_PATH"] == str(home / ".mnemos/vault")
+        assert entry["command"] == "/bin/vesma"  # command refreshed
+
+    def test_register_mcp_codex_migrates_legacy_key(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        cfg_path.write_text(
+            '[mcp_servers.mnemos]\ncommand = "/usr/bin/mnemos"\nargs = ["mcp-server"]\n',
+            encoding="utf-8",
+        )
+        ok, _ = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert ok
+        data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        assert "mnemos" not in data["mcp_servers"]  # legacy key migrated
+        assert data["mcp_servers"]["vesma"]["command"] == "/bin/vesma"
+
+    def test_register_mcp_codex_idempotent(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        assert mgr.register_mcp("codex", mnemos_bin="/bin/vesma")[0]
+        first = cfg_path.read_text(encoding="utf-8")
+        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert ok
+        assert "already registered" in note
+        assert cfg_path.read_text(encoding="utf-8") == first
+
+    def test_register_mcp_codex_refuses_corrupt_toml(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        cfg_path.write_text("[broken\nthis is = not toml", encoding="utf-8")
+        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert not ok
+        assert "cannot parse" in note
+        assert cfg_path.read_text(encoding="utf-8") == "[broken\nthis is = not toml"
+
+    def test_register_mcp_codex_refuses_inline_table_form(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        original = 'mcp_servers = { vesma = { command = "x" } }\n'
+        cfg_path.write_text(original, encoding="utf-8")
+        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        assert not ok
+        assert "not a plain TOML table" in note
+        assert cfg_path.read_text(encoding="utf-8") == original
+
+    def test_unregister_mcp_codex_removes_ours_keeps_foreign(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        cfg_path.write_text(
+            self.USER_CONFIG + "[mcp_servers.vesma]\n"
+            'command = "/bin/vesma"\n'
+            'args = ["mcp-server"]\n',
+            encoding="utf-8",
+        )
+        ok, note = mgr.unregister_mcp("codex")
+        assert ok, note
+        data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        assert "vesma" not in data["mcp_servers"]
+        assert data["mcp_servers"]["foreign"] == {"command": "/opt/foreign/x"}
+        assert data["model"] == "gpt-5"
+
+    def test_unregister_mcp_codex_keeps_foreign_under_our_key(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        original = '[mcp_servers.vesma]\ncommand = "/opt/foreign/tool"\nargs = ["--serve"]\n'
+        cfg_path.write_text(original, encoding="utf-8")
+        ok, note = mgr.unregister_mcp("codex")
+        assert not ok
+        assert "foreign entry" in note
+        assert cfg_path.read_text(encoding="utf-8") == original
+
+    def test_unregister_mcp_codex_missing_file_is_noop(self, codex_env: tuple) -> None:
+        mgr, _, cfg_path = codex_env
+        assert not cfg_path.exists()  # fixture creates the dir, not the config
+        ok, note = mgr.unregister_mcp("codex")
+        assert not ok
+        assert "does not exist" in note
+
+    def test_codex_full_lifecycle(self, codex_env: tuple) -> None:
+        mgr, home, cfg_path = codex_env
+        ag_path = home / ".codex" / "AGENTS.md"
+        ag_path.parent.mkdir(parents=True, exist_ok=True)
+        user_content = "# My codex notes\n\nKeep answers short.\n"
+        ag_path.write_text(user_content, encoding="utf-8")
+
+        result = mgr.setup("codex")
+        assert result.deployed_count >= 2  # skill + agents_md block
+        assert result.mcp_registered
+        assert read_agents_md_version(ag_path.read_text(encoding="utf-8")) == "9.9.9"
+
+        verify = mgr.verify("codex")
+        assert verify.all_current, [f.status for f in verify.files]
+
+        uninstall = mgr.uninstall("codex")
+        assert uninstall.mcp_unregistered
+        assert ag_path.read_text(encoding="utf-8") == user_content  # block stripped
+        data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        assert "vesma" not in data.get("mcp_servers", {})
+
+    def test_shipped_registry_codex_roundtrip(self, tmp_path: Path) -> None:
+        """Production shape: real pack + real registry, codex target."""
+        home = tmp_path / "codex-home"
+        (home / ".codex").mkdir(parents=True)
+        cfg = load_targets(home=home)
+        mgr = IntegrationManager(version="9.9.9", pack_root=None, targets_config=cfg, home=home)
+
+        result = mgr.setup("codex")
+        assert result.mcp_registered
+        verify = mgr.verify("codex")
+        assert verify.all_current, [f.status for f in verify.files]
+
+        toml_path = home / ".codex" / "config.toml"
+        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+        assert data["mcp_servers"]["vesma"]["args"] == ["mcp-server"]
+        assert (
+            read_agents_md_version((home / ".codex" / "AGENTS.md").read_text(encoding="utf-8"))
+            == "9.9.9"
+        )
+
+        uninstall = mgr.uninstall("codex")
+        assert uninstall.mcp_unregistered
+        assert "vesma" not in tomllib.loads(toml_path.read_text(encoding="utf-8")).get(
+            "mcp_servers", {}
+        )
+
+
+class TestH2JsonTargets:
+    """cursor / claude-code / windsurf — additive JSON MCP merges (H-2)."""
+
+    @pytest.fixture
+    def h2_env(self, tmp_path: Path) -> tuple[IntegrationManager, Path]:
+        """Fake home with all three harness markers + a minimal pack."""
+        home = tmp_path / "home"
+        (home / ".cursor").mkdir(parents=True)
+        (home / ".claude").mkdir(parents=True)
+        (home / ".claude.json").write_text("{}\n", encoding="utf-8")
+        (home / ".codeium" / "windsurf").mkdir(parents=True)
+        (home / ".codeium" / "windsurf" / "memories").mkdir()  # built-in memory
+
+        pack = tmp_path / "integrations"
+        (pack / "instructions").mkdir(parents=True)
+        (pack / "instructions" / "vesma-memory.instructions.md").write_text(
+            "---\napplyTo: '**'\n---\n# Memory ops\n", encoding="utf-8"
+        )
+        (pack / "agents_md").mkdir()
+        (pack / "agents_md" / "vesma-always-on.md").write_text(
+            "# Always-on\n\nRecall at session start.\n", encoding="utf-8"
+        )
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "cursor": {
+                            "detect": [{"path": "~/.cursor"}],
+                            "deploy": {"instructions": "~/.cursor/rules/"},
+                            "format": "copy",
+                            "precedence": "overlay+mirror",
+                            "mcp": {"config": "~/.cursor/mcp.json", "format": "agents"},
+                        },
+                        "claude-code": {
+                            "detect": [{"path": "~/.claude.json"}, {"path": "~/.claude"}],
+                            "deploy": {"agents_md": "~/.claude/CLAUDE.md"},
+                            "format": "copy",
+                            "precedence": "overlay+mirror",
+                            "mcp": {"config": "~/.claude.json", "format": "agents"},
+                        },
+                        "windsurf": {
+                            "detect": [{"path": "~/.codeium/windsurf"}],
+                            "deploy": {},
+                            "format": "copy",
+                            "precedence": "overlay+mirror",
+                            "mcp": {
+                                "config": "~/.codeium/windsurf/mcp_config.json",
+                                "format": "agents",
+                            },
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_targets(pack / "targets.yaml", home=home)
+        mgr = IntegrationManager(version="9.9.9", pack_root=pack, targets_config=cfg, home=home)
+        return mgr, home
+
+    # ── cursor ────────────────────────────────────────────────────────────
+
+    def test_cursor_register_mcp_creates_config(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        ok, note = mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        assert ok, note
+        data = json.loads((home / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
+        assert data["mcpServers"]["vesma"]["command"] == "/bin/vesma"
+        assert data["mcpServers"]["vesma"]["args"] == ["mcp-server"]
+
+    def test_cursor_register_mcp_merges_preserving(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        cfg_path = home / ".cursor" / "mcp.json"
+        cfg_path.write_text(
+            json.dumps(
+                {
+                    "other": {"setting": True},
+                    "mcpServers": {"another": {"command": "x"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        ok, _ = mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        assert ok
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["other"] == {"setting": True}
+        assert data["mcpServers"]["another"] == {"command": "x"}
+        assert "vesma" in data["mcpServers"]
+
+    def test_cursor_uninstall_keeps_foreign_server(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        cfg_path = home / ".cursor" / "mcp.json"
+        mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["mcpServers"]["another"] = {"command": "x"}
+        cfg_path.write_text(json.dumps(data), encoding="utf-8")
+
+        result = mgr.uninstall("cursor")
+        assert result.mcp_unregistered
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert "vesma" not in data["mcpServers"]
+        assert data["mcpServers"]["another"] == {"command": "x"}
+
+    # ── claude-code ───────────────────────────────────────────────────────
+
+    def test_claude_code_agents_md_and_mcp(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        result = mgr.setup("claude-code", mnemos_bin="/bin/vesma")
+        assert result.mcp_registered
+
+        claude_md = home / ".claude" / "CLAUDE.md"
+        assert read_agents_md_version(claude_md.read_text(encoding="utf-8")) == "9.9.9"
+        data = json.loads((home / ".claude.json").read_text(encoding="utf-8"))
+        entry = data["mcpServers"]["vesma"]
+        assert entry["type"] == "stdio"
+        assert entry["command"] == "/bin/vesma"
+        assert entry["args"] == ["mcp-server"]
+
+    def test_claude_code_merges_into_populated_claude_json(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        cfg_path = home / ".claude.json"
+        cfg_path.write_text(
+            json.dumps(
+                {
+                    "numStartups": 7,
+                    "projects": {"/work/repo": {"allowedTools": ["Bash"]}},
+                    "mcpServers": {"pg-mcp": {"command": "pg"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        ok, _ = mgr.register_mcp("claude-code", mnemos_bin="/bin/vesma")
+        assert ok
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["numStartups"] == 7  # Claude Code's own state preserved
+        assert data["projects"]["/work/repo"]["allowedTools"] == ["Bash"]
+        assert data["mcpServers"]["pg-mcp"] == {"command": "pg"}
+        assert "vesma" in data["mcpServers"]
+
+    def test_claude_code_uninstall_restores_user_claude_md(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        claude_md = home / ".claude" / "CLAUDE.md"
+        user_content = "# My standing rules\n\nAlways answer in English.\n"
+        claude_md.write_text(user_content, encoding="utf-8")
+        mgr.setup("claude-code", mnemos_bin="/bin/vesma")
+        result = mgr.uninstall("claude-code")
+        assert claude_md.read_text(encoding="utf-8") == user_content
+        assert result.mcp_unregistered
+
+    # ── windsurf ──────────────────────────────────────────────────────────
+
+    def test_windsurf_mcp_only_target(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        windsurf = mgr.targets.get("windsurf")
+        assert windsurf is not None
+        assert windsurf.deploy_map == {}  # no file-based artefacts by design
+
+        result = mgr.setup("windsurf", mnemos_bin="/bin/vesma")
+        assert result.mcp_registered
+        cfg_path = home / ".codeium" / "windsurf" / "mcp_config.json"
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["mcpServers"]["vesma"]["command"] == "/bin/vesma"
+
+    def test_windsurf_setup_touches_nothing_but_mcp(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        memories = home / ".codeium" / "windsurf" / "memories"
+        builtin = memories / "session-1.json"
+        builtin.write_text('{"built-in": true}\n', encoding="utf-8")
+
+        mgr.setup("windsurf")
+        result = mgr.uninstall("windsurf")
+        assert result.removed == []  # no stamped files anywhere
+        assert builtin.read_text(encoding="utf-8") == '{"built-in": true}\n'
+        assert memories.exists()
+
+    def test_windsurf_unregister_keeps_foreign(self, h2_env: tuple) -> None:
+        mgr, home = h2_env
+        cfg_path = home / ".codeium" / "windsurf" / "mcp_config.json"
+        mgr.register_mcp("windsurf", mnemos_bin="/bin/vesma")
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["mcpServers"]["other-engine"] = {"command": "node"}
+        cfg_path.write_text(json.dumps(data), encoding="utf-8")
+
+        ok, _ = mgr.unregister_mcp("windsurf")
+        assert ok
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["mcpServers"]["other-engine"] == {"command": "node"}
+
+
+class TestH2RegistryAndDetect:
+    """The shipped registry exposes the four H-2 targets; detect lists them."""
+
+    def test_shipped_registry_contains_h2_targets(self) -> None:
+        cfg = load_targets()
+        names = {t.name for t in cfg.targets}
+        assert {"codex", "cursor", "claude-code", "windsurf"} <= names
+
+    def test_detect_lists_h2_targets_on_fake_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".codex").mkdir(parents=True)
+        (home / ".cursor").mkdir(parents=True)
+        (home / ".claude.json").write_text("{}\n", encoding="utf-8")
+        (home / ".codeium" / "windsurf").mkdir(parents=True)
+
+        cfg = load_targets(home=home)
+        import vesmaro.cli.util as util_mod
+
+        monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
+        result = runner.invoke(app, ["integration", "detect", "--home", str(home)])
+        assert result.exit_code == 0, result.output
+        for name in ("codex", "cursor", "claude-code", "windsurf"):
+            assert name in result.output, f"{name} missing from detect output"
+
+
+class TestMemoryStatusCodex:
+    """``memory status`` reads the Codex TOML config (keys only)."""
+
+    def test_codex_toml_keys_reported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".codex").mkdir(parents=True)
+        (home / ".codex" / "config.toml").write_text(
+            '[mcp_servers.vesma]\ncommand = "/bin/vesma"\n'
+            'env = { VESMARO_DATA_DIR = "/secret/data" }\n'
+            "\n"
+            '[mcp_servers.obsidian-mcp]\ncommand = "node"\n',
+            encoding="utf-8",
+        )
+        pack = tmp_path / "integrations"
+        (pack / "skills").mkdir(parents=True)
+        (pack / "targets.yaml").write_text(
+            yaml.dump(
+                {
+                    "targets": {
+                        "codex": {
+                            "detect": [{"path": str(home / ".codex")}],
+                            "deploy": {"skills": str(home / ".codex" / "skills") + "/"},
+                            "format": "copy",
+                            "mcp": {
+                                "config": str(home / ".codex" / "config.toml"),
+                                "format": "codex",
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_targets(pack / "targets.yaml")
+        mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
+        import vesmaro.cli.memory_status as ms_mod
+
+        monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
+        monkeypatch.setattr(ms_mod, "_manager", lambda home=None: mgr)
+
+        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+        assert result.exit_code == 0, result.output
+        assert "codex" in result.output
+        assert "obsidian-mcp" in result.output  # external engine KEY
+        for secret in ("/bin/vesma", "/secret/data"):  # values never leak
+            assert secret not in result.output

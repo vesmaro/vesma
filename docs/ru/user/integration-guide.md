@@ -94,17 +94,21 @@ vesma integration setup
 ```bash
 vesma integration setup --target copilot           # VS Code Copilot ~/.copilot/ (по умолчанию)
 vesma integration setup --target generic-copilot   # промпт-режим VS Code ~/.config/Code/User/prompts/
-vesma integration setup --target cursor            # Cursor ~/.cursor/
+vesma integration setup --target cursor            # Cursor ~/.cursor/ (MCP + инструкции)
 vesma integration setup --target zcode             # ZCode (нативные скиллы + конфиг MCP)
 vesma integration setup --target agents            # стандарт ~/.agents — Claude Code, Codex, Cursor, …
+vesma integration setup --target claude-code       # Claude Code ~/.claude/ (нативный CLAUDE.md + MCP)
+vesma integration setup --target codex             # OpenAI Codex CLI ~/.codex/ (нативный AGENTS.md + TOML MCP)
+vesma integration setup --target windsurf          # Windsurf (регистрация MCP)
 vesma integration setup --target pi                # агент Pi (бридж-расширение)
 vesma integration setup --target hermes            # Hermes Agent (нативный плагин)
 vesma integration setup --target all               # все обнаруженные цели
 ```
 
 Имена целей берутся из `integrations/targets.yaml`; `--help` выводит список для
-вашей установки. У Claude Code / Codex нет отдельных целей — они нативно читают
-цель `agents`.
+вашей установки. У Claude Code и Codex вдобавок есть НАТИВНЫЕ цели (см. ниже) —
+для машин, где они работают без стандарта `~/.agents`. Хранилище памяти одно
+и то же, поэтому одновременное развёртывание ни чему не конфликтует.
 
 ### Универсальные цели: ZCode и стандарт AGENTS.md
 
@@ -122,6 +126,39 @@ vesma integration setup --target all               # все обнаруженн
 установка на все инструменты. Слияние MCP аддитивное: существующие серверы,
 плагины и пользовательски настроенный `env` у записи `vesma` никогда не
 перезаписываются.
+
+### Нативные цели харнесов: Cursor, Claude Code, Codex, Windsurf
+
+Четыре харнеса получили собственные цели, чтобы каждый работал с движком
+через СВОЙ документированный конфиг (ADR-0033 H-2):
+
+| Цель | Регистрация MCP (аддитивное слияние) | Инструкции |
+|------|---------------------------------------|------------|
+| `cursor` | `~/.cursor/mcp.json` → ключ `mcpServers` верхнего уровня | справочный пак копируется в `~/.cursor/rules/` (со штампом); поведенческое правило добавьте через Rules UI Cursor |
+| `claude-code` | `~/.claude.json` → `mcpServers` (scope пользователя) | always-on блок внедряется в `~/.claude/CLAUDE.md` |
+| `codex` | `~/.codex/config.toml` → `[mcp_servers.vesma]` (TOML) | always-on блок внедряется в `~/.codex/AGENTS.md` |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json` → `mcpServers` | нет — правила Windsurf управляются через UI воркспейса; встроенный каталог `memories/` не трогается |
+
+Примечания по харнесам:
+
+- **Codex** — единственный TOML-конфиг. Слияние — хирургическая вставка
+  управляемой таблицы `[mcp_servers.vesma]`: каждый байт вне неё (ваш
+  `model`, профили, другие серверы) сохраняется дословно, файл
+  валидируется штатным TOML-парсером до и после, а всё, что движок не
+  может доказать безопасным (inline-таблица, битый файл), отклоняется с
+  внятной пометкой — файл никогда не остаётся полузаписанным.
+- **Claude Code** хранит своё состояние в `~/.claude.json` (счётчики
+  запусков, списки проектов). Слияние аддитивное: пишется только ключ
+  `mcpServers.vesma`, всё остальное сохраняется как данные. `CLAUDE.md`
+  сохраняет весь ваш контент — блок движка это штампованная область,
+  которую можно править вокруг, а uninstall вырезает ровно её.
+- **Windsurf** не развёртывает файлов: встроенная память
+  (`~/.codeium/windsurf/memories/`) принадлежит харнесу, а правила —
+  файлы уровня воркспейса, управляемые UI, без стабильной глобальной
+  поверхности. Регистрация MCP — и есть вся цель.
+- Все четыре поддерживают `--dry-run`, удаляют только то, что записали
+  (штампованные файлы + запись MCP `vesma` с проверкой принадлежности),
+  и повторный setup идемпотентен.
 
 ### Агент Pi
 
@@ -168,10 +205,13 @@ vesma integration setup --target zcode \
 |------|--------------|----------|-----------|
 | `copilot` | `~/.copilot/instructions/` | `~/.copilot/skills/` | — |
 | `generic-copilot` | — | — | `~/.config/Code/User/prompts/` |
-| `cursor` | `~/.cursor/rules/` | — | — |
+| `cursor` | `~/.cursor/rules/` | — | MCP в `~/.cursor/mcp.json` |
 | `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ плагин в `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<имя>/SKILL.md` | MCP в `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<имя>/SKILL.md` | MCP в `~/.agents/mcp.json` |
+| `claude-code` | always-on блок в `~/.claude/CLAUDE.md` | — | MCP в `~/.claude.json` |
+| `codex` | always-on блок в `~/.codex/AGENTS.md` | — | MCP в `~/.codex/config.toml` (TOML) |
+| `windsurf` | — | — | MCP в `~/.codeium/windsurf/mcp_config.json` |
 | `pi` | — | `~/.pi/agent/skills/<имя>/SKILL.md` | бридж: `~/.pi/agent/extensions/vesma-mcp.ts` |
 
 ---

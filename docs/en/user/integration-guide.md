@@ -93,17 +93,21 @@ Flags are always the custom variant — install to a specific harness only.
 ```bash
 vesma integration setup --target copilot           # VS Code Copilot ~/.copilot/ (default)
 vesma integration setup --target generic-copilot   # VS Code prompt mode ~/.config/Code/User/prompts/
-vesma integration setup --target cursor            # Cursor ~/.cursor/
+vesma integration setup --target cursor            # Cursor ~/.cursor/ (MCP + instructions)
 vesma integration setup --target zcode             # ZCode (native skills + MCP config)
 vesma integration setup --target agents            # ~/.agents standard — Claude Code, Codex, Cursor, …
+vesma integration setup --target claude-code       # Claude Code ~/.claude/ (native CLAUDE.md + MCP)
+vesma integration setup --target codex             # OpenAI Codex CLI ~/.codex/ (native AGENTS.md + TOML MCP)
+vesma integration setup --target windsurf          # Windsurf (MCP registration)
 vesma integration setup --target pi                # Pi coding agent (bridge extension)
 vesma integration setup --target hermes            # Hermes Agent (native plugin)
 vesma integration setup --target all               # every detected target
 ```
 
 Target names come from `integrations/targets.yaml`; `--help` lists them for
-your install. Claude Code / Codex have no dedicated target — they read the
-`agents` target natively.
+your install. Claude Code and Codex additionally have NATIVE targets (see
+below) for hosts where they run without the `~/.agents` standard — when
+both are deployed, the memory store is the same, so nothing conflicts.
 
 ### Universal targets: ZCode and the AGENTS.md standard
 
@@ -120,6 +124,39 @@ The `agents` target works for **any harness** that reads the AGENTS.md
 standard locations (ZCode, Claude Code, Codex, Cursor, …) — one install,
 every tool. The MCP merge is additive: existing servers, plugins, and a
 user-tuned `env` on the `vesma` entry are never overwritten.
+
+### Native harness targets: Cursor, Claude Code, Codex, Windsurf
+
+Four harnesses get their own target so each works with the engine through
+its OWN documented config surface (ADR-0033 H-2):
+
+| Target | MCP registration (additive merge) | Instructions |
+|--------|-----------------------------------|--------------|
+| `cursor` | `~/.cursor/mcp.json` → top-level `mcpServers` | reference pack copied to `~/.cursor/rules/` (stamped); add the behavioural rule via Cursor's Rules UI |
+| `claude-code` | `~/.claude.json` → top-level `mcpServers` (user scope) | always-on block injected into `~/.claude/CLAUDE.md` |
+| `codex` | `~/.codex/config.toml` → `[mcp_servers.vesma]` (TOML) | always-on block injected into `~/.codex/AGENTS.md` |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json` → `mcpServers` | none — Windsurf rules are workspace/UI-managed; the built-in `memories/` dir is never touched |
+
+Notes per harness:
+
+- **Codex** is the only TOML config. The merge is a surgical splice of the
+  managed `[mcp_servers.vesma]` table: every byte outside it (your `model`,
+  profiles, other servers) is preserved verbatim, the file is validated
+  with the stdlib TOML parser before and after, and anything the engine
+  cannot prove safe (an inline-table form, a broken file) is refused with
+  a clear note — never half-written.
+- **Claude Code** keeps its state in `~/.claude.json` (startup counts,
+  project lists). The merge is additive: only the `mcpServers.vesma` key
+  is written, everything else is preserved as data. `CLAUDE.md` keeps all
+  your content — the engine's block is a stamped region you can edit
+  around, and uninstall strips exactly that region.
+- **Windsurf** deploys no files: the built-in memory
+  (`~/.codeium/windsurf/memories/`) belongs to the harness, and rules are
+  workspace-level UI-managed files with no stable global surface. The
+  MCP registration is the whole target.
+- All four respect `--dry-run`, uninstall only what they wrote (stamped
+  files + the `vesma` MCP entry with evidence check), and re-running
+  setup is idempotent.
 
 ### Pi coding agent
 
@@ -163,10 +200,13 @@ target environment launches vesma through a wrapper or a different path.
 |--------|----------------|----------|-----------|
 | `copilot` | `~/.copilot/instructions/` | `~/.copilot/skills/` | — |
 | `generic-copilot` | — | — | `~/.config/Code/User/prompts/` |
-| `cursor` | `~/.cursor/rules/` | — | — |
+| `cursor` | `~/.cursor/rules/` | — | MCP in `~/.cursor/mcp.json` |
 | `hermes` | `~/.hermes/skills/` | `~/.hermes/skills/` (+ plugin in `~/.hermes/plugins/vesma/`) | — |
 | `zcode` | — | `~/.zcode/skills/<name>/SKILL.md` | MCP in `~/.zcode/cli/config.json` |
 | `agents` | — | `~/.agents/skills/<name>/SKILL.md` | MCP in `~/.agents/mcp.json` |
+| `claude-code` | always-on block in `~/.claude/CLAUDE.md` | — | MCP in `~/.claude.json` |
+| `codex` | always-on block in `~/.codex/AGENTS.md` | — | MCP in `~/.codex/config.toml` (TOML) |
+| `windsurf` | — | — | MCP in `~/.codeium/windsurf/mcp_config.json` |
 | `pi` | — | `~/.pi/agent/skills/<name>/SKILL.md` | bridge: `~/.pi/agent/extensions/vesma-mcp.ts` |
 
 ---
