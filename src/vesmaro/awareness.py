@@ -785,7 +785,7 @@ def _task_tag_from_row(row: Memory) -> str | None:
 
 def _picture_task_tag(
     mgr: MemoryManager, rows: list[Memory], *, context_prefix: str
-) -> tuple[str | None, int, int]:
+) -> tuple[str | None, int, int, dict[str, int]]:
     """Screen one agent's claimed task slug for picture echoing (C6).
 
     Mirrors the delta's ``goal_title`` pipeline pass-for-pass
@@ -802,6 +802,11 @@ def _picture_task_tag(
     half-secret slug echoing into the picture would re-introduce
     exactly what the scan exists to catch.
 
+    Returns ``(task, refused, redactions, patterns)`` — ``patterns``
+    (#456) carries the detector pattern NAMES that fired (log-safe
+    per-pattern counts, never values), even when the redacted slug is
+    dropped to ``None``.
+
     ``rows`` are the agent's task-tagged window rows, newest first
     (``list_recent``'s SQL ``ORDER BY created_at DESC``, preserved
     through the caller's grouping); ``rows[0]`` is the most recent
@@ -811,7 +816,7 @@ def _picture_task_tag(
     """
     claimed = _task_tag_from_row(rows[0]) if rows else None
     if claimed is None:
-        return None, 0, 0
+        return None, 0, 0, {}
     stripped = _strip_policy_markers(claimed)
     scan = mgr.scan_issuance_item(None, title=stripped, context=f"{context_prefix}:{rows[0].id}")
     if scan.refused:
@@ -821,10 +826,10 @@ def _picture_task_tag(
             rows[0].id,
             scan.reason,
         )
-        return None, 1, 0
+        return None, 1, 0, {}
     if scan.redactions:
-        return None, 0, scan.redactions
-    return scan.title or None, 0, scan.redactions
+        return None, 0, scan.redactions, dict(scan.redacted_patterns)
+    return scan.title or None, 0, scan.redactions, dict(scan.redacted_patterns)
 
 
 def _goal_tokens(text: str) -> frozenset[str]:
@@ -1023,6 +1028,7 @@ def project_delta(
 
     redactions = 0
     goals_refused = 0
+    patterns: dict[str, int] = {}
     for slot in slots:
         if slot["last_checkpoint_id"] is None:
             continue
@@ -1051,21 +1057,28 @@ def project_delta(
             )
             continue
         redactions += scan.redactions
+        for name, count in scan.redacted_patterns.items():
+            patterns[name] = patterns.get(name, 0) + count
         slot["goal_title"] = scan.title or None
 
+    delta_counts: dict[str, Any] = {
+        **counts,
+        "feed": len(rows),
+        "excluded_federated": excluded_federated,
+        "redactions": redactions,
+        "goals_refused": goals_refused,
+        "high_water": high_water.isoformat(),
+    }
+    if patterns:
+        # #456: pattern NAMES alongside the count (log-safe, the same
+        # shape policy as every other issuance surface) — never values.
+        delta_counts["redacted_patterns"] = patterns
     return {
         "project": project,
         "since": since_dt.isoformat(),
         "generated_at": now_dt.isoformat(),
         "agents": slots,
-        "counts": {
-            **counts,
-            "feed": len(rows),
-            "excluded_federated": excluded_federated,
-            "redactions": redactions,
-            "goals_refused": goals_refused,
-            "high_water": high_water.isoformat(),
-        },
+        "counts": delta_counts,
     }
 
 
@@ -1117,6 +1130,7 @@ def operational_picture(
     agents: list[dict[str, Any]] = []
     tasks_refused = 0
     redactions = 0
+    patterns: dict[str, int] = {}
     for slot in slots:
         # v0b: the agent's rows arrive newest-first (``list_recent``'s
         # SQL ``ORDER BY created_at DESC`` — sqlite_store; the picture
@@ -1130,11 +1144,13 @@ def operational_picture(
         task_rows = [
             m for m in agent_rows if _task_tag_from_row(m) is not None and is_context_admissible(m)
         ]
-        task, refused, reds = _picture_task_tag(
+        task, refused, reds, fired = _picture_task_tag(
             mgr, task_rows, context_prefix="awareness:picture:task"
         )
         tasks_refused += refused
         redactions += reds
+        for name, count in fired.items():
+            patterns[name] = patterns.get(name, 0) + count
         agents.append(
             {
                 "agent": slot["agent"],
@@ -1147,6 +1163,14 @@ def operational_picture(
             }
         )
     capped = agents[:AWARENESS_MAX_RENDERED_AGENTS]
+    picture_counts: dict[str, Any] = {
+        **counts,
+        "feed": len(rows),
+        "tasks_refused": tasks_refused,
+        "redactions": redactions,
+    }
+    if patterns:
+        picture_counts["redacted_patterns"] = patterns  # #456: names, not values
     return {
         "project": project,
         "generated_at": now_dt.isoformat(),
@@ -1154,12 +1178,7 @@ def operational_picture(
         "agents": capped,
         # Truncation observable (SPEC §5), never silent.
         "agents_capped_from": len(agents),
-        "counts": {
-            **counts,
-            "feed": len(rows),
-            "tasks_refused": tasks_refused,
-            "redactions": redactions,
-        },
+        "counts": picture_counts,
         "disclaimer": AWARENESS_DISCLAIMER,
     }
 
@@ -1418,21 +1437,26 @@ def compose_pre_llm_awareness(
     high_water = _parse_since(delta["counts"]["high_water"])
     new_cursor = (high_water + timedelta(microseconds=1)).isoformat()
     write_awareness_cursor(mgr, project=project, agent=agent, session=session, cursor=new_cursor)
+    meta: dict[str, Any] = {
+        "included": True,
+        "lane": AWARENESS_LANE,
+        "since": delta["since"],
+        "cursor": new_cursor,
+        "agents": [a["agent"] for a in delta["agents"][:AWARENESS_MAX_RENDERED_AGENTS]],
+        "picture_agents": [a["agent"] for a in picture["agents"]],
+        "conflict_hints": len(hints),
+        "redactions": delta["counts"]["redactions"],
+        "pinnable": False,
+        "disclaimer": AWARENESS_DISCLAIMER,
+    }
+    if delta["counts"].get("redacted_patterns"):
+        # #456: pattern names ride the meta next to the count (the
+        # delta goal leg's own redactions; present only when non-zero).
+        meta["redacted_patterns"] = delta["counts"]["redacted_patterns"]
     return {
         "text": text,
         "blocks": [*delta_blocks(delta), *picture_b],
-        "meta": {
-            "included": True,
-            "lane": AWARENESS_LANE,
-            "since": delta["since"],
-            "cursor": new_cursor,
-            "agents": [a["agent"] for a in delta["agents"][:AWARENESS_MAX_RENDERED_AGENTS]],
-            "picture_agents": [a["agent"] for a in picture["agents"]],
-            "conflict_hints": len(hints),
-            "redactions": delta["counts"]["redactions"],
-            "pinnable": False,
-            "disclaimer": AWARENESS_DISCLAIMER,
-        },
+        "meta": meta,
     }
 
 

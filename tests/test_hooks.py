@@ -200,6 +200,10 @@ class TestOnSessionStart:
         assert "quokka-boot" in item["content"]
         assert item["redactions"] == 0
         assert result["redactions"] == 0
+        # #456 shape policy: the pattern-name field is ABSENT on a clean
+        # issuance (never an empty dict), same as every other surface.
+        assert "redacted_patterns" not in result
+        assert "redacted_patterns" not in item
 
     def test_secret_in_checkpoint_redacted_on_this_channel(self, manager: MemoryManager) -> None:
         self._checkpoint(manager, f"# checkpoint\napi key {FAKE_AWS_KEY} for the deploy")
@@ -217,6 +221,8 @@ class TestOnSessionStart:
         assert "<REDACTED:aws-key>" in content
         assert result["redactions"] >= 1
         assert result["checkpoints"][0]["redacted_patterns"] == {"aws-key": 1}
+        # #456: the TOP-LEVEL total carries the merged pattern names too.
+        assert result["redacted_patterns"] == {"aws-key": 1}
 
     def test_no_checkpoints_is_empty_list(self, manager: MemoryManager) -> None:
         result = dispatch_hook(
