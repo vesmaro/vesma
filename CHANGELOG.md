@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ecosystem rebrand completed** — all sibling repositories moved to `vesma-*` names in the `vesmaro` org (`vesmaro-agent` / `vesmaro-cortex` / `vesmaro-canon` → `vesma-agent` / `vesma-cortex` / `vesma-canon`; `mnemos-eyes` → `vesma-eyes`; `mnemos-mesh` → `vesma-mesh`; `mnemos-vitals` → `vesma-vitals`); models `mnema-*` → `vesma-*` hash-preserving; GHCR packages `vesmaro/vesma` and `vesmaro/vesma-eyes` live. Documentation updated to the new names.
 
+### Fixed
+
+- **Version detection for pip installs** — `vesma --version` (and every consumer of `vesmaro.__version__`: CLI banner, `stats`, doctor) now resolves the installed distribution across the full post-rebrand family (`vesma` → `vesma-memory-server` → `vesmaro` → `mnemos-memory-server`). A clean `pip install vesma-memory-server` previously reported `mnemos 0.0.0+unknown` because the lookup chain missed the standalone server dist name. The `-V` banner now prints the canonical `vesma` brand (was `mnemos`); `tests/test_version.py` guard updated to the same chain.
+
 
 ## [5.1.1] — 2026-10-01 — the native auto-indexing ships for real
 

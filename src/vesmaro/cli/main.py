@@ -44,9 +44,9 @@ _verbose: bool = False
 
 def _version_callback(value: bool) -> None:
     if value:
-        from mnemos import __version__
+        from vesmaro import __version__
 
-        console.print(f"mnemos {__version__}")
+        console.print(f"vesma {__version__}")
         raise typer.Exit()
 
 

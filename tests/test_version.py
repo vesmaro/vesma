@@ -37,11 +37,15 @@ def test_version_matches_metadata() -> None:
         return None
 
     metadata_version = (
-        _installed("vesma") or _installed("vesmaro") or _installed("mnemos-memory-server")
+        _installed("vesma")
+        or _installed("vesma-memory-server")
+        or _installed("vesmaro")
+        or _installed("mnemos-memory-server")
     )
     assert metadata_version is not None, (
-        "no distribution metadata found for vesma (or legacy "
-        "vesmaro/mnemos-memory-server) — install with `pip install -e .`"
+        "no distribution metadata found for vesma (server dist "
+        "vesma-memory-server or legacy vesmaro/mnemos-memory-server) — "
+        "install with `pip install -e .`"
     )
     assert __version__ == metadata_version, (
         f"__version__ ({__version__}) != metadata ({metadata_version})"
