@@ -13,6 +13,7 @@ Validates three contracts:
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -423,3 +424,86 @@ async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
     assert len(names) == 39
     assert all(n.startswith("vesmaro_") for n in names)
     importlib.reload(mcp)
+
+
+# ---------------------------------------------------------------------------
+# #456: one-time server-updated notice on the first dispatch
+# ---------------------------------------------------------------------------
+
+
+class _MetaStore:
+    """Tiny stand-in for the sqlite meta surface (get/set only)."""
+
+    def __init__(self, initial: dict[str, str] | None = None) -> None:
+        self.meta: dict[str, str] = dict(initial or {})
+        self.fail = False
+
+    def get_meta(self, key: str) -> str | None:
+        if self.fail:
+            raise RuntimeError("store down")
+        return self.meta.get(key)
+
+    def set_meta(self, key: str, value: str) -> None:
+        if self.fail:
+            raise RuntimeError("store down")
+        self.meta[key] = value
+
+
+class TestServerUpdateHint:
+    """The mid-session upgrade is surfaced ONCE, on the first dispatch of
+    the process, as one appended line; the store meta is re-stamped so
+    the next process stays quiet. Fail-open on store errors."""
+
+    @pytest.fixture(autouse=True)
+    def _arm(self) -> Iterator[None]:
+        from vesmaro.mcp_server import _reset_server_update_state
+
+        _reset_server_update_state()
+        yield
+        _reset_server_update_state()
+
+    def _manager(self, store: _MetaStore) -> MagicMock:
+        mgr = MagicMock()
+        mgr.sqlite = store
+        mgr.list_tags.return_value = {}
+        return mgr
+
+    async def _dispatch(self, mgr: MagicMock) -> str:
+        from vesmaro.mcp_server import _call_tool_dispatch
+
+        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            content = await _call_tool_dispatch("mnemos_list_tags", {})
+        return content[0].text
+
+    async def test_hint_appears_exactly_once_after_version_change(self) -> None:
+        from vesmaro import __version__
+
+        store = _MetaStore({"last_reported_server_version": "0.0.1"})
+        mgr = self._manager(store)
+        first = await self._dispatch(mgr)
+        assert "vesma server updated: 0.0.1 → " in first
+        assert __version__ in first
+        assert store.meta["last_reported_server_version"] == __version__
+        second = await self._dispatch(mgr)
+        assert "server updated" not in second  # exactly once, meta re-stamped
+
+    async def test_no_hint_when_versions_match(self) -> None:
+        from vesmaro import __version__
+
+        store = _MetaStore({"last_reported_server_version": __version__})
+        text = await self._dispatch(self._manager(store))
+        assert "server updated" not in text
+
+    async def test_first_contact_writes_baseline_silently(self) -> None:
+        from vesmaro import __version__
+
+        store = _MetaStore()  # no meta yet — nothing to compare
+        text = await self._dispatch(self._manager(store))
+        assert "server updated" not in text
+        assert store.meta["last_reported_server_version"] == __version__
+
+    async def test_store_error_never_raises(self) -> None:
+        store = _MetaStore({"last_reported_server_version": "0.0.1"})
+        store.fail = True
+        text = await self._dispatch(self._manager(store))
+        assert "server updated" not in text  # skipped silently, no crash

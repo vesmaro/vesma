@@ -493,9 +493,7 @@ class TestSecretAllowlistService:
             )
             assert snippet["content"] == 'BODY = "clean fixture line"'
             rows = [
-                r
-                for r in allowlisted._audit.recent(PROJECT)
-                if r["reason"] == "allowlist-unpoison"
+                r for r in allowlisted._audit.recent(PROJECT) if r["reason"] == "allowlist-unpoison"
             ]
             assert rows and rows[0]["details"]["paths"] == ["fake_key_fixture.py"]
         finally:
@@ -515,15 +513,11 @@ class TestSecretAllowlistService:
         try:
             allowlisted.index_project(PROJECT, agent=AGENT)
             with pytest.raises(GraphToolError, match="PG4"):
-                allowlisted.get_code_snippet(
-                    PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT
-                )
+                allowlisted.get_code_snippet(PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT)
         finally:
             allowlisted.close()
 
-    def test_non_allowlisted_poisoning_unchanged(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_non_allowlisted_poisoning_unchanged(self, tmp_path: Path, mini_repo: Path) -> None:
         service, _ = make_service(tmp_path, mini_repo, secret_allowlist=["docs/**"])
         try:
             result = service.index_project(PROJECT, agent=AGENT)
@@ -531,9 +525,7 @@ class TestSecretAllowlistService:
             assert result["unpoisoned"] == []
             with pytest.raises(GraphToolError, match="POISONED"):
                 service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
-            assert all(
-                r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT)
-            )
+            assert all(r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT))
         finally:
             service.close()
 
@@ -769,9 +761,7 @@ class TestManualRegister:
             assert second["status"] == "already-registered"  # normpath-equal root
             assert len([p for p in main.list_projects() if p.name == "solo"]) == 1
             reused = [
-                r
-                for r in service._audit.recent("solo")
-                if r["action"] == "manual-register-reused"
+                r for r in service._audit.recent("solo") if r["action"] == "manual-register-reused"
             ]
             assert reused  # the auto-register-reused precedent
         finally:
@@ -846,9 +836,7 @@ class TestManualRegister:
         (provenance: the description marker it counts, which manual
         rows never carry). Config floor is 1, so the pin is: TWO manual
         registrations under a cap of 1 both succeed."""
-        service, _ = make_service(
-            tmp_path, mini_repo, register=False, auto_register_max_projects=1
-        )
+        service, _ = make_service(tmp_path, mini_repo, register=False, auto_register_max_projects=1)
         other = tmp_path / "other-repo"
         other.mkdir()
         (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")

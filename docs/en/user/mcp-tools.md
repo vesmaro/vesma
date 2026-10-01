@@ -1785,6 +1785,18 @@ This is informational; nothing in Vesma blocks the call. Disable by setting `MNE
 
 ---
 
+## Server update notice (auto-injected, once)
+
+A server upgraded under live sessions is invisible to them. On the **first
+tool dispatch after process start**, Vesma compares the running version with
+the `last_reported_server_version` stamp in the store; when they differ, that
+one response carries an extra non-blocking line — `vesma server updated:
+<old> → <new>` — and the stamp is rewritten, so the notice appears exactly
+once per upgrade, never per call. A store error skips the notice silently
+(it is a courtesy, not a failure mode).
+
+---
+
 ## Tag contract reminder
 
 The `mnemos_add` and `mnemos_ingest_url` tools reject calls that violate the M2 contract. The three required tag families are:

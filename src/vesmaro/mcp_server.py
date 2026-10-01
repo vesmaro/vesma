@@ -81,7 +81,9 @@ _brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
 if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
     logger.warning(
         "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
-        _BRAND_ENV_CANON, _brand_canon_val, _brand_depr_val,
+        _BRAND_ENV_CANON,
+        _brand_canon_val,
+        _brand_depr_val,
     )
 _raw_brand = (_brand_canon_val or _brand_depr_val).lower()
 # Self-alias guard: brand "mnemos" would double every manifest entry.
@@ -89,7 +91,8 @@ _MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand
 if _raw_brand and not _MCP_BRAND:
     logger.warning(
         "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _BRAND_ENV_CANON, _raw_brand,
+        _BRAND_ENV_CANON,
+        _raw_brand,
     )
 
 
@@ -214,6 +217,51 @@ def _checkpoint_reminder() -> str | None:
             f"to preserve your current progress."
         )
     return None
+
+
+# ── #456: one-time server-updated notice ─────────────────────────────────────
+#
+# A mid-session server upgrade is invisible to the sessions it serves.
+# On the FIRST tool dispatch after process start the dispatcher compares
+# the store meta ``last_reported_server_version`` with the running
+# ``__version__``: a difference appends ONE non-blocking line to that
+# response and re-stamps the meta. Off-resilient by contract — any
+# store error skips the notice silently after one warning log, and the
+# check runs at most ONCE per process whatever happens (no per-dispatch
+# store reads, no retry storm against a broken store).
+
+SERVER_VERSION_META_KEY = "last_reported_server_version"
+
+_server_update_state: dict[str, bool] = {"checked": False}
+
+
+def _reset_server_update_state() -> None:
+    """Test seam: re-arm the once-per-process version check."""
+    _server_update_state["checked"] = False
+
+
+def _server_update_hint(mgr: Any) -> str | None:
+    """The one-line upgrade notice, at most once per process (#456).
+
+    ``None`` when: already checked this process, the meta matches the
+    running version, or the store is unavailable (fail-open — the
+    notice is a courtesy, never a failure mode). A MISSING or
+    non-string meta is a first contact: the baseline is written
+    silently, nothing to compare yet."""
+    if _server_update_state["checked"]:
+        return None
+    _server_update_state["checked"] = True  # one attempt per process, whatever happens
+    try:
+        meta = mgr.sqlite.get_meta(SERVER_VERSION_META_KEY)
+        if isinstance(meta, str) and meta == __version__:
+            return None
+        mgr.sqlite.set_meta(SERVER_VERSION_META_KEY, __version__)
+        if isinstance(meta, str):
+            return f"\n\nvesma server updated: {meta} → {__version__}"
+        return None
+    except Exception:
+        logger.warning("server-update notice skipped (store unavailable)", exc_info=True)
+        return None
 
 
 def _track_call(is_save: bool = False) -> None:
@@ -2063,6 +2111,12 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     canonical_name = _canonicalize_tool_name(name)
     _track_call(is_save=(canonical_name == "mnemos_save_context"))
     reminder = _checkpoint_reminder()
+    # #456: the one-time upgrade notice rides the FIRST dispatch of the
+    # process (checked once, fail-open on any store error).
+    try:
+        update_hint = _server_update_hint(get_manager())
+    except Exception:
+        update_hint = None
 
     try:
         result = await _dispatch(canonical_name, arguments)
@@ -2075,6 +2129,8 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     text = (
         result if isinstance(result, str) else json.dumps(result, default=str, ensure_ascii=False)
     )
+    if update_hint:
+        text += update_hint
     if reminder:
         text += reminder
     return [TextContent(type="text", text=text)]

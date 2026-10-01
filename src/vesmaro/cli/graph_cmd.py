@@ -78,8 +78,7 @@ def register_cmd(
         _refused(exc)
     console.print(
         f"[green]{result['status']}[/green] project {result['project']!r} "
-        f"at {result['root']}"
-        + (f" — {result['note']}" if result.get("note") else "")
+        f"at {result['root']}" + (f" — {result['note']}" if result.get("note") else "")
     )
     console.print("[dim]next: vesma mcp / mnemos_index_project to build the graph[/dim]")
 
@@ -106,9 +105,7 @@ def repoint_cmd(
     from vesmaro.codegraph.service import GraphToolError
 
     try:
-        result = _service(config).repoint_project(
-            project, new_root, agent=agent, reason=reason
-        )
+        result = _service(config).repoint_project(project, new_root, agent=agent, reason=reason)
     except GraphToolError as exc:
         _refused(exc)
     console.print(

@@ -612,8 +612,7 @@ class CodeGraphService:
         project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
         if project is None:
             raise GraphConfinementError(
-                f"project {wanted!r} is not registered in the projects table "
-                f"(PG2){REGISTER_HINT}"
+                f"project {wanted!r} is not registered in the projects table (PG2){REGISTER_HINT}"
             )
         root = self._validate_new_root(new_root, what="repoint")
         claimed = self.find_project_by_root(root)
