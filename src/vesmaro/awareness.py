@@ -1689,13 +1689,17 @@ def _compact_seen(iso: str) -> str:
 
     Envelope lines pay the token ceiling: seconds/microseconds and the
     offset suffix buy nothing a minute cannot say. Deterministic pure
-    function of the input; an unparseable stamp degrades to a truncated
-    literal (never raises — the envelope is a render, not a parser).
+    function of the input — a naive stamp is read as UTC (the
+    ``_parse_since`` rule: the store writes UTC), never as host-local
+    time; an unparseable stamp degrades to a truncated literal (never
+    raises — the envelope is a render, not a parser).
     """
     try:
         dt = datetime.fromisoformat(iso)
     except ValueError:
         return iso[:17]
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%MZ")
 
 

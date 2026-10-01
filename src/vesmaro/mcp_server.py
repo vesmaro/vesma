@@ -2023,11 +2023,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             latency_ms=(_time.monotonic() - t0) * 1000,
         )
     # W2a (ADR-0035): native awareness heartbeat — the single injection
-    # point. Returns the tail TextContent (canary/on) or None (off /
-    # shadow / suppressed); never raises, never touches `result` bytes.
-    heartbeat_tail = native_heartbeat_tail(_canonicalize_tool_name(name), arguments)
-    if heartbeat_tail is not None:
-        result = [*result, heartbeat_tail]
+    # point. Returns the tail text (canary/on) or None (off / shadow /
+    # suppressed); never raises, never touches `result` bytes. The
+    # TextContent lives HERE — ADR-0023 keeps the mcp SDK inside this
+    # module only.
+    heartbeat_text = native_heartbeat_tail(_canonicalize_tool_name(name), arguments)
+    if heartbeat_text is not None:
+        result = [*result, TextContent(type="text", text=heartbeat_text)]
     return result
 
 

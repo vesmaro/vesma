@@ -5,7 +5,7 @@ response through a single injection point (``mcp_server.call_tool``);
 this module is everything that glue needs beyond the pure
 :func:`vesmaro.awareness.compose_heartbeat` contour: identity
 extraction from tool arguments, the C13 deny-list, the mode ladder
-(off / shadow / canary / on), the TextContent construction, and the
+(off / shadow / canary / on), the tail text, and the
 ADR-0026-family event writes into the metrics sidecar (``tool_call``
 for every dispatched call — the funnel denominator; ``peer_write`` on
 write-class verbs; the compose's own ``delta_available`` /
@@ -23,8 +23,9 @@ Hard contract (the wrapper's side of ADR-0035):
   byte-identical to the pre-ADR-0035 build (CI-pinned);
 * ``shadow`` composes and records events but renders NOTHING — wave 0
   is the measuring wave;
-* ``canary``/``on`` append ONE TextContent as the LAST element of the
-  response (tail-LAST, ADR-0028);
+* ``canary``/``on`` yield the tail text — ``call_tool`` appends it as
+  ONE TextContent, the LAST element of the response (tail-LAST,
+  ADR-0028);
 * the deny-list surfaces (``mnemos_assemble_context`` — it already
   composes the full picture, a tail there means double render and
   double cursor advance; export/import — the bulk transfer pair, the
@@ -143,11 +144,14 @@ def _record_event(
         )
 
 
-def native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
-    """One MCP response heartbeat — returns the tail TextContent or None.
+def native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> str | None:
+    """One MCP response heartbeat — returns the tail TEXT or None.
 
     The single entry point ``mcp_server.call_tool`` calls with the
-    CANONICAL tool name (aliases normalized) and the raw arguments.
+    CANONICAL tool name (aliases normalized) and the raw arguments, and
+    wraps a non-None return into the response's last TextContent
+    itself — the ADR-0023 isolation ruling keeps every mcp SDK import
+    inside ``vesmaro.mcp_server``, so this module deals in plain text.
     Never raises; every failure mode degrades to ``None`` (no tail)
     with a warning — the tool call's bytes are sacred.
     """
@@ -162,7 +166,7 @@ def native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
         return None
 
 
-def _native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
+def _native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> str | None:
     from vesmaro.mcp_server import get_manager  # local: mcp_server imports this module
 
     mgr = get_manager()
@@ -202,9 +206,4 @@ def _native_heartbeat_tail(tool_name: str, args: dict[str, Any]) -> Any | None:
     if mode_value not in HEARTBEAT_RENDERING_MODES:
         return None  # shadow: the contour ran (events recorded), nothing renders
 
-    text = result.get("text")
-    if not text:
-        return None
-    from mcp.types import TextContent
-
-    return TextContent(type="text", text=text)
+    return result.get("text") or None
