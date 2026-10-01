@@ -64,9 +64,7 @@ from .test_decision_provider import load_corpus
 
 #: The bundled artifact's weights sha256 — the recalibration identity
 #: (a new sha = new weights = recalibration event, spec §8).
-WEIGHTS_SHA256: Final[str] = (
-    "281bd0fd39bf9935c86a8b32fed68191fa9b7da95a83b53eb10844a5fd100ac7"
-)
+WEIGHTS_SHA256: Final[str] = "281bd0fd39bf9935c86a8b32fed68191fa9b7da95a83b53eb10844a5fd100ac7"
 
 #: The artifact's embedder pin — exactly the default engine vintage
 #: (``config_fingerprint(EmbeddingConfig())`` → ``nano:sha256:<hash>``).
@@ -75,9 +73,7 @@ EMBEDDER_PIN: Final[str] = (
 )
 
 #: sha256 of the ``\\n``-joined frozen feature names (spec §4).
-FEATURE_SET_SHA256: Final[str] = (
-    "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af"
-)
+FEATURE_SET_SHA256: Final[str] = "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af"
 
 #: The frozen 13-feature contract — literal pin (cortex repo, A3a freeze).
 FROZEN_FEATURE_NAMES: Final[tuple[str, ...]] = (
@@ -151,9 +147,7 @@ def _swap_session(provider: VesmaProvider, stub: Any) -> Any:
 
 
 def test_bundle_onnx_is_byte_identical_to_the_adopted_artifact() -> None:
-    onnx_path = Path(
-        str(resource_files("vesmaro") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx")
-    )
+    onnx_path = Path(str(resource_files("vesmaro") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx"))
     payload = onnx_path.read_bytes()
     assert hashlib.sha256(payload).hexdigest() == WEIGHTS_SHA256, (
         "bundled model.onnx sha256 drifted from the W5d-adopted artifact — "
@@ -232,21 +226,15 @@ def _fake_bundle(
     monkeypatch.setattr(dp, "resource_files", lambda _pkg: tmp_path)
 
 
-def test_oversized_artifact_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_oversized_artifact_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The ≤5 MB gate fires before any ORT session is built."""
-    _fake_bundle(
-        monkeypatch, tmp_path, "oversized-cortex", b"\0" * (CORTEX_MAX_ARTIFACT_BYTES + 1)
-    )
+    _fake_bundle(monkeypatch, tmp_path, "oversized-cortex", b"\0" * (CORTEX_MAX_ARTIFACT_BYTES + 1))
     with pytest.raises(CortexError) as excinfo:
         VesmaProvider(embedder_fingerprint=EMBEDDER_PIN)
     assert excinfo.value.code == "CORTEX-E-SIZE"
 
 
-def test_corrupt_artifact_is_a_load_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_corrupt_artifact_is_a_load_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_bundle(monkeypatch, tmp_path, "corrupt-cortex", b"definitely not protobuf")
     with pytest.raises(CortexError) as excinfo:
         VesmaProvider(embedder_fingerprint=EMBEDDER_PIN)
@@ -322,12 +310,8 @@ def test_features_identical_pair() -> None:
 
 
 def test_features_hand_computed_pair() -> None:
-    a = CanonRecordView(
-        title="ab", body="cd", tags=("x", "y"), language="ru", record_type="note"
-    )
-    b = CanonRecordView(
-        title="ab", body="ce", tags=("x", "z"), language="en", record_type="note"
-    )
+    a = CanonRecordView(title="ab", body="cd", tags=("x", "y"), language="ru", record_type="note")
+    b = CanonRecordView(title="ab", body="ce", tags=("x", "z"), language="en", record_type="note")
     values = cortex_pair_features(a, b, 0.5)
     # Normalized texts "ab cd" vs "ab ce": 3-grams {ab␣,b␣c,␣cd} vs {ab␣,b␣c,␣ce}
     # → jaccard 2/4, containment 2/3; 4-grams → j 1/3, c 1/2; 5-grams → j 0, c 0;
@@ -418,9 +402,7 @@ def test_is_duplicate_requires_measured_evidence(provider: VesmaProvider) -> Non
     with pytest.raises(MissingEvidenceError):
         provider.evaluate(IsDuplicateRequest(), CanonState(record=record))
     with pytest.raises(MissingEvidenceError):
-        provider.evaluate(
-            IsDuplicateRequest(), CanonState(record=record, candidate=record)
-        )
+        provider.evaluate(IsDuplicateRequest(), CanonState(record=record, candidate=record))
 
 
 def test_goal_overlap_is_declined_not_fabricated(provider: VesmaProvider) -> None:
@@ -559,9 +541,7 @@ def test_resolver_without_fingerprint_refuses_the_pin(
 # ── Integration: smoke verdict on REAL records, measured similarity ───────────
 
 
-def test_smoke_verdict_on_real_records(
-    provider: VesmaProvider, embedder: NanoProvider
-) -> None:
+def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoProvider) -> None:
     """Real corpus records + the real embedder's measured cosine (the
     minting-flow shape) — the verdicts the calibration ADOPT rests on."""
     checkpoint = _corpus_view("examples/after/checkpoint.json")

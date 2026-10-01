@@ -290,9 +290,9 @@ class PythonFileParser:
         spec = language_for_path(rel_path)
         assert spec is not None  # the surface passed the allowlist
 
-        poisoned = not _secret_allowlisted(
-            rel_path, self._secret_allowlist
-        ) and bool(detect_secrets(source.decode("utf-8", "replace")))
+        poisoned = not _secret_allowlisted(rel_path, self._secret_allowlist) and bool(
+            detect_secrets(source.decode("utf-8", "replace"))
+        )
         meta: dict[str, Any] | None = {"poisoned": True} if poisoned else None
         fid = _file_id(project, rel_path)
         mid = _module_id(project, rel_path)
