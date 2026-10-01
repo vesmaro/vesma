@@ -37,6 +37,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`integration`](integration-guide.md) | Deploy / verify the integration layer (dedicated page) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
 | [`doctor`](#doctor) | Diagnose the installation (paths, config, database, vault) |
+| [`update`](#update) | Check for updates / update the user-site install |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
 | [`logs`](#logs) | View pipeline traces |
@@ -773,6 +774,53 @@ vesma doctor --json
 
 ---
 
+## `update`
+
+One command for the whole update family: report every update surface found on this machine, upgrade the pip user-site install (plus the global npm package, best-effort), pin a version for rollback, or manage the weekly auto-update timer.
+
+```text
+vesma update [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--check` | `false` | Report surfaces without changing anything (same as no flags). |
+| `--yes` | `false` | Perform the update: `pip install --user --upgrade`; the npm package is updated best-effort. |
+| `--scope` | `user` | Update scope. Only `user` exists — prod venvs, Go binaries and containers are never auto-updated. |
+| `--to <version>` | — | Pin the pip target version (rollback path), e.g. `--to 5.1.1`. Requires `--yes`. |
+| `--install-timer` | `false` | Install and enable the weekly systemd user update timer (`vesma-update.timer`, `Persistent=true`). |
+| `--uninstall-timer` | `false` | Disable and remove the timer and its service unit. |
+
+### Report-only surfaces
+
+The default report lists every update surface found on this machine. Only the pip user-site (and npm) is ever changed; prod venvs and Go binaries are report-only by design:
+
+- **pip dist** — the surface `--yes` upgrades (`--break-system-packages` is appended automatically under PEP 668 externally-managed interpreters); every run appends a record to `~/.local/share/vesma/update-history.json`.
+- **npm `@vesmaro/vesma`** — upgraded best-effort with `--yes` when installed.
+- **prod venvs** — `MANUAL GATE` in the report; update them via the upgrade runbook.
+- **Go binaries** (`vesmaro-agent`/`vesma-agent`, `mnemos-mesh`/`vesma-mesh`) — updated via goreleaser releases with checksum verification.
+- **container images** — CI release artifacts.
+
+### Example
+
+```bash
+# Report all update surfaces
+vesma update
+
+# Upgrade the user-site install
+vesma update --yes --scope=user
+
+# Roll back to a pinned version
+vesma update --yes --to 5.1.1
+
+# Weekly auto-update of the user-site (survives reboot)
+vesma update --install-timer
+```
+
+Restart running clients (MCP / `serve`) after a successful update to pick up the new version.
+
+---
+
 ## `logs`
 
 View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table.
@@ -867,4 +915,4 @@ The CLI does not return non-zero for "no results" — `vesma search` exits 0 wit
 
 ---
 
-_Last updated: 2026-09-05_
+_Last updated: 2026-10-01_
