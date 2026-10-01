@@ -142,7 +142,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 | `query` | string | **yes** | — | Natural language search string. Matched as ONE whole phrase by the FTS5 leg (see Query semantics above). |
 | `tags` | string[] | no | — | Filter: all of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
-| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. Bare-slug note (#455): a bare slug passed in `tags` (not `task`) matches nothing by itself — when such a query returns zero rows and `task:<slug>` entries exist, the search retries once with the exact tag and marks the surfaced rows (`task_tag_fallback`). |
 | `limit` | integer | no | `10` | Max results. |
 | `include_raw` | boolean | no | `false` | If true, returns `raw_content` instead of cleaned `content`. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |

@@ -600,6 +600,14 @@ class MemoryManager:
             # trade-off as the graph-leg counters above.
             "task_param_queries_total": 0,
             "task_tag_queries_total": 0,
+            # Issue #455 — the bare-slug task-search fallback counter:
+            # searches whose tags filter carried a BARE task slug that
+            # matched nothing, were retried with the exact minted
+            # ``task:<slug>`` tag, and surfaced rows that way (rows carry
+            # ``task_tag_fallback=True``). A DRIFT signal: callers are
+            # typing the slug where rows carry the prefixed tag. Same
+            # in-memory trade-off as project_scope_fallback_total.
+            "task_tag_fallback_total": 0,
             # ADR-0030 A1-S2 (#325) — the flag-ON telemetry hook: requests
             # whose walked block used feedback-influenced weights (at
             # least one row got a non-neutral f(used) factor). The S2
@@ -734,6 +742,35 @@ class MemoryManager:
                 f"task must match [a-z0-9_-]{{1,64}} after normalization (got {task!r})"
             )
         return f"task:{normalized}"
+
+    @staticmethod
+    def _bare_slug_task_retry_tags(
+        tags: list[str] | None, tag_universe: dict[str, int]
+    ) -> list[str] | None:
+        """Issue #455: rewrite a bare-slug tags filter to exact ``task:`` tags.
+
+        The tags filter is EXACT-membership, so ``tags=["my-task"]``
+        never matches rows tagged ``task:my-task`` — a developer typing
+        the bare slug gets a silent empty page. This helper rewrites
+        every bare entry that (a) matches the task-slug alphabet and
+        (b) has ``task:<slug>`` rows in ``tag_universe`` (the store's
+        tag census), leaving every other entry untouched. Returns the
+        rewritten list, or ``None`` when nothing qualifies — including
+        ANY query already carrying a ``task:`` tag (exact-tag queries
+        keep byte-identical behavior) and queries with no tags at all.
+        """
+
+        if not tags or any(t.startswith("task:") for t in tags):
+            return None
+        from vesmaro.models import TASK_SLUG_RE
+
+        rewritten = list(tags)
+        changed = False
+        for i, tag in enumerate(rewritten):
+            if TASK_SLUG_RE.match(tag) and f"task:{tag}" in tag_universe:
+                rewritten[i] = f"task:{tag}"
+                changed = True
+        return rewritten if changed else None
 
     @staticmethod
     def _embedding_text(memory: Memory) -> str:
@@ -2009,6 +2046,20 @@ class MemoryManager:
                 carry ``project_scope_fallback=True`` so the caller can see they
                 are cross-project relative to the original request, and the event
                 is counted in ``search_stats()["project_scope_fallback_total"]``.
+
+                Issue #455 — BARE-SLUG TASK FALLBACK: the tags filter is
+                exact-membership, so ``tags=["my-task"]`` never matches rows
+                tagged ``task:my-task`` — a bare slug used to return a silent
+                empty page. ZERO rows + the store's tag census shows
+                ``task:<slug>`` rows exist → ONE retry with the exact minted
+                tag, every other scope KEPT. Rows surfaced via the retry carry
+                ``task_tag_fallback=True`` and the event counts in
+                ``search_stats()["task_tag_fallback_total"]`` (the
+                project-fallback precedent). Exact-tag queries (any ``task:``
+                entry in ``tags``) never take this path — byte-identical
+                behavior; a bare slug with no ``task:<slug>`` rows stays an
+                honest empty page (no fallback marker).
+
                 Deliberately NOT retried: ``status``-drilled queries — a drill-
                 down is the caller asserting the row's lifecycle, and an unscoped
                 retry would resurface junk from other projects' lanes (the same
@@ -2138,6 +2189,42 @@ class MemoryManager:
 
         results = scoped
         scope_fallback_used = False
+        task_fallback_used = False
+        # Issue #455 — bare-slug task-search fallback: a tags filter
+        # entry that is a bare task slug matches NOTHING under the exact
+        # -membership filter (rows carry ``task:<slug>``, never the bare
+        # form), and the empty page was silent. ZERO rows + the store's
+        # tag census says ``task:<slug>`` rows EXIST → ONE retry with the
+        # exact minted tag(s); every other scope is KEPT (project, agent,
+        # status policy — the retry narrows nothing and widens nothing).
+        # Surfaced rows carry ``task_tag_fallback=True`` and the event
+        # counts in ``search_stats()["task_tag_fallback_total"]`` — the
+        # project_scope_fallback precedent. Exact-tag queries (any
+        # ``task:`` entry in ``tags``) never take this path; a bare slug
+        # with no ``task:<slug>`` rows stays an honest empty page.
+        if not results and tags:
+            retry_tags = self._bare_slug_task_retry_tags(tags, self.sqlite.get_all_tags())
+            if retry_tags is not None:
+                logger.info(
+                    "search: bare-slug tags=%s returned 0 rows — retrying with the "
+                    "exact task: tag(s) %s (task-tag fallback)",
+                    tags,
+                    retry_tags,
+                )
+                results = self._search_core(
+                    query,
+                    tags=retry_tags,
+                    project=project,
+                    agent=agent,
+                    status=status,
+                    limit=limit,
+                    hybrid_alpha=hybrid_alpha,
+                    include_raw=include_raw,
+                    refined_only=refined_only,
+                )
+                for r in results:
+                    r.task_tag_fallback = True
+                task_fallback_used = bool(results)
         # Search v2 (issue #313): project soft fallback — ZERO in-scope
         # rows on BOTH legs (pre-RRF predicates decided nothing survives)
         # → ONE retry without the scope. The retry keeps the SAME status /
@@ -2186,6 +2273,10 @@ class MemoryManager:
             if scope_fallback_used:
                 self._search_stats["project_scope_fallback_total"] = (
                     int(self._search_stats["project_scope_fallback_total"]) + 1
+                )
+            if task_fallback_used:
+                self._search_stats["task_tag_fallback_total"] = (
+                    int(self._search_stats["task_tag_fallback_total"]) + 1
                 )
             # ADR-0030 A0 (issue #324, review fix): the enrichment
             # share SPLIT BY SOURCE LEG — ``via_graph`` alone conflates
@@ -3995,6 +4086,11 @@ class MemoryManager:
             # and were retried without the scope — the project-drift
             # (scope slug vs stored slug) audit signal.
             "project_scope_fallback_total": int(self._search_stats["project_scope_fallback_total"]),
+            # Issue #455: bare-slug tags filters that were retried with
+            # the exact ``task:<slug>`` tag and surfaced rows that way —
+            # the "caller typed the slug, rows carry the tag" drift
+            # signal (rows carry ``task_tag_fallback=True``).
+            "task_tag_fallback_total": int(self._search_stats["task_tag_fallback_total"]),
             # ADR-0030 A0 (issue #324, review fix): enrichment split by
             # source leg — the unconditional supersedes leg and the
             # flag-gated relates_to walk. The WALK counter over
