@@ -65,11 +65,13 @@ _auto_collect_state = {
 }
 
 # ── Brand aliasing (rebrand mnemos → vesmaro, 2026-09-15) ────────────────────
-# When VESMARO_MCP_BRAND=vesmaro, every tool is additionally exposed under a
-# ``vesmaro_`` name (mnemos_ originals stay live — dual-prefix contract,
-# archcom 2026-09-14; legacy prefix retires no earlier than 6.0). Aliased
-# calls are normalised to the canonical mnemos_ name before dispatch, so the
-# handler bodies below keep the canonical spellings untouched.
+# With a brand configured (VESMA_MCP_BRAND=vesma, deprecated VESMARO_MCP_BRAND),
+# the manifest is BRAND-PRIMARY: every tool is advertised under its ``vesma_``
+# name only (owner ruling 2026-10-01: a doubled mnemos_*/vesma_* list confuses
+# clients). Legacy ``mnemos_*`` spellings leave the manifest but stay ACCEPTED
+# on the call path — calls normalise to the canonical mnemos_ name before
+# dispatch (dual-prefix contract, archcom 2026-09-14; legacy prefix retires no
+# earlier than 6.0), so handler bodies keep the canonical spellings untouched.
 _BRAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 # Rebrand 5.0.0 (vesma): canonical env is VESMA_MCP_BRAND; VESMARO_MCP_BRAND
 # stays as a deprecated alias (dual-period until 6.0, ADR-0031 class).
@@ -332,14 +334,21 @@ def _steering_suffix(args: dict[str, Any], settings: Any) -> str:
 
 
 async def list_tools() -> list[Tool]:
-    """Manifest with brand aliases appended (see _MCP_BRAND)."""
+    """Manifest — brand-primary when a brand is configured (see _MCP_BRAND).
+
+    With a brand, the manifest advertises each tool under its ``<brand>_*``
+    name ONLY; legacy ``mnemos_*`` spellings stay accepted on the call path
+    through :func:`_canonicalize_tool_name` (dual-period until 6.0).
+    """
     tools = await _canonical_tools()
     if _MCP_BRAND:
-        tools = tools + [
-            Tool(name=alias, description=t.description, input_schema=t.input_schema)
+        tools = [
+            Tool(
+                name=_brand_alias(t.name) or t.name,
+                description=t.description,
+                input_schema=t.input_schema,
+            )
             for t in tools
-            for alias in (_brand_alias(t.name),)
-            if alias
         ]
     return tools
 

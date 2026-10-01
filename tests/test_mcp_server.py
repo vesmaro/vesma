@@ -310,22 +310,27 @@ async def test_no_brand_env_canonical_manifest_only() -> None:
     assert all(n.startswith("mnemos_") for n in names)
 
 
-async def test_brand_env_appends_vesmaro_aliases() -> None:
-    """VESMARO_MCP_BRAND=vesmaro doubles the manifest: 38 canonical + 38 aliases."""
+async def test_brand_env_brand_primary_manifest() -> None:
+    """VESMARO_MCP_BRAND=vesmaro: manifest is brand-primary — 38 vesmaro_* names ONLY.
+
+    Owner ruling 2026-10-01: a doubled mnemos_*/brand_* manifest confuses
+    clients. Legacy mnemos_* spellings leave the manifest but stay accepted
+    on the call path (see test_canonicalize_known_alias_and_unknown_passthrough).
+    """
     from vesmaro.mcp_server import _canonical_tools
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 76
-    aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert len(aliases) == 38
-    assert "vesmaro_search" in aliases
-    assert "vesmaro_retrieve" in aliases
-    # aliases share the canonical schema objects (same Tool input_schema object)
+    assert len(names) == 38
+    assert all(n.startswith("vesmaro_") for n in names)
+    assert not any(n.startswith("mnemos_") for n in names)
+    assert "vesmaro_search" in names
+    assert "vesmaro_retrieve" in names
+    # renamed entries share the canonical schema objects (same Tool input_schema object)
     canonical = {t.name: t for t in await _canonical_tools()}
-    aliased = next(t for t in tools if t.name == "vesmaro_search")
-    assert aliased.input_schema == canonical["mnemos_search"].input_schema
+    renamed = next(t for t in tools if t.name == "vesmaro_search")
+    assert renamed.input_schema == canonical["mnemos_search"].input_schema
 
 
 async def test_canonicalize_known_alias_and_unknown_passthrough() -> None:
@@ -336,7 +341,10 @@ async def test_canonicalize_known_alias_and_unknown_passthrough() -> None:
         assert _canonicalize_tool_name("vesmaro_search") == "mnemos_search"
         assert _canonicalize_tool_name("vesmaro_save_context") == "mnemos_save_context"
         assert _canonicalize_tool_name("vesmaro_unknown_tool") == "vesmaro_unknown_tool"
+        # legacy mnemos_* spellings leave the manifest but keep dispatching
+        # (dual-period contract, retires no earlier than 6.0)
         assert _canonicalize_tool_name("mnemos_search") == "mnemos_search"
+        assert _canonicalize_tool_name("mnemos_save_context") == "mnemos_save_context"
         assert _canonicalize_tool_name("other_tool") == "other_tool"
 
 
@@ -376,9 +384,8 @@ async def test_vesma_mcp_brand_canonical_env_read() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 76
-    assert any(n.startswith("vesma_") for n in names)
-    assert all(n.startswith("mnemos_") or n.startswith("vesma_") for n in names)
+    assert len(names) == 38
+    assert all(n.startswith("vesma_") for n in names)
 
 
 async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
@@ -396,7 +403,9 @@ async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
     names = [t.name for t in tools]
     ves_aliases = [n for n in names if n.startswith("vesma_")]
     vesmaro_aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert ves_aliases and not vesmaro_aliases
+    assert len(ves_aliases) == 38
+    assert not vesmaro_aliases
+    assert not any(n.startswith("mnemos_") for n in names)
     # restore
     importlib.reload(mcp)
 
@@ -411,6 +420,6 @@ async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 76
-    assert any(n.startswith("vesmaro_") for n in names)
+    assert len(names) == 38
+    assert all(n.startswith("vesmaro_") for n in names)
     importlib.reload(mcp)
