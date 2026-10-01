@@ -5092,7 +5092,7 @@ class MemoryManager:
 
             raise GraphDisabledError(
                 "project graph is disabled (settings.code_graph.enabled=false); "
-                "the operator must opt in (ADR-0032: default-off until validated)"
+                "it is ON by default — this instance was explicitly disabled in config"
             )
         if not cfg.watch:
             from vesmaro.codegraph.service import GraphToolError
