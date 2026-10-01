@@ -1069,6 +1069,7 @@ Namespace `/graph/` зеркалит десять MCP-инструментов [
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": [],
+  "unpoisoned": [],
   "parse_errors": {},
   "duration_sec": 4.212,
   "incremental": true,
@@ -1271,7 +1272,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 
 ### `POST /graph/coverage` — пакетная проверка покрытия
 
-Вердикт по каждому пути: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Честность покрытия — содержимое проверяйте через `POST /graph/snippet`.
+Вердикт по каждому пути: `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (пути нет под корнем проекта, #452) / `poisoned`. Честность покрытия — содержимое проверяйте через `POST /graph/snippet`.
 
 **Тело запроса**
 

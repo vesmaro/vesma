@@ -956,6 +956,13 @@ class SearchResult(BaseModel):
     # scope (soft fallback) — the row is CROSS-PROJECT relative to the
     # original request and the caller must be able to see that.
     project_scope_fallback: bool = False
+    # ``task_tag_fallback`` (#455): the row surfaced because a BARE-SLUG
+    # tags filter (``tags=["my-task"]``) found nothing and the search
+    # retried with the exact minted tag (``task:my-task``) — the row is
+    # task-scoped relative to a request that literally asked for the
+    # bare tag, and the caller must be able to see that. Mirrors the
+    # project_scope_fallback precedent (flag + counter pattern).
+    task_tag_fallback: bool = False
     # ``via_graph``: the row was appended by the 1-hop memory_edges
     # expansion (edge neighbours of fused hits), not by lexical /
     # vector matching. Edge-sourced rows pass the same status /

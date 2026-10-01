@@ -677,12 +677,34 @@ class CodeGraphStore:
         Union semantics IS the «навсегда» contract: once a path hit the
         secrets detector it stays poisoned across reindexations, even
         when a later scan misses (pattern drift) or the file is gone.
-        Cleared only by :meth:`purge_project` (tool 10).
+        Cleared only by :meth:`purge_project` (tool 10) and the #449
+        allowlist un-poison (:meth:`remove_poisoned_paths`).
         """
         if not paths:
             return
         merged = self.get_poisoned_paths(project) | {str(p) for p in paths}
         self.set_meta(poisoned_key(project), json.dumps(sorted(merged)))
+
+    def remove_poisoned_paths(self, project: str, paths: list[str] | set[str]) -> list[str]:
+        """Remove ``paths`` from the poisoned set, returning what was
+        actually removed (sorted; empty list = nothing matched).
+
+        Issue #449: the operator's ``secret_allowlist`` escape hatch —
+        a previously-poisoned path whose repo-relative path now matches
+        an allowlist glob is UN-poisoned on the next index call. The
+        ONLY removal besides :meth:`purge_project`, and it never runs
+        implicitly: the caller (the indexer's allowlist pass) audits
+        every removal with reason ``allowlist-unpoison`` so the
+        sidecar trail shows exactly what left the set and why.
+        """
+        if not paths:
+            return []
+        current = self.get_poisoned_paths(project)
+        removed = current & {str(p) for p in paths}
+        if not removed:
+            return []
+        self.set_meta(poisoned_key(project), json.dumps(sorted(current - removed)))
+        return sorted(removed)
 
     # ── operator fresh start (tool 10) ──────────────────────────────────────
 
@@ -690,8 +712,9 @@ class CodeGraphStore:
         """The operator's FRESH START (tool 10 ``delete_graph_project``).
 
         Deletes the subtree AND clears exactly this project's sidecar
-        meta keys — the poisoned set (the ONLY operation that may ever
-        clear it) and the ``last_indexed`` stamp — in ONE transaction.
+        meta keys — the poisoned set (besides the audited #449
+        allowlist removal, the ONLY operation that may ever clear it)
+        and the ``last_indexed`` stamp — in ONE transaction.
         Returns the number of deleted NODE rows.
         """
         conn = self._conn()

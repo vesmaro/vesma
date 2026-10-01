@@ -173,7 +173,7 @@ for you:
 | Guardrail | What you experience |
 |-----------|---------------------|
 | **Confinement (PG2)** | Only operator-registered roots are ever touched. Arbitrary paths, symlink escapes and `..` traversal are refused. |
-| **Poisoned files (PG3)** | A file that trips the secrets detector at index time is poisoned **forever**: its symbols stay in the graph, its snippets are never issued. Only `mnemos_delete_graph_project` clears the set. |
+| **Poisoned files (PG3)** | A file that trips the secrets detector at index time is poisoned **forever**: its symbols stay in the graph, its snippets are never issued. Two exits only: `mnemos_delete_graph_project`, and the operator's `secret_allowlist` (below) — an allowlisted path skips poison-marking, and a previously-poisoned allowlisted path is un-poisoned on the next index run with an `allowlist-unpoison` audit row (never silent). The per-range issuance scan (PG4) is never waived by the allowlist. |
 | **Scan at issue (PG4)** | Snippets are read from disk at request time — there is no snippet cache. A mtime+size+sha256 mismatch yields a `stale` marker, never content; a secret found in the requested range refuses the whole range, fail-closed. |
 | **Fail-closed limits (PG7)** | 20,000 files / 500 MB per project. A breach refuses the WHOLE index — no partial graph is ever published. |
 | **Export-blind (PG5)** | The code map never leaves the server: export bundles and federation/mesh payloads never carry graph artifacts. Peers index their own local sources. |
@@ -197,12 +197,15 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `watch` | `true` | Arms the watch poll (`mnemos_watch_start`); inert until an explicit registration. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
+| `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
 
 Environment overrides follow the canonical settings pattern:
 `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`,
-`VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`.
+`VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`,
+`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST` (JSON array, e.g.
+`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'`).
 
 ---
 

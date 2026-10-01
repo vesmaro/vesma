@@ -51,7 +51,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
 | [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
 | [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
-| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / poisoned | no |
+| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
 | [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
@@ -142,7 +142,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 | `query` | string | **yes** | — | Natural language search string. Matched as ONE whole phrase by the FTS5 leg (see Query semantics above). |
 | `tags` | string[] | no | — | Filter: all of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
-| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. Bare-slug note (#455): a bare slug passed in `tags` (not `task`) matches nothing by itself — when such a query returns zero rows and `task:<slug>` entries exist, the search retries once with the exact tag and marks the surfaced rows (`task_tag_fallback`). |
 | `limit` | integer | no | `10` | Max results. |
 | `include_raw` | boolean | no | `false` | If true, returns `raw_content` instead of cleaned `content`. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -928,6 +928,7 @@ Index a **registered** project root into the shared project graph — full or in
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": ["deploy/secret.env"],
+  "unpoisoned": [],
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "duration_sec": 4.212,
   "incremental": true,
@@ -940,7 +941,7 @@ Index a **registered** project root into the shared project graph — full or in
 }
 ```
 
-`status` is `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` is `null` when nothing changed (no fake freshness). Parse failures ride along as an honesty marker — «clean ≠ proof». Poisoned paths hit the secrets detector at index time and are refused at snippet issuance forever (PG3).
+`status` is `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` is `null` when nothing changed (no fake freshness). Parse failures ride along as an honesty marker — «clean ≠ proof». Poisoned paths hit the secrets detector at index time and are refused at snippet issuance forever (PG3) — unless allowlisted (`code_graph.secret_allowlist`, #449): `unpoisoned` lists paths this run's allowlist pass removed from the poisoned set (audited as `allowlist-unpoison`).
 
 ### Example call (JSON-RPC)
 
@@ -1193,7 +1194,7 @@ A file that changed on disk since indexation yields a staleness marker — never
 
 ## `mnemos_check_graph_coverage`
 
-Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
+Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (path does not exist under the project root, #452) / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
 
 ### Input
 
@@ -2055,7 +2056,7 @@ Semantics (ADR-0018, verbatim):
 
 ### Output
 
-`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). `record_abstention` returns the trace id and the full provenance chain.
+`pre_flight` returns `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` carries `{agent, last_seen, entries, checkpoint, task}` per same-project peer (capped to 8, most recent first; `agents_capped_from` makes truncation observable; `task` is the peer's claimed task slug or `null` — swarm v0b self-reported layer, dropped fail-closed when the issuance scan refuses or redacts it). The picture rides ONCE, at the top level (#452): `presence` carries its agents summary WITHOUT a nested picture. Conflict hints use a Unicode tokenizer (#451): word characters of any alphabet (Cyrillic included), dotted version tails stay one token (`v4.0.0`), hyphens split (`qa-vesma-5x` → `qa`/`vesma`/`5x`); a minimal RU stopword set rides the EN one. `record_abstention` returns the trace id and the full provenance chain.
 
 ### Notes
 

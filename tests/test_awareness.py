@@ -677,6 +677,38 @@ class TestConflictHints:
         assert conflict_hints(None, delta) == []
         assert conflict_hints("anything", {"agents": []}) == []
 
+    # ── #451: the Unicode tokenizer ────────────────────────────────────
+
+    def test_cyrillic_goals_fire_hints(self) -> None:
+        """#451: a Cyrillic goal tokenizes (the old ASCII-only class
+        yielded an EMPTY set and never fired) — RU↔RU overlap reaches
+        the hint layer."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "релиз платёжного модуля v4"}]}
+        hints = conflict_hints("готовлю релиз платёжного модуля", delta)
+        assert hints == [{"neighbor": "n1", "shared_tokens": ["модуля", "платёжного", "релиз"]}]
+
+    def test_hyphen_split_overlap_fires(self) -> None:
+        """#451: hyphens are SEPARATORS — slug-bearing goals overlap on
+        their PARTS, not the whole literal (before: ``qa-vesma-5x`` was
+        one opaque token that never matched a differently-spelled
+        neighbor)."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "close the qa-vesma-5x wave"}]}
+        hints = conflict_hints("finish qa-vesma-5x checks", delta)
+        assert hints == [{"neighbor": "n1", "shared_tokens": ["5x", "qa", "vesma"]}]
+
+    def test_dotted_versions_stay_single_tokens(self) -> None:
+        """The in-token dot survives the #451 widening: ``v4.0.0`` is
+        ONE token (the anti-#224 replay scenario depends on it)."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "cut the payments release v4.0.0"}]}
+        hints = conflict_hints("ship release v4.0.0 of payments", delta)
+        assert hints[0]["shared_tokens"] == ["payments", "release", "v4.0.0"]
+
+    def test_ru_stopwords_do_not_manufacture_hints(self) -> None:
+        """The minimal RU service-word set rides the EN D4 rule: shared
+        «и/в/не/на»-class words alone never fire a hint."""
+        delta = {"agents": [{"agent": "n1", "goal_title": "это не то и не сё"}]}
+        assert conflict_hints("это не то же самое, что и как", delta) == []
+
     def test_224_replay_scenario(self, manager: MemoryManager) -> None:
         """The permanent scenario: my release goal vs the parallel session
         that is about to close the same release — the hint fires."""
@@ -1801,6 +1833,23 @@ class TestPictureSurfaces:
         assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
         assert "## Operational picture" in result["text"]
         assert read_awareness_cursor(manager, project=PROJECT, agent=AGENT, session=SESSION) is None
+
+    def test_pre_flight_picture_rides_once_top_level(self, manager: MemoryManager) -> None:
+        """#452a: the pre-flight response carries the picture ONCE — the
+        canonical top-level dict; ``presence`` keeps its agents summary
+        WITHOUT the nested picture (the payload used to ship the same
+        picture three times: top-level dict, ``presence.picture`` dict, and the
+        rendered ``text`` section)."""
+        _checkpoint(manager, goals="dedup picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        result = pre_flight_snapshot(manager, project=PROJECT, agent=AGENT, session=SESSION)
+        assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
+        assert "picture" not in result["presence"], "presence must not nest a second picture"
+        assert [a["agent"] for a in result["presence"]["agents"]] == [NEIGHBOR]
+        assert "## Operational picture" in result["text"]  # the render stays
+        # The on_session_start hook keeps its nested picture — its ONLY
+        # picture channel (include_picture defaults to True there).
+        presence = compose_session_presence(manager, project=PROJECT, agent=AGENT)
+        assert presence["picture"]["agents"][0]["agent"] == NEIGHBOR
 
     def test_session_presence_carries_picture(self, manager: MemoryManager) -> None:
         _checkpoint(manager, goals="session picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)

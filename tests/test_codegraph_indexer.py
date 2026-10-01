@@ -355,6 +355,125 @@ class TestPoisonedFiles:
         assert leak[0] == 0
 
 
+# ── PG3 + secret_allowlist (issue #449) ──────────────────────────────────────
+
+
+class TestSecretAllowlist:
+    """The operator's known-fake-fixture escape hatch: allowlisted paths
+    skip poison-marking at parse time (still indexed normally) and a
+    previously-poisoned allowlisted path is un-poisoned on the next
+    index run — reported in ``IndexResult.unpoisoned``, never silent."""
+
+    def test_allowlisted_fixture_skips_poison_marking(
+        self, store: CodeGraphStore, mini_repo: Path
+    ) -> None:
+        cfg = CodeGraphConfig(secret_allowlist=["poisoned.py"])
+        result = index_project("proj", mini_repo, store, _FakeMainStore(), config=cfg)
+        # poisoned.py skipped; docstring_secret.py (not allowlisted) still hit.
+        assert "poisoned.py" not in result.poisoned
+        assert "docstring_secret.py" in result.poisoned
+        assert result.unpoisoned == []
+        assert "poisoned.py" not in store.get_poisoned_paths("proj")
+        # Still indexed NORMALLY: the real parse verdict replaces the
+        # secret-detected marker (clean parse here).
+        rec = (
+            store._conn()
+            .execute("SELECT parse_ok, parse_error FROM graph_files WHERE path='poisoned.py'")
+            .fetchone()
+        )
+        assert rec["parse_ok"] == 1
+        assert rec["parse_error"] is None
+        # Symbols still carry no poisoned marker metadata.
+        node = (
+            store._conn()
+            .execute(
+                "SELECT metadata FROM project_nodes WHERE path='poisoned.py' AND kind='Function'"
+            )
+            .fetchone()
+        )
+        assert node is not None
+        assert not (node["metadata"] and json.loads(str(node["metadata"])).get("poisoned"))
+
+    def test_glob_allowlist_matches_repo_relative_paths(
+        self, store: CodeGraphStore, mini_repo: Path
+    ) -> None:
+        cfg = CodeGraphConfig(secret_allowlist=["*.py"])  # everything matches
+        result = index_project("proj", mini_repo, store, _FakeMainStore(), config=cfg)
+        assert result.poisoned == []
+        assert store.get_poisoned_paths("proj") == set()
+
+    def test_non_matching_allowlist_changes_nothing(
+        self, store: CodeGraphStore, mini_repo: Path
+    ) -> None:
+        cfg = CodeGraphConfig(secret_allowlist=["tests/**"])  # no secret lives there
+        result = index_project("proj", mini_repo, store, _FakeMainStore(), config=cfg)
+        assert set(result.poisoned) == {"poisoned.py", "docstring_secret.py"}
+        assert store.get_poisoned_paths("proj") == {"poisoned.py", "docstring_secret.py"}
+
+    def test_reindex_unpoisons_allowlisted_path(
+        self, store: CodeGraphStore, mini_repo: Path
+    ) -> None:
+        main = _FakeMainStore()
+        first = index_project("proj", mini_repo, store, main)
+        assert "poisoned.py" in first.poisoned
+        assert first.unpoisoned == []
+        assert "poisoned.py" in store.get_poisoned_paths("proj")
+
+        # Force a real publish (mtime change) with the allowlist now set:
+        # the reindex re-parses poisoned.py under the allowlist (no new
+        # marking) and REMOVES the stale entry from the sidecar set.
+        (mini_repo / "pkg" / "app.py").write_text(
+            "from pkg.helper import Base, do_work\n\n"
+            "class Klass(Base):\n    def m(self, x=5):\n        return do_work(x)\n\n"
+            "def added():\n    return 1\n",
+            encoding="utf-8",
+        )
+        cfg = CodeGraphConfig(secret_allowlist=["poisoned.py"])
+        second = index_project("proj", mini_repo, store, main, config=cfg)
+        assert second.status == "ok"
+        assert second.unpoisoned == ["poisoned.py"]
+        assert "poisoned.py" not in store.get_poisoned_paths("proj")
+        assert "docstring_secret.py" in store.get_poisoned_paths("proj")
+
+    def test_fresh_run_unpoisons_on_config_only_change(
+        self, store: CodeGraphStore, mini_repo: Path
+    ) -> None:
+        main = _FakeMainStore()
+        index_project("proj", mini_repo, store, main)
+        assert "poisoned.py" in store.get_poisoned_paths("proj")
+
+        # No file changed: the tree classifies FRESH — but a config-only
+        # allowlist change must still take effect on the index call.
+        cfg = CodeGraphConfig(secret_allowlist=["poison*"])
+        fresh = index_project("proj", mini_repo, store, main, config=cfg)
+        assert fresh.status == STATUS_FRESH
+        assert fresh.unpoisoned == ["poisoned.py"]
+        assert "poisoned.py" not in store.get_poisoned_paths("proj")
+
+    def test_default_empty_allowlist_keeps_pg3_forever(
+        self, store: CodeGraphStore, mini_repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Default [] = today's behavior byte-identical: a reindex after
+        the detector stops firing keeps the poisoned entry (PG3
+        «навсегда», pinned here against the #449 surface)."""
+        import vesmaro.codegraph.indexer as indexer_module
+
+        main = _FakeMainStore()
+        index_project("proj", mini_repo, store, main)
+        assert "poisoned.py" in store.get_poisoned_paths("proj")
+        (mini_repo / "pkg" / "app.py").write_text(
+            "from pkg.helper import Base, do_work\n\n"
+            "class Klass(Base):\n    def m(self, x=5):\n        return do_work(x)\n\n"
+            "def added():\n    return 1\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(indexer_module, "detect_secrets", lambda source: [])
+        result = index_project("proj", mini_repo, store, main)
+        assert result.poisoned == []
+        assert result.unpoisoned == []
+        assert "poisoned.py" in store.get_poisoned_paths("proj")
+
+
 # ── PG7: fail-closed limits (PGT-6) ────────────────────────────────────────
 
 

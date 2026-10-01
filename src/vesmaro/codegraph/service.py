@@ -417,6 +417,20 @@ class CodeGraphService:
             )
             raise
         payload = self._index_payload(result)
+        # Issue #449: the allowlist un-poison is EXPLICIT — every
+        # non-empty removal gets its own audit row (reason
+        # ``allowlist-unpoison``) on every path that reaches here,
+        # fresh runs included: config-only allowlist changes must show
+        # in the sidecar trail, never silently shrink the set.
+        if result.unpoisoned:
+            self._audit.record(
+                registered.graph_key,
+                "reindex" if pre_files else "index",
+                actor,
+                session=sess,
+                reason="allowlist-unpoison",
+                details={"paths": sorted(result.unpoisoned)},
+            )
         no_change = result.status in (
             incremental_mod.STATUS_FRESH,
             incremental_mod.STATUS_IN_PROGRESS,
@@ -455,6 +469,9 @@ class CodeGraphService:
             "files_indexed": result.files_indexed,
             "files_skipped": result.files_skipped,
             "poisoned": sorted(result.poisoned),
+            # Issue #449: paths un-poisoned by THIS run's allowlist pass
+            # (audited with reason ``allowlist-unpoison``).
+            "unpoisoned": sorted(result.unpoisoned),
             "parse_errors": dict(sorted(result.parse_errors.items())),
             "duration_sec": round(result.duration, 3),
             "incremental": result.incremental,
@@ -931,8 +948,14 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
     ) -> dict[str, Any]:
-        """Per-path verdicts: indexed / stale / parse-error / unindexed
-        (coverage honesty — «clean ≠ proof» stays visible)."""
+        """Per-path verdicts: indexed / stale / parse-error / unindexed /
+        missing (coverage honesty — «clean ≠ proof» stays visible).
+
+        ``missing`` (#452b): the path does not exist under the project
+        root — its own verdict, distinct from ``unindexed`` (a REAL
+        file the index has not covered; before, both answered
+        ``unindexed`` and a typo read as an index gap).
+        """
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -946,7 +969,10 @@ class CodeGraphService:
             rel = self._confine_path(registered.root, raw)
             rec = records.get(rel)
             verdict: dict[str, Any] = {"path": rel}
-            if rel in poisoned:
+            if not os.path.exists(Path(registered.root) / rel):
+                verdict["verdict"] = "missing"
+                verdict["reason"] = "path does not exist under the project root"
+            elif rel in poisoned:
                 verdict["verdict"] = "poisoned"
                 verdict["reason"] = "secret-detected (permanent)"
             elif rec is None:

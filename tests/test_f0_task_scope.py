@@ -397,6 +397,80 @@ class TestScopeIntersection:
         assert mgr.search_stats()["project_scope_fallback_total"] == 1
 
 
+class TestBareSlugTaskFallback:
+    """Issue #455 (eyes-session feedback #2): the tags filter is
+    exact-membership, so ``tags=["<bare-slug>"]`` never matched rows
+    tagged ``task:<slug>`` — a silent empty page. The fallback retries
+    ONCE with the exact minted tag when the store's tag census proves
+    ``task:<slug>`` rows exist; surfaced rows carry
+    ``task_tag_fallback=True`` and the event counts in
+    ``search_stats()["task_tag_fallback_total"]``."""
+
+    def test_bare_slug_finds_task_rows_marked_fallback(self, mgr: MemoryManager) -> None:
+        rows = {
+            "t1": _row(mgr, "harbor tide schedule notes", task="qa-vesma"),
+            "t2": _row(mgr, "harbor tide schedule notes", task="other-task"),
+        }
+        mgr.vectors.wipe()  # FTS-only: the tag gate is the decider
+
+        results = mgr.search("harbor tide", tags=["qa-vesma"], project=PROJECT, limit=10)
+        ids = {r.memory.id for r in results}
+        assert ids == {rows["t1"].id}, "the bare slug must find the task-scoped row"
+        assert all(r.task_tag_fallback for r in results)
+        assert mgr.search_stats()["task_tag_fallback_total"] == 1
+
+    def test_exact_tag_query_unchanged_no_marker(self, mgr: MemoryManager) -> None:
+        row = _row(mgr, "harbor tide schedule notes", task="qa-vesma")
+        mgr.vectors.wipe()
+
+        results = mgr.search("harbor tide", tags=["task:qa-vesma"], project=PROJECT, limit=10)
+        assert {r.memory.id for r in results} == {row.id}
+        assert all(not r.task_tag_fallback for r in results)
+        assert mgr.search_stats()["task_tag_fallback_total"] == 0
+
+    def test_no_task_rows_stays_empty_without_fallback(self, mgr: MemoryManager) -> None:
+        """A bare slug with NO ``task:<slug>`` rows in the store is an
+        honest empty page — no retry, no marker, no counter movement."""
+        _row(mgr, "harbor tide schedule notes", task="qa-vesma")
+        mgr.vectors.wipe()
+
+        results = mgr.search("harbor tide", tags=["no-such-task"], project=PROJECT, limit=10)
+        assert results == []
+        assert mgr.search_stats()["task_tag_fallback_total"] == 0
+        # The project soft-fallback alone does not rescue it either (the
+        # bare tag matches nothing in ANY project).
+
+    def test_bare_slug_keeps_project_scope(self, mgr: MemoryManager) -> None:
+        """The retry narrows nothing and widens nothing: the project
+        scope (and agent) stay bound — only the tag FORM changes."""
+        mine = _row(mgr, "harbor tide schedule notes", task="qa-vesma")
+        foreign = _row(
+            mgr, "harbor tide schedule notes", project=PROJECT_B, task="qa-vesma"
+        )
+        mgr.vectors.wipe()
+
+        results = mgr.search("harbor tide", tags=["qa-vesma"], project=PROJECT, limit=10)
+        ids = {r.memory.id for r in results}
+        assert ids == {mine.id}
+        assert foreign.id not in ids
+        assert all(r.task_tag_fallback for r in results)
+        # The task fallback fired and surfaced rows → the project
+        # soft-fallback must NOT also fire (results were found in scope).
+        assert mgr.search_stats()["project_scope_fallback_total"] == 0
+
+    def test_task_param_mints_exact_tag_no_fallback(self, mgr: MemoryManager) -> None:
+        """The ``task=`` switcher mints the tag at the boundary — the
+        A==C equivalence doctrine: it needs no fallback and never takes
+        it (its filter carries the ``task:`` prefix by construction)."""
+        row = _row(mgr, "harbor tide schedule notes", task="qa-vesma")
+        mgr.vectors.wipe()
+
+        results = mgr.search("harbor tide", task="qa-vesma", project=PROJECT, limit=10)
+        assert {r.memory.id for r in results} == {row.id}
+        assert all(not r.task_tag_fallback for r in results)
+        assert mgr.search_stats()["task_tag_fallback_total"] == 0
+
+
 # ---------------------------------------------------------------------------
 # 2. Doc-grouping metadata convention (zero migration)
 # ---------------------------------------------------------------------------

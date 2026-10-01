@@ -328,7 +328,14 @@ PICTURE_TASK_DISCLAIMER: Final[str] = (
 _GOAL_SECTION_RE: Final[re.Pattern[str]] = re.compile(
     r"^## Goals\s*$(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
-_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9][a-z0-9_.\-]+")
+#: Goal tokenizer (#451): Unicode word characters (``\w`` over a str
+#: pattern matches Unicode letters — Cyrillic included — plus digits and
+#: underscore), dotted tails kept IN-token (``v4.0.0`` is ONE token),
+#: hyphens as SEPARATORS (``qa-vesma-5x`` yields ``qa``/``vesma``/``5x``
+#: — the delimiter real slugs use, so slug-bearing goals overlap on
+#: their slug PARTS, not the whole literal). A token always starts and
+#: ends on a word character — lone dots never match.
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"\w+(?:\.\w+)*", re.UNICODE)
 _POLICY_TAG_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:applyTo|severity):[^\s,;]*")
 #: swarm v0b (C6): the PICTURE's defensive read-side view of the
 #: ADR-0027 task-slug alphabet — identical bytes to
@@ -343,7 +350,11 @@ _POLICY_TAG_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:applyTo|severity):[^\
 _TASK_TAG_SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9_\-]{1,64}\Z")
 
 #: Stopwords dropped before overlap comparison (deterministic fixed set —
-#: single common words must not manufacture conflicts, D4).
+#: single common words must not manufacture conflicts, D4). The EN core
+#: plus a MINIMAL RU service-word set (#451): the project is bilingual
+#: (RU owner, EN corpus), and without the RU set every «и/в/на» would
+#: count as overlap fuel for Cyrillic goals. Deliberately tiny — a
+#: longer list is a curation decision, not a tokenizer fix.
 _STOPWORDS: Final[frozenset[str]] = frozenset(
     {
         "the",
@@ -449,6 +460,21 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
         "goals",
         "task",
         "tasks",
+        # Minimal RU service-word set (#451) — see the _STOPWORDS comment.
+        "и",
+        "в",
+        "не",
+        "на",
+        "с",  # noqa: RUF001 — Cyrillic 'es', NOT Latin 'c' (deliberate)
+        "по",
+        "для",
+        "из",
+        "у",  # noqa: RUF001 — Cyrillic 'u', NOT Latin 'y' (deliberate)
+        "к",
+        "о",  # noqa: RUF001 — Cyrillic 'o', NOT Latin 'o' (deliberate)
+        "как",
+        "что",
+        "это",
     }
 )
 
@@ -804,14 +830,14 @@ def _picture_task_tag(
 def _goal_tokens(text: str) -> frozenset[str]:
     """Deterministic lexical token set (lowercased, stopwords dropped).
 
-    Known v0 limitation: the tokenizer is ASCII-blind by construction
-    (``[a-z0-9][a-z0-9_.\\-]+`` over the lowercased text) — a Cyrillic
-    goal yields an EMPTY token set and never fires a conflict hint. The
-    project is bilingual (RU owner, EN corpus), so this is a real gap:
-    D-batches with Cyrillic-goal scenarios must not be scored as hint
-    misses without noting this. Widening the class (e.g. ``\\w`` with
-    Unicode) is a tokenizer change that E0 must register before any run
-    that relies on it.
+    Unicode tokenizer (#451): ``\\w`` word characters (Unicode letters,
+    digits, underscore — Cyrillic included), dotted tails kept in-token
+    (``v4.0.0`` is ONE token), hyphens as separators
+    (``qa-vesma-5x`` → ``qa``/``vesma``/``5x``). A Cyrillic goal now
+    tokenizes like a Latin one, so RU↔RU and RU↔EN goal overlap both
+    reach the hint layer; the stopword set carries the EN core plus a
+    minimal RU service-word set. Pure function of the input: same text
+    → same tokens, every call.
     """
     return frozenset(t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS)
 
@@ -1411,7 +1437,12 @@ def compose_pre_llm_awareness(
 
 
 def compose_session_presence(
-    mgr: MemoryManager, *, project: str, agent: str, now: datetime | None = None
+    mgr: MemoryManager,
+    *,
+    project: str,
+    agent: str,
+    now: datetime | None = None,
+    include_picture: bool = True,
 ) -> dict[str, Any]:
     """Presence + conflict hints, for the ``on_session_start`` section.
 
@@ -1419,6 +1450,14 @@ def compose_session_presence(
     hint layer needs neighbor GOALS, which are the delta's self-reported
     layer, so hints ride a delta over the presence window; the presence
     section itself stays observed-only.
+
+    ``include_picture`` (issue #452a): the ``on_session_start`` hook
+    wants the operational picture nested here (its only picture
+    channel); the ``pre_flight`` snapshot passes ``False`` — it carries
+    ONE canonical top-level ``picture`` and must not duplicate it inside
+    ``presence`` (the payload used to ship the same picture three times: the
+    top-level dict, the nested ``presence.picture`` dict, and the
+    rendered ``text`` section).
     """
     project = _require_project(project)
     now_dt = _now_or(now)
@@ -1431,18 +1470,22 @@ def compose_session_presence(
         now=now_dt,
     )
     hints = conflict_hints(_my_goal(mgr, project=project, agent=agent), window_delta)
-    return {
+    result: dict[str, Any] = {
         "window_sec": snapshot["window_sec"],
         "agents": [a for a in snapshot["agents"] if a["agent"] != agent],
         "conflict_hints": hints,
         "disclaimer": AWARENESS_DISCLAIMER,
+    }
+    if include_picture:
         # swarm v0a: the operational picture rides additively (the
         # on_session_start surface renders it below the presence block).
         # No C9 gate HERE: this is an internal leg of a composition the
         # CALLING surface already gated (double-counting one user query
         # would halve the honest budget).
-        "picture": operational_picture(mgr, project=project, exclude_agent=agent, now=now_dt),
-    }
+        result["picture"] = operational_picture(
+            mgr, project=project, exclude_agent=agent, now=now_dt
+        )
+    return result
 
 
 def pre_flight_snapshot(
@@ -1473,6 +1516,12 @@ def pre_flight_snapshot(
     the pre-cap slot count so the truncation is observable, never
     silent. ``counts`` scalars (feed/excluded/redactions/high_water)
     are aggregates and stay full-window.
+
+    The operational picture rides ONCE, as the canonical top-level
+    ``picture`` (issue #452a) — ``presence`` keeps its agents summary
+    WITHOUT a nested picture (the pre-flight payload used to ship the
+    same picture three times: the top-level dict, the nested
+    ``presence.picture`` dict, and the rendered ``text`` section).
     """
     _require_identity(agent, session)
     project = _require_project(project)
@@ -1508,7 +1557,11 @@ def pre_flight_snapshot(
     return {
         "action": "pre_flight",
         "project": project,
-        "presence": compose_session_presence(mgr, project=project, agent=agent, now=now_dt),
+        # #452a: ONE canonical picture — top-level only; the nested
+        # presence picture is deliberately omitted (see the docstring).
+        "presence": compose_session_presence(
+            mgr, project=project, agent=agent, now=now_dt, include_picture=False
+        ),
         "delta": delta,
         "picture": picture,
         "conflict_hints": hints,

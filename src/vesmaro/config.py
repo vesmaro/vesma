@@ -1081,11 +1081,29 @@ class CodeGraphConfig(BaseModel):
             with an ``auto-register-capped`` audit row, never an error
             to the caller; operator-registered projects and root-reuse
             of an existing project never count against the cap.
+        secret_allowlist: Repo-relative path globs (``fnmatch``
+            semantics, issue #449) whose files SKIP poison-marking at
+            index time — the operator's escape hatch for known-fake
+            secret fixtures (test data, docs samples) that would
+            otherwise be poisoned forever by PG3. The file is still
+            indexed normally; only the ``secret-detected`` marking is
+            skipped. On every index call a previously-poisoned path
+            that now matches the allowlist is UN-poisoned — removed
+            from the sidecar set with an ``allowlist-unpoison`` audit
+            row, never silently. Default ``[]`` keeps PG3
+            byte-identical. Env override takes a JSON array:
+            ``VESMARO_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'``.
     """
 
     enabled: bool = True
     index_max_files: int = Field(default=20_000, ge=1)
     index_max_source_mb: int = Field(default=500, ge=1)
+    # Issue #449: fnmatch globs over repo-relative paths — matching files
+    # skip PG3 poison-marking at index time (still indexed normally) and a
+    # previously-poisoned matching path is un-poisoned on the next index
+    # call (audited, reason ``allowlist-unpoison``). Default [] = today's
+    # PG3 «навсегда» semantics, byte-identical.
+    secret_allowlist: list[str] = Field(default_factory=list)
     beacon: bool = True
     watch: bool = True
     auto_index: bool = True

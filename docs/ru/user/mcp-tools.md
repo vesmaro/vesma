@@ -51,7 +51,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 | [`mnemos_trace_path`](#mnemos_trace_path) | BFS по рёбрам графа от одного символа (глубина ≤ 2) | нет |
 | [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Схема символов одного проиндексированного файла (формы, никогда тела) | нет |
 | [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Секрет-сканированное чтение диапазона строк С ДИСКА (PG4) | нет |
-| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / poisoned | нет |
+| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / missing / poisoned | нет |
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
 | [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
@@ -142,7 +142,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 | `query` | string | **да** | — | Строка поиска на естественном языке. Матчится FTS5-веткой как ОДНА целая фраза — см. «Семантика запроса» выше. |
 | `tags` | string[] | нет | — | Фильтр: все эти теги должны присутствовать. |
 | `project` | string | нет | — | Ограничить проектом. |
-| `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Байт-в-байт эквивалентен `tags=["task:<slug>"]` (поверхность arm-C из F1): сужает результаты до записей этой задачи; с `tags` комбинируется пересечением (должны выполняться оба). Сначала нормализуется (`My Task` → `my-task`); неисправимые slug отклоняются громко. |
+| `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Байт-в-байт эквивалентен `tags=["task:<slug>"]` (поверхность arm-C из F1): сужает результаты до записей этой задачи; с `tags` комбинируется пересечением (должны выполняться оба). Сначала нормализуется (`My Task` → `my-task`); неисправимые slug отклоняются громко. Замечание про «голый» slug (#455): slug без префикса в `tags` (не в `task`) сам по себе ничего не матчит — когда такой запрос даёт ноль строк, а записи `task:<slug>` существуют, поиск повторяет запрос один раз с точным тегом и помечает найденные строки (`task_tag_fallback`). |
 | `limit` | integer | нет | `10` | Максимум результатов. |
 | `include_raw` | boolean | нет | `false` | Если true, возвращает `raw_content` вместо очищенного `content`. |
 | `verbosity` | string | нет | из конфига | Одно из `default`, `terse`, `minimal`. Вставляет подсказку по стилю вывода во framing результата. См. [Сокращение токенов вывода (P1-7)](#сокращение-токенов-вывода-p1-7). |
@@ -925,6 +925,7 @@ Vesma синтезирует части в единую запись Markdown с
   "files_indexed": 312,
   "files_skipped": 88,
   "poisoned": ["deploy/secret.env"],
+  "unpoisoned": [],
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "duration_sec": 4.212,
   "incremental": true,
@@ -937,7 +938,7 @@ Vesma синтезирует части в единую запись Markdown с
 }
 ```
 
-`status` — `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` равен `null`, когда ничего не изменилось (без фальшивой свежести). Ошибки разбора едут в ответе как маркер честности — «clean ≠ proof». Poisoned-пути сработали на детектор секретов при индексации и навсегда отклоняются при выдаче сниппетов (PG3).
+`status` — `indexed` / `reindexed` / `fresh` / `in-progress`; `staleness` равен `null`, когда ничего не изменилось (без фальшивой свежести). Ошибки разбора едут в ответе как маркер честности — «clean ≠ proof». Poisoned-пути сработали на детектор секретов при индексации и навсегда отклоняются при выдаче сниппетов (PG3) — если они не в allowlist (`code_graph.secret_allowlist`, #449): `unpoisoned` перечисляет пути, которые allowlist-проход этого запуска снял с отравления (аудит `allowlist-unpoison`).
 
 ### Пример вызова (JSON-RPC)
 
@@ -1190,7 +1191,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ## `mnemos_check_graph_coverage`
 
-Пакетная проверка покрытия: вердикт по каждому пути — `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned`. Честность покрытия — доверять здесь НЕЧЕМУ; проверяйте через `mnemos_get_code_snippet`.
+Пакетная проверка покрытия: вердикт по каждому пути — `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (пути нет под корнем проекта, #452) / `poisoned`. Честность покрытия — доверять здесь НЕЧЕМУ; проверяйте через `mnemos_get_code_snippet`.
 
 ### Входные параметры
 
@@ -2052,7 +2053,7 @@ output_style:
 
 ### Выход
 
-`pre_flight` возвращает `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` несёт `{agent, last_seen, entries, checkpoint, task}` на каждого соседа по проекту (кап 8, свежие первыми; `agents_capped_from` делает обрезание наблюдаемым; `task` — заявленный соседом slug задачи или `null` — самоподанный слой swarm v0b, вырезается fail-closed, если скан выдачи отказал или редактировал его). `record_abstention` возвращает id трейса и полную цепочку провенанса.
+`pre_flight` возвращает `{action, project, presence, delta, picture, conflict_hints, text, disclaimer, cursor_advanced: false}` — `picture.agents` несёт `{agent, last_seen, entries, checkpoint, task}` на каждого соседа по проекту (кап 8, свежие первыми; `agents_capped_from` делает обрезание наблюдаемым; `task` — заявленный соседом slug задачи или `null` — самоподанный слой swarm v0b, вырезается fail-closed, если скан выдачи отказал или редактировал его). Картина ездит РОВНО ОДИН раз — на верхнем уровне (#452): `presence` несёт сводку агентов БЕЗ вложенной картины. Подсказки о конфликтах используют Unicode-токенайзер (#451): слово-символы любого алфавита (кириллица включена), точечные хвосты версий — один токен (`v4.0.0`), дефисы разделяют (`qa-vesma-5x` → `qa`/`vesma`/`5x`); минимальный RU-набор стоп-слов дополняет EN-набор. `record_abstention` возвращает id трейса и полную цепочку провенанса.
 
 ### Заметки
 

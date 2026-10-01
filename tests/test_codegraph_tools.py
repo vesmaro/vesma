@@ -324,16 +324,23 @@ class TestToolHappyPaths:
         assert {"Base", "make_base"} <= names
         assert outline["parse_error"] is None
 
-    def test_coverage_verdicts(self, indexed: CodeGraphService) -> None:
+    def test_coverage_verdicts(self, indexed: CodeGraphService, mini_repo: Path) -> None:
+        # A REAL file the index has not covered (created after indexing):
+        # this is what "unindexed" means — distinct from a path that
+        # does not exist on disk (#452b: "missing").
+        (mini_repo / "added_later.py").write_text("X = 1\n", encoding="utf-8")
         verdicts = {
             v["path"]: v["verdict"]
             for v in indexed.check_coverage(
-                PROJECT, ["notes.py", "never-indexed.py", "secret.py"], agent=AGENT
+                PROJECT,
+                ["notes.py", "added_later.py", "secret.py", "never-existed.py"],
+                agent=AGENT,
             )["coverage"]
         }
         assert verdicts["notes.py"] == "indexed"
-        assert verdicts["never-indexed.py"] == "unindexed"
+        assert verdicts["added_later.py"] == "unindexed"
         assert verdicts["secret.py"] == "poisoned"
+        assert verdicts["never-existed.py"] == "missing"
 
     def test_coverage_stale_verdict(self, indexed: CodeGraphService, mini_repo: Path) -> None:
         (mini_repo / "notes.py").write_text("LINE_A = 'alpha'\nCHANGED = 1\n", encoding="utf-8")
@@ -437,6 +444,86 @@ class TestSnippetPG4:
         service.delete_graph_project(PROJECT, agent=AGENT)
         with pytest.raises(GraphToolError, match="not indexed"):
             service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
+
+
+# ── PG3 + secret_allowlist (issue #449) ──────────────────────────────────────
+
+
+class TestSecretAllowlistService:
+    def test_allowlisted_fixture_snippet_readable_after_reindex(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """#449 acceptance: index (poisoned) → allowlist the fixture in
+        config → reindex → the snippet path issues (the PG3 refusal is
+        lifted) and the un-poison carries an audit row. PG4 is NOT
+        waived: a requested range that itself trips the detector still
+        refuses — the test reads the fixture's CLEAN line."""
+        fixture = mini_repo / "fake_key_fixture.py"
+        fixture.write_text(
+            f'AWS_ID = "{SECRET_AWS_KEY}"\nBODY = "clean fixture line"\n', encoding="utf-8"
+        )
+        service, _ = make_service(tmp_path, mini_repo)
+        first = service.index_project(PROJECT, agent=AGENT)
+        assert first["poisoned"] == ["fake_key_fixture.py", "secret.py"]
+        # PG3 «навсегда»: even the CLEAN line of a poisoned file refuses.
+        with pytest.raises(GraphToolError, match="POISONED"):
+            service.get_code_snippet(PROJECT, "fake_key_fixture.py", 2, 2, agent=AGENT)
+        service.close()
+
+        allowlisted, _ = make_service(tmp_path, mini_repo, secret_allowlist=["fake_key*"])
+        try:
+            again = allowlisted.index_project(PROJECT, agent=AGENT, incremental=False)
+            assert again["status"] == "ok"
+            assert "fake_key_fixture.py" not in again["poisoned"]
+            assert again["unpoisoned"] == ["fake_key_fixture.py"]
+            snippet = allowlisted.get_code_snippet(
+                PROJECT, "fake_key_fixture.py", 2, 2, agent=AGENT
+            )
+            assert snippet["content"] == 'BODY = "clean fixture line"'
+            rows = [
+                r
+                for r in allowlisted._audit.recent(PROJECT)
+                if r["reason"] == "allowlist-unpoison"
+            ]
+            assert rows and rows[0]["details"]["paths"] == ["fake_key_fixture.py"]
+        finally:
+            allowlisted.close()
+
+    def test_allowlisted_fixture_secret_line_still_refuses_pg4(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """#449 review P2-1: the allowlist lifts only the index-time PG3
+        marking; the issuance-time scan (PG4) is NOT waived — a requested
+        range that itself trips the detector still refuses fail-closed."""
+        fixture = mini_repo / "fake_key_fixture.py"
+        fixture.write_text(
+            f'AWS_ID = "{SECRET_AWS_KEY}"\nBODY = "clean fixture line"\n', encoding="utf-8"
+        )
+        allowlisted, _ = make_service(tmp_path, mini_repo, secret_allowlist=["fake_key*"])
+        try:
+            allowlisted.index_project(PROJECT, agent=AGENT)
+            with pytest.raises(GraphToolError, match="PG4"):
+                allowlisted.get_code_snippet(
+                    PROJECT, "fake_key_fixture.py", 1, 1, agent=AGENT
+                )
+        finally:
+            allowlisted.close()
+
+    def test_non_allowlisted_poisoning_unchanged(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, _ = make_service(tmp_path, mini_repo, secret_allowlist=["docs/**"])
+        try:
+            result = service.index_project(PROJECT, agent=AGENT)
+            assert result["poisoned"] == ["secret.py"]
+            assert result["unpoisoned"] == []
+            with pytest.raises(GraphToolError, match="POISONED"):
+                service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
+            assert all(
+                r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT)
+            )
+        finally:
+            service.close()
 
 
 # ── PG mechanics: audit, attribution, confinement, flag, limits ─────────────
