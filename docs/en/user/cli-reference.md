@@ -858,33 +858,49 @@ health gate — `doctor` and `integration verify` govern health).
 
 ## `update`
 
-One command for the whole update family: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) plain `vesma update` stays check-only and prints `apply with: vesma update --yes`. It can also upgrade the pip user-site install non-interactively (plus the global npm package, best-effort), pin a version for rollback, or manage the weekly auto-update timer.
+One command family for updating Vesma. Plain `vesma update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint, so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep working.
 
 ```text
-vesma update [OPTIONS]
+vesma update                     # report + interactive apply prompt (5.2.0 behavior)
+vesma update check
+vesma update apply [OPTIONS]
+vesma update timer install|uninstall|status
+vesma update components [--json]
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--check` | `false` | Report surfaces only — never applies, never prompts. |
-| `--yes`, `-y` | `false` | Apply without the confirmation prompt: `pip install --user --upgrade`; the npm package is updated best-effort. |
-| `--verbose` | `false` | Print the full pip output instead of a one-line summary per surface (on failure the last pip lines are shown either way). |
-| `--scope` | `user` | Update scope. Only `user` exists — prod venvs, Go binaries and containers are never auto-updated. |
-| `--to <version>` | — | Pin the pip target version (rollback path), e.g. `--to 5.1.1`. Requires `--yes`/`-y`. |
-| `--install-timer` | `false` | Install and enable the weekly systemd user update timer (`vesma-update.timer`, `Persistent=true`). |
-| `--uninstall-timer` | `false` | Disable and remove the timer and its service unit. |
+### Subcommands
 
-The update check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than the published latest, the report marks it `newer than published latest (local build?)` instead of `up to date`.
+| Subcommand | Description |
+|------------|-------------|
+| `check` | Report surfaces only — never applies, never prompts. Safe in pipes and CI. |
+| `apply` | The apply path: `pip install --user --upgrade` plus the global npm package, best-effort. Never prompts (invoking `apply` IS the confirmation); `-y/--yes` is accepted as a no-op. `--to <version>` pins a (rollback) version; `--scope` — only `user` exists; `--verbose` prints the full pip output. |
+| `timer install` | Install and enable the weekly systemd user timer (`Persistent=true`). Inside a distrobox/container this REFUSES with exit 1 by default — units installed there would be dead (#468). Run it on the host, or pass `--force` for the intentional box-aware install (units land in the HOST home, one ExecStart line per box). |
+| `timer uninstall` | Disable and remove the timer; from a box it removes only this box's ExecStart line from the HOST units. |
+| `timer status` | Unit presence, enabled state and last trigger (`--json` for scripting); inside a box it also reports the HOST units and names the box. |
+| `components` | The component inventory (below) — local state only, no network. |
 
-### Report-only surfaces
+Deprecated flag aliases (each prints `use: vesma update …` once on stderr; stdout stays clean): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Options placed before the subcommand word are ignored with an explicit stderr note.
 
-The report lists every update surface found on this machine. Only the pip user-site (and npm) is ever changed; prod venvs and Go binaries are report-only by design:
+The check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than everything published, the report says `newer than published latest (local build?)`.
 
-- **pip dist** — the surface `--yes` upgrades (`--break-system-packages` is appended automatically under PEP 668 externally-managed interpreters); every run appends a record to `~/.local/share/vesma/update-history.json`.
-- **npm `@vesmaro/vesma`** — upgraded best-effort with `--yes` when installed.
-- **prod venvs** — `MANUAL GATE` in the report; update them via the upgrade runbook.
-- **Go binaries** (`vesmaro-agent`/`vesma-agent`, `mnemos-mesh`/`vesma-mesh`) — updated via goreleaser releases with checksum verification.
-- **container images** — CI release artifacts.
+### The pip alias family row
+
+`vesma` and `vesma-memory-server` are canonical PyPI names of the SAME codebase (`mnemos-memory-server` is the deprecated legacy mirror — noted here, not in the table). The report collapses the aliases into ONE row, `pip: vesma (family)`: Installed = the detected dist and version, Latest = the family max over the aliases' published versions (fetched per alias, cached in the shared `update-check.json`), and the Note names the alias actually installed — e.g. `up to date (installed as vesma-memory-server — same codebase, alias package)`. With nothing installed the row reads `not installed — pip install --user vesma`.
+
+### Component inventory
+
+`vesma update components` shows what is installed and how each piece updates — every row is read from local state (files, sqlite, `systemctl --user`, `npm ls`), never from the network. Honest `-` where a component is absent or its version is not cheaply readable.
+
+| Component | Installed | Update path |
+|-----------|-----------|-------------|
+| pip dist | `<dist> <version>` (first of `vesma-memory-server` / `vesma` found) | `vesma update apply` |
+| integration pack | pack version + aggregate stale/missing across detected targets | `vesma integration update` (`setup` when files are missing) |
+| cortex bundle | `vesma-cortex-v1` name + weights revision from the shipped manifest | ships with the wheel |
+| embedder | model id + fingerprint (vector-store vintage when readable; `VINTAGE MISMATCH` on a stale index) | `vesma reindex` after a model switch |
+| npm package `@vesmaro/vesma` | global version or `-` | `vesma update apply` (npm leg, best-effort) |
+| update timer | enabled / installed (disabled) / not installed — plus the box note | `vesma update timer install` |
+| prod venvs | comma-separated venv names, ONE row | MANUAL GATE — upgrade runbook |
+| go binaries | comma-separated names, report only | goreleaser releases (checksums) |
 
 ### Example
 
@@ -892,20 +908,23 @@ The report lists every update surface found on this machine. Only the pip user-s
 # Report all update surfaces, then ask to apply (in a terminal)
 vesma update
 
-# Check only (default behavior in pipes/CI)
-vesma update --check
+# Check only — canonical spelling of the old `--check`
+vesma update check
 
-# Apply without the prompt (scripts, CI)
-vesma update --yes --scope=user
+# Apply without any prompt (scripts, CI; the old `--yes --scope=user`)
+vesma update apply
 
 # Apply with the full pip output
-vesma update -y --verbose
+vesma update apply --verbose
 
 # Roll back to a pinned version
-vesma update --yes --to 5.1.1
+vesma update apply --to 5.1.1
 
-# Weekly auto-update of the user-site (survives reboot)
-vesma update --install-timer
+# Weekly auto-update of the user-site (run ON THE HOST — #468)
+vesma update timer install
+
+# What is installed, and what updates it
+vesma update components
 ```
 
 Restart running clients (MCP / `serve`) after a successful update to pick up the new version.

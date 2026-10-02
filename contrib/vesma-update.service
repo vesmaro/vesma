@@ -9,10 +9,11 @@
 #   releases with checksum verification), and container images (CI
 #   release artifacts).
 #
-# Install with `vesma update --install-timer`, remove with
-# `vesma update --uninstall-timer`. --install-timer writes this file
-# with the ExecStart chosen for this machine (%h launcher when present,
-# /usr/bin/env fallback otherwise).
+# Install with `vesma update timer install`, remove with
+# `vesma update timer uninstall` (deprecated flag forms
+# --install-timer/--uninstall-timer still work). The installer writes
+# this file with the ExecStart chosen for this machine (%h launcher when
+# present, /usr/bin/env fallback otherwise).
 #
 # Distrobox hosts: a systemd USER timer on the HOST cannot reach the
 # boxes' pip user-sites. Adapt this unit the way the prod units do —

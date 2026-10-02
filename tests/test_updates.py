@@ -466,6 +466,7 @@ def _invoke_update(args: list[str], monkeypatch: pytest.MonkeyPatch):  # type: i
 def test_update_check_output_shape(quiet_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: _info())
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: LATEST)
     result = _invoke_update([], monkeypatch)
     assert result.exit_code == 0
     assert "vesma" in result.output
@@ -481,6 +482,7 @@ def test_update_check_pip_latest_unknown_offline(
 ) -> None:
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: None)
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: None)
     result = _invoke_update(["--check"], monkeypatch)
     assert result.exit_code == 0
     assert "latest unknown" in result.output
@@ -496,6 +498,7 @@ def test_update_check_reports_prod_venv_and_go_binaries(
     (quiet_home / ".local" / "bin" / "mnemos-mesh").write_text("#!/bin/sh\n")
     monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (share,))
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: None)
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: None)
     result = _invoke_update([], monkeypatch)
     assert result.exit_code == 0
     assert "MANUAL GATE" in result.output
@@ -617,6 +620,7 @@ def no_pypi(monkeypatch: pytest.MonkeyPatch) -> None:
 def pending_check(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: _info())
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: LATEST)
     monkeypatch.setattr(updates_cli, "_pep668_externally_managed", lambda: False)
 
 
@@ -693,7 +697,7 @@ def test_update_plain_nontty_pending_check_only_with_hint(
 
     result = _invoke_update([], monkeypatch)
     assert result.exit_code == 0
-    assert "apply with: vesma update --yes" in result.output
+    assert "apply with: vesma update apply" in result.output
     assert "UPDATE AVAILABLE" in result.output
 
 
@@ -708,6 +712,7 @@ def test_update_plain_no_pending_never_prompts(
         "check_for_update",
         lambda settings=None, **kw: _info(update_available=False, latest="5.1.1"),
     )
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: "5.1.1")
     monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
     calls = _spy_confirm(monkeypatch, answer=True)
 
@@ -840,6 +845,7 @@ def test_update_check_installed_newer_than_latest_wording(
         "check_for_update",
         lambda settings=None, **kw: _info(update_available=False, latest="5.1.1"),
     )
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: None)
     result = _invoke_update([], monkeypatch)
     assert result.exit_code == 0
     assert "newer than published latest (local build?)" in result.output
@@ -917,14 +923,17 @@ def test_timer_flags_are_mutually_exclusive(
 
 @pytest.fixture(autouse=True)
 def not_a_container(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fake the machine container marker OFF for deterministic verdicts.
+    """Fake the machine container signals OFF for deterministic verdicts.
 
     This dev machine runs inside a distrobox (``/run/.containerenv``
-    exists), so the real marker would hijack every host-path test. Box
-    detection still works via the HOME ``/.distrobox/`` layout; the
-    marker-only test below re-points the constant at a real file.
+    exists AND ``CONTAINER_ID``/``DISTROBOX_ENTER_ENV`` are set), so the
+    real signals would hijack every host-path test. Box detection still
+    works via the HOME ``/.distrobox/`` layout; the marker-only test
+    below re-points the constant at a real file.
     """
     monkeypatch.setattr(updates_cli, "_CONTAINERENV", Path("/nonexistent/.containerenv"))
+    monkeypatch.delenv("CONTAINER_ID", raising=False)
+    monkeypatch.delenv("DISTROBOX_ENTER_ENV", raising=False)
 
 
 def _make_box_home(tmp_path: Path, box: str) -> tuple[Path, Path]:
@@ -983,7 +992,7 @@ def test_install_timer_in_box_writes_host_units(
     box_home, host_home = box_env
     monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
     calls = _spy_systemctl(monkeypatch, rc=0)
-    result = _invoke_update(["--install-timer"], monkeypatch)
+    result = _invoke_update(["timer", "install", "--force"], monkeypatch)
     assert result.exit_code == 0, result.output
     unit_dir = host_home / ".config/systemd/user"
     service = (unit_dir / "vesma-update.service").read_text()
@@ -1010,11 +1019,11 @@ def test_install_timer_second_box_accumulates_exec_start(
     _spy_systemctl(monkeypatch, rc=0)
 
     monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
     monkeypatch.setenv("HOME", str(second_home))
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
     # Idempotent re-run must not duplicate a line.
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
 
     service = (host_home / ".config/systemd/user/vesma-update.service").read_text()
     exec_lines = [ln for ln in service.splitlines() if ln.startswith("ExecStart=")]
@@ -1033,9 +1042,9 @@ def test_uninstall_timer_in_box_removes_only_own_line(
     calls = _spy_systemctl(monkeypatch, rc=0)
 
     monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
     monkeypatch.setenv("HOME", str(second_home))
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
 
     monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
     result = _invoke_update(["--uninstall-timer"], monkeypatch)
@@ -1054,7 +1063,7 @@ def test_uninstall_timer_last_box_removes_units(
     _, host_home = box_env
     monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
     _spy_systemctl(monkeypatch, rc=0)
-    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
 
     calls = _spy_systemctl(monkeypatch, rc=0)
     result = _invoke_update(["--uninstall-timer"], monkeypatch)
@@ -1075,7 +1084,7 @@ def test_install_timer_in_box_prints_manual_commands_when_host_manager_unreachab
     _, host_home = box_env
     monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
     _spy_systemctl(monkeypatch, rc=1)
-    result = _invoke_update(["--install-timer"], monkeypatch)
+    result = _invoke_update(["timer", "install", "--force"], monkeypatch)
     assert result.exit_code == 0, "an unreachable host manager must not fail the command"
     assert "systemctl --user -M hostuser@.host daemon-reload" in result.output
     assert "systemctl --user -M hostuser@.host enable --now vesma-update.timer" in result.output
@@ -1084,15 +1093,15 @@ def test_install_timer_in_box_prints_manual_commands_when_host_manager_unreachab
     assert (host_home / ".config/systemd/user/vesma-update.service").exists()
 
 
-def test_install_timer_in_container_without_distrobox_layout_prints_hint(
+def test_install_timer_in_container_without_distrobox_layout_refuses(
     quiet_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     marker = quiet_home / "fake-containerenv"
     marker.write_text("")
     monkeypatch.setattr(updates_cli, "_CONTAINERENV", marker)
     calls = _spy_systemctl(monkeypatch, rc=0)
-    result = _invoke_update(["--install-timer"], monkeypatch)
-    assert result.exit_code == 0, result.output
+    result = _invoke_update(["timer", "install"], monkeypatch)
+    assert result.exit_code == 1, "a container with no derivable host home must refuse"
     assert "host home cannot be derived" in result.output
     assert "distrobox-enter" in result.output, "the hint names the per-box ExecStart recipe"
     assert not calls, "nothing may be executed on the refusal path"
@@ -1115,3 +1124,356 @@ def test_contrib_unit_files_match_install_templates() -> None:
         exec_start=updates_cli._DEFAULT_EXEC_START
     )
     assert contrib_timer == updates_cli._TIMER_TEMPLATE
+
+
+# ── subcommand routing: check / apply (board card W-C) ───────────────────────
+
+
+def test_update_check_subcommand_never_prompts_or_applies(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=True)
+
+    result = _invoke_update(["check"], monkeypatch)
+    assert result.exit_code == 0
+    assert not calls, "check must never prompt"
+    assert "UPDATE AVAILABLE" in result.output
+    assert "apply with" not in result.output
+
+
+def test_update_check_subcommand_matches_deprecated_flag(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    """`check` and the deprecated `--check` render the same report."""
+    plain = _invoke_update(["check"], monkeypatch)
+    flag = _invoke_update(["--check"], monkeypatch)
+    assert plain.exit_code == flag.exit_code == 0
+    assert "UPDATE AVAILABLE" in plain.output
+    assert "UPDATE AVAILABLE" in flag.output
+
+
+def test_update_apply_subcommand_runs_the_yes_path(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(updates_cli, "_pep668_externally_managed", lambda: False)
+    monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
+    calls = _spy_confirm(monkeypatch, answer=False)
+
+    result = _invoke_update(["apply"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert not calls, "apply is already the explicit confirmation — no prompt"
+    assert recorded, "apply must run the pip upgrade"
+    assert "restart clients" in result.output
+
+
+def test_update_apply_subcommand_rejects_unknown_scope(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch, forbid_pip: None
+) -> None:
+    result = _invoke_update(["apply", "--scope", "binaries"], monkeypatch)
+    assert result.exit_code == 1
+    assert "only --scope=user" in result.output
+
+
+def test_update_apply_yes_flag_is_a_noop(quiet_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`apply -y` works for muscle memory but changes nothing."""
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["apply", "-y"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert recorded
+
+
+# ── hidden deprecated flag aliases + stderr hints (standing rule) ─────────────
+
+
+def test_deprecated_check_alias_hints_on_stderr_stdout_clean(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    result = _invoke_update(["--check"], monkeypatch)
+    assert result.exit_code == 0
+    assert "use: vesma update check" in result.stderr
+    assert "[deprecated]" in result.stderr
+    assert "use: vesma update check" not in result.stdout, "stdout stays clean for pipes/JSON"
+    assert "UPDATE AVAILABLE" in result.stdout, "the flag still works identically"
+
+
+def test_deprecated_yes_alias_hints_and_applies(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "use: vesma update apply" in result.stderr
+    assert "deprecated" not in result.stdout
+    assert recorded, "the alias must keep working"
+
+
+def test_deprecated_to_and_scope_aliases_hint(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    result = _invoke_update(["--to", "5.1.0", "--scope=user"], monkeypatch)
+    assert result.exit_code == 0
+    assert "use: vesma update apply --to VERSION" in result.stderr
+    assert "use: vesma update apply --scope user" in result.stderr
+
+
+def test_deprecated_uninstall_timer_alias_hints_and_removes(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "use: vesma update timer uninstall" in result.stderr
+    assert "removed" in result.stdout
+    assert calls, "the alias must route to the same removal"
+
+
+def test_deprecated_flags_hidden_from_help(quiet_home: Path) -> None:
+    from vesmaro.cli.main import app
+
+    result = runner.invoke(app, ["update", "--help"])
+    assert result.exit_code == 0
+    # The deprecation NOTE mentions --check once; a visible option would
+    # render a second time in the Options panel.
+    assert result.output.count("--check") == 1, "deprecated flags stay hidden options"
+    assert result.output.count("--install-timer") == 1
+    for subcommand in ("check", "apply", "timer", "components"):
+        assert subcommand in result.output
+    assert "deprecated" in result.output, "the help must carry the deprecation note"
+
+
+def test_options_before_subcommand_warn_not_drop(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes", "apply"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "options placed before the subcommand are ignored" in result.stderr
+    assert recorded, "the subcommand still runs (the misplaced option is dropped)"
+
+
+def test_systemd_unit_exec_start_forms_still_work(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scripted dependency: the shipped unit's `--yes --scope=user` applies."""
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes", "--scope=user"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert recorded, "the unit's ExecStart form must keep applying"
+
+
+# ── pip alias family row (board card W-C) ─────────────────────────────────────
+
+
+def test_family_row_single_row_installed_as_alias(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(
+        updates_cli, "detect_installed_dist", lambda: ("vesma-memory-server", INSTALLED)
+    )
+    monkeypatch.setattr(
+        updates_cli,
+        "check_for_update",
+        lambda settings=None, **kw: _info(update_available=False, latest=INSTALLED),
+    )
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: INSTALLED)
+    monkeypatch.setenv("COLUMNS", "300")
+
+    result = _invoke_update(["check"], monkeypatch)
+    assert result.exit_code == 0
+    assert "pip: vesma (family)" in result.output
+    assert "not installed" not in result.output, "aliases must not show as missing rows"
+    assert (
+        "up to date (installed as vesma-memory-server — same codebase, alias package)"
+        in result.output
+    )
+
+
+def test_family_row_nothing_installed(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: None)
+    monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: None)
+    monkeypatch.setattr(updates_cli, "family_latest", lambda: LATEST)
+    monkeypatch.setenv("COLUMNS", "300")
+
+    result = _invoke_update(["check"], monkeypatch)
+    assert result.exit_code == 0
+    assert "pip: vesma (family)" in result.output
+    assert "not installed — pip install --user vesma" in result.output
+    assert result.output.count("pip:") == 1, "exactly ONE family row"
+
+
+def test_family_row_update_available_wording_points_at_apply(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    monkeypatch.setenv("COLUMNS", "300")
+    result = _invoke_update(["check"], monkeypatch)
+    assert result.exit_code == 0
+    assert "UPDATE AVAILABLE — run 'vesma update apply'" in result.output
+
+
+# ── family_latest (updates.py) ────────────────────────────────────────────────
+
+
+def test_family_latest_takes_max_over_aliases(cache_file: Path) -> None:
+    prices = {"vesma-memory-server": "5.3.0", "vesma": "6.0.0"}
+
+    def fetcher(dist: str) -> str:
+        return prices[dist]
+
+    assert updates.family_latest(cache_path=cache_file, fetcher=fetcher) == "6.0.0"
+    payload = json.loads(cache_file.read_text())
+    assert payload["family"]["latest"] == "6.0.0"
+    assert payload["family"]["ok"] is True
+
+
+def test_family_latest_reuses_fresh_per_dist_cache(cache_file: Path) -> None:
+    _seed_cache(cache_file, latest="9.9.9", ok=True, checked_at=datetime.now(UTC))
+    calls: list[str] = []
+
+    def fetcher(dist: str) -> str:
+        calls.append(dist)
+        return "1.0.0"
+
+    assert updates.family_latest(cache_path=cache_file, fetcher=fetcher) == "9.9.9"
+    assert calls == ["vesma"], "the fresh per-dist answer must not be re-fetched"
+
+
+def test_family_latest_negative_cache_bounds_offline(cache_file: Path) -> None:
+    calls: list[str] = []
+
+    def fetcher(dist: str) -> str:
+        calls.append(dist)
+        raise OSError("no network")
+
+    assert updates.family_latest(cache_path=cache_file, fetcher=fetcher) is None
+    payload = json.loads(cache_file.read_text())
+    assert payload["family"]["ok"] is False
+    assert updates.family_latest(cache_path=cache_file, fetcher=fetcher) is None
+    assert len(calls) == 2, "within the 1h negative TTL there must be no re-fetch"
+
+
+def test_family_latest_respects_env_opt_out(
+    cache_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(dist: str) -> str:  # pragma: no cover — must never run
+        raise AssertionError("fetch despite opt-out")
+
+    monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
+    assert updates.family_latest(cache_path=cache_file, fetcher=never) is None
+
+
+# ── #468: the loud guard around `timer install` inside a box ──────────────────
+
+
+def test_timer_install_refused_in_box_with_force_hint(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, forbid_pip: None
+) -> None:
+    box_home, host_home = box_env
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["timer", "install"], monkeypatch)
+    assert result.exit_code == 1, "a box install must refuse loudly"
+    assert "dead units" in result.output
+    assert "issue #468" in result.output
+    assert "--force" in result.output, "the refusal names the escape hatch"
+    assert "on the HOST" in result.output
+    assert not calls, "nothing may be executed on the refusal path"
+    assert not (host_home / ".config/systemd").exists(), "no units written"
+    assert not (box_home / ".config/systemd").exists(), "no dead units in the box home"
+
+
+def test_timer_install_alias_refused_in_box(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, forbid_pip: None
+) -> None:
+    _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--install-timer"], monkeypatch)
+    assert result.exit_code == 1
+    assert "use: vesma update timer install" in result.stderr
+    assert "dead units" in result.output
+
+
+def test_timer_install_container_env_only_detection(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch, forbid_pip: None
+) -> None:
+    """CONTAINER_ID alone (no HOME layout, no marker) must trigger the guard."""
+    monkeypatch.setenv("CONTAINER_ID", "ci-box")
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["timer", "install"], monkeypatch)
+    assert result.exit_code == 1
+    assert "dead units" in result.output
+    assert not calls
+
+
+def test_timer_status_reports_box_context(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _spy_systemctl(monkeypatch, rc=1)  # nothing enabled locally
+    result = _invoke_update(["timer", "status", "--json"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["container"] is True
+    assert payload["box"] == "ubuntu"
+    assert payload["state"] == "not installed"

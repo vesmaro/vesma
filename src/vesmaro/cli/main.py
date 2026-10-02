@@ -1791,7 +1791,7 @@ from vesmaro.cli.import_cmd import import_app  # noqa: E402
 from vesmaro.cli.logs import logs_app  # noqa: E402
 from vesmaro.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesmaro.cli.sync_cmd import sync_app  # noqa: E402
-from vesmaro.cli.update_cmd import update as update_cmd  # noqa: E402
+from vesmaro.cli.update_cmd import update_app  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
@@ -1810,9 +1810,13 @@ app.add_typer(scanner_app, name="scanner")
 from vesmaro.cli.graph_cmd import graph_app  # noqa: E402
 
 app.add_typer(graph_app, name="graph")
-app.command(name="update", help="Check for updates / update the user-site install (issue #445).")(
-    update_cmd
-)
+
+# update family: a sub-app (board card vesma-update-family-components) —
+# plain `vesma update` keeps the 5.2.0 report+prompt behavior via the
+# group callback; check/apply/timer/components are subcommands and the
+# old flags remain hidden deprecated aliases (the shipped systemd unit's
+# ExecStart depends on them).
+app.add_typer(update_app, name="update")
 
 
 def cli_main() -> None:
