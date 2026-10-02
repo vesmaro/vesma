@@ -28,7 +28,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -240,7 +240,13 @@ def _checkpoint_reminder() -> str | None:
 
 SERVER_VERSION_META_KEY = "last_reported_server_version"
 
-_server_update_state: dict[str, Any] = {"checked": False, "pending": None}
+
+class _ServerUpdateState(TypedDict):
+    pending: str | None
+    checked: bool
+
+
+_server_update_state: _ServerUpdateState = {"checked": False, "pending": None}
 
 
 def _reset_server_update_state() -> None:
