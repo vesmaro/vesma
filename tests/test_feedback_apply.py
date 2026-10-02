@@ -62,20 +62,20 @@ from test_graph_walk_invariants import (  # noqa: E402 — sys.path bootstrap ab
     _settings,
 )
 
-from vesmaro.config import Settings  # noqa: E402 — after bootstrap
-from vesmaro.manager import (  # noqa: E402 — after bootstrap
+from vesma.config import Settings  # noqa: E402 — after bootstrap
+from vesma.manager import (  # noqa: E402 — after bootstrap
     FEEDBACK_BOOST_CAP,
     FEEDBACK_BOOST_SLOPE,
     MemoryManager,
     _feedback_boost_factor,
 )
-from vesmaro.models import (  # noqa: E402 — after bootstrap
+from vesma.models import (  # noqa: E402 — after bootstrap
     MemoryCreate,
     MemorySource,
     MemoryStatus,
     MemoryUpdate,
 )
-from vesmaro.storage.sqlite_store import (  # noqa: E402 — after bootstrap
+from vesma.storage.sqlite_store import (  # noqa: E402 — after bootstrap
     EDGE_STATS_EVENTS_PER_PRINCIPAL_CAP,
 )
 
@@ -471,7 +471,7 @@ class TestFlagContract:
         # with the score order (w desc: s2 first) — the mutant surface.
         seeded = iter(f"00000000-0000-4000-8000-{i:012d}" for i in range(8))
         monkeypatch.setattr(
-            "vesmaro.models.uuid.uuid4",
+            "vesma.models.uuid.uuid4",
             lambda: type("U", (), {"__str__": lambda s: next(seeded)})(),
         )
         mgr = MemoryManager(_apply_settings(tmp_path, apply_=True))
@@ -590,7 +590,7 @@ class TestRankOnlyWithinQuota:
         Killer mutant: append boosted rows past the ``k`` cut — the
         walked-share assertion goes RED.
         """
-        from vesmaro.manager import _walk_quota
+        from vesma.manager import _walk_quota
 
         anchor = _add(apply_manager, "anchor note about beacon schedules")
         siblings = [_add(apply_manager, f"dormant beacon sibling note {i:02d}") for i in range(10)]

@@ -35,9 +35,9 @@ RUN pip install --no-cache-dir "."
 
 # Ship the gitignored gRPC stubs (federation/gen is regenerated from
 # federation/proto by scripts/gen-proto.sh and never committed). The
-# vesmaro._mesh_gen import shim resolves them at
+# vesma._mesh_gen import shim resolves them at
 # <python3.12-dir>/federation/gen/python — i.e. the PARENT of
-# site-packages, NOT inside the vesmaro package — so a plain COPY into
+# site-packages, NOT inside the vesma package — so a plain COPY into
 # that exact path makes the mesh/MnemosCore leg importable in the
 # container. Without this the core crashes at startup with
 # "ModuleNotFoundError: No module named 'mnemos_core_api_pb2'"

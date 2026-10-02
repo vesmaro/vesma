@@ -5,11 +5,11 @@ Architecture under test (W2 stitch, mnemos-mesh#20 — updated 2026-09-17):
   The mesh↔mnemos transport is a Unix socket **served by mnemos** and
   **dialed by the mesh binary**. Concretely:
 
-  1. :class:`vesmaro.mesh_server.MeshServer` binds ``MnemosCore`` gRPC on
+  1. :class:`vesma.mesh_server.MeshServer` binds ``MnemosCore`` gRPC on
      the socket (``settings.mesh.socket_path``) — mnemos is the SERVER.
   2. The ``mnemos-mesh`` Go binary DIALS that socket (its ``unix_socket``
      config key) and proxies ``FederationPeer`` RPCs onto ``MnemosCore``.
-  3. :class:`vesmaro.mesh_client.MeshClient` dials the same socket and is
+  3. :class:`vesma.mesh_client.MeshClient` dials the same socket and is
      the Python-side consumer used by tests and tooling.
 
   The pre-2026-09 fixture here assumed the M2 mesh binary itself creates
@@ -47,15 +47,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from vesmaro.compact import CompactRecord
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mesh_client import (
+from vesma.compact import CompactRecord
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.mesh_client import (
     MeshClient,
     MeshUnavailableError,
     MeshUnimplementedError,
 )
-from vesmaro.mesh_server import MeshServer
+from vesma.mesh_server import MeshServer
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 

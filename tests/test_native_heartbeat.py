@@ -37,8 +37,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from vesmaro import mcp_server as mcp_server_module
-from vesmaro.awareness import (
+from vesma import mcp_server as mcp_server_module
+from vesma.awareness import (
     AWARENESS_DISCLAIMER,
     HEARTBEAT_CALM_LINE,
     HEARTBEAT_ENVELOPE_TOKEN_CEILING,
@@ -47,9 +47,9 @@ from vesmaro.awareness import (
     compose_heartbeat,
     sanitize_project_id,
 )
-from vesmaro.config import AwarenessConfig, Settings
-from vesmaro.heartbeat import HEARTBEAT_DENY_TOOLS
-from vesmaro.lanes import (
+from vesma.config import AwarenessConfig, Settings
+from vesma.heartbeat import HEARTBEAT_DENY_TOOLS
+from vesma.lanes import (
     AWARENESS_CURSOR_PREFIX,
     AWARENESS_HEARTBEAT_CURSOR_PREFIX,
     awareness_cursor_key,
@@ -57,12 +57,12 @@ from vesmaro.lanes import (
     read_awareness_heartbeat_cursor,
     write_awareness_heartbeat_cursor,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _call_tool_dispatch, call_tool
-from vesmaro.metrics.schema import validate_awareness_meta
-from vesmaro.metrics.sink import MetricsStore
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _call_tool_dispatch, call_tool
+from vesma.metrics.schema import validate_awareness_meta
+from vesma.metrics.sink import MetricsStore
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.storage.sqlite_store import SQLiteStore
 
 PROJECT = "awrh-proj"
 AGENT = "awrh-agent"
@@ -506,7 +506,7 @@ class TestOffByteIdentity:
         _knowledge(manager, "off-path byte identity body")
         args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
         snap = _reset_call_tracker()
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             direct = await _call_tool_dispatch("vesma_list_recent", args)
             mcp_server_module._checkpoint_tracker.clear()
             mcp_server_module._checkpoint_tracker.update(snap)
@@ -517,7 +517,7 @@ class TestOffByteIdentity:
     async def test_off_writes_no_heartbeat_state(self, manager: MemoryManager) -> None:
         _knowledge(manager, "off writes nothing body")
         args = {"project": PROJECT, "agent": AGENT, "session": SESSION}
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             await call_tool("vesma_list_recent", args)
         assert read_awareness_heartbeat_cursor(manager, project=PROJECT, agent=AGENT) is None
 
@@ -561,7 +561,7 @@ class TestOffByteIdentity:
                 _knowledge(mgr, "off identity sweep body")
                 _checkpoint(mgr, goals="off identity neighbor goal", agent=NEIGHBOR_A)
             snap = _reset_call_tracker()
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 direct = await _call_tool_dispatch(tool, dict(args))
                 mcp_server_module._checkpoint_tracker.clear()
                 mcp_server_module._checkpoint_tracker.update(snap)
@@ -580,7 +580,7 @@ class TestShadowByteIdentity:
             _knowledge(mgr, "shadow byte identity body")
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
             snap = _reset_call_tracker()
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 off_contents = await call_tool("vesma_list_recent", args)
                 # Same store, same rows — flip ONLY the mode.
                 mgr.settings.awareness.native_heartbeat_mode = "shadow"
@@ -602,7 +602,7 @@ class TestCanaryOnRendering:
             _knowledge(mgr, "canary tail body")
             _checkpoint(mgr, goals="canary neighbor goal", agent=NEIGHBOR_A)
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 contents = await call_tool("vesma_list_recent", args)
             assert len(contents) == 2
             tail = contents[-1]
@@ -614,7 +614,7 @@ class TestCanaryOnRendering:
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = _manager(_settings(Path(tmpdir), mode="canary"))
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 contents = await call_tool("vesma_list_recent", args)
             assert len(contents) == 2
             tail = contents[-1].text
@@ -627,7 +627,7 @@ class TestCanaryOnRendering:
             mgr = _manager(_settings(Path(tmpdir), mode="on"))
             _knowledge(mgr, "mode on body")
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 contents = await call_tool("vesma_list_recent", args)
             assert len(contents) == 2
             assert contents[-1].text.startswith("## Peer awareness — heartbeat")
@@ -650,7 +650,7 @@ class TestProjectSanitization:
             mgr = _manager(_settings(Path(tmpdir), mode="on"))
             _knowledge(mgr, "sanitize body", project=slug)
             args = {"project": hostile, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 contents = await call_tool("vesma_list_recent", args)
             tails = [c.text for c in contents if "Peer awareness" in c.text]
             assert tails, "the tail must still ride under a hostile project"
@@ -681,7 +681,7 @@ class TestDenyList:
                 args: dict[str, Any] = {"project": PROJECT, "agent": AGENT, "session": SESSION}
                 if tool == "vesma_assemble_context":
                     args.update({"project": PROJECT, "query": "deny", "session": SESSION})
-                with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                with patch("vesma.mcp_server.get_manager", return_value=mgr):
                     contents = await call_tool(tool, args)
                 tails = [c for c in contents if "Peer awareness" in c.text]
                 assert not tails, f"{tool} must never carry the heartbeat tail"
@@ -691,7 +691,7 @@ class TestDenyList:
 
     async def test_identity_less_call_gets_no_tail_no_error(self, manager: MemoryManager) -> None:
         _knowledge(manager, "identity-less body")
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             contents = await call_tool("vesma_list_tags", {})
         assert len(contents) == 1  # the plain response, untouched
 
@@ -704,12 +704,12 @@ class TestDenyList:
         def _boom(*_a: Any, **_kw: Any) -> Any:
             raise RuntimeError("heartbeat exploded")
 
-        monkeypatch.setattr("vesmaro.heartbeat.compose_heartbeat", _boom)
+        monkeypatch.setattr("vesma.heartbeat.compose_heartbeat", _boom)
         # manager fixture is mode=off — patch the settings to canary in place
         manager.settings.awareness.native_heartbeat_mode = "canary"
         _knowledge(manager, "explosion body")
         args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             contents = await call_tool("vesma_list_recent", args)
         assert len(contents) == 1
         assert "Peer awareness" not in contents[0].text
@@ -736,7 +736,7 @@ class TestHeartbeatEvents:
             mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
             _checkpoint(mgr, goals=SECRET_GOAL, agent=NEIGHBOR_A)
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_list_recent", args)
             events = _sidecar_events(mgr)
             kinds = [e["kind"] for e in events]
@@ -758,7 +758,7 @@ class TestHeartbeatEvents:
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_list_recent", args)
             events = _sidecar_events(mgr)
             kinds = [e["kind"] for e in events]
@@ -769,7 +769,7 @@ class TestHeartbeatEvents:
     async def test_off_writes_no_events_at_all(self, manager: MemoryManager) -> None:
         _knowledge(manager, "off events body")
         args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             await call_tool("vesma_list_recent", args)
         assert _sidecar_events(manager) == []
 
@@ -780,7 +780,7 @@ class TestHeartbeatEvents:
             mgr = _manager(_settings(Path(tmpdir), mode="canary"))
             _checkpoint(mgr, goals=SECRET_GOAL, agent=NEIGHBOR_A)
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_list_recent", args)
             blob = json.dumps(_sidecar_events(mgr))
             assert SECRET_GOAL not in blob
@@ -795,7 +795,7 @@ class TestHeartbeatEvents:
                 "tags": [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
                 "session": SESSION,
             }
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_add", add_args)
             events = _sidecar_events(mgr)
             kinds = [e["kind"] for e in events]
@@ -810,7 +810,7 @@ class TestHeartbeatEvents:
             mgr = _manager(_settings(Path(tmpdir), mode="canary"))
             _knowledge(mgr, "deny list events body")
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "query": "x"}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_assemble_context", args)
             kinds = [e["kind"] for e in _sidecar_events(mgr)]
             assert kinds == ["tool_call"]  # no compose events for denied surfaces
@@ -821,7 +821,7 @@ class TestHeartbeatEvents:
             mgr = _manager(_settings(Path(tmpdir), mode="canary", heartbeat_rate_limit=1))
             _knowledge(mgr, "rate cap events body")
             args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+            with patch("vesma.mcp_server.get_manager", return_value=mgr):
                 await call_tool("vesma_list_recent", args)
                 await call_tool("vesma_list_recent", args)
             suppressed = [
@@ -844,7 +844,7 @@ class TestHeartbeatEvents:
 
         monkeypatch.setattr(SQLiteStore, "exists_since", _raise)
         args = {"project": PROJECT, "agent": AGENT, "session": SESSION, "limit": 3}
-        with patch("vesmaro.mcp_server.get_manager", return_value=manager):
+        with patch("vesma.mcp_server.get_manager", return_value=manager):
             contents = await call_tool("vesma_list_recent", args)
         assert len(contents) == 1  # the call survived the broken probe
         suppressed = [

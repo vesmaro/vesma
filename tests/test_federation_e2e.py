@@ -29,11 +29,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.cli.sync import run_sync_import
-from vesmaro.compact import build_compact_payload
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.cli.sync import run_sync_import
+from vesma.compact import build_compact_payload
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 
 def _make_settings(home: Path) -> Settings:
@@ -98,7 +98,7 @@ def _write_payload(path: Path, memories: list, *, source_agent: str) -> dict:
 def _isolated_audit_log(monkeypatch, tmp_path: Path) -> Path:
     """Redirect sync audit log writes to tmp_path (mirrors test_sync.py)."""
     audit_path = tmp_path / "audit" / "sync-audit.jsonl"
-    import vesmaro.audit as audit_mod
+    import vesma.audit as audit_mod
 
     monkeypatch.setattr(audit_mod, "sync_audit_path", lambda: audit_path)
     return audit_path

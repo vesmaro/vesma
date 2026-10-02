@@ -54,8 +54,8 @@ from test_graph_walk_invariants import (  # noqa: E402 — sys.path bootstrap ab
     _settings,
 )
 
-from vesmaro.manager import MemoryManager, _walk_quota  # noqa: E402 — after bootstrap
-from vesmaro.models import (  # noqa: E402 — after bootstrap
+from vesma.manager import MemoryManager, _walk_quota  # noqa: E402 — after bootstrap
+from vesma.models import (  # noqa: E402 — after bootstrap
     MemoryCreate,
     MemorySource,
     MemoryStatus,
@@ -350,7 +350,7 @@ class TestBFS2Layered:
         per-anchor claim count exceeds the cap and the (bounded)
         assertion surface goes RED on the exact collected count.
         """
-        from vesmaro.manager import WALK_TOTAL_WORK_CAP
+        from vesma.manager import WALK_TOTAL_WORK_CAP
 
         anchor = _add(walk_manager, "hub record about lighthouses")
         # More candidates than the cap, all claimable from one anchor.

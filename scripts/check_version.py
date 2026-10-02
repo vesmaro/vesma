@@ -3,7 +3,7 @@
 
 Tries the canonical distribution name first (`vesma`, 5.0.0 rebrand #333),
 falls back to the legacy `vesma` / `mnemos-memory-server` names for
-pre-rename environments — the same lookup chain as `vesmaro.__init__`
+pre-rename environments — the same lookup chain as `vesma.__init__`
 and `tests/test_version.py`. A missing metadata is a hard error — the
 gate is meaningless without an editable/installed dist.
 """
@@ -13,7 +13,7 @@ from __future__ import annotations
 from contextlib import suppress
 from importlib.metadata import PackageNotFoundError, version
 
-from vesmaro import __version__
+from vesma import __version__
 
 
 def _installed(name: str) -> str | None:

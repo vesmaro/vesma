@@ -369,7 +369,7 @@ RRF fusion of FTS5 and vector legs. Only `published` memories are searched by de
 
 **Query semantics:** the FTS5 leg treats the WHOLE `query` string as one quoted phrase (adjacent tokens, in order — `_build_fts_query` quotes the entire input). A keyword-set query like `postgres migration` matches only that exact phrase; to find individual keywords, issue separate single-term queries.
 
-**Request body** — see `SearchQuery` in `src/vesmaro/models.py`
+**Request body** — see `SearchQuery` in `src/vesma/models.py`
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -707,7 +707,7 @@ validation can later prove provenance.
 | `tool_name` | string | `post_tool_call` | — | The tool that produced the output. |
 | `output_text` | string | `post_tool_call` | — | The raw tool output to compress. |
 | `auto_compress` | boolean | no | knob | `post_tool_call`: per-call override of `hooks.auto_compress` (default `false`). |
-| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (vesma #254): compose the awareness delta section AND the swarm v0a/v0b operational picture (observed counts/ids/timestamps plus each peer's claimed task — a self-reported `[unverified]`-labeled claim) — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
+| `include_awareness` | boolean | no | `false` | `pre_llm_call`/`on_session_start` (vesma #254): compose the awareness delta section AND the swarm v0a/v0b operational picture (observed counts/ids/timestamps plus each peer's claimed task — a self-reported `[unverified]`-labeled claim) — appended LAST, never pinnable; the awareness cursor advances on `pre_llm_call` only. Off (default) = byte-identical output. Rate-capped per `(project, agent)` (`vesma.awareness_picture_rate_limit_per_minute`, default 30) — over-limit degrades to a rate-limit line, never a 5xx. |
 | `profile` | string | no | auto | `post_tool_call`: filter profile hint. |
 
 **Example**
@@ -1094,7 +1094,7 @@ Volumes, freshness, parse failures and the poisoned count. `agent` is a required
   "parse_errors": {},
   "parse_error_count": 0,
   "poisoned_count": 0,
-  "staleness": { "total_files": 400, "fresh_percent": 97.5, "changed_files": ["src/vesmaro/manager.py"], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+  "staleness": { "total_files": 400, "fresh_percent": 97.5, "changed_files": ["src/vesma/manager.py"], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
 }
 ```
 
@@ -1129,7 +1129,7 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
   "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "vesma#src/vesma/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesma.codegraph.service.window_rows", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1166,9 +1166,9 @@ BFS over project edges from one symbol (resolve by qname; ambiguous refusals nam
 ```json
 {
   "project": "vesma",
-  "start": "vesmaro.codegraph.service.window_rows",
+  "start": "vesma.codegraph.service.window_rows",
   "depth": 2,
-  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
+  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesma.codegraph.service.window_rows", "kind": "Function", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
   "edges": [ { "from": "vesma#…#window_rows#158", "to": "vesma#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
   "truncated": false,
   "cursor": 0,
@@ -1182,7 +1182,7 @@ BFS over project edges from one symbol (resolve by qname; ambiguous refusals nam
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/trace \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "qname": "vesma.codegraph.service.window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/outline` — symbol outline of one file
@@ -1205,9 +1205,9 @@ Symbol outline of one indexed file — shapes, never bodies (PG1). Repo-relative
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "lang": "python",
-  "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
+  "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesma.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
   "parse_error": null,
   "cursor": 0,
   "has_more": false,
@@ -1220,7 +1220,7 @@ Symbol outline of one indexed file — shapes, never bodies (PG1). Repo-relative
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/outline \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesma/codegraph/service.py", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/snippet` — secret-scanned line range from disk
@@ -1244,7 +1244,7 @@ Read a line range FROM DISK (PG4): poisoned refusal (permanent) → confinement 
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
   "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...",
@@ -1261,7 +1261,7 @@ Read a line range FROM DISK (PG4): poisoned refusal (permanent) → confinement 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/snippet \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/coverage` — batch coverage check
@@ -1283,8 +1283,8 @@ Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `missing` 
 {
   "project": "vesma",
   "coverage": [
-    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
-    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" }
+    { "path": "src/vesma/manager.py", "verdict": "stale" },
+    { "path": "src/vesma/codegraph/service.py", "verdict": "indexed" }
   ]
 }
 ```
@@ -1294,7 +1294,7 @@ Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `missing` 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/coverage \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "paths": ["src/vesma/manager.py"], "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/schema` — graph contract card
@@ -1576,7 +1576,7 @@ refuse mode → 403 with no content).
 |------|------|-------------|
 | `memory_id` | UUID | Target memory. |
 
-**Request body** — see `FilterRequest` in `src/vesmaro/models.py`
+**Request body** — see `FilterRequest` in `src/vesma/models.py`
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -1773,7 +1773,7 @@ Result is sorted by `step_number` ascending. `total` is the number of turns actu
 
 ## Memory schema
 
-The `Memory` Pydantic model (defined in `src/vesmaro/models.py`) is returned by `POST /memories`, `GET /memories/{id}`, and `GET /memories`.
+The `Memory` Pydantic model (defined in `src/vesma/models.py`) is returned by `POST /memories`, `GET /memories/{id}`, and `GET /memories`.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -1803,7 +1803,7 @@ The `Memory` Pydantic model (defined in `src/vesmaro/models.py`) is returned by 
 
 ## OpenAPI / Swagger
 
-The full machine-readable schema is available at `/openapi.json` (3.1.0) and rendered as a UI at `/docs` (Swagger) and `/redoc` (ReDoc). These are generated by FastAPI from the route decorators in `src/vesmaro/api/main.py` and `src/vesmaro/sessions/api.py`, so the schema never drifts from the running code.
+The full machine-readable schema is available at `/openapi.json` (3.1.0) and rendered as a UI at `/docs` (Swagger) and `/redoc` (ReDoc). These are generated by FastAPI from the route decorators in `src/vesma/api/main.py` and `src/vesma/sessions/api.py`, so the schema never drifts from the running code.
 
 If you need to generate a static client, fetch the schema and run [`openapi-generator`](https://openapi-generator.tech/) against it:
 

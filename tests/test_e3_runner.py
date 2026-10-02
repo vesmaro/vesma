@@ -29,7 +29,7 @@ from benchmarks.experiments.e3_lanes import runner
 from benchmarks.strata.e2_gov import ground_truth as gt
 
 from tests._seeded_ids import seeded_memory_ids
-from vesmaro.lanes import B0_TYPE_BOOST_FACTOR
+from vesma.lanes import B0_TYPE_BOOST_FACTOR
 
 #: The S1 corpus fingerprint pinned upstream (test_strata_e2_gov) — the
 #: golden 81 inside the combined build must stay byte-identical.

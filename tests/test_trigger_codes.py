@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from vesmaro.trigger_codes import TriggerCode, is_terminal, should_fallback_to_local
+from vesma.trigger_codes import TriggerCode, is_terminal, should_fallback_to_local
 
 # ── Enum membership ──────────────────────────────────────────────────────────
 

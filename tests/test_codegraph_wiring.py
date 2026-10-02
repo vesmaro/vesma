@@ -35,17 +35,17 @@ import pytest
 
 pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 
-from vesmaro.codegraph.audit import GraphAudit
-from vesmaro.codegraph.service import (
+from vesma.codegraph.audit import GraphAudit
+from vesma.codegraph.service import (
     CodeGraphService,
     GraphConfinementError,
     GraphDisabledError,
     GraphToolError,
     close_graph_service,
 )
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Project
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Project
 
 AGENT = "wiring-agent"
 SESSION = "sess-wiring"
@@ -216,7 +216,7 @@ def test_beacon_staleness_never_hashes(
 def test_beacon_line_byte_cap_under_absurd_slug(
     indexed_manager: MemoryManager,
 ) -> None:
-    from vesmaro.codegraph.service import _fit_beacon_line
+    from vesma.codegraph.service import _fit_beacon_line
 
     long_slug = "п" * 500  # 1000 bytes of slug
     line = _fit_beacon_line(

@@ -56,15 +56,15 @@ from typing import Any
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.graph_minting import (
+from vesma.config import Settings
+from vesma.graph_minting import (
     AUTO_DEDUPE_EDGE_WEIGHT,
     AUTO_DEDUPE_PROVENANCE,
     AUTO_DEDUPE_SIMILARITY_THRESHOLD,
     select_auto_dedupe_candidates,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.manager import MemoryManager
+from vesma.models import (
     NO_FEDERATE_TAG,
     Memory,
     MemoryCreate,
@@ -602,7 +602,7 @@ class TestMintingContract:
         minting module itself imports only the models layer."""
         import sys
 
-        import vesmaro.graph_minting as gm
+        import vesma.graph_minting as gm
 
         _add(mint_manager, NEAR_DUP_A)
         target = mint_manager.sqlite.get(_add(mint_manager, NEAR_DUP_B).id)
@@ -610,7 +610,7 @@ class TestMintingContract:
         before = set(sys.modules)
         assert mint_manager._mint_relates_to_edges(target) >= 0
         loaded = set(sys.modules) - before
-        assert not any(m.startswith("vesmaro.pipeline") for m in loaded)
+        assert not any(m.startswith("vesma.pipeline") for m in loaded)
         assert not any("llm" in m.lower() for m in loaded)
 
         # Structural: the minting module's own imports touch no LLM surface.
@@ -841,7 +841,7 @@ class TestTelemetry:
         assert graph["auto_dedupe_edges_total"] == 0
 
     def test_prometheus_carries_minting_counter(self, mint_manager: MemoryManager) -> None:
-        from vesmaro.api.main import _prometheus_text
+        from vesma.api.main import _prometheus_text
 
         _add(mint_manager, NEAR_DUP_A)
         _add(mint_manager, NEAR_DUP_B)

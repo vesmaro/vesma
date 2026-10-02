@@ -35,11 +35,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
-from vesmaro.secrets_detector import detect_secrets, redact_content
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+from vesma.secrets_detector import detect_secrets, redact_content
+from vesma.storage.sqlite_store import SQLiteStore
 
 # ── Fake (EXAMPLE-style) secrets from the detector's own regexes ──────────────
 
@@ -240,7 +240,7 @@ class TestScanAtStoreVerdict:
 
     def test_hit_warning_logs_hash_not_value(self, manager, caplog):
         text = _secret_log(FAKE_AWS_KEY)
-        with caplog.at_level(logging.WARNING, logger="vesmaro.storage.sqlite_store"):
+        with caplog.at_level(logging.WARNING, logger="vesma.storage.sqlite_store"):
             manager.compress_content(text, profile="log")
 
         warnings = [r for r in caplog.records if "CCR store scan hit" in r.message]
@@ -364,7 +364,7 @@ class TestOverlapTailRedaction:
         """Both detector legs must fire on the fixture: the first 20 chars
         are a discrete aws-key, and the whole run clears the high-entropy
         gate (own thresholds, so retuning the detector trips this first)."""
-        from vesmaro.secrets_detector import (
+        from vesma.secrets_detector import (
             _BASE64_SPAN_RE,
             _HIGH_ENTROPY_THRESHOLD,
             _shannon_entropy,
@@ -493,7 +493,7 @@ class TestMemoryEdgesStore:
 
 class TestMemoryEdgesManager:
     def test_manager_wrappers(self, manager):
-        from vesmaro.models import MemoryCreate
+        from vesma.models import MemoryCreate
 
         new = manager.add(
             MemoryCreate(
@@ -523,7 +523,7 @@ class TestMemoryEdgesManager:
         assert edges[0]["kind"] == "supersedes"
 
     def test_manager_self_edge_rejected(self, manager):
-        from vesmaro.models import MemoryCreate
+        from vesma.models import MemoryCreate
 
         mem = manager.add(
             MemoryCreate(

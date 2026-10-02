@@ -115,7 +115,7 @@ def test_lens_axis_contract_pinned_at_test_layer() -> None:
     inert). A lens change that flips any activation fails HERE, at test
     time — while a run executed under a broadened lens still PRODUCES
     red corridor data instead of crashing the corpus build."""
-    from vesmaro.lens import Lens, lens_active
+    from vesma.lens import Lens, lens_active
 
     for q in f1_corpus.build_corpus().queries:
         active = lens_active(Lens.CODE, query=q.text)
@@ -157,8 +157,8 @@ def test_l_neg_mixed_stratum_is_falsifiable() -> None:
     AND its gold is prose-side — the active lens's code-only narrowing
     can drop it, so the §2.7b corridor measures instead of being
     structurally unfalsifiable (arm A ≡ A0 by the identity projection)."""
-    from vesmaro.filter.pipeline import detect_profile
-    from vesmaro.lens import Lens, lens_active
+    from vesma.filter.pipeline import detect_profile
+    from vesma.lens import Lens, lens_active
 
     corpus = f1_corpus.build_corpus()
     rows = corpus.rows_by_slug()
@@ -176,7 +176,7 @@ def test_l_neg_mixed_stratum_is_falsifiable() -> None:
 def test_l_neg_non_activating_majority_holds() -> None:
     """The registered must-not-activate trap family stays the L-neg
     majority: 16 of 24 analyzed queries never activate the lens."""
-    from vesmaro.lens import Lens, lens_active
+    from vesma.lens import Lens, lens_active
 
     corpus = f1_corpus.build_corpus()
     l_neg = [q for q in corpus.analyzed_queries() if q.stratum == "l_neg"]
@@ -190,7 +190,7 @@ def test_corpus_is_governance_free() -> None:
     governance row would be re-ranked by type_boost in _recall_stage
     but not in the raw mgr.search probes, breaking the G4a/V3
     probe-order equivalence."""
-    from vesmaro.lanes import GOVERNANCE_TAGS
+    from vesma.lanes import GOVERNANCE_TAGS
 
     for row in f1_corpus.build_corpus().rows:
         assert not GOVERNANCE_TAGS.intersection(row.tags), row.slug

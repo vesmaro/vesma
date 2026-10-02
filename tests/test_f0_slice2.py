@@ -2,7 +2,7 @@
 
 Covers:
 
-1. **Code lens preset** (``vesmaro.lens`` — a code-defined, query-
+1. **Code lens preset** (``vesma.lens`` — a code-defined, query-
    conditioned projection that only narrows): resolve/activate/admit
    unit pins, the assembly-level narrowing pin (subset + order), the
    inactive-lens identity projection, and the DEFAULT-ABSENT byte
@@ -82,15 +82,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app as real_app
-from vesmaro.api.main import lifespan
-from vesmaro.config import Settings
-from vesmaro.hooks import dispatch_hook, pre_llm_call
-from vesmaro.lens import _QUERY_CODE_SIGNALS as _LENS_SIGNALS
-from vesmaro.lens import Lens, lens_active, lens_admits, resolve_lens
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.api import main as api_main
+from vesma.api.main import app as real_app
+from vesma.api.main import lifespan
+from vesma.config import Settings
+from vesma.hooks import dispatch_hook, pre_llm_call
+from vesma.lens import _QUERY_CODE_SIGNALS as _LENS_SIGNALS
+from vesma.lens import Lens, lens_active, lens_admits, resolve_lens
+from vesma.manager import MemoryManager
+from vesma.models import (
     Memory,
     MemoryCreate,
     MemorySource,
@@ -223,7 +223,7 @@ class TestLensUnit:
             "what does connect(host, port) do",
             "how do I call foo(max_retries)",
             "what does retry(backoff=5) do",
-            "check src/vesmaro/manager.py search",
+            "check src/vesma/manager.py search",
             "rewrite fetch(url) => Result",
             "class SettingsLoader: what fields",
             "obj.method(x.y) returns what",  # dotted ARG = evidence (#368)
@@ -242,7 +242,7 @@ class TestLensUnit:
             "remember the quokka habitat survey",
             "class attendance was low",  # 'class' without definition syntax
             "import the CSV data",  # bare-word import is prose-ambiguous
-            "import vesmaro.manager",  # dotted import: no code-extension path
+            "import vesma.manager",  # dotted import: no code-extension path
             "define the function area for review",
             # Ф1-PREP item 1 — negative pins WITH parentheses (the #360
             # review false-fire class): prose parentheticals must not
@@ -366,7 +366,7 @@ class TestLensUnit:
         [
             # The same nested-paren shape IS covered the moment another
             # signal fires — the loss is per-signal, not per-query.
-            "obj.method(f(x)) — see src/vesmaro/lens.py for the span note",
+            "obj.method(f(x)) — see src/vesma/lens.py for the span note",
             "how does def run(self): handle obj.method(f(x))",
         ],
     )
@@ -423,13 +423,13 @@ class TestLensUnit:
             # #388 main — genuine paths KEEP activating: a separator
             # inside the token run (slash — POSIX, backslash — Windows,
             # or a leading ./) or a quote/backtick fence around the token.
-            "check src/vesmaro/manager.py search",
+            "check src/vesma/manager.py search",
             "open benchmarks/experiments/e3_lanes/runner.py",
             "look at scripts/gen-proto.sh output",
             "run ./app.ts in dev mode",
-            "review `src/vesmaro/lens.py` against the doctrine",
+            "review `src/vesma/lens.py` against the doctrine",
             "open 'config.toml' in the editor",
-            "the file at src\\vesmaro\\lens.py on windows",
+            "the file at src\\vesma\\lens.py on windows",
         ],
     )
     def test_path_context_queries_activate(self, query: str) -> None:
@@ -458,7 +458,7 @@ class TestLensUnit:
     @pytest.mark.parametrize(
         "query",
         [
-            "src/vesmaro/lens.py",
+            "src/vesma/lens.py",
             "node.js/fs/index.js",
             "./run.sh",
             "`lens.py`",

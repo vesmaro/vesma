@@ -189,7 +189,7 @@ def test_seed_hygiene_declarative_prose(entry: GoldenEntry) -> None:
 def test_seed_injection_screen_clean(entry: GoldenEntry) -> None:
     """E0 §6.3 invariant: seed injection-acceptance = 1.000 — the real
     mnemos danger detectors find nothing in any stratum seed."""
-    from vesmaro.danger_detectors import detect
+    from vesma.danger_detectors import detect
 
     result = detect(entry.content, title=entry.title)
     assert not result.findings, (entry.slug, result.findings)

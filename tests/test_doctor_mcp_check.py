@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.cli.doctor import CheckStatus, _check_mcp_server
+from vesma.cli.doctor import CheckStatus, _check_mcp_server
 
 
 @pytest.fixture
@@ -173,7 +173,7 @@ def test_registry_without_mcp_surfaces_is_not_applicable(
     """
     import yaml as _yaml
 
-    from vesmaro.cli.integration import load_targets as _real_load
+    from vesma.cli.integration import load_targets as _real_load
 
     pack = fake_home / "pack"
     pack.mkdir()
@@ -193,7 +193,7 @@ def test_registry_without_mcp_surfaces_is_not_applicable(
     )
     cfg = _real_load(pack / "targets.yaml")
     monkeypatch.setattr(
-        "vesmaro.cli.integration.load_targets", lambda config_path=None, home=None: cfg
+        "vesma.cli.integration.load_targets", lambda config_path=None, home=None: cfg
     )
     result = _check_mcp_server()
     assert result.status == CheckStatus.PASS

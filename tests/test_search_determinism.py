@@ -36,10 +36,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.assemble import assemble_context
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemoryCreate, MemorySource, MemoryStatus
+from vesma.assemble import assemble_context
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemoryCreate, MemorySource, MemoryStatus
 
 PROJECT = "determinism-proj"
 AGENT = "det-agent"

@@ -52,11 +52,11 @@ from benchmarks.corpus.rewrite_scenario import (
     _block,
     control_blocks,
 )
-from vesmaro.config import Settings
-from vesmaro.embeddings import EmbeddingProvider
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.storage.vector_store import VectorStore
+from vesma.config import Settings
+from vesma.embeddings import EmbeddingProvider
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.storage.vector_store import VectorStore
 
 K_VALUES: tuple[int, ...] = (5, 10)
 

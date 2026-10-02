@@ -77,7 +77,7 @@ a root is registered. Two ways to register:
 The raw store write also works (what the tools do underneath):
 
 ```python
-from vesmaro.models import Project
+from vesma.models import Project
 mgr.sqlite.save_project(Project(name="vesma", paths=["/home/you/vesma"]))
 ```
 
@@ -303,8 +303,8 @@ Environment overrides follow the canonical settings pattern:
 ---
 
 _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
-(Project graph tools), `src/vesmaro/config.py` (`CodeGraphConfig`),
-`src/vesmaro/codegraph/` (auto path: `autoindex.py`,
+(Project graph tools), `src/vesma/config.py` (`CodeGraphConfig`),
+`src/vesma/codegraph/` (auto path: `autoindex.py`,
 `tests/test_codegraph_autoindex.py`); landed in PG-0 wave (#438),
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
 150cdfe). Feature map: [features.md](../features.md)._

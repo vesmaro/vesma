@@ -23,7 +23,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from vesmaro.cli.integration import (
+from vesma.cli.integration import (
     SCHEMAS_MANIFEST_NAME,
     SCHEMAS_SOURCE_PIN,
     DeployResult,
@@ -40,7 +40,7 @@ from vesmaro.cli.integration import (
     schemas_manifest,
     stamp_content,
 )
-from vesmaro.cli.main import app
+from vesma.cli.main import app
 
 runner = CliRunner()
 
@@ -584,7 +584,7 @@ class TestCLI:
         """
         manager.deploy(detected_target)
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: manager)
         monkeypatch.setattr(
@@ -1186,7 +1186,7 @@ class TestFindMcpSetupScript:
 
         # Monkeypatch __file__ inside the integration module so the helper
         # resolves relative to our fake location.
-        import vesmaro.cli.integration as mod
+        import vesma.cli.integration as mod
 
         monkeypatch.setattr(mod, "__file__", str(fake_module))
 
@@ -1227,7 +1227,7 @@ class TestFindMcpSetupScript:
         fake_module = fake_cli / "integration.py"
         fake_module.write_text("# fake\n")
 
-        import vesmaro.cli.integration as mod
+        import vesma.cli.integration as mod
 
         monkeypatch.setattr(mod, "__file__", str(fake_module))
 
@@ -1271,7 +1271,7 @@ class TestCLISetupUpdateUninstall:
         cfg = load_targets(fake_pack / "targets.yaml")
         mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -1295,7 +1295,7 @@ class TestCLISetupUpdateUninstall:
         cfg = load_targets(fake_pack / "targets.yaml")
         mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -1318,7 +1318,7 @@ class TestCLISetupUpdateUninstall:
 
         new_mgr = IntegrationManager(version="9.9.9", pack_root=fake_pack, targets_config=cfg)
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: new_mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -1337,7 +1337,7 @@ class TestCLISetupUpdateUninstall:
         mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
         mgr.deploy("test-harness")
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -1357,7 +1357,7 @@ class TestCLISetupUpdateUninstall:
         mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
         mgr.deploy("test-harness")
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -1374,7 +1374,7 @@ class TestCLISetupUpdateUninstall:
     ) -> None:
         """CLI `integration setup --target all` with no detected harnesses exits 0
         and prints a 'no harnesses' message."""
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         # Empty config with no detected targets.
         empty_cfg = TargetsConfig(targets=())
@@ -1389,7 +1389,7 @@ class TestCLISetupUpdateUninstall:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """CLI `integration verify --target all` with no detected harnesses exits 0."""
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         empty_cfg = TargetsConfig(targets=())
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: empty_cfg)
@@ -1402,7 +1402,7 @@ class TestCLISetupUpdateUninstall:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """CLI `integration detect` with no detected harnesses prints a message."""
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         empty_cfg = TargetsConfig(targets=())
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: empty_cfg)
@@ -1418,7 +1418,7 @@ class TestCLISetupUpdateUninstall:
     ) -> None:
         """CLI `integration setup --target X` where X exists in config but is not
         detected should exit 0 with a 'not detected' warning."""
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         cfg = TargetsConfig(
             targets=(
@@ -1594,7 +1594,7 @@ class TestVersionStampFormat:
 
     def test_stamp_format_regex_matches(self) -> None:
         """The stamp matches the STAMP_PATTERN regex."""
-        from vesmaro.cli.integration import STAMP_PATTERN
+        from vesma.cli.integration import STAMP_PATTERN
 
         stamp = make_stamp("1.2.3")
         match = STAMP_PATTERN.search(stamp)
@@ -1764,7 +1764,7 @@ class TestDetectAllAndDeployableTargets:
     """Cover the module-level convenience functions."""
 
     def test_detect_all_returns_list(self, fake_pack: Path) -> None:
-        from vesmaro.cli.integration import detect_all
+        from vesma.cli.integration import detect_all
 
         cfg = load_targets(fake_pack / "targets.yaml")
         detected = detect_all(cfg)
@@ -1773,20 +1773,20 @@ class TestDetectAllAndDeployableTargets:
         assert detected[0].name == "test-harness"
 
     def test_deployable_targets_returns_all_names(self, fake_pack: Path) -> None:
-        from vesmaro.cli.integration import deployable_targets
+        from vesma.cli.integration import deployable_targets
 
         cfg = load_targets(fake_pack / "targets.yaml")
         names = deployable_targets(cfg)
         assert "test-harness" in names
 
     def test_detect_all_with_empty_config(self) -> None:
-        from vesmaro.cli.integration import detect_all
+        from vesma.cli.integration import detect_all
 
         empty = TargetsConfig(targets=())
         assert detect_all(empty) == []
 
     def test_deployable_targets_empty_config(self) -> None:
-        from vesmaro.cli.integration import deployable_targets
+        from vesma.cli.integration import deployable_targets
 
         empty = TargetsConfig(targets=())
         assert deployable_targets(empty) == []
@@ -2227,13 +2227,13 @@ class TestCanonPack:
 
     def test_pack_literals_match_validator(self) -> None:
         """The pack's pinned literals equal the engine validator's — drift fails here."""
-        from vesmaro.canon_validate import (
+        from vesma.canon_validate import (
             CANON_REQUIRED_SECTIONS as ENGINE_SECTIONS,
         )
-        from vesmaro.canon_validate import (
+        from vesma.canon_validate import (
             CANON_WARN_CODES as ENGINE_CODES,
         )
-        from vesmaro.canon_validate import (
+        from vesma.canon_validate import (
             ENVELOPE_REQUIRED_EXTRAS,
             TASK_PRIORITIES,
             TASK_SIZES,
@@ -2994,7 +2994,7 @@ class TestSchemasManifestMigration:
     def test_legacy_manifest_migrates_on_deploy(
         self, schemas_env: tuple[IntegrationManager, Path, Path]
     ) -> None:
-        from vesmaro.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
+        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
 
         mgr, _, dest_dir = schemas_env
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -3015,7 +3015,7 @@ class TestSchemasManifestMigration:
     def test_verify_reports_legacy_manifest_old_stamp(
         self, schemas_env: tuple[IntegrationManager, Path, Path]
     ) -> None:
-        from vesmaro.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
+        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
 
         mgr, _, dest_dir = schemas_env
         mgr.deploy("zcode")
@@ -3040,7 +3040,7 @@ class TestSchemasManifestMigration:
     def test_uninstall_removes_both_manifest_names(
         self, schemas_env: tuple[IntegrationManager, Path, Path]
     ) -> None:
-        from vesmaro.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
+        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
 
         mgr, _, dest_dir = schemas_env
         mgr.deploy("zcode")
@@ -3332,12 +3332,12 @@ class _MultiTargetHome:
     ) -> None:
         cfg = load_targets(pack / "targets.yaml")
         mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
         if agents_dir is not None:
-            import vesmaro.cli.agent_wiring as wiring_mod
+            import vesma.cli.agent_wiring as wiring_mod
 
             monkeypatch.setattr(wiring_mod, "DEFAULT_AGENTS_DIR", agents_dir)
             monkeypatch.setattr(util_mod, "DEFAULT_AGENTS_DIR", agents_dir)
@@ -3403,7 +3403,7 @@ class TestSetupDefaultAll:
     ) -> None:
         import frontmatter
 
-        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMARO_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3443,7 +3443,7 @@ class TestSetupDefaultAll:
         """``--wire-agents --all`` / ``--select`` keep working (backward compat)."""
         import frontmatter
 
-        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMARO_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3460,7 +3460,7 @@ class TestSetupDefaultAll:
     ) -> None:
         import frontmatter
 
-        from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMARO_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3525,7 +3525,7 @@ class TestIssue448MultiTargetOnePass:
                     raise RuntimeError("boom — injected #448-style failure")
                 return real_mgr.setup(name, **kw)
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: _Flaky())
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -3607,7 +3607,7 @@ class TestPrecedenceField:
         mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
         mgr.deploy("test-harness")
 
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
@@ -3629,10 +3629,10 @@ class TestEngineManifest:
         assert manifest["mcp"]["transport"] == "stdio"
 
     def test_version_injected_from_package(self) -> None:
-        import vesmaro
+        import vesma
 
         manifest = load_engine_manifest()
-        assert manifest["version"] == vesmaro.__version__
+        assert manifest["version"] == vesma.__version__
 
     def test_attach_points_point_at_targets_registry(self) -> None:
         manifest = load_engine_manifest()
@@ -3722,7 +3722,7 @@ class TestMemoryStatus:
     def _patch(monkeypatch: pytest.MonkeyPatch, home: Path, pack: Path) -> None:
         cfg = load_targets(pack / "targets.yaml")
         mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
-        import vesmaro.cli.memory_status as ms_mod
+        import vesma.cli.memory_status as ms_mod
 
         monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
         monkeypatch.setattr(ms_mod, "_manager", lambda home=None: mgr)
@@ -3760,7 +3760,7 @@ class TestMemoryStatus:
             assert secret not in result.output, f"config value leaked: {secret}"
 
     def test_no_harnesses_detected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import vesmaro.cli.memory_status as ms_mod
+        import vesma.cli.memory_status as ms_mod
 
         empty = tmp_path / "empty"
         empty.mkdir()
@@ -3930,7 +3930,7 @@ class TestCliBrandStrings:
     def test_verify_hint_names_vesma_integration_update(
         self, manager: IntegrationManager, detected_target: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         old_mgr = IntegrationManager(
             version="1.1.0",
@@ -4384,7 +4384,7 @@ class TestH2RegistryAndDetect:
         (home / ".codeium" / "windsurf").mkdir(parents=True)
 
         cfg = load_targets(home=home)
-        import vesmaro.cli.util as util_mod
+        import vesma.cli.util as util_mod
 
         monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
         result = runner.invoke(app, ["integration", "detect", "--home", str(home)])
@@ -4430,7 +4430,7 @@ class TestMemoryStatusCodex:
         )
         cfg = load_targets(pack / "targets.yaml")
         mgr = IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg)
-        import vesmaro.cli.memory_status as ms_mod
+        import vesma.cli.memory_status as ms_mod
 
         monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
         monkeypatch.setattr(ms_mod, "_manager", lambda home=None: mgr)

@@ -17,12 +17,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.metrics.schema import SIDECAR_FILENAME
+from vesma.api import main as api_main
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.metrics.schema import SIDECAR_FILENAME
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "vesmaro"
+SRC = Path(__file__).resolve().parents[1] / "src" / "vesma"
 
 
 def _settings(tmp: Path, **overrides: object) -> Settings:
@@ -80,14 +80,14 @@ class TestVerbBoundaries:
         """The call_tool shell (boundary #1) records one verb per tool."""
         import asyncio
 
-        from vesmaro.mcp_server import call_tool
+        from vesma.mcp_server import call_tool
 
         settings = _settings(tmp_path)
         manager = _manager(settings)
         try:
             # the shell resolves via mcp_server's own get_manager (the
             # same seam the dispatch uses — M1 fix), so seed THAT manager
-            import vesmaro.mcp_server as mcp_mod
+            import vesma.mcp_server as mcp_mod
 
             mcp_mod._manager = manager
             try:
@@ -109,7 +109,7 @@ class TestVerbBoundaries:
             for route in api_main.app.routes:
                 test_app.routes.append(route)
             # routes are copied, middleware are NOT — register the boundary
-            from vesmaro.api.middleware import VitalsVerbMiddleware
+            from vesma.api.middleware import VitalsVerbMiddleware
 
             test_app.add_middleware(VitalsVerbMiddleware)
             with TestClient(test_app) as client:
@@ -199,9 +199,9 @@ class TestCliBoundary:
         import sqlite3 as s3
 
         cli_settings = _settings(tmp_path)
-        monkeypatch.setattr("vesmaro.config.load_settings", lambda _cfg=None: cli_settings)
+        monkeypatch.setattr("vesma.config.load_settings", lambda _cfg=None: cli_settings)
         monkeypatch.setattr("sys.argv", ["vesmaro", "--version"])
-        from vesmaro.cli.main import cli_main
+        from vesma.cli.main import cli_main
 
         with pytest.raises(SystemExit) as excinfo:
             cli_main()

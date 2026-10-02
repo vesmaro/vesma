@@ -106,7 +106,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # systemd user service (preferred for a long-running host)
 # legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
-# add the TOTP key to ~/.vesmaro.env (both env spellings), then:
+# add the TOTP key to ~/.vesma.env (both env spellings), then:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet derives the unit name from the file name — the unit is mnemos.service for now
 systemctl --user daemon-reload && systemctl --user start vesma

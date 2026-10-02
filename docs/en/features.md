@@ -103,10 +103,10 @@ its loss is visible in a report; each rung above opens only after measurements c
 
 _Source: owner-approved feature map (2026-08-31), cross-checked against the
 v4.0.0 codebase — 26 tools registered at the time, skill pack
-in `integrations/skills/`, pipeline stages in `src/vesmaro/pipeline/`,
+in `integrations/skills/`, pipeline stages in `src/vesma/pipeline/`,
 benchmark stands in `benchmarks/`. Updated 2026-09-05; meta-level roadmap rows
 added 2026-09-13 per ADR-0025; tool count refreshed 2026-09-28 — 38 tools in
-`src/vesmaro/mcp_server.py` (PG-0 project graph, ADR-0032, on by default);
+`src/vesma/mcp_server.py` (PG-0 project graph, ADR-0032, on by default);
 decision-provider/cortex section added 2026-10-01 (W5d, flag off by default)._
 
 _Last updated: 2026-10-01_

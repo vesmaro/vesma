@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.ccr import (
+from vesma.ccr import (
     build_marker,
     cleanup,
     compress,
@@ -21,9 +21,9 @@ from vesmaro.ccr import (
     parse_marker,
     retrieve,
 )
-from vesmaro.config import CCRConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.config import CCRConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.storage.sqlite_store import SQLiteStore
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -342,7 +342,7 @@ class TestMcpDispatch:
     def test_mcp_compress_tool_listed(self):
         import asyncio
 
-        from vesmaro.mcp_server import list_tools
+        from vesma.mcp_server import list_tools
 
         tools = asyncio.get_event_loop().run_until_complete(list_tools()) if False else None
         # list_tools is an async function decorated by the stub; call it directly
@@ -360,8 +360,8 @@ class TestMcpDispatch:
         import asyncio
 
         # Override the module-level manager
-        import vesmaro.mcp_server as mcp_mod
-        from vesmaro.mcp_server import _dispatch
+        import vesma.mcp_server as mcp_mod
+        from vesma.mcp_server import _dispatch
 
         original = mcp_mod._manager
         mcp_mod._manager = manager

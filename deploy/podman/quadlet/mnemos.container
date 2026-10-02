@@ -4,7 +4,7 @@
 # Install:
 #   mkdir -p ~/.config/containers/systemd
 #   cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
-#   printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' > ~/.vesmaro.env
+#   printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' > ~/.vesma.env
 #   systemctl --user daemon-reload && systemctl --user start mnemos
 [Container]
 ContainerName=mnemos
@@ -21,7 +21,7 @@ Volume=mnemos-vault:/vault
 Environment=VESMA_CONFIG=/app/config.yaml
 # TOTP master key lives outside the unit under the canonical VESMA_API__*
 # name (6.0.0 reads that spelling only; MNEMOS_/VESMARO_ are retired).
-EnvironmentFile=%h/.vesmaro.env
+EnvironmentFile=%h/.vesma.env
 
 # Unauthenticated /health endpoint; kept CLI-independent on purpose
 # (the CLI binary name changes in the 5.0.0 rebrand).

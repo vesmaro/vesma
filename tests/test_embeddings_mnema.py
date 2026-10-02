@@ -26,8 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import EmbeddingConfig
-from vesmaro.embeddings import (
+from vesma.config import EmbeddingConfig
+from vesma.embeddings import (
     MNEMA_EMBED_MODEL,
     NanoProvider,
     config_fingerprint,
@@ -43,7 +43,7 @@ def provider() -> NanoProvider:
 
 
 def _artifact_dir() -> Path:
-    return Path(str(resource_files("vesmaro") / "models" / MNEMA_EMBED_MODEL))
+    return Path(str(resource_files("vesma") / "models" / MNEMA_EMBED_MODEL))
 
 
 # ── bundled artifact ──────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ def test_custom_onnx_path_resolution(provider: NanoProvider) -> None:
 
 @pytest.mark.parametrize("legacy", ["chromadb", "chroma", "default"])
 def test_legacy_provider_migrates_to_nano(legacy: str, caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level("WARNING", logger="vesmaro.embeddings"):
+    with caplog.at_level("WARNING", logger="vesma.embeddings"):
         built = create_embedding_provider(EmbeddingConfig(provider=legacy))
     assert isinstance(built, NanoProvider)
     assert any(
@@ -142,7 +142,7 @@ def test_legacy_default_pair_migrates_model_too(caplog: pytest.LogCaptureFixture
     a bundled artifact name); the factory must swap the model to the
     bundled vesma-embed artifact with a loud warning.
     """
-    with caplog.at_level("WARNING", logger="vesmaro.embeddings"):
+    with caplog.at_level("WARNING", logger="vesma.embeddings"):
         built = create_embedding_provider(
             EmbeddingConfig(provider="chromadb", model="all-MiniLM-L6-v2")
         )

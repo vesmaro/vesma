@@ -16,7 +16,7 @@ import tomllib
 from pathlib import Path
 
 import mnemos
-import vesmaro
+import vesma
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,7 +34,7 @@ def test_version_file_matches_pyproject() -> None:
 
 
 def test_mnemos_import_provenance_pinned_to_checkout() -> None:
-    """`import vesmaro` must resolve to THIS checkout's src/vesmaro (#288).
+    """`import vesma` must resolve to THIS checkout's src/vesma (#288).
 
     A shadow import (user-site editable install / .venv / another checkout
     on PYTHONPATH) once made the suite silently test a stale build and
@@ -42,10 +42,10 @@ def test_mnemos_import_provenance_pinned_to_checkout() -> None:
     conftest front-pin normally prevents this; this assert documents the
     invariant at test level and fails loud if the pin is ever bypassed.
     """
-    resolved = Path(vesmaro.__file__).resolve()
-    expected = (REPO_ROOT / "src" / "vesmaro" / "__init__.py").resolve()
+    resolved = Path(vesma.__file__).resolve()
+    expected = (REPO_ROOT / "src" / "vesma" / "__init__.py").resolve()
     assert resolved == expected, (
-        f"vesmaro shadow-imported from {resolved} — expected {expected}. "
+        f"vesma shadow-imported from {resolved} — expected {expected}. "
         "The suite MUST run against this checkout's src/ (#288)."
     )
     # Dual-import period (ADR-0031): the mnemos shim resolves into this

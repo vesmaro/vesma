@@ -25,7 +25,7 @@
     "presence_window_sec": 900,
     "delta_max_window_sec": 3600,
     "goal_charset": "ASCII (single line, <= 120 chars)",
-    "note": "threshold registered in E0 \u00a78 rev. 2 exactly as implemented (vesmaro.awareness.CONFLICT_HINT_MIN_SHARED_TOKENS = 2)"
+    "note": "threshold registered in E0 \u00a78 rev. 2 exactly as implemented (vesma.awareness.CONFLICT_HINT_MIN_SHARED_TOKENS = 2)"
   },
   "distribution": {
     "replay224_checkpoint_share": 0.579186,

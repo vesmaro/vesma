@@ -1,10 +1,10 @@
 {{/* Expand the name of the chart. */}}
-{{- define "vesmaro.name" -}}
+{{- define "vesma.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/* Create a default fully qualified app name (63 chars max). */}}
-{{- define "vesmaro.fullname" -}}
+{{- define "vesma.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -18,14 +18,14 @@
 {{- end }}
 
 {{/* Chart name and version as used by the chart label. */}}
-{{- define "vesmaro.chart" -}}
+{{- define "vesma.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end }}
 
 {{/* Common labels. */}}
-{{- define "vesmaro.labels" -}}
-helm.sh/chart: {{ include "vesmaro.chart" . }}
-{{ include "vesmaro.selectorLabels" . }}
+{{- define "vesma.labels" -}}
+helm.sh/chart: {{ include "vesma.chart" . }}
+{{ include "vesma.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -33,21 +33,21 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/* Selector labels. */}}
-{{- define "vesmaro.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "vesmaro.name" . }}
+{{- define "vesma.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "vesma.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/* Service account name. */}}
-{{- define "vesmaro.serviceAccountName" -}}
+{{- define "vesma.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "vesmaro.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "vesma.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/* TOTP master key secret name. */}}
-{{- define "vesmaro.secretName" -}}
-{{- default (include "vesmaro.fullname" .) .Values.auth.existingSecret }}
+{{- define "vesma.secretName" -}}
+{{- default (include "vesma.fullname" .) .Values.auth.existingSecret }}
 {{- end }}

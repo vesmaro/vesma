@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-import vesmaro
-from vesmaro.config import Settings, find_config_file, load_settings
+import vesma
+from vesma.config import Settings, find_config_file, load_settings
 
 # ── Import-path guard (same rationale as test_env_compat.py) ────────────────
 
 _REPO_SRC = (Path(__file__).resolve().parent.parent / "src").resolve()
-_VESMARO_UNDER_REPO_SRC = str(_REPO_SRC) in str(Path(vesmaro.__file__).resolve())
+_VESMARO_UNDER_REPO_SRC = str(_REPO_SRC) in str(Path(vesma.__file__).resolve())
 
 pytestmark = pytest.mark.skipif(
     not _VESMARO_UNDER_REPO_SRC,
-    reason="vesmaro resolves to a foreign install; run the suite against the "
+    reason="vesma resolves to a foreign install; run the suite against the "
     "repo src tree (editable install)",
 )
 
@@ -231,7 +231,7 @@ class TestDoctorConfigPath:
     def test_doctor_prefers_vesma_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from vesmaro.cli import doctor
+        from vesma.cli import doctor
 
         canonical = TestConfigPathEnv._config(tmp_path, "canonical.yaml", "/vesma-config")
         monkeypatch.setenv("VESMA_CONFIG", str(canonical))

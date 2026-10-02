@@ -21,10 +21,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import _setup_cors, app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
+from vesma.api import main as api_main
+from vesma.api.main import _setup_cors, app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
 
 _ALLOWED = "http://localhost:5173"
 _DISALLOWED = "http://evil.example.com"

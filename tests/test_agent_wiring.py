@@ -28,7 +28,7 @@ import frontmatter
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.agent_wiring import (
+from vesma.cli.agent_wiring import (
     VESMARO_TOOLS,
     VESMARO_WILDCARD,
     WireStatus,
@@ -36,8 +36,8 @@ from vesmaro.cli.agent_wiring import (
     verify_agents,
     wire_agent,
 )
-from vesmaro.cli.integration import Target, TargetsConfig
-from vesmaro.cli.main import app
+from vesma.cli.integration import Target, TargetsConfig
+from vesma.cli.main import app
 
 runner = CliRunner()
 
@@ -139,8 +139,8 @@ def _isolate_copilot_target(
     ``~/.copilot/instructions`` and ``~/.copilot/skills`` paths, which do
     not exist on CI runners — causing the CLI to exit early before reaching
     agent wiring. This fixture creates the detect/deploy dirs under
-    ``tmp_path`` and patches ``load_targets`` in both ``vesmaro.cli.util``
-    and ``vesmaro.cli.integration`` so the copilot target is always "detected".
+    ``tmp_path`` and patches ``load_targets`` in both ``vesma.cli.util``
+    and ``vesma.cli.integration`` so the copilot target is always "detected".
     """
     instructions_dir = tmp_path / "copilot" / "instructions"
     skills_dir = tmp_path / "copilot" / "skills"
@@ -154,9 +154,9 @@ def _isolate_copilot_target(
         format="copy",
     )
     config = TargetsConfig(targets=(copilot_target,))
-    monkeypatch.setattr("vesmaro.cli.util.load_targets", lambda config_path=None, home=None: config)
+    monkeypatch.setattr("vesma.cli.util.load_targets", lambda config_path=None, home=None: config)
     monkeypatch.setattr(
-        "vesmaro.cli.integration.load_targets", lambda config_path=None, home=None: config
+        "vesma.cli.integration.load_targets", lambda config_path=None, home=None: config
     )
 
 
@@ -502,8 +502,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--wire-agents --all`` wires all unwired agents."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -539,8 +539,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--wire-agents --select name`` wires only the specified agent."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -573,8 +573,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--no-wire-agents`` skips agent wiring entirely."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         original_architect = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
 
@@ -603,8 +603,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--wire-agents --all --precise`` uses individual tool names."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -636,8 +636,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--wire-agents --all --dry-run`` does not modify files."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         original = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
 
@@ -665,8 +665,8 @@ class TestCliSetupWireAgents:
         _isolate_copilot_target: None,
     ) -> None:
         """``--wire-agents`` and ``--no-wire-agents`` are mutually exclusive."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -698,8 +698,8 @@ class TestCliVerifyAgentsSection:
         _isolate_copilot_target: None,
     ) -> None:
         """``integration verify`` prints an agents wiring summary."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -718,8 +718,8 @@ class TestCliVerifyAgentsSection:
         _isolate_copilot_target: None,
     ) -> None:
         """Unwired agent names appear in the verify output."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(
             app,
@@ -742,7 +742,7 @@ class TestDoctorAgentWiring:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``doctor`` runs the agent wiring check and reports status."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(app, ["doctor", "--json"])
 
@@ -757,7 +757,7 @@ class TestDoctorAgentWiring:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Doctor reports WARN when agents are unwired."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(app, ["doctor", "--json"])
         # The agent wiring check should mention "unwired".
@@ -769,7 +769,7 @@ class TestDoctorAgentWiring:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Doctor reports WARN (not crash) when no agents directory exists."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", tmp_path / "no-agents")
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", tmp_path / "no-agents")
 
         result = runner.invoke(app, ["doctor", "--json"])
         assert "Agent wiring" in result.stdout

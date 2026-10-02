@@ -1,6 +1,6 @@
 # Mesh-enabled release image (ghcr.io/vesmaro/vesma)
 
-Builds the release image with the gencode the `vesmaro._mesh_gen` shim
+Builds the release image with the gencode the `vesma._mesh_gen` shim
 expects. This institutionalizes recipe #354 and the verification gate
 added after the `v4.3.4-mesh.1` regression (vesma-mesh#44: the build
 copied stale gitignored stubs — the image's gencode lacked
@@ -59,7 +59,7 @@ node-install README — "Version cycle").
 `gate.py` imports the shipped stubs and asserts the presence of the
 newest proto fields (`resume_cursor`, `ListMemoriesResponse.cursor`,
 `PullRequest.cursor`, `MetadataRecord.origin_peer` when present on the
-branch) plus `import vesmaro.mesh_server`. A missing field = stale
+branch) plus `import vesma.mesh_server`. A missing field = stale
 gencode = build failure. Extend the field list whenever the proto gains
 load-bearing fields.
 

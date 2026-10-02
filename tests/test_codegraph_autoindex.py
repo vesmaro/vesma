@@ -2,7 +2,7 @@
 2026-09-29: indexing happens BY ITSELF, no explicit call, no skill).
 
 Pins the manager+dispatcher level contract of
-``vesmaro.codegraph.autoindex.AutoIndexer``:
+``vesma.codegraph.autoindex.AutoIndexer``:
 
 * first contact (a hint from the MCP dispatcher or a hook) over a
   marker-carrying cwd AUTO-REGISTERS the project (attribution lands in
@@ -43,11 +43,11 @@ from unittest.mock import patch
 
 import pytest
 
-from vesmaro.codegraph.audit import GraphAudit
-from vesmaro.codegraph.autoindex import AutoIndexer, project_marker
-from vesmaro.codegraph.service import CodeGraphService
-from vesmaro.config import CodeGraphConfig, Settings
-from vesmaro.manager import MemoryManager
+from vesma.codegraph.audit import GraphAudit
+from vesma.codegraph.autoindex import AutoIndexer, project_marker
+from vesma.codegraph.service import CodeGraphService
+from vesma.config import CodeGraphConfig, Settings
+from vesma.manager import MemoryManager
 
 AGENT = "auto-agent"
 SESSION = "sess-auto"
@@ -164,11 +164,11 @@ def test_first_contact_via_mcp_dispatcher(
     mgr = _make_manager(tmp_path)
     try:
         monkeypatch.chdir(repo)  # the dispatcher hints with os.getcwd()
-        from vesmaro import mcp_server
+        from vesma import mcp_server
 
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
-            patch("vesmaro.mcp_server._detect_project", return_value=PROJECT),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server._detect_project", return_value=PROJECT),
         ):
             result = asyncio.run(
                 mcp_server._dispatch(
@@ -190,7 +190,7 @@ def test_hint_via_pre_llm_call_hook(tmp_path: Path, repo: Path) -> None:
     cwd, so the test chdirs into the repo)."""
     import os as _os
 
-    from vesmaro import hooks
+    from vesma import hooks
 
     mgr = _make_manager(tmp_path)
     try:
@@ -408,7 +408,7 @@ def test_home_cwd_is_refused_even_with_manifest(
     a ``package.json`` into ``$HOME``)."""
     # _is_forbidden_root moved to service (shared with the manual
     # register/repoint paths, #450/#454) — patch where it resolves Path.
-    monkeypatch.setattr("vesmaro.codegraph.service.Path.home", classmethod(lambda cls: repo))
+    monkeypatch.setattr("vesma.codegraph.service.Path.home", classmethod(lambda cls: repo))
     mgr = _make_manager(tmp_path)
     try:
         assert project_marker(str(repo)) == "pyproject.toml"  # marker present…
@@ -462,8 +462,8 @@ def test_failed_first_index_suspends_auto_until_manual(
     hints (throttle window 0!) never walk the tree again — a spy on the
     incremental index entry proves it — until a successful MANUAL
     ``index_project`` lifts the flag."""
-    from vesmaro.codegraph import incremental
-    from vesmaro.codegraph.service import auto_suspended_key
+    from vesma.codegraph import incremental
+    from vesma.codegraph.service import auto_suspended_key
 
     walks: list[int] = []
     real_index = incremental.index_project

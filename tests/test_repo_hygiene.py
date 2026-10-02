@@ -6,7 +6,7 @@ Two invariants that the canonical gates silently lost during the
 1. **Venv canary (#335 class)** — the running pytest must come from THIS
    checkout's ``.venv``. The #335 incident had bare ``uv run pytest`` /
    ``make test`` fall through PATH to a foreign interpreter whose
-   site-packages held a different vesmaro build: green locally, red (or
+   site-packages held a different vesma build: green locally, red (or
    silently wrong) in CI. ``tests/conftest.py`` pins *which code* is
    imported; this canary pins *which interpreter* runs it.
 2. **Shim-only tripwire (#337 item 4)** — ``src/mnemos/`` must contain
@@ -39,7 +39,7 @@ def test_pytest_runs_from_repo_venv(_running_pytest_path: Path) -> None:
 
     Fail-loud tripwire for the #335 PATH-fallthrough class: a bare
     ``pytest``/``uv run pytest`` that resolved a global or foreign-venv
-    interpreter produces phantom results (different vesmaro build, different
+    interpreter produces phantom results (different vesma build, different
     plugins). The canonical invocations — ``uv sync`` + ``.venv/bin/pytest``,
     ``make bootstrap``, ``scripts/local-ci.sh``, CI's ``uv venv`` — all put
     the tools in ``<checkout>/.venv`` and pass this check.
@@ -58,7 +58,7 @@ def test_pytest_runs_from_repo_venv(_running_pytest_path: Path) -> None:
 def test_mnemos_dir_holds_only_dual_import_shim() -> None:
     """src/mnemos/ must contain ONLY the ADR-0031 shim file.
 
-    The canonical package is ``src/vesmaro/``; ``src/mnemos/`` exists solely
+    The canonical package is ``src/vesma/``; ``src/mnemos/`` exists solely
     for the dual-import compatibility window (retires no earlier than 6.0).
     Any other file there would (a) be invisible to the retargeted mypy gate
     blind spot and (b) signal that new code is again being added under the
@@ -73,5 +73,5 @@ def test_mnemos_dir_holds_only_dual_import_shim() -> None:
     )
     assert files == ["__init__.py"], (
         f"src/mnemos/ must hold only the shim __init__.py (ADR-0031), found: "
-        f"{files}. New code belongs in src/vesmaro/ (issue #337 tripwire)."
+        f"{files}. New code belongs in src/vesma/ (issue #337 tripwire)."
     )

@@ -49,9 +49,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     AgentRecallQuery,
     MemoryCreate,
     MemoryStatus,
@@ -505,9 +505,9 @@ class TestComparativeTelemetry:
 
 class TestMcpTwins:
     async def test_save_context_threads_task(self, mgr: MemoryManager) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             out = await _dispatch(
                 "vesma_save_context",
                 {"project": PROJECT, "goals": "g", "task": TASK},
@@ -517,9 +517,9 @@ class TestMcpTwins:
         assert f"task:{TASK}" in stored.tags
 
     async def test_save_context_task_error_surfaces(self, mgr: MemoryManager) -> None:
-        from vesmaro.mcp_server import _call_tool_dispatch
+        from vesma.mcp_server import _call_tool_dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             # The generic dispatch exception path: the "❌ Error: ..."
             # mapping (the surface's pre-W2 contract), never a traceback.
             out = await _call_tool_dispatch(
@@ -531,11 +531,11 @@ class TestMcpTwins:
         assert mgr.stats()["total"] == 0  # nothing stored
 
     async def test_recall_context_threads_task(self, mgr: MemoryManager) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr.save_checkpoint({"goals": "g"}, project=PROJECT, agent=AGENT, task=TASK)
         mgr.save_checkpoint({"goals": "g2"}, project=PROJECT, agent=AGENT)
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             out = await _dispatch(
                 "vesma_recall_context",
                 {"project": PROJECT, "task": TASK},
@@ -545,9 +545,9 @@ class TestMcpTwins:
         assert "g2" not in out  # the task-less checkpoint is filtered out
 
     async def test_search_threads_task(self, mixed_corpus: MemoryManager) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mixed_corpus):
+        with patch("vesma.mcp_server.get_manager", return_value=mixed_corpus):
             out = await _dispatch(
                 "vesma_search",
                 {"query": "alpha", "project": PROJECT, "task": TASK},
@@ -556,9 +556,9 @@ class TestMcpTwins:
         assert len(out) == 2
 
     async def test_list_recent_threads_task(self, mixed_corpus: MemoryManager) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mixed_corpus):
+        with patch("vesma.mcp_server.get_manager", return_value=mixed_corpus):
             out = await _dispatch(
                 "vesma_list_recent",
                 {"project": PROJECT, "task": TASK},
@@ -576,8 +576,8 @@ class TestMcpTwins:
 def client_factory(mgr: MemoryManager):
     """FastAPI TestClient factory over the shared isolated manager
     (mirrors tests/test_checkpoint_canon_envelope.py)."""
-    from vesmaro.api import main as api_main
-    from vesmaro.api.main import app, lifespan
+    from vesma.api import main as api_main
+    from vesma.api.main import app, lifespan
 
     class _Factory:
         def __enter__(self) -> TestClient:

@@ -33,13 +33,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.context_rewrite import context_rewrite
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.context_rewrite import context_rewrite
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.storage.sqlite_store import SQLiteStore
 
 # aws-key pattern: AKIA + 16 chars of [0-9A-Z].
 FAKE_AWS_KEY = "AKIAEXAMPLEABCDEFGH1"
@@ -196,7 +196,7 @@ class TestFilterIssuanceGateManager:
         mgr = _manager(_settings(tmp_path))
         memory = _add(mgr, "benign content", status=MemoryStatus.PUBLISHED)
         with patch(
-            "vesmaro.secrets_detector.detect_secrets",
+            "vesma.secrets_detector.detect_secrets",
             side_effect=RuntimeError("scanner boom"),
         ):
             result = mgr.issue_context_filter(memory.id)
@@ -220,11 +220,11 @@ class TestFilterIssuanceGateManager:
 class TestFilterIssuanceGateMcp:
     @pytest.mark.asyncio
     async def test_raw_memory_refused(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path))
         memory = _add(mgr, "raw mcp memory", status=MemoryStatus.RAW)
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch("vesma_filter", {"memory_id": memory.id})
         assert result["status"] == "error"
         assert result["reason"] == "status_gate"
@@ -233,18 +233,18 @@ class TestFilterIssuanceGateMcp:
 
     @pytest.mark.asyncio
     async def test_cross_project_fail_closed(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path))
         memory = _add(mgr, "scoped", status=MemoryStatus.PUBLISHED)
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_filter",
                 {"memory_id": memory.id, "project": "somebody-elses"},
             )
         assert result["status"] == "error"
         assert result["reason"] == "project_scope"
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             ok = await _dispatch(
                 "vesma_filter",
                 {"memory_id": memory.id, "project": PROJECT},
@@ -255,11 +255,11 @@ class TestFilterIssuanceGateMcp:
 
     @pytest.mark.asyncio
     async def test_secret_redacted_in_tool_response(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path))
         memory_id = _legacy_published(mgr, f"creds {FAKE_AWS_KEY} leaked")
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch("vesma_filter", {"memory_id": memory_id})
         assert result["memory_id"] == memory_id
         assert FAKE_AWS_KEY not in result["clean_content"]
@@ -355,12 +355,12 @@ def _fake_url_memory(mgr: MemoryManager, first_line: str):
 class TestIngestUrlTitleScanMcp:
     @pytest.mark.asyncio
     async def test_secret_in_fetched_title_redacted(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path))
         fake = _fake_url_memory(mgr, f"page title {FAKE_AWS_KEY} end")
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
             patch.object(mgr, "ingest_url", return_value=fake) as mock_ing,
         ):
             result = await _dispatch(
@@ -378,12 +378,12 @@ class TestIngestUrlTitleScanMcp:
 
     @pytest.mark.asyncio
     async def test_refuse_mode_drops_title(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path, retrieve_refuse_on_secret=True))
         fake = _fake_url_memory(mgr, f"title {FAKE_AWS_KEY} leak")
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             result = await _dispatch(
@@ -400,12 +400,12 @@ class TestIngestUrlTitleScanMcp:
 
     @pytest.mark.asyncio
     async def test_clean_title_passes_unredacted(self, tmp_path: Path) -> None:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mgr = _manager(_settings(tmp_path))
         fake = _fake_url_memory(mgr, "Deploying Mnemos with podman")
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             result = await _dispatch(

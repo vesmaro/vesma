@@ -19,9 +19,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     AgentRecallQuery,
     Memory,
     MemoryCreate,
@@ -175,13 +175,13 @@ class TestMcpSearchStatusParam:
         """vesma_search dispatch passes status to manager.search()."""
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mock_mgr = MagicMock()
         mock_mgr.search.return_value = []
         mock_mgr.settings.vesma.strict_tag_contract = False
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             await _dispatch("vesma_search", {"query": "test", "status": "raw"})
 
         # Verify status was converted to MemoryStatus and passed
@@ -193,13 +193,13 @@ class TestMcpSearchStatusParam:
         """Without status param, None is passed (not an error)."""
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mock_mgr = MagicMock()
         mock_mgr.search.return_value = []
         mock_mgr.settings.vesma.strict_tag_contract = False
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             await _dispatch("vesma_search", {"query": "test"})
 
         call_kwargs = mock_mgr.search.call_args.kwargs

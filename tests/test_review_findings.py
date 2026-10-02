@@ -16,9 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     Memory,
     MemoryCreate,
     MemoryStatus,
@@ -219,7 +219,7 @@ class TestSearchTypeContribution:
 class TestMcpSearchInvalidStatus:
     async def test_mcp_search_invalid_status_error(self):
         """vesma_search with status='invalid' → error listing valid values."""
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         result = await _dispatch(
             "vesma_search",
@@ -237,12 +237,12 @@ class TestMcpSearchInvalidStatus:
 
     async def test_mcp_search_valid_status_passes_through(self):
         """vesma_search with a valid status string does not error."""
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         mock_mgr = MagicMock()
         mock_mgr.search.return_value = []
         mock_mgr.settings.vesma.strict_tag_contract = False
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_search",
                 {"query": "test", "status": "archived"},
@@ -343,11 +343,11 @@ class TestTagsNormalizeCliStripsSpaces:
         """
         from typer.testing import CliRunner
 
-        from vesmaro.cli._manager import reset_manager
-        from vesmaro.cli.main import app
+        from vesma.cli._manager import reset_manager
+        from vesma.cli.main import app
 
         reset_manager()
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -379,7 +379,7 @@ class TestTagsNormalizeCliStripsSpaces:
 
         # Verify the stored tag was normalized correctly (no leading/trailing
         # hyphens). Read directly from the manager's SQLite store.
-        from vesmaro.cli._manager import get_manager
+        from vesma.cli._manager import get_manager
 
         mgr = get_manager()
         memories = mgr.sqlite.list_all(limit=100, offset=0)

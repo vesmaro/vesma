@@ -387,7 +387,7 @@ build_venv() {  # build_venv <repo> <ref> -> echoes cache path
     info "server venv: cache hit ($ref @ $sha)"
     echo "$cache"; return
   fi
-  src="$WORKDIR/src/vesmaro-${sha}"
+  src="$WORKDIR/src/vesma-${sha}"
   rm -rf "$src"; mkdir -p "$src"
   info "server venv: git archive $ref @ $sha -> uv sync (py$pyver)"
   git -C "$repo" archive --format=tar "${ref}^{commit}" | tar -x -C "$src"
@@ -1194,7 +1194,7 @@ cmd_install() {
   fi
 
   local vrepo mrepo vcache mbin new_cv new_mv changed_units=""
-  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesma.git)"
   $WITHOUT_MESH || mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
 
   info "target pair: core $CORE_TAG + mesh $MESH_REF (${PAIR_MODE})"
@@ -1413,7 +1413,7 @@ cmd_upgrade() {
 
   # ── build both artifacts BEFORE touching the node ───────────────
   local vrepo vcache new_cv
-  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesmaro.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesma.git)"
   vcache="$(build_venv "$vrepo" "$CORE_REF")"
   new_cv="$(version_core "$vcache/bin/mnemos")"
   local mrepo="" mbin="" new_mv=""

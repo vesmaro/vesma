@@ -6,7 +6,7 @@
 per-peer ACL, enum триггер-кодов и журнал доступа федерации — и остаётся
 справочником по набору полей `PeerConfig` и контракту триггер-кодов.
 Сам запросный путь mediated pull уже живой: `handle_pull` в
-`src/vesmaro/federation_server.py` обслуживает
+`src/vesma/federation_server.py` обслуживает
 `POST /api/v1/federation/pull`, а руководство по сквозной проверке —
 [`federation-testing.md`](federation-testing.md). Изначально внедрение
 было поэтапным (Phase 1: конфиг + enum'ы + журнал; Phase 2: сервер),
@@ -14,8 +14,8 @@ per-peer ACL, enum триггер-кодов и журнал доступа фе
 
 - **Конфиг и контракт (эта страница):** конфигурация per-peer ACL,
   enum триггер-кодов, журнал доступа федерации.
-- **Живой запросный путь:** `src/vesmaro/federation_server.py` (сторона B)
-  и `src/vesmaro/api/federation.py` (route-адаптер). Внешний Go-бинарник
+- **Живой запросный путь:** `src/vesma/federation_server.py` (сторона B)
+  и `src/vesma/api/federation.py` (route-адаптер). Внешний Go-бинарник
   пира живёт в отдельном репозитории, `vesma-mesh`.
 - **Ссылки:** контракт ArchCom 2026-07-17
   (`.archcom/sessions/2026-07-17-federation-contract.md` §3.2, §6, §9,
@@ -23,7 +23,7 @@ per-peer ACL, enum триггер-кодов и журнал доступа фе
 
 ## 1. Per-peer ACL — `federation.peers`
 
-Phase 1 расширяет `FederationConfig` (`src/vesmaro/config.py`) картой
+Phase 1 расширяет `FederationConfig` (`src/vesma/config.py`) картой
 `peers: dict[str, PeerConfig]`. Ключ каждого peer'а — его A2A id
 (например, `mnemos-A`), а значение описывает, что этому peer'у разрешено
 вытягивать. Глобальный whitelist `federation.shared_projects` остаётся
@@ -80,7 +80,7 @@ federation:
 `VESMA_FED_PEER_A_TOKEN`), заданной в окружении оператора или в
 секрет-менеджере — в конфиг-файл оно никогда не коммитится.
 
-## 2. Триггер-коды — `src/vesmaro/trigger_codes.py`
+## 2. Триггер-коды — `src/vesma/trigger_codes.py`
 
 Контракт §9 заменяет per-session бюджет запросов на **исчерпывающий
 ответ** плюс триггер-код. Сторона B (сервер федерации Phase 2) возвращает
@@ -105,7 +105,7 @@ federation:
 Phase 1 определяет enum и оба хелпера. Phase 2 подключает коды к серверу
 (возврат в payload) и клиенту (диспетчеризация при получении).
 
-## 3. Журнал доступа федерации — `src/vesmaro/federation_access_log.py`
+## 3. Журнал доступа федерации — `src/vesma/federation_access_log.py`
 
 Контракт §10. B-side append-only JSONL audit-лог в
 `~/.mnemos/logs/federation-access.jsonl`, фиксирующий, кто, когда и с

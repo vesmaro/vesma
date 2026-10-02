@@ -8,7 +8,7 @@ License, Version 2.0.
 Bundled model artifacts
 =======================
 
-src/vesmaro/models/vesma-embed-v1/
+src/vesma/models/vesma-embed-v1/
   - vesma-embed-v1 is a proprietary-free embedded sentence-embedding model
     trained in this project by distillation from the teacher
     paraphrase-multilingual-MiniLM-L12-v2 (Apache-2.0, released by

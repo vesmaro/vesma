@@ -4,7 +4,7 @@ This page documents the federation prerequisites on the **vesma**
 side — per-peer ACL, the trigger-codes enum, and the federation access
 log — and remains the reference for the `PeerConfig` field set and the
 trigger-code contract. The mediated-pull request path itself is live:
-`handle_pull` in `src/vesmaro/federation_server.py` serves
+`handle_pull` in `src/vesma/federation_server.py` serves
 `POST /api/v1/federation/pull`, and the end-to-end verification guide is
 [`federation-testing.md`](federation-testing.md). The original rollout
 was staged (Phase 1: config + enums + log; Phase 2: the server), so
@@ -12,8 +12,8 @@ some sections below keep the Phase 1/Phase 2 wording.
 
 - **Config + contract (this page):** per-peer ACL config, trigger codes
   enum, federation access log.
-- **Live request path:** `src/vesmaro/federation_server.py` (B side) and
-  `src/vesmaro/api/federation.py` (route adapter). The external Go peer
+- **Live request path:** `src/vesma/federation_server.py` (B side) and
+  `src/vesma/api/federation.py` (route adapter). The external Go peer
   binary lives in a separate repo, `vesma-mesh`.
 - **References:** ArchCom contract 2026-07-17
   (`.archcom/sessions/2026-07-17-federation-contract.md` §3.2, §6, §9,
@@ -21,7 +21,7 @@ some sections below keep the Phase 1/Phase 2 wording.
 
 ## 1. Per-peer ACL — `federation.peers`
 
-Phase 1 extends `FederationConfig` (`src/vesmaro/config.py`) with a
+Phase 1 extends `FederationConfig` (`src/vesma/config.py`) with a
 `peers: dict[str, PeerConfig]` map. Each peer is keyed by its A2A id
 (for example `mnemos-A`) and describes what that peer is allowed to
 pull. The global `federation.shared_projects` whitelist stays as the
@@ -78,7 +78,7 @@ The token value lives in the named env var (here
 `VESMA_FED_PEER_A_TOKEN`), set in the operator's environment or
 secret manager — never committed to the config file.
 
-## 2. Trigger codes — `src/vesmaro/trigger_codes.py`
+## 2. Trigger codes — `src/vesma/trigger_codes.py`
 
 Contract §9 replaces a per-session query budget with an
 **exhaustive response** plus a trigger code. The B side (Phase 2
@@ -105,7 +105,7 @@ Phase 1 defines the enum and the two helpers. Phase 2 wires the codes
 into the server (returned in the payload) and the client (dispatched on
 receive).
 
-## 3. Federation access log — `src/vesmaro/federation_access_log.py`
+## 3. Federation access log — `src/vesma/federation_access_log.py`
 
 Contract §10. A B-side append-only JSONL audit log at
 `~/.mnemos/logs/federation-access.jsonl` that records who queried

@@ -66,10 +66,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import vesmaro.mcp_server as mcp_mod
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.awareness import (
+import vesma.mcp_server as mcp_mod
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.awareness import (
     ABSTENTION_TASK_LABEL,
     AWARENESS_DISCLAIMER,
     AWARENESS_LANE,
@@ -94,13 +94,13 @@ from vesmaro.awareness import (
     render_awareness_section,
     render_picture_section,
 )
-from vesmaro.compact import CompactRecord
-from vesmaro.config import Settings
-from vesmaro.hooks import dispatch_hook
-from vesmaro.lanes import AWARENESS_CURSOR_PREFIX, Lane, awareness_cursor_key, read_awareness_cursor
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch, list_tools
-from vesmaro.models import Memory, MemoryCreate, MemorySource, MemoryStatus
+from vesma.compact import CompactRecord
+from vesma.config import Settings
+from vesma.hooks import dispatch_hook
+from vesma.lanes import AWARENESS_CURSOR_PREFIX, Lane, awareness_cursor_key, read_awareness_cursor
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch, list_tools
+from vesma.models import Memory, MemoryCreate, MemorySource, MemoryStatus
 
 PROJECT = "awr-proj"
 AGENT = "awr-agent"
@@ -543,7 +543,7 @@ def _freeze_retrieval_clock(monkeypatch: pytest.MonkeyPatch, target: MemoryManag
     already cached for this session so the next assembly re-stamps
     frozen.
     """
-    monkeypatch.setattr("vesmaro.manager.datetime", _FrozenDatetime)
+    monkeypatch.setattr("vesma.manager.datetime", _FrozenDatetime)
     target._retrieval_iso.pop(SESSION, None)
 
 
@@ -859,7 +859,7 @@ class TestNotPinnable:
     def test_no_federate_invariant_documented(self) -> None:
         """Any awareness-derived RECORD (v0 stores none) is born
         mnemos:no-federate — the invariant lives in the module contract."""
-        import vesmaro.awareness as awareness_mod
+        import vesma.awareness as awareness_mod
 
         text = " ".join((awareness_mod.__doc__ or "").split())
         assert "mnemos:no-federate" in text
@@ -1366,7 +1366,7 @@ class TestRepairFederatedImportStamp:
     rows never read as LOCAL neighbors (CWE-359)."""
 
     def test_compact_sync_import_stamped_and_excluded(self, manager: MemoryManager) -> None:
-        from vesmaro.cli.sync import _compact_record_to_memory_create
+        from vesma.cli.sync import _compact_record_to_memory_create
 
         record = CompactRecord(
             id="fed:peer-a:0001",
@@ -1517,7 +1517,7 @@ class TestPictureC1SameProjectFailClosed:
         R3 boundary change — a Security decision, not a flag."""
         import inspect
 
-        import vesmaro.awareness as awareness_mod
+        import vesma.awareness as awareness_mod
 
         sig = inspect.signature(awareness_mod.operational_picture)
         assert set(sig.parameters) == {"mgr", "project", "exclude_agent", "now"}
@@ -1581,7 +1581,7 @@ class TestPictureC2ZeroStoredRecords:
     def test_born_no_federate_clause_pinned(self) -> None:
         """The verbatim born-no-federate clause lives in the module
         contract (C2) — pinned hard against rewording."""
-        import vesmaro.awareness as awareness_mod
+        import vesma.awareness as awareness_mod
 
         text = " ".join((awareness_mod.__doc__ or "").split())
         assert "mnemos:no-federate" in text
@@ -1599,7 +1599,7 @@ class TestPictureC9SessionStartGap:
     def test_session_start_degrades_under_cap(self) -> None:
         import tempfile
 
-        from vesmaro import hooks
+        from vesma import hooks
 
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _settings(Path(tmpdir), awareness_picture_rate_limit_per_minute=1)
@@ -1705,7 +1705,7 @@ class TestPictureC9RateCap:
                 # All over the 2/minute budget are refused, and refusal
                 # never mints quota: the ledger must hold EXACTLY the
                 # admitted count, not the attempted count.
-                from vesmaro.awareness import _PICTURE_RATE_LEDGER
+                from vesma.awareness import _PICTURE_RATE_LEDGER
 
                 stamps = _PICTURE_RATE_LEDGER[mgr][(PROJECT, AGENT)]
                 assert len(stamps) == 2
@@ -1756,7 +1756,7 @@ class TestPictureClampsAndCaps:
         presence window constant is the only window."""
         import inspect
 
-        import vesmaro.awareness as awareness_mod
+        import vesma.awareness as awareness_mod
 
         assert "since" not in inspect.signature(awareness_mod.operational_picture).parameters
 
@@ -1820,7 +1820,7 @@ class TestPictureClampsAndCaps:
         wording surfaces (the degraded rate-limit line, the section
         headers, the per-agent line builder) carry no prediction or
         recommendation verbs. Pinned against rewording."""
-        import vesmaro.awareness as awareness_mod
+        import vesma.awareness as awareness_mod
 
         rendered_vocab = (
             awareness_mod.PICTURE_RATE_LIMITED_LINE
@@ -2096,7 +2096,7 @@ class TestPictureTaskScanGate:
         def _boom(*args: object, **kwargs: object) -> list[object]:
             raise RuntimeError("scanner exploded")
 
-        monkeypatch.setattr("vesmaro.secrets_detector.detect_secrets", _boom)
+        monkeypatch.setattr("vesma.secrets_detector.detect_secrets", _boom)
         _task_row(manager, "benign-task")
         picture = operational_picture(manager, project=PROJECT, exclude_agent=AGENT)
         entry = picture["agents"][0]
@@ -2196,7 +2196,7 @@ class TestPictureTaskNeverPinnable:
         though the slug alphabet already excludes ``:`` — pinned by
         direct call because the CONTRACT layer is the only place a
         marker-shaped tag could ever be minted (and it rejects it)."""
-        from vesmaro.awareness import _strip_policy_markers
+        from vesma.awareness import _strip_policy_markers
 
         assert _strip_policy_markers("applyTo:**/*.py") == "<policy-stripped>"
         assert _strip_policy_markers("severity:P0") == "<policy-stripped>"

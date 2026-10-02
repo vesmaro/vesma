@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.main import app
+from vesma.cli.main import app
 
 runner = CliRunner()
 
@@ -28,10 +28,10 @@ runner = CliRunner()
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
     # Reset the CLI manager singleton so each test gets a fresh DB.
-    from vesmaro.cli._manager import reset_manager
+    from vesma.cli._manager import reset_manager
 
     reset_manager()
-    cfg = tmp_path / "vesmaro.yaml"
+    cfg = tmp_path / "vesma.yaml"
     cfg.write_text(
         f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
@@ -223,7 +223,7 @@ def test_get_manager_returns_memory_manager(
     isolated_config: Path,
 ) -> None:
     """`get_manager()` builds a MemoryManager from the loaded config."""
-    from vesmaro.cli.main import get_manager
+    from vesma.cli.main import get_manager
 
     mgr = get_manager()
     assert mgr is not None
@@ -288,14 +288,14 @@ class TestCompletionCommand:
         result = runner.invoke(app, ["completion", "bash"])
         assert result.exit_code == 0
         # Completion script file stored under ~/.mnemos/completion/
-        script_file = fake_home / ".mnemos" / "completion" / "vesmaro.bash"
+        script_file = fake_home / ".mnemos" / "completion" / "vesma.bash"
         assert script_file.exists()
         assert "_vesmaro" in script_file.read_text(encoding="utf-8")
         # rc file gets an active (uncommented) source line, not eval.
         rc = fake_home / ".bashrc"
         assert rc.exists()
         content = rc.read_text(encoding="utf-8")
-        assert "source ~/.mnemos/completion/vesmaro.bash" in content
+        assert "source ~/.mnemos/completion/vesma.bash" in content
         assert "eval " not in content
 
     def test_completion_is_idempotent(
@@ -310,7 +310,7 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         content = rc.read_text(encoding="utf-8")
         # The source line marker should appear exactly once.
-        assert content.count("source ~/.mnemos/completion/vesmaro.bash") == 1
+        assert content.count("source ~/.mnemos/completion/vesma.bash") == 1
 
     def test_completion_auto_detect_from_shell_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -322,17 +322,17 @@ class TestCompletionCommand:
         monkeypatch.setenv("SHELL", "/usr/bin/zsh")
         result = runner.invoke(app, ["completion"])
         assert result.exit_code == 0
-        script_file = fake_home / ".mnemos" / "completion" / "vesmaro.zsh"
+        script_file = fake_home / ".mnemos" / "completion" / "vesma.zsh"
         assert script_file.exists()
         rc = fake_home / ".zshrc"
         assert rc.exists()
-        assert "source ~/.mnemos/completion/vesmaro.zsh" in rc.read_text(encoding="utf-8")
+        assert "source ~/.mnemos/completion/vesma.zsh" in rc.read_text(encoding="utf-8")
 
     def test_completion_is_installed_false_for_commented_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`_is_installed()` returns False when the source line is commented out."""
-        from vesmaro.cli.completion import _is_installed
+        from vesma.cli.completion import _is_installed
 
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
@@ -340,8 +340,8 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         rc.write_text(
             "# Added by `mnemos completion` (bash)\n"
-            "#[ -f ~/.mnemos/completion/vesmaro.bash ] "
-            "&& source ~/.mnemos/completion/vesmaro.bash\n",
+            "#[ -f ~/.mnemos/completion/vesma.bash ] "
+            "&& source ~/.mnemos/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert not _is_installed("bash", rc)
@@ -350,15 +350,15 @@ class TestCompletionCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`_is_installed()` returns True for an active (uncommented) source line."""
-        from vesmaro.cli.completion import _is_installed
+        from vesma.cli.completion import _is_installed
 
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
         monkeypatch.setenv("HOME", str(fake_home))
         rc = fake_home / ".bashrc"
         rc.write_text(
-            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
-            "&& source ~/.mnemos/completion/vesmaro.bash\n",
+            "[ -f ~/.mnemos/completion/vesma.bash ] "
+            "&& source ~/.mnemos/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert _is_installed("bash", rc)
@@ -384,7 +384,7 @@ class TestCompletionCommand:
         assert "mnemos --show-completion" not in content
         assert "eval " not in content
         # New source line must be present.
-        assert "source ~/.mnemos/completion/vesmaro.bash" in content
+        assert "source ~/.mnemos/completion/vesma.bash" in content
         # User content preserved.
         assert "# some user content" in content
 
@@ -416,7 +416,7 @@ class TestDoctorCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`mnemos doctor` runs all checks and exits 0/1/2 (not a traceback)."""
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -435,7 +435,7 @@ class TestDoctorCommand:
 
     def test_doctor_json_output(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """`mnemos doctor --json` emits valid JSON with a checks array."""
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -460,7 +460,7 @@ class TestDoctorCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A config pointing at an unwritable vault path surfaces a non-pass check."""
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: /nonexistent-root-cant-create/vault\n"
@@ -484,8 +484,8 @@ class TestTagsNormalize:
 
     def test_normalize_lowercases_mixed_case_tags(self, isolated_config: Path) -> None:
         """Memories with project:Foo / agent:Bar get normalized to lowercase."""
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         # Bypass validate_tag_contract (which normalizes on ingest) by
@@ -517,8 +517,8 @@ class TestTagsNormalize:
 
     def test_normalize_dry_run_does_not_write(self, isolated_config: Path) -> None:
         """--dry-run reports changes but leaves the DB untouched."""
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         mem = Memory(
@@ -543,8 +543,8 @@ class TestTagsNormalize:
 
     def test_normalize_idempotent_on_clean_tags(self, isolated_config: Path) -> None:
         """Running normalize on already-lowercase tags is a no-op."""
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         mem = Memory(
@@ -571,8 +571,8 @@ class TestTagsNormalize:
         the AFTER UPDATE trigger keeps the FTS5 index consistent, so search
         still finds the memory after normalization.
         """
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         mem = Memory(
@@ -602,8 +602,8 @@ class TestTagsNormalize:
         `update_fields` now writes `project` and `agent` columns alongside
         the tags JSON, so per-project / per-agent queries stay in sync.
         """
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         mem = Memory(
@@ -633,8 +633,8 @@ class TestTagsNormalize:
         from `validate_tag_contract` which also replaces spaces with
         hyphens. `project:My Project` must become `project:my-project`.
         """
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mgr = get_manager(str(isolated_config))
         mem = Memory(
@@ -676,7 +676,7 @@ class TestCliSearchFlags:
         title: str,
     ) -> None:
         """Seed a memory directly into SQLite with a given status + title."""
-        from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
 
         mem = Memory(
             content=content,
@@ -690,7 +690,7 @@ class TestCliSearchFlags:
 
     def test_cli_search_include_raw_flag(self, isolated_config: Path) -> None:
         """Default search surfaces raw entries; `--published-only` hides them (#123)."""
-        from vesmaro.cli._manager import get_manager
+        from vesma.cli._manager import get_manager
 
         mgr = get_manager(str(isolated_config))
         self._add_memory(mgr, "raw entry marker", "raw", "RawTitleZeta")
@@ -711,7 +711,7 @@ class TestCliSearchFlags:
 
     def test_cli_search_status_flag(self, isolated_config: Path) -> None:
         """`--status raw` finds only raw entries among mixed statuses."""
-        from vesmaro.cli._manager import get_manager
+        from vesma.cli._manager import get_manager
 
         mgr = get_manager(str(isolated_config))
         self._add_memory(mgr, "status raw marker", "raw", "RawTitleBeta")
@@ -739,8 +739,8 @@ class TestWorkflowCli:
 
     @staticmethod
     def _add_memory(isolated_config: Path) -> str:
-        from vesmaro.cli._manager import get_manager
-        from vesmaro.models import MemoryCreate
+        from vesma.cli._manager import get_manager
+        from vesma.models import MemoryCreate
 
         mgr = get_manager(str(isolated_config))
         mem = mgr.add(
@@ -767,7 +767,7 @@ class TestWorkflowCli:
 
     def test_set_transitions_and_records(self, isolated_config: Path) -> None:
         """`workflow set --to in-progress` records the transition."""
-        from vesmaro.cli._manager import get_manager
+        from vesma.cli._manager import get_manager
 
         memory_id = self._add_memory(isolated_config)
         result = runner.invoke(
@@ -792,7 +792,7 @@ class TestWorkflowCli:
 
     def test_set_forbidden_transition_exits_1(self, isolated_config: Path) -> None:
         """A forbidden edge (blocked → done) surfaces as exit 1 + the reason."""
-        from vesmaro.cli._manager import get_manager
+        from vesma.cli._manager import get_manager
 
         memory_id = self._add_memory(isolated_config)
         mgr = get_manager(str(isolated_config))

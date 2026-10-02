@@ -1,8 +1,8 @@
 """Unit tests for the compact exchange format (federation Phase 0, issue #85 part 2a).
 
-Covers :mod:`vesmaro.compact` — the ``vesmaro.federation.v1`` compact
+Covers :mod:`vesma.compact` — the ``vesmaro.federation.v1`` compact
 record builder (ArchCom 2026-07-17 federation contract §2.3). The
-builder runs the moderation pipeline (:func:`vesmaro.moderation.moderate`,
+builder runs the moderation pipeline (:func:`vesma.moderation.moderate`,
 #85 Part 1) first and reuses its verdict:
 
 * ``allow``  → record built from original content.
@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from vesmaro.compact import (
+from vesma.compact import (
     COMPACT_SCHEMA,
     MAX_KEY_POINTS,
     MAX_SUMMARY_LEN,
@@ -35,7 +35,7 @@ from vesmaro.compact import (
     extract_key_points,
     summarize_content,
 )
-from vesmaro.models import NO_FEDERATE_TAG, Memory
+from vesma.models import NO_FEDERATE_TAG, Memory
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -50,8 +50,8 @@ from benchmarks.strata.e2_d.scenarios import (
     StaleClaim,
     StoreRow,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemoryCreate, MemorySource, MemoryStatus
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemoryCreate, MemorySource, MemoryStatus
 
 #: Neutral title for the forged-stamp hostile row (an experimenter
 #: label like the move id must not ride a model-facing surface).

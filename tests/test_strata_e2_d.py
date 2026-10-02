@@ -55,7 +55,7 @@ from benchmarks.strata.e2_d.stale_claims import (
     WINDOW_EXPIRED_CLAIMS,
 )
 
-from vesmaro.awareness import (
+from vesma.awareness import (
     AWARENESS_DISCLAIMER,
     DELTA_MAX_WINDOW_SEC,
     GOAL_TITLE_MAX_CHARS,
@@ -65,10 +65,10 @@ from vesmaro.awareness import (
     project_delta,
     render_awareness_section,
 )
-from vesmaro.config import Settings
-from vesmaro.danger_detectors import detect
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.danger_detectors import detect
+from vesma.manager import MemoryManager
+from vesma.models import (
     MemoryCreate,
     MemorySource,
     MemoryStatus,

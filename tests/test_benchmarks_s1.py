@@ -110,10 +110,10 @@ def test_render_neutrality_invariant_catches_reason_leak(
     checker flags it — the ADR-0019 §5 compromise is enforced by a
     checker that demonstrably catches the defect class.
     """
-    import vesmaro.manager as manager_mod
+    import vesma.manager as manager_mod
 
     def leaky_render(memory: object) -> str:
-        from vesmaro.models import render_retraction
+        from vesma.models import render_retraction
 
         reason = getattr(memory, "quarantine_reason", "secret")
         return f"{render_retraction(memory)[:-1]} reason={reason}]"  # type: ignore[arg-type]

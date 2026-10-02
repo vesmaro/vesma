@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.main import app as cli_app
-from vesmaro.config import Settings
-from vesmaro.filter.pipeline import (
+from vesma.cli.main import app as cli_app
+from vesma.config import Settings
+from vesma.filter.pipeline import (
     _stage_compress,
     _stage_dedup,
     _stage_extract,
@@ -20,8 +20,8 @@ from vesmaro.filter.pipeline import (
     apply_filter,
     detect_profile,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource
 
 
 class TestStageDedup:
@@ -310,7 +310,7 @@ class TestAutoFilterOnAdd:
         # apply_filter is imported lazily inside apply_context_filter;
         # patch it at its source module.
         with patch(
-            "vesmaro.filter.pipeline.apply_filter",
+            "vesma.filter.pipeline.apply_filter",
             side_effect=RuntimeError("simulated filter crash"),
         ):
             # Should not raise — auto-filter is non-fatal
@@ -343,7 +343,7 @@ class TestMcpFilterTool:
 
     @pytest.mark.asyncio
     async def test_mnemos_filter_tool_registered(self) -> None:
-        from vesmaro.mcp_server import list_tools
+        from vesma.mcp_server import list_tools
 
         tools = await list_tools()
         names = [t.name for t in tools]
@@ -353,8 +353,8 @@ class TestMcpFilterTool:
     async def test_mnemos_filter_dispatch(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
-        from vesmaro.models import MemoryStatus
+        from vesma.mcp_server import _dispatch
+        from vesma.models import MemoryStatus
 
         data = MemoryCreate(
             content="line 1\nline 1\nline 2",
@@ -370,7 +370,7 @@ class TestMcpFilterTool:
         memory = mgr.get(memory.id)
         assert memory is not None and memory.clean_content is None
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_filter",
                 {"memory_id": memory.id, "profile": "default"},
@@ -385,8 +385,8 @@ class TestMcpFilterTool:
     async def test_mnemos_filter_with_budget(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
-        from vesmaro.models import MemoryStatus
+        from vesma.mcp_server import _dispatch
+        from vesma.models import MemoryStatus
 
         data = MemoryCreate(
             content="word " * 500,
@@ -396,7 +396,7 @@ class TestMcpFilterTool:
         memory = mgr.add(data, project="test", agent="filter-test")
         mgr.sqlite.update_status(memory.id, MemoryStatus.PUBLISHED)
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_filter",
                 {"memory_id": memory.id, "budget": 50},
@@ -408,9 +408,9 @@ class TestMcpFilterTool:
     async def test_mnemos_filter_missing_memory(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_filter",
                 {"memory_id": "nonexistent-id"},
@@ -426,12 +426,12 @@ class TestMcpAddAutoFilter:
     async def test_mnemos_add_returns_filtered_flag(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -454,7 +454,7 @@ class TestSearchReturnsCleanContent:
     async def test_search_returns_clean_content(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         # Add a memory with ANSI codes — auto-filter strips them
         raw = "\x1b[31mError: kubernetes boom\x1b[0m"
@@ -467,7 +467,7 @@ class TestSearchReturnsCleanContent:
         assert memory.clean_content is not None
         assert "\x1b[" not in memory.clean_content
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             results = await _dispatch(
                 "vesma_search",
                 {"query": "kubernetes", "limit": 10, "include_raw": True},
@@ -481,7 +481,7 @@ class TestSearchReturnsCleanContent:
     async def test_recall_returns_clean_content(self, mgr: MemoryManager) -> None:
         from unittest.mock import patch
 
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         raw = "\x1b[31mcheckpoint content\x1b[0m"
         data = MemoryCreate(
@@ -492,7 +492,7 @@ class TestSearchReturnsCleanContent:
         memory = mgr.add(data, project="recall-test", agent="user")
         assert memory.clean_content is not None
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_recall_context",
                 {"project": "recall-test"},
@@ -546,7 +546,7 @@ class TestCliFilterCommand:
     """mnemos filter <id> and mnemos filter --all CLI commands."""
 
     def test_cli_filter_single(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -581,7 +581,7 @@ class TestCliFilterCommand:
         assert "Filtered" in result.output or "✓" in result.output
 
     def test_cli_filter_all(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -609,7 +609,7 @@ class TestCliFilterCommand:
     def test_cli_filter_no_id_no_all_errors(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"

@@ -10,14 +10,14 @@ We install minimal stubs into ``sys.modules`` (mirroring how
 ``conftest.py`` stubs the optional ``mcp`` package) so the plugin can be
 imported and its pure-Python surface tested without a running Hermes
 installation. Since the W5 migration the plugin is a THIN shim over
-``vesmaro.adapters.hermes.HermesMemoryAdapter``; the adapter's own behavior
+``vesma.adapters.hermes.HermesMemoryAdapter``; the adapter's own behavior
 (write-sparing policy, tag contract, scans, hooks) is pinned IN-PROCESS by
 ``tests/test_hermes_adapter.py`` — this suite pins the SHIM: registration,
 tool schemas, config surface, lifecycle delegation (via a mocked adapter —
 no manager is constructed here), the harness-never-blocks guard, and
 session rebinding.
 
-NOTE: the plugin imports ``vesmaro.adapters.hermes`` — run the suite with
+NOTE: the plugin imports ``vesma.adapters.hermes`` — run the suite with
 the working-tree ``src/`` first on ``sys.path`` (the repo CI layout); the
 ``tests/test_hermes_adapter.py`` bootstrap does this for the whole run.
 """

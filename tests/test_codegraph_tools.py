@@ -33,9 +33,9 @@ import pytest
 pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 from fastapi.testclient import TestClient
 
-from vesmaro.codegraph.audit import GraphAudit
-from vesmaro.codegraph.indexer import IndexLimitError
-from vesmaro.codegraph.service import (
+from vesma.codegraph.audit import GraphAudit
+from vesma.codegraph.indexer import IndexLimitError
+from vesma.codegraph.service import (
     BYTES_PER_TOKEN,
     DEFAULT_MAX_OUTPUT_TOKENS,
     CodeGraphService,
@@ -48,8 +48,8 @@ from vesmaro.codegraph.service import (
     resolve_token_budget,
     window_rows,
 )
-from vesmaro.config import CodeGraphConfig, Settings
-from vesmaro.storage.code_graph_store import CodeGraphStore
+from vesma.config import CodeGraphConfig, Settings
+from vesma.storage.code_graph_store import CodeGraphStore
 
 AGENT = "agent-under-test"
 PROJECT = "miniproj"
@@ -423,7 +423,7 @@ class TestSnippetPG4:
     ) -> None:
         """A detector that learned a NEW pattern after indexation refuses
         the issuance fail-closed (the scan at issue is mandatory, PG4)."""
-        import vesmaro.codegraph.service as service_module
+        import vesma.codegraph.service as service_module
 
         monkeypatch.setattr(service_module, "detect_secrets", lambda content: [object()])
         monkeypatch.setattr(
@@ -444,7 +444,7 @@ class TestSnippetPG4:
         with pytest.raises(GraphToolError, match="POISONED"):
             service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
 
-        import vesmaro.codegraph.indexer as indexer_module
+        import vesma.codegraph.indexer as indexer_module
 
         monkeypatch.setattr(indexer_module, "detect_secrets", lambda source: [])
         reindexed = service.index_project(PROJECT, agent=AGENT, incremental=False)
@@ -822,7 +822,7 @@ class TestManualRegister:
         else:
             root = str(tmp_path)  # == Path.home() under the patch below
             monkeypatch.setattr(
-                "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+                "vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
             )
         service, _ = make_service(tmp_path, mini_repo, register=False)
         try:
@@ -992,7 +992,7 @@ class TestRegistrationHardening464:
         """P3-4: a symlink to ``$HOME`` resolves to the forbidden
         target — the string compare alone would let it register."""
         monkeypatch.setattr(
-            "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+            "vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
         )
         link = tmp_path / "home-link"
         link.symlink_to(tmp_path)
@@ -1010,7 +1010,7 @@ class TestRegistrationHardening464:
         """P3-4: a ``..``-laden spelling of ``$HOME`` never passes the
         forbidden-root gate."""
         monkeypatch.setattr(
-            "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+            "vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
         )
         assert _is_forbidden_root(f"{tmp_path}/sub/../../{tmp_path.name}") is True
 
@@ -1036,7 +1036,7 @@ def _fake_manager(tmp_path: Path, repo: Path, *, enabled: bool) -> _FakeManager:
 
 class TestMcpLayer:
     def test_manifest_contains_the_graph_tools(self) -> None:
-        from vesmaro.mcp_server import _canonical_tools
+        from vesma.mcp_server import _canonical_tools
 
         names = {t.name for t in asyncio.run(_canonical_tools())}
         expected = {
@@ -1055,14 +1055,14 @@ class TestMcpLayer:
         assert expected <= names
 
     def test_missing_agent_is_a_boundary_error(self, tmp_path: Path, mini_repo: Path) -> None:
-        from vesmaro.mcp_server import _handle_graph
+        from vesma.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
         result = _handle_graph("vesma_project_graph_status", mgr, {"project_id": PROJECT})
         assert result["code"] == "attribution-required"
 
     def test_disabled_flag_answered_as_disabled(self, tmp_path: Path, mini_repo: Path) -> None:
-        from vesmaro.mcp_server import _handle_graph
+        from vesma.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=False)
         result = _handle_graph(
@@ -1073,7 +1073,7 @@ class TestMcpLayer:
     def test_register_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
         """#454: the agent-facing register tool registers the project and
         a refusal carries the confinement code (never a traceback)."""
-        from vesmaro.mcp_server import _handle_graph
+        from vesma.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
         mgr.sqlite.projects.clear()  # unregistered — the tool's whole point
@@ -1095,7 +1095,7 @@ class TestMcpLayer:
         assert refused["code"] == "confinement-refused"
 
     def test_index_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
-        from vesmaro.mcp_server import _handle_graph
+        from vesma.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
         result = _handle_graph(
@@ -1131,10 +1131,10 @@ def _rest_settings(tmp_path: Path, *, enabled: bool) -> Settings:
 def _rest_client(tmp_path: Path, repo: Path, *, enabled: bool) -> Iterator[TestClient]:
     from fastapi import FastAPI
 
-    from vesmaro.api import main as api_main
-    from vesmaro.api.main import app, lifespan
-    from vesmaro.manager import MemoryManager
-    from vesmaro.models import Project
+    from vesma.api import main as api_main
+    from vesma.api.main import app, lifespan
+    from vesma.manager import MemoryManager
+    from vesma.models import Project
 
     mgr = MemoryManager(_rest_settings(tmp_path, enabled=enabled))
     mgr.sqlite.save_project(Project(name="restproj", paths=[str(repo)]))

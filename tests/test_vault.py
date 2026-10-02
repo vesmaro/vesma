@@ -27,8 +27,8 @@ from pathlib import Path
 import frontmatter
 import pytest
 
-from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
-from vesmaro.storage.vault import VaultManager
+from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+from vesma.storage.vault import VaultManager
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

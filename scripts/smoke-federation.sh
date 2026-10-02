@@ -4,7 +4,7 @@
 # Verifies the full Phase 0 federation roundtrip on a single host using
 # two isolated vesma instances (per-instance config.yaml selected via
 # the VESMA_CONFIG env var — the only instance-selection mechanism the
-# app understands; see find_config_file in src/vesmaro/config.py):
+# app understands; see find_config_file in src/vesma/config.py):
 #
 #   1. Seed peer B with a clean decision memory.
 #   2. Export B's memories as a compact federation payload.

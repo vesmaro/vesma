@@ -66,7 +66,7 @@ format-check:
 	$(VENV)/ruff format --check .
 
 typecheck:
-	$(VENV)/mypy --strict src/vesmaro/ src/mnemos/
+	$(VENV)/mypy --strict src/vesma/ src/mnemos/
 
 security:
 	$(VENV)/bandit -r src/ -f json -o bandit-report.json || true
@@ -82,7 +82,7 @@ update-deps:
 	pip-audit
 
 coverage:
-	$(VENV)/pytest --cov=src/vesmaro --cov-report=term-missing --cov-fail-under=80 tests/ -q
+	$(VENV)/pytest --cov=src/vesma --cov-report=term-missing --cov-fail-under=80 tests/ -q
 
 check-version:
 	@$(VENV)/python scripts/check_version.py
@@ -182,9 +182,9 @@ bootstrap:
 
 check-venv:
 	@if [ -x .venv/bin/python ]; then \
-		.venv/bin/python -c "import vesmaro, pathlib, sys; got=pathlib.Path(vesmaro.__file__).resolve(); want=(pathlib.Path.cwd()/'src/vesmaro/__init__.py').resolve(); sys.exit(0 if got == want else 1)" \
+		.venv/bin/python -c "import vesma, pathlib, sys; got=pathlib.Path(vesma.__file__).resolve(); want=(pathlib.Path.cwd()/'src/vesma/__init__.py').resolve(); sys.exit(0 if got == want else 1)" \
 			&& echo "✅ .venv editable install resolves to ./src" \
-			|| { echo '⚠️  .venv is stale: vesmaro does not import from ./src (project moved or venv built elsewhere). Run: make bootstrap'; exit 1; }; \
+			|| { echo '⚠️  .venv is stale: vesma does not import from ./src (project moved or venv built elsewhere). Run: make bootstrap'; exit 1; }; \
 	else \
 		echo "ℹ️  No .venv found — run: make bootstrap"; \
 	fi

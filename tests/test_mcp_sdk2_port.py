@@ -2,7 +2,7 @@
 
 Covers:
 - ``_check_mcp_transport`` (doctor, direction C): a healthy
-  ``vesmaro.mcp_server`` import passes; a broken import (ImportError /
+  ``vesma.mcp_server`` import passes; a broken import (ImportError /
   AttributeError — the two #185 failure classes) fails LOUDLY with the
   remediation hint.
 - In-memory MCP handshake probe (SDK 2.x ``create_client_server_memory_streams``):
@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 
-from vesmaro.cli.doctor import CheckStatus, _check_mcp_transport
+from vesma.cli.doctor import CheckStatus, _check_mcp_transport
 
 # The model-visible tool manifest contract (#185): names are frozen; any
 # change here is a breaking contract change and must not happen silently.
@@ -69,8 +69,8 @@ def _real_mcp_modules() -> Iterator[None]:
     place) so later tests that rely on the stub environment are
     unaffected. Also re-syncs the ``mcp_server`` attribute on BOTH parent
     packages (``vesmaro`` canonical + ``mnemos`` shim alias) — submodule
-    bindings via the parent getattr path (``from vesmaro import
-    mcp_server``, ``import vesmaro.mcp_server as x``) otherwise still
+    bindings via the parent getattr path (``from vesma import
+    mcp_server``, ``import vesma.mcp_server as x``) otherwise still
     point at the freshly imported REAL module object after the swap-back,
     while sys.modules entries point at the restored pre-reload object
     (identity drift between sys.modules and the package namespace broke
@@ -81,7 +81,7 @@ def _real_mcp_modules() -> Iterator[None]:
     # keeps pointing at the pre-reload object and later monkeypatch-based
     # tests patch a stale module (identity drift, same class as the parent
     # attribute re-sync below).
-    touched = [*_MCP_STUB_MODULES, "vesmaro.mcp_server", "mnemos.mcp_server"]
+    touched = [*_MCP_STUB_MODULES, "vesma.mcp_server", "mnemos.mcp_server"]
     saved = {name: sys.modules.get(name) for name in touched}
     try:
         for name in touched:
@@ -98,9 +98,9 @@ def _real_mcp_modules() -> Iterator[None]:
         # import inside the context ran importlib's setattr(parent,
         # child, module) on the canonical `vesmaro` package — restoring
         # sys.modules alone leaves that attr on the NEW object, and every
-        # `from vesmaro import mcp_server` afterwards binds a different
-        # module than `from vesmaro.mcp_server import ...`.
-        restored = sys.modules.get("vesmaro.mcp_server")
+        # `from vesma import mcp_server` afterwards binds a different
+        # module than `from vesma.mcp_server import ...`.
+        restored = sys.modules.get("vesma.mcp_server")
         if restored is not None:
             for parent_name in ("vesmaro", "mnemos"):
                 parent = sys.modules.get(parent_name)
@@ -112,23 +112,23 @@ def _real_mcp_modules() -> Iterator[None]:
 
 
 def test_check_mcp_transport_healthy() -> None:
-    """A healthy vesmaro.mcp_server import passes the transport check."""
+    """A healthy vesma.mcp_server import passes the transport check."""
     result = _check_mcp_transport()
     assert result.status == CheckStatus.PASS, result.detail
     assert "imports OK" in result.detail
 
 
 def _break_mcp_server_import(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
-    """Make ``import vesmaro.mcp_server`` raise ``exc`` inside the doctor check.
+    """Make ``import vesma.mcp_server`` raise ``exc`` inside the doctor check.
 
-    Patches ``builtins.__import__`` for the ``vesmaro.mcp_server`` module name
+    Patches ``builtins.__import__`` for the ``vesma.mcp_server`` module name
     only — the doctor check sees exactly what a broken transport sees, while
     every other import keeps working.
     """
     real_import = builtins.__import__
 
     def _fake_import(name: str, *args, **kwargs):
-        if name == "vesmaro.mcp_server":
+        if name == "vesma.mcp_server":
             raise exc
         return real_import(name, *args, **kwargs)
 
@@ -177,7 +177,7 @@ def test_check_mcp_transport_registered_in_doctor_run() -> None:
     """The transport check is wired into ``_run_all_checks`` (not orphaned)."""
     import inspect
 
-    from vesmaro.cli import doctor as doctor_mod
+    from vesma.cli import doctor as doctor_mod
 
     source = inspect.getsource(doctor_mod._run_all_checks)
     assert "_check_mcp_transport" in source
@@ -187,9 +187,9 @@ def test_doctor_json_includes_mcp_transport(tmp_path, monkeypatch: pytest.Monkey
     """``mnemos doctor --json`` output carries the MCP transport check row."""
     from typer.testing import CliRunner
 
-    from vesmaro.cli.doctor import doctor_app
+    from vesma.cli.doctor import doctor_app
 
-    cfg = tmp_path / "vesmaro.yaml"
+    cfg = tmp_path / "vesma.yaml"
     cfg.write_text(
         f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
@@ -225,15 +225,15 @@ def test_in_memory_handshake_lists_full_tool_manifest() -> None:
     # The conftest may have installed MagicMock stubs over the real package
     # (it runs before anything imports the real `mcp`). Evict the stubs so
     # the probe binds against the REAL SDK modules; the already-imported
-    # `vesmaro.mcp_server` must also be re-loaded against the real SDK.
-    import vesmaro.mcp_server as _ms
+    # `vesma.mcp_server` must also be re-loaded against the real SDK.
+    import vesma.mcp_server as _ms
 
     with _real_mcp_modules():
         import anyio
         from mcp.client.session import ClientSession
         from mcp.shared.memory import create_client_server_memory_streams
 
-        import vesmaro.mcp_server as ms
+        import vesma.mcp_server as ms
 
         server = ms.server
 
@@ -279,7 +279,7 @@ def test_server_registers_handlers_via_constructor() -> None:
     Accept either surface — what matters is that the handlers ARE
     registered, and the legacy 1.x decorator attributes are NOT relied upon.
     """
-    from vesmaro import mcp_server
+    from vesma import mcp_server
 
     assert mcp_server.server.name == "vesma"
     if hasattr(mcp_server.server, "get_request_handler"):
@@ -301,7 +301,7 @@ def test_server_registers_handlers_via_constructor() -> None:
 
 def test_tool_manifest_uses_input_schema_attribute() -> None:
     """Tool manifest entries expose the SDK 2.x input_schema attribute (27 tools)."""
-    from vesmaro.mcp_server import list_tools
+    from vesma.mcp_server import list_tools
 
     tools = asyncio.run(list_tools())
     assert len(tools) == EXPECTED_TOOL_COUNT
@@ -311,8 +311,8 @@ def test_tool_manifest_uses_input_schema_attribute() -> None:
 
 def test_on_call_tool_adapter_wraps_result(monkeypatch: pytest.MonkeyPatch) -> None:
     """The SDK 2.x adapter translates CallToolRequestParams → CallToolResult."""
-    from vesmaro import mcp_server
-    from vesmaro.mcp_server import _on_call_tool
+    from vesma import mcp_server
+    from vesma.mcp_server import _on_call_tool
 
     sent: dict = {}
 
@@ -333,7 +333,7 @@ def test_on_call_tool_adapter_wraps_result(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_on_list_tools_adapter_wraps_result() -> None:
     """The SDK 2.x adapter returns ListToolsResult with the full manifest."""
-    from vesmaro.mcp_server import _on_list_tools
+    from vesma.mcp_server import _on_list_tools
 
     result = asyncio.run(_on_list_tools(None, None))
     assert len(result.tools) == EXPECTED_TOOL_COUNT
@@ -343,8 +343,8 @@ def test_arguments_none_defaults_to_empty_dict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """call_tool with arguments=None (SDK allows omitting) dispatches safely."""
-    from vesmaro import mcp_server
-    from vesmaro.mcp_server import _on_call_tool
+    from vesma import mcp_server
+    from vesma.mcp_server import _on_call_tool
 
     seen: list[dict] = []
 
@@ -360,11 +360,11 @@ def test_arguments_none_defaults_to_empty_dict(
 
 def test_mcp_sdk_version_helper(monkeypatch: pytest.MonkeyPatch) -> None:
     """mcp_sdk_version() reports installed version or 'not installed'."""
-    from vesmaro.cli.doctor import mcp_sdk_version
+    from vesma.cli.doctor import mcp_sdk_version
 
     v = mcp_sdk_version()
     assert isinstance(v, str) and v  # never raises, always a string
-    with patch("vesmaro.cli.doctor.mcp_sdk_version", return_value="9.9.9"):
+    with patch("vesma.cli.doctor.mcp_sdk_version", return_value="9.9.9"):
         # The helper is also patchable for deterministic doctor details.
         assert True
 

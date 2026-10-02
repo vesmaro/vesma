@@ -29,17 +29,17 @@ import pytest
 
 pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 
-from vesmaro.codegraph.file_surface import FileSurface
-from vesmaro.codegraph.incremental import (
+from vesma.codegraph.file_surface import FileSurface
+from vesma.codegraph.incremental import (
     STATUS_FRESH,
     STATUS_IN_PROGRESS,
     index_project,
     staleness_check,
 )
-from vesmaro.codegraph.indexer import IndexLimitError, ProjectIndexer
-from vesmaro.codegraph.languages import language_for_path
-from vesmaro.config import CodeGraphConfig
-from vesmaro.storage.code_graph_store import (
+from vesma.codegraph.indexer import IndexLimitError, ProjectIndexer
+from vesma.codegraph.languages import language_for_path
+from vesma.config import CodeGraphConfig
+from vesma.storage.code_graph_store import (
     CodeGraphStore,
     project_graph_epoch_key,
     read_project_graph_epoch,
@@ -456,7 +456,7 @@ class TestSecretAllowlist:
         """Default [] = today's behavior byte-identical: a reindex after
         the detector stops firing keeps the poisoned entry (PG3
         «навсегда», pinned here against the #449 surface)."""
-        import vesmaro.codegraph.indexer as indexer_module
+        import vesma.codegraph.indexer as indexer_module
 
         main = _FakeMainStore()
         index_project("proj", mini_repo, store, main)
@@ -589,7 +589,7 @@ class TestIncremental:
     ) -> None:
         import threading
 
-        from vesmaro.codegraph.incremental import _lock_for
+        from vesma.codegraph.incremental import _lock_for
 
         main = _FakeMainStore()
         index_project("proj", mini_repo, store, main)

@@ -36,9 +36,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 PROJECT = "a9a-proj"
 AGENT_A = "agent-alpha"

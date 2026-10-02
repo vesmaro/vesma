@@ -2,7 +2,7 @@
 
 ``vesmaro serve`` must, when ``mesh.enabled`` is true:
 
-* start the :class:`vesmaro.mesh_server.MeshServer` on the configured
+* start the :class:`vesma.mesh_server.MeshServer` on the configured
   Unix socket (creating the parent dir) BEFORE uvicorn runs,
 * seed the HTTP-app manager singleton from serve's own ``--config``
   (same manager for MeshServer and the in-process app),
@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from vesmaro.cli.main import serve
+from vesma.cli.main import serve
 
 #: Bind used for every test — pinned so uvicorn.run assertions are exact.
 _HOST = "127.0.0.1"
@@ -98,15 +98,15 @@ class TestServeMeshDisabled:
 
         with (
             patch("uvicorn.run") as run,
-            patch("vesmaro.mesh_server.MeshServer") as mesh_cls,
-            patch("vesmaro.api.main.get_manager") as get_mgr,
+            patch("vesma.mesh_server.MeshServer") as mesh_cls,
+            patch("vesma.api.main.get_manager") as get_mgr,
         ):
             serve(host=_HOST, port=_PORT, log_file=None, config=str(cfg))
 
         mesh_cls.assert_not_called()
         get_mgr.assert_not_called()
         run.assert_called_once_with(
-            "vesmaro.api.main:app",
+            "vesma.api.main:app",
             host=_HOST,
             port=_PORT,
             workers=1,
@@ -122,7 +122,7 @@ class TestServeMeshEnabled:
             tmp_path,
             {"enabled": True, "socket_path": socket_path, "socket_group_access": True},
         )
-        mesh_logger = logging.getLogger("vesmaro.mesh_server")
+        mesh_logger = logging.getLogger("vesma.mesh_server")
         handler = _ListHandler()
         mesh_logger.setLevel(logging.INFO)
         mesh_logger.addHandler(handler)
@@ -130,7 +130,7 @@ class TestServeMeshEnabled:
         try:
             with (
                 patch("uvicorn.run") as run,
-                patch("vesmaro.api.main.get_manager") as get_mgr,
+                patch("vesma.api.main.get_manager") as get_mgr,
             ):
                 get_mgr.return_value = MagicMock(name="manager")
                 serve(host=_HOST, port=_PORT, log_file=None, config=str(cfg))
@@ -142,7 +142,7 @@ class TestServeMeshEnabled:
         get_mgr.assert_called_once_with(str(cfg))
         # uvicorn still ran with the exact pre-wiring arguments.
         run.assert_called_once_with(
-            "vesmaro.api.main:app",
+            "vesma.api.main:app",
             host=_HOST,
             port=_PORT,
             workers=1,
@@ -171,7 +171,7 @@ class TestServeMeshEnabled:
 
         with (
             patch("uvicorn.run", side_effect=_capture_run),
-            patch("vesmaro.api.main.get_manager") as get_mgr,
+            patch("vesma.api.main.get_manager") as get_mgr,
         ):
             get_mgr.return_value = MagicMock(name="manager")
             serve(host=_HOST, port=_PORT, log_file=None, config=str(cfg))
@@ -191,7 +191,7 @@ class TestServeMeshEnabled:
 
         with (
             patch("uvicorn.run", side_effect=_capture_run),
-            patch("vesmaro.api.main.get_manager") as get_mgr,
+            patch("vesma.api.main.get_manager") as get_mgr,
         ):
             get_mgr.return_value = MagicMock(name="manager")
             serve(host=_HOST, port=_PORT, log_file=None, config=str(cfg))
@@ -206,7 +206,7 @@ class TestServeMeshEnabled:
 
         with (
             patch("uvicorn.run", side_effect=RuntimeError("bind failed")),
-            patch("vesmaro.api.main.get_manager") as get_mgr,
+            patch("vesma.api.main.get_manager") as get_mgr,
         ):
             get_mgr.return_value = MagicMock(name="manager")
             with pytest.raises(RuntimeError, match="bind failed"):

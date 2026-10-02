@@ -42,13 +42,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import vesmaro.mcp_server as mcp_mod
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch
-from vesmaro.models import Memory, MemoryCreate, MemorySource, MemoryStatus
+import vesma.mcp_server as mcp_mod
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch
+from vesma.models import Memory, MemoryCreate, MemorySource, MemoryStatus
 
 # ── Fake (EXAMPLE-style) secrets from the detector's own regexes ──────────────
 
@@ -335,7 +335,7 @@ class TestProvenance:
 
     def test_retrieval_iso_registry_bound_fifo(self, manager: MemoryManager) -> None:
         """#282 — the session registry is bounded, oldest-first FIFO prune."""
-        from vesmaro.manager import RETRIEVAL_ISO_REGISTRY_CAP
+        from vesma.manager import RETRIEVAL_ISO_REGISTRY_CAP
 
         assert manager.retrieval_iso("sess-first") == manager.retrieval_iso("sess-first")
         # Fill past the cap: cap-1 more sessions (sess-first still held).
@@ -550,7 +550,7 @@ class TestCcrStage:
     @staticmethod
     def _marker_hash(memory: Memory) -> str:
         """Re-extract the CCR hash embedded in a marker memory's content."""
-        from vesmaro.ccr import parse_marker
+        from vesma.ccr import parse_marker
 
         parsed = parse_marker(memory.content)
         assert parsed is not None, "fixture memory must carry a CCR marker"

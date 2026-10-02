@@ -1,7 +1,7 @@
 """Store-level unit tests for the #359 idempotent mesh import.
 
-Covers :meth:`vesmaro.storage.sqlite_store.SQLiteStore.find_federated_duplicate`
-and :meth:`vesmaro.storage.sqlite_store.SQLiteStore.touch_last_fed_at`
+Covers :meth:`vesma.storage.sqlite_store.SQLiteStore.find_federated_duplicate`
+and :meth:`vesma.storage.sqlite_store.SQLiteStore.touch_last_fed_at`
 directly against a tmp SQLite DB — no manager, no gRPC. The gRPC-level
 behaviour (trigger codes, response ids) lives in
 ``tests/test_mesh_server.py::TestWriteMemoryIdempotency``.
@@ -20,8 +20,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+from vesma.storage.sqlite_store import SQLiteStore
 
 
 def _make_memory(

@@ -371,7 +371,7 @@ RRF-слияние FTS5 и векторной ветки. По умолчани�
 
 **Семантика запроса:** FTS5-ветка трактует ВСЮ строку `query` как одну цитированную фразу (токены подряд, в порядке следования — `_build_fts_query` заключает весь ввод в кавычки). Запрос из набора ключевых слов вида `postgres migration` найдёт только точную фразу; чтобы найти отдельные ключевые слова, делайте отдельные запросы по одному термину.
 
-**Тело запроса** — см. `SearchQuery` в `src/vesmaro/models.py`
+**Тело запроса** — см. `SearchQuery` в `src/vesma/models.py`
 
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|-------------|---------- |
@@ -710,7 +710,7 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
 | `tool_name` | string | `post_tool_call` | — | Инструмент, породивший вывод. |
 | `output_text` | string | `post_tool_call` | — | Сырой вывод инструмента для сжатия. |
 | `auto_compress` | boolean | нет | ручка | `post_tool_call`: точечное переопределение `hooks.auto_compress` (по умолчанию `false`). |
-| `include_awareness` | boolean | нет | `false` | `pre_llm_call`/`on_session_start` (vesma #254): скомпоновать секцию awareness-дельты И «операционную картину» swarm v0a/v0b (наблюдаемые счётчики/ids/времена плюс заявленная каждым соседом задача — самоподанное утверждение с меткой `[unverified]`) — добавляются ПОСЛЕДНИМИ, никогда не закрепляются; курсор awareness двигается только в `pre_llm_call`. Выключено (по умолчанию) = байт-идентичный вывод. Кап частоты по `(project, agent)` (`vesmaro.awareness_picture_rate_limit_per_minute`, по умолчанию 30) — при превышении деградация в rate-limit-строку, никогда 5xx. |
+| `include_awareness` | boolean | нет | `false` | `pre_llm_call`/`on_session_start` (vesma #254): скомпоновать секцию awareness-дельты И «операционную картину» swarm v0a/v0b (наблюдаемые счётчики/ids/времена плюс заявленная каждым соседом задача — самоподанное утверждение с меткой `[unverified]`) — добавляются ПОСЛЕДНИМИ, никогда не закрепляются; курсор awareness двигается только в `pre_llm_call`. Выключено (по умолчанию) = байт-идентичный вывод. Кап частоты по `(project, agent)` (`vesma.awareness_picture_rate_limit_per_minute`, по умолчанию 30) — при превышении деградация в rate-limit-строку, никогда 5xx. |
 | `profile` | string | нет | авто | `post_tool_call`: подсказка профиля фильтра. |
 
 **Пример**
@@ -1100,7 +1100,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/index \
   "parse_errors": {},
   "parse_error_count": 0,
   "poisoned_count": 0,
-  "staleness": { "total_files": 400, "fresh_percent": 97.5, "changed_files": ["src/vesmaro/manager.py"], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
+  "staleness": { "total_files": 400, "fresh_percent": 97.5, "changed_files": ["src/vesma/manager.py"], "last_indexed_at": "2026-09-28T12:00:04+00:00" }
 }
 ```
 
@@ -1135,7 +1135,7 @@ curl -s "http://127.0.0.1:8000/graph/status/vesma?agent=ci-runner"
   "project": "vesma",
   "query_kind": null,
   "results": [
-    { "score": 3, "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
+    { "score": 3, "id": "vesma#src/vesma/codegraph/service.py#window_rows#158", "project": "vesma", "kind": "Function", "name": "window_rows", "qname": "vesma.codegraph.service.window_rows", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 190, "lang": "python", "signature": "def window_rows(rows, max_output_tokens, cursor)" }
   ],
   "total_matches": 1,
   "cursor": 0,
@@ -1172,9 +1172,9 @@ BFS по рёбрам графа от одного символа (разреш�
 ```json
 {
   "project": "vesma",
-  "start": "vesmaro.codegraph.service.window_rows",
+  "start": "vesma.codegraph.service.window_rows",
   "depth": 2,
-  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesmaro.codegraph.service.window_rows", "kind": "Function", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
+  "nodes": [ { "id": "vesma#…#window_rows#158", "qname": "vesma.codegraph.service.window_rows", "kind": "Function", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 190, "depth": 0 } ],
   "edges": [ { "from": "vesma#…#window_rows#158", "to": "vesma#…#resolve_token_budget#135", "kind": "CALLS", "provenance": "tree-sitter" } ],
   "truncated": false,
   "cursor": 0,
@@ -1188,7 +1188,7 @@ BFS по рёбрам графа от одного символа (разреш�
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/trace \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "qname": "vesmaro.codegraph.service.window_rows", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "qname": "vesma.codegraph.service.window_rows", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/outline` — схема символов одного файла
@@ -1211,9 +1211,9 @@ curl -s -X POST http://127.0.0.1:8000/graph/trace \
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "lang": "python",
-  "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesmaro.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
+  "outline": [ { "kind": "Function", "name": "window_rows", "qname": "vesma.codegraph.service.window_rows", "start_line": 158, "end_line": 190, "signature": "def window_rows(rows, max_output_tokens, cursor)" } ],
   "parse_error": null,
   "cursor": 0,
   "has_more": false,
@@ -1226,7 +1226,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/trace \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/outline \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesma/codegraph/service.py", "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/snippet` — секрет-сканированный диапазон строк с диска
@@ -1250,7 +1250,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/outline \
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
   "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...",
@@ -1267,7 +1267,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/outline \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/snippet \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "path": "src/vesmaro/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "path": "src/vesma/codegraph/service.py", "start_line": 158, "end_line": 172, "agent": "ci-runner"}'
 ```
 
 ### `POST /graph/coverage` — пакетная проверка покрытия
@@ -1289,8 +1289,8 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 {
   "project": "vesma",
   "coverage": [
-    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
-    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" }
+    { "path": "src/vesma/manager.py", "verdict": "stale" },
+    { "path": "src/vesma/codegraph/service.py", "verdict": "indexed" }
   ]
 }
 ```
@@ -1300,7 +1300,7 @@ curl -s -X POST http://127.0.0.1:8000/graph/snippet \
 ```bash
 curl -s -X POST http://127.0.0.1:8000/graph/coverage \
   -H "Content-Type: application/json" \
-  -d '{"project_id": "vesma", "paths": ["src/vesmaro/manager.py"], "agent": "ci-runner"}'
+  -d '{"project_id": "vesma", "paths": ["src/vesma/manager.py"], "agent": "ci-runner"}'
 ```
 
 ### `GET /graph/schema` — карта контракта графа
@@ -1582,7 +1582,7 @@ DLQ хранит задачи, которые автоматизация не с
 |-----|-----|---------- |
 | `memory_id` | UUID | Целевая запись. |
 
-**Тело запроса** — см. `FilterRequest` в `src/vesmaro/models.py`
+**Тело запроса** — см. `FilterRequest` в `src/vesma/models.py`
 
 | Поле | Тип | Обязательное | По умолчанию | Описание |
 |------|-----|--------------|-------------|---------- |
@@ -1779,7 +1779,7 @@ curl -s -X POST http://127.0.0.1:8000/rules/ingest \
 
 ## Схема Memory {#memory-schema}
 
-Pydantic-модель `Memory` (определена в `src/vesmaro/models.py`) возвращается из `POST /memories`, `GET /memories/{id}` и `GET /memories`.
+Pydantic-модель `Memory` (определена в `src/vesma/models.py`) возвращается из `POST /memories`, `GET /memories/{id}` и `GET /memories`.
 
 | Поле | Тип | Примечания |
 |------|-----|----------- |
@@ -1809,7 +1809,7 @@ Pydantic-модель `Memory` (определена в `src/vesmaro/models.py`)
 
 ## OpenAPI / Swagger
 
-Полная машиночитаемая схема доступна на `/openapi.json` (3.1.0) и рендерится как UI на `/docs` (Swagger) и `/redoc` (ReDoc). Они генерируются FastAPI из декораторов маршрутов в `src/vesmaro/api/main.py` и `src/vesmaro/sessions/api.py`, поэтому схема никогда не расходится с работающим кодом.
+Полная машиночитаемая схема доступна на `/openapi.json` (3.1.0) и рендерится как UI на `/docs` (Swagger) и `/redoc` (ReDoc). Они генерируются FastAPI из декораторов маршрутов в `src/vesma/api/main.py` и `src/vesma/sessions/api.py`, поэтому схема никогда не расходится с работающим кодом.
 
 Для генерации статического клиента — скачайте схему и выполните [`openapi-generator`](https://openapi-generator.tech/):
 

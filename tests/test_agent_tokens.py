@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from typer.testing import CliRunner
 
-from vesmaro.agent_tokens import (
+from vesma.agent_tokens import (
     MAX_TTL_HOURS,
     ROTATE_GRACE_MINUTES,
     AgentTokenClaims,
@@ -44,7 +44,7 @@ from vesmaro.agent_tokens import (
     signing_key_path,
     validate_agent_token,
 )
-from vesmaro.cli.main import app as cli_app
+from vesma.cli.main import app as cli_app
 
 runner = CliRunner()
 

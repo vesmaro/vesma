@@ -84,9 +84,9 @@ from benchmarks.stands.s3_session.scenario import (  # noqa: E402
     WriteFact,
     build_scenario,
 )
-from vesmaro.config import Settings  # noqa: E402
-from vesmaro.manager import MemoryManager  # noqa: E402
-from vesmaro.models import (  # noqa: E402
+from vesma.config import Settings  # noqa: E402
+from vesma.manager import MemoryManager  # noqa: E402
+from vesma.models import (  # noqa: E402
     MemoryCreate,
     MemorySource,
     MemoryStatus,

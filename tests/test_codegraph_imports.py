@@ -2,7 +2,7 @@
 
 The wave-1 resolver assumed the indexing root IS the only sys.path
 entry. When a src-layout tree is indexed at the package directory
-(``root=src/vesmaro``), absolute imports ``vesmaro.*`` produced ZERO
+(``root=src/vesma``), absolute imports ``vesmaro.*`` produced ZERO
 IMPORTS edges — the module's dotted path from the root is one segment
 shorter than the import alias. These tests pin the dotted-tail
 fallback: alias and module qname must match as dotted suffixes in one
@@ -20,8 +20,8 @@ import pytest
 
 pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 
-from vesmaro.codegraph.incremental import index_project
-from vesmaro.storage.code_graph_store import CodeGraphStore
+from vesma.codegraph.incremental import index_project
+from vesma.storage.code_graph_store import CodeGraphStore
 
 PROJECT = "proj"
 
@@ -85,7 +85,7 @@ def test_direct_resolves_when_root_is_sys_path_entry(store: CodeGraphStore, tmp_
 
 
 def test_fallback_resolves_when_root_is_package_dir(store: CodeGraphStore, tmp_path: Path) -> None:
-    """The acceptance finding: root=src/vesmaro (the package dir itself)
+    """The acceptance finding: root=src/vesma (the package dir itself)
     yielded 0 IMPORTS edges — alias ``mypkg.util`` vs module qname
     ``util``. The dotted-tail fallback, anchored by the root's own
     name, resolves it; the nonexistent import still gets no edge."""

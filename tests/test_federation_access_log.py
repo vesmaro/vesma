@@ -17,12 +17,12 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from vesmaro.federation_access_log import (
+from vesma.federation_access_log import (
     AccessLogEntry,
     FederationAccessLog,
     hash_topic,
 )
-from vesmaro.trigger_codes import TriggerCode
+from vesma.trigger_codes import TriggerCode
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

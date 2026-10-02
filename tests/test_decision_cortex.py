@@ -26,9 +26,9 @@ from typing import Any, Final
 import numpy as np
 import pytest
 
-from vesmaro.config import EmbeddingConfig, VesmaConfig
-from vesmaro.decision_jev import resolve_decision_provider
-from vesmaro.decision_provider import (
+from vesma.config import EmbeddingConfig, VesmaConfig
+from vesma.decision_jev import resolve_decision_provider
+from vesma.decision_provider import (
     CORTEX_ARTIFACT_DIR,
     CORTEX_DUPLICATE_PROBABILITY_THRESHOLD,
     CORTEX_FEATURE_NAMES,
@@ -56,7 +56,7 @@ from vesmaro.decision_provider import (
     cortex_pair_features,
     validate_cortex_metadata_props,
 )
-from vesmaro.embeddings import NanoProvider, config_fingerprint
+from vesma.embeddings import NanoProvider, config_fingerprint
 
 from .test_decision_provider import load_corpus
 
@@ -147,7 +147,7 @@ def _swap_session(provider: VesmaProvider, stub: Any) -> Any:
 
 
 def test_bundle_onnx_is_byte_identical_to_the_adopted_artifact() -> None:
-    onnx_path = Path(str(resource_files("vesmaro") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx"))
+    onnx_path = Path(str(resource_files("vesma") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx"))
     payload = onnx_path.read_bytes()
     assert hashlib.sha256(payload).hexdigest() == WEIGHTS_SHA256, (
         "bundled model.onnx sha256 drifted from the W5d-adopted artifact — "
@@ -159,7 +159,7 @@ def test_bundle_onnx_is_byte_identical_to_the_adopted_artifact() -> None:
 def test_bundle_manifest_pins_the_same_weights() -> None:
     manifest = json.loads(
         Path(
-            str(resource_files("vesmaro") / "models" / CORTEX_ARTIFACT_DIR / "manifest.json")
+            str(resource_files("vesma") / "models" / CORTEX_ARTIFACT_DIR / "manifest.json")
         ).read_text(encoding="utf-8")
     )
     assert manifest["name"] == "vesma-cortex-v1"
@@ -205,7 +205,7 @@ def test_empty_fingerprint_refuses_the_pin() -> None:
 
 
 def test_missing_artifact_is_a_load_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    import vesmaro.decision_provider as dp
+    import vesma.decision_provider as dp
 
     monkeypatch.setattr(dp, "CORTEX_ARTIFACT_DIR", "no-such-bundle")
     with pytest.raises(CortexError) as excinfo:
@@ -217,7 +217,7 @@ def _fake_bundle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str, payload: bytes
 ) -> None:
     """Redirect the provider's resource resolution at a tmp models tree."""
-    import vesmaro.decision_provider as dp
+    import vesma.decision_provider as dp
 
     fake = tmp_path / "models" / name
     fake.mkdir(parents=True)
@@ -441,7 +441,7 @@ def test_infer_failure_degrades_to_the_deterministic_step(
     )
     restore = _swap_session(provider, _BoomSession())
     try:
-        with caplog.at_level(logging.WARNING, logger="vesmaro.decision_provider"):
+        with caplog.at_level(logging.WARNING, logger="vesma.decision_provider"):
             decision = provider.evaluate(IsDuplicateRequest(), state)
     finally:
         restore()
@@ -460,7 +460,7 @@ def test_out_of_range_probability_degrades_instead_of_clipping(
     )
     restore = _swap_session(provider, _OutOfRangeSession())
     try:
-        with caplog.at_level(logging.WARNING, logger="vesmaro.decision_provider"):
+        with caplog.at_level(logging.WARNING, logger="vesma.decision_provider"):
             decision = provider.evaluate(IsDuplicateRequest(), state)
     finally:
         restore()
@@ -474,7 +474,7 @@ def test_invalid_similarity_degrades_with_a_schema_warn(
 ) -> None:
     view = CanonRecordView(title="t", body="b")
     state = CanonState(record=view, candidate=view, similarity=float("nan"))
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_provider"):
+    with caplog.at_level(logging.WARNING, logger="vesma.decision_provider"):
         decision = provider.evaluate(IsDuplicateRequest(), state)
     assert isinstance(decision, Noul)
     # NaN similarity fails every threshold comparison → step verdict 0.0.
@@ -503,10 +503,10 @@ def test_resolver_fail_open_on_broken_artifact(
 ) -> None:
     """Brief W5d §5 acceptance: a broken artifact degrades to
     DeterministicProvider with a machine-parseable CORTEX-E-LOAD warn."""
-    import vesmaro.decision_provider as dp
+    import vesma.decision_provider as dp
 
     monkeypatch.setattr(dp, "CORTEX_ARTIFACT_DIR", "no-such-bundle")
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+    with caplog.at_level(logging.WARNING, logger="vesma.decision_jev"):
         wired = resolve_decision_provider(
             VesmaConfig(decision_provider="vesma"),
             embedder_fingerprint=EMBEDDER_PIN,
@@ -518,7 +518,7 @@ def test_resolver_fail_open_on_broken_artifact(
 def test_resolver_pin_mismatch_telegraphs_recalibration(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+    with caplog.at_level(logging.WARNING, logger="vesma.decision_jev"):
         wired = resolve_decision_provider(
             VesmaConfig(decision_provider="vesma"),
             embedder_fingerprint="ollama:llama3",
@@ -532,7 +532,7 @@ def test_resolver_pin_mismatch_telegraphs_recalibration(
 def test_resolver_without_fingerprint_refuses_the_pin(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+    with caplog.at_level(logging.WARNING, logger="vesma.decision_jev"):
         wired = resolve_decision_provider(VesmaConfig(decision_provider="vesma"))
     assert isinstance(wired, DeterministicProvider)
     assert any("CORTEX-E-PIN" in record.message for record in caplog.records)

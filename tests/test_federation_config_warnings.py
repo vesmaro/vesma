@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import PeerConfig, load_settings
+from vesma.config import PeerConfig, load_settings
 
 
 def _write_config(
@@ -64,7 +64,7 @@ def test_warns_when_peer_mtls_pinning_off(tmp_path: Path, caplog: pytest.LogCapt
             ),
         },
     )
-    with caplog.at_level(logging.WARNING, logger="vesmaro.config"):
+    with caplog.at_level(logging.WARNING, logger="vesma.config"):
         load_settings(cfg)
     warnings = [r for r in caplog.records if "pinning OFF" in r.message]
     assert len(warnings) == 1
@@ -84,7 +84,7 @@ def test_no_warning_when_peer_mtls_pinning_on(
             ),
         },
     )
-    with caplog.at_level(logging.WARNING, logger="vesmaro.config"):
+    with caplog.at_level(logging.WARNING, logger="vesma.config"):
         load_settings(cfg)
     warnings = [r for r in caplog.records if "pinning OFF" in r.message]
     assert warnings == []
@@ -95,7 +95,7 @@ def test_no_warning_when_federation_inactive(
 ) -> None:
     """load_settings does NOT warn when no peers are configured (federation off)."""
     cfg = _write_config(tmp_path, peers=None)
-    with caplog.at_level(logging.WARNING, logger="vesmaro.config"):
+    with caplog.at_level(logging.WARNING, logger="vesma.config"):
         load_settings(cfg)
     warnings = [r for r in caplog.records if "pinning OFF" in r.message]
     assert warnings == []
@@ -120,7 +120,7 @@ def test_warns_per_peer_with_off_peer(tmp_path: Path, caplog: pytest.LogCaptureF
             ),
         },
     )
-    with caplog.at_level(logging.WARNING, logger="vesmaro.config"):
+    with caplog.at_level(logging.WARNING, logger="vesma.config"):
         load_settings(cfg)
     msgs = [r.message for r in caplog.records if "pinning OFF" in r.message]
     assert len(msgs) == 2

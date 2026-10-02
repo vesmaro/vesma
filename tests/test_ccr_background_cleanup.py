@@ -16,8 +16,8 @@ from unittest.mock import patch
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
+from vesma.config import Settings
+from vesma.manager import MemoryManager
 
 
 @pytest.fixture(autouse=True)
@@ -199,7 +199,7 @@ class TestExceptionDoesNotCrashProcessor:
 
 class TestIntervalConfigRespected:
     def test_ccr_cleanup_interval_sec_default(self) -> None:
-        from vesmaro.config import CCRConfig
+        from vesma.config import CCRConfig
 
         cfg = CCRConfig()
         assert cfg.ccr_cleanup_interval_sec == 1200
@@ -207,7 +207,7 @@ class TestIntervalConfigRespected:
     def test_ccr_cleanup_interval_sec_min_60(self) -> None:
         from pydantic import ValidationError
 
-        from vesmaro.config import CCRConfig
+        from vesma.config import CCRConfig
 
         with pytest.raises(ValidationError):
             CCRConfig(ccr_cleanup_interval_sec=30)
@@ -215,13 +215,13 @@ class TestIntervalConfigRespected:
     def test_ccr_cleanup_interval_sec_max_86400(self) -> None:
         from pydantic import ValidationError
 
-        from vesmaro.config import CCRConfig
+        from vesma.config import CCRConfig
 
         with pytest.raises(ValidationError):
             CCRConfig(ccr_cleanup_interval_sec=100000)
 
     def test_ccr_cleanup_interval_sec_custom(self) -> None:
-        from vesmaro.config import CCRConfig
+        from vesma.config import CCRConfig
 
         cfg = CCRConfig(ccr_cleanup_interval_sec=600)
         assert cfg.ccr_cleanup_interval_sec == 600
@@ -245,7 +245,7 @@ class TestCleanupLogsWhenNonzero:
                     "ccr_cleanup",
                     return_value={"ttl_deleted": 5, "lru_evicted": 2},
                 ),
-                caplog.at_level("INFO", logger="vesmaro.manager"),
+                caplog.at_level("INFO", logger="vesma.manager"),
             ):
                 mgr._maybe_run_ccr_cleanup()
             # The log message must mention both counts.
@@ -270,7 +270,7 @@ class TestCleanupLogsWhenNonzero:
                     "ccr_cleanup",
                     return_value={"ttl_deleted": 0, "lru_evicted": 0},
                 ),
-                caplog.at_level("INFO", logger="vesmaro.manager"),
+                caplog.at_level("INFO", logger="vesma.manager"),
             ):
                 mgr._maybe_run_ccr_cleanup()
             assert not any("ttl_deleted=" in r.message for r in caplog.records), [
@@ -292,7 +292,7 @@ class TestCleanupLogsWhenNonzero:
                     "ccr_cleanup",
                     return_value={"ttl_deleted": 3, "lru_evicted": 0},
                 ),
-                caplog.at_level("INFO", logger="vesmaro.manager"),
+                caplog.at_level("INFO", logger="vesma.manager"),
             ):
                 mgr._maybe_run_ccr_cleanup()
             assert any(

@@ -24,9 +24,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from vesmaro.config import PeerConfig, Settings
-from vesmaro.federation_client import FEDERATION_PULL_PATH, pull_from_peer
-from vesmaro.trigger_codes import TriggerCode
+from vesma.config import PeerConfig, Settings
+from vesma.federation_client import FEDERATION_PULL_PATH, pull_from_peer
+from vesma.trigger_codes import TriggerCode
 
 PEER_A = "mnemos-A"
 PEER_B = "mnemos-B"

@@ -1,13 +1,13 @@
 """Tests for federation Phase 0 batch sync CLI (#85 part 2b).
 
-Covers :mod:`vesmaro.cli.sync` (``mnemos sync export/import``) and
-:mod:`vesmaro.audit` (sync audit log). Reuses:
+Covers :mod:`vesma.cli.sync` (``mnemos sync export/import``) and
+:mod:`vesma.audit` (sync audit log). Reuses:
 
-* :func:`vesmaro.compact.build_compact_payload` (#85 Part 2a) — the
+* :func:`vesma.compact.build_compact_payload` (#85 Part 2a) — the
   compact format builder. Moderation is invoked inside it.
-* :func:`vesmaro.cli.import_.validate_import_record` (#86) — per-record
+* :func:`vesma.cli.import_.validate_import_record` (#86) — per-record
   import validation, adapted for the compact record shape.
-* :func:`vesmaro.cli.export._encrypt` / :func:`decrypt` (#84) — AES-256-GCM
+* :func:`vesma.cli.export._encrypt` / :func:`decrypt` (#84) — AES-256-GCM
   passphrase encryption helpers.
 
 All secret/PII fixtures use RFC-reserved values (per
@@ -26,15 +26,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.cli.export import _encrypt, decrypt, is_encrypted
-from vesmaro.cli.sync import (
+from vesma.cli.export import _encrypt, decrypt, is_encrypted
+from vesma.cli.sync import (
     run_sync_export,
     run_sync_import,
 )
-from vesmaro.compact import COMPACT_SCHEMA, CompactRecord, build_compact_payload
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.compact import COMPACT_SCHEMA, CompactRecord, build_compact_payload
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     NO_FEDERATE_TAG,
     Memory,
     MemoryCreate,
@@ -88,11 +88,11 @@ def _isolated_audit_log(monkeypatch, tmp_path: Path) -> Path:
     call) to return a path under the test's ``tmp_path``. Because
     :func:`log_sync_audit` calls :func:`sync_audit_path` at call time
     (not import time), this redirects every audit write — both the ones
-    from :mod:`vesmaro.cli.sync` and the ones from direct
+    from :mod:`vesma.cli.sync` and the ones from direct
     :func:`log_sync_audit` calls in :class:`TestAuditModule`.
     """
     audit_path = tmp_path / "audit" / "sync-audit.jsonl"
-    import vesmaro.audit as audit_mod
+    import vesma.audit as audit_mod
 
     monkeypatch.setattr(audit_mod, "sync_audit_path", lambda: audit_path)
     return audit_path
@@ -416,7 +416,7 @@ class TestSyncImport:
         # Schema drift: wrong schema string.
         bad = tmp_path / "bad.json"
         bad.write_text(
-            json.dumps({"schema": "vesmaro.federation.evil", "records": [], "stats": {}}),
+            json.dumps({"schema": "vesma.federation.evil", "records": [], "stats": {}}),
             encoding="utf-8",
         )
         result = run_sync_import(mgr, source=bad)
@@ -561,13 +561,13 @@ class TestSyncAuditLog:
 class TestAuditModule:
     def test_sync_audit_path_constant(self) -> None:
         """The audit log filename is the documented relative path."""
-        from vesmaro.audit import SYNC_AUDIT_FILENAME
+        from vesma.audit import SYNC_AUDIT_FILENAME
 
         assert SYNC_AUDIT_FILENAME == ".mnemos/logs/sync-audit.jsonl"
 
     def test_log_sync_audit_appends_jsonl(self, tmp_path: Path, monkeypatch) -> None:
         """log_sync_audit writes one JSON object per line, adds timestamp."""
-        import vesmaro.audit as audit_mod
+        import vesma.audit as audit_mod
 
         # Use a private log path distinct from the autouse fixture's path.
         log_path = tmp_path / "audit-module.jsonl"

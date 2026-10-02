@@ -214,7 +214,7 @@ set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
 
 set +e
-run_step 3 $TOTAL_STEPS "Type check (mypy --strict)" mypy --strict src/vesmaro/ src/mnemos/
+run_step 3 $TOTAL_STEPS "Type check (mypy --strict)" mypy --strict src/vesma/ src/mnemos/
 step_rc=$?
 set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
@@ -275,7 +275,7 @@ set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
 
 set +e
-run_step 7 $TOTAL_STEPS "Coverage gate (≥80%)" pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing --cov-report=xml tests/ -q
+run_step 7 $TOTAL_STEPS "Coverage gate (≥80%)" pytest --cov=src/vesma --cov-fail-under=80 --cov-report=term-missing --cov-report=xml tests/ -q
 step_rc=$?
 set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi

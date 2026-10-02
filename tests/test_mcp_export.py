@@ -1,7 +1,7 @@
 """Integration tests for the ``vesma_export`` MCP tool (#84).
 
 Covers the federation export surface exposed through MCP. The tool is a
-thin wrapper over :func:`vesmaro.cli.export.run_export`; these tests drive
+thin wrapper over :func:`vesma.cli.export.run_export`; these tests drive
 the real dispatch path (``_dispatch("vesma_export", ...)``) against an
 isolated tmp DB so the #86 redaction / no-federate exclusion is verified
 end-to-end through the MCP surface.
@@ -22,10 +22,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures — mirror tests/test_no_federate.py conventions (isolated tmp DB).
@@ -70,14 +70,14 @@ def _scrub_export_passphrase() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def _patch_manager(mgr: MemoryManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch ``vesmaro.mcp_server.get_manager`` to return the test's isolated ``mgr``.
+    """Patch ``vesma.mcp_server.get_manager`` to return the test's isolated ``mgr``.
 
     ``_dispatch`` calls the module-level ``get_manager()`` singleton which would
     otherwise resolve to a real MemoryManager backed by ``~/.mnemos``. We point
     it at the per-test ``mgr`` fixture so export/import drives the isolated
     tmp DB.
     """
-    import vesmaro.mcp_server as mcp_server
+    import vesma.mcp_server as mcp_server
 
     monkeypatch.setattr(mcp_server, "get_manager", lambda: mgr)
 

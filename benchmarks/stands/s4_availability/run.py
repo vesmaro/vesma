@@ -75,7 +75,7 @@ from benchmarks.stands.s4_availability.store_copy import (  # noqa: E402
     clone_store,
     store_fingerprint,
 )
-from vesmaro.models import PipelineState  # noqa: E402
+from vesma.models import PipelineState  # noqa: E402
 
 BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "s4.json"
 REPORTS_DIR = ROOT / "benchmarks" / "reports"

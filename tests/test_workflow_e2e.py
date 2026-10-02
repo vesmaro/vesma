@@ -59,12 +59,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch, call_tool, list_tools
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch, call_tool, list_tools
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures — isolated MemoryManager per test (mirrors test_tags_grouped_e2e.py)
@@ -173,7 +173,7 @@ async def _call_tool_real(mgr: MemoryManager, args: dict) -> Any:
     isolated manager; nothing else is mocked. Returns the parsed JSON of
     the single TextContent the handler returns (or raw text on non-JSON).
     """
-    with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mgr):
         contents = await call_tool("vesma_workflow", args)
     assert len(contents) == 1, f"expected exactly one TextContent, got {len(contents)}"
     text = _strip_checkpoint_reminder(contents[0].text)
@@ -190,7 +190,7 @@ async def _dispatch_real(mgr: MemoryManager, args: dict) -> dict:
     test inspect the raw dict (before JSON serialisation) for negative
     paths that return ``{"error": ...}``.
     """
-    with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mgr):
         return await _dispatch("vesma_workflow", args)
 
 

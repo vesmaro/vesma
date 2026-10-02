@@ -22,13 +22,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-import vesmaro.api.main as api_main
-from vesmaro.api.auth import decrypt_totp_secret, encrypt_totp_secret
-from vesmaro.api.auth_store import AuthStore, hash_token
-from vesmaro.api.main import app, lifespan
-from vesmaro.api.middleware import AuthMiddleware
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
+import vesma.api.main as api_main
+from vesma.api.auth import decrypt_totp_secret, encrypt_totp_secret
+from vesma.api.auth_store import AuthStore, hash_token
+from vesma.api.main import app, lifespan
+from vesma.api.middleware import AuthMiddleware
+from vesma.config import Settings
+from vesma.manager import MemoryManager
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -90,7 +90,7 @@ def client_with_auth(tmp_settings):
 @pytest.fixture
 def client_auth_enabled(tmp_settings, tmp_dir):
     """TestClient with auth_enabled=True, using a dedicated in-memory AuthStore."""
-    from vesmaro.api.middleware import AuthMiddleware
+    from vesma.api.middleware import AuthMiddleware
 
     mgr = MemoryManager(tmp_settings)
     mock_embedder = MagicMock()
@@ -279,12 +279,12 @@ class TestAuthEndpoints:
             store.set_totp_secret(token_id, encrypted)
 
             # Patch the load_settings binding inside the auth router module
-            # (not vesmaro.config, because auth.py uses `from ... import load_settings`).
-            import vesmaro.api.auth as auth_mod
+            # (not vesma.config, because auth.py uses `from ... import load_settings`).
+            import vesma.api.auth as auth_mod
 
             orig_load = auth_mod.load_settings
 
-            from vesmaro.config import Settings
+            from vesma.config import Settings
 
             def mock_load_settings(_path=None):  # type: ignore[misc]
                 s = Settings(
@@ -327,13 +327,13 @@ class TestAuthEndpoints:
             encrypted = encrypt_totp_secret(totp_secret, master_key)
             store.set_totp_secret(token_id, encrypted)
 
-            # Patch auth router's own load_settings binding (not vesmaro.config)
-            import vesmaro.api.auth as auth_mod
+            # Patch auth router's own load_settings binding (not vesma.config)
+            import vesma.api.auth as auth_mod
 
             orig_load = auth_mod.load_settings
 
             def mock_load(path=None):  # type: ignore[misc]
-                from vesmaro.config import Settings
+                from vesma.config import Settings
 
                 s = Settings(
                     vesma={

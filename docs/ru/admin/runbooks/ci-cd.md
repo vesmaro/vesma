@@ -33,7 +33,7 @@ source .venv/bin/activate
 
 ruff check src/ tests/                                # lint
 ruff format --check src/ tests/                       # format
-mypy --strict src/vesmaro/                             # типы
+mypy --strict src/vesma/                             # типы
 bandit -r src/ -f json -o bandit-report.json          # безопасность (статическая)
 pip-audit --ignore-vuln CVE-2026-45829                # безопасность (зависимости)
 pytest tests/ -q --tb=short                           # тесты
@@ -127,12 +127,12 @@ release blocker и исправляем до следующего релиза, 
 
 Оставшийся разрыв сосредоточен в:
 
-1. `src/vesmaro/llm/*.py` — адаптеры провайдеров с тонким pass-through к
+1. `src/vesma/llm/*.py` — адаптеры провайдеров с тонким pass-through к
    vendor SDK (anthropic / openai / gemini / ollama). Высокая связанность с
    форматами HTTP-ошибок vendor делает полноценный e2e-тест дорогим.
-2. `src/vesmaro/watchers/` — обработчики событий файловой системы; покрыты
+2. `src/vesma/watchers/` — обработчики событий файловой системы; покрыты
    юнит-тестами, но не в-процессными end-to-end потоками.
-3. `src/vesmaro/auto_collect.py` — путь auto-collect cron запускается вручную,
+3. `src/vesma/auto_collect.py` — путь auto-collect cron запускается вручную,
    не в CI.
 
 Для каждого есть follow-up issue. До их закрытия gate 80% — намеренный пол.

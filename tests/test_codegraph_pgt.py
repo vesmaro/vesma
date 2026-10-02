@@ -44,14 +44,14 @@ import pytest
 
 pytest.importorskip("tree_sitter_python", reason="code-graph extra not installed")
 
-from vesmaro.codegraph.service import (
+from vesma.codegraph.service import (
     CodeGraphService,
     GraphDisabledError,
     GraphToolError,
 )
-from vesmaro.config import CodeGraphConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Project
+from vesma.config import CodeGraphConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.models import Project
 
 AGENT = "pgt-acceptance"
 PROJECT = "pgtproj"
@@ -257,7 +257,7 @@ class TestPGT5ExportNeverCarriesGraph:
             assert marker not in text, f"graph artifact {marker!r} reached the export"
 
     def test_json_export_is_graph_free(self, tmp_path: Path, export_manager: MemoryManager) -> None:
-        from vesmaro.cli.export import CompressMode, ExportFormat, run_export
+        from vesma.cli.export import CompressMode, ExportFormat, run_export
 
         out = tmp_path / "export.json"
         result = run_export(
@@ -277,8 +277,8 @@ class TestPGT5ExportNeverCarriesGraph:
     ) -> None:
         """Even with status/tags filters the invariant holds — the export
         surface has no code path that could reach the sidecar."""
-        from vesmaro.cli.export import CompressMode, ExportFilter, ExportFormat, run_export
-        from vesmaro.models import MemoryStatus
+        from vesma.cli.export import CompressMode, ExportFilter, ExportFormat, run_export
+        from vesma.models import MemoryStatus
 
         out = tmp_path / "export-filtered.json"
         run_export(
@@ -293,7 +293,7 @@ class TestPGT5ExportNeverCarriesGraph:
     def test_sqlite_snapshot_has_no_sidecar(
         self, tmp_path: Path, export_manager: MemoryManager
     ) -> None:
-        from vesmaro.cli.export import CompressMode, ExportFormat, run_export
+        from vesma.cli.export import CompressMode, ExportFormat, run_export
 
         out = tmp_path / "export.tar"
         run_export(export_manager, fmt=ExportFormat.SQLITE, output=out, compress=CompressMode.NONE)
@@ -377,9 +377,9 @@ class TestSelfAcceptance:
 
     Root choice: ``src/`` — ``_resolve_import`` treats the project root
     as the single sys.path entry, and this repo's sources import
-    absolutely (``vesmaro.codegraph...``); with root=src/vesmaro those
+    absolutely (``vesma.codegraph...``); with root=src/vesma those
     imports can never resolve (0 IMPORTS edges, measured), with root=src/
-    they do. Key paths below are therefore ``vesmaro/...``.
+    they do. Key paths below are therefore ``vesma/...``.
     """
 
     SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
@@ -433,7 +433,7 @@ class TestSelfAcceptance:
         assert hits["results"][0]["name"] == "CodeGraphService"
         # Outline carries known symbols.
         outline = self_service.get_file_outline(
-            "self-acceptance", "vesmaro/codegraph/service.py", agent=AGENT
+            "self-acceptance", "vesma/codegraph/service.py", agent=AGENT
         )
         names = {row["name"] for row in outline["outline"]}
         assert {"CodeGraphService", "window_rows"} <= names
@@ -446,7 +446,7 @@ class TestSelfAcceptance:
         assert {"USES", "CALLS"} <= {e["kind"] for e in trace["edges"]}
         # Trace from the module: IMPORTS neighbours.
         mod_trace = self_service.trace_path(
-            "self-acceptance", "vesmaro.codegraph.service", agent=AGENT
+            "self-acceptance", "vesma.codegraph.service", agent=AGENT
         )
         assert any(e["kind"] == "IMPORTS" for e in mod_trace["edges"])
 

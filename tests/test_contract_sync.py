@@ -3,7 +3,7 @@
 The ``federation.proto`` file (``mnemos/federation/proto/federation.proto``)
 is the *source of truth* for the peer-to-peer federation contract and is
 explicitly documented to mirror the Pydantic model
-``vesmaro.compact.CompactRecord`` field-by-field (see the proto header
+``vesma.compact.CompactRecord`` field-by-field (see the proto header
 comment: *"Source of truth: mnemos/src/mnemos/compact.py::CompactRecord"*).
 
 Today the two sides are kept in sync **manually**. This regression test
@@ -46,7 +46,7 @@ from typing import get_args, get_origin
 
 import pytest
 
-from vesmaro.compact import CompactRecord
+from vesma.compact import CompactRecord
 
 # Type signatures are compared as strings (``"str"``, ``"list[str]"``) rather
 # than live ``type`` objects. This keeps ``mypy --strict`` happy (no

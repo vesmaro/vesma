@@ -42,15 +42,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import vesmaro.mcp_server as mcp_mod
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.secrets_detector import detect_secrets, redact_content
-from vesmaro.storage.sqlite_store import (
+import vesma.mcp_server as mcp_mod
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.secrets_detector import detect_secrets, redact_content
+from vesma.storage.sqlite_store import (
     FTS_SNIPPET_ELLIPSIS,
     FTS_SNIPPET_END_MARK,
     FTS_SNIPPET_START_MARK,
@@ -488,7 +488,7 @@ class TestScannerExceptionRefusedShape:
         def _raise(content: str) -> list[object]:
             raise RuntimeError("simulated detector crash")
 
-        monkeypatch.setattr("vesmaro.secrets_detector.detect_secrets", _raise)
+        monkeypatch.setattr("vesma.secrets_detector.detect_secrets", _raise)
 
     def test_full_original_returns_refused_scanner_error(self, manager, monkeypatch):
         text = _cacheable_secret_log(FAKE_AWS_KEY)
@@ -558,7 +558,7 @@ class TestProjectScopeErgonomics:
         text = _cacheable_secret_log("plain-value-no-pattern")
         h = manager.compress_content(text, profile="log", project="alpha")["hash"]
 
-        with caplog.at_level("WARNING", logger="vesmaro.manager"):
+        with caplog.at_level("WARNING", logger="vesma.manager"):
             result = manager.retrieve_content(h)
 
         assert result["found"] is True
@@ -592,7 +592,7 @@ class TestProjectScopeErgonomics:
         text = _cacheable_secret_log("plain-value-no-pattern")
         h = manager.compress_content(text, profile="log")["hash"]
 
-        with caplog.at_level("WARNING", logger="vesmaro.manager"):
+        with caplog.at_level("WARNING", logger="vesma.manager"):
             result = manager.retrieve_content(h)
 
         assert result["found"] is True
@@ -792,7 +792,7 @@ class TestReviewF3DropForensics:
         mem = _add(refuse_manager, _secret_note(FAKE_AWS_KEY))
         monkeypatch.setattr(mcp_mod, "_manager", refuse_manager)
 
-        with caplog.at_level("WARNING", logger="vesmaro.manager"):
+        with caplog.at_level("WARNING", logger="vesma.manager"):
             asyncio.new_event_loop().run_until_complete(
                 _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
             )
@@ -837,7 +837,7 @@ class TestReviewF4BumpOrdering:
         def _raise(content: str) -> list[object]:
             raise RuntimeError("simulated detector crash")
 
-        monkeypatch.setattr("vesmaro.secrets_detector.detect_secrets", _raise)
+        monkeypatch.setattr("vesma.secrets_detector.detect_secrets", _raise)
         result = manager.retrieve_content(h)
 
         assert result["refused"] is True

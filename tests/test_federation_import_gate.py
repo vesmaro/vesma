@@ -1,10 +1,10 @@
 """ADR-0019 Phase D / issue #166 — the federation-import danger gate.
 
-The federated write paths (:func:`vesmaro.cli.sync.run_sync_import`,
-:func:`vesmaro.cli.import_._import_json` and — since #245 — the
-SQLite-snapshot merge :func:`vesmaro.cli.import_._import_sqlite`, plus —
+The federated write paths (:func:`vesma.cli.sync.run_sync_import`,
+:func:`vesma.cli.import_._import_json` and — since #245 — the
+SQLite-snapshot merge :func:`vesma.cli.import_._import_sqlite`, plus —
 since #259 — the SQLite-snapshot RESTORE post-swap sweep
-:func:`vesmaro.cli.import_._gate_restored_rows`) persist peer-status
+:func:`vesma.cli.import_._gate_restored_rows`) persist peer-status
 rows DIRECTLY through ``sqlite.save`` — a PUBLISHED record
 arriving from peering never met the Phase A publication gate, so a
 secret or injection payload could land visible. Since Phase D every
@@ -28,7 +28,7 @@ redact or never carry the planted PUBLISHED secret row the gate has to
 catch — a tampered snapshot is exactly the #245 threat model. Snapshot DBs
 are built with the live store's own schema (Settings + MemoryManager over
 a tmp_path, ``sqlite.save`` of hand-built Memory objects), then tarred as
-``vesmaro.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite`` expects.
+``vesma.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite`` expects.
 """
 
 from __future__ import annotations
@@ -45,13 +45,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.cli.import_ import ImportMode, run_import
-from vesmaro.cli.sync import run_sync_import
-from vesmaro.compact import COMPACT_SCHEMA
-from vesmaro.config import Settings
-from vesmaro.danger_detectors import DetectionResult
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemoryStatus, PipelineState
+from vesma.cli.import_ import ImportMode, run_import
+from vesma.cli.sync import run_sync_import
+from vesma.compact import COMPACT_SCHEMA
+from vesma.config import Settings
+from vesma.danger_detectors import DetectionResult
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemoryStatus, PipelineState
 
 PROJECT = "fed-gate"
 AGENT = "peer-agent"
@@ -205,7 +205,7 @@ def _snapshot_file(
     the snapshot is built directly: a live-schema DB over a tmp_path,
     ``sqlite.save`` of the hand-built rows (bypassing every manager-level
     gate — this simulates a tampered/at-rest-leaked snapshot), then tarred
-    as ``vesmaro.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite``
+    as ``vesma.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite``
     expects (import_.py:584-597).
 
     ``corrupt`` (optional): run after the saves, BEFORE the checkpoint/
@@ -278,7 +278,7 @@ class TestSyncImportGate:
             summary=f"deploy note with api key {FAKE_AWS_KEY} inline",
         )
 
-        with caplog.at_level("WARNING", logger="vesmaro.manager"):
+        with caplog.at_level("WARNING", logger="vesma.manager"):
             result = run_sync_import(mgr, source=src)
 
         assert result.errors == []
@@ -346,7 +346,7 @@ class TestSyncImportGate:
         """A detector/scanner error is a refusal (fail-closed in both
         directions): the row is stored RAW + NULL, never peer-visible."""
         monkeypatch.setattr(
-            "vesmaro.manager.detect",
+            "vesma.manager.detect",
             lambda content, title=None: DetectionResult(error="scanner down"),
         )
         fed_id = "fed:peer-agent:dddddddd-0000-0000-0000-000000000004"
@@ -795,7 +795,7 @@ class TestSqliteRestoreGate:
             corrupt=corrupt_tags,
         )
 
-        with caplog.at_level("WARNING", logger="vesmaro.manager"):
+        with caplog.at_level("WARNING", logger="vesma.manager"):
             result = run_import(mgr, src, mode=ImportMode.RESTORE, confirm=True)
 
         assert result.imported == 3, "all snapshot rows restored (zero-loss)"

@@ -18,7 +18,7 @@
 5. [ADR-0020 — Benchmark Framework](../project/adr/0020-benchmark-framework.md) — `[ADR-0020 §…]` (corridor rule `baseline − max(0.02; CI95)`, exact-McNemar policy, event-driven re-baseline triggers)
 6. [dev-plan §4b](../project/dev-plan.md) — the Ф1 checklist row (arms A/B/C with C an honest tag-filter; primary per-context recall@k on per-query-gold; the three corridors; per-stratum-only reporting)
 7. Architectural Committee session of 2026-09-14 — protocol `2026-09-14-multi-context-memory.md`, team-local, not part of this repository
-8. Ф0 implementation surface (as merged: PR #356 slice 1, PR #360 slice 2): `src/vesmaro/assemble.py` (`task` / `lens` parameters), `src/vesmaro/lens.py` (`Lens.CODE`, `lens_active`, `lens_admits`), `src/vesmaro/models.py` (the `task:` tag contract, `DOC_GROUPING_METADATA_FIELDS`)
+8. Ф0 implementation surface (as merged: PR #356 slice 1, PR #360 slice 2): `src/vesma/assemble.py` (`task` / `lens` parameters), `src/vesma/lens.py` (`Lens.CODE`, `lens_active`, `lens_admits`), `src/vesma/models.py` (the `task:` tag contract, `DOC_GROUPING_METADATA_FIELDS`)
 
 **Interpretation boundary (binding, [ADR-0027 §Decision]):** a PASS validates retrieval-side task-scoped composition **on this corpus profile and the registered switching policy** — it is not "the agent understands tasks", not a schema justification by itself (Ф2 form is routed by §5.2), and not a user-value claim: value claims ride only an `S5` PASS [ADR-0027 invariant 11]. A negative or tie outcome is a legitimate result, not an experiment failure [ADR-0027 §Consequences].
 

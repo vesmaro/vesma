@@ -1,7 +1,7 @@
 """W2.5 TCP leg tests (ADR-0019 option 1, ratified archcom 2026-09-20).
 
 Exercises the optional networked transport of
-:class:`vesmaro.mesh_server.MeshServer` — ``add_secure_port`` with
+:class:`vesma.mesh_server.MeshServer` — ``add_secure_port`` with
 mesh-CA mTLS on the SAME grpcio server — over a REAL gRPC channel on
 loopback with a throwaway PKI (no mocks on the gRPC/TLS layer). Covers:
 
@@ -17,7 +17,7 @@ loopback with a throwaway PKI (no mocks on the gRPC/TLS layer). Covers:
   port is exposed (ephemeral ``port: 0`` form); startup logs the
   ``mesh tcp leg listening on`` line.
 * Fail-fast (amendment 3c): a busy port raises
-  :class:`vesmaro.mesh_server.MeshTCPLegError` from ``start()``.
+  :class:`vesma.mesh_server.MeshTCPLegError` from ``start()``.
 * Client-auth matrix: no client cert → rejected at the handshake;
   foreign-CA client cert → rejected at the handshake; valid mesh-CA
   client cert → admitted (``Heartbeat`` succeeds).
@@ -50,10 +50,10 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from pydantic import ValidationError
 
-from vesmaro import _mesh_gen
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import MeshServer, MeshTCPLegError
+from vesma import _mesh_gen
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.mesh_server import MeshServer, MeshTCPLegError
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -301,7 +301,7 @@ def test_config_defaults_are_off() -> None:
 
 def test_old_config_without_tcp_section_parses_unchanged() -> None:
     """A pre-W2.5 config (no ``tcp:`` key) parses byte-identically."""
-    from vesmaro.config import MeshConfig
+    from vesma.config import MeshConfig
 
     cfg = MeshConfig(enabled=True, socket_path="/run/mnemos/core.sock")
     assert cfg.tcp.enabled is False
@@ -310,7 +310,7 @@ def test_old_config_without_tcp_section_parses_unchanged() -> None:
 
 def test_tcp_enabled_requires_tls_material() -> None:
     """``tcp.enabled: true`` without the TLS file paths is a config error."""
-    from vesmaro.config import MeshConfig
+    from vesma.config import MeshConfig
 
     with pytest.raises(ValidationError, match="cert_file"):
         MeshConfig(enabled=True, tcp={"enabled": True, "port": 8790})
@@ -318,7 +318,7 @@ def test_tcp_enabled_requires_tls_material() -> None:
 
 def test_tcp_requires_mesh_master_switch() -> None:
     """``tcp.enabled`` without ``mesh.enabled`` is rejected, not silent."""
-    from vesmaro.config import MeshConfig
+    from vesma.config import MeshConfig
 
     with pytest.raises(ValidationError, match=r"mesh\.enabled"):
         MeshConfig(
@@ -332,7 +332,7 @@ def test_tcp_requires_mesh_master_switch() -> None:
 
 def test_full_tcp_config_parses() -> None:
     """The full chart-shaped section parses with the chart-facing key."""
-    from vesmaro.config import MeshConfig
+    from vesma.config import MeshConfig
 
     cfg = MeshConfig(
         enabled=True,
@@ -408,7 +408,7 @@ def test_enabled_leg_logs_listening_line(
     import logging as _logging
 
     srv = _tcp_server(tmp_path, pki, manager)
-    with caplog.at_level(_logging.INFO, logger="vesmaro.mesh_server"):
+    with caplog.at_level(_logging.INFO, logger="vesma.mesh_server"):
         srv.start()
     try:
         lines = [r for r in caplog.records if "mesh tcp leg listening on" in r.message]

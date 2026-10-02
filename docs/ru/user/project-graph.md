@@ -62,7 +62,7 @@
 Прямая запись в стор (то, что делают инструменты под капотом) тоже работает:
 
 ```python
-from vesmaro.models import Project
+from vesma.models import Project
 mgr.sqlite.save_project(Project(name="vesma", paths=["/home/you/vesma"]))
 ```
 
@@ -297,8 +297,8 @@ vesma graph repoint <project> <new-root>
 ---
 
 _Источники: ADR-0032 (граф проектов как память); `docs/ru/user/mcp-tools.md`
-(«Инструменты графа проектов»), `src/vesmaro/config.py` (`CodeGraphConfig`),
-`src/vesmaro/codegraph/` (авто-путь: `autoindex.py`,
+(«Инструменты графа проектов»), `src/vesma/config.py` (`CodeGraphConfig`),
+`src/vesma/codegraph/` (авто-путь: `autoindex.py`,
 `tests/test_codegraph_autoindex.py`); поставлено волнами PG-0 (#438),
 graphs-on-by-default (#440), нативная авто-индексация PG-0.5 (re-land
 150cdfe). Карта фич: [features.md](../features.md)._

@@ -17,12 +17,12 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from vesmaro import updates
-from vesmaro.updates import UpdateInfo, check_for_update
+from vesma import updates
+from vesma.updates import UpdateInfo, check_for_update
 
 runner = CliRunner()
 
-updates_cli = pytest.importorskip("vesmaro.cli.update_cmd")
+updates_cli = pytest.importorskip("vesma.cli.update_cmd")
 
 LATEST = "9.9.9"
 INSTALLED = "5.1.1"
@@ -299,7 +299,7 @@ def test_env_opt_out_disables_check(
 
 
 def test_config_knob_disables_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    from vesmaro.config import Settings
+    from vesma.config import Settings
 
     monkeypatch.delenv("VESMA_UPDATES_CHECK", raising=False)  # clear the suite-wide guard
     settings = Settings()
@@ -319,7 +319,7 @@ def test_config_knob_disables_check(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def isolated_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """A real MemoryManager over an isolated tmp config (as test_cli does)."""
-    from vesmaro.cli._manager import get_manager, reset_manager
+    from vesma.cli._manager import get_manager, reset_manager
 
     cfg = tmp_path / "updates-test.yaml"
     cfg.write_text(
@@ -359,7 +359,7 @@ def test_stats_payload_none_when_config_disabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
-    from vesmaro.cli._manager import get_manager, reset_manager
+    from vesma.cli._manager import get_manager, reset_manager
 
     cfg = tmp_path / "updates-off.yaml"
     cfg.write_text(
@@ -394,7 +394,7 @@ def test_update_stats_payload_never_raises(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def _invoke_version(monkeypatch: pytest.MonkeyPatch, info: UpdateInfo | None):  # type: ignore[no-untyped-def]
-    from vesmaro.cli.main import app
+    from vesma.cli.main import app
 
     monkeypatch.setattr(updates, "check_for_update", lambda settings=None, **kw: info)
     return runner.invoke(app, ["--version"])
@@ -426,7 +426,7 @@ def test_version_silent_when_check_disabled(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     # With the env kill switch on, the real check answers None without any
     # network — run it UNPATCHED on purpose to prove the whole path.
-    from vesmaro.cli.main import app
+    from vesma.cli.main import app
 
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -434,7 +434,7 @@ def test_version_silent_when_check_disabled(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_version_hint_never_crashes_on_broken_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    from vesmaro.cli.main import app
+    from vesma.cli.main import app
 
     def boom(settings=None, **kw):  # pragma: no cover — exercised via assert
         raise RuntimeError("boom")
@@ -458,7 +458,7 @@ def quiet_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _invoke_update(args: list[str], monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    from vesmaro.cli.main import app
+    from vesma.cli.main import app
 
     return runner.invoke(app, ["update", *args])
 

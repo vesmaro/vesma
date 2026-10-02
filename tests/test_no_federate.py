@@ -16,17 +16,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.cli.export import ExportFilter, ExportFormat, build_json_payload, run_export
-from vesmaro.cli.import_ import (
+from vesma.cli.export import ExportFilter, ExportFormat, build_json_payload, run_export
+from vesma.cli.import_ import (
     DEFAULT_MAX_CONTENT_CHARS,
     ImportMode,
     run_import,
     validate_import_payload,
     validate_import_record,
 )
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus, MemoryUpdate
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus, MemoryUpdate
 
 # ---------------------------------------------------------------------------
 # Fixtures — mirror tests/test_export_import.py conventions
@@ -161,7 +161,7 @@ class TestIngestAudit:
         return [r for r in caplog.records if "ingest scan" in r.message]
 
     def test_clean_add_logs_ok_verdict(self, mgr: MemoryManager, caplog) -> None:
-        with caplog.at_level("INFO", logger="vesmaro.manager"):
+        with caplog.at_level("INFO", logger="vesma.manager"):
             mem_id = _add(mgr, "just a normal note about the weather")
         lines = self._audit_lines(caplog)
         assert lines, "every write must audit its scan verdict"
@@ -170,7 +170,7 @@ class TestIngestAudit:
         assert mem_id[:8] in lines[0].message, "audit correlates by memory id"
 
     def test_secret_add_logs_found_patterns(self, mgr: MemoryManager, caplog) -> None:
-        with caplog.at_level("INFO", logger="vesmaro.manager"):
+        with caplog.at_level("INFO", logger="vesma.manager"):
             mem_id = _add(mgr, f"config has key=AKIA{'T' * 16} for aws")
         lines = self._audit_lines(caplog)
         assert lines and "aws-key" in lines[0].message
@@ -179,14 +179,14 @@ class TestIngestAudit:
     def test_update_with_content_logs_verdict(self, mgr: MemoryManager, caplog) -> None:
         mem_id = _add(mgr, "clean content no secrets here")
         caplog.clear()
-        with caplog.at_level("INFO", logger="vesmaro.manager"):
+        with caplog.at_level("INFO", logger="vesma.manager"):
             mgr.update(mem_id, MemoryUpdate(content="still clean content"))
         assert self._audit_lines(caplog), "content updates audit their re-scan"
 
     def test_update_without_content_does_not_audit_rescan(self, mgr: MemoryManager, caplog) -> None:
         mem_id = _add(mgr, "clean content no secrets here")
         caplog.clear()
-        with caplog.at_level("INFO", logger="vesmaro.manager"):
+        with caplog.at_level("INFO", logger="vesma.manager"):
             mgr.update(mem_id, MemoryUpdate(quality_score=0.5))
         assert not self._audit_lines(caplog), "no content → no scan → no verdict line"
 
@@ -195,13 +195,13 @@ class TestIngestAudit:
     ) -> None:
         """Layer 1 stays non-fatal (unchanged): a scanner error never
         blocks the write — but the audit must record scanner=error."""
-        import vesmaro.secrets_detector as sd
+        import vesma.secrets_detector as sd
 
         def _boom(content: str):
             raise RuntimeError("scanner down")
 
         monkeypatch.setattr(sd, "detect_secrets", _boom)
-        with caplog.at_level("INFO", logger="vesmaro.manager"):
+        with caplog.at_level("INFO", logger="vesma.manager"):
             mem = mgr.add(
                 MemoryCreate(
                     content="ordinary content during scanner outage",

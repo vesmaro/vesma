@@ -1,6 +1,6 @@
 """Unit tests for the MnemosCore gRPC server (#105 M4.0).
 
-Exercises :class:`vesmaro.mesh_server.MeshServer` end-to-end over a real
+Exercises :class:`vesma.mesh_server.MeshServer` end-to-end over a real
 gRPC Unix socket on a ``tmp_path`` — no mocks on the gRPC layer. The
 tests cover:
 
@@ -55,8 +55,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
-from vesmaro import _mesh_gen
-from vesmaro.agent_tokens import (
+from vesma import _mesh_gen
+from vesma.agent_tokens import (
     AgentTokenClaims,
     AgentTokenStore,
     encode_agent_token,
@@ -64,11 +64,11 @@ from vesmaro.agent_tokens import (
     load_or_create_signing_key,
     signing_key_path,
 )
-from vesmaro.compact import CompactRecord
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import MeshServer
-from vesmaro.models import MemoryCreate, MemorySource
+from vesma.compact import CompactRecord
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.mesh_server import MeshServer
+from vesma.models import MemoryCreate, MemorySource
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1332,7 +1332,7 @@ class TestReadMemory:
         """A moderation refuse is a SUCCESS with trigger_code=REFUSED."""
         record_id = self._list_one_fed_id(server)
         monkeypatch.setattr(
-            "vesmaro.mesh_server.build_compact_record", lambda *args, **kwargs: None
+            "vesma.mesh_server.build_compact_record", lambda *args, **kwargs: None
         )
         stub = _stub(server)
         response = stub.ReadMemory(

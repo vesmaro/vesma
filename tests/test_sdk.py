@@ -24,10 +24,10 @@ from typing import Any
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemoryStatus, TagContractError
-from vesmaro.sdk import VesmaSDK
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemoryStatus, TagContractError
+from vesma.sdk import VesmaSDK
 
 PROJECT = "sdk-proj"
 AGENT = "sdk-agent"

@@ -17,17 +17,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.cli.export import (
+from vesma.cli.export import (
     CompressMode,
     ExportFilter,
     ExportFormat,
     decrypt,
     run_export,
 )
-from vesmaro.cli.import_ import ImportMode, run_import
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.cli.import_ import ImportMode, run_import
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     CHECKPOINT_STAMP_KEYS,
     MemoryCreate,
     MemorySource,
@@ -119,7 +119,7 @@ class TestExportJSON:
 
     def test_json_export_no_traces(self, mgr, tmp_path):
         """Traces are NEVER included in export (owner decision)."""
-        from vesmaro.models import Trace
+        from vesma.models import Trace
 
         mgr.sqlite.save_trace(Trace(task_label="cluster", project="mnemos", step="embed"))
         _add_memory(mgr, "x")

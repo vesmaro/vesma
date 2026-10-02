@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemorySource, MemoryStatus
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemorySource, MemoryStatus
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ This is the body of the rule.
 
 class TestParseRuleFile:
     def test_parses_frontmatter_and_body(self, sample_rule_file):
-        from vesmaro.watchers.path_scoped import parse_rule_file
+        from vesma.watchers.path_scoped import parse_rule_file
 
         result = parse_rule_file(sample_rule_file)
 
@@ -68,7 +68,7 @@ Body here.
             fh.write(content)
             path = Path(fh.name)
 
-        from vesmaro.watchers.path_scoped import parse_rule_file
+        from vesma.watchers.path_scoped import parse_rule_file
 
         result = parse_rule_file(path)
         assert result["apply_to"] == ["src/**", "tests/**"]
@@ -80,7 +80,7 @@ Body here.
             fh.write(content)
             path = Path(fh.name)
 
-        from vesmaro.watchers.path_scoped import parse_rule_file
+        from vesma.watchers.path_scoped import parse_rule_file
 
         result = parse_rule_file(path)
         assert result["title"] == "No Frontmatter"
@@ -91,7 +91,7 @@ Body here.
 
 class TestIngestRule:
     def test_creates_published_memory(self, manager, sample_rule_file):
-        from vesmaro.watchers.path_scoped import ingest_rule
+        from vesma.watchers.path_scoped import ingest_rule
 
         result = ingest_rule(manager, sample_rule_file, project="test-proj", agent="test-agent")
 
@@ -110,7 +110,7 @@ class TestIngestRule:
         assert memory.title == "Test Rule Title"
 
     def test_updates_existing_memory(self, manager, sample_rule_file):
-        from vesmaro.watchers.path_scoped import ingest_rule
+        from vesma.watchers.path_scoped import ingest_rule
 
         # First ingest
         result1 = ingest_rule(manager, sample_rule_file, project="test-proj")
@@ -142,7 +142,7 @@ Updated body.
 
 class TestRemoveRule:
     def test_removes_existing_memory(self, manager, sample_rule_file):
-        from vesmaro.watchers.path_scoped import ingest_rule, remove_rule
+        from vesma.watchers.path_scoped import ingest_rule, remove_rule
 
         result = ingest_rule(manager, sample_rule_file, project="test-proj")
         mem_id = result["memory_id"]
@@ -154,7 +154,7 @@ class TestRemoveRule:
         assert manager.get(mem_id) is None
 
     def test_noop_for_missing_memory(self, manager, sample_rule_file):
-        from vesmaro.watchers.path_scoped import remove_rule
+        from vesma.watchers.path_scoped import remove_rule
 
         result = remove_rule(manager, sample_rule_file)
         assert result["removed"] is False
@@ -174,7 +174,7 @@ class TestBatchIngest:
                 "---\napplyTo: 'src/**'\n---\n# Rule 2\nBody 2."
             )
 
-            from vesmaro.watchers.path_scoped import ingest_path_scoped_rules
+            from vesma.watchers.path_scoped import ingest_path_scoped_rules
 
             results = ingest_path_scoped_rules(
                 manager, rules_dir, project="batch-proj", agent="batch-agent"
@@ -190,7 +190,7 @@ class TestBatchIngest:
             assert titles == {"Rule 1", "Rule 2"}
 
     def test_skips_missing_directory(self, manager):
-        from vesmaro.watchers.path_scoped import ingest_path_scoped_rules
+        from vesma.watchers.path_scoped import ingest_path_scoped_rules
 
         results = ingest_path_scoped_rules(manager, Path("/nonexistent/path"), project="test")
         assert results == []
@@ -213,7 +213,7 @@ class TestManagerMethods:
             assert results[0]["action"] == "created"
 
     def test_manager_remove_path_scoped_rule(self, manager, sample_rule_file):
-        from vesmaro.watchers.path_scoped import ingest_rule
+        from vesma.watchers.path_scoped import ingest_rule
 
         result = ingest_rule(manager, sample_rule_file, project="test-proj")
         mem_id = result["memory_id"]

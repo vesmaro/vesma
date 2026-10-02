@@ -2,7 +2,7 @@
 
 Two contracts are pinned here:
 
-1. **Import isolation** — `mcp` is imported ONLY by `vesmaro.mcp_server`,
+1. **Import isolation** — `mcp` is imported ONLY by `vesma.mcp_server`,
    which itself is loaded only by the `mnemos mcp-server` CLI subcommand
    handler. No other core path may pull the SDK (security review condition,
    architectural committee 2026-09-06): it keeps CLI/API/storage startups
@@ -10,7 +10,7 @@ Two contracts are pinned here:
    fail-loud instead of drifting silently.
 
 2. **Core wiring** — the installed distribution declares `mcp` as a base
-   requirement (the whole point of ADR-0023), and `vesmaro.mcp_server` is
+   requirement (the whole point of ADR-0023), and `vesma.mcp_server` is
    importable in a bare environment.
 
 Honest limits: the AST scan is a lexical tripwire — it does not catch
@@ -27,7 +27,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "src" / "vesmaro"
+SRC = Path(__file__).resolve().parent.parent / "src" / "vesma"
 ALLOWED_FILES = {"mcp_server.py"}
 
 
@@ -54,7 +54,7 @@ def _mcp_import_files() -> list[str]:
 def test_mcp_sdk_imported_only_by_mcp_server() -> None:
     offenders = [name for name in _mcp_import_files() if name not in ALLOWED_FILES]
     assert not offenders, (
-        "mcp SDK imported outside vesmaro.mcp_server (ADR-0023 isolation): "
+        "mcp SDK imported outside vesma.mcp_server (ADR-0023 isolation): "
         f"{offenders} — route the usage through mcp_server or justify a new "
         "allow-listed file"
     )
@@ -70,7 +70,7 @@ def test_mcp_server_itself_declares_its_imports() -> None:
 def test_cli_import_does_not_pull_mcp_sdk() -> None:
     """Runtime isolation: importing the CLI entry must not load the SDK."""
     code = (
-        "import sys, mnemos, vesmaro.cli.main\n"
+        "import sys, mnemos, vesma.cli.main\n"
         "loaded = [m for m in sys.modules if m == 'mcp' or m.startswith('mcp.')]\n"
         "assert not loaded, f'mcp SDK loaded by CLI import: {loaded}'\n"
     )
@@ -86,14 +86,14 @@ def test_cli_import_does_not_pull_mcp_sdk() -> None:
 
 def test_mcp_server_imports_cleanly() -> None:
     """With the SDK in core, the module must import in a bare subprocess."""
-    code = "import vesmaro.mcp_server\nprint(':ok')"
+    code = "import vesma.mcp_server\nprint(':ok')"
     result = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
         cwd=str(SRC.parent.parent),
     )
-    assert result.returncode == 0, f"vesmaro.mcp_server import failed:\n{result.stderr}"
+    assert result.returncode == 0, f"vesma.mcp_server import failed:\n{result.stderr}"
 
 
 def test_distribution_declares_mcp_as_core_requirement() -> None:

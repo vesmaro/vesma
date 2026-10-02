@@ -1,6 +1,6 @@
 """W5d guard: the vesma-cortex provider leg carries ZERO network imports.
 
-Import-isolation tripwire for :class:`vesmaro.decision_provider.VesmaProvider`
+Import-isolation tripwire for :class:`vesma.decision_provider.VesmaProvider`
 (inference-v1.md §9): the artifact and its wrapper must not import
 ``socket`` / ``urllib`` / ``http`` / ``requests`` / ``httpx`` / ``aiohttp`` /
 ``ftp`` — the cortex leg is local-only by construction, and the property
@@ -8,7 +8,7 @@ must fail loud instead of drifting silently. Pattern: the established
 ADR-0023 tripwire ``tests/test_mcp_core_isolation.py`` (the mcp SDK
 isolation guard).
 
-Scope is the MODULE hosting the provider — ``src/vesmaro/decision_provider.py``.
+Scope is the MODULE hosting the provider — ``src/vesma/decision_provider.py``.
 The sibling ``decision_jev.py`` is deliberately NOT scanned: its httpx leg
 is the sanctioned outbound Jev adapter with its own privacy gate (a
 different, opt-in implementation of the seam), while the cortex leg's
@@ -25,7 +25,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "src" / "vesmaro"
+SRC = Path(__file__).resolve().parent.parent / "src" / "vesma"
 #: The module that hosts VesmaProvider, the feature builder and the
 #: bundle loader — the entire cortex runtime surface.
 GUARDED_FILE = "decision_provider.py"

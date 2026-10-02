@@ -30,7 +30,7 @@ invariants of ADR-0030 §4:
 
 MUTATION PROTOCOL — each named test below is mutation-verified: the
 listed mutant (a minimal, plausible break of the invariant, applied to
-``src/vesmaro/manager.py`` / the walk surface) turns the test RED; the
+``src/vesma/manager.py`` / the walk surface) turns the test RED; the
 unmutated code is GREEN. The mutation runs are documented in the PR
 body (mutant diff → failing test id → revert). Killers:
 
@@ -60,9 +60,9 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     Memory,
     MemoryCreate,
     MemorySource,
@@ -656,7 +656,7 @@ class TestWalkAcceptanceTelemetry:
         A0-review's scrape surface), mirroring the minting counter's
         exposure — and a default-deployment reader can distinguish a
         busy supersedes leg from an enabled walk."""
-        from vesmaro.api.main import _prometheus_text
+        from vesma.api.main import _prometheus_text
 
         base = _add(fuel_manager, "conveyor belt alignment procedure station seven")
         superseded = _add(fuel_manager, "obsolete prior revision dormant ledger")

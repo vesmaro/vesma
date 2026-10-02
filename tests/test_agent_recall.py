@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import AgentRecallQuery, Memory, MemoryCreate, MemoryStatus
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import AgentRecallQuery, Memory, MemoryCreate, MemoryStatus
+from vesma.storage.sqlite_store import SQLiteStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

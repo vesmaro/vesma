@@ -26,9 +26,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 
 @pytest.fixture
@@ -187,7 +187,7 @@ class TestAllIds:
 
 class TestCliCommand:
     def test_dry_run_default_and_apply_flag(self, manager, monkeypatch, capsys) -> None:
-        from vesmaro.cli import main as cli_main
+        from vesma.cli import main as cli_main
 
         mem = _add_published(manager, "cli backfill target")
         manager.sqlite.update_fields(mem.id, embedding_id=None)

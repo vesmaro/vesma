@@ -10,7 +10,7 @@
 # older than that gencode (protobuf ≥ 5.27 cross-version guarantee). A
 # protoc newer than the venv runtime therefore produces stubs that fail
 # on import with a confusing VersionError instead of a clear message —
-# this exact mismatch broke vesmaro.mesh_client imports on 2026-09-17
+# this exact mismatch broke vesma.mesh_client imports on 2026-09-17
 # (gencode 6.33.5 vs runtime 5.29.6).
 #
 # The guard below does NOT guess the protoc→gencode mapping (it is not

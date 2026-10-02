@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.doctor import _collect_paths, doctor_app
-from vesmaro.config import Settings
+from vesma.cli.doctor import _collect_paths, doctor_app
+from vesma.config import Settings
 
 runner = CliRunner()
 

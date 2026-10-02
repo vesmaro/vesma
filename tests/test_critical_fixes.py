@@ -18,11 +18,11 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.main import app
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.cli.main import app
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+from vesma.storage.sqlite_store import SQLiteStore
 
 
 @pytest.fixture(autouse=True)
@@ -215,10 +215,10 @@ class TestCLI:
     @pytest.fixture()
     def isolated_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
-        from vesmaro.cli._manager import reset_manager
+        from vesma.cli._manager import reset_manager
 
         reset_manager()
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"

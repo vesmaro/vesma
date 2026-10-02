@@ -33,18 +33,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.federation_access_log import AccessLogEntry, FederationAccessLog, hash_topic
-from vesmaro.federation_server import (
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.federation_access_log import AccessLogEntry, FederationAccessLog, hash_topic
+from vesma.federation_server import (
     PullRequest,
     PullResponse,
     RateLimiter,
     handle_pull,
     verify_mtls_fingerprint,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemoryStatus
-from vesmaro.trigger_codes import TriggerCode
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemoryStatus
+from vesma.trigger_codes import TriggerCode
 
 # RFC-reserved constants — never real credentials / identifiers.
 PEER_A = "mnemos-A"
@@ -666,7 +666,7 @@ class TestTriggerCodeSelection:
         # A falls back to local search; PARTIAL means A may refine
         # against shipped records. With 0 records there is nothing to
         # refine, so PARTIAL would be misleading.
-        from vesmaro.federation_server import _select_trigger_code
+        from vesma.federation_server import _select_trigger_code
 
         assert (
             _select_trigger_code(

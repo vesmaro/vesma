@@ -14,7 +14,7 @@ from typing import ClassVar
 import pytest
 from pydantic import ValidationError
 
-from vesmaro.models import (
+from vesma.models import (
     Memory,
     TagContract,
     TagContractError,

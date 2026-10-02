@@ -20,9 +20,9 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from vesmaro.cli.agent_wiring import VESMARO_WILDCARD
-from vesmaro.cli.integration import IntegrationManager, load_targets
-from vesmaro.cli.main import app
+from vesma.cli.agent_wiring import VESMARO_WILDCARD
+from vesma.cli.integration import IntegrationManager, load_targets
+from vesma.cli.main import app
 
 runner = CliRunner()
 
@@ -33,7 +33,7 @@ runner = CliRunner()
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
-    cfg = tmp_path / "vesmaro.yaml"
+    cfg = tmp_path / "vesma.yaml"
     cfg.write_text(
         f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
@@ -136,21 +136,21 @@ def fake_pack(tmp_path: Path) -> Path:
 def _patch_integration(monkeypatch: pytest.MonkeyPatch, fake_pack: Path) -> None:
     """Patch the CLI util and integration modules to use the fake pack.
 
-    Patches ``load_targets`` in BOTH ``vesmaro.cli.util`` and
-    ``vesmaro.cli.integration`` because ``_fix_integration_stale`` in
+    Patches ``load_targets`` in BOTH ``vesma.cli.util`` and
+    ``vesma.cli.integration`` because ``_fix_integration_stale`` in
     ``doctor.py`` imports ``load_targets`` directly from
-    ``vesmaro.cli.integration`` at call time (not via the util module).
+    ``vesma.cli.integration`` at call time (not via the util module).
     """
     cfg = load_targets(fake_pack / "targets.yaml")
     mgr = IntegrationManager(version="1.2.0", pack_root=fake_pack, targets_config=cfg)
 
-    import vesmaro.cli.util as util_mod
+    import vesma.cli.util as util_mod
 
     monkeypatch.setattr(util_mod, "_manager", lambda pack_root=None, home=None: mgr)
     monkeypatch.setattr(util_mod, "load_targets", lambda config_path=None, home=None: cfg)
     # doctor._fix_integration_stale imports load_targets from integration module.
     monkeypatch.setattr(
-        "vesmaro.cli.integration.load_targets", lambda config_path=None, home=None: cfg
+        "vesma.cli.integration.load_targets", lambda config_path=None, home=None: cfg
     )
 
 
@@ -176,8 +176,8 @@ class TestSetupDefaultWiring:
         """No flags → all unwired agents get wired (no prompt, no TTY needed)."""
         import frontmatter
 
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         result = runner.invoke(
@@ -196,8 +196,8 @@ class TestSetupDefaultWiring:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``--no-wire-agents`` skips agent wiring entirely."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         original = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
@@ -219,8 +219,8 @@ class TestSetupDefaultWiring:
         """``--wire-agents --all`` is still accepted (legacy scripts) and wires."""
         import frontmatter
 
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         result = runner.invoke(
@@ -247,8 +247,8 @@ class TestSetupDefaultWiring:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``--no-wire-agents`` still skips without prompting."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        monkeypatch.setattr("vesmaro.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         original = (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8")
@@ -392,7 +392,7 @@ class TestDoctorFix:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``--fix --dry-run`` previews fixes without executing."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         result = runner.invoke(app, ["doctor", "--fix", "--dry-run", "--json"])
@@ -405,7 +405,7 @@ class TestDoctorFix:
 
     def test_fix_action_for_known_checks(self) -> None:
         """``_fix_action_for`` returns actions for Integration, Agent wiring, MCP."""
-        from vesmaro.cli.doctor import _fix_action_for
+        from vesma.cli.doctor import _fix_action_for
 
         assert _fix_action_for("Integration") is not None
         assert _fix_action_for("Agent wiring") is not None
@@ -413,7 +413,7 @@ class TestDoctorFix:
 
     def test_fix_action_for_unknown_check_returns_none(self) -> None:
         """``_fix_action_for`` returns None for non-fixable checks."""
-        from vesmaro.cli.doctor import _fix_action_for
+        from vesma.cli.doctor import _fix_action_for
 
         assert _fix_action_for("Config") is None
         assert _fix_action_for("SQLite DB") is None
@@ -427,8 +427,8 @@ class TestDoctorFix:
         """``_fix_agent_wiring`` wires all unwired agents."""
         import frontmatter
 
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
-        from vesmaro.cli.doctor import _fix_agent_wiring
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        from vesma.cli.doctor import _fix_agent_wiring
 
         ok, note = _fix_agent_wiring()
         assert ok is True
@@ -444,7 +444,7 @@ class TestDoctorFix:
     ) -> None:
         """``_fix_integration_stale`` runs update and reports success."""
         _patch_integration(monkeypatch, fake_pack)
-        from vesmaro.cli.doctor import _fix_integration_stale
+        from vesma.cli.doctor import _fix_integration_stale
 
         ok, note = _fix_integration_stale()
         assert ok is True
@@ -457,7 +457,7 @@ class TestDoctorFix:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``doctor --fix --json`` includes the ``fixed`` array in output."""
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         result = runner.invoke(app, ["doctor", "--fix", "--json"])
@@ -474,7 +474,7 @@ class TestDoctorFix:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``--fix`` does not attempt to fix FAIL-level checks."""
-        from vesmaro.cli.doctor import CheckStatus, _fix_action_for
+        from vesma.cli.doctor import CheckStatus, _fix_action_for
 
         # FAIL-level checks have no fix action.
         for fail_check in ("Config", "Data dir", "Vault", "SQLite DB", "Vector store"):
@@ -494,14 +494,14 @@ class TestDoctorFix:
         After fixing all WARN-level issues, re-running ``doctor --fix``
         should find nothing to fix and exit 0.
         """
-        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+        monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
         # First run fixes the warnings.
         runner.invoke(app, ["doctor", "--fix", "--json"])
 
         # Wire the remaining unwired agent manually so all agents are wired.
-        from vesmaro.cli.doctor import _fix_agent_wiring
+        from vesma.cli.doctor import _fix_agent_wiring
 
         _fix_agent_wiring()
 

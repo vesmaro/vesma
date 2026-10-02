@@ -26,11 +26,11 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemoryStatus, MemoryUpdate, is_context_admissible
-from vesmaro.pipeline.cluster import cluster_raw_memories
-from vesmaro.pipeline.synthesize import synthesize_cluster
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemoryStatus, MemoryUpdate, is_context_admissible
+from vesma.pipeline.cluster import cluster_raw_memories
+from vesma.pipeline.synthesize import synthesize_cluster
 
 # ---------------------------------------------------------------------------
 # Fixtures (mirrors tests/test_pipeline.py)

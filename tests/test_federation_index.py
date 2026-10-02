@@ -60,8 +60,8 @@ import grpc
 import pytest
 from pydantic import ValidationError
 
-from vesmaro import _mesh_gen
-from vesmaro.compact import (
+from vesma import _mesh_gen
+from vesma.compact import (
     CONTENT_STATE_TOMBSTONED,
     METADATA_SCHEMA,
     TIMESTAMP_FUTURE_SLACK,
@@ -70,15 +70,15 @@ from vesmaro.compact import (
     canonical_metadata_timestamp,
     title_matches_blocklist,
 )
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import (
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.mesh_server import (
     MeshServer,
     VesmaCoreServicer,
     _metadata_stream_event,
 )
-from vesmaro.models import MemoryCreate, MemorySource
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.models import MemoryCreate, MemorySource
+from vesma.storage.sqlite_store import SQLiteStore
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -903,7 +903,7 @@ class TestBuildMetadataSyncResponse:
         assert resp.latest_rev >= 2
 
     def test_out_of_range_since_rev_rejected(self, servicer: VesmaCoreServicer) -> None:
-        from vesmaro.mesh_server import CursorError
+        from vesma.mesh_server import CursorError
 
         with pytest.raises(CursorError):
             servicer.build_metadata_sync_response(self._request(since_rev=-1))

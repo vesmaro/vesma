@@ -1,4 +1,4 @@
-"""Tests for the S2 phase 2 meta-poller (`vesmaro.meta_poller`).
+"""Tests for the S2 phase 2 meta-poller (`vesma.meta_poller`).
 
 Coverage map (task brief):
 
@@ -39,11 +39,11 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from vesmaro.cli._manager import reset_manager
-from vesmaro.cli.main import app
-from vesmaro.config import FederationConfig, MetaPollConfig, PeerConfig
-from vesmaro.manager import MemoryManager
-from vesmaro.meta_poller import (
+from vesma.cli._manager import reset_manager
+from vesma.cli.main import app
+from vesma.config import FederationConfig, MetaPollConfig, PeerConfig
+from vesma.manager import MemoryManager
+from vesma.meta_poller import (
     META_POLL_BATCH,
     META_POLL_MAX_PAGES,
     META_POLL_PAGE_TIMEOUT_S,
@@ -53,7 +53,7 @@ from vesmaro.meta_poller import (
     SyncMetaPage,
     _parse_sync_meta_stdout,
 )
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
 
@@ -404,7 +404,7 @@ class TestPollPeer:
     ) -> None:
         mesh.set_peer("peer-a", {"pages": [_page([_record(1), _record(2)], latest_rev=5)]})
         poller = MetaPoller(store, make_federation(mesh))
-        with caplog.at_level(logging.INFO, logger="vesmaro.meta_poller"):
+        with caplog.at_level(logging.INFO, logger="vesma.meta_poller"):
             result = run(poller.poll_peer("peer-a"))
         assert result.ok and result.fetched == 2 and result.accepted == 2
         assert result.latest_rev == 5 and result.pages == 1
@@ -479,7 +479,7 @@ class TestPollPeer:
     ) -> None:
         mesh.set_peer("peer-a", {"loop_page": _page([_record(1)], latest_rev=9, has_more=True)})
         poller = MetaPoller(store, make_federation(mesh))
-        with caplog.at_level(logging.INFO, logger="vesmaro.meta_poller"):
+        with caplog.at_level(logging.INFO, logger="vesma.meta_poller"):
             result = run(poller.poll_peer("peer-a"))
         assert result.pages == META_POLL_MAX_PAGES
         assert len(mesh.calls) == META_POLL_MAX_PAGES
@@ -517,7 +517,7 @@ class TestPollPeer:
     ) -> None:
         mesh.set_peer("peer-a", {"fail": "mesh leg down", "fail_code": 3})
         store.mark_poll_ok("peer-a", 4)  # pre-existing watermark must survive
-        with caplog.at_level(logging.INFO, logger="vesmaro.meta_poller"):
+        with caplog.at_level(logging.INFO, logger="vesma.meta_poller"):
             result = run(MetaPoller(store, make_federation(mesh)).poll_peer("peer-a"))
         assert result.error is not None and "exited 3" in result.error
         assert store.get_poll_state("peer-a").since_rev == 4
@@ -570,7 +570,7 @@ class TestPollPeer:
     def test_subprocess_timeout_kills_and_errors(
         self, store: SQLiteStore, mesh: MeshDouble, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import vesmaro.meta_poller as mp
+        import vesma.meta_poller as mp
 
         monkeypatch.setattr(mp, "META_POLL_PAGE_TIMEOUT_S", 0.3)
         mesh.set_peer("peer-a", {"sleep_s": 5, "pages": []})
@@ -810,7 +810,7 @@ class TestServeWiring:
             async def stop(self, grace_s: float = 5.0) -> None:
                 events["stopped"] += 1
 
-        monkeypatch.setattr("vesmaro.meta_poller.MetaPoller", _SpyPoller)
+        monkeypatch.setattr("vesma.meta_poller.MetaPoller", _SpyPoller)
         return events
 
     def _client_config(self, tmp_path: Path, *, enable: bool) -> Path:
@@ -836,8 +836,8 @@ class TestServeWiring:
     @pytest.fixture
     def lifespan_app(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
         """Seed the api.main manager with an isolated real one."""
-        from vesmaro.api import main as api_main
-        from vesmaro.config import load_settings
+        from vesma.api import main as api_main
+        from vesma.config import load_settings
 
         cfg = self._client_config(tmp_path, enable=True)
         manager = MemoryManager(load_settings(str(cfg)))
@@ -857,8 +857,8 @@ class TestServeWiring:
     def test_lifespan_disabled_constructs_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _poller_spy: dict[str, Any]
     ) -> None:
-        from vesmaro.api import main as api_main
-        from vesmaro.config import load_settings
+        from vesma.api import main as api_main
+        from vesma.config import load_settings
 
         cfg = self._client_config(tmp_path, enable=False)
         manager = MemoryManager(load_settings(str(cfg)))

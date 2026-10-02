@@ -28,8 +28,8 @@ from pathlib import Path
 
 import pytest
 
-import vesmaro
-from vesmaro.config import Settings, load_settings
+import vesma
+from vesma.config import Settings, load_settings
 
 # ── Import-path guard ────────────────────────────────────────────────────────
 #
@@ -39,7 +39,7 @@ from vesmaro.config import Settings, load_settings
 # (editable install or explicit ``sys.path`` bootstrap).
 
 _REPO_SRC = (Path(__file__).resolve().parent.parent / "src").resolve()
-_VESMARO_UNDER_REPO_SRC = str(_REPO_SRC) in str(Path(vesmaro.__file__).resolve())
+_VESMARO_UNDER_REPO_SRC = str(_REPO_SRC) in str(Path(vesma.__file__).resolve())
 
 pytestmark = pytest.mark.skipif(
     not _VESMARO_UNDER_REPO_SRC,
@@ -195,7 +195,7 @@ class TestMcpSetupDrift:
         """scripts/mcp-setup.sh writes ``VESMA_DATA_DIR`` and
         ``VESMA_VAULT__VAULT_PATH`` into user mcp.json — every name it
         writes must be accepted by the shim (issue #139 scenario)."""
-        from vesmaro.config import _ENV_COMPAT_ALIASES
+        from vesma.config import _ENV_COMPAT_ALIASES
 
         script = (Path(__file__).resolve().parent.parent / "scripts" / "mcp-setup.sh").read_text(
             encoding="utf-8"

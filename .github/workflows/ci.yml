@@ -68,7 +68,7 @@ jobs:
         run: source .venv/bin/activate && ruff format --check .
 
       - name: Type check (mypy --strict)
-        run: source .venv/bin/activate && mypy --strict src/vesmaro/ src/mnemos/
+        run: source .venv/bin/activate && mypy --strict src/vesma/ src/mnemos/
 
       - name: Security (bandit)
         # JSON output is uploaded as artifact on failure for debugging.
@@ -82,7 +82,7 @@ jobs:
         run: source .venv/bin/activate && pytest tests/ -q --tb=short
 
       - name: Coverage check (gate ≥ 80%)
-        run: source .venv/bin/activate && pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing --cov-report=xml tests/ -q
+        run: source .venv/bin/activate && pytest --cov=src/vesma --cov-fail-under=80 --cov-report=term-missing --cov-report=xml tests/ -q
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'

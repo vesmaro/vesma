@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from vesmaro.secrets_detector import (
+from vesma.secrets_detector import (
     SecretFinding,
     detect_secrets,
     findings_by_pattern,

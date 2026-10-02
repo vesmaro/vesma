@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.storage.code_graph_store import (
+from vesma.storage.code_graph_store import (
     CodeGraphEdge,
     CodeGraphNode,
     CodeGraphStore,

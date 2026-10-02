@@ -7,7 +7,7 @@
 # This is a PLAIN pack file: it ships inside the wheel (the integrations/
 # force-include) but is deliberately NOT deployed into harness directories —
 # it describes the engine, not a per-harness artefact. Load it with
-# `vesmaro.cli.integration.load_engine_manifest()`; the `version` field is
+# `vesma.cli.integration.load_engine_manifest()`; the `version` field is
 # injected at load time from the installed package version (single source of
 # truth), so it is intentionally absent here.
 

@@ -6,7 +6,7 @@
 
 CLI — тонкая обёртка на Typer вокруг [`MemoryManager`](../architecture/overview.md#memorymanager). Использует Rich для вывода таблиц с цветами и является наиболее удобным способом работы с Vesma из оболочки.
 
-Полный набор субкоманд определён в `src/vesmaro/cli/main.py`. Эта страница отражает то, что реально экспортирует источник — каждый пример здесь можно выполнить на чистой установке.
+Полный набор субкоманд определён в `src/vesma/cli/main.py`. Эта страница отражает то, что реально экспортирует источник — каждый пример здесь можно выполнить на чистой установке.
 
 Пошаговое первое использование — в [getting-started.md](getting-started.md). Для программного доступа — [mcp-tools.md](mcp-tools.md) и [http-api.md](http-api.md).
 
@@ -713,7 +713,7 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesmaro.bash
+# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```

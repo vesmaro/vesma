@@ -34,7 +34,7 @@ dependencies = [
     # surface — the SDK ships in core so the base install can serve agents.
     # stdio transport only; the upstream [cli] extra adds nothing for us
     # (typer + python-dotenv were already core). Import isolation: the SDK is
-    # imported ONLY by vesmaro.mcp_server via the CLI subcommand handler
+    # imported ONLY by vesma.mcp_server via the CLI subcommand handler
     # (guard test test_mcp_core_isolation).
     "mcp>=2.0,<3.0",
     # Project code graph (ADR-0032, owner decision 2026-09-28 «graphs on by
@@ -156,7 +156,7 @@ dev = [
     "types-PyYAML",
 ]
 all = [
-    "vesmaro[anthropic,openai,gemini,azure,ollama,mcp,pdf,docx,dev]",
+    "vesma[anthropic,openai,gemini,azure,ollama,mcp,pdf,docx,dev]",
 ]
 
 # PEP 735 dev group (#337, fix wave for #335): plain `uv sync` (and with it
@@ -172,12 +172,12 @@ dev = ["vesma[dev]"]
 
 [project.scripts]
 # Canonical + short hook (owner-approved, GWS card #331 amendment)
-vesmaro = "vesmaro.cli.main:cli_main"
-vesma = "vesmaro.cli.main:cli_main"
-vesmaro-train = "vesmaro.train_entry:main"
+vesmaro = "vesma.cli.main:cli_main"
+vesma = "vesma.cli.main:cli_main"
+vesmaro-train = "vesma.train_entry:main"
 # Legacy compatibility commands (dual-import period; retire no earlier than 6.0)
-mnemos = "vesmaro.cli.main:app"
-mnemos-train = "vesmaro.train_entry:main"
+mnemos = "vesma.cli.main:app"
+mnemos-train = "vesma.train_entry:main"
 
 # Korrnals/release-pipeline symlinks (local pipeline mode) must never enter
 # the sdist: their absolute symlink targets break sdist extraction during
@@ -193,21 +193,21 @@ mnemos-train = "vesmaro.train_entry:main"
 exclude = ["scripts/run-release-local.sh", "scripts/local-ci", "benchmarks", "training"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/vesmaro", "src/mnemos"]
+packages = ["src/vesma", "src/mnemos"]
 exclude = ["benchmarks", "training"]
 
 # Ship the integration pack (instructions, skills, prompts, targets.yaml) inside
 # the wheel so `mnemos integration setup` works from a pip-installed package,
 # not just from a source checkout. The directory is mapped to
-# `vesmaro/integrations/` so it is reachable via `importlib.resources.files(
-# "vesmaro") / "integrations"`.
+# `vesma/integrations/` so it is reachable via `importlib.resources.files(
+# "vesma") / "integrations"`.
 [tool.hatch.build.targets.wheel.force-include]
-"integrations" = "vesmaro/integrations"
+"integrations" = "vesma/integrations"
 # Ship the setup scripts (mcp-setup.sh, install.sh, deploy.sh, setup-distrobox.sh)
 # inside the wheel so `mnemos integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
-# `vesmaro/scripts/` — reachable via `importlib.resources.files("vesmaro") / "scripts"`.
-"scripts" = "vesmaro/scripts"
+# `vesma/scripts/` — reachable via `importlib.resources.files("vesma") / "scripts"`.
+"scripts" = "vesma/scripts"
 
 [tool.ruff]
 target-version = "py311"
@@ -251,7 +251,7 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
 # RU examples in its docstrings — that IS the intended content (same
 # rationale as the synthetic RU corpus files); RUF001/RUF002 lookalike
 # warnings are noise for genuinely Russian words like «его».
-"src/vesmaro/storage/sqlite_store.py" = ["RUF001", "RUF002"]
+"src/vesma/storage/sqlite_store.py" = ["RUF001", "RUF002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -280,7 +280,7 @@ warn_unused_ignores = true
 # constructor-registration port keeps the override for the remaining untyped
 # call sites in the SDK boundary.)
 [[tool.mypy.overrides]]
-module = "vesmaro.mcp_server"
+module = "vesma.mcp_server"
 disallow_untyped_decorators = false
 disallow_untyped_calls = false
 

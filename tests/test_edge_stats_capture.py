@@ -48,10 +48,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.storage.sqlite_store import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.storage.sqlite_store import (
     EDGE_STATS_KINDS,
     EDGE_STATS_LAST_PURGE_META_KEY,
     SQLiteStore,
@@ -281,7 +281,7 @@ class TestStoreRecord:
         """Over-cap events are DROPPED (a normal outcome, never an error),
         and the cap is per (project, agent) bucket — a hot principal
         cannot wedge unbounded rows (storage-DoS / APPLY pre-poisoning)."""
-        monkeypatch.setattr("vesmaro.storage.sqlite_store.EDGE_STATS_EVENTS_PER_PRINCIPAL_CAP", 3)
+        monkeypatch.setattr("vesma.storage.sqlite_store.EDGE_STATS_EVENTS_PER_PRINCIPAL_CAP", 3)
         for i in range(3):
             assert (
                 store.record_edge_stat_event(f"e-{i}", "m-a", kind="used", project="p1", agent="a1")
@@ -303,7 +303,7 @@ class TestStoreRecord:
     ) -> None:
         """Whatever the table holds, no derived counter exceeds
         EDGE_STATS_COUNTER_CLAMP — capture cannot drift before APPLY."""
-        monkeypatch.setattr("vesmaro.storage.sqlite_store.EDGE_STATS_COUNTER_CLAMP", 5)
+        monkeypatch.setattr("vesma.storage.sqlite_store.EDGE_STATS_COUNTER_CLAMP", 5)
         for i in range(8):
             store.record_edge_stat_event(f"u-{i}", "m-a", kind="used", project="p1")
         for i in range(3):
@@ -341,7 +341,7 @@ class TestFlagOff:
         """#440 «graphs on by default» flipped the default to True; the
         flag-off behavior itself is covered by the explicit-flag tests
         above. This pin follows the owner decision of 2026-09-28."""
-        from vesmaro.config import SearchConfig
+        from vesma.config import SearchConfig
 
         assert SearchConfig().feedback_capture_enabled is True
 
@@ -612,7 +612,7 @@ class TestEventIdPreimage:
     retry-stable — idempotency remains the point."""
 
     def test_hash_retry_stable_and_field_sensitive(self) -> None:
-        from vesmaro.manager import _derive_feedback_event_id as derive
+        from vesma.manager import _derive_feedback_event_id as derive
 
         base = derive("r1", "m-a", kind="used", project="p", agent="ag")
         # Retry-stable: same tuple → same row id (the whole point).
@@ -703,7 +703,7 @@ class TestGlobalRowsCap:
         """The per-bucket cap bounds ONE identity; the global cap bounds
         the TABLE across all minted principals — over-cap events drop
         regardless of which principal reports them."""
-        monkeypatch.setattr("vesmaro.storage.sqlite_store.EDGE_STATS_TOTAL_ROWS_CAP", 3)
+        monkeypatch.setattr("vesma.storage.sqlite_store.EDGE_STATS_TOTAL_ROWS_CAP", 3)
         for i, p in enumerate(["p1", "p2", "p3"]):
             assert (
                 store.record_edge_stat_event(f"e-{i}", "m-a", kind="used", project=p) == "inserted"
@@ -720,7 +720,7 @@ class TestGlobalRowsCap:
     ) -> None:
         """The global cap is NOT automatic eviction: capture stays
         dropped until an operator reclaims rows — then it flows again."""
-        monkeypatch.setattr("vesmaro.storage.sqlite_store.EDGE_STATS_TOTAL_ROWS_CAP", 2)
+        monkeypatch.setattr("vesma.storage.sqlite_store.EDGE_STATS_TOTAL_ROWS_CAP", 2)
         assert store.record_edge_stat_event("e-1", "m-a", kind="used", project="p1") == "inserted"
         assert store.record_edge_stat_event("e-2", "m-b", kind="used", project="p1") == "inserted"
         assert (
@@ -886,7 +886,7 @@ class TestOperatorPurge:
         trigger from the SAME literal the schema installs
         (``_EDGE_STATS_NO_DELETE_TRIGGER_DDL``); no drifting second
         copy of the DDL may appear."""
-        from vesmaro.storage import sqlite_store
+        from vesma.storage import sqlite_store
 
         assert sqlite_store._EDGE_STATS_NO_DELETE_TRIGGER_DDL in sqlite_store._DB_SCHEMA
 
@@ -932,7 +932,7 @@ class TestSingleAggregationTelemetry:
     def test_kinds_constant_is_public_api(self) -> None:
         """N4: EDGE_STATS_KINDS is public (cross-module import surface)
         and the private spelling is gone — no private cross-module import."""
-        from vesmaro.storage import sqlite_store
+        from vesma.storage import sqlite_store
 
         assert frozenset({"used", "rejected"}) == sqlite_store.EDGE_STATS_KINDS
         assert not hasattr(sqlite_store, "_EDGE_STATS_KINDS")

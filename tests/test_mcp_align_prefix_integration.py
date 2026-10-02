@@ -25,9 +25,9 @@ from unittest.mock import patch
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch, call_tool
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch, call_tool
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ class TestAlignPrefixEndToEnd:
         contract keys and actually relocate a timestamp to the Dynamic
         context block."""
         text = "System prompt. Logged at 2026-07-17T10:30:00Z end."
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch("vesma_align_prefix", {"text": text})
 
         assert isinstance(result, dict), f"expected dict, got {type(result)}"
@@ -99,7 +99,7 @@ class TestProfileForwarding:
         extracted under the 'code' profile."""
         long_token = "aBcDeFgHiJkLmNoPqRsTuVwXy"  # 25 chars, passes token regex
         text = f"Built at 2026-07-17T10:00:00Z commit {long_token};"
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch(
                 "vesma_align_prefix",
                 {"text": text, "profile": "code"},
@@ -119,7 +119,7 @@ class TestProfileForwarding:
         """Sanity: profile='docs' also skips tokens (same skip set as 'code')."""
         long_token = "aBcDeFgHiJkLmNoPqRsTuVwXy"
         text = f"Updated 2026-07-17T10:00:00Z ref {long_token}."
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch(
                 "vesma_align_prefix",
                 {"text": text, "profile": "docs"},
@@ -136,7 +136,7 @@ class TestProfileForwarding:
         'code'/'docs' profile tests above)."""
         long_token = "aBcDeFgHiJkLmNoPqRsTuVwXy"
         text = f"Token: {long_token} at 2026-07-17T10:00:00Z."
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch("vesma_align_prefix", {"text": text})
         assert isinstance(result, dict)
         kinds = {s["kind"] for s in result["extracted"]}
@@ -154,7 +154,7 @@ class TestCallToolTextContentWrapping:
         one TextContent whose .text is valid JSON containing the four
         contract keys."""
         text = "System prompt. At 2026-07-17T10:30:00Z done."
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             contents = await call_tool("vesma_align_prefix", {"text": text})
 
         assert len(contents) == 1
@@ -178,7 +178,7 @@ class TestMissingTextArg:
     ) -> None:
         """Calling _dispatch('vesma_align_prefix', {}) without the required
         'text' arg must return an error string (graceful), not raise."""
-        with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+        with patch("vesma.mcp_server.get_manager", return_value=real_manager):
             # _dispatch does args["text"] → KeyError. The call_tool wrapper
             # catches Exception and returns a TextContent with the error.
             # We test via call_tool so the full graceful path is exercised.
@@ -195,7 +195,7 @@ class TestMissingTextArg:
         test documents the layering so a future refactor that moves
         validation into _dispatch is caught."""
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=real_manager),
+            patch("vesma.mcp_server.get_manager", return_value=real_manager),
             pytest.raises(KeyError),
         ):
             await _dispatch("vesma_align_prefix", {})

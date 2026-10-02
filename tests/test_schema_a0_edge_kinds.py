@@ -31,10 +31,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
-from vesmaro.storage.sqlite_store import _EDGE_KINDS, SQLiteStore
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+from vesma.storage.sqlite_store import _EDGE_KINDS, SQLiteStore
 
 # The pre-A0 memory_edges DDL (ADR-0018 Phase 1), verbatim — the schema
 # this migration window must consume.
@@ -464,7 +464,7 @@ class TestMigrationCrashSafety:
         # Force a mid-script failure: sabotage the CREATE with invalid
         # SQL (unbalanced paren) — the script dies INSIDE the transaction.
         monkeypatch.setattr(
-            "vesmaro.storage.sqlite_store._EDGES_REBUILD_DDL",
+            "vesma.storage.sqlite_store._EDGES_REBUILD_DDL",
             "CREATE TABLE memory_edges_a0_rebuild (bad_col TEXT",
         )
         with pytest.raises(sqlite3.OperationalError):
@@ -516,7 +516,7 @@ def manager(tmp_path: Path) -> Iterator[MemoryManager]:
 
 class TestManagerWrapper:
     def test_relates_to_with_provenance_and_scope(self, manager: MemoryManager) -> None:
-        from vesmaro.models import MemoryCreate
+        from vesma.models import MemoryCreate
 
         a = manager.add(
             MemoryCreate(content="near duplicate one", tags=["mnemos:learning"]),
@@ -557,7 +557,7 @@ class TestManagerWrapper:
         assert len(edges) == 1 and edges[0]["to_memory_id"] == b.id
 
     def test_contract_defaults_applied(self, manager: MemoryManager) -> None:
-        from vesmaro.models import MemoryCreate
+        from vesma.models import MemoryCreate
 
         a = manager.add(
             MemoryCreate(content="declared edge source", tags=["mnemos:learning"]),
@@ -583,7 +583,7 @@ class TestManagerWrapper:
         assert tuple(row) == ("supersedes", 1.0, "declared", None, None)
 
     def test_unknown_kind_still_rejected(self, manager: MemoryManager) -> None:
-        from vesmaro.models import MemoryCreate
+        from vesma.models import MemoryCreate
 
         a = manager.add(
             MemoryCreate(content="solo memory content", tags=["mnemos:learning"]),

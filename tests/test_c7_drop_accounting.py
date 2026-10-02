@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.filter.pipeline import _sample_json_array, apply_filter
-from vesmaro.manager import MemoryManager
+from vesma.config import Settings
+from vesma.filter.pipeline import _sample_json_array, apply_filter
+from vesma.manager import MemoryManager
 
 PROJECT = "c7-proj"
 

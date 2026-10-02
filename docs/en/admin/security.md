@@ -430,7 +430,7 @@ flowchart TB
 
 ### 11.1 Secrets detector module
 
-The detector lives in `src/vesmaro/secrets_detector.py` and exposes a
+The detector lives in `src/vesma/secrets_detector.py` and exposes a
 **stable public API** consumed by all three layers:
 
 - `detect_secrets(content: str) -> list[SecretFinding]` — scan content.

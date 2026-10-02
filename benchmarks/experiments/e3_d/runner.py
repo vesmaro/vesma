@@ -21,7 +21,7 @@ Legs (E0 §1.3 — one treatment, control = same scenarios, awareness off):
   is rendered; the agent's context is the scenario view alone (the
   flag-off path is byte-identical to the pre-#254 shape).
 * **treatment** — ``include_awareness=True``: the REAL
-  ``vesmaro.awareness.compose_pre_llm_awareness`` composition (presence
+  ``vesma.awareness.compose_pre_llm_awareness`` composition (presence
   + delta + conflict hints, disclaimer frame, cursor roundtrip) is
   rendered FOR THE PROJECT and appended to the agent's context.
 
@@ -148,11 +148,11 @@ from benchmarks.strata.e2_d.scenarios import (  # noqa: E402
 from benchmarks.strata.e2_d.stale_claims import STALE_CLAIMS  # noqa: E402
 
 # `mnemos_version` spelling kept for manifest compatibility (recorded verbatim in run manifests).
-from vesmaro import __version__ as mnemos_version  # noqa: E402
-from vesmaro import awareness as awareness_mod  # noqa: E402
-from vesmaro.awareness import DELTA_MAX_WINDOW_SEC, PRESENCE_WINDOW_SEC  # noqa: E402
-from vesmaro.config import Settings  # noqa: E402
-from vesmaro.manager import MemoryManager  # noqa: E402
+from vesma import __version__ as mnemos_version  # noqa: E402
+from vesma import awareness as awareness_mod  # noqa: E402
+from vesma.awareness import DELTA_MAX_WINDOW_SEC, PRESENCE_WINDOW_SEC  # noqa: E402
+from vesma.config import Settings  # noqa: E402
+from vesma.manager import MemoryManager  # noqa: E402
 
 RUNNER_VERSION = "e3-d-runner-2"
 #: Manifest schema version that started pinning ``retrieval.hybrid_alpha``

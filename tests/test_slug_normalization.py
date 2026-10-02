@@ -2,7 +2,7 @@
 
 mnemos #400 (supersedes the June-era closed PR #62; fix f00de78 + tests
 51c2f65 were never merged — 430 commits stale at re-diagnosis time).
-Adapted to the CURRENT APIs (post-rebrand ``vesmaro`` package, post-#263
+Adapted to the CURRENT APIs (post-rebrand ``vesma`` package, post-#263
 identity hardening, ``_PROJECT_RE`` anchored with ``\\Z`` since #387).
 
 The June bug, re-confirmed against current main by the #400 re-diagnosis
@@ -26,7 +26,7 @@ probes:
 
 The fix (single-point normalization, the #263 single-authority doctrine):
 
-* ``vesmaro.models.normalize_project_slug`` — the ONE normalization
+* ``vesma.models.normalize_project_slug`` — the ONE normalization
   (strip → lower → spaces-to-hyphens), shared by the tag-contract lax
   mode (which previously had its own private copy) and every direct
   ``project``-field boundary.
@@ -56,12 +56,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import call_tool
-from vesmaro.models import _PROJECT_RE, MemoryCreate, MemorySource, normalize_project_slug
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import call_tool
+from vesma.models import _PROJECT_RE, MemoryCreate, MemorySource, normalize_project_slug
 
 # The June canonical example: PascalCase folder vs lowercase slug.
 PASCAL = "Project-Umbra"
@@ -112,7 +112,7 @@ def _strip_reminder(text: str) -> str:
 
 async def _call(mgr: MemoryManager, name: str, args: dict) -> str:
     """Real call_tool round-trip against an isolated manager, reminder-stripped."""
-    with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mgr):
         contents = await call_tool(name, args)
     assert len(contents) == 1
     return _strip_reminder(contents[0].text)
@@ -292,7 +292,7 @@ class TestQueryBoundaryNormalizes:
         assert any(m.project == LOWER for m in memories)
 
     def test_agent_recall_matches_via_variant_filters(self, real_manager: MemoryManager) -> None:
-        from vesmaro.models import AgentRecallQuery
+        from vesma.models import AgentRecallQuery
 
         self._seed(real_manager)
         results = real_manager.agent_recall(AgentRecallQuery(agent="qa", project=PASCAL))
@@ -314,7 +314,7 @@ class TestQueryBoundaryNormalizes:
 
 class TestDetectProjectNormalizes:
     def test_detect_project_lowercases_cwd(self) -> None:
-        from vesmaro.mcp_server import _detect_project
+        from vesma.mcp_server import _detect_project
 
         with patch("os.getcwd", return_value=f"/tmp/{PASCAL}"):
             assert _detect_project() == LOWER

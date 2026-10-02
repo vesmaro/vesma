@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vesmaro.storage.vector_store import VectorStore
+from vesma.storage.vector_store import VectorStore
 
 
 @pytest.fixture

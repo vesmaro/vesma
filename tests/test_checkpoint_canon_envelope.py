@@ -40,9 +40,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     CANON_SCHEMA_VERSION,
     CHECKPOINT_FIELDS,
     CHECKPOINT_PLACEHOLDER_LINES,
@@ -124,8 +124,8 @@ def client_factory(mgr):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from vesmaro.api import main as api_main
-    from vesmaro.api.main import app, lifespan
+    from vesma.api import main as api_main
+    from vesma.api.main import app, lifespan
 
     class _Factory:
         def __enter__(self) -> TestClient:
@@ -209,9 +209,9 @@ def test_rest_language_pass_through(client_factory: Any, mgr: MemoryManager) -> 
 async def test_mcp_language_pass_through(mgr: MemoryManager) -> None:
     from unittest.mock import patch
 
-    from vesmaro.mcp_server import _dispatch
+    from vesma.mcp_server import _dispatch
 
-    with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mgr):
         out = await _dispatch(
             "vesma_save_context",
             {"project": "p251", "goals": "g", "language": "en"},
@@ -392,7 +392,7 @@ def test_render_uses_the_map_not_str_title(mgr: MemoryManager) -> None:
 
 
 def test_placeholder_goals_never_reach_conflict_hints(mgr: MemoryManager) -> None:
-    from vesmaro.awareness import checkpoint_goal_title
+    from vesma.awareness import checkpoint_goal_title
 
     # Two agents whose Goals sections carry ONLY the placeholder must not
     # manufacture a conflict hint (placeholder == template, not a goal).
@@ -419,7 +419,7 @@ def test_placeholder_goals_cannot_manufacture_hints_even_if_leaked() -> None:
     conflict hint (CONFLICT_HINT_MIN_SHARED_TOKENS)."""
     import itertools
 
-    from vesmaro.awareness import _goal_tokens
+    from vesma.awareness import _goal_tokens
 
     lines = sorted(CHECKPOINT_PLACEHOLDER_LINES)
     for a, b in itertools.combinations(lines, 2):
@@ -436,7 +436,7 @@ def _planted_violation_row(mgr: MemoryManager) -> Memory:
     rule) while the envelope stays intact — planted through the
     store-internal ``update_fields`` (no manager gate re-run), the same
     way the strata materializer plants legacy rows."""
-    from vesmaro.canon_validate import CANON_WARN_CODES, validate_canon_record
+    from vesma.canon_validate import CANON_WARN_CODES, validate_canon_record
 
     memory, _dup = mgr.save_checkpoint({"goals": "same payload"}, project="canonproj")
     assert "canon_warnings" not in memory.metadata
@@ -465,7 +465,7 @@ def test_dedup_hit_skips_the_canon_gate(
     import logging
 
     planted = _planted_violation_row(mgr)
-    with caplog.at_level(logging.WARNING, logger="vesmaro.manager"):
+    with caplog.at_level(logging.WARNING, logger="vesma.manager"):
         existing, duplicate = mgr.save_checkpoint({"goals": "same payload"}, project="canonproj")
     assert duplicate is True
     assert existing.id == planted.id
@@ -489,7 +489,7 @@ def test_trivial_reject_precedes_render_and_canon_gate(
     import logging
 
     with (
-        caplog.at_level(logging.WARNING, logger="vesmaro.manager"),
+        caplog.at_level(logging.WARNING, logger="vesma.manager"),
         pytest.raises(ValueError, match="checkpoint rejected: all fields"),
     ):
         mgr.save_checkpoint(
@@ -592,7 +592,7 @@ def test_dedup_key_excludes_per_call_language_param(mgr: MemoryManager) -> None:
 
 
 def _import_goal_title():
-    from vesmaro.awareness import checkpoint_goal_title
+    from vesma.awareness import checkpoint_goal_title
 
     return checkpoint_goal_title
 
@@ -631,8 +631,8 @@ def test_canon_record_uses_the_per_language_placeholder_not_the_full_set(
     record (canon §6: one language per record). The legacy branch (full
     literal set) would have wrongly skipped it."""
     checkpoint_goal_title = _import_goal_title()
-    from vesmaro.models import Memory as _Memory
-    from vesmaro.models import MemorySource
+    from vesma.models import Memory as _Memory
+    from vesma.models import MemorySource
 
     en_goals_placeholder = CHECKPOINT_PLACEHOLDERS[("goals", "en")]
     row = _Memory(
@@ -675,8 +675,8 @@ def test_pre_canon_row_keeps_the_first_line_heuristic(mgr: MemoryManager) -> Non
     row WITHOUT ``metadata.canon`` still resolves through the regex
     fallback — materializer-shaped rows keep working unchanged."""
     checkpoint_goal_title = _import_goal_title()
-    from vesmaro.models import Memory as _Memory
-    from vesmaro.models import MemorySource
+    from vesma.models import Memory as _Memory
+    from vesma.models import MemorySource
 
     legacy = _Memory(
         content="# Session checkpoint — old render\n## Goals\npre-canon goal line\n",
@@ -708,8 +708,8 @@ def test_malformed_envelope_falls_back_to_the_legacy_heuristic(mgr: MemoryManage
     envelope carries an out-of-enum language reads through the legacy
     heuristic — never a wrong-language placeholder pass."""
     checkpoint_goal_title = _import_goal_title()
-    from vesmaro.models import Memory as _Memory
-    from vesmaro.models import MemorySource
+    from vesma.models import Memory as _Memory
+    from vesma.models import MemorySource
 
     row = _Memory(
         content=(
@@ -732,7 +732,7 @@ def test_malformed_envelope_falls_back_to_the_legacy_heuristic(mgr: MemoryManage
 def test_canon_goal_title_is_bounded(mgr: MemoryManager) -> None:
     """The envelope-aware branch keeps the GOAL_TITLE_MAX_CHARS bound."""
     checkpoint_goal_title = _import_goal_title()
-    from vesmaro.awareness import GOAL_TITLE_MAX_CHARS
+    from vesma.awareness import GOAL_TITLE_MAX_CHARS
 
     memory, _dup = mgr.save_checkpoint(
         {"goals": "g" * (GOAL_TITLE_MAX_CHARS + 50)}, project="canonproj"
@@ -744,7 +744,7 @@ def test_canon_goal_title_is_bounded(mgr: MemoryManager) -> None:
 def _plant_legacy_goal_checkpoint(mgr: MemoryManager, *, agent: str, session: str) -> None:
     """Plant a PRE-CANON checkpoint row (stamped, no envelope) the way
     the strata materializer does — via the trusted internal add."""
-    from vesmaro.models import MemoryCreate
+    from vesma.models import MemoryCreate
 
     body = "\n".join(
         [
@@ -774,7 +774,7 @@ def test_delta_surfaces_never_leak_placeholders(mgr: MemoryManager) -> None:
     render embeds slot facts + that guarded title — no body text, so no
     placeholder line can leak into any awareness surface. Envelope-present
     and pre-canon neighbors both audited."""
-    from vesmaro.awareness import project_delta, render_awareness_section
+    from vesma.awareness import project_delta, render_awareness_section
 
     # Envelope-present neighbor: placeholder-only Goals → no goal title.
     mgr.save_checkpoint({"completed": "c"}, project="canonproj", agent="neighbor-a", language="ru")

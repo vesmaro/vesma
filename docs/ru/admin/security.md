@@ -423,7 +423,7 @@ flowchart TB
 
 ### 11.1 Модуль детектора секретов
 
-Детектор живёт в `src/vesmaro/secrets_detector.py` и предоставляет
+Детектор живёт в `src/vesma/secrets_detector.py` и предоставляет
 **стабильный публичный API**, потребляемый всеми тремя слоями:
 
 - `detect_secrets(content: str) -> list[SecretFinding]` — сканировать контент.

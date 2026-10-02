@@ -21,9 +21,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     VESMARO_TAG_SUBTYPES,
     MemoryCreate,
     MemorySource,
@@ -319,7 +319,7 @@ class TestMcpAndHttp:
     def test_mcp_dispatch_tags_rename(self, tmp_manager: MemoryManager, monkeypatch) -> None:
         """The MCP _dispatch handles vesma_tags_rename."""
         from mnemos import mcp_server
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         _add_gcw_memory(tmp_manager)
         # Patch the MCP server's get_manager to return our isolated manager.

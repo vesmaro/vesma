@@ -6,7 +6,7 @@
 
 Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) поверх **stdio JSON-RPC 2.0**. VS Code Copilot и любой MCP-совместимый клиент могут вызывать инструменты, перечисленные здесь.
 
-Сервер определён в `src/vesmaro/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
+Сервер определён в `src/vesma/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
 
 Быстрое подключение к VS Code — в [getting-started.md#run-the-mcp-server](getting-started.md#подключите-ваш-харнес-mcp). Те же возможности доступны через HTTP — см. [http-api.md](http-api.md). Схема тегов, соблюдаемая большинством инструментов, — в [tag-contract.md](tag-contract.md).
 
@@ -289,7 +289,7 @@ pip-audit CVE-2026-45829 ignore
 ## Decisions
 Pin chromadb 1.5.9 with audit
 ## Context
-Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
+Active files: src/vesma/manager.py, src/vesma/api/main.py
 ```
 
 Если контрольная точка не найдена:
@@ -989,7 +989,7 @@ Vesma синтезирует части в единую запись Markdown с
   "staleness": {
     "total_files": 400,
     "fresh_percent": 97.5,
-    "changed_files": ["src/vesmaro/manager.py"],
+    "changed_files": ["src/vesma/manager.py"],
     "last_indexed_at": "2026-09-28T12:00:04+00:00"
   }
 }
@@ -1028,12 +1028,12 @@ Vesma синтезирует части в единую запись Markdown с
   "results": [
     {
       "score": 3,
-      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
+      "id": "vesma#src/vesma/codegraph/service.py#window_rows#158",
       "project": "vesma",
       "kind": "Function",
       "name": "window_rows",
-      "qname": "vesmaro.codegraph.service.window_rows",
-      "path": "src/vesmaro/codegraph/service.py",
+      "qname": "vesma.codegraph.service.window_rows",
+      "path": "src/vesma/codegraph/service.py",
       "start_line": 158,
       "end_line": 190,
       "lang": "python",
@@ -1074,14 +1074,14 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ```json
 {
   "project": "vesma",
-  "start": "vesmaro.codegraph.service.window_rows",
+  "start": "vesma.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [
     {
-      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
-      "qname": "vesmaro.codegraph.service.window_rows",
+      "id": "vesma#src/vesma/codegraph/service.py#window_rows#158",
+      "qname": "vesma.codegraph.service.window_rows",
       "kind": "Function",
-      "path": "src/vesmaro/codegraph/service.py",
+      "path": "src/vesma/codegraph/service.py",
       "start_line": 158,
       "end_line": 190,
       "depth": 0
@@ -1125,13 +1125,13 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "lang": "python",
   "outline": [
     {
       "kind": "Function",
       "name": "window_rows",
-      "qname": "vesmaro.codegraph.service.window_rows",
+      "qname": "vesma.codegraph.service.window_rows",
       "start_line": 158,
       "end_line": 190,
       "signature": "def window_rows(rows, max_output_tokens, cursor)"
@@ -1171,7 +1171,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
   "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...\n)",
@@ -1210,8 +1210,8 @@ BFS по `project_edges` от одного символа, разрешаемо�
 {
   "project": "vesma",
   "coverage": [
-    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
-    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
+    { "path": "src/vesma/manager.py", "verdict": "stale" },
+    { "path": "src/vesma/codegraph/service.py", "verdict": "indexed" },
     { "path": "docs/en/user/mcp-tools.md", "verdict": "unindexed" },
     { "path": "deploy/secret.env", "verdict": "poisoned", "reason": "secret-detected (permanent)" }
   ]
@@ -2101,7 +2101,7 @@ output_style:
 
 **Присутствие — поведенческие метаданные** (id агентов, времена активности, счётчики записей) — гейты поиска покрывают КОНТЕНТ записей и к присутствию не применяются. Картина только дескриптивна (кто / сколько / когда), никогда предиктивна, и это данные, а не управление: блоки картины не несут `memory_id`, никогда не закрепляются, семантики `applyTo:`/`severity:` в них нет. Ноль записей, порождённых картиной, не хранится (курсоры — в meta, действия — в traces); любая будущая awareness-derived запись рождается `mnemos:no-federate`.
 
-**Кап частоты (C9):** queries к картине/awareness ограничены по `(project, agent)` ручкой `vesmaro.awareness_picture_rate_limit_per_minute` (по умолчанию 30, `0` выключает). При превышении — ДЕГРАДАЦИЯ в однострочную секцию «rate-limited, retry later»; форма ответа сохраняется, ошибки нет.
+**Кап частоты (C9):** queries к картине/awareness ограничены по `(project, agent)` ручкой `vesma.awareness_picture_rate_limit_per_minute` (по умолчанию 30, `0` выключает). При превышении — ДЕГРАДАЦИЯ в однострочную секцию «rate-limited, retry later»; форма ответа сохраняется, ошибки нет.
 
 ### Вход
 

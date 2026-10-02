@@ -51,8 +51,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 
-from vesmaro.config import Settings
-from vesmaro.docs_ingest import (
+from vesma.config import Settings
+from vesma.docs_ingest import (
     BORN_QUARANTINE_REASON,
     DOC_CHUNK_CACHE_VERSION_META_KEY,
     DOC_SWEEP_REASON_DETECTOR_PREFIX,
@@ -62,8 +62,8 @@ from vesmaro.docs_ingest import (
     ingest_document,
     sweep_document_chunks,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryStatus, PipelineState, doc_grouping_from_metadata
+from vesma.manager import MemoryManager
+from vesma.models import MemoryStatus, PipelineState, doc_grouping_from_metadata
 
 PROJECT = "f3-proj"
 AGENT = "f3-agent"
@@ -184,7 +184,7 @@ class TestChunkDocument:
         """Review round P3-2: the chunker is PURE — it returns every chunk
         it produced; the per-document cap is the CALLER's observable
         decision (ingest_document slices + logs + flags)."""
-        from vesmaro.docs_ingest import _MAX_CHUNKS_PER_DOC
+        from vesma.docs_ingest import _MAX_CHUNKS_PER_DOC
 
         doc = "\n\n".join(
             f"# Heading {i}\n\nBody line for section {i}." for i in range(_MAX_CHUNKS_PER_DOC + 3)
@@ -201,12 +201,12 @@ class TestChunkDocument:
         defensive bound, never a silent content drop)."""
         import logging
 
-        from vesmaro.docs_ingest import _MAX_CHUNKS_PER_DOC
+        from vesma.docs_ingest import _MAX_CHUNKS_PER_DOC
 
         doc = "\n\n".join(
             f"# Section {i}\n\nClean body number {i}." for i in range(_MAX_CHUNKS_PER_DOC + 2)
         )
-        with caplog.at_level(logging.WARNING, logger="vesmaro.docs_ingest"):
+        with caplog.at_level(logging.WARNING, logger="vesma.docs_ingest"):
             res = _ingest(mgr, doc, "trunc-doc")
         assert res.truncated is True
         assert res.chunks_total == _MAX_CHUNKS_PER_DOC
@@ -232,7 +232,7 @@ class TestBornQuarantine:
         # The cleanest simulation of "pre-sweep": intercept at the
         # sweep boundary. We ingest with the sweep DISABLED by
         # monkeypatching sweep_document_chunks inside docs_ingest.
-        import vesmaro.docs_ingest as di
+        import vesma.docs_ingest as di
 
         original = di.sweep_document_chunks
         captured_ids: list[str] = []
@@ -350,7 +350,7 @@ class TestSweepRelease:
     ) -> None:
         """Fail-closed: a detector error keeps the chunk quarantined with
         the detector-error reason (the ADR-0019 ambiguity lane)."""
-        import vesmaro.docs_ingest as di
+        import vesma.docs_ingest as di
 
         class _Boom:
             def __getattr__(self, name: str) -> Any:
@@ -377,8 +377,8 @@ class TestSweepRelease:
         (the mnemos #251 checkpoint-stamp class) — a client cannot FORGE
         it on a generic create nor on an update, and cannot ERASE a
         minted stamp through the update metadata replacement."""
-        from vesmaro.docs_ingest import DOC_SWEEP_STAMP_METADATA_KEY as STAMP
-        from vesmaro.models import MemoryCreate, MemorySource, MemoryUpdate
+        from vesma.docs_ingest import DOC_SWEEP_STAMP_METADATA_KEY as STAMP
+        from vesma.models import MemoryCreate, MemorySource, MemoryUpdate
 
         # FORGE on create: a generic add carrying the stamp is stripped.
         forged_row = mgr.add(
@@ -433,7 +433,7 @@ class TestIssuanceRescan:
         filter projection in the same write — issue #193 — so the
         effective_content the issuance scans CARRIES the payload). No
         sweep re-runs: the sweep passed for the original text."""
-        from vesmaro.models import MemoryUpdate
+        from vesma.models import MemoryUpdate
 
         updated = mgr.update(
             memory_id, MemoryUpdate(content=f"The leaked credential is {PLANTED_SECRET} here.")
@@ -563,7 +563,7 @@ class TestCcrCacheBump:
         # chunk's call explodes — AFTER the DELETE and the first INSERT,
         # BEFORE the meta bump. Only a real single transaction undoes
         # all three.
-        from vesmaro.models import Memory as _Memory
+        from vesma.models import Memory as _Memory
 
         real_auto_title = _Memory.auto_title
         calls = {"n": 0}
@@ -722,7 +722,7 @@ class TestSurfaceSmoke:
     async def test_mcp_tool_in_manifest_and_dispatch(
         self, mgr: MemoryManager, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from vesmaro import mcp_server
+        from vesma import mcp_server
 
         def _get_manager() -> MemoryManager:
             return mgr
@@ -757,9 +757,9 @@ class TestSurfaceSmoke:
         re-ingest reports reingest=True with the bumped version."""
         from fastapi.testclient import TestClient
 
-        from vesmaro.api import main as api_main
-        from vesmaro.api.main import app as real_app
-        from vesmaro.api.main import lifespan
+        from vesma.api import main as api_main
+        from vesma.api.main import app as real_app
+        from vesma.api.main import lifespan
 
         manager = MemoryManager(_settings(tmp_path))
         manager._embedder = _HashEmbedder()
@@ -790,7 +790,7 @@ class TestSurfaceSmoke:
     async def test_mcp_dispatch_reingest_bumps_version(
         self, mgr: MemoryManager, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from vesmaro import mcp_server
+        from vesma import mcp_server
 
         def _get_manager() -> MemoryManager:
             return mgr
@@ -814,10 +814,10 @@ class TestSurfaceSmoke:
 
         from fastapi.testclient import TestClient
 
-        from vesmaro.api import main as api_main
-        from vesmaro.api.main import app as real_app
-        from vesmaro.api.main import lifespan
-        from vesmaro.models import AgentRecallQuery
+        from vesma.api import main as api_main
+        from vesma.api.main import app as real_app
+        from vesma.api.main import lifespan
+        from vesma.models import AgentRecallQuery
 
         manager = MemoryManager(_settings(tmp_path))
         manager._embedder = _HashEmbedder()

@@ -1,4 +1,4 @@
-"""Tests for the S2 lazy fetch (`vesmaro.lazy_fetch` + `mnemos fetch`).
+"""Tests for the S2 lazy fetch (`vesma.lazy_fetch` + `mnemos fetch`).
 
 Coverage map (task brief):
 
@@ -39,11 +39,11 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from vesmaro.cli._manager import reset_manager
-from vesmaro.cli.main import app
-from vesmaro.compact import CompactRecord, FederationIndexEntry
-from vesmaro.config import FederationConfig, PeerConfig, Settings
-from vesmaro.lazy_fetch import (
+from vesma.cli._manager import reset_manager
+from vesma.cli.main import app
+from vesma.compact import CompactRecord, FederationIndexEntry
+from vesma.config import FederationConfig, PeerConfig, Settings
+from vesma.lazy_fetch import (
     FETCH_TIMEOUT_S,
     SKIP_ALREADY_LOCAL,
     SKIP_TOMBSTONED,
@@ -55,10 +55,10 @@ from vesmaro.lazy_fetch import (
     resolve_fetch_plan,
     run_fetch,
 )
-from vesmaro.manager import MemoryManager
-from vesmaro.mesh_server import VesmaCoreServicer
-from vesmaro.models import MemoryCreate, MemorySource
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.manager import MemoryManager
+from vesma.mesh_server import VesmaCoreServicer
+from vesma.models import MemoryCreate, MemorySource
+from vesma.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
 

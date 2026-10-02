@@ -121,8 +121,8 @@ def test_refererring_pages_md_links_resolve() -> None:
 
 
 #: (file, needle) pairs — the docs must carry the auto-indexing mechanics.
-#: Keys mirror ``CodeGraphConfig`` (src/vesmaro/config.py) and the audit
-#: reasons in ``src/vesmaro/codegraph/autoindex.py``.
+#: Keys mirror ``CodeGraphConfig`` (src/vesma/config.py) and the audit
+#: reasons in ``src/vesma/codegraph/autoindex.py``.
 AUTO_INDEX_NEEDLES = [
     ("docs/en/user/project-graph.md", "auto_index"),
     ("docs/ru/user/project-graph.md", "auto_index"),
@@ -164,7 +164,7 @@ def test_user_docs_do_not_pin_absence_of_auto_indexing() -> None:
 
 
 def _config_py_fields() -> set[str]:
-    src = (REPO / "src" / "vesmaro" / "config.py").read_text(encoding="utf-8")
+    src = (REPO / "src" / "vesma" / "config.py").read_text(encoding="utf-8")
     block = re.search(r"class CodeGraphConfig\(BaseModel\):.*?(?=\nclass )", src, re.DOTALL)
     assert block, "CodeGraphConfig not found in config.py"
     return set(re.findall(r"^    ([a-z_]+):", block.group(0), re.MULTILINE))

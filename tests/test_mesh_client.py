@@ -1,9 +1,9 @@
-"""Unit tests for the M3 gRPC client (:mod:`vesmaro.mesh_client`).
+"""Unit tests for the M3 gRPC client (:mod:`vesma.mesh_client`).
 
 These tests exercise :class:`MeshClient` against a mocked gRPC channel —
 no live ``mnemos-mesh`` binary is required. The mock stub returns
 canned protobuf responses (or raises canned :class:`grpc.RpcError`
-subclasses) so every code path in :mod:`vesmaro.mesh_client` is covered:
+subclasses) so every code path in :mod:`vesma.mesh_client` is covered:
 construction, the four RPCs (ListMemories, WriteMemory,
 GetSubscriptionState, Heartbeat), error mapping (UNAVAILABLE /
 UNIMPLEMENTED), CompactRecord Pydantic↔proto marshaling round-trip,
@@ -19,10 +19,10 @@ from unittest.mock import MagicMock, patch
 import grpc
 import pytest
 
-from vesmaro import _mesh_gen
-from vesmaro.compact import CompactRecord
-from vesmaro.config import MeshConfig
-from vesmaro.mesh_client import (
+from vesma import _mesh_gen
+from vesma.compact import CompactRecord
+from vesma.config import MeshConfig
+from vesma.mesh_client import (
     MeshClient,
     MeshError,
     MeshUnavailableError,

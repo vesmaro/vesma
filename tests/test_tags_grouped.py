@@ -25,9 +25,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures — isolated MemoryManager per test (mirrors test_tags_rename.py)
@@ -334,7 +334,7 @@ class TestRenameViaSharedCommit:
 class TestMcpDispatch:
     @staticmethod
     def _dispatch(name: str, args: dict) -> dict:
-        from vesmaro.mcp_server import _dispatch
+        from vesma.mcp_server import _dispatch
 
         return asyncio.run(_dispatch(name, args))
 

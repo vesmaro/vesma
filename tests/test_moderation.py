@@ -16,8 +16,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from vesmaro.models import NO_FEDERATE_TAG
-from vesmaro.moderation import (
+from vesma.models import NO_FEDERATE_TAG
+from vesma.moderation import (
     DOC_IPV4_BLOCK,
     PII_TYPES,
     MappingTable,

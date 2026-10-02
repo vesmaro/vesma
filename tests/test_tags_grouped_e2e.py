@@ -48,9 +48,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch, call_tool, list_tools
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch, call_tool, list_tools
 
 # ---------------------------------------------------------------------------
 # Fixtures — isolated MemoryManager per test
@@ -129,7 +129,7 @@ async def _call_tool_real(real_manager: MemoryManager, name: str, args: dict):
     JSON payload of the single TextContent the MCP handler returns (or the
     raw text when it is not JSON, e.g. error strings).
     """
-    with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+    with patch("vesma.mcp_server.get_manager", return_value=real_manager):
         contents = await call_tool(name, args)
     assert len(contents) == 1, f"expected exactly one TextContent, got {len(contents)}"
     text = _strip_checkpoint_reminder(contents[0].text)
@@ -146,7 +146,7 @@ async def _dispatch_real(real_manager: MemoryManager, name: str, args: dict):
     test inspect the raw dict return (before JSON serialisation) for
     negative paths that return an ``{"error": ...}`` dict.
     """
-    with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+    with patch("vesma.mcp_server.get_manager", return_value=real_manager):
         return await _dispatch(name, args)
 
 
@@ -163,7 +163,7 @@ def _seed(
     Seeding goes through the manager (not raw SQL) so tags are validated and
     the denormalised project/agent columns stay consistent with the tags.
     """
-    from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
+    from vesma.models import MemoryCreate, MemorySource, MemoryStatus
 
     data = MemoryCreate(
         content=content,

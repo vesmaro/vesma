@@ -54,9 +54,9 @@ if str(ROOT) not in sys.path:
 
 from benchmarks.corpus.deterministic_embedder import LexicalHashEmbedder  # noqa: E402
 from benchmarks.stands.s4_availability.fixture import fixture_settings  # noqa: E402
-from vesmaro.manager import MemoryManager  # noqa: E402
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus  # noqa: E402
-from vesmaro.pipeline.refine import refine_single  # noqa: E402
+from vesma.manager import MemoryManager  # noqa: E402
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus  # noqa: E402
+from vesma.pipeline.refine import refine_single  # noqa: E402
 
 STAND_VERSION = "s2-smoke-1"
 NIGHTLY_STAND_VERSION = "s2-nightly-1"

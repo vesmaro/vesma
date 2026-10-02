@@ -109,18 +109,18 @@ from benchmarks.stands.s4_availability.store_copy import clone_store  # noqa: E4
 
 # `mnemos_version` spelling kept for manifest compatibility with the E3
 # runners (recorded verbatim in run manifests).
-from vesmaro import __version__ as mnemos_version  # noqa: E402
-from vesmaro.assemble import (  # noqa: E402
+from vesma import __version__ as mnemos_version  # noqa: E402
+from vesma.assemble import (  # noqa: E402
     RECALL_DEPTH,
     assemble_context,
     build_provenance,
     estimate_tokens,
 )
-from vesmaro.config import Settings  # noqa: E402
-from vesmaro.filter.pipeline import apply_filter  # noqa: E402
-from vesmaro.lens import Lens  # noqa: E402
-from vesmaro.manager import MemoryManager  # noqa: E402
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus  # noqa: E402
+from vesma.config import Settings  # noqa: E402
+from vesma.filter.pipeline import apply_filter  # noqa: E402
+from vesma.lens import Lens  # noqa: E402
+from vesma.manager import MemoryManager  # noqa: E402
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus  # noqa: E402
 
 RUNNER_VERSION = "f1-task-scope-runner-3"
 EXPERIMENT = "f1-task-scope"

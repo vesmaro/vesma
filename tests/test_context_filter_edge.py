@@ -24,11 +24,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.main import app as cli_app
-from vesmaro.config import Settings
-from vesmaro.filter.pipeline import apply_filter
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource
+from vesma.cli.main import app as cli_app
+from vesma.config import Settings
+from vesma.filter.pipeline import apply_filter
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource
 
 
 def _make_settings(tmpdir: str, *, auto_filter: bool = True) -> Settings:
@@ -426,7 +426,7 @@ class TestNonFatalFilterCrash:
             source=MemorySource.CLI,
         )
         with patch(
-            "vesmaro.filter.pipeline.apply_filter",
+            "vesma.filter.pipeline.apply_filter",
             side_effect=RuntimeError("simulated crash"),
         ):
             memory = mgr.add(data, project="test", agent="filter-test")
@@ -449,7 +449,7 @@ class TestNonFatalFilterCrash:
         mgr.add(data, project="test", agent="filter-test")
 
         with patch(
-            "vesmaro.filter.pipeline.apply_filter",
+            "vesma.filter.pipeline.apply_filter",
             side_effect=RuntimeError("simulated crash"),
         ):
             result = mgr.filter_all()
@@ -512,7 +512,7 @@ class TestCliFilterAllEmpty:
     """``mnemos filter --all`` on empty DB → graceful exit."""
 
     def test_cli_filter_all_empty_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -538,8 +538,8 @@ class TestMcpFilterWithoutRawContent:
     @pytest.mark.asyncio
     async def test_mnemos_filter_uses_content_fallback(self, mgr: MemoryManager) -> None:
         """vesma_filter works on a memory with raw_content=NULL."""
-        from vesmaro.mcp_server import _dispatch
-        from vesmaro.models import MemoryStatus
+        from vesma.mcp_server import _dispatch
+        from vesma.models import MemoryStatus
 
         data = MemoryCreate(
             content="2024-01-15 [ERROR] legacy mcp memory",
@@ -559,7 +559,7 @@ class TestMcpFilterWithoutRawContent:
         conn.commit()
         mgr.sqlite._invalidate_caches()
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
                 "vesma_filter",
                 {"memory_id": memory.id, "profile": "log"},
@@ -646,7 +646,7 @@ class TestJsonArrayCompression:
 
     def test_json_anomaly_detection_nonzero(self):
         """Error indicators in JSON array items are kept as anomalies."""
-        from vesmaro.filter.pipeline import _is_json_anomaly
+        from vesma.filter.pipeline import _is_json_anomaly
 
         # Error strings are anomalies
         assert _is_json_anomaly("error: something") is True

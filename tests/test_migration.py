@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.cli.migrate import migrate_from_ai_brain
-from vesmaro.config import load_settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryStatus
+from vesma.cli.migrate import migrate_from_ai_brain
+from vesma.config import load_settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryStatus
 
 
 @pytest.fixture

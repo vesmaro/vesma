@@ -40,8 +40,8 @@ import pytest
 from benchmarks.experiments.e3_d import runner
 from benchmarks.strata.e2_d.adversarial import ADVERSARIAL_SCENARIO
 
-from vesmaro.awareness import ABSTENTION_TASK_LABEL
-from vesmaro.lanes import awareness_cursor_key
+from vesma.awareness import ABSTENTION_TASK_LABEL
+from vesma.lanes import awareness_cursor_key
 
 _TREATMENT = runner.LEGS[1]
 _CONTROL = runner.LEGS[0]
@@ -220,7 +220,7 @@ def test_flag_toggles_include_awareness_in_composition_path(
 
 def _ghost_goals(mgr: Any) -> list[tuple[str, str]]:
     """(agent, goal title) of every goal-bearing ghost checkpoint."""
-    from vesmaro.awareness import checkpoint_goal_title
+    from vesma.awareness import checkpoint_goal_title
 
     goals: list[tuple[str, str]] = []
     for memory in mgr.list_recent(limit=100, project=ADVERSARIAL_SCENARIO.project):
@@ -240,7 +240,7 @@ def test_dap001_actor_goal_comes_from_the_live_session_not_the_store(
     even though the ghost goals lexically overlap the artifact goal, a
     hint CANNOT fire — and no deferral is attributable to the spoof in
     either arm (E0 §5.4 security contour)."""
-    from vesmaro.awareness import conflict_hints
+    from vesma.awareness import conflict_hints
 
     case = runner.SCENARIO_CASES[160]
     assert case.stratum == "adversarial"

@@ -6,7 +6,7 @@
 
 The CLI is a thin Typer-based wrapper around [`MemoryManager`](../architecture/overview.md#memorymanager). It uses Rich for table / colour output and is the most convenient way to interact with Vesma from a shell.
 
-The full set of subcommands is defined in `src/vesmaro/cli/main.py`. This page mirrors what the source actually exposes — every example here is runnable on a clean install.
+The full set of subcommands is defined in `src/vesma/cli/main.py`. This page mirrors what the source actually exposes — every example here is runnable on a clean install.
 
 For a step-by-step first run, see [getting-started.md](getting-started.md). For programmatic access, see [mcp-tools.md](mcp-tools.md) and [http-api.md](http-api.md).
 
@@ -714,7 +714,7 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesmaro.bash
+# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```

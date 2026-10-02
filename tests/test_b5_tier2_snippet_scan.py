@@ -33,10 +33,10 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.secrets_detector import detect_secrets
-from vesmaro.storage.sqlite_store import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.secrets_detector import detect_secrets
+from vesma.storage.sqlite_store import (
     FTS_SNIPPET_END_MARK,
     FTS_SNIPPET_START_MARK,
 )

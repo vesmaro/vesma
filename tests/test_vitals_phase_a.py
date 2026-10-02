@@ -6,7 +6,7 @@ mnemos-vitals repo — the master copy this package is vendored from.
 This suite verifies the INTEGRATION: default-on wiring, the C3
 config-lint, the collection boundary (async envelopes excluded), the
 retention cadence, and the C1 isolation canary in its structural form
-(only ``vesmaro.metrics`` may reference the sidecar — bug-report /
+(only ``vesma.metrics`` may reference the sidecar — bug-report /
 backup / export / federation code paths can therefore never include it).
 """
 
@@ -17,12 +17,12 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.metrics.boundary import create_vitals_store
-from vesmaro.metrics.schema import SIDECAR_FILENAME
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.metrics.boundary import create_vitals_store
+from vesma.metrics.schema import SIDECAR_FILENAME
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "vesmaro"
+SRC = Path(__file__).resolve().parents[1] / "src" / "vesma"
 
 
 def _settings(tmp: Path, **overrides: object) -> Settings:
@@ -171,7 +171,7 @@ class TestC1IsolationCanary:
 
     def test_sidecar_referenced_only_by_metrics_package(self):
         """C1 tripwire (not a boundary): nothing outside the vendored
-        ``vesmaro/metrics/`` package may even NAME the sidecar — so
+        ``vesma/metrics/`` package may even NAME the sidecar — so
         bug-report / backup / export / federation code paths stay blind
         to it. The real C1 enforcement is that the sink is the only
         write path; this tripwire catches naming drift early."""
@@ -183,7 +183,7 @@ class TestC1IsolationCanary:
             text = p.read_text(encoding="utf-8")
             if any(t in text for t in tokens):
                 offenders.append(str(p.relative_to(SRC)))
-        assert offenders == [], f"sidecar referenced outside vesmaro.metrics: {offenders}"
+        assert offenders == [], f"sidecar referenced outside vesma.metrics: {offenders}"
 
     def test_sidecar_lives_next_to_main_db_not_inside_it(self, tmp_path: Path):
         settings = _settings(tmp_path)

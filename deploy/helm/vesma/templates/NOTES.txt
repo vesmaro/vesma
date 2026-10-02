@@ -1,4 +1,4 @@
-{{- $fullName := include "vesmaro.fullname" . -}}
+{{- $fullName := include "vesma.fullname" . -}}
 {{- $scheme := ternary "https" "http" (gt (len .Values.ingress.tls) 0) -}}
 Vesmaro (Mnemos) has been deployed to namespace "{{ .Release.Namespace }}".
 {{- if not (or .Values.auth.existingSecret .Values.auth.totpMasterKey) }}

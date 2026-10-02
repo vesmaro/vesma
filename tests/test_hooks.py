@@ -33,14 +33,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import vesmaro.mcp_server as mcp_mod
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.hooks import dispatch_hook
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch
-from vesmaro.models import (
+import vesma.mcp_server as mcp_mod
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.hooks import dispatch_hook
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch
+from vesma.models import (
     MemoryCreate,
     MemorySource,
     MemoryStatus,

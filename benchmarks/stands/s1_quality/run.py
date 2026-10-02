@@ -81,7 +81,7 @@ from benchmarks.stands.s1_quality.scenarios import (  # noqa: E402
     scenario_supersede_refind,
     scenario_write_find,
 )
-from vesmaro.manager import MemoryManager  # noqa: E402
+from vesma.manager import MemoryManager  # noqa: E402
 
 STAND_VERSION = "s1-1"
 BASELINE_VERSION = 1

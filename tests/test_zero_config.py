@@ -23,15 +23,15 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-import vesmaro.api.main as api_main
-import vesmaro.manager as manager_module
-from vesmaro.api.main import _check_non_loopback_auth, app
-from vesmaro.cli import _manager as cli_manager_module
-from vesmaro.cli.main import app as cli_app
-from vesmaro.config import ApiConfig, find_config_file, load_settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.scanner_runtime import reset_scanner
+import vesma.api.main as api_main
+import vesma.manager as manager_module
+from vesma.api.main import _check_non_loopback_auth, app
+from vesma.cli import _manager as cli_manager_module
+from vesma.cli.main import app as cli_app
+from vesma.config import ApiConfig, find_config_file, load_settings
+from vesma.manager import MemoryManager
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.scanner_runtime import reset_scanner
 
 _VALID_TAGS = ["project:demo", "agent:user", "mnemos:learning"]
 

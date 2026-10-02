@@ -1,11 +1,11 @@
-"""Compatibility shim: ``mnemos`` → ``vesmaro`` (dual-import period).
+"""Compatibility shim: ``mnemos`` → ``vesma`` (dual-import period).
 
-Rebrand ADR-0031: the canonical import package is ``vesmaro``; this shim
+Rebrand ADR-0031: the canonical import package is ``vesma``; this shim
 keeps every ``import mnemos.*`` / ``from mnemos.*`` statement alive so
 existing harness bridges and user code survive the 5.0.0 window untouched.
 Installs a meta-path finder that resolves ``mnemos.X.Y`` by importing
-``vesmaro.X.Y`` and aliasing it in ``sys.modules`` (same module objects —
-``mnemos.cli.main.app is vesmaro.cli.main.app``).
+``vesma.X.Y`` and aliasing it in ``sys.modules`` (same module objects —
+``mnemos.cli.main.app is vesma.cli.main.app``).
 
 Retires no earlier than 6.0 (dual-prefix contract, archcom 2026-09-14).
 Deprecation notice is emitted once per process on first import.
@@ -31,7 +31,7 @@ def _warn_once() -> None:
     if not _WARNED:
         _WARNED = True
         warnings.warn(
-            "The 'mnemos' import name is deprecated — use 'vesmaro' instead. "
+            "The 'mnemos' import name is deprecated — use 'vesma' instead. "
             "The compatibility shim retires no earlier than 6.0.",
             DeprecationWarning,
             stacklevel=3,
@@ -42,19 +42,19 @@ _warn_once()
 
 
 def __getattr__(name: str) -> Any:
-    """Proxy unknown attributes (e.g. ``__version__``) to ``vesmaro``."""
-    return getattr(importlib.import_module("vesmaro"), name)
+    """Proxy unknown attributes (e.g. ``__version__``) to ``vesma``."""
+    return getattr(importlib.import_module("vesma"), name)
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(dir(importlib.import_module("vesmaro"))))
+    return sorted(set(globals()) | set(dir(importlib.import_module("vesma"))))
 
 
 class _VesmaroAliasFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
-    """Resolve ``mnemos.<rest>`` by importing ``vesmaro.<rest>``.
+    """Resolve ``mnemos.<rest>`` by importing ``vesma.<rest>``.
 
-    ``create_module`` returns the already-imported vesmaro module object, so
-    ``sys.modules["mnemos.cli.main"] is sys.modules["vesmaro.cli.main"]`` —
+    ``create_module`` returns the already-imported vesma module object, so
+    ``sys.modules["mnemos.cli.main"] is sys.modules["vesma.cli.main"]`` —
     one module, two names (true aliasing, not a copy).
     """
 
@@ -68,29 +68,29 @@ class _VesmaroAliasFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             return None
         if fullname == "mnemos":
             return None  # this __init__ already imported
-        vesmaro_name = "vesmaro." + fullname[len("mnemos.") :]
+        vesma_name = "vesma." + fullname[len("mnemos.") :]
         try:
-            importlib.import_module(vesmaro_name)
+            importlib.import_module(vesma_name)
         except ImportError as exc:  # pragma: no cover - passthrough of real gaps
             raise ImportError(
                 f"mnemos shim: cannot resolve {fullname!r} "
-                f"(vesmaro module {vesmaro_name!r} failed: {exc})"
+                f"(vesma module {vesma_name!r} failed: {exc})"
             ) from exc
-        # import_module() succeeded → sys.modules[vesmaro_name] exists;
+        # import_module() succeeded → sys.modules[vesma_name] exists;
         # create_module() re-fetches it from sys.modules (no local var needed).
-        self._pending[fullname] = vesmaro_name
+        self._pending[fullname] = vesma_name
         return importlib.machinery.ModuleSpec(fullname, self)
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> types.ModuleType | None:
-        # Return the ORIGINAL vesmaro module object — import machinery will
+        # Return the ORIGINAL vesma module object — import machinery will
         # register it under the mnemos name (true alias, same object).
-        vesmaro_name = self._pending.pop(spec.name, None)
-        if vesmaro_name is None:  # pragma: no cover - direct loader misuse
+        vesma_name = self._pending.pop(spec.name, None)
+        if vesma_name is None:  # pragma: no cover - direct loader misuse
             raise ImportError(f"mnemos shim: unexpected spec {spec.name!r}")
-        return sys.modules[vesmaro_name]
+        return sys.modules[vesma_name]
 
     def exec_module(self, module: types.ModuleType) -> None:
-        return None  # already fully executed as vesmaro
+        return None  # already fully executed as vesma
 
 
 if not any(isinstance(f, _VesmaroAliasFinder) for f in sys.meta_path):

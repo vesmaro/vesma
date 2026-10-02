@@ -59,9 +59,9 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     TASK_SLUG_RE,
     Memory,
     MemoryCreate,
@@ -482,7 +482,7 @@ class TestBareSlugTaskFallback:
 
         import logging
 
-        with caplog.at_level(logging.INFO, logger="vesmaro.manager"):
+        with caplog.at_level(logging.INFO, logger="vesma.manager"):
             # The mixed filter matches nothing: no row carries BOTH
             # ``task:keep-me`` AND the bare ``qa-vesma`` (rows carry
             # ``task:qa-vesma`` — the AND-exact-membership filter).

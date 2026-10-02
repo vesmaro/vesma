@@ -33,7 +33,7 @@ Drift is enforced by `tests/test_integration.py::TestSchemasPack` — it
 compares every shipped file against the sibling canon repo checkout when
 available and against the frozen sha256 table above otherwise. To bump
 the pin: re-run the command above for the new tag, update this table and
-`SCHEMAS_SOURCE_PIN` in `src/vesmaro/cli/integration.py` in the same
+`SCHEMAS_SOURCE_PIN` in `src/vesma/cli/integration.py` in the same
 change.
 
 Schema semantics (record model, envelope, per-type sections, strictness)

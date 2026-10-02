@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from vesmaro.config import (
+from vesma.config import (
     FederationConfig,
     LoggingConfig,
     PeerConfig,

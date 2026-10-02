@@ -33,7 +33,7 @@ source .venv/bin/activate
 
 ruff check src/ tests/                                # lint
 ruff format --check src/ tests/                       # format
-mypy --strict src/vesmaro/                             # types
+mypy --strict src/vesma/                             # types
 bandit -r src/ -f json -o bandit-report.json          # security (static)
 pip-audit --ignore-vuln CVE-2026-45829                # security (deps)
 pytest tests/ -q --tb=short                           # tests
@@ -129,13 +129,13 @@ before the next release, but we don't block day-to-day work on it.
 
 The remaining gap is concentrated in:
 
-1. `src/vesmaro/llm/*.py` — provider adapters with thin pass-through
+1. `src/vesma/llm/*.py` — provider adapters with thin pass-through
    to vendor SDKs (anthropic / openai / gemini / ollama). High
    coupling to vendor HTTP error shapes makes a real e2e test
    expensive.
-2. `src/vesmaro/watchers/` — filesystem event handlers; covered by
+2. `src/vesma/watchers/` — filesystem event handlers; covered by
    unit tests but not by in-process end-to-end flows.
-3. `src/vesmaro/auto_collect.py` — the auto-collect cron path is
+3. `src/vesma/auto_collect.py` — the auto-collect cron path is
    exercised manually, not in CI.
 
 Each of these has a follow-up issue. Until they're closed, the

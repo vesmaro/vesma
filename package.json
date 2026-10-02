@@ -8,7 +8,7 @@
   "homepage": "https://github.com/vesmaro/vesmaro",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vesmaro/vesmaro.git"
+    "url": "git+https://github.com/vesmaro/vesma.git"
   },
   "bugs": {
     "url": "https://github.com/vesmaro/vesmaro/issues"

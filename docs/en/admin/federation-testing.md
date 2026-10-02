@@ -51,7 +51,7 @@ The test matrix covers six behaviours:
 
 The five trigger codes (`EXHAUSTIVE`, `ALREADY_EXHAUSTED`, `PARTIAL`,
 `REFUSED`, `OFFLINE_LITE`) are defined in
-`src/vesmaro/trigger_codes.py` and documented in
+`src/vesma/trigger_codes.py` and documented in
 [`federation.md`](federation.md) §2. (Rate limiting is an HTTP `429`
 response, not a trigger code; the response body still carries
 `trigger_code=REFUSED`.)
@@ -66,11 +66,11 @@ response, not a trigger code; the response body still carries
 | Peer B config | `federation.enabled: true` (or `federation.shared_projects` non-empty — the server treats an empty `shared_projects` as federation disabled). |
 | Peer B peers | Peer A is configured in `federation.peers` on peer B with `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. See [`federation.md`](federation.md) §1. |
 | SSH access | For the cross-host test, the operator has SSH access to peer B's host (used to forward peer B's loopback port to the laptop). |
-| Loopback bind | The startup guard `_check_non_loopback_auth` (in `src/vesmaro/api/main.py`) exits non-zero if a non-loopback bind is attempted without `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. The test binds to loopback and tunnels over SSH so the full auth stack is not required for the test. |
+| Loopback bind | The startup guard `_check_non_loopback_auth` (in `src/vesma/api/main.py`) exits non-zero if a non-loopback bind is attempted without `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. The test binds to loopback and tunnels over SSH so the full auth stack is not required for the test. |
 
 > **Store isolation.** vesma resolves its config in a fixed order —
 > explicit `--config` flag → `VESMA_CONFIG` env var → `./config.yaml` →
-> `~/.mnemos/config.yaml` (`find_config_file` in `src/vesmaro/config.py`).
+> `~/.mnemos/config.yaml` (`find_config_file` in `src/vesma/config.py`).
 > There is **no** `VESMA_HOME` variable. To run an isolated instance,
 > write a per-instance `config.yaml` (own `vesma.data_dir` /
 > `vesma.vault_path`) and point `VESMA_CONFIG` at it — every command
@@ -190,7 +190,7 @@ present in your checkout, run the steps manually.
    Expect `Imported: 0 records` and `skipped: 1`. The `sync import`
    command merges idempotently by record `id`
    (`fed:<source_agent>:<uuid>` prefix); existing records are skipped,
-   never overwritten (see `src/vesmaro/cli/sync.py`).
+   never overwritten (see `src/vesma/cli/sync.py`).
 
 7. **Clean up.**
 
@@ -278,7 +278,7 @@ VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 
 The server reads the token from the env var named in
 `bearer_token_env` at request time (see
-`_resolve_peer_token` in `src/vesmaro/federation_server.py`), so a
+`_resolve_peer_token` in `src/vesma/federation_server.py`), so a
 rotation does not require a restart — but the peers map itself does.
 
 ### e. Open the SSH tunnel from the laptop
@@ -392,7 +392,7 @@ Expect the first ~30 requests to return `200` (each with a distinct
 `query`, so anti-correlation does not short-circuit them) and the
 remainder to return `429`. The rate limiter is a per-peer sliding
 60-second window keyed on `peer_id` (see `RateLimiter` in
-`src/vesmaro/federation_server.py`). Wait 60 seconds for the window to
+`src/vesma/federation_server.py`). Wait 60 seconds for the window to
 evict before continuing.
 
 ### k. Full roundtrip — pull, import, search on peer A
@@ -414,7 +414,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   }' > /tmp/pull-response.json
 
 # Wrap the records as a compact payload. The compact payload shape is
-# documented in src/vesmaro/compact.py. A minimal wrapper:
+# documented in src/vesma/compact.py. A minimal wrapper:
 jq '{format_version: "mnemos.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
@@ -519,9 +519,9 @@ the full threat model and the mTLS-vs-bearer rationale.
 
 - ArchCom contract 2026-07-17 — `.archcom/sessions/2026-07-17-federation-contract.md` §3.2 (flow), §9 (trigger codes), §10 (access log)
 - ADR-0016 — `docs/project/adr/0016-federation-threat-model.md`
-- `src/vesmaro/federation_server.py` — `handle_pull` (the server flow)
-- `src/vesmaro/api/federation.py` — the FastAPI route adapter
-- `src/vesmaro/api/main.py` — `_check_non_loopback_auth` (startup guard)
-- `src/vesmaro/cli/sync.py` — `vesma sync import` (idempotent merge)
-- `src/vesmaro/trigger_codes.py` — the five trigger codes
+- `src/vesma/federation_server.py` — `handle_pull` (the server flow)
+- `src/vesma/api/federation.py` — the FastAPI route adapter
+- `src/vesma/api/main.py` — `_check_non_loopback_auth` (startup guard)
+- `src/vesma/cli/sync.py` — `vesma sync import` (idempotent merge)
+- `src/vesma/trigger_codes.py` — the five trigger codes
 - `scripts/smoke-federation.sh` — single-host smoke test automation (added in parallel)

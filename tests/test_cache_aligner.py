@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.cache_aligner import align
-from vesmaro.ccr import build_marker, parse_marker
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
+from vesma.cache_aligner import align
+from vesma.ccr import build_marker, parse_marker
+from vesma.config import Settings
+from vesma.manager import MemoryManager
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

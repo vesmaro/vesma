@@ -162,13 +162,13 @@ Shortcut:
 
 ### Задать TOTP-ключ
 
-Юнит читает ключ из `~/.vesmaro.env` (`EnvironmentFile`), править юнит не нужно.
+Юнит читает ключ из `~/.vesma.env` (`EnvironmentFile`), править юнит не нужно.
 6.0.0 читает только каноническое написание `VESMA_API__*` (4.x `MNEMOS_API__*` /
 5.0–5.2 `VESMARO_API__*` выведены из обращения, ADR-0031):
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesmaro.env
+printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesma.env
 ```
 
 ### Установка юнита

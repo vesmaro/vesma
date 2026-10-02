@@ -54,7 +54,7 @@ flowchart LR
 
 Пять триггер-кодов (`EXHAUSTIVE`, `ALREADY_EXHAUSTED`, `PARTIAL`,
 `REFUSED`, `OFFLINE_LITE`) определены в
-`src/vesmaro/trigger_codes.py` и описаны в
+`src/vesma/trigger_codes.py` и описаны в
 [`federation.md`](federation.md) §2.
 
 ---
@@ -67,12 +67,12 @@ flowchart LR
 | Конфиг peer B | `federation.enabled: true` (или непустой `federation.shared_projects` — сервер трактует пустой `shared_projects` как выключенную федерацию). |
 | Peer'ы peer B | Peer A сконфигурирован в `federation.peers` на peer B с `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. См. [`federation.md`](federation.md) §1. |
 | SSH-доступ | Для cross-host-теста оператор имеет SSH-доступ к хосту peer B (используется, чтобы пробросить loopback-порт peer B на ноутбук). |
-| Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/vesmaro/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
+| Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/vesma/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
 
 > **Изоляция хранилищ.** vesma разрешает свой конфиг в фиксированном
 > порядке — явный флаг `--config` → переменная окружения `VESMA_CONFIG` →
 > `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
-> `src/vesmaro/config.py`). Переменной `VESMA_HOME` **не существует**.
+> `src/vesma/config.py`). Переменной `VESMA_HOME` **не существует**.
 > Чтобы запустить изолированный инстанс, создайте per-instance
 > `config.yaml` (с собственными `vesma.data_dir` / `vesma.vault_path`)
 > и укажите `VESMA_CONFIG` на него — все команды ниже используют этот
@@ -191,7 +191,7 @@ echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Ожидаем `Imported: 0 records` и `skipped: 1`. Команда `sync import`
    мержит идемпотентно по `id` записи (префикс
    `fed:<source_agent>:<uuid>`); существующие записи пропускаются,
-   никогда не перезаписываются (см. `src/vesmaro/cli/sync.py`).
+   никогда не перезаписываются (см. `src/vesma/cli/sync.py`).
 
 7. **Очистка.**
 
@@ -280,7 +280,7 @@ VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 
 Сервер читает токен из переменной окружения, названной в
 `bearer_token_env`, в момент запроса (см. `_resolve_peer_token` в
-`src/vesmaro/federation_server.py`), поэтому ротация не требует рестарта —
+`src/vesma/federation_server.py`), поэтому ротация не требует рестарта —
 а вот карта peer'ов требует.
 
 ### e. Откройте SSH-туннель с ноутбука
@@ -391,7 +391,7 @@ done
 Ожидаем, что первые ~30 запросов вернут `200` (у каждого свой `query`,
 поэтому anti-correlation их не перехватывает), а остальные вернут `429`.
 Rate limiter — per-peer скользящее 60-секундное окно с ключом по
-`peer_id` (см. `RateLimiter` в `src/vesmaro/federation_server.py`).
+`peer_id` (см. `RateLimiter` в `src/vesma/federation_server.py`).
 Подождите 60 секунд, пока окно вытеснится, прежде чем продолжать.
 
 ### k. Полный roundtrip — pull, импорт, поиск на peer A
@@ -412,7 +412,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   }' > /tmp/pull-response.json
 
 # Wrap the records as a compact payload. The compact payload shape is
-# documented in src/vesmaro/compact.py. A minimal wrapper:
+# documented in src/vesma/compact.py. A minimal wrapper:
 jq '{format_version: "mnemos.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
@@ -516,11 +516,11 @@ production-развёртывания настраивают перечисле�
 
 - Контракт ArchCom 2026-07-17 — `.archcom/sessions/2026-07-17-federation-contract.md` §3.2 (flow), §9 (триггер-коды), §10 (журнал доступа)
 - ADR-0016 — `docs/project/adr/0016-federation-threat-model.md`
-- `src/vesmaro/federation_server.py` — `handle_pull` (поток обработки на сервере)
-- `src/vesmaro/api/federation.py` — адаптер FastAPI-маршрута
-- `src/vesmaro/api/main.py` — `_check_non_loopback_auth` (стартовый guard)
-- `src/vesmaro/cli/sync.py` — `vesma sync import` (идемпотентный мерж)
-- `src/vesmaro/trigger_codes.py` — пять триггер-кодов
+- `src/vesma/federation_server.py` — `handle_pull` (поток обработки на сервере)
+- `src/vesma/api/federation.py` — адаптер FastAPI-маршрута
+- `src/vesma/api/main.py` — `_check_non_loopback_auth` (стартовый guard)
+- `src/vesma/cli/sync.py` — `vesma sync import` (идемпотентный мерж)
+- `src/vesma/trigger_codes.py` — пять триггер-кодов
 - `scripts/smoke-federation.sh` — автоматизация смоук-теста на одном хосте (добавляется параллельно)
 
 ---

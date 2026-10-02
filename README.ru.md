@@ -106,7 +106,7 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 # systemd user-сервис (предпочтительно для постоянно работающего хоста)
 # легаси-имя ассета — unit-файл остаётся mnemos.container до деплой-волны
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
-# впишите TOTP-ключ в ~/.vesmaro.env (оба имени переменной), затем:
+# впишите TOTP-ключ в ~/.vesma.env (оба имени переменной), затем:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
 # quadlet выводит имя unit из имени файла — пока это mnemos.service
 systemctl --user daemon-reload && systemctl --user start vesma

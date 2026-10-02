@@ -25,7 +25,7 @@ transitional scope rule) and ADR-0003 obligations 5-6:
      present (same pin protocol as the S1 drift test).
 
 The validator logic itself is additionally exercised DIRECTLY
-(vesmaro.canon_validate.validate_canon_record) for the rule-code matrix.
+(vesma.canon_validate.validate_canon_record) for the rule-code matrix.
 """
 
 from __future__ import annotations
@@ -39,16 +39,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vesmaro.canon_validate import (
+from vesma.canon_validate import (
     CANON_REQUIRED_SECTIONS,
     CANON_WARN_CODES,
     CanonViolation,
     CanonViolationError,
     validate_canon_record,
 )
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import CHECKPOINT_SECTION_TITLES, MemoryCreate, MemoryUpdate
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import CHECKPOINT_SECTION_TITLES, MemoryCreate, MemoryUpdate
 
 from ._canon_sibling import canon_sibling_file
 
@@ -171,7 +171,7 @@ def test_violation_warns_and_stores_with_machine_parseable_metadata(
     mgr: MemoryManager,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="vesmaro.manager"):
+    with caplog.at_level(logging.WARNING, logger="vesma.manager"):
         # Bad language on an otherwise-checkpoint envelope (trusted path).
         memory = _cp_trusted_add(mgr, language="fr")
     assert memory is not None
@@ -534,7 +534,7 @@ def test_fixing_content_edit_clears_canon_warnings(mgr: MemoryManager) -> None:
 def test_sdk_remember_task_envelope_persists_and_validates(mgr: MemoryManager) -> None:
     """SDK remember with a task envelope: a VALID one persists silently
     (no canon_warnings); an INVALID one persists WITH canon_warnings."""
-    from vesmaro.sdk import VesmaSDK
+    from vesma.sdk import VesmaSDK
 
     sdk = VesmaSDK(manager=mgr)
 
@@ -907,7 +907,7 @@ def test_snapshot_date_edges_match_engine_validator() -> None:
 
 
 def test_validator_literals_pinned_to_vendored_schemas() -> None:
-    from vesmaro.canon_validate import (
+    from vesma.canon_validate import (
         ENVELOPE_STATUSES,
         ENVELOPE_TYPES,
         RESOLVED_ALLOWED_TYPES,
@@ -955,7 +955,7 @@ def test_validator_literals_pinned_to_vendored_schemas() -> None:
 def test_sdk_remember_echoes_codes_through_real_channel(
     mgr: MemoryManager, caplog: pytest.LogCaptureFixture
 ) -> None:
-    from vesmaro.sdk import VesmaSDK
+    from vesma.sdk import VesmaSDK
 
     sdk = VesmaSDK(manager=mgr)
     with caplog.at_level(logging.WARNING):

@@ -72,10 +72,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from vesmaro.filter.pipeline import detect_profile
-from vesmaro.lanes import GOVERNANCE_TAGS
-from vesmaro.lens import Lens, lens_active
-from vesmaro.models import DOC_GROUPING_METADATA_FIELDS, build_doc_grouping_metadata
+from vesma.filter.pipeline import detect_profile
+from vesma.lanes import GOVERNANCE_TAGS
+from vesma.lens import Lens, lens_active
+from vesma.models import DOC_GROUPING_METADATA_FIELDS, build_doc_grouping_metadata
 
 #: Corpus generator version — bump on ANY shape-semantics change (the
 #: fingerprint changes with the module bytes; this string names the

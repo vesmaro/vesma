@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vesmaro.manager import IssuanceScan
-from vesmaro.mcp_server import _EFFORT_GUIDANCE, _VERBOSITY_GUIDANCE, _dispatch
+from vesma.manager import IssuanceScan
+from vesma.mcp_server import _EFFORT_GUIDANCE, _VERBOSITY_GUIDANCE, _dispatch
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,9 +52,9 @@ class TestVerbositySteering:
     async def test_terse_injects_guidance_on_add(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -76,9 +76,9 @@ class TestVerbositySteering:
     async def test_minimal_injects_guidance_on_add(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -99,7 +99,7 @@ class TestVerbositySteering:
 
     async def test_terse_injects_guidance_on_search(self) -> None:
         mock_mgr = _make_mock_manager()
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_search",
                 {"query": "smoke", "verbosity": "terse"},
@@ -111,7 +111,7 @@ class TestVerbositySteering:
 
     async def test_terse_injects_guidance_on_recall_context(self) -> None:
         mock_mgr = _make_mock_manager()
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_recall_context",
                 {"project": "smoke", "verbosity": "terse"},
@@ -128,9 +128,9 @@ class TestDefaultModeUnchanged:
     async def test_default_verbosity_no_hint_on_add(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -147,7 +147,7 @@ class TestDefaultModeUnchanged:
 
     async def test_default_verbosity_no_hint_on_search(self) -> None:
         mock_mgr = _make_mock_manager()
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_search",
                 {"query": "smoke", "verbosity": "default"},
@@ -159,9 +159,9 @@ class TestDefaultModeUnchanged:
         mock_mgr = _make_mock_manager()
         mock_mgr.settings.output_style.enabled = False
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -184,9 +184,9 @@ class TestEffortRouting:
     async def test_low_effort_injects_hint_on_add(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -205,9 +205,9 @@ class TestEffortRouting:
     async def test_high_effort_injects_hint_on_add(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -226,9 +226,9 @@ class TestEffortRouting:
     async def test_medium_effort_no_hint(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -251,9 +251,9 @@ class TestBackwardCompatibility:
     async def test_add_without_new_params_works(self) -> None:
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -270,13 +270,13 @@ class TestBackwardCompatibility:
 
     async def test_search_without_new_params_returns_list(self) -> None:
         mock_mgr = _make_mock_manager()
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch("vesma_search", {"query": "smoke"})
         assert isinstance(result, list)
 
     async def test_recall_context_without_new_params_works(self) -> None:
         mock_mgr = _make_mock_manager()
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch("vesma_recall_context", {"project": "smoke"})
         assert isinstance(result, str)
 
@@ -310,9 +310,9 @@ class TestConfigDefaultVerbosity:
         mock_mgr = _make_mock_manager()
         mock_mgr.settings.output_style.default_verbosity = "terse"
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -338,9 +338,9 @@ class TestConfigDefaultVerbosity:
         mock_mgr = _make_mock_manager()
         mock_mgr.settings.output_style.default_verbosity = "minimal"
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -363,9 +363,9 @@ class TestConfigDefaultVerbosity:
         mock_mgr = _make_mock_manager()
         mock_mgr.settings.output_style.default_effort = "high"
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
         ):
@@ -393,12 +393,12 @@ class TestInvalidVerbosityEffortFallback:
         mock_mgr = _make_mock_manager()
         # default_verbosity is "default" → fallback produces no hint.
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
-            caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
+            caplog.at_level(logging.WARNING, logger="vesma.mcp_server"),
         ):
             result = await _dispatch(
                 "vesma_add",
@@ -423,12 +423,12 @@ class TestInvalidVerbosityEffortFallback:
         (no hint) and log a WARNING."""
         mock_mgr = _make_mock_manager()
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
-            caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
+            caplog.at_level(logging.WARNING, logger="vesma.mcp_server"),
         ):
             result = await _dispatch(
                 "vesma_add",
@@ -455,12 +455,12 @@ class TestInvalidVerbosityEffortFallback:
         mock_mgr = _make_mock_manager()
         mock_mgr.settings.output_style.default_verbosity = "terse"
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
             patch(
-                "vesmaro.mcp_server.validate_tag_contract",
+                "vesma.mcp_server.validate_tag_contract",
                 side_effect=lambda tags, **_kw: tags,
             ),
-            caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
+            caplog.at_level(logging.WARNING, logger="vesma.mcp_server"),
         ):
             result = await _dispatch(
                 "vesma_add",
@@ -489,7 +489,7 @@ class TestRecallContextNonEmptyWithVerbosity:
         mock_memory.effective_content.return_value = "## Goals\nsmoke goals"
         mock_mgr = _make_mock_manager()
         mock_mgr.recall_context.return_value = [mock_memory]
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_recall_context",
                 {"project": "smoke", "verbosity": "terse"},
@@ -506,7 +506,7 @@ class TestRecallContextNonEmptyWithVerbosity:
         mock_memory.effective_content.return_value = "## Goals\nsmoke goals"
         mock_mgr = _make_mock_manager()
         mock_mgr.recall_context.return_value = [mock_memory]
-        with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
                 "vesma_recall_context",
                 {"project": "smoke", "verbosity": "minimal"},

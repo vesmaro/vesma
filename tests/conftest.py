@@ -3,7 +3,7 @@
 MCP stub
 --------
 We inject minimal stubs into
-``sys.modules`` here - before any test file imports ``vesmaro.mcp_server`` -
+``sys.modules`` here - before any test file imports ``vesma.mcp_server`` -
 so that the dispatch / routing tests can run without the real SDK.
 
 The stubs replicate the MCP SDK 2.x contract (#185): ``Server`` registers
@@ -23,8 +23,8 @@ test's quota (all TestClient requests share ``host="testclient"``).
 Import pin (#288)
 -----------------
 ``src/`` of THIS checkout is front-pinned on ``sys.path`` before any
-``vesmaro`` import, with a fail-loud provenance assert on
-``vesmaro.__file__``. A version-skew shadow-import (user-site editable
+``vesma`` import, with a fail-loud provenance assert on
+``vesma.__file__``. A version-skew shadow-import (user-site editable
 install / ``.venv`` / another checkout on ``PYTHONPATH``) once silently
 pointed the suite at a stale build and produced 7 phantom sweeper
 failures — the pin makes that impossible to miss instead.
@@ -39,17 +39,17 @@ from unittest.mock import MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Import pin (#288) — the suite MUST import THIS checkout's vesmaro
+# Import pin (#288) — the suite MUST import THIS checkout's vesma
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 
 # Unconditional front-pin: whichever interpreter/environment runs pytest,
-# `import vesmaro` hits <checkout>/src first — ahead of any shadow install
+# `import vesma` hits <checkout>/src first — ahead of any shadow install
 # (user-site editable, .venv, another checkout on PYTHONPATH). Note: this
 # pin does not itself cover the gitignored gRPC stubs in
-# federation/gen/python/ — those are loaded by src/vesmaro/_mesh_gen.py
+# federation/gen/python/ — those are loaded by src/vesma/_mesh_gen.py
 # via a path resolved from its own __file__, so pinning the package
 # transitively pins the generated stubs to the same checkout as well.
 # A hook-based __editable__ install (MetaPathFinder) intercepts imports
@@ -58,12 +58,12 @@ SRC_ROOT = REPO_ROOT / "src"
 # failure instead of phantom test results.
 sys.path.insert(0, str(SRC_ROOT))
 
-import vesmaro  # noqa: E402  — deliberately AFTER the sys.path pin
+import vesma  # noqa: E402  — deliberately AFTER the sys.path pin
 
-_resolved = Path(vesmaro.__file__).resolve()
-_expected = (SRC_ROOT / "vesmaro" / "__init__.py").resolve()
+_resolved = Path(vesma.__file__).resolve()
+_expected = (SRC_ROOT / "vesma" / "__init__.py").resolve()
 assert _resolved == _expected, (
-    "vesmaro imported from the wrong checkout: "
+    "vesma imported from the wrong checkout: "
     f"{_resolved} — the test suite MUST run against {SRC_ROOT}. "
     "A shadow install (user-site editable / .venv / another checkout) "
     "shadow-imports a stale build and produces phantom failures (#288)."
@@ -82,7 +82,7 @@ if "mcp" not in sys.modules:
         Handlers are registered via the ``on_list_tools`` / ``on_call_tool``
         constructor kwargs (the 1.x runtime decorators were removed in
         SDK 2.0 — see #185). The stub keeps the same attribute surface the
-        ported ``vesmaro.mcp_server`` module relies on.
+        ported ``vesma.mcp_server`` module relies on.
         """
 
         def __init__(
@@ -187,7 +187,7 @@ def reset_rate_limiter() -> None:
     all test requests share the same bucket.  Resetting between tests
     prevents one test's calls from bleeding into the next test's quota.
     """
-    from vesmaro.api.rate_limit import limiter
+    from vesma.api.rate_limit import limiter
 
     limiter._storage.reset()
     yield

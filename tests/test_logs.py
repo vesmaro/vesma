@@ -11,16 +11,16 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.main import app
-from vesmaro.models import Trace
-from vesmaro.storage.sqlite_store import SQLiteStore
+from vesma.cli.main import app
+from vesma.models import Trace
+from vesma.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
 
 
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    cfg = tmp_path / "vesmaro.yaml"
+    cfg = tmp_path / "vesma.yaml"
     cfg.write_text(
         f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
@@ -36,7 +36,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def traces_db(isolated_config: Path) -> SQLiteStore:
     """Seed the isolated DB with a few traces."""
-    from vesmaro.config import load_settings
+    from vesma.config import load_settings
 
     settings = load_settings(str(isolated_config))
     settings.resolve_paths()

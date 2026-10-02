@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from vesmaro.codegraph.service import GraphToolError
-from vesmaro.codegraph.watch import GraphWatchScheduler
+from vesma.codegraph.service import GraphToolError
+from vesma.codegraph.watch import GraphWatchScheduler
 
 #: Deadline for a poll to show up with the shrunk intervals below.
 _POLL_DEADLINE_SEC = 3.0

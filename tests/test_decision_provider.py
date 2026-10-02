@@ -31,8 +31,8 @@ from typing import Any, Final, cast
 
 import pytest
 
-from vesmaro.awareness import CONFLICT_HINT_MIN_SHARED_TOKENS
-from vesmaro.decision_provider import (
+from vesma.awareness import CONFLICT_HINT_MIN_SHARED_TOKENS
+from vesma.decision_provider import (
     QUESTION_IS_DUPLICATE,
     RECORD_QUALITY_CONFIDENCE,
     RECORD_QUALITY_PLACEHOLDER,
@@ -50,9 +50,9 @@ from vesmaro.decision_provider import (
     UnsupportedPrimitiveError,
     run_streaming_baseline,
 )
-from vesmaro.embeddings import NanoProvider
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Memory
+from vesma.embeddings import NanoProvider
+from vesma.manager import MemoryManager
+from vesma.models import Memory
 
 from ._canon_sibling import canon_sibling_repo as _canon_sibling_repo
 

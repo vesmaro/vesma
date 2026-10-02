@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.auto_collect import CompactionSignals, detect_summary_marker
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import Trace
-from vesmaro.storage.sqlite_store import SQLiteStore
-from vesmaro.traces import TraceRecorder, record_trace
+from vesma.auto_collect import CompactionSignals, detect_summary_marker
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.models import Trace
+from vesma.storage.sqlite_store import SQLiteStore
+from vesma.traces import TraceRecorder, record_trace
 
 # ---------------------------------------------------------------------------
 # Fixtures

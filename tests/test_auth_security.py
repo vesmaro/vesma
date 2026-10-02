@@ -29,13 +29,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import vesmaro.api.main as api_main
-from vesmaro.api.auth import encrypt_totp_secret
-from vesmaro.api.auth_store import AuthStore
-from vesmaro.api.main import _check_non_loopback_auth, app, lifespan
-from vesmaro.api.middleware import AuthMiddleware
-from vesmaro.config import ApiConfig, Settings
-from vesmaro.manager import MemoryManager
+import vesma.api.main as api_main
+from vesma.api.auth import encrypt_totp_secret
+from vesma.api.auth_store import AuthStore
+from vesma.api.main import _check_non_loopback_auth, app, lifespan
+from vesma.api.middleware import AuthMiddleware
+from vesma.config import ApiConfig, Settings
+from vesma.manager import MemoryManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -338,7 +338,7 @@ class TestRevocation:
             # against auth_sessions, so as long as the session row still
             # resolves, it would grant access. We must also invalidate sessions.
             # Revoke the session directly:
-            from vesmaro.api.auth_store import hash_token
+            from vesma.api.auth_store import hash_token
 
             store.revoke_session(hash_token(session_plaintext))
 
@@ -379,7 +379,7 @@ class TestTotpBruteForce:
             encrypted = encrypt_totp_secret(totp_secret, master_key)
             store.set_totp_secret(token_id, encrypted)
 
-            import vesmaro.api.auth as auth_mod
+            import vesma.api.auth as auth_mod
 
             orig = auth_mod.load_settings
 
@@ -428,7 +428,7 @@ class TestTotpBruteForce:
             encrypted = encrypt_totp_secret(totp_secret, master_key)
             store.set_totp_secret(token_id, encrypted)
 
-            import vesmaro.api.auth as auth_mod
+            import vesma.api.auth as auth_mod
 
             orig = auth_mod.load_settings
 
@@ -460,7 +460,7 @@ class TestTotpBruteForce:
 
     def test_challenge_invalidated_after_max_attempts(self, tmp_settings):
         """T6: challenge is invalidated after CHALLENGE_MAX_ATTEMPTS (5) failures."""
-        from vesmaro.api.auth_store import CHALLENGE_MAX_ATTEMPTS
+        from vesma.api.auth_store import CHALLENGE_MAX_ATTEMPTS
 
         test_app, mgr = _make_app(tmp_settings, auth_enabled=True)
         master_key = "max-attempts-key"
@@ -471,7 +471,7 @@ class TestTotpBruteForce:
             encrypted = encrypt_totp_secret(totp_secret, master_key)
             store.set_totp_secret(token_id, encrypted)
 
-            import vesmaro.api.auth as auth_mod
+            import vesma.api.auth as auth_mod
 
             orig = auth_mod.load_settings
 
@@ -524,7 +524,7 @@ class TestTotpSecretStorage:
             blob = row.get("totp_secret_encrypted")
             assert isinstance(blob, bytes)
 
-            from vesmaro.api.auth import decrypt_totp_secret
+            from vesma.api.auth import decrypt_totp_secret
 
             # Wrong key → None
             result = decrypt_totp_secret(blob, "wrong-key")
@@ -546,7 +546,7 @@ class TestCliHostPropagation:
         """Setting VESMA_API__HOST=0.0.0.0 (as the CLI now does) must cause
         load_settings() to see a non-loopback bind, so the startup guard
         SystemExits when auth is disabled (finding auth-1)."""
-        from vesmaro.config import load_settings as _load_settings
+        from vesma.config import load_settings as _load_settings
 
         monkeypatch.setenv("VESMA_API__HOST", "0.0.0.0")
         monkeypatch.delenv("VESMA_API__AUTH_ENABLED", raising=False)
@@ -577,7 +577,7 @@ class TestLoginFailureLockout:
         (5/min on /auth/login) to prove the endpoint wires the failure
         accounting, then assert the store-level lockout fires at threshold.
         """
-        from vesmaro.api.auth_store import LOGIN_LOCKOUT_THRESHOLD
+        from vesma.api.auth_store import LOGIN_LOCKOUT_THRESHOLD
 
         test_app, mgr = _make_app(tmp_settings, auth_enabled=True)
         with TestClient(test_app) as tc:
@@ -622,7 +622,7 @@ class TestRateLimitXffTrust:
 
         from starlette.datastructures import Address, Headers
 
-        from vesmaro.api.rate_limit import _rate_key
+        from vesma.api.rate_limit import _rate_key
 
         # Trusted proxy CIDR is 10.0.0.0/8; the actual ASGI peer is 1.2.3.4
         api_cfg = ApiConfig(trusted_proxies=["10.0.0.0/8"])
@@ -656,7 +656,7 @@ class TestTotpReplay:
             encrypted = encrypt_totp_secret(totp_secret, master_key)
             store.set_totp_secret(token_id, encrypted)
 
-            import vesmaro.api.auth as auth_mod
+            import vesma.api.auth as auth_mod
 
             orig = auth_mod.load_settings
 
@@ -682,7 +682,7 @@ class TestTotpReplay:
                 #
                 # The replay guard in auth.py reads ``time.time()`` to
                 # compute ``current_step = int(time.time()) // 30``.  We pin
-                # ONLY ``vesmaro.api.auth.time.time`` to a fixed value so both
+                # ONLY ``vesma.api.auth.time.time`` to a fixed value so both
                 # verify requests see the same step.  The second request is
                 # then rejected because ``current_step == last_step``.
                 #
@@ -694,7 +694,7 @@ class TestTotpReplay:
                 fixed_time = 1_700_000_000.0
                 code = pyotp.TOTP(totp_secret).at(fixed_time)
                 with (
-                    mock_patch("vesmaro.api.auth.time.time", return_value=fixed_time),
+                    mock_patch("vesma.api.auth.time.time", return_value=fixed_time),
                     mock_patch("pyotp.TOTP.verify", return_value=True),
                 ):
                     # First verify: succeed
@@ -733,7 +733,7 @@ class TestSessionPinningBehindProxy:
         proxy's own address. Session pinning would otherwise be a no-op."""
         from starlette.datastructures import Address, Headers
 
-        from vesmaro.api.client_ip import resolve_client_ip
+        from vesma.api.client_ip import resolve_client_ip
 
         api_cfg = ApiConfig(
             behind_tls_proxy=True,
@@ -763,7 +763,7 @@ class TestEmptyMasterKey:
             encrypt_totp_secret(secret, "")
 
     def test_fernet_with_empty_master_key_raises(self):
-        from vesmaro.api.auth import _fernet
+        from vesma.api.auth import _fernet
 
         with pytest.raises(ValueError, match="non-empty"):
             _fernet("")
@@ -799,7 +799,7 @@ class TestRevokedColumnSplit:
         must remain 0 throughout."""
         from datetime import UTC, datetime, timedelta
 
-        from vesmaro.api.auth_store import LOCKOUT_MINUTES
+        from vesma.api.auth_store import LOCKOUT_MINUTES
 
         store = AuthStore(tmp_settings.db_path)
         try:
@@ -885,7 +885,7 @@ class TestRevokedColumnSplit:
         ``_ensure_columns`` is allowed to reference it as a detector."""
         import inspect
 
-        from vesmaro.api.auth_store import AuthStore
+        from vesma.api.auth_store import AuthStore
 
         for fn in (AuthStore.is_token_active, AuthStore.revoke_token):
             src = inspect.getsource(fn)
@@ -906,7 +906,7 @@ class TestAbsoluteSessionLifetime:
     def test_aged_session_invalid_even_with_future_expires(self, tmp_settings):
         from datetime import UTC, datetime, timedelta
 
-        from vesmaro.api.auth_store import MAX_SESSION_LIFETIME_SEC, hash_token
+        from vesma.api.auth_store import MAX_SESSION_LIFETIME_SEC, hash_token
 
         store = AuthStore(tmp_settings.db_path)
         try:
@@ -934,7 +934,7 @@ class TestAbsoluteSessionLifetime:
     def test_touch_session_clamps_to_absolute_cap(self, tmp_settings):
         from datetime import UTC, datetime, timedelta
 
-        from vesmaro.api.auth_store import MAX_SESSION_LIFETIME_SEC, hash_token
+        from vesma.api.auth_store import MAX_SESSION_LIFETIME_SEC, hash_token
 
         store = AuthStore(tmp_settings.db_path)
         try:
@@ -975,7 +975,7 @@ class TestAbsoluteSessionLifetime:
     def test_fresh_session_slides_normally(self, tmp_settings):
         from datetime import datetime
 
-        from vesmaro.api.auth_store import hash_token
+        from vesma.api.auth_store import hash_token
 
         store = AuthStore(tmp_settings.db_path)
         try:

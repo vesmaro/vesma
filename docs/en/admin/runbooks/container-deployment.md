@@ -161,13 +161,13 @@ automatically; to run a local build instead, build the image first (see
 
 ### Set the TOTP key
 
-The unit reads the key from `~/.vesmaro.env` (`EnvironmentFile`), so no unit
+The unit reads the key from `~/.vesma.env` (`EnvironmentFile`), so no unit
 editing is needed. 6.0.0 reads the canonical `VESMA_API__*` spelling only
 (4.x `MNEMOS_API__*` / 5.0–5.2 `VESMARO_API__*` are retired, ADR-0031):
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesmaro.env
+printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesma.env
 ```
 
 ### Install the unit

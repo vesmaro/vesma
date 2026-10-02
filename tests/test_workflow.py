@@ -3,7 +3,7 @@
 Covers four layers, mirroring ``test_tags_grouped.py`` +
 ``test_tags_grouped_e2e.py`` (same fixtures / conftest patterns):
 
-  1. **State machine** (``vesmaro.workflow``) — valid paths, forbidden edges
+  1. **State machine** (``vesma.workflow``) — valid paths, forbidden edges
      (blocked → done; transitions out of terminal states).
   2. **The 5 guardrails** via ``MemoryManager.workflow_set``:
        G1 audit log        — every recorded transition writes a
@@ -39,13 +39,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vesmaro.api import main as api_main
-from vesmaro.api.main import app, lifespan
-from vesmaro.config import Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _dispatch, call_tool, list_tools
-from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
-from vesmaro.workflow import (
+from vesma.api import main as api_main
+from vesma.api.main import app, lifespan
+from vesma.config import Settings
+from vesma.manager import MemoryManager
+from vesma.mcp_server import _dispatch, call_tool, list_tools
+from vesma.models import MemoryCreate, MemorySource, MemoryStatus
+from vesma.workflow import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATUSES,
     WorkflowStatus,
@@ -113,7 +113,7 @@ def _add_memory(
 
 
 # ---------------------------------------------------------------------------
-# Layer 1 — State machine (pure functions in vesmaro.workflow)
+# Layer 1 — State machine (pure functions in vesma.workflow)
 # ---------------------------------------------------------------------------
 
 
@@ -401,7 +401,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
 
 async def _call_tool_real(real_manager: MemoryManager, name: str, args: dict):
     """Invoke the real MCP ``call_tool`` handler with an isolated manager."""
-    with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+    with patch("vesma.mcp_server.get_manager", return_value=real_manager):
         contents = await call_tool(name, args)
     assert len(contents) == 1, f"expected exactly one TextContent, got {len(contents)}"
     text = _strip_checkpoint_reminder(contents[0].text)
@@ -413,7 +413,7 @@ async def _call_tool_real(real_manager: MemoryManager, name: str, args: dict):
 
 async def _dispatch_real(real_manager: MemoryManager, name: str, args: dict):
     """Invoke the real ``_dispatch`` directly (raw dict return for errors)."""
-    with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
+    with patch("vesma.mcp_server.get_manager", return_value=real_manager):
         return await _dispatch(name, args)
 
 
@@ -735,7 +735,7 @@ class TestServerSideEnforcement:
         # The public update_fields path does not list workflow_status as an
         # updatable field, so the only way to change it is workflow_set.
         # Verify the column is absent from the field-updater vocabulary:
-        from vesmaro.storage.sqlite_store import SQLiteStore
+        from vesma.storage.sqlite_store import SQLiteStore
 
         updatable = getattr(SQLiteStore, "_FIELD_UPDATERS", {})
         assert "workflow_status" not in updatable, (

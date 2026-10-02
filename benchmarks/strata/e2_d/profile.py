@@ -191,7 +191,7 @@ def build_profile() -> dict[str, Any]:
             "goal_charset": "ASCII (single line, <= 120 chars)",
             "note": (
                 "threshold registered in E0 §8 rev. 2 exactly as implemented "
-                "(vesmaro.awareness.CONFLICT_HINT_MIN_SHARED_TOKENS = 2)"
+                "(vesma.awareness.CONFLICT_HINT_MIN_SHARED_TOKENS = 2)"
             ),
         },
         "distribution": {

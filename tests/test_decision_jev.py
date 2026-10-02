@@ -27,9 +27,9 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from vesmaro.config import VesmaConfig
-from vesmaro.danger_detectors import PROMPT_INJECTION_PATTERNS
-from vesmaro.decision_jev import (
+from vesma.config import VesmaConfig
+from vesma.danger_detectors import PROMPT_INJECTION_PATTERNS
+from vesma.decision_jev import (
     DEFAULT_JEV_KEY_ENV,
     JEV_ROUTER_MODEL,
     NO_FEDERATE_TAG,
@@ -43,7 +43,7 @@ from vesmaro.decision_jev import (
     _http_post_json,
     resolve_decision_provider,
 )
-from vesmaro.decision_provider import (
+from vesma.decision_provider import (
     QUESTION_IS_DUPLICATE,
     SPECTRUM_RECORD_QUALITY,
     CanonRecordView,
@@ -364,7 +364,7 @@ def test_resolve_jev_canonical_key_wins_when_deprecated_also_set(
     twin is dead weight (no deprecation machinery anymore)."""
     monkeypatch.setenv(DEFAULT_JEV_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", "vesmaro-legacy-key")
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+    with caplog.at_level(logging.WARNING, logger="vesma.decision_jev"):
         provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
     assert isinstance(provider, JevRouterProvider)
     assert not caplog.records

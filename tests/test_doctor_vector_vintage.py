@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.cli.doctor import CheckStatus, _check_vector_store, doctor_app
-from vesmaro.config import Settings
-from vesmaro.embeddings import config_fingerprint
+from vesma.cli.doctor import CheckStatus, _check_vector_store, doctor_app
+from vesma.config import Settings
+from vesma.embeddings import config_fingerprint
 
 runner = CliRunner()
 

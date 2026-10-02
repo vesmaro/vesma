@@ -6,7 +6,7 @@
 
 Vesma speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) over **stdio JSON-RPC 2.0**. VS Code Copilot and any MCP-aware client can call the tools listed here.
 
-The server is defined in `src/vesmaro/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
+The server is defined in `src/vesma/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
 
 For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp-server](getting-started.md#connect-your-harness-mcp). For programmatic access, the same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
 
@@ -289,7 +289,7 @@ pip-audit CVE-2026-45829 ignore
 ## Decisions
 Pin chromadb 1.5.9 with audit
 ## Context
-Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
+Active files: src/vesma/manager.py, src/vesma/api/main.py
 ```
 
 If no checkpoint is found:
@@ -992,7 +992,7 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
   "staleness": {
     "total_files": 400,
     "fresh_percent": 97.5,
-    "changed_files": ["src/vesmaro/manager.py"],
+    "changed_files": ["src/vesma/manager.py"],
     "last_indexed_at": "2026-09-28T12:00:04+00:00"
   }
 }
@@ -1031,12 +1031,12 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
   "results": [
     {
       "score": 3,
-      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
+      "id": "vesma#src/vesma/codegraph/service.py#window_rows#158",
       "project": "vesma",
       "kind": "Function",
       "name": "window_rows",
-      "qname": "vesmaro.codegraph.service.window_rows",
-      "path": "src/vesmaro/codegraph/service.py",
+      "qname": "vesma.codegraph.service.window_rows",
+      "path": "src/vesma/codegraph/service.py",
       "start_line": 158,
       "end_line": 190,
       "lang": "python",
@@ -1077,14 +1077,14 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
 ```json
 {
   "project": "vesma",
-  "start": "vesmaro.codegraph.service.window_rows",
+  "start": "vesma.codegraph.service.window_rows",
   "depth": 2,
   "nodes": [
     {
-      "id": "vesma#src/vesmaro/codegraph/service.py#window_rows#158",
-      "qname": "vesmaro.codegraph.service.window_rows",
+      "id": "vesma#src/vesma/codegraph/service.py#window_rows#158",
+      "qname": "vesma.codegraph.service.window_rows",
       "kind": "Function",
-      "path": "src/vesmaro/codegraph/service.py",
+      "path": "src/vesma/codegraph/service.py",
       "start_line": 158,
       "end_line": 190,
       "depth": 0
@@ -1128,13 +1128,13 @@ Symbol outline of one indexed file: kinds, names, qnames, line ranges, signature
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "lang": "python",
   "outline": [
     {
       "kind": "Function",
       "name": "window_rows",
-      "qname": "vesmaro.codegraph.service.window_rows",
+      "qname": "vesma.codegraph.service.window_rows",
       "start_line": 158,
       "end_line": 190,
       "signature": "def window_rows(rows, max_output_tokens, cursor)"
@@ -1174,7 +1174,7 @@ Read a line range **from disk** for an indexed file. The full PG4 sequence runs 
 ```json
 {
   "project": "vesma",
-  "path": "src/vesmaro/codegraph/service.py",
+  "path": "src/vesma/codegraph/service.py",
   "start_line": 158,
   "end_line": 172,
   "content": "def window_rows(\n    rows: list[dict[str, Any]],\n    ...\n)",
@@ -1213,8 +1213,8 @@ Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `un
 {
   "project": "vesma",
   "coverage": [
-    { "path": "src/vesmaro/manager.py", "verdict": "stale" },
-    { "path": "src/vesmaro/codegraph/service.py", "verdict": "indexed" },
+    { "path": "src/vesma/manager.py", "verdict": "stale" },
+    { "path": "src/vesma/codegraph/service.py", "verdict": "indexed" },
     { "path": "docs/en/user/mcp-tools.md", "verdict": "unindexed" },
     { "path": "deploy/secret.env", "verdict": "poisoned", "reason": "secret-detected (permanent)" }
   ]
@@ -2087,7 +2087,7 @@ Semantics (ADR-0018, verbatim):
 
 **Presence is behavioral metadata** (agent ids, activity timestamps, record counts) — the search gates cover record CONTENT and do not apply to presence. The picture is descriptive only (who / what count / when), never predictive, and it is data, never governance: picture blocks carry no `memory_id`, are never pinnable, and no `applyTo:`/`severity:` semantics ride along. Zero picture-derived records are stored (cursors ride the meta table, actions ride traces); any future awareness-derived record is born `mnemos:no-federate`.
 
-**Rate cap (C9):** picture/awareness queries are capped per `(project, agent)` at `vesmaro.awareness_picture_rate_limit_per_minute` (default 30, `0` disables). Over-limit DEGRADES to a one-line "rate-limited, retry later" section — the response keeps its shape; never a hard error.
+**Rate cap (C9):** picture/awareness queries are capped per `(project, agent)` at `vesma.awareness_picture_rate_limit_per_minute` (default 30, `0` disables). Over-limit DEGRADES to a one-line "rate-limited, retry later" section — the response keeps its shape; never a hard error.
 
 ### Input
 

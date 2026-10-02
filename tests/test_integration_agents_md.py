@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from vesmaro.cli.integration import (
+from vesma.cli.integration import (
     DeployStatus,
     IntegrationManager,
     Target,
@@ -724,7 +724,7 @@ class TestReviewHardening:
         self, manager: IntegrationManager, agents_target: Target, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If the final rename fails, the user's file is untouched and no temp remains (P2)."""
-        import vesmaro.cli.integration as mod
+        import vesma.cli.integration as mod
 
         dest = agents_target.deploy_map["agents_md"]
         dest.parent.mkdir(parents=True)

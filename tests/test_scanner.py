@@ -1,12 +1,12 @@
 """Tests for the background secrets scanner — Layer 2 defence-in-depth (#89).
 
-Covers :mod:`vesmaro.scanner` (:class:`BackgroundScanner`, :class:`ScanResult`),
-:mod:`vesmaro.scanner_runtime` (singleton), :mod:`vesmaro.cli.scanner_cmd`
+Covers :mod:`vesma.scanner` (:class:`BackgroundScanner`, :class:`ScanResult`),
+:mod:`vesma.scanner_runtime` (singleton), :mod:`vesma.cli.scanner_cmd`
 (``mnemos scanner run/status``), and the scanner audit log in
-:mod:`vesmaro.audit`.
+:mod:`vesma.audit`.
 
 Reuses (DRY):
-* :func:`vesmaro.secrets_detector.detect_secrets` — the SAME patterns as
+* :func:`vesma.secrets_detector.detect_secrets` — the SAME patterns as
   Layer 1 (write-path scanner). The scanner never re-implements a pattern;
   this test suite asserts that the pattern names reported by the scanner
   match the pattern names from ``secrets_detector`` exactly.
@@ -27,18 +27,18 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from vesmaro.audit import log_scanner_audit
-from vesmaro.config import ScannerConfig, Settings
-from vesmaro.manager import MemoryManager
-from vesmaro.models import (
+from vesma.audit import log_scanner_audit
+from vesma.config import ScannerConfig, Settings
+from vesma.manager import MemoryManager
+from vesma.models import (
     NO_FEDERATE_TAG,
     Memory,
     MemorySource,
     MemoryStatus,
 )
-from vesmaro.scanner import BackgroundScanner, ScanResult
-from vesmaro.scanner_runtime import get_scanner, reset_scanner
-from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
+from vesma.scanner import BackgroundScanner, ScanResult
+from vesma.scanner_runtime import get_scanner, reset_scanner
+from vesma.secrets_detector import detect_secrets, findings_by_pattern
 
 # ---------------------------------------------------------------------------
 # Fixtures — mirror tests/test_sync.py and tests/test_no_federate.py
@@ -94,7 +94,7 @@ def _isolated_scanner_audit_log(monkeypatch, tmp_path: Path) -> Path:
     :func:`log_scanner_audit` calls.
     """
     audit_path = tmp_path / "audit" / "scanner-audit.jsonl"
-    import vesmaro.audit as audit_mod
+    import vesma.audit as audit_mod
 
     monkeypatch.setattr(audit_mod, "scanner_audit_path", lambda: audit_path)
     return audit_path
@@ -120,7 +120,7 @@ def _reset_scanner_singleton() -> None:
     """
     reset_scanner()  # clear at start (idempotent, handles crash leftovers)
     yield
-    from vesmaro.scanner_runtime import _scanner as _current
+    from vesma.scanner_runtime import _scanner as _current
 
     if _current is not None:
         _current.stop()  # join the daemon thread (timeout=10) BEFORE nulling
@@ -556,11 +556,11 @@ class TestScannerCLI:
     @pytest.fixture
     def isolated_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
-        from vesmaro.cli._manager import reset_manager
+        from vesma.cli._manager import reset_manager
 
         reset_manager()
         reset_scanner()
-        cfg = tmp_path / "vesmaro.yaml"
+        cfg = tmp_path / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
@@ -581,7 +581,7 @@ class TestScannerCLI:
 
     def test_cli_run_incremental(self, isolated_config: Path) -> None:
         """``mnemos scanner run`` exits 0 and prints the scan summary."""
-        from vesmaro.cli.main import app
+        from vesma.cli.main import app
 
         result = self.runner.invoke(app, ["scanner", "run"])
         assert result.exit_code == 0, result.output
@@ -590,7 +590,7 @@ class TestScannerCLI:
 
     def test_cli_run_full(self, isolated_config: Path) -> None:
         """``mnemos scanner run --full`` exits 0 and reports a full scan."""
-        from vesmaro.cli.main import app
+        from vesma.cli.main import app
 
         result = self.runner.invoke(app, ["scanner", "run", "--full"])
         assert result.exit_code == 0, result.output
@@ -598,7 +598,7 @@ class TestScannerCLI:
 
     def test_cli_status(self, isolated_config: Path) -> None:
         """``mnemos scanner status`` exits 0 and prints the scanner state."""
-        from vesmaro.cli.main import app
+        from vesma.cli.main import app
 
         result = self.runner.invoke(app, ["scanner", "status"])
         assert result.exit_code == 0, result.output
@@ -632,6 +632,6 @@ class TestAuditModule:
         # NOTE: this test reads the real (un-patched) path; the autouse
         # fixture patches the *function object*, but we import the
         # original here via a fresh reference to assert the contract.
-        from vesmaro.audit import SCANNER_AUDIT_FILENAME
+        from vesma.audit import SCANNER_AUDIT_FILENAME
 
         assert SCANNER_AUDIT_FILENAME == ".mnemos/logs/scanner-audit.jsonl"

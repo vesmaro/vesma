@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vesmaro.mcp_server import _dispatch, call_tool, list_tools
+from vesma.mcp_server import _dispatch, call_tool, list_tools
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -123,9 +123,9 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
     """_dispatch must route every registered tool - must NOT return 'Unknown tool: ...'."""
     mock_mgr = _make_mock_manager()
     with (
-        patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+        patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
         patch(
-            "vesmaro.mcp_server.validate_tag_contract",
+            "vesma.mcp_server.validate_tag_contract",
             side_effect=lambda tags, **_kw: tags,
         ),
     ):
@@ -137,7 +137,7 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
             if tool_name == "vesma_export":
                 from pathlib import Path
 
-                from vesmaro.cli.export import CompressMode, ExportFormat, ExportResult
+                from vesma.cli.export import CompressMode, ExportFormat, ExportResult
 
                 fake = ExportResult(
                     path=Path("/tmp/smoke-export.json"),
@@ -148,13 +148,13 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
                     project_count=0,
                     bytes_written=0,
                 )
-                with patch("vesmaro.cli.export.run_export", return_value=fake):
+                with patch("vesma.cli.export.run_export", return_value=fake):
                     result = await _dispatch(tool_name, _TOOL_ARGS[tool_name])
             else:  # vesma_import
-                from vesmaro.cli.import_ import ImportResult
+                from vesma.cli.import_ import ImportResult
 
                 fake = ImportResult(mode="merge", dry_run=False)
-                with patch("vesmaro.cli.import_.run_import", return_value=fake):
+                with patch("vesma.cli.import_.run_import", return_value=fake):
                     result = await _dispatch(tool_name, _TOOL_ARGS[tool_name])
         else:
             result = await _dispatch(tool_name, _TOOL_ARGS[tool_name])
@@ -172,7 +172,7 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
 async def test_dispatch_unknown_tool_returns_error_string() -> None:
     """_dispatch with an unregistered name must return the 'Unknown tool: ...' sentinel."""
     mock_mgr = _make_mock_manager()
-    with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
         result = await _dispatch("nonexistent_tool", {})
 
     assert isinstance(result, str), "Expected str return for unknown tool"
@@ -188,7 +188,7 @@ async def test_dispatch_unknown_tool_returns_error_string() -> None:
 async def test_call_tool_unknown_wraps_error_in_text_content() -> None:
     """call_tool() with an unregistered name returns TextContent with 'Unknown tool: ...'."""
     mock_mgr = _make_mock_manager()
-    with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
         contents = await call_tool("nonexistent_tool", {})
 
     assert len(contents) == 1
@@ -232,9 +232,9 @@ async def test_routing_invokes_correct_manager_method(tool_name: str) -> None:
     expected_method, forbidden_methods = _ROUTING_MAP[tool_name]
     mock_mgr = _make_mock_manager()
     with (
-        patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+        patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
         patch(
-            "vesmaro.mcp_server.validate_tag_contract",
+            "vesma.mcp_server.validate_tag_contract",
             side_effect=lambda tags, **_kw: tags,
         ),
     ):
@@ -255,9 +255,9 @@ async def test_save_context_routes_to_save_checkpoint_not_add_or_search() -> Non
     """vesma_save_context must route to mgr.save_checkpoint - not mgr.add/search."""
     mock_mgr = _make_mock_manager()
     with (
-        patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
+        patch("vesma.mcp_server.get_manager", return_value=mock_mgr),
         patch(
-            "vesmaro.mcp_server.validate_tag_contract",
+            "vesma.mcp_server.validate_tag_contract",
             side_effect=lambda tags, **_kw: tags,
         ),
     ):
@@ -277,7 +277,7 @@ async def test_save_context_routes_to_save_checkpoint_not_add_or_search() -> Non
 async def test_auto_collect_status_touches_no_manager_data_method() -> None:
     """vesma_auto_collect_status must read only module-level state - zero mgr data method calls."""
     mock_mgr = _make_mock_manager()
-    with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
         await _dispatch("vesma_auto_collect_status", _TOOL_ARGS["vesma_auto_collect_status"])
 
     data_methods = [
@@ -333,7 +333,7 @@ async def test_no_legacy_mnemos_tools_registered() -> None:
 async def test_legacy_mnemos_call_is_not_dispatched() -> None:
     """Regression (6.0.0): a legacy ``mnemos_*`` call hits the unknown-tool sentinel."""
     mock_mgr = _make_mock_manager()
-    with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+    with patch("vesma.mcp_server.get_manager", return_value=mock_mgr):
         result = await _dispatch("mnemos_search", {"query": "smoke"})
     assert result == "Unknown tool: mnemos_search"
 
@@ -368,7 +368,7 @@ class TestServerUpdateHint:
 
     @pytest.fixture(autouse=True)
     def _arm(self) -> Iterator[None]:
-        from vesmaro.mcp_server import _reset_server_update_state
+        from vesma.mcp_server import _reset_server_update_state
 
         _reset_server_update_state()
         yield
@@ -381,14 +381,14 @@ class TestServerUpdateHint:
         return mgr
 
     async def _dispatch(self, mgr: MagicMock) -> str:
-        from vesmaro.mcp_server import _call_tool_dispatch
+        from vesma.mcp_server import _call_tool_dispatch
 
-        with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+        with patch("vesma.mcp_server.get_manager", return_value=mgr):
             content = await _call_tool_dispatch("vesma_list_tags", {})
         return content[0].text
 
     async def test_hint_appears_exactly_once_after_version_change(self) -> None:
-        from vesmaro import __version__
+        from vesma import __version__
 
         store = _MetaStore({"last_reported_server_version": "0.0.1"})
         mgr = self._manager(store)
@@ -400,14 +400,14 @@ class TestServerUpdateHint:
         assert "server updated" not in second  # exactly once, meta re-stamped
 
     async def test_no_hint_when_versions_match(self) -> None:
-        from vesmaro import __version__
+        from vesma import __version__
 
         store = _MetaStore({"last_reported_server_version": __version__})
         text = await self._dispatch(self._manager(store))
         assert "server updated" not in text
 
     async def test_first_contact_writes_baseline_silently(self) -> None:
-        from vesmaro import __version__
+        from vesma import __version__
 
         store = _MetaStore()  # no meta yet — nothing to compare
         text = await self._dispatch(self._manager(store))
@@ -424,15 +424,15 @@ class TestServerUpdateHint:
         """#464 P3-1: a failed dispatch must not burn the notice — the
         meta is NOT stamped, the hint stays pending, and the NEXT
         dispatch delivers it (retry survives)."""
-        from vesmaro import __version__
-        from vesmaro.mcp_server import _call_tool_dispatch
+        from vesma import __version__
+        from vesma.mcp_server import _call_tool_dispatch
 
         store = _MetaStore({"last_reported_server_version": "0.0.1"})
         mgr = self._manager(store)
         with (
-            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch("vesma.mcp_server.get_manager", return_value=mgr),
             patch(
-                "vesmaro.mcp_server._dispatch",
+                "vesma.mcp_server._dispatch",
                 side_effect=[RuntimeError("boom"), {"ok": True}],
             ),
         ):
@@ -452,8 +452,8 @@ class TestServerUpdateHint:
     async def test_hint_pending_until_commit(self) -> None:
         """#464 P3-1, unit level: the hint is returned repeatedly until
         committed; the meta write happens only in the commit."""
-        from vesmaro import __version__
-        from vesmaro.mcp_server import _commit_server_update_hint, _server_update_hint
+        from vesma import __version__
+        from vesma.mcp_server import _commit_server_update_hint, _server_update_hint
 
         store = _MetaStore({"last_reported_server_version": "0.0.1"})
         mgr = self._manager(store)
