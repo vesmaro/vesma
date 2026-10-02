@@ -37,7 +37,7 @@ import logging
 import os
 import weakref
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Protocol
 
 from vesmaro.codegraph import incremental as incremental_mod
@@ -940,6 +940,7 @@ class CodeGraphService:
         registered = self._resolve_root(project_id)
         key = registered.graph_key
         failures = self._store.get_parse_failures(key)
+        poisoned_paths = self._store.get_poisoned_paths(key)
         payload = {
             "project": key,
             "nodes": self._store.count_nodes(key),
@@ -947,8 +948,12 @@ class CodeGraphService:
             "files": self._store.count_files(key),
             "parse_errors": failures,
             "parse_error_count": len(failures),
-            "poisoned_count": len(self._store.get_poisoned_paths(key)),
+            "poisoned_count": len(poisoned_paths),
             "staleness": self._staleness_payload(key, registered.root),
+            # W-G adoption: an all-fixtures poisoned set gets the
+            # secret_allowlist pointer — additive key, [] when nothing
+            # to say.
+            "hints": poisoned_fixture_hint(poisoned_paths),
         }
         self._audit.record(
             key,
@@ -1549,6 +1554,39 @@ class CodeGraphService:
 BEACON_LINE_MAX_BYTES = 200
 BEACON_LINE_PREFIX = "project-graph: "
 BEACON_CALL_HINT = "call mnemos_search_graph"
+
+
+#: W-G graph adoption: first path segments that mark a TEST-LIKE tree.
+#: The status hint fires only when EVERY poisoned path lives under one of
+#: these — fake-secret fixtures, not a leak. Conservative by design: a
+#: single poisoned path outside these trees suppresses the hint.
+_TESTLIKE_ROOT_SEGMENTS = frozenset({"tests", "test", "benchmarks", "benchmark"})
+
+#: The hint text surfaced by ``status`` for an all-fixtures poisoned set
+#: (owner directive 2026-10-03: adoption beats silence — point at the
+#: operator escape hatch instead of leaving the number to be feared).
+POISONED_FIXTURE_HINT = (
+    "all poisoned files match test fixtures — consider "
+    "code_graph.secret_allowlist (see docs/*/user/project-graph.md)"
+)
+
+
+def poisoned_fixture_hint(poisoned_paths: list[str]) -> list[str]:
+    """Status hints for the poisoned set (W-G adoption).
+
+    One hint, and only when EVERY poisoned path lives under a test-like
+    tree (``tests/**`` / ``benchmarks/**``): the operator is looking at
+    known-fake secret fixtures, not at a leak. Any poisoned path outside
+    those trees is real scrutiny — no hint, the guardrail speaks for
+    itself.
+    """
+    if not poisoned_paths:
+        return []
+    testlike = all(
+        (parts := PurePosixPath(p).parts) and parts[0] in _TESTLIKE_ROOT_SEGMENTS
+        for p in poisoned_paths
+    )
+    return [POISONED_FIXTURE_HINT] if testlike else []
 
 
 def _fit_beacon_line(project: str, tail: str) -> str:

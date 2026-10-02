@@ -211,6 +211,36 @@ cursor strictly advances. Full input schemas and examples:
 
 ---
 
+## Using the graph day-to-day
+
+The graph earns its keep only when it is the FIRST stop, not the last
+resort. The working loop:
+
+1. **Find the symbol** — `mnemos_search_graph` by name / qualified name /
+   path. Ranked hits with opt-in signatures — narrower than grep noise.
+2. **Follow the callers** — `mnemos_trace_path` from the resolved
+   qualified name. Edge traversal (calls / imports / inheritance) is the
+   one answer text search structurally cannot give.
+3. **Read exactly what you need** — `mnemos_get_file_outline` before
+   opening a big file, `mnemos_get_code_snippet` for the chosen line
+   ranges.
+
+**When grep wins.** The graph indexes symbols only (zero source bytes,
+PG1) — it does not see string literals. Tool names, route paths, env var
+names, log strings, comments and docs-sample prose stay grep territory.
+An unregistered repo has no graph at all — check
+`mnemos_list_graph_projects` first. And «unindexed» is not «missing»:
+`mnemos_check_graph_coverage` distinguishes `indexed` / `stale` /
+`unindexed` / `poisoned` before you conclude a symbol does not exist.
+
+**Hygiene.** `mnemos_project_graph_status` / `mnemos_check_graph_coverage`
+are the honesty gates: parse failures stay visible («clean ≠ proof»), and
+a poisoned count made entirely of test fixtures is an allowlist question,
+not a fear question — the status answer says so (`hints`) and
+`secret_allowlist` below is the escape hatch.
+
+---
+
 ## REST mirrors
 
 The same surface exists over HTTP ([http-api.md](http-api.md#project-graph-adr-0032)):
@@ -258,6 +288,18 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
+
+The product default stays `[]` — PG3 is a security gate, not an
+inconvenience. The canonical fixture pattern (fake-secret test data, as
+applied in practice 2026-10-03) scopes the hatch to test and benchmark
+trees only, never source trees:
+
+```yaml
+code_graph:
+  secret_allowlist:
+    - "tests/**"
+    - "benchmarks/**"
+```
 
 Environment overrides follow the canonical settings pattern:
 `VESMA_CODE_GRAPH__INDEX_MAX_FILES`,
@@ -309,4 +351,4 @@ _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
 150cdfe). Feature map: [features.md](../features.md)._
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-10-03_

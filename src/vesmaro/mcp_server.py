@@ -1846,7 +1846,9 @@ async def _canonical_tools() -> list[Tool]:
                 "Project-graph status for one registered project: node/edge/"
                 "file volumes, freshness (fresh %, last_indexed_at), parse "
                 "failures ('clean ≠ proof' — they stay visible) and the "
-                "poisoned-file count (PG3). Read-only, audited."
+                "poisoned-file count (PG3); a poisoned set made entirely "
+                "of test-fixture paths carries a `hints` line pointing at "
+                "code_graph.secret_allowlist. Read-only, audited."
             ),
             input_schema={
                 "type": "object",
