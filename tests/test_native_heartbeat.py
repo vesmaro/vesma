@@ -1297,9 +1297,7 @@ class TestHooksAwarenessDefaultOn:
             assert _include_awareness_default(mgr) is True
             mgr.close()
 
-    def test_rest_absent_include_awareness_resolves_mode_linked(
-        self, tmp_path: Path
-    ) -> None:
+    def test_rest_absent_include_awareness_resolves_mode_linked(self, tmp_path: Path) -> None:
         """The REST twin (POST /hooks/pre_llm_call): the Pydantic None
         default rides to dispatch_hook unresolved, so the mode-linked
         default decides — canary composes, shadow stays byte-identical."""
@@ -1324,8 +1322,7 @@ class TestHooksAwarenessDefaultOn:
                     assert resp.status_code == 200
                     payload = resp.json()
                     assert ("awareness" in payload) is expect_awareness, (
-                        f"mode={mode}: include_awareness absent must "
-                        f"resolve to {expect_awareness}"
+                        f"mode={mode}: include_awareness absent must resolve to {expect_awareness}"
                     )
                 finally:
                     api_main._manager = None
