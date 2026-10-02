@@ -21,7 +21,7 @@ Full documentation:
 
 - **TOTP master key** — required in any non-loopback deployment. Generate:
   `openssl rand -hex 32`. An empty key is rejected at startup.
-- **Image**: published at `ghcr.io/vesmaro/vesma` (tags `5.1.2`, `latest`;
+- **Image**: published at `ghcr.io/vesmaro/vesma` (tags `5.2.0`, `latest`;
   **public** — anonymous pulls, backfilled from the legacy
   `ghcr.io/korrnals/mnemos` user namespace). The release pipeline targets
   the legacy name until 5.0.0 phase-g (GWS card #331); new releases are
