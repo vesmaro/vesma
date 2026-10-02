@@ -157,7 +157,7 @@ class TestDashboardStats:
         assert data["volume"]["by_type"].get("note") == 2
 
     def test_stats_version_matches_package(self, client):
-        from mnemos import __version__
+        from vesma import __version__
 
         resp = client.get("/api/v1/stats")
         assert resp.json()["version"] == __version__

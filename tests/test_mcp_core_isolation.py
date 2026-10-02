@@ -16,7 +16,7 @@ Two contracts are pinned here:
 Honest limits: the AST scan is a lexical tripwire — it does not catch
 `importlib.import_module("mcp")`, `__import__("mcp")`, dynamically composed
 module names, or `exec`-based imports; the subprocess test partially
-compensates for the CLI entry path. Guard scope is `src/mnemos` (the wheel's
+compensates for the CLI entry path. Guard scope is `src/vesma` (the wheel's
 force-included `scripts/` holds only shell code).
 """
 

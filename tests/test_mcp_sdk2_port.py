@@ -67,8 +67,8 @@ def _real_mcp_modules() -> Iterator[None]:
 
     On exit, restores the evicted sys.modules entries (stubs back in
     place) so later tests that rely on the stub environment are
-    unaffected. Also re-syncs the ``mcp_server`` attribute on BOTH parent
-    packages (``vesmaro`` canonical + ``mnemos`` shim alias) — submodule
+    unaffected. Also re-syncs the ``mcp_server`` attribute on the parent
+    package — submodule
     bindings via the parent getattr path (``from vesma import
     mcp_server``, ``import vesma.mcp_server as x``) otherwise still
     point at the freshly imported REAL module object after the swap-back,
@@ -76,12 +76,7 @@ def _real_mcp_modules() -> Iterator[None]:
     (identity drift between sys.modules and the package namespace broke
     later monkeypatch-based tests).
     """
-    # ADR-0031 dual-import period: the mnemos.mcp_server shim alias must be
-    # evicted/restored alongside the canonical module, otherwise the alias
-    # keeps pointing at the pre-reload object and later monkeypatch-based
-    # tests patch a stale module (identity drift, same class as the parent
-    # attribute re-sync below).
-    touched = [*_MCP_STUB_MODULES, "vesma.mcp_server", "mnemos.mcp_server"]
+    touched = [*_MCP_STUB_MODULES, "vesma.mcp_server"]
     saved = {name: sys.modules.get(name) for name in touched}
     try:
         for name in touched:
@@ -93,19 +88,17 @@ def _real_mcp_modules() -> Iterator[None]:
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
-        # Re-sync the submodule attribute on BOTH parent packages so
+        # Re-sync the submodule attribute on the parent package so
         # parent-getattr bindings and sys.modules agree again. The fresh
-        # import inside the context ran importlib's setattr(parent,
-        # child, module) on the canonical `vesmaro` package — restoring
+        # import inside the context ran importlib's setattr(parent, child,
+        # module) on the `vesma` package — restoring
         # sys.modules alone leaves that attr on the NEW object, and every
         # `from vesma import mcp_server` afterwards binds a different
         # module than `from vesma.mcp_server import ...`.
         restored = sys.modules.get("vesma.mcp_server")
-        if restored is not None:
-            for parent_name in ("vesmaro", "mnemos"):
-                parent = sys.modules.get(parent_name)
-                if parent is not None:
-                    parent.mcp_server = restored
+        parent = sys.modules.get("vesma")
+        if restored is not None and parent is not None:
+            parent.mcp_server = restored
 
 
 # ── Doctor: MCP transport check (direction C) ──────────────────────────────────

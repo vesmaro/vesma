@@ -194,7 +194,7 @@ def _collect_issuance_surfaces(
     probe. Retraction-family renders are collected by SC-S3 and swept
     separately (format-constrained).
     """
-    from mnemos.assemble import assemble_context
+    from vesma.assemble import assemble_context
 
     search_renders: list[str] = []
     for m in _measure_queries(mgr, slug_to_id):

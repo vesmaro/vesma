@@ -61,7 +61,7 @@ class EmbeddingProvider(ABC):
 
 # ── vesma-embed: the bundled distilled embedder (ADR-0021 NM-1) ───────────────
 
-#: Bundled artifact directory name (src/mnemos/models/<name>/ inside the
+#: Bundled artifact directory name (src/vesma/models/<name>/ inside the
 #: wheel, reachable via importlib.resources). NOTE: ``mnemos/models/`` is a
 #: DATA directory, deliberately NOT a Python package — ``vesma.models``
 #: remains the ``models.py`` module; a directory without ``__init__.py``

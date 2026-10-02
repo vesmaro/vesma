@@ -258,7 +258,7 @@ def _resolve_pack_targets() -> Path:
     then falls back to the installed-package location via
     ``importlib.resources`` (wheels that ship ``mnemos/integrations/``).
     """
-    # 1. Source-tree layout: src/mnemos/cli/integration.py → up 4 levels.
+    # 1. Source-tree layout: src/vesma/cli/integration.py → up 4 levels.
     source_candidate = (
         Path(__file__).resolve().parent.parent.parent.parent / "integrations" / "targets.yaml"
     )
@@ -386,7 +386,7 @@ def load_targets(config_path: Path | None = None, home: Path | None = None) -> T
         config_path: Explicit path to a ``targets.yaml``. When ``None`` the
             file shipped inside the package tree is used. Resolution order:
 
-            1. Source-tree layout (``src/mnemos/.../integrations/targets.yaml``)
+            1. Source-tree layout (``src/vesma/.../integrations/targets.yaml``)
                — works for editable / repo checkouts.
             2. Installed-package layout via ``importlib.resources`` — works
                for wheels that ship ``mnemos/integrations/targets.yaml``
@@ -842,17 +842,17 @@ class IntegrationManager:
     def _default_pack_root() -> Path:
         """Resolve the shipped ``integrations/`` directory.
 
-        Works both in editable installs (``src/mnemos/...``) and wheel
+        Works both in editable installs (``src/vesma/...``) and wheel
         installs where the package lives under ``site-packages``. Resolution
         order mirrors :func:`_resolve_pack_targets`:
 
-        1. Source-tree layout (``src/mnemos/.../integrations``).
+        1. Source-tree layout (``src/vesma/.../integrations``).
         2. Installed-package layout via ``importlib.resources``.
         3. Upward search for an ``integrations/`` sibling.
         4. CWD fallback (used in tests).
         """
         here = Path(__file__).resolve()
-        # 1. Editable / repo layout: src/mnemos/cli/integration.py → up 4 levels
+        # 1. Editable / repo layout: src/vesma/cli/integration.py → up 4 levels
         candidate = here.parent.parent.parent.parent / "integrations"
         if candidate.is_dir():
             return candidate
@@ -1935,7 +1935,7 @@ class IntegrationManager:
 
         Resolution order:
 
-        1. **Source-tree layout** — ``src/mnemos/cli/`` → up 4 levels →
+        1. **Source-tree layout** — ``src/vesma/cli/`` → up 4 levels →
            ``scripts/mcp-setup.sh`` (editable / repo installs).
         2. **Wheel layout** — ``importlib.resources.files("vesma") /
            "scripts" / "mcp-setup.sh"`` (pip-installed wheel).
@@ -1945,7 +1945,7 @@ class IntegrationManager:
         Returns the first existing path, or ``None`` if not found anywhere.
         """
         here = Path(__file__).resolve()
-        # 1. Source-tree layout: src/mnemos/cli/integration.py → up 4 levels
+        # 1. Source-tree layout: src/vesma/cli/integration.py → up 4 levels
         candidate = here.parent.parent.parent.parent / "scripts" / "mcp-setup.sh"
         if candidate.is_file():
             return candidate

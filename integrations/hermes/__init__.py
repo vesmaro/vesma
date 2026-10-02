@@ -2,7 +2,7 @@
 
 MIGRATED onto the ADR-0017 D1 provider contract (Wave 5): this plugin is
 now a THIN Hermes-side shim. Every memory operation routes in-process
-through :class:`mnemos.adapters.hermes.HermesMemoryAdapter` — the
+through :class:`vesma.adapters.hermes.HermesMemoryAdapter` — the
 ``VesmaSDK`` facade + the W3 lifecycle hooks — and the ``MemoryManager``
  beneath them. The legacy bespoke path (raw urllib HTTP client, own
 TOTP/login/session-auth flow, circuit breaker, sync/prefetch thread pool,
@@ -13,13 +13,13 @@ Architecture::
 
     Hermes MemoryManager
         ↓ MemoryProvider ABC (THIS shim, deploy-only)
-    HermesMemoryAdapter (mnemos.adapters.hermes)
-        ↓ VesmaSDK facade + mnemos.hooks (the D1 contract)
+    HermesMemoryAdapter (vesma.adapters.hermes)
+        ↓ VesmaSDK facade + vesma.hooks (the D1 contract)
     MemoryManager → SQLite + vectors + Obsidian vault
 
 Installation::
 
-    # 1. vesma importable in the Hermes Python env (pip install mnemos-memory-server)
+    # 1. vesma importable in the Hermes Python env (pip install vesma)
     #    — no separate ``vesma serve`` process is needed anymore
     # 2. Copy this plugin into the Hermes plugins dir
     cp -r integrations/hermes ~/.hermes/plugins/mnemos
@@ -78,11 +78,12 @@ import time
 from typing import Any
 
 from agent.memory_provider import MemoryProvider
-from mnemos.adapters.hermes import HermesMemoryAdapter
-from mnemos.config import Settings
-from mnemos.models import MemoryType
-from mnemos.sdk import VesmaSDK
 from tools.registry import tool_error
+
+from vesma.adapters.hermes import HermesMemoryAdapter
+from vesma.config import Settings
+from vesma.models import MemoryType
+from vesma.sdk import VesmaSDK
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +391,7 @@ class VesmaMemoryProvider(MemoryProvider):
     """Hermes MemoryProvider shim over the Vesma contract adapter.
 
     All memory operations delegate to
-    :class:`mnemos.adapters.hermes.HermesMemoryAdapter` (VesmaSDK facade
+    :class:`vesma.adapters.hermes.HermesMemoryAdapter` (VesmaSDK facade
     + lifecycle hooks, in-process). This class owns ONLY the Hermes ABC
     glue: config loading, tool schemas/dispatch, the prefetch thread, and
     the harness-never-blocks error guard (memory failures degrade to

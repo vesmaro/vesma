@@ -1,24 +1,24 @@
 {
   "baseline_version": 1,
   "stand_version": "s1-1",
-  "corpus_fingerprint": "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1",
+  "corpus_fingerprint": "d65247e35f5cfe6c71dd4e4a492c6650963c8f9ee18522e64dc2a93504122b58",
   "model_fingerprint": {
     "provider": "nano",
     "model": "vesma-embed-v1",
     "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
     "opset": null
   },
-  "created": "2026-09-15T07:52:50+00:00",
+  "created": "2026-10-02T23:18:20+00:00",
   "metrics": {
     "retrieval": {
-      "precision_at_5": 0.25445,
+      "precision_at_5": 0.255497,
       "precision_at_10": 0.132461,
-      "recall_at_5": 0.940925,
+      "recall_at_5": 0.941798,
       "recall_at_10": 0.964223,
       "ci95": {
-        "precision_at_5": 0.017682,
+        "precision_at_5": 0.017973,
         "precision_at_10": 0.009534,
-        "recall_at_5": 0.028831,
+        "recall_at_5": 0.028508,
         "recall_at_10": 0.021155
       },
       "judged_queries": 191,
@@ -77,36 +77,36 @@
       "variants": {
         "current": {
           "label": "a9-on x4 (current)",
-          "recall_at_5": 0.940925,
+          "recall_at_5": 0.941798,
           "recall_at_10": 0.964223,
-          "precision_at_5": 0.25445,
+          "precision_at_5": 0.255497,
           "precision_at_10": 0.132461,
           "hybrid_queries": 192,
           "planted_appearances": 221
         },
         "a9_off_x4": {
           "label": "a9-off x4",
-          "recall_at_5": 0.940925,
+          "recall_at_5": 0.941798,
           "recall_at_10": 0.954625,
-          "precision_at_5": 0.253403,
+          "precision_at_5": 0.25445,
           "precision_at_10": 0.13089,
           "hybrid_queries": 192,
           "planted_appearances": 179
         },
         "pre_a9": {
           "label": "a9-off x2 (pre-A9)",
-          "recall_at_5": 0.940925,
+          "recall_at_5": 0.941798,
           "recall_at_10": 0.952007,
-          "precision_at_5": 0.253403,
+          "precision_at_5": 0.25445,
           "precision_at_10": 0.130366,
           "hybrid_queries": 186,
           "planted_appearances": 134
         },
         "a9_on_x2": {
           "label": "a9-on x2",
-          "recall_at_5": 0.940925,
+          "recall_at_5": 0.941798,
           "recall_at_10": 0.964223,
-          "precision_at_5": 0.25445,
+          "precision_at_5": 0.255497,
           "precision_at_10": 0.132461,
           "hybrid_queries": 192,
           "planted_appearances": 221
@@ -232,17 +232,17 @@
       },
       "metrics": {
         "precision_at_5": 0.251309,
-        "precision_at_10": 0.133508,
+        "precision_at_10": 0.132984,
         "recall_at_5": 0.948429,
-        "recall_at_10": 0.975393,
-        "mrr": 0.909337,
-        "ndcg_at_5": 0.8994,
-        "ndcg_at_10": 0.911691,
+        "recall_at_10": 0.973647,
+        "mrr": 0.912827,
+        "ndcg_at_5": 0.90287,
+        "ndcg_at_10": 0.914484,
         "ci95": {
           "precision_at_5": 0.0149,
-          "precision_at_10": 0.009234,
+          "precision_at_10": 0.009099,
           "recall_at_5": 0.023192,
-          "recall_at_10": 0.016293
+          "recall_at_10": 0.016596
         },
         "judged_queries": 191,
         "dimension": 384

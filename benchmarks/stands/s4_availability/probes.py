@@ -155,7 +155,7 @@ def _list_recent_probe(mgr: MemoryManager, ids: dict[str, str]) -> dict[str, Any
 def _assemble_probe(mgr: MemoryManager, ids: dict[str, str]) -> dict[str, Any]:
     """Assemble on a budget: published token surfaces, quarantined absent."""
     del ids  # the probe asserts on TOKENS, attribution is the search probes' job
-    from mnemos.assemble import assemble_context
+    from vesma.assemble import assemble_context
 
     project = "s4-fixture"
     block = assemble_context(
@@ -276,6 +276,6 @@ def run_marker_parse_on_text(text: str) -> dict[str, Any] | None:
     Kept separate so the assemble probe can compose: parse is a
     ``mnemos.ccr.parse_marker`` call — no store access, idempotent.
     """
-    from mnemos.ccr import parse_marker
+    from vesma.ccr import parse_marker
 
     return parse_marker(text)

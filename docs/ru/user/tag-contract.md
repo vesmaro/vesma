@@ -196,7 +196,7 @@ base64-последовательности), сканер:
 ## Python API
 
 ```python
-from mnemos.models import validate_tag_contract, TagContract, TagContractError
+from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Валидация списка тегов (strict, выбрасывает исключение при нарушениях)
 clean_tags = validate_tag_contract(
@@ -217,7 +217,7 @@ tc = TagContract(
 print(tc.task)          # "refactor-auth" ("" — если записи не присвоена задача)
 
 # Передача тегов при создании Memory
-from mnemos.models import Memory
+from vesma.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
     tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],

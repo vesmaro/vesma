@@ -1,6 +1,6 @@
 """VesmaSDK facade (mnemos #125, Wave 3) — delegation contract.
 
-The facade owns no DOMAIN logic (src/mnemos/sdk.py): every verb is a
+The facade owns no DOMAIN logic (src/vesma/sdk.py): every verb is a
 one-line delegation to a ``MemoryManager`` method — EXCEPT the two
 channel-boundary duties the W3 security review pinned (F1/F2): ``recall``
 scans every echoed item at issuance (mirroring ``vesma_search``) and

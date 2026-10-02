@@ -21,7 +21,7 @@ Acceptance (mnemos #125 Wave 3):
   emitted verbatim (highlight marks intact) with zero redactions.
 
 All secrets below are obviously fake EXAMPLE-style values built from
-the detector's own pattern catalogue (src/mnemos/secrets_detector.py);
+the detector's own pattern catalogue (src/vesma/secrets_detector.py);
 real credentials never appear in this file.
 """
 

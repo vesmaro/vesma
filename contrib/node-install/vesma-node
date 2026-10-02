@@ -413,7 +413,7 @@ build_mesh() {  # build_mesh <repo> <ref> <expect_ver> -> echoes staging binary
   fi
   fetch_ref "$repo" "$ref"
   local src
-  src="$WORKDIR/src/mnemos-mesh-$(git -C "$repo" rev-parse --short=12 "${ref}^{commit}")"
+  src="$WORKDIR/src/vesma-mesh-$(git -C "$repo" rev-parse --short=12 "${ref}^{commit}")"
   rm -rf "$src"; mkdir -p "$src"
   git -C "$repo" archive --format=tar "${ref}^{commit}" | tar -x -C "$src"
   # gen/go (gRPC stubs) is GITIGNORED in mnemos-mesh (regenerated via

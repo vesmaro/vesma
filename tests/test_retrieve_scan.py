@@ -16,7 +16,7 @@ Phases row 1) for the CCR rehydrate channel:
 * regression — clean content round-trips unchanged (``redactions == 0``).
 
 All secrets below are obviously fake EXAMPLE-style values built from the
-detector's own pattern catalogue (src/mnemos/secrets_detector.py); real
+detector's own pattern catalogue (src/vesma/secrets_detector.py); real
 credentials never appear in this file.
 """
 

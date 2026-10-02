@@ -39,15 +39,15 @@ for name, ok in checks.items():
 
 # Exercise the crash path itself: mesh_server must import against the
 # shipped stubs and the servicer module must resolve the descriptors.
-import mnemos.mesh_server  # noqa: E402  (runtime import path; AttributeError = stale stubs)
+import vesma.mesh_server as vesma_mesh  # noqa: E402  (runtime import path; AttributeError = stale stubs)
 
-print("PASS  import mnemos.mesh_server (site-packages/vesmaro/mesh_server.py)")
+print("PASS  import vesma.mesh_server (site-packages/vesma/mesh_server.py)")
 
 # W3 src check (#398): the agent data gate must be ON the shipped servicer.
 # An image whose gencode has ValidateAgentToken but whose src predates the
 # data gate would pass every field check yet serve ungated data RPCs.
 gate_check = "VesmaCoreServicer._agent_data_gate (W3)"
-checks[gate_check] = hasattr(mnemos.mesh_server.MnemosCoreServicer, "_agent_data_gate")
+checks[gate_check] = hasattr(vesma_mesh.mesh_server.MnemosCoreServicer, "_agent_data_gate")
 print(f"{'PASS' if checks[gate_check] else 'absent'}  {gate_check}")
 
 required = [

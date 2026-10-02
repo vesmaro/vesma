@@ -174,9 +174,8 @@ def _embed_staleness(probe_root: Path, quarantined_id: str) -> dict[str, Any]:
     row must be absent from the vector store entirely (its embed was
     removed at quarantine; a stale one must not keep the id warm).
     """
-    from mnemos.manager import MemoryManager
-
     from benchmarks.corpus.deterministic_embedder import LexicalHashEmbedder
+    from vesma.manager import MemoryManager
 
     mgr = MemoryManager(fixture_settings(probe_root))
     try:

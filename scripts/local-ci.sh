@@ -214,7 +214,7 @@ set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi
 
 set +e
-run_step 3 $TOTAL_STEPS "Type check (mypy --strict)" mypy --strict src/vesma/ src/mnemos/
+run_step 3 $TOTAL_STEPS "Type check (mypy --strict)" mypy --strict src/vesma/
 step_rc=$?
 set -e
 if [[ $step_rc -ne 0 ]]; then print_summary_and_exit; fi

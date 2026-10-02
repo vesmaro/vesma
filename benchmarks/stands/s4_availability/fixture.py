@@ -143,7 +143,7 @@ def build_fixture(root: Path) -> tuple[MemoryManager, dict[str, str]]:
 
     # refined: same path, then one real refine cycle completes it.
     m_ref = _add(MemoryStatus.PUBLISHED, _TEXTS["refined"], "cobaltmere rotation")
-    from mnemos.pipeline.refine import refine_single
+    from vesma.pipeline.refine import refine_single
 
     refine_single(mgr, m_ref.id)
 

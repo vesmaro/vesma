@@ -66,7 +66,7 @@ format-check:
 	$(VENV)/ruff format --check .
 
 typecheck:
-	$(VENV)/mypy --strict src/vesma/ src/mnemos/
+	$(VENV)/mypy --strict src/vesma/
 
 security:
 	$(VENV)/bandit -r src/ -f json -o bandit-report.json || true

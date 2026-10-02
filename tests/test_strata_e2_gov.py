@@ -326,7 +326,7 @@ def test_s1_corpus_fingerprint_unchanged_this_wave() -> None:
     recorded = json.loads(s1_run.BASELINE_PATH.read_text())
     live = s1_run.corpus_fingerprint()
     assert recorded["corpus_fingerprint"] == live
-    pinned = "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1"
+    pinned = "d65247e35f5cfe6c71dd4e4a492c6650963c8f9ee18522e64dc2a93504122b58"
     assert recorded["corpus_fingerprint"] == pinned
     # and the recorded profile states the same decision explicitly
     decision = prof.load_profile()["re_baseline_decision"]

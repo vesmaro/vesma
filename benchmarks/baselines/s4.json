@@ -1,14 +1,14 @@
 {
   "baseline_version": 1,
   "stand_version": "s4-1",
-  "corpus_fingerprint": "400c57fb301f8ff52660510e85b6c4b28b145497d2d2a3efc7b53e26ae0dfe30",
+  "corpus_fingerprint": "67598c2872c93f2c3fde9e0a2edfa7e6b0180c633f82f37bb045b540469fa1fa",
   "model_fingerprint": {
-    "provider": "chromadb",
-    "model": "all-MiniLM-L6-v2",
-    "weights_sha256": "4f148ba8ae9c2c7fbee4af2b132db8d06c6a6545b47fc83bbb98c3d22b8393e6",
+    "provider": "nano",
+    "model": "vesma-embed-v1",
+    "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
     "opset": null
   },
-  "created": "2026-09-03T18:12:56+00:00",
+  "created": "2026-10-02T23:18:20+00:00",
   "metrics": {
     "probe_pass_rate": 1.0,
     "memory_completeness": 1.0,
@@ -121,7 +121,7 @@
           "probe": "assemble-budget",
           "budget": 2048,
           "blocks": 3,
-          "chars": 1072,
+          "chars": 1105,
           "published_surfaced": true,
           "quarantined_absent": true,
           "pass": true
@@ -162,14 +162,11 @@
       "stand_version": "s4-1",
       "released": true,
       "requarantined": true,
-      "lines": [
-        "pipeline: id=quarantined outcome=quarantine-released to=failed source=benchmark reason_cleared=secret",
-        "pipeline: id=quarantined outcome=quarantined reason=secret source=benchmark"
-      ]
+      "lines": []
     }
   },
   "environment": {
-    "python": "3.12.3",
+    "python": "3.12.13",
     "deterministic_embedder": true
   }
 }

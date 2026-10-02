@@ -191,7 +191,7 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 ## Python API
 
 ```python
-from mnemos.models import validate_tag_contract, TagContract, TagContractError
+from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Validate a list of tags (strict, raises on violations)
 clean_tags = validate_tag_contract(
@@ -212,7 +212,7 @@ tc = TagContract(
 print(tc.task)          # "refactor-auth" ("" when the entry carries no task:)
 
 # Pass tags when creating a Memory
-from mnemos.models import Memory
+from vesma.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
     tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],

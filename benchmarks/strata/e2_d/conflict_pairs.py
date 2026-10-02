@@ -452,8 +452,8 @@ def artifacts_for(project: str, key: str, a: str, b: str) -> tuple[str, str, str
         )
     if project == "mnemos-core":
         return (
-            f"src/mnemos/{key}/{a}.py",
-            f"src/mnemos/{key}/{b}.py",
+            f"src/vesma/{key}/{a}.py",
+            f"src/vesma/{key}/{b}.py",
             f"tests/test_{key}_{a}.py",
         )
     return (

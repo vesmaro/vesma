@@ -68,7 +68,7 @@ jobs:
         run: source .venv/bin/activate && ruff format --check .
 
       - name: Type check (mypy --strict)
-        run: source .venv/bin/activate && mypy --strict src/vesma/ src/mnemos/
+        run: source .venv/bin/activate && mypy --strict src/vesma/
 
       - name: Security (bandit)
         # JSON output is uploaded as artifact on failure for debugging.

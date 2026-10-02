@@ -225,7 +225,7 @@ def overfetch_factor(factor: int) -> Iterator[None]:
     search inside the context. x4 is the current constant; x2 reproduces
     the pre-A9 contribution depth.
     """
-    import mnemos.manager as manager_mod
+    import vesma.manager as manager_mod
 
     # Direct assignment with paired suppressions: the constant is
     # Final[int] in src (documentation of intent, not immutability), so
@@ -440,9 +440,8 @@ def measure_rewrite(mgr: MemoryManager) -> RewriteMetrics:
     every follow-up runs through the real ``retrieve_content`` channel
     (snippet mode for detail needs, full mode for whole needs).
     """
-    from mnemos.context_rewrite import context_rewrite
-
     from benchmarks.corpus.corpus import PLANTED_SECRETS as SECRETS
+    from vesma.context_rewrite import context_rewrite
 
     metrics = RewriteMetrics()
     hash_by_slug: dict[str, str] = {}
@@ -533,7 +532,7 @@ def assemble_leak_check(mgr: MemoryManager, slug_to_id: dict[str, str]) -> dict[
     verifies each planted entry actually entered the assembled block —
     otherwise the check would silently pass by never surfacing it.
     """
-    from mnemos.assemble import assemble_context
+    from vesma.assemble import assemble_context
 
     leaks: list[str] = []
     surfaced: set[str] = set()

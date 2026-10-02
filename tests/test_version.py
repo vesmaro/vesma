@@ -6,7 +6,7 @@ from contextlib import suppress
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
 
-from mnemos import __version__
+from vesma import __version__
 
 
 def test_version_is_string() -> None:

@@ -17,7 +17,7 @@ therefore REFUSES snippet mode for 'hit' rows:
   issuance scan (zero-loss storage).
 
 All secrets below are obviously fake EXAMPLE-style values built from
-the detector's own pattern catalogue (src/mnemos/secrets_detector.py);
+the detector's own pattern catalogue (src/vesma/secrets_detector.py);
 real credentials never appear in this file.
 """
 

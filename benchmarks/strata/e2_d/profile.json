@@ -1,7 +1,7 @@
 {
   "stratum_version": "e2-d-2",
   "e0_spec": "docs/experiments/e0-meta-level.md \u00a72.6-\u00a72.10, \u00a73.6, \u00a73.7, \u00a75.4",
-  "corpus_fingerprint": "93b7fc7b7dab6f714676285943ec9e449ab47af6a64a036e694121ecd783c56a",
+  "corpus_fingerprint": "54a78ab50c47b92de28461ddc9d6c8d3ef083fbaf07704baae52546681f1ba5f",
   "seed": "deterministic (index-driven combinatorics, no RNG)",
   "counts": {
     "conflict_pairs": 120,

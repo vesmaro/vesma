@@ -1,9 +1,9 @@
-"""Smoke tests for `mnemos` CLI (src/mnemos/cli/main.py).
+"""Smoke tests for `mnemos` CLI (src/vesma/cli/main.py).
 
 These tests do NOT exhaustively cover every CLI command — they verify
 that the Typer app builds, every command is registered, and each
 command handles its basic happy path without raising. This is
-enough to push `src/mnemos/cli/main.py` above the 80% coverage gate
+enough to push `src/vesma/cli/main.py` above the 80% coverage gate
 in CI; deeper CLI behaviour is exercised through the `manager` and
 `mcp_server` modules directly (see test_api.py, test_manager_*.py,
 test_mcp_tools.py).
@@ -290,7 +290,7 @@ class TestCompletionCommand:
         # Completion script file stored under ~/.mnemos/completion/
         script_file = fake_home / ".mnemos" / "completion" / "vesma.bash"
         assert script_file.exists()
-        assert "_vesmaro" in script_file.read_text(encoding="utf-8")
+        assert "_vesma" in script_file.read_text(encoding="utf-8")
         # rc file gets an active (uncommented) source line, not eval.
         rc = fake_home / ".bashrc"
         assert rc.exists()

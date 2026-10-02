@@ -1,14 +1,14 @@
 {
   "baseline_version": 1,
   "stand_version": "s3-1",
-  "corpus_fingerprint": "07d38cf001828f6d649e3cc2ccb7fa399b5ee3855f7097cbe3c9a36caf583ebd",
+  "corpus_fingerprint": "eacb1e3b89eb4e8179aed889c2a2344aef3cf2ea6126bd9f87df4416d821c057",
   "model_fingerprint": {
-    "provider": "chromadb",
-    "model": "all-MiniLM-L6-v2",
-    "weights_sha256": "4f148ba8ae9c2c7fbee4af2b132db8d06c6a6545b47fc83bbb98c3d22b8393e6",
+    "provider": "nano",
+    "model": "vesma-embed-v1",
+    "weights_sha256": "3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
     "opset": null
   },
-  "created": "2026-09-03T18:12:55+00:00",
+  "created": "2026-10-02T23:26:57+00:00",
   "metrics": {
     "scenario": {
       "seed": 42,
@@ -113,13 +113,13 @@
     "sufficiency_at_task": {
       "tasks": 5,
       "required": 15,
-      "found": 14,
-      "rate": 0.933333,
+      "found": 15,
+      "rate": 1.0,
       "per_task": [
         {
           "turn": 53,
           "required": 3,
-          "found": 2
+          "found": 3
         },
         {
           "turn": 84,
@@ -147,14 +147,14 @@
       "budget": 1024,
       "query": "lighthouse",
       "early": {
-        "tokens": 949,
+        "tokens": 979,
         "blocks": 10,
-        "chars": 3839
+        "chars": 3949
       },
       "late": {
-        "tokens": 949,
+        "tokens": 979,
         "blocks": 10,
-        "chars": 3836
+        "chars": 3949
       },
       "factor": 1.0,
       "note": "assembled size at a FIXED budget and query (anchor topic) at ~10% vs the final turn; growth beyond the recorded factor is a composition-purity regression (ADR-0020 F3 stop-signal)"
@@ -167,11 +167,11 @@
       "budget_blocks_included": 400,
       "budget_blocks_skipped": 0,
       "filter_profiles": {
-        "default": 373,
-        "docs": 27
+        "default": 372,
+        "docs": 28
       },
-      "align_blocks_aligned": 37,
-      "align_moved_chars": 750,
+      "align_blocks_aligned": 41,
+      "align_moved_chars": 830,
       "note": "informational in baseline v1 (ADR-0020 F4): which assemble stage discarded how many blocks; corridors attach after a second measured wave"
     },
     "rewrite_events": {
@@ -180,7 +180,7 @@
     }
   },
   "environment": {
-    "python": "3.12.3",
+    "python": "3.12.13",
     "deterministic_embedder": true
   }
 }

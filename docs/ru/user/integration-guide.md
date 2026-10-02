@@ -400,7 +400,7 @@ compress, tokens), который очищает сырой контент от 
   обязательна на каждом вызове хука. Полный справочник:
   [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
   / [http-api.md → Хуки жизненного цикла](http-api.md).
-- **`VesmaSDK`** (`from mnemos.sdk import VesmaSDK`) — тонкая типизированная
+- **`VesmaSDK`** (`from vesma.sdk import VesmaSDK`) — тонкая типизированная
   Python-обёртка над `MemoryManager` для in-process адаптеров:
   `remember` / `recall` / `forget` / `stats` / `assemble_context` /
   `rewrite`. Доменная логика живёт в путях менеджера (те же сканы, гейты и

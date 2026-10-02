@@ -8,7 +8,7 @@ first adapter is the Hermes Agent memory-provider bridge
 Naming note: this runtime package is ``vesma.adapters``, NOT
 ``vesma.integrations`` — the wheel force-includes the repo-root
 ``integrations/`` deploy artefacts (targets.yaml, skills, the Hermes
-plugin) as the ``mnemos/integrations`` DATA directory, so a Python
+plugin) as the ``vesma/integrations`` DATA directory, so a Python
 sub-package under that name would collide with every already-installed
 copy (a namespace-package shadow, not a clean merge).
 """

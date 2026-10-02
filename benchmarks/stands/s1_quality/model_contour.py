@@ -71,7 +71,7 @@ def production_config() -> Any:
     provider/model pair, which is exactly what S1m must measure: the
     contour answers "what does the default install embed with".
     """
-    from mnemos.config import EmbeddingConfig
+    from vesma.config import EmbeddingConfig
 
     return EmbeddingConfig()
 
@@ -82,7 +82,7 @@ def build_production_embedder() -> Any:
     Construction initializes the ONNX runtime session over the bundled
     vesma-embed artifact — callers keep this inside the skip guard.
     """
-    from mnemos.embeddings import create_embedding_provider
+    from vesma.embeddings import create_embedding_provider
 
     return create_embedding_provider(production_config())
 
@@ -130,7 +130,7 @@ def _mnema_fingerprint(provider: str, model: str) -> dict[str, Any] | None:
     provider string stays identical.
     """
     try:
-        from mnemos.embeddings import mnema_artifact_onnx_path
+        from vesma.embeddings import mnema_artifact_onnx_path
     except Exception:  # mnemos import failure in the stand environment
         return None
     try:
@@ -171,7 +171,7 @@ def model_fingerprint() -> dict[str, Any] | None:
         # vesma-embed artifact, so the fingerprint must record that swap.
         provider = "nano"
         try:
-            from mnemos.embeddings import MNEMA_EMBED_MODEL
+            from vesma.embeddings import MNEMA_EMBED_MODEL
 
             if model.strip().lower() == "all-minilm-l6-v2":
                 model = MNEMA_EMBED_MODEL

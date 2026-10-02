@@ -6,8 +6,8 @@
 
 - **baseline_version:** 1
 - **stand_version:** s1-1
-- **corpus_fingerprint:** `c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1`
-- **created:** 2026-09-15T07:52:50+00:00
+- **corpus_fingerprint:** `d65247e35f5cfe6c71dd4e4a492c6650963c8f9ee18522e64dc2a93504122b58`
+- **created:** 2026-10-02T23:18:20+00:00
 - **model_fingerprint (production embedder):** `nano vesma-embed-v1 sha256:3b752e0671a5…`
   - full weights sha256: `3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba`
 - **environment:** python 3.12.13, deterministic_embedder=True (BLAKE2b lexical — pins the retrieval PIPELINE, not MiniLM)
@@ -16,9 +16,9 @@
 
 | Metric | Value | 95% CI (half-width) |
 | --- | ---: | ---: |
-| precision@5 | 0.2545 | 0.0177 |
+| precision@5 | 0.2555 | 0.0180 |
 | precision@10 | 0.1325 | 0.0095 |
-| recall@5 | 0.9409 | 0.0288 |
+| recall@5 | 0.9418 | 0.0285 |
 | recall@10 | 0.9642 | 0.0212 |
 | queries (judged / probes / hybrid) | 191 / 1 / 192 | — |
 
@@ -44,10 +44,10 @@
 
 | Variant | recall@5 | recall@10 | precision@5 | precision@10 | hybrid | planted |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| a9-on x4 (current) | 0.9409 | 0.9642 | 0.2545 | 0.1325 | 192 | 221 |
-| a9-off x4 | 0.9409 | 0.9546 | 0.2534 | 0.1309 | 192 | 179 |
-| a9-off x2 (pre-A9) | 0.9409 | 0.9520 | 0.2534 | 0.1304 | 186 | 134 |
-| a9-on x2 | 0.9409 | 0.9642 | 0.2545 | 0.1325 | 192 | 221 |
+| a9-on x4 (current) | 0.9418 | 0.9642 | 0.2555 | 0.1325 | 192 | 221 |
+| a9-off x4 | 0.9418 | 0.9546 | 0.2545 | 0.1309 | 192 | 179 |
+| a9-off x2 (pre-A9) | 0.9418 | 0.9520 | 0.2545 | 0.1304 | 186 | 134 |
+| a9-on x2 | 0.9418 | 0.9642 | 0.2555 | 0.1325 | 192 | 221 |
 
 Delta (current - pre-A9) recall@10: **+0.0122**
 
@@ -97,12 +97,12 @@ Delta (current - pre-A9) recall@10: **+0.0122**
 | Metric | Value | 95% CI (half-width) |
 | --- | ---: | ---: |
 | precision@5 | 0.2513 | 0.0149 |
-| precision@10 | 0.1335 | 0.0092 |
+| precision@10 | 0.1330 | 0.0091 |
 | recall@5 | 0.9484 | 0.0232 |
-| recall@10 | 0.9754 | 0.0163 |
-| mrr | 0.9093 | — |
-| ndcg@5 | 0.8994 | — |
-| ndcg@10 | 0.9117 | — |
+| recall@10 | 0.9736 | 0.0166 |
+| mrr | 0.9128 | — |
+| ndcg@5 | 0.9029 | — |
+| ndcg@10 | 0.9145 | — |
 | judged queries | 191 | — |
 - embedder: `nano vesma-embed-v1 sha256:3b752e0671a5…`, dim 384, arch x86_64
 
@@ -110,18 +110,18 @@ Delta (current - pre-A9) recall@10: **+0.0122**
 
 | Metric | Corridor |
 | --- | --- |
-| precision_at_5 ≥ | +0.2345 (baseline 0.2545 - max(0.02; ci 0.0200)) |
+| precision_at_5 ≥ | +0.2355 (baseline 0.2555 - max(0.02; ci 0.0200)) |
 | precision_at_10 ≥ | +0.1125 (baseline 0.1325 - max(0.02; ci 0.0200)) |
-| recall_at_5 ≥ | +0.9121 (baseline 0.9409 - max(0.02; ci 0.0288)) |
+| recall_at_5 ≥ | +0.9133 (baseline 0.9418 - max(0.02; ci 0.0285)) |
 | recall_at_10 ≥ | +0.9431 (baseline 0.9642 - max(0.02; ci 0.0212)) |
 | replace-hit-rate ≥ | +0.9175 |
 | replace-regret-rate ≤ | +0.2700 |
 | A9 recall@10 delta ≥ | -0.0200 |
 | invariants | exact (= 1.000 / = 0), never carried over a re-baseline |
 | s1m precision_at_5 ≥ | +0.2313 (baseline 0.2513 - max(0.02; ci 0.0200)) |
-| s1m precision_at_10 ≥ | +0.1135 (baseline 0.1335 - max(0.02; ci 0.0200)) |
+| s1m precision_at_10 ≥ | +0.1130 (baseline 0.1330 - max(0.02; ci 0.0200)) |
 | s1m recall_at_5 ≥ | +0.9252 (baseline 0.9484 - max(0.02; ci 0.0232)) |
-| s1m recall_at_10 ≥ | +0.9554 (baseline 0.9754 - max(0.02; ci 0.0200)) |
+| s1m recall_at_10 ≥ | +0.9536 (baseline 0.9736 - max(0.02; ci 0.0200)) |
 | model_fingerprint | exact match vs this baseline — a mismatch is RED (re-baseline `--record`, same PR, per ADR-0021) |
 
 ## 12. Reproducing

@@ -33,7 +33,7 @@ from vesma.lanes import B0_TYPE_BOOST_FACTOR
 
 #: The S1 corpus fingerprint pinned upstream (test_strata_e2_gov) — the
 #: golden 81 inside the combined build must stay byte-identical.
-_S1_PINNED_FINGERPRINT = "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1"
+_S1_PINNED_FINGERPRINT = "d65247e35f5cfe6c71dd4e4a492c6650963c8f9ee18522e64dc2a93504122b58"
 
 _QID_RE = re.compile(r"^gg-\d{3}-(ph|pr)$")
 

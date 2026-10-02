@@ -31,7 +31,7 @@ from itertools import pairwise
 
 import numpy as np
 
-from mnemos.embeddings import EmbeddingProvider
+from vesma.embeddings import EmbeddingProvider
 
 _DIM = 256
 _TOKEN_RE = re.compile(r"[a-z0-9]+")

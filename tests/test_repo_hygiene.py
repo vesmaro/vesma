@@ -1,6 +1,6 @@
 """Repo hygiene tripwires (#337 — gate integrity after the rebrand).
 
-Two invariants that the canonical gates silently lost during the
+One invariant that the canonical gates silently lost during the
 ``mnemos`` → ``vesmaro`` rename and the deploy waves:
 
 1. **Venv canary (#335 class)** — the running pytest must come from THIS
@@ -9,12 +9,7 @@ Two invariants that the canonical gates silently lost during the
    site-packages held a different vesma build: green locally, red (or
    silently wrong) in CI. ``tests/conftest.py`` pins *which code* is
    imported; this canary pins *which interpreter* runs it.
-2. **Shim-only tripwire (#337 item 4)** — ``src/mnemos/`` must contain
-   ONLY the dual-import shim ``__init__.py`` (ADR-0031). Every gate that
-   once pointed at ``src/mnemos`` was measuring the shim, not the engine;
-   new files landing there would re-create that blindness silently.
-
-Both checks are ordinary suite members: they ride every CI matrix leg and
+This check is an ordinary suite member: they ride every CI matrix leg and
 every local canonical run, which is strictly stronger than a one-line CI
 step (issue #337 fix direction 4).
 """
@@ -52,26 +47,4 @@ def test_pytest_runs_from_repo_venv(_running_pytest_path: Path) -> None:
         f"explicitly: `uv sync --python 3.12` then `.venv/bin/pytest ...` "
         f"(or `make bootstrap`). A bare `pytest` on PATH may be a global "
         f"install — do not use it to adjudicate gates (#335)."
-    )
-
-
-def test_mnemos_dir_holds_only_dual_import_shim() -> None:
-    """src/mnemos/ must contain ONLY the ADR-0031 shim file.
-
-    The canonical package is ``src/vesma/``; ``src/mnemos/`` exists solely
-    for the dual-import compatibility window (retires no earlier than 6.0).
-    Any other file there would (a) be invisible to the retargeted mypy gate
-    blind spot and (b) signal that new code is again being added under the
-    deprecated prefix.
-    """
-    shim_dir = REPO_ROOT / "src" / "mnemos"
-    assert shim_dir.is_dir(), "src/mnemos/ vanished — shim contract (ADR-0031) broken"
-    files = sorted(
-        str(p.relative_to(shim_dir))
-        for p in shim_dir.rglob("*")
-        if p.is_file() and "__pycache__" not in p.parts
-    )
-    assert files == ["__init__.py"], (
-        f"src/mnemos/ must hold only the shim __init__.py (ADR-0031), found: "
-        f"{files}. New code belongs in src/vesma/ (issue #337 tripwire)."
     )

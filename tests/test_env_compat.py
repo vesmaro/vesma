@@ -33,7 +33,7 @@ from vesma.config import Settings, load_settings
 
 # ── Import-path guard ────────────────────────────────────────────────────────
 #
-# Plain ``pytest`` on some dev machines resolves ``mnemos`` from a user-site
+# Plain ``pytest`` on some dev machines resolves ``vesma`` from a user-site
 # install that predates the #139 shim; these tests would then false-fail.
 # Skip loudly instead — the suite must run against the repo src tree
 # (editable install or explicit ``sys.path`` bootstrap).
@@ -43,7 +43,7 @@ _VESMARO_UNDER_REPO_SRC = str(_REPO_SRC) in str(Path(vesma.__file__).resolve())
 
 pytestmark = pytest.mark.skipif(
     not _VESMARO_UNDER_REPO_SRC,
-    reason="mnemos resolves to a foreign install predating the #139 shim; "
+    reason="vesma resolves to a foreign install predating the #139 shim; "
     "run the suite against the repo src tree (editable install)",
 )
 

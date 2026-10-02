@@ -25,7 +25,7 @@ additions) for the content-echo channels:
   (P1-a regression: the ``project`` argument reaches the store lookup).
 
 All secrets below are obviously fake EXAMPLE-style values built from the
-detector's own pattern catalogue (src/mnemos/secrets_detector.py); real
+detector's own pattern catalogue (src/vesma/secrets_detector.py); real
 credentials never appear in this file.
 """
 

@@ -71,7 +71,7 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
 
 | Path | What |
 |------|------|
-| `src/mnemos/` | The server: core, CLI, MCP, HTTP API, storage |
+| `src/vesma/` | The server: core, CLI, MCP, HTTP API, storage |
 | `tests/` | The suite (unit + integration + golden baselines) |
 | `integrations/` | The behavioral pack: targets, instructions, skills, prompts, presets, the pi bridge |
 | `benchmarks/` | The ADR-0020 stands (S1–S4) and baselines |

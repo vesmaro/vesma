@@ -50,7 +50,7 @@ completion_app = typer.Typer(
 # (6.0.0: renamed from the deprecated ``_VESMARO_COMPLETE`` — regenerate
 # installed completion scripts with ``vesma completion``).
 _COMPLETE_VAR = "_VESMA_COMPLETE"
-_PROG_NAME = "vesmaro"  # canonical; short hook `vesma` shares this completion
+_PROG_NAME = "vesma"  # canonical; legacy hooks `vesmaro`/`mnemos` share this completion
 
 # Shells we support for auto-install.
 _SUPPORTED_SHELLS = ("bash", "zsh", "fish")

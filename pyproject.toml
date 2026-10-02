@@ -175,7 +175,7 @@ dev = ["vesma[dev]"]
 vesmaro = "vesma.cli.main:cli_main"
 vesma = "vesma.cli.main:cli_main"
 vesmaro-train = "vesma.train_entry:main"
-# Legacy compatibility commands (dual-import period; retire no earlier than 6.0)
+# Legacy compatibility commands (retire no earlier than 6.0)
 mnemos = "vesma.cli.main:app"
 mnemos-train = "vesma.train_entry:main"
 
@@ -193,7 +193,7 @@ mnemos-train = "vesma.train_entry:main"
 exclude = ["scripts/run-release-local.sh", "scripts/local-ci", "benchmarks", "training"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/vesma", "src/mnemos"]
+packages = ["src/vesma"]
 exclude = ["benchmarks", "training"]
 
 # Ship the integration pack (instructions, skills, prompts, targets.yaml) inside
@@ -246,7 +246,7 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
 # forbidden (ADR-0020: event-driven triggers only). Suppress I001 for this
 # file until the fingerprint no longer covers it (#337).
 "benchmarks/corpus/deterministic_embedder.py" = ["I001"]
-# src/mnemos/storage/sqlite_store.py: the search-v2 short-token guard
+# src/vesma/storage/sqlite_store.py: the search-v2 short-token guard
 # (issue #314) carries the RU half of the `_FTS_STOPWORDS` frozenset and
 # RU examples in its docstrings — that IS the intended content (same
 # rationale as the synthetic RU corpus files); RUF001/RUF002 lookalike

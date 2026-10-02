@@ -4,7 +4,7 @@ Catches version drift between the two release markers BEFORE it reaches a
 tag or a PyPI upload. Fail-loud, no fallbacks.
 
 Also guards the import pin (#288): the suite must import THIS checkout's
-``mnemos``, not a shadow install (user-site editable / .venv / another
+``vesma``, not a shadow install (user-site editable / .venv / another
 checkout). The conftest front-pin enforces it at collection time; the
 test below re-asserts the invariant so any session that collects this
 file (e.g. one bypassing conftest via ``--noconftest``) still fails loud.
@@ -15,7 +15,6 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-import mnemos
 import vesma
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +32,7 @@ def test_version_file_matches_pyproject() -> None:
     )
 
 
-def test_mnemos_import_provenance_pinned_to_checkout() -> None:
+def test_import_provenance_pinned_to_checkout() -> None:
     """`import vesma` must resolve to THIS checkout's src/vesma (#288).
 
     A shadow import (user-site editable install / .venv / another checkout
@@ -47,10 +46,4 @@ def test_mnemos_import_provenance_pinned_to_checkout() -> None:
     assert resolved == expected, (
         f"vesma shadow-imported from {resolved} — expected {expected}. "
         "The suite MUST run against this checkout's src/ (#288)."
-    )
-    # Dual-import period (ADR-0031): the mnemos shim resolves into this
-    # checkout too — the shim file sits alongside the canonical package.
-    shim = Path(mnemos.__file__).resolve()
-    assert shim == (REPO_ROOT / "src" / "mnemos" / "__init__.py").resolve(), (
-        f"mnemos shim resolved from {shim} — expected src/mnemos/__init__.py."
     )

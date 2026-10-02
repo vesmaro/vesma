@@ -1178,7 +1178,7 @@ class TestFindMcpSetupScript:
         We simulate this by placing __file__ in a deep tmp_path with no
         scripts/ sibling and monkeypatching importlib.resources to miss.
         """
-        # Build a fake package layout: tmp_path/src/mnemos/cli/integration.py
+        # Build a fake package layout: tmp_path/src/vesma/cli/integration.py
         fake_cli = tmp_path / "src" / "mnemos" / "cli"
         fake_cli.mkdir(parents=True)
         fake_module = fake_cli / "integration.py"

@@ -390,7 +390,7 @@ Vesma ships two dedicated surfaces for harness/automation integrations
   window). Identity (`session`/`project`/`agent`) is required on every
   hook call. Full reference: [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
   / [http-api.md → Lifecycle hooks](http-api.md).
-- **`VesmaSDK`** (`from mnemos.sdk import VesmaSDK`) — the thin typed
+- **`VesmaSDK`** (`from vesma.sdk import VesmaSDK`) — the thin typed
   Python facade over `MemoryManager` for in-process adapters:
   `remember` / `recall` / `forget` / `stats` / `assemble_context` /
   `rewrite`. The domain logic lives in the manager paths (the same

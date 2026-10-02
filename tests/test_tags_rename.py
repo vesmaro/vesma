@@ -318,7 +318,7 @@ class TestTagsRenameIntegration:
 class TestMcpAndHttp:
     def test_mcp_dispatch_tags_rename(self, tmp_manager: MemoryManager, monkeypatch) -> None:
         """The MCP _dispatch handles vesma_tags_rename."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
         from vesma.mcp_server import _dispatch
 
         _add_gcw_memory(tmp_manager)

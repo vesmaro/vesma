@@ -72,7 +72,7 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
 
 | Путь | Что |
 |------|-----|
-| `src/mnemos/` | Сервер: ядро, CLI, MCP, HTTP API, хранилище |
+| `src/vesma/` | Сервер: ядро, CLI, MCP, HTTP API, хранилище |
 | `tests/` | Набор тестов (unit + integration + golden-базлайны) |
 | `integrations/` | Поведенческий пакет: таргеты, инструкции, скиллы, промпты, пресеты, pi-бридж |
 | `benchmarks/` | Стенды ADR-0020 (S1–S4) и базлайны |

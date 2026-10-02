@@ -340,7 +340,7 @@ class TestMcpDispatch:
 
     def test_dispatch_tags_rename_action(self, tmp_manager, monkeypatch) -> None:
         """action='rename' behaves like the legacy rename tool."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_gcw_memory(tmp_manager)
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
@@ -359,7 +359,7 @@ class TestMcpDispatch:
 
     def test_dispatch_tags_remove_action(self, tmp_manager, monkeypatch) -> None:
         """action='remove' routes to tags_remove."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_memory(
             tmp_manager,
@@ -376,7 +376,7 @@ class TestMcpDispatch:
 
     def test_dispatch_tags_add_action(self, tmp_manager, monkeypatch) -> None:
         """action='add' routes to tags_add."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_memory(tmp_manager, project="p1")
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
@@ -390,7 +390,7 @@ class TestMcpDispatch:
 
     def test_dispatch_dry_run_default_true(self, tmp_manager, monkeypatch) -> None:
         """dry_run defaults to True across all actions."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_memory(tmp_manager, project="p1")
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
@@ -404,7 +404,7 @@ class TestMcpDispatch:
 
     def test_dispatch_alias_tags_rename(self, tmp_manager, monkeypatch) -> None:
         """The legacy vesma_tags_rename tool still works (non-breaking alias)."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_gcw_memory(tmp_manager)
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
@@ -420,7 +420,7 @@ class TestMcpDispatch:
 
     def test_dispatch_alias_supports_invalid_to_legacy(self, tmp_manager, monkeypatch) -> None:
         """The alias forwards invalid_subtypes_to_legacy (full parity)."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_memory(
             tmp_manager,
@@ -442,7 +442,7 @@ class TestMcpDispatch:
 
     def test_dispatch_rename_missing_args(self, tmp_manager, monkeypatch) -> None:
         """action='rename' without prefixes returns an error dict, not a crash."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch("vesma_tags", {"action": "rename"})
@@ -451,7 +451,7 @@ class TestMcpDispatch:
 
     def test_dispatch_unknown_action(self, tmp_manager, monkeypatch) -> None:
         """An unknown action returns an error dict listing valid actions."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch("vesma_tags", {"action": "frobnicate"})
@@ -462,7 +462,7 @@ class TestMcpDispatch:
 
     def test_dispatch_remove_wildcard(self, tmp_manager, monkeypatch) -> None:
         """wildcard=true is forwarded to tags_remove."""
-        from mnemos import mcp_server
+        from vesma import mcp_server
 
         _add_memory(
             tmp_manager,

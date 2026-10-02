@@ -359,14 +359,11 @@ flowchart LR
 
 ## 11. Module layout (Python)
 
-> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from the filesystem at `src/vesma/` (Vesma 5.0.0 rebrand — `src/mnemos/` is now a compatibility shim, ADR-0031 dual-import window); one-line purposes come from the module docstrings.
+> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from the filesystem at `src/vesma/` (6.0.0 removed the ADR-0031 `mnemos` import-compat shim); one-line purposes come from the module docstrings.
 
 ```
 pyproject.toml
-src/
-  mnemos/                # compat shim → vesma (dual-import window, ADR-0031)
-    __init__.py
-  vesma/
+src/  vesma/
     __init__.py
     config.py            # env + YAML settings; legacy env-name aliases (#139)
     models.py            # Memory, TagContract, Trace data models
