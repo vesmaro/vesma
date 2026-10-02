@@ -104,10 +104,15 @@ def test_doctor_paths_flag_no_health_checks(isolated_home: Path) -> None:
 
 
 def test_doctor_paths_json(isolated_home: Path) -> None:
-    """``--paths --json`` emits a JSON object with a 'paths' key."""
+    """``--paths --json`` emits a JSON object with a 'paths' key.
+
+    The deprecated flag alias prints a one-line hint to STDERR (real
+    stdout stays pure JSON — verified against a real process); this
+    runner merges both streams, so parse from the first ``{``.
+    """
     result = runner.invoke(doctor_app, ["--paths", "--json"])
     assert result.exit_code == 0
-    payload = json.loads(result.output)
+    payload = json.loads(result.output[result.output.index("{") :])
     assert "paths" in payload
     paths = payload["paths"]
     assert "root" in paths

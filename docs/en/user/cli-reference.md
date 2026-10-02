@@ -24,6 +24,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`search`](#search) | Hybrid FTS5 + vector search |
 | [`recall`](#recall) | List recent memories, optionally per agent / per project |
 | [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
+| [`tags audit`](#tags-audit) | Scan for tag-contract non-conformance; `--apply` heals additively |
 | [`workflow`](#workflow) | Memory workflow lifecycle: `get` / `set` / `history` |
 | [`stats`](#stats) | Show health counters |
 | [`fts`](#fts) | FTS5 index management (`rebuild`) |
@@ -36,7 +37,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`auth`](#auth) | API bearer tokens (`auth token`) and TOTP 2FA (`auth totp`) |
 | [`integration`](integration-guide.md) | Deploy / verify the integration layer (dedicated page) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
-| [`doctor`](#doctor) | Diagnose the installation (paths, config, database, vault) |
+| [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` subcommands; checks: config, database, vault, …) |
 | [`update`](#update) | Check for updates / update the user-site install |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
@@ -230,6 +231,34 @@ vesma tags validate VAULT_PATH
 
 ```bash
 vesma tags validate ~/.mnemos/vault
+```
+
+---
+
+## `tags audit`
+
+Scan the SQLite store for tag-contract non-conformance and optionally heal. Every entry needs at least one `project:*`, one `agent:*` and one `mnemos:*` tag (the same contract the doctor's "Tag contract" check enforces); entries whose tags JSON is unparseable are flagged too.
+
+```text
+vesma tags audit [--apply] [--limit N] [--json]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--apply` | `false` | Heal: add the missing contract prefixes to every non-conformant entry. Additive only — existing tags are never removed. Default is a dry-run report. |
+| `--limit / -l` | `0` | Cap the number of LISTED rows (`0` = list all). The scan always covers the whole store. |
+| `--json` | `false` | Emit the report as JSON (for scripting / CI). |
+
+Heal policy (idempotent by construction — a second `--apply` run heals nothing): missing `mnemos:*` → `mnemos:legacy`; missing `agent:*` → `agent:user`; missing `project:*` → the row's `project` column value slug-normalized (lowercase, spaces → hyphens), or `project:unsorted` when the column is empty.
+
+### Example
+
+```bash
+# Report only (default)
+vesma tags audit
+
+# Heal the store
+vesma tags audit --apply
 ```
 
 ---
@@ -729,6 +758,7 @@ vesma tags <TAB>
 # validate  -- Validate tag contract across an existing vault.
 # normalize -- Normalize project:/agent: tag case to lowercase across all memories.
 # rename    -- Bulk rename tags matching `--from <prefix>` → `--to <prefix>`.
+# audit     -- Scan for tag-contract non-conformance; optionally heal.
 ```
 
 > Verify the installation anytime with `vesma doctor` — the "Completion" check passes when the script file exists, the rc file carries the canonical source line, and the script binds the primary program name; otherwise it warns with the exact fix command.
@@ -741,49 +771,51 @@ Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP s
 
 ```text
 vesma doctor [OPTIONS]
+vesma doctor fix [--dry-run] [--json]
+vesma doctor paths [--json]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--json` | `false` | Emit results as JSON (for scripting / CI) instead of a table. |
-| `--fix` | `false` | Auto-fix WARN-level checks (stale integration, unwired agents, missing MCP registration). FAIL-level checks are not auto-fixable. |
-| `--dry-run` | `false` | With `--fix`: preview what would be fixed without executing. |
-| `--paths` | `false` | Print all resolved paths (data dir, vault, logs, cache, completion) and exit. |
 
-Exit codes: `0` = all checks pass, `1` = one or more checks failed, `2` = warnings only.
+Exit codes: `0` = all checks pass (checks reported as `skip` — not applicable to this machine — count as pass), `1` = one or more checks failed, `2` = warnings only.
 
 > `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (deprecated spellings: `VESMARO_CONFIG` until 6.0, `MNEMOS_CONFIG` on 4.x) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
 
-### `doctor --paths`
+### `doctor paths`
 
 Shows every path Vesma uses, resolved from config and environment:
 
 ```bash
-vesma doctor --paths
-# data_dir:      /home/you/.vesma/data
-# vault_path:    /home/you/.vesma/vault
-# log_file:      /home/you/.mnemos/logs/mnemos.log
-# cache_dir:     /home/you/.vesma/cache
-# completion:    /home/you/.vesma/completion
-# config_file:   /home/you/.vesma/config.yaml
+vesma doctor paths
+# Root:         ~/.mnemos
+# Data dir:     ~/.mnemos/data
+# Vault:        ~/.mnemos/vault
+# Logs:         ~/.mnemos/logs/vesma.log
+# Cache:        ~/.mnemos/cache
+# Completion:   ~/.mnemos/completion
+# MCP config:   ~/.config/Code/User/mcp.json
 ```
 
-Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration.
+Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration. With `--json`, the paths object is emitted for scripting.
 
-### `doctor --fix` and `--dry-run`
+### `doctor fix`
 
-With `--fix`, WARN-level checks are repaired in place (stale integration → `integration update`, unwired agents → `vesma integration setup`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. Combine with `--dry-run` to preview the fixes without executing them. `--json --fix` reports the `fixed` / `fix_skipped` lists in the JSON payload.
+Auto-repairs WARN-level checks in place (stale integration → `integration update`, unwired agents → `vesma integration setup`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. `--dry-run` previews the fixes without executing them. `--json` reports the `fixed` / `fix_skipped` lists in the JSON payload.
 
 ```bash
 # Preview only
-vesma doctor --fix --dry-run
+vesma doctor fix --dry-run
 
 # Apply fixes
-vesma doctor --fix
+vesma doctor fix
 
 # CI: machine-readable verdict, no fixes
 vesma doctor --json
 ```
+
+> **Deprecated flag forms.** `vesma doctor --fix` and `vesma doctor --paths` still work (scripts may depend on them) but are hidden aliases of the `fix` / `paths` subcommands and print a one-line deprecation hint on stderr. Move to the subcommand spellings.
 
 ---
 

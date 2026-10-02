@@ -24,6 +24,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`search`](#search) | Гибридный поиск FTS5 + вектор |
 | [`recall`](#recall) | Список последних записей, опционально по агенту / проекту |
 | [`tags validate`](#tags-validate) | Проверить контракт тегов по всему vault |
+| [`tags audit`](#tags-audit) | Найти нарушения контракта тегов; `--apply` лечит (только добавление) |
 | [`workflow`](#workflow) | Жизненный цикл записи: `get` / `set` / `history` |
 | [`stats`](#stats) | Показать счётчики состояния |
 | [`fts`](#fts) | Управление FTS5-индексом (`rebuild`) |
@@ -36,7 +37,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`auth`](#auth) | Bearer-токены (`auth token`) и TOTP 2FA (`auth totp`) |
 | [`integration`](integration-guide.md) | Развёртывание / проверка слоя интеграции (отдельная страница) |
 | [`completion`](#completion) | Установка shell-автодополнения (bash / zsh / fish) |
-| [`doctor`](#doctor) | Диагностика установки (пути, конфиг, база, vault) |
+| [`doctor`](#doctor) | Диагностика установки (субкоманды `fix` / `paths`; проверки: конфиг, база, vault, …) |
 | [`update`](#update) | Проверка обновлений / обновление user-site-установки |
 | [`export`](export-import.md) | Экспорт записей в JSON / SQLite-бэкап (отдельная страница) |
 | [`import`](export-import.md) | Импорт записей из файла экспорта (отдельная страница) |
@@ -230,6 +231,34 @@ vesma tags validate VAULT_PATH
 
 ```bash
 vesma tags validate ~/.mnemos/vault
+```
+
+---
+
+## `tags audit`
+
+Ищет в SQLite-хранилище записи, нарушающие контракт тегов, и лечит их по запросу. Каждая запись должна нести хотя бы один тег `project:*`, один `agent:*` и один `mnemos:*` (тот же контракт, что проверяет doctor в проверке «Tag contract»); записи с нечитаемым tags-JSON тоже помечаются.
+
+```text
+vesma tags audit [--apply] [--limit N] [--json]
+```
+
+| Опция | По умолчанию | Описание |
+|-------|-------------|---------- |
+| `--apply` | `false` | Лечение: дописать недостающие префиксы контракта каждой неконформной записи. Только добавление — существующие теги никогда не удаляются. По умолчанию — отчёт без записи (dry-run). |
+| `--limit / -l` | `0` | Ограничить число ПОКАЗЫВАЕМЫХ строк (`0` — показать все). Скан всегда покрывает всё хранилище. |
+| `--json` | `false` | Вывести отчёт в JSON (для скриптов / CI). |
+
+Политика лечения (идемпотентна по построению — второй запуск `--apply` ничего не лечит): нет `mnemos:*` → `mnemos:legacy`; нет `agent:*` → `agent:user`; нет `project:*` → значение колонки `project` этой записи, нормализованное в слаг (нижний регистр, пробелы → дефисы), или `project:unsorted`, если колонка пуста.
+
+### Пример
+
+```bash
+# Только отчёт (по умолчанию)
+vesma tags audit
+
+# Вылечить хранилище
+vesma tags audit --apply
 ```
 
 ---
@@ -728,6 +757,7 @@ vesma tags <TAB>
 # validate  -- Validate tag contract across an existing vault.
 # normalize -- Normalize project:/agent: tag case to lowercase across all memories.
 # rename    -- Bulk rename tags matching `--from <prefix>` → `--to <prefix>`.
+# audit     -- Scan for tag-contract non-conformance; optionally heal.
 ```
 
 > Проверить установку можно в любой момент через `vesma doctor` — проверка «Completion» проходит, когда файл скрипта существует, rc-файл содержит каноническую строку source и скрипт привязывает основное имя программы; иначе выдаётся предупреждение с точной командой исправления.
@@ -740,49 +770,51 @@ vesma tags <TAB>
 
 ```text
 vesma doctor [OPTIONS]
+vesma doctor fix [--dry-run] [--json]
+vesma doctor paths [--json]
 ```
 
 | Опция | По умолчанию | Описание |
 |-------|-------------|---------- |
 | `--json` | `false` | Вывести результаты в JSON (для скриптов / CI) вместо таблицы. |
-| `--fix` | `false` | Автоматически исправлять проверки уровня WARN (устаревшая интеграция, неподключённые агенты, отсутствие MCP-регистрации). Проверки уровня FAIL автоматически не исправляются. |
-| `--dry-run` | `false` | Вместе с `--fix`: показать, что было бы исправлено, без выполнения. |
-| `--paths` | `false` | Вывести все разрешённые пути (data, vault, logs, cache, completion) и выйти. |
 
-Коды выхода: `0` — все проверки пройдены, `1` — одна или несколько провалены, `2` — только предупреждения.
+Коды выхода: `0` — все проверки пройдены (проверки со статусом `skip` — неприменимы к этой машине — считаются пройденными), `1` — одна или несколько провалены, `2` — только предупреждения.
 
 > У `doctor` нет опции `--config`; конфиг читается из `$VESMA_CONFIG` (устаревшие написания: `VESMARO_CONFIG` — до 6.0, `MNEMOS_CONFIG` — 4.x) или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
 
-### `doctor --paths`
+### `doctor paths`
 
 Показывает все пути, которые использует Vesma, разрешённые из конфига и окружения:
 
 ```bash
-vesma doctor --paths
-# data_dir:      /home/you/.vesma/data
-# vault_path:    /home/you/.vesma/vault
-# log_file:      /home/you/.mnemos/logs/mnemos.log
-# cache_dir:     /home/you/.vesma/cache
-# completion:    /home/you/.vesma/completion
-# config_file:   /home/you/.vesma/config.yaml
+vesma doctor paths
+# Root:         ~/.mnemos
+# Data dir:     ~/.mnemos/data
+# Vault:        ~/.mnemos/vault
+# Logs:         ~/.mnemos/logs/vesma.log
+# Cache:        ~/.mnemos/cache
+# Completion:   ~/.mnemos/completion
+# MCP config:   ~/.config/Code/User/mcp.json
 ```
 
-Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции.
+Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции. С `--json` объект путей выводится для скриптов.
 
-### `doctor --fix` и `--dry-run`
+### `doctor fix`
 
-С `--fix` проверки уровня WARN исправляются на месте (устаревшая интеграция → `integration update`, неподключённые агенты → `vesma integration setup`, отсутствие MCP-регистрации → MCP setup); затем затронутые проверки запускаются повторно, и сообщается новый статус. Комбинация с `--dry-run` показывает предполагаемые исправления без их выполнения. `--json --fix` добавляет списки `fixed` / `fix_skipped` в JSON-вывод.
+Исправляет проверки уровня WARN на месте (устаревшая интеграция → `integration update`, неподключённые агенты → `vesma integration setup`, отсутствие MCP-регистрации → MCP setup); затем затронутые проверки запускаются повторно, и сообщается новый статус. `--dry-run` показывает предполагаемые исправления без их выполнения. `--json` добавляет списки `fixed` / `fix_skipped` в JSON-вывод.
 
 ```bash
 # Только предпросмотр
-vesma doctor --fix --dry-run
+vesma doctor fix --dry-run
 
 # Применить исправления
-vesma doctor --fix
+vesma doctor fix
 
 # CI: машиночитаемый вердикт, без исправлений
 vesma doctor --json
 ```
+
+> **Устаревшие формы флагов.** `vesma doctor --fix` и `vesma doctor --paths` продолжают работать (скрипты могут на них опираться), но стали скрытыми алиасами субкоманд `fix` / `paths` и печатают однострочное предупреждение об устаревании в stderr. Переходите на субкоманды.
 
 ---
 

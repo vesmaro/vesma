@@ -385,6 +385,20 @@ class TestAddDryRun:
 class TestDoctorFix:
     """``mnemos doctor --fix`` auto-fixes WARN-level checks."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_vscode_mcp_surface(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Keep the legacy VS Code MCP surface (wave W-B, #467) out of the real home.
+
+        The MCP check also scans ``~/.config/Code/User/mcp.json`` now; these
+        tests do not isolate HOME, so point that surface at tmp_path — the
+        verdicts here must not depend on the developer box's real config.
+        """
+        import vesmaro.cli.memory_status as _ms
+
+        monkeypatch.setattr(
+            _ms, "VSCODE_MCP_CONFIG", tmp_path / ".config" / "Code" / "User" / "mcp.json"
+        )
+
     def test_fix_dry_run_previews(
         self,
         agents_dir: Path,
@@ -515,5 +529,8 @@ class TestDoctorFix:
         if "fixed" in payload:
             import json as _json
 
-            data = _json.loads(payload)
+            # The deprecated --fix alias prints a hint to stderr before the
+            # JSON document; this runner merges both streams — parse from
+            # the first "{" (real stdout stays pure).
+            data = _json.loads(payload[payload.index("{") :])
             assert data.get("fixed", []) == []

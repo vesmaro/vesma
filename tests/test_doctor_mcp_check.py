@@ -163,6 +163,51 @@ def test_check_is_report_only(fake_home: Path) -> None:
     assert list(fake_home.iterdir()) == [], "the check must never write anything"
 
 
+# ── Legacy well-known VS Code surface (wave W-B, #467) ────────────────────────
+
+
+@pytest.mark.parametrize("keygen", ["vesma", "mnemos"])
+def test_vscode_legacy_surface_is_seen(fake_home: Path, keygen: str) -> None:
+    """``~/.config/Code/User/mcp.json`` — the fix-path fallback — is checked."""
+    dest = fake_home / ".config" / "Code" / "User" / "mcp.json"
+    dest.parent.mkdir(parents=True)
+    servers: dict = {}
+    if keygen == "vesma":
+        servers["vesma"] = {"command": "vesma", "args": ["mcp-server"]}
+    else:
+        servers["mnemos"] = {"command": "vesma", "args": ["mcp-server"]}
+    dest.write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
+
+    result = _check_mcp_server()
+    assert result.status == CheckStatus.PASS
+    if keygen == "vesma":
+        assert "vscode (legacy): vesma key" in result.detail
+    else:
+        assert "vscode (legacy): legacy mnemos key" in result.detail
+        assert "migrate to vesma" in result.detail
+
+
+def test_vscode_legacy_foreign_only_config_is_reported(fake_home: Path) -> None:
+    """A VS Code config with only foreign MCP servers is an honest note, not a hit."""
+    dest = fake_home / ".config" / "Code" / "User" / "mcp.json"
+    dest.parent.mkdir(parents=True)
+    dest.write_text(json.dumps({"mcpServers": {"github": {"command": "gh"}}}), encoding="utf-8")
+
+    result = _check_mcp_server()
+    assert result.status == CheckStatus.WARN
+    assert "vscode (legacy): config without a vesma entry" in result.detail
+
+
+def test_vscode_legacy_corrupt_config_does_not_crash(fake_home: Path) -> None:
+    dest = fake_home / ".config" / "Code" / "User" / "mcp.json"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("{corrupt", encoding="utf-8")
+
+    result = _check_mcp_server()
+    assert result.status == CheckStatus.WARN
+    assert "vscode (legacy): config unreadable" in result.detail
+
+
 def test_registry_without_mcp_surfaces_is_not_applicable(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
