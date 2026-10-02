@@ -107,14 +107,18 @@ code_graph:
   # repo-relative fnmatch globs whose files SKIP poison-marking at index
   # time (still indexed normally). A previously-poisoned path that now
   # matches is un-poisoned on the next index run — audited as
-  # "allowlist-unpoison", never silent. The per-range issuance scan
-  # (PG4) is never waived. Default [] keeps PG3 semantics byte-identical.
+  # "allowlist-unpoison", never silent. The PRODUCT default stays []
+  # — PG3 is a security gate, not an inconvenience: keep the allowlist
+  # empty unless your repo carries known-fake secret FIXTURES. The
+  # per-range issuance scan (PG4) is NEVER waived by the allowlist.
   # Note: removing a glob is not retroactive (a cleaned file stays clean
   # until its content changes); fnmatch "*" matches across "/" too.
   secret_allowlist: []
+  # The canonical fixture pattern (fake-secret test data), as applied in
+  # practice: test trees and benchmark trees only — never source trees.
   # secret_allowlist:
-  #   - "tests/fixtures/fake_secrets.py"
-  #   - "docs/samples/**"
+  #   - "tests/**"
+  #   - "benchmarks/**"
   # Watch poll: global registration cap + adaptive interval
   # base + 1s per 500 indexed files, capped.
   watch_max_registrations: 8

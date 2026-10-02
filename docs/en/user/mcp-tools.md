@@ -991,6 +991,7 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "parse_error_count": 1,
   "poisoned_count": 1,
+  "hints": [],
   "staleness": {
     "total_files": 400,
     "fresh_percent": 97.5,
@@ -999,6 +1000,12 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
   }
 }
 ```
+
+`hints` is additive and usually `[]`; when EVERY poisoned path lives under
+a test-like tree (`tests/**` / `benchmarks/**`), status carries one line —
+«all poisoned files match test fixtures — consider
+`code_graph.secret_allowlist`» — the escape hatch for known-fake secret
+fixtures, not a waiver of the issuance scan (PG4).
 
 ### Related
 

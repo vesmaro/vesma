@@ -988,6 +988,7 @@ Vesma синтезирует части в единую запись Markdown с
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "parse_error_count": 1,
   "poisoned_count": 1,
+  "hints": [],
   "staleness": {
     "total_files": 400,
     "fresh_percent": 97.5,
@@ -996,6 +997,12 @@ Vesma синтезирует части в единую запись Markdown с
   }
 }
 ```
+
+`hints` — добавочное поле, обычно `[]`; если ВЕСЬ poisoned-набор живёт в
+тестовых деревьях (`tests/**` / `benchmarks/**`), статус несёт одну
+строку — «все poisoned-файлы совпадают с тестовыми фикстурами —
+рассмотрите `code_graph.secret_allowlist`» — эвакуационный люк для
+заведомо фейковых секрет-фикстур, а не отмена скана при выдаче (PG4).
 
 ### Связанные ресурсы
 
