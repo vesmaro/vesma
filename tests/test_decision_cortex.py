@@ -556,6 +556,11 @@ def test_resolver_pin_mismatch_telegraphs_recalibration(
     messages = " ".join(record.message for record in caplog.records)
     assert "CORTEX-E-PIN" in messages
     assert "recalibration" in messages
+    # The recalibration line itself carries the machine-parseable token
+    # (#459): a strict code=-prefix parser must catch exactly this line.
+    recalibration = [r for r in caplog.records if "recalibration" in r.message]
+    assert recalibration, "expected the recalibration telegraph warn"
+    assert all(r.message.startswith("code=") for r in recalibration)
 
 
 def test_resolver_without_fingerprint_refuses_the_pin(

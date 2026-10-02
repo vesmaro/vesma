@@ -452,8 +452,9 @@ def resolve_decision_provider(
             return VesmaProvider(embedder_fingerprint=embedder_fingerprint)
         except CortexPinError as exc:
             logger.warning(
-                "cortex recalibration event: %s — degrading to deterministic "
+                "code=%s cortex recalibration event: %s — degrading to deterministic "
                 "(re-calibrate before re-enabling decision_provider=vesma)",
+                exc.code,
                 exc,
             )
             return DeterministicProvider()
