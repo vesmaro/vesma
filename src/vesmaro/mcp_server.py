@@ -226,43 +226,71 @@ def _checkpoint_reminder() -> str | None:
 # On the FIRST tool dispatch after process start the dispatcher compares
 # the store meta ``last_reported_server_version`` with the running
 # ``__version__``: a difference appends ONE non-blocking line to that
-# response and re-stamps the meta. Off-resilient by contract — any
+# response and re-stamps the meta ONLY after the notice actually rode a
+# response (#464 P3-1 — a failed dispatch keeps the notice pending for
+# the next one instead of burning it). Off-resilient by contract — any
 # store error skips the notice silently after one warning log, and the
-# check runs at most ONCE per process whatever happens (no per-dispatch
-# store reads, no retry storm against a broken store).
+# store check runs at most ONCE per process whatever happens (no
+# per-dispatch store reads, no retry storm against a broken store).
 
 SERVER_VERSION_META_KEY = "last_reported_server_version"
 
-_server_update_state: dict[str, bool] = {"checked": False}
+_server_update_state: dict[str, Any] = {"checked": False, "pending": None}
 
 
 def _reset_server_update_state() -> None:
     """Test seam: re-arm the once-per-process version check."""
     _server_update_state["checked"] = False
+    _server_update_state["pending"] = None
 
 
 def _server_update_hint(mgr: Any) -> str | None:
     """The one-line upgrade notice, at most once per process (#456).
 
-    ``None`` when: already checked this process, the meta matches the
-    running version, or the store is unavailable (fail-open — the
-    notice is a courtesy, never a failure mode). A MISSING or
-    non-string meta is a first contact: the baseline is written
-    silently, nothing to compare yet."""
+    ``None`` when: already checked this process (and nothing is pending
+    delivery), the meta matches the running version, or the store is
+    unavailable (fail-open — the notice is a courtesy, never a failure
+    mode). A MISSING or non-string meta is a first contact: the
+    baseline is written silently, nothing to compare yet.
+
+    The meta re-stamp does NOT happen here (issue #464 P3-1): the
+    notice is only RETURNED — if the dispatch that should carry it
+    fails, it stays pending and the next dispatch returns it again (the
+    notice is never burned unapplied). :func:`_commit_server_update_hint`
+    stamps the meta only after the hint actually rode a response."""
+    pending = _server_update_state["pending"]
+    if pending is not None:
+        return pending  # undelivered notice — retry until it lands
     if _server_update_state["checked"]:
         return None
-    _server_update_state["checked"] = True  # one attempt per process, whatever happens
+    _server_update_state["checked"] = True  # one store check per process, whatever happens
     try:
         meta = mgr.sqlite.get_meta(SERVER_VERSION_META_KEY)
         if isinstance(meta, str) and meta == __version__:
             return None
-        mgr.sqlite.set_meta(SERVER_VERSION_META_KEY, __version__)
         if isinstance(meta, str):
-            return f"\n\nvesma server updated: {meta} → {__version__}"
+            hint = f"\n\nvesma server updated: {meta} → {__version__}"
+            _server_update_state["pending"] = hint
+            return hint
+        mgr.sqlite.set_meta(SERVER_VERSION_META_KEY, __version__)
         return None
     except Exception:
         logger.warning("server-update notice skipped (store unavailable)", exc_info=True)
         return None
+
+
+def _commit_server_update_hint(mgr: Any) -> None:
+    """Re-stamp ``last_reported_server_version`` AFTER delivery (#464
+    P3-1): the pending notice is dropped first (it rode a response —
+    the at-most-once contract holds even if the store write fails), the
+    meta write is best-effort bookkeeping (fail-open)."""
+    if _server_update_state["pending"] is None:
+        return
+    _server_update_state["pending"] = None
+    try:
+        mgr.sqlite.set_meta(SERVER_VERSION_META_KEY, __version__)
+    except Exception:
+        logger.warning("server-update meta re-stamp skipped (store unavailable)", exc_info=True)
 
 
 def _track_call(is_save: bool = False) -> None:
@@ -2146,6 +2174,10 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     )
     if update_hint:
         text += update_hint
+        # #464 P3-1: the meta re-stamp lands only when the notice
+        # actually rode a response — a failed dispatch above left it
+        # pending and the next dispatch delivers it instead.
+        _commit_server_update_hint(get_manager())
     if reminder:
         text += reminder
     return [TextContent(type="text", text=text)]

@@ -73,7 +73,11 @@ def register_cmd(
     from vesmaro.codegraph.service import GraphToolError
 
     try:
-        result = _service(config).register_project(project, root, agent=agent)
+        # source="operator" (#464 P2-1): the CLI is the operator's call
+        # path — registration here is never gated by
+        # code_graph.agent_registration (that gate bounds the MCP agent
+        # path only; the service default is source="agent").
+        result = _service(config).register_project(project, root, agent=agent, source="operator")
     except GraphToolError as exc:
         _refused(exc)
     console.print(

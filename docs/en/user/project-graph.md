@@ -54,9 +54,25 @@ a root is registered. Two ways to register:
 - **Agent-side** (#454): the `mnemos_register_project` tool — `project_id`,
   the absolute `root`, and the mandatory `agent` attribution. The root must
   exist, carry a packaging manifest or a `.git`, and not be `$HOME`/the
-  filesystem root. Idempotent when the root is already registered.
+  filesystem root (compared on the realpath, so a symlink or `..` spelling
+  of a forbidden target is refused too, #464). Idempotent when the root is
+  already registered.
 - **CLI**: `vesma graph register <project> <root>` — the same gates and
   audit trail (`manual-register`), from the terminal.
+
+> **Threat-model boundary (issue #464).** Registration is a **read-scope
+> grant**: once a root is registered, its symbols and snippets are readable
+> through the graph tools by every agent on the server, so letting an agent
+> register arbitrary roots lets it widen its own read scope over any git
+> checkout on the host. The agent call path is therefore gated by
+> `code_graph.agent_registration` (default `true` under the single-user
+> stdio assumption; set `false` on multi-agent or untrusted-agent
+> deployments — a gated attempt is refused and audited as
+> `manual-register-refused`). The operator CLI path is never gated. Register
+> refusals and repoint refusals are audit-first-class (`manual-register-refused`
+> / `repoint-refused`), and `vesma graph repoint` recovers **ghost**
+> registrations only — a registration whose root still exists on disk is
+> refused (move-root is not repoint).
 
 The raw store write also works (what the tools do underneath):
 
@@ -231,6 +247,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | Key (`code_graph.`) | Default | Meaning |
 |---------------------|---------|---------|
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
+| `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |

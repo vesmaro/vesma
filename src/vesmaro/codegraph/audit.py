@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 #: ``repoint`` (#450) joined the project-lifecycle wave: agent-side
 #: explicit registration (idempotent on the same root) and the operator
 #: re-point of a ghost registration whose root moved on disk.
+#: ``manual-register-refused`` / ``repoint-refused`` joined in #464
+#: (P3-2): every manual register/repoint refusal is audit-first-class —
+#: the refusal reason rides the row's ``reason`` field, matching the
+#: ``auto-register-capped`` precedent (a refusal the operator cannot
+#: see is a silent scope event).
 AUDIT_ACTIONS = (
     "index",
     "reindex",
@@ -51,7 +56,9 @@ AUDIT_ACTIONS = (
     "auto-register-capped",
     "manual-register",
     "manual-register-reused",
+    "manual-register-refused",
     "repoint",
+    "repoint-refused",
 )
 
 

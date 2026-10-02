@@ -1022,7 +1022,8 @@ class CodeGraphConfig(BaseModel):
     Canonical env override: ``VESMARO_CODE_GRAPH__INDEX_MAX_FILES`` /
     ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`` / ``VESMARO_CODE_GRAPH__AUTO_INDEX`` /
     ``VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
-    ``VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS``.
+    ``VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
+    ``VESMARO_CODE_GRAPH__AGENT_REGISTRATION``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1031,6 +1032,18 @@ class CodeGraphConfig(BaseModel):
             «graphs on by default»: ecosystem components build on the
             graphs, so they are first-class, not an opt-in). Set
             ``false`` to hide the graph from agents entirely.
+        agent_registration: Whether a connected MCP agent may register
+            project roots via ``mnemos_register_project`` (issue #464
+            P2-1). Registration IS a read-scope grant: the registered
+            tree becomes indexable and its symbols/snippets readable
+            through the graph tools by EVERY agent on the server. Set
+            ``false`` on multi-agent or untrusted-agent deployments so
+            only the operator (``vesma graph register``, CLI path)
+            decides what enters the read scope; a gated attempt is
+            refused AND audited (``manual-register-refused``). The
+            operator/CLI call path is never gated. Default ON —
+            matches the single-user stdio assumption every other
+            ``code_graph`` flag is calibrated to.
         index_max_files: Hard cap on indexed files per project.
             Default 20000 (ADR-0032 §3.4).
         index_max_source_mb: Hard cap on total source bytes per
@@ -1103,6 +1116,11 @@ class CodeGraphConfig(BaseModel):
     """
 
     enabled: bool = True
+    # Issue #464 P2-1: agent-initiated registration is a read-scope grant —
+    # gated separately from the master flag so a multi-agent deployment can
+    # keep the graph readable while reserving registration to the operator
+    # (``vesma graph register``). Default ON (single-user stdio assumption).
+    agent_registration: bool = True
     index_max_files: int = Field(default=20_000, ge=1)
     index_max_source_mb: int = Field(default=500, ge=1)
     # Issue #449: fnmatch globs over repo-relative paths — matching files
