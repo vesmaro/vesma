@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sqlite3
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -271,43 +272,134 @@ def mcp_sdk_version() -> str:
         return "?"
 
 
-def _check_mcp_server() -> CheckResult:
-    """Check known harness MCP configs for a `vesma` entry."""
-    candidates = [
-        (Path.home() / ".config" / "Code" / "User" / "mcp.json", "VS Code, user scope"),
-        (Path.cwd() / ".vscode" / "mcp.json", "VS Code, workspace scope"),
-        (Path.home() / ".zcode" / "cli" / "config.json", "ZCode, user scope"),
-        (Path.home() / ".agents" / "mcp.json", "AGENTS.md standard (~/.agents)"),
-        (Path.home() / ".config" / "opencode" / "opencode.json", "OpenCode, user scope"),
-    ]
-    for cfg_path, scope in candidates:
-        if not cfg_path.exists():
-            continue
+def _mcp_keys_seen(path: Path, mcp_format: str | None) -> frozenset[str] | None:
+    """Server key generations present in a registry MCP config file.
+
+    Returns ``None`` when the file exists but cannot be parsed (corrupt
+    JSON/TOML, non-UTF-8) — the check must not claim evidence either
+    way. Otherwise a subset of {``vesma``, ``mnemos``}: both key
+    generations count during the dual period until 6.0 (#467).
+
+    The lookup shape comes from the target's registry ``mcp.format`` —
+    never guessed from the filename: ``codex`` is TOML with servers
+    under ``[mcp_servers.<key>]``; ``zcode`` nests them under
+    ``mcp.servers``; ``opencode`` maps server names DIRECTLY under the
+    top-level ``mcp`` key; every other JSON format uses the top-level
+    ``mcpServers``.
+    """
+    from vesmaro.cli.integration import CODEX_MCP_ROOT, MCP_LEGACY_SERVER_KEY, MCP_SERVER_KEY
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    servers: Any = None
+    if mcp_format == "codex":
         try:
-            data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        servers: dict[str, Any] = {}
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            return None
+        servers = data.get(CODEX_MCP_ROOT)
+    else:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return None
         if isinstance(data, dict):
-            mcp = data.get("mcp")
-            servers = (
-                data.get("servers")
-                or (mcp.get("servers") if isinstance(mcp, dict) else None)
-                # OpenCode maps server names DIRECTLY under "mcp".
-                or (mcp if isinstance(mcp, dict) and mcp else {})
-                or data.get("mcpServers")
-                or {}
-            )
-        if "vesma" in servers:
-            return CheckResult(
-                "MCP server",
-                CheckStatus.PASS,
-                f"registered in {scope} — {cfg_path}",
-            )
+            if mcp_format == "zcode":
+                mcp = data.get("mcp")
+                servers = mcp.get("servers") if isinstance(mcp, dict) else None
+            elif mcp_format == "opencode":
+                servers = data.get("mcp")
+            else:
+                servers = data.get("mcpServers")
+
+    if not isinstance(servers, dict):
+        return frozenset()
+    return frozenset(k for k in (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY) if k in servers)
+
+
+def _check_mcp_server() -> CheckResult:
+    """Check every registry MCP surface for a Vesma server entry (#467).
+
+    Registry-driven (ADR-0024 — no hardcoded paths): every target in
+    ``integrations/targets.yaml`` that declares an ``mcp.config`` is
+    scanned with its declared format. Both key generations count (dual
+    period until 6.0): the brand-primary ``vesma`` key and the legacy
+    ``mnemos`` key. The pi target has no server key — its deployed
+    TypeScript bridge IS the registration. Report-only: this check
+    never writes or migrates configs.
+    """
+    from vesmaro.cli.integration import MCP_LEGACY_SERVER_KEY, MCP_SERVER_KEY, load_targets
+
+    try:
+        cfg = load_targets()
+    except Exception as exc:  # doctor reports, doesn't crash
+        return CheckResult("MCP server", CheckStatus.FAIL, f"targets.yaml load failed: {exc}")
+
+    notes: list[str] = []
+    absent = 0
+    vesma_seen = False
+    legacy_seen = False
+    mcp_surfaces = 0
+    for target in cfg.targets:
+        if target.mcp_config is None:
+            continue
+        mcp_surfaces += 1
+        path = target.mcp_config
+        if target.mcp_format == "pi":
+            # The TypeScript bridge is the registration itself — presence
+            # is the wiring, there is no server key inside.
+            if path.exists():
+                notes.append(f"{target.name}: MCP bridge deployed ({path})")
+                vesma_seen = True
+            else:
+                absent += 1
+            continue
+        if not path.exists():
+            absent += 1
+            continue
+        seen = _mcp_keys_seen(path, target.mcp_format)
+        if seen is None:
+            notes.append(f"{target.name}: config unreadable ({path})")
+        elif MCP_SERVER_KEY in seen and MCP_LEGACY_SERVER_KEY in seen:
+            notes.append(f"{target.name}: vesma + legacy mnemos keys ({path})")
+            vesma_seen = True
+        elif MCP_SERVER_KEY in seen:
+            notes.append(f"{target.name}: vesma key ({path})")
+            vesma_seen = True
+        elif MCP_LEGACY_SERVER_KEY in seen:
+            notes.append(f"{target.name}: legacy mnemos key ({path})")
+            legacy_seen = True
+        else:
+            notes.append(f"{target.name}: config without a vesma entry ({path})")
+
+    if vesma_seen:
+        extra = f" ({absent} registry surface(s) absent)" if absent else ""
+        return CheckResult("MCP server", CheckStatus.PASS, "; ".join(notes) + extra)
+    if legacy_seen:
+        return CheckResult(
+            "MCP server",
+            CheckStatus.PASS,
+            "; ".join(notes)
+            + " — LEGACY mnemos key only; re-run `vesma integration setup` to migrate to vesma",
+        )
+    if mcp_surfaces == 0:
+        # The pack declares no MCP-config surfaces at all (minimal/fake
+        # packs, MCP-less registries): nothing to verify, never a warning —
+        # otherwise --fix would "register" against paths this registry
+        # does not describe.
+        return CheckResult(
+            "MCP server",
+            CheckStatus.PASS,
+            "registry declares no MCP-config surfaces — check not applicable",
+        )
+    prefix = "; ".join(notes) + " — " if notes else ""
     return CheckResult(
         "MCP server",
         CheckStatus.WARN,
-        "not registered in any known harness — run `vesma integration setup`",
+        prefix + "not registered in any known harness — run `vesma integration setup`",
     )
 
 

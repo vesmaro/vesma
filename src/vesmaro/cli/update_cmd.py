@@ -21,7 +21,10 @@ Modes:
 * ``vesma update --to <version>`` — the rollback path: same, but pinned
   (``pip install --user <dist>==<version>``).
 * ``vesma update --install-timer`` / ``--uninstall-timer`` — install or
-  remove the weekly systemd USER timer (``vesma-update.timer``).
+  remove the weekly systemd USER timer (``vesma-update.timer``). Inside
+  a distrobox the units are written to the HOST home with one
+  ExecStart line per box (issue #468) — units in the box home would
+  never be loaded by the host user manager.
 
 The systemd unit files ship as ``contrib/vesma-update.{service,timer}``
 AND as the ``_SERVICE_TEMPLATE`` / ``_TIMER_TEMPLATE`` constants below —
@@ -31,6 +34,7 @@ directory); a drift test pins the repo files byte-identical to them.
 
 from __future__ import annotations
 
+import getpass
 import json
 import logging
 import shutil
@@ -408,7 +412,113 @@ def _unit_dir() -> Path:
     return Path.home() / ".config" / "systemd" / "user"
 
 
+# ── distrobox context (#468) ──────────────────────────────────────────────────
+
+#: Distrobox/podman container marker. Module constant so tests can fake a
+#: host that is not a container (this dev machine runs inside a box, where
+#: the marker exists — tests must stay deterministic).
+_CONTAINERENV = Path("/run/.containerenv")
+
+
+def _distrobox_context() -> tuple[bool, str | None, Path | None]:
+    """Classify the distrobox context: ``(in_container, box, host_home)``.
+
+    Detection: the resolved HOME carries the ``/.distrobox/<box>/...``
+    layout (box name and host home are derivable), or the container
+    marker file exists (in a container, but the host home cannot be
+    derived). The host home is the path prefix before the ``.distrobox``
+    component of the resolved HOME — computed from the path itself, no
+    subprocess probing (#468).
+    """
+    home = Path.home().resolve()
+    parts = home.parts
+    if ".distrobox" in parts:
+        idx = parts.index(".distrobox")
+        box = parts[idx + 1] if idx + 1 < len(parts) else None
+        host = Path(*parts[:idx]) if idx > 0 else None
+        if box is not None and host is not None:
+            return True, box, host
+        return True, None, None
+    if _CONTAINERENV.exists():
+        return True, None, None
+    return False, None, None
+
+
+def _host_user() -> str:
+    """Host username for the ``-M <user>@.host`` systemctl transport."""
+    try:
+        return getpass.getuser()
+    except Exception:  # environments without USER/LOGNAME must not crash
+        return ""
+
+
+def _systemctl_host(*args: str) -> int | None:
+    """Best-effort ``systemctl --user -M <user>@.host`` (host user manager)."""
+    proc = _run_cmd(["systemctl", "--user", "-M", f"{_host_user()}@.host", *args], timeout=60)
+    return proc.returncode if proc is not None else None
+
+
+def _box_exec_start_value(box: str, host_home: Path) -> str:
+    """ExecStart VALUE (after ``ExecStart=``) scheduling one box (#468).
+
+    Mirrors the live host units: ``distrobox-enter`` resolves ``$HOME``
+    to the box home inside the shell, so each box updates its own pip
+    user-site while the unit itself lives in the HOST home.
+    """
+    enter = host_home / ".local" / "bin" / "distrobox-enter"
+    return (
+        f"{enter} -n {box} -- /bin/sh -c "
+        "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+    )
+
+
+def _append_exec_start_line(text: str, line: str) -> str:
+    """Insert an ``ExecStart=`` line after the last existing one.
+
+    systemd accumulates ExecStart= entries: a second box must ADD its
+    line, never replace earlier boxes'. Falls back to inserting after
+    ``Type=oneshot`` (or at EOF) when the unit carries no ExecStart yet.
+    """
+    lines = text.splitlines(keepends=True)
+    exec_idxs = [i for i, ln in enumerate(lines) if ln.startswith("ExecStart=")]
+    if exec_idxs:
+        insert_at = exec_idxs[-1] + 1
+    else:
+        try:
+            insert_at = next(i for i, ln in enumerate(lines) if ln.strip() == "Type=oneshot") + 1
+        except StopIteration:
+            insert_at = len(lines)
+    lines.insert(insert_at, line if line.endswith("\n") else line + "\n")
+    return "".join(lines)
+
+
+# ── timer install / removal ──────────────────────────────────────────────────
+
+
 def _install_timer(console: Console) -> None:
+    """Install the weekly timer — on the host, or into the HOST home from a box."""
+    in_container, box, host_home = _distrobox_context()
+    if in_container:
+        if box is None or host_home is None:
+            # A container whose host home cannot be derived: writing units
+            # here would schedule dead units (#468) — refuse with the recipe.
+            console.print(
+                "[yellow]⚠[/yellow] running in a container, but the host home cannot be "
+                "derived from HOME — installing here would schedule units the host manager "
+                "never loads. On the HOST, copy contrib/vesma-update.{service,timer} into "
+                "~/.config/systemd/user/ and add one ExecStart line per box:"
+            )
+            console.print(
+                "  ExecStart=<host-home>/.local/bin/distrobox-enter -n <box> -- /bin/sh -c "
+                "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+            )
+            return
+        _install_timer_in_box(console, box, host_home)
+        return
+    _install_timer_on_host(console)
+
+
+def _install_timer_on_host(console: Console) -> None:
     unit_dir = _unit_dir()
     try:
         unit_dir.mkdir(parents=True, exist_ok=True)
@@ -436,16 +546,126 @@ def _install_timer(console: Console) -> None:
     )
 
 
-def _uninstall_timer(console: Console) -> None:
-    _systemctl("disable", "--now", TIMER_UNIT)
-    unit_dir = _unit_dir()
+def _install_timer_in_box(console: Console, box: str, host_home: Path) -> None:
+    """Install the weekly timer into the HOST user manager for one box (#468).
+
+    The units live in the HOST home — the host user manager loads units
+    from there only, so writing inside the box would schedule nothing.
+    The service accumulates one ExecStart line per box (idempotent: a
+    re-run never duplicates a line). Enabling goes through the
+    ``-M <user>@.host`` transport; when the host manager is not
+    reachable from inside the box, the exact manual host-side commands
+    (incl. the linger hint) are printed and the command still succeeds —
+    the units are in place.
+    """
+    unit_dir = host_home / ".config" / "systemd" / "user"
+    exec_value = _box_exec_start_value(box, host_home)
+    line = f"ExecStart={exec_value}"
+    try:
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        service_path = unit_dir / SERVICE_UNIT
+        if service_path.exists():
+            text = service_path.read_text(encoding="utf-8")
+            if line not in text:  # idempotent — never duplicate a box line
+                service_path.write_text(_append_exec_start_line(text, line), encoding="utf-8")
+        else:
+            service_path.write_text(
+                _SERVICE_TEMPLATE.format(exec_start=exec_value), encoding="utf-8"
+            )
+        timer_path = unit_dir / TIMER_UNIT
+        if not timer_path.exists():
+            timer_path.write_text(_TIMER_TEMPLATE, encoding="utf-8")
+    except Exception as exc:
+        console.print(f"[red]✗[/red] cannot write unit files to {unit_dir}: {exc}")
+        raise typer.Exit(1) from None
+
+    reloaded = _systemctl_host("daemon-reload")
+    enabled = _systemctl_host("enable", "--now", TIMER_UNIT)
+    if reloaded == 0 and enabled == 0:
+        console.print(
+            f"[green]✓[/green] {TIMER_UNIT} installed on the HOST for box '{box}' and "
+            "enabled (weekly, Persistent — survives reboot)"
+        )
+        return
+    user = _host_user()
+    console.print(
+        f"[yellow]⚠[/yellow] unit files written to {unit_dir} (host), but the host user "
+        f"manager is not reachable from box '{box}'. Run on the HOST:\n"
+        f"  systemctl --user -M {user}@.host daemon-reload\n"
+        f"  systemctl --user -M {user}@.host enable --now {TIMER_UNIT}\n"
+        f"  sudo loginctl enable-linger {user}  # so user timers run without an active session"
+    )
+
+
+def _remove_timer_units(console: Console, unit_dir: Path, *, host_manager: bool) -> None:
+    """Disable + remove the timer units via the local or the host manager."""
+    systemctl = _systemctl_host if host_manager else _systemctl
+    systemctl("disable", "--now", TIMER_UNIT)
     for name in (SERVICE_UNIT, TIMER_UNIT):
         try:
             (unit_dir / name).unlink(missing_ok=True)
         except OSError as exc:
             console.print(f"[yellow]⚠[/yellow] could not remove {unit_dir / name}: {exc}")
-    _systemctl("daemon-reload")
+    systemctl("daemon-reload")
     console.print(f"[green]✓[/green] {TIMER_UNIT} removed")
+
+
+def _uninstall_timer(console: Console) -> None:
+    """Remove the weekly timer — symmetric to :func:`_install_timer` (#468)."""
+    in_container, box, host_home = _distrobox_context()
+    if in_container:
+        if box is None or host_home is None:
+            console.print(
+                "[yellow]⚠[/yellow] running in a container, but the host home cannot be "
+                f"derived from HOME — remove the host units manually on the HOST "
+                f"(~/.config/systemd/user/{SERVICE_UNIT}, {TIMER_UNIT})."
+            )
+            return
+        _uninstall_timer_in_box(console, box, host_home)
+        return
+    _uninstall_timer_on_host(console)
+
+
+def _uninstall_timer_on_host(console: Console) -> None:
+    _remove_timer_units(console, _unit_dir(), host_manager=False)
+
+
+def _uninstall_timer_in_box(console: Console, box: str, host_home: Path) -> None:
+    """Remove THIS box's scheduled update from the HOST units (#468).
+
+    Only this box's ExecStart line is removed; the units survive while
+    other box entries remain (uninstalling one box must never
+    unschedule the others) and are disabled+removed only when the last
+    box line goes. The host's own (non-box) ExecStart is never touched.
+    """
+    unit_dir = host_home / ".config" / "systemd" / "user"
+    service_path = unit_dir / SERVICE_UNIT
+    try:
+        text = service_path.read_text(encoding="utf-8")
+    except OSError:
+        console.print(
+            f"[yellow]⚠[/yellow] no {SERVICE_UNIT} in {unit_dir} (host) — nothing to remove"
+        )
+        return
+    ours = f"distrobox-enter -n {box} --"
+    lines = text.splitlines(keepends=True)
+    kept = [ln for ln in lines if not (ln.startswith("ExecStart=") and ours in ln)]
+    if len(kept) == len(lines):
+        console.print(
+            f"[yellow]⚠[/yellow] box '{box}' is not scheduled in host {SERVICE_UNIT} — "
+            "nothing to remove"
+        )
+        return
+    others_left = [ln for ln in kept if ln.startswith("ExecStart=") and "distrobox-enter" in ln]
+    if others_left:
+        service_path.write_text("".join(kept), encoding="utf-8")
+        _systemctl_host("daemon-reload")
+        console.print(
+            f"[green]✓[/green] box '{box}' removed from host {SERVICE_UNIT}; other box "
+            "entries remain — the timer stays enabled"
+        )
+        return
+    _remove_timer_units(console, unit_dir, host_manager=True)
 
 
 # ── the command ──────────────────────────────────────────────────────────────

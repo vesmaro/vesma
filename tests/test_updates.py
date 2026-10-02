@@ -912,6 +912,193 @@ def test_timer_flags_are_mutually_exclusive(
     assert "mutually exclusive" in result.output
 
 
+# ── CLI: timer install / removal inside a distrobox (#468) ───────────────────
+
+
+@pytest.fixture(autouse=True)
+def not_a_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake the machine container marker OFF for deterministic verdicts.
+
+    This dev machine runs inside a distrobox (``/run/.containerenv``
+    exists), so the real marker would hijack every host-path test. Box
+    detection still works via the HOME ``/.distrobox/`` layout; the
+    marker-only test below re-points the constant at a real file.
+    """
+    monkeypatch.setattr(updates_cli, "_CONTAINERENV", Path("/nonexistent/.containerenv"))
+
+
+def _make_box_home(tmp_path: Path, box: str) -> tuple[Path, Path]:
+    """(box_home, host_home): HOME layout of a distrobox on a host."""
+    host_home = tmp_path / "hosthome"
+    box_home = host_home / ".distrobox" / box / "home"
+    box_home.mkdir(parents=True)
+    return box_home, host_home
+
+
+@pytest.fixture
+def box_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """HOME inside a distrobox 'ubuntu' whose host home is <tmp>/hosthome."""
+    box_home, host_home = _make_box_home(tmp_path, "ubuntu")
+    monkeypatch.setenv("HOME", str(box_home))
+    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (tmp_path / "nonexistent-share",))
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    return box_home, host_home
+
+
+def _spy_systemctl(monkeypatch: pytest.MonkeyPatch, rc: int | None) -> list[tuple[str, ...]]:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(cmd, timeout=60):
+        calls.append(tuple(cmd))
+        if rc is None:
+            raise OSError("systemctl unavailable")
+        return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    return calls
+
+
+def test_distrobox_context_host_vs_box(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert updates_cli._distrobox_context() == (False, None, None)
+    box_home, host_home = _make_box_home(tmp_path, "ubuntu")
+    monkeypatch.setenv("HOME", str(box_home))
+    assert updates_cli._distrobox_context() == (True, "ubuntu", host_home)
+
+
+def test_distrobox_context_container_marker_without_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / ".containerenv"
+    marker.write_text("")
+    monkeypatch.setattr(updates_cli, "_CONTAINERENV", marker)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # In a container, but the host home is not derivable → (True, None, None).
+    assert updates_cli._distrobox_context() == (True, None, None)
+
+
+def test_install_timer_in_box_writes_host_units(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    box_home, host_home = box_env
+    monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--install-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    unit_dir = host_home / ".config/systemd/user"
+    service = (unit_dir / "vesma-update.service").read_text()
+    assert (
+        f"ExecStart={host_home}/.local/bin/distrobox-enter -n ubuntu -- /bin/sh -c "
+        "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+    ) in service
+    timer = (unit_dir / "vesma-update.timer").read_text()
+    assert "OnCalendar=weekly" in timer
+    # The dead-units regression: nothing may land in the BOX home.
+    assert not (box_home / ".config/systemd").exists()
+    transport = ("systemctl", "--user", "-M", "hostuser@.host")
+    assert (*transport, "daemon-reload") in calls
+    assert (*transport, "enable", "--now", "vesma-update.timer") in calls
+
+
+def test_install_timer_second_box_accumulates_exec_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, host_home = _make_box_home(tmp_path, "ubuntu")
+    second_home = host_home / ".distrobox" / "vscode-box" / "home"
+    second_home.mkdir(parents=True)
+    monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
+    _spy_systemctl(monkeypatch, rc=0)
+
+    monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    monkeypatch.setenv("HOME", str(second_home))
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    # Idempotent re-run must not duplicate a line.
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+
+    service = (host_home / ".config/systemd/user/vesma-update.service").read_text()
+    exec_lines = [ln for ln in service.splitlines() if ln.startswith("ExecStart=")]
+    assert len(exec_lines) == 2, f"accumulation + idempotency broken:\n{service}"
+    assert "-n ubuntu --" in exec_lines[0]
+    assert "-n vscode-box --" in exec_lines[1]
+
+
+def test_uninstall_timer_in_box_removes_only_own_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, host_home = _make_box_home(tmp_path, "ubuntu")
+    second_home = host_home / ".distrobox" / "vscode-box" / "home"
+    second_home.mkdir(parents=True)
+    monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
+    calls = _spy_systemctl(monkeypatch, rc=0)
+
+    monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+    monkeypatch.setenv("HOME", str(second_home))
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+
+    monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    unit_dir = host_home / ".config/systemd/user"
+    service = (unit_dir / "vesma-update.service").read_text()
+    assert "-n ubuntu --" not in service
+    assert "-n vscode-box --" in service, "removing one box must not unschedule the others"
+    assert (unit_dir / "vesma-update.timer").exists()
+    assert not any("disable" in c for c in calls), "timer stays enabled for the other box"
+
+
+def test_uninstall_timer_last_box_removes_units(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, host_home = box_env
+    monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
+    _spy_systemctl(monkeypatch, rc=0)
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
+
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    unit_dir = host_home / ".config/systemd/user"
+    assert not (unit_dir / "vesma-update.service").exists()
+    assert not (unit_dir / "vesma-update.timer").exists()
+    transport = ("systemctl", "--user", "-M", "hostuser@.host")
+    assert (*transport, "disable", "--now", "vesma-update.timer") in calls, (
+        "the last box out must disable via the host transport"
+    )
+    assert (*transport, "daemon-reload") in calls
+
+
+def test_install_timer_in_box_prints_manual_commands_when_host_manager_unreachable(
+    box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, host_home = box_env
+    monkeypatch.setattr(updates_cli, "_host_user", lambda: "hostuser")
+    _spy_systemctl(monkeypatch, rc=1)
+    result = _invoke_update(["--install-timer"], monkeypatch)
+    assert result.exit_code == 0, "an unreachable host manager must not fail the command"
+    assert "systemctl --user -M hostuser@.host daemon-reload" in result.output
+    assert "systemctl --user -M hostuser@.host enable --now vesma-update.timer" in result.output
+    assert "sudo loginctl enable-linger hostuser" in result.output
+    # The units are still in place — only the enabling is left to the host.
+    assert (host_home / ".config/systemd/user/vesma-update.service").exists()
+
+
+def test_install_timer_in_container_without_distrobox_layout_prints_hint(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = quiet_home / "fake-containerenv"
+    marker.write_text("")
+    monkeypatch.setattr(updates_cli, "_CONTAINERENV", marker)
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--install-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "host home cannot be derived" in result.output
+    assert "distrobox-enter" in result.output, "the hint names the per-box ExecStart recipe"
+    assert not calls, "nothing may be executed on the refusal path"
+    assert not (quiet_home / ".config/systemd").exists(), "no dead units in the container"
+
+
 # ── contrib drift guard ──────────────────────────────────────────────────────
 
 
