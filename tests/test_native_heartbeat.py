@@ -25,6 +25,7 @@ The six CI pins from the wave brief, by class:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import sqlite3
@@ -35,9 +36,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from vesmaro import mcp_server as mcp_server_module
+from vesmaro.api import main as api_main
+from vesmaro.api.main import app as real_api_app
+from vesmaro.api.main import lifespan
 from vesmaro.awareness import (
     AWARENESS_DISCLAIMER,
     HEARTBEAT_CALM_LINE,
@@ -58,7 +64,7 @@ from vesmaro.lanes import (
     write_awareness_heartbeat_cursor,
 )
 from vesmaro.manager import MemoryManager
-from vesmaro.mcp_server import _call_tool_dispatch, call_tool
+from vesmaro.mcp_server import _call_tool_dispatch, _canonical_tools, call_tool
 from vesmaro.metrics.schema import validate_awareness_meta
 from vesmaro.metrics.sink import MetricsStore
 from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
@@ -947,6 +953,120 @@ class TestSinkAwarenessEvents:
         second.close()
 
 
+_WAVE0_AWARENESS_DDL = (
+    "CREATE TABLE awareness_events ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    " ts REAL NOT NULL,"
+    " kind TEXT NOT NULL CHECK (kind IN ('peer_write','delta_available',"
+    "'heartbeat_delivery','heartbeat_suppressed','tool_call')),"
+    " project TEXT,"
+    " agent TEXT,"
+    " session TEXT,"
+    " meta_json TEXT)"
+)
+
+
+class TestSec4AwarenessKindsMigration:
+    """Cascade SEC-4: the wave-0 five-kind CHECK refuses the
+    ``conflict_hint_emitted`` funnel event — legacy sidecars migrate onto
+    the extended enum on their next open (a0-rebuild pattern)."""
+
+    def test_fresh_sidecar_accepts_conflict_hint_emitted(self, tmp_path: Path) -> None:
+        store = MetricsStore(tmp_path / "metrics.sqlite")
+        row_id = store.record_awareness_event(kind="conflict_hint_emitted", meta={"tool": "t"})
+        assert row_id is not None
+        store.close()
+
+    def test_fresh_sidecar_ddl_carries_the_kind(self, tmp_path: Path) -> None:
+        db = tmp_path / "metrics.sqlite"
+        store = MetricsStore(db)
+        assert store._conn() is not None  # force the bootstrap
+        store.close()
+        conn = sqlite3.connect(db)
+        try:
+            sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name='awareness_events'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert "conflict_hint_emitted" in sql
+
+    def test_legacy_sidecar_rebuilt_with_rows_kept(self, tmp_path: Path) -> None:
+        db = tmp_path / "metrics.sqlite"
+        store = MetricsStore(db)
+        store.record_awareness_event(
+            kind="tool_call", project=PROJECT, agent=AGENT, session=SESSION, meta={"tool": "t"}
+        )
+        store.close()
+        # Regress the table to the exact wave-0 shape (with one funnel row).
+        conn = sqlite3.connect(db)
+        try:
+            conn.executescript(
+                f"DROP TABLE awareness_events; {_WAVE0_AWARENESS_DDL};"
+                "INSERT INTO awareness_events (ts, kind, project, agent, session, meta_json)"
+                " VALUES (1.0, 'tool_call', 'p', 'a', 's', '{\"tool\": \"t\"}');"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        # Next open: the migration runs, legacy rows survive, the new
+        # kind is accepted.
+        second = MetricsStore(db)
+        assert second.record_awareness_event(kind="conflict_hint_emitted", meta={}) is not None
+        conn2 = sqlite3.connect(db)
+        try:
+            kinds = [r[0] for r in conn2.execute("SELECT kind FROM awareness_events ORDER BY id")]
+            sql = conn2.execute(
+                "SELECT sql FROM sqlite_master WHERE name='awareness_events'"
+            ).fetchone()[0]
+            idx = {r[0] for r in conn2.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        finally:
+            conn2.close()
+        assert kinds == ["tool_call", "conflict_hint_emitted"]
+        assert "conflict_hint_emitted" in sql
+        assert {"idx_awareness_kind_ts", "idx_awareness_project_ts"} <= idx
+        second.close()
+
+    def test_migration_is_idempotent_across_reopens(self, tmp_path: Path) -> None:
+        db = tmp_path / "metrics.sqlite"
+        first = MetricsStore(db)
+        first.record_awareness_event(kind="tool_call", meta={})
+        first.close()
+        for _ in range(2):
+            again = MetricsStore(db)
+            assert again.record_awareness_event(kind="conflict_hint_emitted", meta={}) is not None
+            again.close()
+        conn = sqlite3.connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM awareness_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 3  # one legacy + two post-migration writes, nothing duplicated
+
+    def test_migration_drops_nothing_on_legacy_empty_table(self, tmp_path: Path) -> None:
+        db = tmp_path / "metrics.sqlite"
+        store = MetricsStore(db)
+        assert store._conn() is not None  # force the bootstrap (creates the fresh table)
+        store.close()
+        conn = sqlite3.connect(db)
+        try:
+            conn.executescript(f"DROP TABLE awareness_events; {_WAVE0_AWARENESS_DDL};")
+            conn.commit()
+        finally:
+            conn.close()
+        second = MetricsStore(db)
+        assert second._conn() is not None  # the open runs SCHEMA_SQL + the migration
+        second.close()
+        conn2 = sqlite3.connect(db)
+        try:
+            sql = conn2.execute(
+                "SELECT sql FROM sqlite_master WHERE name='awareness_events'"
+            ).fetchone()[0]
+        finally:
+            conn2.close()
+        assert "conflict_hint_emitted" in sql
+
+
 # ── shared manager helpers ────────────────────────────────────────────────────
 
 
@@ -978,3 +1098,257 @@ def _checkpoint(
         {"goals": goals, "in_progress": "wiring"}, project=project, agent=agent, session=session
     )
     return memory.id
+
+
+def _payload(contents: list[Any]) -> dict[str, Any]:
+    """First JSON value of a dispatch response — the response text can
+    carry the one-time checkpoint reminder / update hint appended AFTER
+    the JSON payload, so a plain ``json.loads`` over the whole text is
+    wrong for any test that is not the process's first dispatch."""
+    value, _end = json.JSONDecoder().raw_decode(contents[0].text)
+    return value
+
+
+# ── W1 (ADR-0035 wave 1): canary slice — identity on the frequent reads, ─────
+#    the SEC-2 awareness-surface deny pin, the mode-linked hooks default,
+#    the ARCH-2 clamp pin and the SEC-5 hydration bound.
+
+
+class TestAgentIdentityArgument:
+    """(a) The optional ``agent`` argument on ``mnemos_search`` /
+    ``mnemos_recall_context`` feeds the heartbeat identity extraction —
+    the funnel's most frequent calls used to see None there."""
+
+    async def test_search_agent_arg_feeds_heartbeat_identity(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            _knowledge(mgr, "agent arg search body")
+            args = {"query": "agent arg", "project": PROJECT, "agent": AGENT, "session": SESSION}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_search", args)
+            events = _sidecar_events(mgr)
+            tool_call = next(e for e in events if e["kind"] == "tool_call")
+            assert tool_call["project"] == PROJECT
+            assert tool_call["agent"] == AGENT
+            # Identity complete → the contour actually composed.
+            assert "delta_available" in [e["kind"] for e in events]
+            mgr.close()
+
+    async def test_recall_context_agent_arg_feeds_heartbeat_identity(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            _checkpoint(mgr, goals="recall identity goal", agent=NEIGHBOR_A)
+            args = {"project": PROJECT, "agent": AGENT, "session": SESSION}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_recall_context", args)
+            events = _sidecar_events(mgr)
+            tool_call = next(e for e in events if e["kind"] == "tool_call")
+            assert tool_call["agent"] == AGENT
+            assert "delta_available" in [e["kind"] for e in events]
+            mgr.close()
+
+    async def test_search_without_agent_stays_identity_less(self, tmp_path: Path) -> None:
+        """Legacy no-agent calls keep working AND stay identity-less: the
+        tool_call denominator lands, no compose runs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            _knowledge(mgr, "legacy call body")
+            args = {"query": "legacy call", "project": PROJECT, "session": SESSION}
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                await call_tool("mnemos_search", args)
+            events = _sidecar_events(mgr)
+            assert [e["kind"] for e in events] == ["tool_call"]
+            assert events[0]["agent"] is None
+            mgr.close()
+
+    def test_schemas_carry_optional_agent_with_slug_cap(self) -> None:
+        """Schema-level cap mirrors the agent:<slug> contract (1-64 chars
+        of [a-z0-9_-]); the argument is additive — required lists and all
+        legacy arguments untouched."""
+        tools = {t.name: t for t in asyncio.run(_canonical_tools())}
+        for name in ("mnemos_search", "mnemos_recall_context"):
+            props = tools[name].input_schema["properties"]
+            agent = props["agent"]
+            assert agent["type"] == "string"
+            assert agent["maxLength"] == 64
+            # Additive: not required, legacy contract intact.
+            assert "agent" not in tools[name].input_schema.get("required", [])
+            assert "query" in props and "project" in props
+
+
+class TestSEC2AwarenessSurfacesDenied:
+    """Cascade SEC-2: the awareness surfaces themselves never carry the
+    native tail (double render — the C13 assemble_context ruling)."""
+
+    async def test_awareness_pre_flight_gets_no_native_tail(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _checkpoint(mgr, goals="sec2 pre-flight goal", agent=NEIGHBOR_A)
+            args = {
+                "action": "pre_flight",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_awareness", args)
+            assert all("Peer awareness — heartbeat" not in c.text for c in contents)
+            # Denominator only — no compose events for a denied surface.
+            kinds = [e["kind"] for e in _sidecar_events(mgr)]
+            assert kinds == ["tool_call"]
+            mgr.close()
+
+    async def test_hooks_pre_llm_call_gets_no_native_tail(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _knowledge(mgr, "sec2 hooks body")
+            args = {
+                "action": "pre_llm_call",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_hooks", args)
+            assert len(contents) == 1  # the hook payload alone — no tail TextContent
+            assert "Peer awareness — heartbeat" not in contents[0].text
+            kinds = [e["kind"] for e in _sidecar_events(mgr)]
+            assert kinds == ["tool_call"]
+            mgr.close()
+
+
+class TestHooksAwarenessDefaultOn:
+    """(b) include_awareness resolves mode-linked: canary/on compose by
+    default, off/shadow stay byte-identical, explicit boolean wins."""
+
+    async def test_pre_llm_call_defaults_on_under_canary(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _checkpoint(mgr, goals="default-on goal", agent=NEIGHBOR_A)
+            args = {
+                "action": "pre_llm_call",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_hooks", args)
+            payload = _payload(contents)
+            assert "awareness" in payload  # composed WITHOUT the explicit flag
+            mgr.close()
+
+    async def test_pre_llm_call_defaults_off_under_shadow(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="shadow"))
+            args = {
+                "action": "pre_llm_call",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_hooks", args)
+            payload = _payload(contents)
+            assert "awareness" not in payload  # byte-identical pre-#254 shape
+            mgr.close()
+
+    async def test_explicit_false_wins_under_canary(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            args = {
+                "action": "pre_llm_call",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+                "include_awareness": False,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_hooks", args)
+            payload = _payload(contents)
+            assert "awareness" not in payload
+            mgr.close()
+
+    async def test_on_session_start_defaults_on_under_canary(self, tmp_path: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            _checkpoint(mgr, goals="presence default goal", agent=NEIGHBOR_A)
+            args = {
+                "action": "on_session_start",
+                "session": SESSION,
+                "project": PROJECT,
+                "agent": AGENT,
+            }
+            with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
+                contents = await call_tool("mnemos_hooks", args)
+            payload = _payload(contents)
+            assert "presence" in payload
+            mgr.close()
+
+    def test_off_mode_default_is_false(self, manager: MemoryManager) -> None:
+        from vesmaro.hooks import _include_awareness_default
+
+        assert _include_awareness_default(manager) is False
+
+    def test_canary_mode_default_is_true(self, tmp_path: Path) -> None:
+        from vesmaro.hooks import _include_awareness_default
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = _manager(_settings(Path(tmpdir), mode="canary"))
+            assert _include_awareness_default(mgr) is True
+            mgr.close()
+
+    def test_rest_absent_include_awareness_resolves_mode_linked(self, tmp_path: Path) -> None:
+        """The REST twin (POST /hooks/pre_llm_call): the Pydantic None
+        default rides to dispatch_hook unresolved, so the mode-linked
+        default decides — canary composes, shadow stays byte-identical."""
+        for mode, expect_awareness in (("canary", True), ("shadow", False)):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mgr = _manager(_settings(Path(tmpdir), mode=mode))
+                _checkpoint(mgr, goals=f"rest default {mode} goal", agent=NEIGHBOR_A)
+                api_main._manager = mgr
+                test_app = FastAPI(title="awrh-rest-test", version="0.1.0", lifespan=lifespan)
+                for route in real_api_app.routes:
+                    test_app.routes.append(route)
+                try:
+                    with TestClient(test_app) as client:
+                        resp = client.post(
+                            "/hooks/pre_llm_call",
+                            json={
+                                "session": SESSION,
+                                "project": PROJECT,
+                                "agent": AGENT,
+                            },
+                        )
+                    assert resp.status_code == 200
+                    payload = resp.json()
+                    assert ("awareness" in payload) is expect_awareness, (
+                        f"mode={mode}: include_awareness absent must resolve to {expect_awareness}"
+                    )
+                finally:
+                    api_main._manager = None
+                    mgr.close()
+
+
+class TestSec5DeltaStageHydrationBound:
+    """Cascade SEC-5: the delta stage hydrates at most
+    :data:`DELTA_FEED_LIMIT` rows per query — pinned so the async-contour
+    budget cannot silently regress to an unbounded fetch."""
+
+    def test_heartbeat_delta_stage_queries_are_bounded(
+        self, manager: MemoryManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        limits: list[int | None] = []
+        real = manager.list_recent
+
+        def _spy(*args: Any, **kwargs: Any) -> Any:
+            limits.append(kwargs.get("limit"))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(manager, "list_recent", _spy)
+        _knowledge(manager, "sec5 bound body")
+        result = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert result["state"] == "delta"  # the expensive leg actually ran
+        assert limits, "the delta stage must query through list_recent"
+        assert all(lim is not None and lim <= 200 for lim in limits), (
+            f"unbounded delta-stage fetch: limits={limits}"
+        )

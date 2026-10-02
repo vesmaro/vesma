@@ -1274,8 +1274,11 @@ class HooksRequest(BaseModel):
     output_text: str | None = None
     auto_compress: bool | None = None
     profile: str | None = None
-    # pre_llm_call / on_session_start (vesma #254 awareness composition)
-    include_awareness: bool = False
+    # pre_llm_call / on_session_start (vesma #254 awareness composition).
+    # ADR-0035 W1: None (field absent) resolves to the mode-linked
+    # default inside the awareness-capable hooks — canary/on compose by
+    # default; an explicit boolean always wins.
+    include_awareness: bool | None = None
 
 
 @app.post("/hooks/{action}")
