@@ -89,7 +89,7 @@ def _make_mock_manager() -> MagicMock:
     mock_memory.status = "published"
 
     mgr = MagicMock()
-    mgr.settings.mnemos.strict_tag_contract = False
+    mgr.settings.vesma.strict_tag_contract = False
     mgr.add.return_value = mock_memory
     # mnemos #251 D0: vesma_save_context routes through the checkpoint
     # single authority (validation + binding + dedup live in the manager).

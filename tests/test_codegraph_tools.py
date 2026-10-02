@@ -1025,7 +1025,7 @@ class _FakeManager:
     def __init__(self, tmp_path: Path, repo: Path, *, enabled: bool) -> None:
         self.sqlite = FakeMainStore(FakeProject(id="p-1", name=PROJECT, paths=[str(repo)]))
         self.settings = SimpleNamespace(
-            mnemos=SimpleNamespace(data_dir=str(tmp_path / "data")),
+            vesma=SimpleNamespace(data_dir=str(tmp_path / "data")),
             code_graph=CodeGraphConfig(enabled=enabled),
         )
 
@@ -1115,7 +1115,7 @@ class TestMcpLayer:
 
 def _rest_settings(tmp_path: Path, *, enabled: bool) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test.db",

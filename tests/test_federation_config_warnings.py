@@ -37,7 +37,7 @@ def _write_config(
     else:
         peers_block = "    {}"
     cfg.write_text(
-        "mnemos:\n"
+        "vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         "embedding:\n"

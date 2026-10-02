@@ -52,7 +52,7 @@ class _ListHandler(logging.Handler):
 def _write_config(tmp_path: Path, mesh_section: dict[str, Any] | None) -> Path:
     """Write a minimal serve config with isolated storage paths."""
     cfg: dict[str, Any] = {
-        "mnemos": {
+        "vesma": {
             "data_dir": str(tmp_path / "data"),
             "vault_path": str(tmp_path / "vault"),
         },

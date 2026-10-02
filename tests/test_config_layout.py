@@ -48,8 +48,8 @@ def test_default_db_name_unchanged() -> None:
 def test_db_path_resolves_under_data_dir(tmp_path: Path) -> None:
     """db_path property = data_dir / db_name."""
     settings = Settings()
-    settings.mnemos.data_dir = tmp_path / "data"
-    settings.mnemos.db_name = "test.db"
+    settings.vesma.data_dir = tmp_path / "data"
+    settings.vesma.db_name = "test.db"
     assert settings.db_path == tmp_path / "data" / "test.db"
 
 
@@ -160,7 +160,7 @@ def test_migrate_layout_preserves_config_yaml(fake_home: Path) -> None:
     """config.yaml at ~/.mnemos/config.yaml stays in place during migration."""
     old_root = fake_home / ".mnemos"
     old_root.mkdir()
-    (old_root / "config.yaml").write_text("mnemos:\n  data_dir: ~/.mnemos/data\n")
+    (old_root / "config.yaml").write_text("vesma:\n  data_dir: ~/.mnemos/data\n")
     (old_root / "mnemos.db").write_text("fake db")
 
     settings = Settings()
@@ -217,7 +217,7 @@ def test_migrate_layout_skips_custom_data_dir(fake_home: Path) -> None:
 
     custom_data = fake_home / "custom_data"
     settings = Settings()
-    settings.mnemos.data_dir = custom_data
+    settings.vesma.data_dir = custom_data
     settings.resolve_paths()
     actions = settings.migrate_layout()
 
@@ -242,7 +242,7 @@ def test_load_settings_calls_migrate_layout(
     # Create a config file so load_settings finds it
     cfg = fake_home / ".mnemos" / "config.yaml"
     cfg.parent.mkdir(parents=True)
-    cfg.write_text("mnemos:\n  data_dir: ~/.mnemos/data\n")
+    cfg.write_text("vesma:\n  data_dir: ~/.mnemos/data\n")
 
     # Patch migrate_layout to track the call
     with patch.object(Settings, "migrate_layout", return_value=[]) as mock_migrate:

@@ -54,7 +54,7 @@ def _settings(tmp: Path, *, visibility: str | None = None, **ccr: Any) -> Settin
     if visibility is not None:
         mnemos["visibility"] = visibility
     settings = Settings(
-        mnemos=mnemos,
+        vesma=mnemos,
         ccr={"min_size_chars": 100, **ccr},  # type: ignore[arg-type]
     )
     settings.resolve_paths()

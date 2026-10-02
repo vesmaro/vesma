@@ -39,8 +39,8 @@ def isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settin
     """Settings with paths pointing to tmp_path."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     settings = Settings()
-    settings.mnemos.data_dir = tmp_path / "data"
-    settings.mnemos.vault_path = tmp_path / "vault"
+    settings.vesma.data_dir = tmp_path / "data"
+    settings.vesma.vault_path = tmp_path / "vault"
     settings.logging.log_file = tmp_path / "logs" / "vesmaro.log"
     settings.resolve_paths()
     return settings

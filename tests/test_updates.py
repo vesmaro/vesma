@@ -323,7 +323,7 @@ def isolated_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: 
 
     cfg = tmp_path / "updates-test.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: updates-test.db\n"
@@ -363,7 +363,7 @@ def test_stats_payload_none_when_config_disabled(
 
     cfg = tmp_path / "updates-off.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"updates:\n"

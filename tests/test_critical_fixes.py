@@ -220,7 +220,7 @@ class TestCLI:
         reset_manager()
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-critical.db\n"

@@ -116,7 +116,7 @@ def session_settings(root: Path) -> Settings:
     """
     settings = Settings.model_validate(
         {
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(root / "vault"),
                 "data_dir": str(root / "data"),
                 "db_name": "s3-session.db",

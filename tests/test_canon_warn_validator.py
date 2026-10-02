@@ -123,7 +123,7 @@ def mgr():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",
@@ -146,7 +146,7 @@ def mgr():
 
 
 def test_default_mode_is_warn(mgr: MemoryManager) -> None:
-    assert mgr.settings.mnemos.canon_mode == "warn"
+    assert mgr.settings.vesma.canon_mode == "warn"
 
 
 def test_valid_canon_record_passes_silently(mgr: MemoryManager) -> None:
@@ -218,7 +218,7 @@ def test_no_envelope_produces_zero_canon_warnings(mgr: MemoryManager) -> None:
 
 def test_no_envelope_stays_silent_in_strict_mode(mgr: MemoryManager) -> None:
     """Scope rule holds in BOTH modes: strict never rejects a legacy row."""
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     memory = mgr.add(
         MemoryCreate(
             content="27.09 done yesterday — legacy prose",
@@ -378,7 +378,7 @@ def test_code_canon_e_date(mgr: MemoryManager) -> None:
 
 
 def test_strict_rejects_create_path_violation(mgr: MemoryManager) -> None:
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     with pytest.raises(CanonViolationError) as excinfo:
         _cp_trusted_add(mgr, language="fr")
     assert any(v.code == "CANON-E-LANGUAGE" for v in excinfo.value.violations)
@@ -386,7 +386,7 @@ def test_strict_rejects_create_path_violation(mgr: MemoryManager) -> None:
 
 
 def test_strict_create_path_accepts_valid_record(mgr: MemoryManager) -> None:
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     memory = _cp_trusted_add(mgr)
     assert "canon_warnings" not in memory.metadata
     assert mgr.stats()["total"] == 1
@@ -396,7 +396,7 @@ def test_strict_update_path_is_warn_only(mgr: MemoryManager) -> None:
     """ADR-0003 obligation 6 / canon §10: update paths never fail
     retroactively — a violation on update warns and stores, even in
     strict mode."""
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     memory, _dup = mgr.save_checkpoint({"goals": "g"}, project="canonproj")
     updated = mgr.update(memory.id, MemoryUpdate(content="sections all removed"))
     assert updated is not None  # NOT rejected
@@ -405,7 +405,7 @@ def test_strict_update_path_is_warn_only(mgr: MemoryManager) -> None:
 
 def test_strict_update_of_legacy_row_never_fails(mgr: MemoryManager) -> None:
     """The ADR-0003 headline case: pre-canon row updated in strict mode."""
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     legacy = mgr.add(
         MemoryCreate(content="pre-canon row", tags=["project:canonproj", "agent:legacy"]),
         project="canonproj",
@@ -417,7 +417,7 @@ def test_strict_update_of_legacy_row_never_fails(mgr: MemoryManager) -> None:
 
 
 def test_off_mode_disables_validation(mgr: MemoryManager) -> None:
-    mgr.settings.mnemos.canon_mode = "off"
+    mgr.settings.vesma.canon_mode = "off"
     memory = _cp_trusted_add(mgr, language="fr")
     assert memory is not None
     assert "canon_warnings" not in memory.metadata
@@ -617,7 +617,7 @@ def test_strict_mode_rejects_violating_task_envelope_on_create(
 ) -> None:
     """Strict mode is now MEANINGFUL for the client types: a violating
     task envelope on the generic create path raises CanonViolationError."""
-    mgr.settings.mnemos.canon_mode = "strict"
+    mgr.settings.vesma.canon_mode = "strict"
     with pytest.raises(CanonViolationError) as excinfo:
         mgr.add(
             MemoryCreate(
@@ -693,8 +693,8 @@ def test_strict_reject_leaves_no_vault_trace(mgr: MemoryManager) -> None:
     """A strict-mode reject on the create path must not leave the refused
     content persisted in the vault directory (the pre-fix order wrote the
     markdown BEFORE the gate raise)."""
-    mgr.settings.mnemos.canon_mode = "strict"
-    vault = Path(mgr.settings.mnemos.vault_path)
+    mgr.settings.vesma.canon_mode = "strict"
+    vault = Path(mgr.settings.vesma.vault_path)
     with pytest.raises(CanonViolationError):
         mgr.add(
             MemoryCreate(

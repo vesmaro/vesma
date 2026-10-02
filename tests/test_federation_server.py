@@ -73,7 +73,7 @@ def tmp_settings(tmp_path: Path) -> Settings:
     """Settings with one configured peer and an isolated SQLite store."""
     os.environ[TOKEN_ENV] = TOKEN_VALUE
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test.db",
@@ -168,7 +168,7 @@ class TestAuth:
         self, manager: MemoryManager, access_log: FederationAccessLog, tmp_path: Path
     ) -> None:
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -249,7 +249,7 @@ class TestMTLSFingerprint:
         """
         os.environ[TOKEN_ENV] = TOKEN_VALUE
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -295,7 +295,7 @@ class TestMTLSFingerprint:
         """
         os.environ[TOKEN_ENV] = TOKEN_VALUE
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -430,7 +430,7 @@ class TestACL:
     ) -> None:
         os.environ[TOKEN_ENV] = TOKEN_VALUE
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -463,7 +463,7 @@ class TestACL:
     ) -> None:
         os.environ[TOKEN_ENV] = TOKEN_VALUE
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",

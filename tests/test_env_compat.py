@@ -2,10 +2,10 @@
 
 ``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH`` (the names documented
 across the repo and written into user configs by ``scripts/mcp-setup.sh``)
-must map to the nested ``Settings.mnemos`` fields ``data_dir`` /
+must map to the nested ``Settings.vesma`` fields ``data_dir`` /
 ``vault_path``. Without the shim, pydantic-settings silently ignores them
-(canonical nested form is ``VESMA_MNEMOS__DATA_DIR`` /
-``VESMA_MNEMOS__VAULT_PATH``). The pre-5.3 ``VESMARO_`` spellings are
+(canonical nested form is ``VESMA_VESMA__DATA_DIR`` /
+``VESMA_VESMA__VAULT_PATH``). The pre-5.3 ``VESMARO_`` spellings are
 retired in 6.0.0 and covered by tests/test_env_prefix.py (ignored-case).
 
 Precedence contract under test (high → low, per field — see
@@ -13,7 +13,7 @@ Precedence contract under test (high → low, per field — see
 
 1. explicit config-file value (``load_settings`` passes YAML as init kwargs,
    and pydantic-settings gives init kwargs priority over env sources),
-2. canonical ``VESMA_MNEMOS__*`` env var,
+2. canonical ``VESMA_VESMA__*`` env var,
 3. short alias (``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH``),
 4. ``.env`` file, 5. field defaults.
 
@@ -54,8 +54,8 @@ EXPECTED_ALIASES = {
 }
 
 _CANONICAL = {
-    "data_dir": "VESMA_MNEMOS__DATA_DIR",
-    "vault_path": "VESMA_MNEMOS__VAULT_PATH",
+    "data_dir": "VESMA_VESMA__DATA_DIR",
+    "vault_path": "VESMA_VESMA__VAULT_PATH",
 }
 
 
@@ -82,14 +82,14 @@ class TestShortAliasApplied:
     ) -> None:
         monkeypatch.setenv("VESMA_DATA_DIR", "/mnemos-139-alias-data")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/mnemos-139-alias-data")
+        assert settings.vesma.data_dir == Path("/mnemos-139-alias-data")
 
     def test_vault_alias_via_load_settings(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("VESMA_VAULT__VAULT_PATH", "/mnemos-139-alias-vault")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.vault_path == Path("/mnemos-139-alias-vault")
+        assert settings.vesma.vault_path == Path("/mnemos-139-alias-vault")
 
     def test_direct_settings_construction_honours_alias(
         self, monkeypatch: pytest.MonkeyPatch
@@ -99,8 +99,8 @@ class TestShortAliasApplied:
         monkeypatch.setenv("VESMA_DATA_DIR", "/mnemos-139-direct-data")
         monkeypatch.setenv("VESMA_VAULT__VAULT_PATH", "/mnemos-139-direct-vault")
         settings = Settings(_env_file=None)
-        assert settings.mnemos.data_dir == Path("/mnemos-139-direct-data")
-        assert settings.mnemos.vault_path == Path("/mnemos-139-direct-vault")
+        assert settings.vesma.data_dir == Path("/mnemos-139-direct-data")
+        assert settings.vesma.vault_path == Path("/mnemos-139-direct-vault")
 
 
 # ── Canonical name stays authoritative ──────────────────────────────────────
@@ -111,19 +111,19 @@ class TestCanonicalWins:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("VESMA_DATA_DIR", "/mnemos-139-alias-data")
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/mnemos-139-canon-data")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/mnemos-139-canon-data")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/mnemos-139-canon-data")
+        assert settings.vesma.data_dir == Path("/mnemos-139-canon-data")
 
     def test_canonical_and_alias_coexist_on_different_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Sources deep-merge: canonical vault + aliased data_dir both apply."""
         monkeypatch.setenv("VESMA_DATA_DIR", "/mnemos-139-alias-data")
-        monkeypatch.setenv("VESMA_MNEMOS__VAULT_PATH", "/mnemos-139-canon-vault")
+        monkeypatch.setenv("VESMA_VESMA__VAULT_PATH", "/mnemos-139-canon-vault")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/mnemos-139-alias-data")
-        assert settings.mnemos.vault_path == Path("/mnemos-139-canon-vault")
+        assert settings.vesma.data_dir == Path("/mnemos-139-alias-data")
+        assert settings.vesma.vault_path == Path("/mnemos-139-canon-vault")
 
 
 # ── Config-file interaction (parity with canonical env semantics) ───────────
@@ -133,7 +133,7 @@ class TestConfigFileInteraction:
     @staticmethod
     def _write_config(tmp_path: Path, data_dir: str) -> Path:
         config = tmp_path / "config.yaml"
-        config.write_text(f"mnemos:\n  data_dir: {data_dir}\n", encoding="utf-8")
+        config.write_text(f"vesma:\n  data_dir: {data_dir}\n", encoding="utf-8")
         return config
 
     def test_file_value_beats_alias(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,7 +142,7 @@ class TestConfigFileInteraction:
         config = self._write_config(tmp_path, "/mnemos-139-file-data")
         monkeypatch.setenv("VESMA_DATA_DIR", "/mnemos-139-alias-data")
         settings = load_settings(config_path=config)
-        assert settings.mnemos.data_dir == Path("/mnemos-139-file-data")
+        assert settings.vesma.data_dir == Path("/mnemos-139-file-data")
 
     def test_file_value_beats_canonical_too(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -150,9 +150,9 @@ class TestConfigFileInteraction:
         """Documents the pre-existing semantics the alias mirrors: config
         file (init kwargs) outranks env sources for the same field."""
         config = self._write_config(tmp_path, "/mnemos-139-file-data")
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/mnemos-139-canon-data")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/mnemos-139-canon-data")
         settings = load_settings(config_path=config)
-        assert settings.mnemos.data_dir == Path("/mnemos-139-file-data")
+        assert settings.vesma.data_dir == Path("/mnemos-139-file-data")
 
     def test_alias_fills_field_the_file_leaves_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -161,8 +161,8 @@ class TestConfigFileInteraction:
         config = self._write_config(tmp_path, "/mnemos-139-file-data")
         monkeypatch.setenv("VESMA_VAULT__VAULT_PATH", "/mnemos-139-alias-vault")
         settings = load_settings(config_path=config)
-        assert settings.mnemos.data_dir == Path("/mnemos-139-file-data")
-        assert settings.mnemos.vault_path == Path("/mnemos-139-alias-vault")
+        assert settings.vesma.data_dir == Path("/mnemos-139-file-data")
+        assert settings.vesma.vault_path == Path("/mnemos-139-alias-vault")
 
 
 # ── Defaults and edge cases ─────────────────────────────────────────────────
@@ -175,8 +175,8 @@ class TestDefaultsAndEdges:
         _clear_compat_env(monkeypatch)
         settings = load_settings(config_path=_no_config(tmp_path))
         home = Path.home()
-        assert settings.mnemos.data_dir == (home / ".mnemos" / "data").resolve()
-        assert settings.mnemos.vault_path == (home / ".mnemos" / "vault").resolve()
+        assert settings.vesma.data_dir == (home / ".mnemos" / "data").resolve()
+        assert settings.vesma.vault_path == (home / ".mnemos" / "vault").resolve()
 
     def test_empty_alias_is_treated_as_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -184,7 +184,7 @@ class TestDefaultsAndEdges:
         _clear_compat_env(monkeypatch)
         monkeypatch.setenv("VESMA_DATA_DIR", "")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
 
 
 # ── Drift guard: mcp-setup.sh writes exactly the shimmed names ─────────────

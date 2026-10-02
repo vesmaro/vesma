@@ -43,7 +43,7 @@ from vesmaro.models import (
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test-export.db",
@@ -378,7 +378,7 @@ class TestImportMerge:
 
         # New isolated manager with a fresh DB in a different data dir.
         settings2 = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault2"),
                 "data_dir": str(tmp_path / "data2"),
                 "db_name": "test-export-2.db",
@@ -598,7 +598,7 @@ class TestImportDryRun:
 
         # Use a fresh empty manager with an isolated DB.
         settings2 = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault2"),
                 "data_dir": str(tmp_path / "data2"),
                 "db_name": "test-export-2.db",
@@ -650,7 +650,7 @@ class TestImportFormatVersion:
         out.write_text(json.dumps(payload))
 
         settings2 = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault2"),
                 "data_dir": str(tmp_path / "data2"),
                 "db_name": "test-export-2.db",
@@ -688,7 +688,7 @@ class TestImportEncrypted:
             passphrase="pw",
         )
         settings2 = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault2"),
                 "data_dir": str(tmp_path / "data2"),
                 "db_name": "test-export-2.db",
@@ -749,7 +749,7 @@ class TestImportSQLite:
         assert result.imported == 1
         assert mgr.sqlite.count() == 1
         # The backup dir should contain the pre-restore DB (named after db_name).
-        assert (backup_dir / mgr.settings.mnemos.db_name).exists()
+        assert (backup_dir / mgr.settings.vesma.db_name).exists()
 
     def test_sqlite_dry_run_validates_without_replacing(self, mgr, tmp_path):
         _add_memory(mgr, "x")

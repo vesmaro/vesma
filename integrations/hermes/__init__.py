@@ -28,7 +28,7 @@ Installation::
     # Select "vesma", configure project/agent slugs and store paths
     # OR: hermes config set memory.provider vesma
 
-Config (in $HERMES_HOME/config.yaml under ``memory.mnemos``)::
+Config (in $HERMES_HOME/config.yaml under ``memory.vesma``)::
 
     memory:
       provider: vesma
@@ -42,7 +42,7 @@ Config (in $HERMES_HOME/config.yaml under ``memory.mnemos``)::
         sync_interval: 10       # sync every Nth turn
         sync_min_user_chars: 50 # significance threshold for sync_turn
 
-Env vars (config.yaml ``memory.mnemos`` overrides these)::
+Env vars (config.yaml ``memory.vesma`` overrides these)::
 
     VESMA_DATA_DIR           — data dir ("" = default)
     VESMA_VAULT__VAULT_PATH  — vault path ("" = default)
@@ -98,11 +98,11 @@ _REMIND_SECS = 480
 
 
 def _load_config() -> dict:
-    """Load config from env vars, with config.yaml ``memory.mnemos`` overrides.
+    """Load config from env vars, with config.yaml ``memory.vesma`` overrides.
 
-    Env vars provide defaults; the ``plugins.mnemos`` (legacy) and
-    ``memory.mnemos`` (wizard) sections of ``config.yaml`` override —
-    ``memory.mnemos`` last (the wizard writes there).
+    Env vars provide defaults; the ``plugins.vesma`` (legacy) and
+    ``memory.vesma`` (wizard) sections of ``config.yaml`` override —
+    ``memory.vesma`` last (the wizard writes there).
     """
     config: dict[str, Any] = {
         "data_dir": os.environ.get("VESMA_DATA_DIR", ""),
@@ -871,7 +871,7 @@ class VesmaMemoryProvider(MemoryProvider):
         ]
 
     def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
-        """Write config to config.yaml under ``memory.mnemos`` (wizard path)."""
+        """Write config to config.yaml under ``memory.vesma`` (wizard path)."""
         from pathlib import Path
 
         config_path = Path(hermes_home) / "config.yaml"

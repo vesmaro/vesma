@@ -358,7 +358,7 @@ def _build_sqlite_snapshot(mgr: MemoryManager) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         mnemos_db_path = mgr.settings.db_path
-        vectors_db_path = mgr.settings.mnemos.data_dir / "vectors.db"
+        vectors_db_path = mgr.settings.vesma.data_dir / "vectors.db"
         for name, path in (("mnemos.db", mnemos_db_path), ("vectors.db", vectors_db_path)):
             if not path.exists():
                 continue
@@ -603,7 +603,7 @@ def restore_sqlite_snapshot(
     mgr.sqlite.close()
     mgr.vectors.close()
 
-    data_dir = mgr.settings.mnemos.data_dir
+    data_dir = mgr.settings.vesma.data_dir
     mnemos_db = mgr.settings.db_path
     vectors_db = data_dir / "vectors.db"
 

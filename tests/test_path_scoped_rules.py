@@ -16,7 +16,7 @@ from vesmaro.models import MemorySource, MemoryStatus
 def manager():
     with tempfile.TemporaryDirectory() as tmpdir:
         settings = Settings(
-            mnemos={"vault_path": tmpdir, "data_dir": tmpdir, "db_name": "test.db"},
+            vesma={"vault_path": tmpdir, "data_dir": tmpdir, "db_name": "test.db"},
             embedding={"provider": "nano"},
         )
         mgr = MemoryManager(settings)

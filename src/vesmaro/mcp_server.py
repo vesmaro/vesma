@@ -2349,7 +2349,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         # Enforce / patch TagContract
         tags = validate_tag_contract(
             raw_tags,
-            strict=settings.mnemos.strict_tag_contract,
+            strict=settings.vesma.strict_tag_contract,
         )
         # Derive denormalised fields from validated tags
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
@@ -2369,7 +2369,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         # enabled and reloads the memory, so filter_profile is populated on
         # success. On failure (non-fatal) filter_profile stays None.
         filtered = bool(
-            settings.mnemos.auto_filter and memory.content and memory.filter_profile is not None
+            settings.vesma.auto_filter and memory.content and memory.filter_profile is not None
         )
         result = {
             "id": memory.id,
@@ -2756,7 +2756,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         raw_tags = args.get("tags", [])
         tags = validate_tag_contract(
             raw_tags,
-            strict=settings.mnemos.strict_tag_contract,
+            strict=settings.vesma.strict_tag_contract,
         )
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
@@ -2779,7 +2779,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         raw_tags = args.get("tags", [])
         tags = validate_tag_contract(
             raw_tags,
-            strict=settings.mnemos.strict_tag_contract,
+            strict=settings.vesma.strict_tag_contract,
         )
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")

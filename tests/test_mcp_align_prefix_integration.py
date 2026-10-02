@@ -38,7 +38,7 @@ def real_manager(tmp_path: Path) -> MemoryManager:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",

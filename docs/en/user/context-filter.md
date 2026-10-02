@@ -65,7 +65,7 @@ When `auto_filter: true` (the default for new installs), every
 
 ```yaml
 # config.yaml
-mnemos:
+vesma:
   auto_filter: true
 ```
 
@@ -246,14 +246,14 @@ Exact duplicates removed; the near-duplicate detector normalises lines
 ## Configuration
 
 ```yaml
-mnemos:
+vesma:
   auto_filter: true   # run filter on every mnemos_add (default: true)
 ```
 
 To disable auto-filter (store raw content only, filter manually later):
 
 ```yaml
-mnemos:
+vesma:
   auto_filter: false
 ```
 

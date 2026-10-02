@@ -92,7 +92,7 @@ def fixture_settings(root: Path, *, name: str = "s4-fixture.db") -> Settings:
     """Settings of the fixture store rooted at ``root``."""
     settings = Settings.model_validate(
         {
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(root / "vault"),
                 "data_dir": str(root / "data"),
                 "db_name": name,

@@ -526,7 +526,7 @@ def _scenario_settings(root: Path) -> Settings:
     the pinned retrieval weight can never drift from what the legs
     actually run under."""
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(root / "vault"),
             "data_dir": str(root / "data"),
             "db_name": "scenario.db",

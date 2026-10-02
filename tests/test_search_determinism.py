@@ -47,7 +47,7 @@ AGENT = "det-agent"
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

@@ -30,7 +30,7 @@ CONF_A="$TMPDIR/instance-a/config.yaml"
 CONF_B="$TMPDIR/instance-b/config.yaml"
 for inst_dir in "$TMPDIR/instance-a" "$TMPDIR/instance-b"; do
   mkdir -p "$inst_dir/data" "$inst_dir/vault"
-  printf 'mnemos:\n  data_dir: %s/data\n  vault_path: %s/vault\n' \
+  printf 'vesma:\n  data_dir: %s/data\n  vault_path: %s/vault\n' \
     "$inst_dir" "$inst_dir" > "$inst_dir/config.yaml"
 done
 

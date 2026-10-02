@@ -99,7 +99,7 @@ def scenario_settings(root: Path, *, visibility: str = "immediate") -> Settings:
     """Golden-shaped settings with a chosen ``mnemos.visibility`` policy."""
     settings = Settings.model_validate(
         {
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(root / "vault"),
                 "data_dir": str(root / "data"),
                 "db_name": f"s1-{visibility}.db",

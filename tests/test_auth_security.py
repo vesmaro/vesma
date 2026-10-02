@@ -47,7 +47,7 @@ def tmp_settings():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",
@@ -59,7 +59,7 @@ def tmp_settings():
             scanner={"enabled": False},
         )
         settings.resolve_paths()
-        settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+        settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
         yield settings
 
 
@@ -385,10 +385,10 @@ class TestTotpBruteForce:
 
             def patch_settings(path=None):  # type: ignore[misc]
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={"host": "127.0.0.1", "port": 8787, "totp_master_key": master_key},
@@ -434,10 +434,10 @@ class TestTotpBruteForce:
 
             def patch(path=None):  # type: ignore[misc]
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={"host": "127.0.0.1", "port": 8787, "totp_master_key": master_key},
@@ -477,10 +477,10 @@ class TestTotpBruteForce:
 
             def patch(path=None):  # type: ignore[misc]
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={"host": "127.0.0.1", "port": 8787, "totp_master_key": master_key},
@@ -662,10 +662,10 @@ class TestTotpReplay:
 
             def patch(path=None):  # type: ignore[misc]
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={"host": "127.0.0.1", "port": 8787, "totp_master_key": master_key},

@@ -240,7 +240,7 @@ def seeded_memory_ids(tag: str) -> Iterator[None]:
 def _store_settings(root: Path) -> Settings:
     """Settings for a fresh isolated store (the strata-tests shape)."""
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(root / "vault"),
             "data_dir": str(root / "data"),
             "db_name": "f1.db",
@@ -1266,7 +1266,7 @@ def collect_run(
         digests: dict[str, str] = {}
         for arm in ARM_ORDER:
             arm_settings = _arm_settings(root, arm)
-            arm_settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+            arm_settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
             clone_store(build_settings, arm_settings)
             digests[arm] = _store_content_digest(arm_settings)
         digest_equal = len(set(digests.values())) == 1

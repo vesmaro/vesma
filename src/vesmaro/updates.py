@@ -162,7 +162,7 @@ def resolve_cache_path(settings: Settings | None = None) -> Path:
             from vesmaro.config import load_settings
 
             settings = load_settings()
-        return Path(settings.mnemos.data_dir).expanduser() / CACHE_FILENAME
+        return Path(settings.vesma.data_dir).expanduser() / CACHE_FILENAME
     except Exception:
         return FALLBACK_UPDATE_DIR / CACHE_FILENAME
 

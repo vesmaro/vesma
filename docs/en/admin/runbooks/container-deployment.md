@@ -246,8 +246,8 @@ Key settings:
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| `mnemos.data_dir` | `/data` | Mapped to the `vesma-data` named volume |
-| `mnemos.vault_path` | `/vault` | Mapped to the `vesma-vault` named volume |
+| `vesma.data_dir` | `/data` | Mapped to the `vesma-data` named volume |
+| `vesma.vault_path` | `/vault` | Mapped to the `vesma-vault` named volume |
 | `api.host` | `0.0.0.0` | Binds to all interfaces — **requires auth** |
 | `api.port` | `8787` | Container-internal port; host mapping set in compose/run |
 | `api.auth_enabled` | `true` | Must stay `true` when `host` is `0.0.0.0` |

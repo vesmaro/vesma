@@ -34,8 +34,8 @@ pytestmark = pytest.mark.skipif(
 def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip every prefix name this module touches, canonical + retired."""
     for name in (
-        "VESMA_MNEMOS__DATA_DIR",
-        "VESMA_MNEMOS__VAULT_PATH",
+        "VESMA_VESMA__DATA_DIR",
+        "VESMA_VESMA__VAULT_PATH",
         "VESMARO_MNEMOS__DATA_DIR",
         "VESMARO_MNEMOS__VAULT_PATH",
         "VESMA_DATA_DIR",
@@ -64,9 +64,9 @@ def _no_config(tmp_path: Path) -> Path:
 class TestCanonicalPrefixResolves:
     def test_nested_mnemos_section(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/vesma-canonical-data")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/vesma-canonical-data")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/vesma-canonical-data")
+        assert settings.vesma.data_dir == Path("/vesma-canonical-data")
 
     def test_other_nested_sections_and_type_coercion(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -86,9 +86,9 @@ class TestCanonicalPrefixResolves:
         """Isolation helpers build ``Settings()`` directly (no load_settings);
         the prefix must live on the class, not only in load_settings."""
         _clear_env(monkeypatch)
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/vesma-direct-data")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/vesma-direct-data")
         settings = Settings(_env_file=None)
-        assert settings.mnemos.data_dir == Path("/vesma-direct-data")
+        assert settings.vesma.data_dir == Path("/vesma-direct-data")
 
 
 # ── Deprecated spellings are IGNORED (6.0.0 retirement) ─────────────────────
@@ -104,7 +104,7 @@ class TestDeprecatedSpellingsIgnored:
         monkeypatch.setenv("VESMARO_MNEMOS__DATA_DIR", "/vesmaro-retired")
         monkeypatch.setenv("VESMARO_API__PORT", "9443")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
         assert settings.api.port != 9443
 
     def test_deprecated_short_alias_ignored(
@@ -113,16 +113,16 @@ class TestDeprecatedSpellingsIgnored:
         _clear_env(monkeypatch)
         monkeypatch.setenv("VESMARO_DATA_DIR", "/vesmaro-139-retired")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
 
     def test_canonical_wins_when_deprecated_also_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
         monkeypatch.setenv("VESMARO_MNEMOS__DATA_DIR", "/vesmaro-retired")
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/vesma-canonical")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/vesma-canonical")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/vesma-canonical")
+        assert settings.vesma.data_dir == Path("/vesma-canonical")
 
     def test_deprecated_config_path_ignored(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -131,7 +131,7 @@ class TestDeprecatedSpellingsIgnored:
         falls through to the default candidates instead)."""
         _clear_env(monkeypatch)
         legacy = tmp_path / "legacy.yaml"
-        legacy.write_text("mnemos:\n  data_dir: /vesmaro-config-only\n", encoding="utf-8")
+        legacy.write_text("vesma:\n  data_dir: /vesmaro-config-only\n", encoding="utf-8")
         monkeypatch.setenv("VESMARO_CONFIG", str(legacy))
         assert find_config_file() != legacy
 
@@ -144,16 +144,16 @@ class TestShortAliases:
         _clear_env(monkeypatch)
         monkeypatch.setenv("VESMA_DATA_DIR", "/vesma-alias-data")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/vesma-alias-data")
+        assert settings.vesma.data_dir == Path("/vesma-alias-data")
 
     def test_short_alias_never_beats_canonical_nested_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
         monkeypatch.setenv("VESMA_DATA_DIR", "/vesma-alias")
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/vesma-canonical")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/vesma-canonical")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/vesma-canonical")
+        assert settings.vesma.data_dir == Path("/vesma-canonical")
 
     def test_config_file_still_beats_canonical_env_and_alias(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -162,11 +162,11 @@ class TestShortAliases:
         outrank every env source for the same field."""
         _clear_env(monkeypatch)
         config = tmp_path / "config.yaml"
-        config.write_text("mnemos:\n  data_dir: /from-config-file\n", encoding="utf-8")
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/vesma-canonical")
+        config.write_text("vesma:\n  data_dir: /from-config-file\n", encoding="utf-8")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/vesma-canonical")
         monkeypatch.setenv("VESMA_DATA_DIR", "/vesma-alias")
         settings = load_settings(config_path=config)
-        assert settings.mnemos.data_dir == Path("/from-config-file")
+        assert settings.vesma.data_dir == Path("/from-config-file")
 
     def test_fields_coexist_across_sources(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -177,7 +177,7 @@ class TestShortAliases:
         monkeypatch.setenv("VESMA_DATA_DIR", "/vesma-alias")
         monkeypatch.setenv("VESMA_API__PORT", "9999")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.mnemos.data_dir == Path("/vesma-alias")
+        assert settings.vesma.data_dir == Path("/vesma-alias")
         assert settings.api.port == 9999
 
 
@@ -194,16 +194,16 @@ class TestDotenvLayer:
         _clear_env(monkeypatch)
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".env").write_text(
-            "VESMA_MNEMOS__DATA_DIR=/dotenv-vesma\n"
+            "VESMA_VESMA__DATA_DIR=/dotenv-vesma\n"
             "VESMARO_MNEMOS__DATA_DIR=/dotenv-retired\n"
             "UNRELATED_KEY=ignore-me\n",
             encoding="utf-8",
         )
         settings = Settings()
-        assert settings.mnemos.data_dir == Path("/dotenv-vesma")
+        assert settings.vesma.data_dir == Path("/dotenv-vesma")
 
-        monkeypatch.setenv("VESMA_MNEMOS__DATA_DIR", "/process-env-wins")
-        assert Settings().mnemos.data_dir == Path("/process-env-wins")
+        monkeypatch.setenv("VESMA_VESMA__DATA_DIR", "/process-env-wins")
+        assert Settings().vesma.data_dir == Path("/process-env-wins")
 
 
 # ── Config-file path: VESMA_CONFIG ──────────────────────────────────────────
@@ -213,7 +213,7 @@ class TestConfigPathEnv:
     @staticmethod
     def _config(tmp_path: Path, name: str, data_dir: str) -> Path:
         config = tmp_path / name
-        config.write_text(f"mnemos:\n  data_dir: {data_dir}\n", encoding="utf-8")
+        config.write_text(f"vesma:\n  data_dir: {data_dir}\n", encoding="utf-8")
         return config
 
     def test_vesma_config_resolves(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,7 +221,7 @@ class TestConfigPathEnv:
         monkeypatch.setenv("VESMA_CONFIG", str(canonical))
         assert find_config_file() == canonical
         settings = load_settings()
-        assert settings.mnemos.data_dir == Path("/vesma-config")
+        assert settings.vesma.data_dir == Path("/vesma-config")
 
 
 # ── Doctor reports the same file the loader would use ───────────────────────

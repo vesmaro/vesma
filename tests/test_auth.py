@@ -44,7 +44,7 @@ def tmp_dir():
 @pytest.fixture
 def tmp_settings(tmp_dir):
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_dir / "vault"),
             "data_dir": str(tmp_dir / "data"),
             "db_name": "test.db",
@@ -56,7 +56,7 @@ def tmp_settings(tmp_dir):
         scanner={"enabled": False},
     )
     settings.resolve_paths()
-    settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 
@@ -288,10 +288,10 @@ class TestAuthEndpoints:
 
             def mock_load_settings(_path=None):  # type: ignore[misc]
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={
@@ -336,10 +336,10 @@ class TestAuthEndpoints:
                 from vesmaro.config import Settings
 
                 s = Settings(
-                    mnemos={
-                        "vault_path": str(tmp_settings.mnemos.vault_path),
-                        "data_dir": str(tmp_settings.mnemos.data_dir),
-                        "db_name": tmp_settings.mnemos.db_name,
+                    vesma={
+                        "vault_path": str(tmp_settings.vesma.vault_path),
+                        "data_dir": str(tmp_settings.vesma.data_dir),
+                        "db_name": tmp_settings.vesma.db_name,
                     },
                     embedding={"provider": "onnx"},
                     api={"host": "127.0.0.1", "port": 8787, "totp_master_key": master_key},

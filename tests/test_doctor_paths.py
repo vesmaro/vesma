@@ -31,7 +31,7 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cfg = tmp_path / ".mnemos" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
         f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
     )

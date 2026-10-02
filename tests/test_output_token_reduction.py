@@ -28,8 +28,8 @@ def _make_mock_manager() -> MagicMock:
     mock_memory.filter_profile = None
 
     mgr = MagicMock()
-    mgr.settings.mnemos.strict_tag_contract = False
-    mgr.settings.mnemos.auto_filter = False
+    mgr.settings.vesma.strict_tag_contract = False
+    mgr.settings.vesma.auto_filter = False
     mgr.settings.output_style.enabled = True
     mgr.settings.output_style.default_verbosity = "default"
     mgr.settings.output_style.default_effort = "medium"

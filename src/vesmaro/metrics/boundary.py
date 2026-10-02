@@ -44,7 +44,7 @@ def create_vitals_store(settings: Settings) -> MetricsStore | None:
         )
         return None
     try:
-        data_dir = settings.mnemos.data_dir.expanduser()
+        data_dir = settings.vesma.data_dir.expanduser()
         data_dir.mkdir(parents=True, exist_ok=True)
         return MetricsStore(data_dir / SIDECAR_FILENAME)
     except Exception as exc:
@@ -64,7 +64,7 @@ def record_verb_standalone(settings: Settings, **kwargs: object) -> None:
     federation client and the CLI entry wrapper.
     """
     try:
-        key = str(settings.mnemos.data_dir)
+        key = str(settings.vesma.data_dir)
         store = _STANDALONE_STORES.get(key)
         if store is None:
             store = create_vitals_store(settings)

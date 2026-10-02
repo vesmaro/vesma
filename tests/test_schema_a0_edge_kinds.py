@@ -250,7 +250,7 @@ class TestFreshInstallSchema:
         """The manager wrapper (the path explicit callers and the auto-mint
         rule write through) inherits the store's rejection unchanged."""
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -493,7 +493,7 @@ class TestMigrationCrashSafety:
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

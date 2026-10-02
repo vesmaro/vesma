@@ -27,7 +27,7 @@ runner = CliRunner()
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -39,7 +39,7 @@ def _settings(tmp: Path) -> Settings:
 
 def _vectors_db(settings: Settings, metas: list[str]) -> None:
     """Create vectors.db directly with one embeddings row per metadata JSON."""
-    data_dir = Path(settings.mnemos.data_dir)
+    data_dir = Path(settings.vesma.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(data_dir / "vectors.db"))
     try:
@@ -112,7 +112,7 @@ def test_doctor_json_includes_vintage_verdict(
     cfg = tmp_path / ".mnemos" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
         f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
     )

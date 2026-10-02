@@ -96,7 +96,7 @@ class _HashEmbedder:
 
 def _settings(tmp: Path, *, walk: bool = False, mint: bool = False) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -169,7 +169,7 @@ class TestWalkFlagContract:
         # Owner decision 2026-09-28 «graphs on by default»: S1 shipped
         # with the reserved-quota discipline and its own guard floor
         # (ADR-0030 B.3); flag-off semantics stay pinned below.
-        assert Settings().mnemos.graph_walk is True
+        assert Settings().vesma.graph_walk is True
 
     def test_relates_to_inert_when_flag_off(self, plain_manager: MemoryManager) -> None:
         """A DECLARED relates_to edge does nothing for search under the

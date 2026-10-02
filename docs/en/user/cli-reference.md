@@ -78,9 +78,9 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 | Variable (canonical) | Default | Purpose |
 |----------|---------|---------|
 | `VESMA_CONFIG` | — | Path to `config.yaml` |
-| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite DB + vector index (canonical form) |
-| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian mirror directory (canonical form) |
-| `VESMA_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Enforce M2 tag schema |
+| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | SQLite DB + vector index (canonical form) |
+| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Obsidian mirror directory (canonical form) |
+| `VESMA_VESMA__STRICT_TAG_CONTRACT` | `true` | Enforce M2 tag schema |
 | `VESMA_API__HOST` | `127.0.0.1` | Default for `vesma serve` |
 | `VESMA_API__PORT` | `8787` | Default for `vesma serve` |
 | `VESMA_SEARCH__HYBRID_ALPHA` | `0.5` | Vector weight in RRF fusion |

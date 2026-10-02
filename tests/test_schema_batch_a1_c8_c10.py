@@ -497,14 +497,14 @@ def _settings(
     *,
     mnemos_extra: dict[str, object] | None = None,
 ) -> Settings:
-    mnemos_cfg: dict[str, object] = {
+    vesma_cfg: dict[str, object] = {
         "vault_path": str(tmp / "vault"),
         "data_dir": str(tmp / "data"),
         "db_name": "test.db",
     }
-    mnemos_cfg.update(mnemos_extra or {})
+    vesma_cfg.update(mnemos_extra or {})
     settings = Settings(
-        mnemos=mnemos_cfg,  # type: ignore[arg-type]
+        vesma=vesma_cfg,  # type: ignore[arg-type]
         scanner={"enabled": False},
     )
     settings.resolve_paths()

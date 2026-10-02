@@ -27,7 +27,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "vesmaro"
 
 def _settings(tmp: Path, **overrides: object) -> Settings:
     payload: dict[str, object] = {
-        "mnemos": {
+        "vesma": {
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -87,7 +87,7 @@ class TestCollectionBoundary:
             # on the manager method — call it exactly as they do (S2 calls
             # the manager directly and must stay outside this path)
             mgr.record_assemble_vitals(result)
-            db = settings.mnemos.data_dir / SIDECAR_FILENAME
+            db = settings.vesma.data_dir / SIDECAR_FILENAME
             assert db.exists()
             conn = sqlite3.connect(db)
             rows = conn.execute("SELECT * FROM assemble_metrics").fetchall()
@@ -104,7 +104,7 @@ class TestCollectionBoundary:
         try:
             envelope = {"mode": "async", "handle": "abc", "status": "ready"}
             mgr.record_assemble_vitals(envelope)  # must be a no-op
-            db = settings.mnemos.data_dir / SIDECAR_FILENAME
+            db = settings.vesma.data_dir / SIDECAR_FILENAME
             assert not db.exists()  # nothing was written
         finally:
             mgr.close()
@@ -136,7 +136,7 @@ class TestRetentionJob:
             mgr.record_assemble_vitals(result)
             store = mgr._vitals_store
             assert store is not None
-            db = settings.mnemos.data_dir / SIDECAR_FILENAME
+            db = settings.vesma.data_dir / SIDECAR_FILENAME
             conn = sqlite3.connect(db)
             old = time.time() - 400 * 86400
             conn.execute("UPDATE assemble_metrics SET ts=?", (old,))
@@ -191,7 +191,7 @@ class TestC1IsolationCanary:
         try:
             result = mgr.assemble_context(session="sess-1", project="demo")
             mgr.record_assemble_vitals(result)
-            sidecar = settings.mnemos.data_dir / SIDECAR_FILENAME
+            sidecar = settings.vesma.data_dir / SIDECAR_FILENAME
             main_db = settings.db_path
             assert sidecar.exists() and sidecar != main_db
             main_bytes = main_db.read_bytes()

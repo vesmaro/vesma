@@ -245,7 +245,7 @@ class TestApplyFilter:
 def _make_settings(tmpdir: str) -> Settings:
     tmp = Path(tmpdir)
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -289,7 +289,7 @@ class TestAutoFilterOnAdd:
 
     def test_auto_filter_disabled_keeps_clean_content_none(self, mgr: MemoryManager) -> None:
         """auto_filter=False → clean_content stays None."""
-        mgr.settings.mnemos.auto_filter = False
+        mgr.settings.vesma.auto_filter = False
         data = MemoryCreate(
             content="some plain content",
             tags=_VALID_TAGS,
@@ -548,7 +548,7 @@ class TestCliFilterCommand:
     def test_cli_filter_single(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-filter.db\n"
@@ -583,7 +583,7 @@ class TestCliFilterCommand:
     def test_cli_filter_all(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-filter-all.db\n"
@@ -611,7 +611,7 @@ class TestCliFilterCommand:
     ) -> None:
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-filter-err.db\n"

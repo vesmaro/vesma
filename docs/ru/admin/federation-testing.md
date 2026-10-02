@@ -74,7 +74,7 @@ flowchart LR
 > `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
 > `src/vesmaro/config.py`). Переменной `VESMA_HOME` **не существует**.
 > Чтобы запустить изолированный инстанс, создайте per-instance
-> `config.yaml` (с собственными `mnemos.data_dir` / `mnemos.vault_path`)
+> `config.yaml` (с собственными `vesma.data_dir` / `vesma.vault_path`)
 > и укажите `VESMA_CONFIG` на него — все команды ниже используют этот
 > паттерн.
 
@@ -121,7 +121,7 @@ echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 1. **Создайте два изолированных конфига инстансов.**
 
    Каждый инстанс получает собственную директорию с `config.yaml`,
-   указывающим `mnemos.data_dir` / `mnemos.vault_path` внутри неё:
+   указывающим `vesma.data_dir` / `vesma.vault_path` внутри неё:
 
    ```bash
    export VESMA_CONF_A=/tmp/vesma-fed-a/config.yaml

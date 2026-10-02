@@ -65,7 +65,7 @@ TAGS = [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"]
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -242,7 +242,7 @@ def _snapshot_file(
                 store_conn.commit()
             mgr.close()
             db_bytes = settings.db_path.read_bytes()
-            vectors_path = settings.mnemos.data_dir / "vectors.db"
+            vectors_path = settings.vesma.data_dir / "vectors.db"
             vectors_bytes = vectors_path.read_bytes() if embed_rows else None
         finally:
             mgr.close()

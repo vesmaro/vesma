@@ -41,7 +41,7 @@ def tmp_settings():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",
@@ -179,7 +179,7 @@ class TestMcpSearchStatusParam:
 
         mock_mgr = MagicMock()
         mock_mgr.search.return_value = []
-        mock_mgr.settings.mnemos.strict_tag_contract = False
+        mock_mgr.settings.vesma.strict_tag_contract = False
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             await _dispatch("vesma_search", {"query": "test", "status": "raw"})
@@ -197,7 +197,7 @@ class TestMcpSearchStatusParam:
 
         mock_mgr = MagicMock()
         mock_mgr.search.return_value = []
-        mock_mgr.settings.mnemos.strict_tag_contract = False
+        mock_mgr.settings.vesma.strict_tag_contract = False
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             await _dispatch("vesma_search", {"query": "test"})

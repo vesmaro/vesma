@@ -85,7 +85,7 @@ Mechanics (`benchmarks/stands/s2_timing/run.py`):
 - `workload_fingerprint` (sha256 of the stand module) pins the workload
   shape: an edit fails the nightly gate until a same-PR re-record.
 
-`bench-s2-nightly` presets **`VESMARO_BENCH_S1M_REQUIRED=1`** for its
+`bench-s2-nightly` presets **`VESMA_BENCH_S1M_REQUIRED=1`** for its
 whole target (review N4 on #206): the nightly contour is the only
 place where the required-S1m semantics is mandatory — the target runs
 the S1 gate leg first, so a nightly on a machine that cannot verify the
@@ -191,7 +191,7 @@ deterministic run:
 - **Skip semantics**: the production embedder may be unbuildable in the
   run environment (no cached weights, no network, missing optional dep).
   Then `s1m` reports `{"status": "skipped", "reason": …}` — GREEN by
-  default; RED only when `VESMARO_BENCH_S1M_REQUIRED=1` (CI nightlies) is
+  default; RED only when `VESMA_BENCH_S1M_REQUIRED=1` (CI nightlies) is
   set, or when the baseline pins a fingerprint (the gate cannot verify
   the embedder it is supposed to gate).
 - MRR / nDCG are recorded with corridors pending a second baseline;

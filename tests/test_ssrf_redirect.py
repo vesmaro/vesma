@@ -37,7 +37,7 @@ from vesmaro.manager import _MAX_REDIRECTS, MemoryManager
 def manager() -> MemoryManager:  # type: ignore[misc]
     with tempfile.TemporaryDirectory() as tmpdir:
         settings = Settings(
-            mnemos={"vault_path": tmpdir, "data_dir": tmpdir, "db_name": "test.db"},
+            vesma={"vault_path": tmpdir, "data_dir": tmpdir, "db_name": "test.db"},
             embedding={"provider": "nano"},
         )
         mgr = MemoryManager(settings)

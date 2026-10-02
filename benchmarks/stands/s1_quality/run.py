@@ -26,7 +26,7 @@ the pipeline corridors; the S1m corridor is self-comparison (its own
 baseline - max(0.02; 95% CI)). An embedder change without a same-PR
 ``--record`` fails LOUD. If the production provider cannot be built in
 the run environment, S1m reports ``status: "skipped"`` with the reason
-(green by default; red when ``VESMARO_BENCH_S1M_REQUIRED=1``).
+(green by default; red when ``VESMA_BENCH_S1M_REQUIRED=1``).
 """
 
 from __future__ import annotations
@@ -467,7 +467,7 @@ def gate_check(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, A
         # the gate cannot verify the embedder, so it must not pass silently.
         failures.append(
             "s1m skipped while the baseline pins a production fingerprint and "
-            "VESMARO_BENCH_S1M_REQUIRED is set — the production embedder cannot "
+            "VESMA_BENCH_S1M_REQUIRED is set — the production embedder cannot "
             "be verified in this environment"
         )
     # recorded_fp is None (pre-NM-0 baseline or recorded without the

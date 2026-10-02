@@ -85,7 +85,7 @@ def _apply_settings(tmp: Path, *, walk: bool = True, apply_: bool = True) -> Set
     independent-flags-per-leg condition — same ``_settings`` shape as
     the walk suite, plus the S2 flag)."""
     settings = _settings(tmp, walk=walk)
-    settings.mnemos.feedback_apply = apply_
+    settings.vesma.feedback_apply = apply_
     return settings
 
 
@@ -311,7 +311,7 @@ class TestFlagContract:
     def test_default_settings_apply_on(self) -> None:
         # Owner decision 2026-09-28 «graphs on by default» (rank-only,
         # bounded Δ per I6; inert while graph_walk is off — pinned below).
-        assert Settings().mnemos.feedback_apply is True
+        assert Settings().vesma.feedback_apply is True
 
     def test_graph_walk_off_makes_apply_inert(self, tmp_path: Path) -> None:
         """Independent flags (Security residual 3):
@@ -394,7 +394,7 @@ class TestFlagContract:
             _capture_used(mgr, sibling.id, count=FEEDBACK_BOOST_CAP)
 
             for limit in (5, 8, 12, 20):
-                mgr.settings.mnemos.feedback_apply = False
+                mgr.settings.vesma.feedback_apply = False
                 s1_view = [
                     (r.memory.id, r.score, r.via_graph, r.via_graph_kind)
                     for r in mgr.search("harbour cranes maintenance", limit=limit)
@@ -429,9 +429,9 @@ class TestFlagContract:
                 # Run the ON pass BETWEEN the two OFF passes — any state
                 # leak from the ON leg (reads, counters, re-sorts)
                 # surfaces in the second OFF pass below.
-                mgr.settings.mnemos.feedback_apply = True
+                mgr.settings.vesma.feedback_apply = True
                 mgr.search("harbour cranes maintenance", limit=limit)
-                mgr.settings.mnemos.feedback_apply = False
+                mgr.settings.vesma.feedback_apply = False
                 s1_again = [
                     (r.memory.id, r.score, r.via_graph, r.via_graph_kind)
                     for r in mgr.search("harbour cranes maintenance", limit=limit)
@@ -489,13 +489,13 @@ class TestFlagContract:
             assert s1.id < s2.id, "fixture: seeded ids must make s1 sort before s2"
 
             for limit in (3, 5, 10):
-                mgr.settings.mnemos.feedback_apply = False
+                mgr.settings.vesma.feedback_apply = False
                 off_view = [
                     (r.memory.id, r.score, r.via_graph_kind)
                     for r in mgr.search("anchor windmill gears", limit=limit)
                 ]
                 assert off_view, "fixture: page non-empty"
-                mgr.settings.mnemos.feedback_apply = True
+                mgr.settings.vesma.feedback_apply = True
                 on_view = [
                     (r.memory.id, r.score, r.via_graph_kind)
                     for r in mgr.search("anchor windmill gears", limit=limit)
@@ -569,9 +569,9 @@ class TestRankOnlyWithinQuota:
         apply_manager.vectors.wipe()
         _capture_used(apply_manager, sibling.id, count=FEEDBACK_BOOST_CAP)
 
-        apply_manager.settings.mnemos.feedback_apply = False
+        apply_manager.settings.vesma.feedback_apply = False
         off_page = apply_manager.search("harbour cranes maintenance", limit=5)
-        apply_manager.settings.mnemos.feedback_apply = True
+        apply_manager.settings.vesma.feedback_apply = True
         on_page = apply_manager.search("harbour cranes maintenance", limit=5)
 
         fused_ids = {r.memory.id for r in off_page if not r.via_graph}
@@ -765,7 +765,7 @@ class TestBoostedTelemetry:
 
         # Flag-off walk: the counter does not move even with capture
         # flowing (the OFF leg never reads edge_stats).
-        apply_manager.settings.mnemos.feedback_apply = False
+        apply_manager.settings.vesma.feedback_apply = False
         apply_manager.search("anchor mooring bollards", limit=5)
         assert apply_manager.search_stats()["feedback_boosted_queries_total"] == after
 

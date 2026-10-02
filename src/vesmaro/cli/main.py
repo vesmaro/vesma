@@ -154,7 +154,7 @@ def add(
         from vesmaro.models import validate_tag_contract
 
         settings = _load_settings(config)
-        validate_tag_contract(tag_list, strict=settings.mnemos.strict_tag_contract)
+        validate_tag_contract(tag_list, strict=settings.vesma.strict_tag_contract)
 
         result = apply_filter(text)
         stats = result["stats"]
@@ -951,7 +951,7 @@ def serve(
         console.print(
             f"  bind: http://{h}:{p} (loopback only; non-loopback binds require auth + TOTP + TLS)"
         )
-        console.print(f"  data: {settings.mnemos.data_dir}  vault: {settings.mnemos.vault_path}")
+        console.print(f"  data: {settings.vesma.data_dir}  vault: {settings.vesma.vault_path}")
     # Propagate effective bind to the app process so the startup guard and
     # AuthMiddleware see the real host/port (CLI overrides must reach
     # load_settings() inside the worker - finding auth-1). Written under the
@@ -1335,7 +1335,7 @@ def _auth_store(config: str | None = None) -> AuthStore:
 
     settings = load_settings(config)
     settings.resolve_paths()
-    settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     return AuthStore(settings.db_path)
 
 

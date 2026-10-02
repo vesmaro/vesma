@@ -78,7 +78,7 @@ def _check_config() -> CheckResult:
 
 def _check_data_dir(settings: Any) -> CheckResult:
     """Data dir exists and is writable."""
-    data_dir = settings.mnemos.data_dir
+    data_dir = settings.vesma.data_dir
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         test_file = data_dir / ".mnemos_doctor_write_test"
@@ -100,7 +100,7 @@ def _check_data_dir(settings: Any) -> CheckResult:
 
 def _check_vault(settings: Any) -> CheckResult:
     """Vault path exists, is writable, and count markdown files."""
-    vault = settings.mnemos.vault_path
+    vault = settings.vesma.vault_path
     try:
         vault.mkdir(parents=True, exist_ok=True)
         test_file = vault / ".mnemos_doctor_write_test"
@@ -144,7 +144,7 @@ def _check_vector_store(settings: Any) -> CheckResult:
     sweeper re-embeds them gradually, or `vesma reindex` rebuilds in
     one pass. Diagnostics only — the doctor never re-embeds.
     """
-    vectors_path = settings.mnemos.data_dir / "vectors.db"
+    vectors_path = settings.vesma.data_dir / "vectors.db"
     if not vectors_path.exists():
         return CheckResult(
             "Vector store",
@@ -506,7 +506,7 @@ def _check_pending_refine(settings: Any) -> CheckResult:
 
 def _check_tag_contract(settings: Any) -> CheckResult:
     """Report tag contract mode + non-conformant entry count (if fast)."""
-    strict = settings.mnemos.strict_tag_contract
+    strict = settings.vesma.strict_tag_contract
     mode = "strict" if strict else "lenient"
 
     # Count non-conformant entries only if the DB exists and the scan is cheap.
@@ -621,9 +621,9 @@ def _collect_paths(settings: Any) -> dict[str, str]:
     return {
         "root": _display(root),
         "config": _display(root / "config.yaml"),
-        "data_dir": _display(settings.mnemos.data_dir),
+        "data_dir": _display(settings.vesma.data_dir),
         "db_path": _display(settings.db_path),
-        "vault": _display(settings.mnemos.vault_path),
+        "vault": _display(settings.vesma.vault_path),
         "logs": _display(settings.logging.log_file)
         if settings.logging.log_file
         else "(stderr only)",

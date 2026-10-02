@@ -118,7 +118,7 @@ def _settings_with_peer(
     # runtime; the cast keeps mypy --strict happy without changing behaviour.
     settings = Settings(
         **{  # type: ignore[arg-type]  # pydantic dict→model coercion
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test_mesh_server.db",
@@ -1358,10 +1358,10 @@ def _token_mint_deps(settings: Settings) -> tuple[AgentTokenStore, Any]:
     resolves (``<data_dir>/agent-token-signing.key``, no config
     override), so tokens minted here verify against the server's key.
     """
-    settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     key = load_or_create_signing_key(
         signing_key_path(
-            settings.mnemos.data_dir, override=settings.federation.agent_token_key_path
+            settings.vesma.data_dir, override=settings.federation.agent_token_key_path
         )
     )
     return AgentTokenStore(settings.db_path), key
@@ -1553,7 +1553,7 @@ class TestValidateAgentToken:
         )
         assert self._call(server, token).valid is True
         key_path = signing_key_path(
-            settings.mnemos.data_dir, override=settings.federation.agent_token_key_path
+            settings.vesma.data_dir, override=settings.federation.agent_token_key_path
         )
         assert key_path.exists()
         mode = stat.S_IMODE(key_path.stat().st_mode)

@@ -110,7 +110,7 @@ class _HashEmbedder:
 
 def _settings(tmp: Path, *, flag: bool = False) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -182,7 +182,7 @@ class TestFlagOff:
         # Owner decision 2026-09-28 «graphs on by default»: the A0
         # density gate was met (ADR-0030 addendum B.1) — minting is the
         # fuel line; the flag-off behaviour is pinned right below.
-        assert Settings().mnemos.graph_auto_mint is True
+        assert Settings().vesma.graph_auto_mint is True
 
     def test_flag_off_mints_zero_edges(self, plain_manager: MemoryManager) -> None:
         _add(plain_manager, NEAR_DUP_A)

@@ -410,7 +410,7 @@ async def create_memory(data: MemoryCreate) -> Memory:
     mgr = get_manager()
     settings = mgr.settings
 
-    tags = validate_tag_contract(data.tags, strict=settings.mnemos.strict_tag_contract)
+    tags = validate_tag_contract(data.tags, strict=settings.vesma.strict_tag_contract)
     data.tags = tags
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
@@ -1463,7 +1463,7 @@ async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
     mgr = get_manager()
     settings = mgr.settings
     url_clean = re.sub(r"(https?://)([^@]*@)", r"\1", req.url)
-    tags = validate_tag_contract(req.tags, strict=settings.mnemos.strict_tag_contract)
+    tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     # P1 repair (review round): the len("agent") slice dropped the ':'
     # and stored ':a' in the denormalised column for tag agent:a —
@@ -1512,7 +1512,7 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
     doc_id = req.doc_id.strip()
     if not doc_id:
         raise HTTPException(status_code=422, detail="doc_id must be a non-empty string")
-    tags = validate_tag_contract(req.tags, strict=settings.mnemos.strict_tag_contract)
+    tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
     result = mgr.ingest_document(

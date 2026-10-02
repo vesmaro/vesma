@@ -65,7 +65,7 @@ def _settings(tmp: Path) -> Settings:
     # of 2026-09-28) are pinned OFF — each golden pins ONE leg's
     # semantics; the graph surface has its own suites.
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

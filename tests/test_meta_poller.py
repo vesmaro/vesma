@@ -690,7 +690,7 @@ class TestTickLoop:
 
 def _cli_config(tmp_path: Path, mesh: MeshDouble, *, enable: bool = True) -> Path:
     cfg: dict[str, Any] = {
-        "mnemos": {
+        "vesma": {
             "data_dir": str(tmp_path / "data"),
             "vault_path": str(tmp_path / "vault"),
             "db_name": "meta-poll-cli.db",
@@ -815,7 +815,7 @@ class TestServeWiring:
 
     def _client_config(self, tmp_path: Path, *, enable: bool) -> Path:
         cfg: dict[str, Any] = {
-            "mnemos": {
+            "vesma": {
                 "data_dir": str(tmp_path / "data"),
                 "vault_path": str(tmp_path / "vault"),
             },

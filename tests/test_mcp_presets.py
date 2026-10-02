@@ -61,8 +61,8 @@ README_PRESET_ANCHORS = (
 )
 
 #: Env names as pydantic-settings actually maps them for the nested
-#: ``Settings.mnemos`` section (``VESMA_`` prefix + ``__`` nesting).
-CANONICAL_ENV_VARS = ("VESMA_MNEMOS__DATA_DIR", "VESMA_MNEMOS__VAULT_PATH")
+#: ``Settings.vesma`` section (``VESMA_`` prefix + ``__`` nesting).
+CANONICAL_ENV_VARS = ("VESMA_VESMA__DATA_DIR", "VESMA_VESMA__VAULT_PATH")
 #: Legacy short forms — #139 compat aliases (honoured again, but never the
 #: documented form; canonical wins when both are set). Allowed in the
 #: artefacts' prose notes only, never as an instruction.
@@ -315,7 +315,7 @@ def test_artefacts_use_canonical_env_names_only() -> None:
 def test_canonical_env_names_and_subtypes_steer_src() -> None:
     """Subprocess proof against the src tree (the one import exempt test).
 
-    1. The documented env names must actually move ``Settings.mnemos``
+    1. The documented env names must actually move ``Settings.vesma``
        (pydantic-settings ``VESMA_`` prefix + ``__`` nesting).
     2. Every ``mnemos:`` subtype listed in the template must exist in
        ``VESMARO_TAG_SUBTYPES`` (``trace`` is a canary: not a subtype).
@@ -324,14 +324,14 @@ def test_canonical_env_names_and_subtypes_steer_src() -> None:
     script = (
         "import sys, os, json\n"
         "sys.path.insert(0, sys.argv[1])\n"
-        "os.environ['VESMA_MNEMOS__DATA_DIR'] = '/tmp/mnemos-pin-data'\n"
-        "os.environ['VESMA_MNEMOS__VAULT_PATH'] = '/tmp/mnemos-pin-vault'\n"
+        "os.environ['VESMA_VESMA__DATA_DIR'] = '/tmp/mnemos-pin-data'\n"
+        "os.environ['VESMA_VESMA__VAULT_PATH'] = '/tmp/mnemos-pin-vault'\n"
         "os.environ.pop('VESMA_DATA_DIR', None)\n"
         "os.environ.pop('VESMA_VAULT__VAULT_PATH', None)\n"
         "from vesmaro.config import Settings\n"
         "from vesmaro.models import VESMARO_TAG_SUBTYPES\n"
         "s = Settings(_env_file=None)\n"
-        "print(s.mnemos.data_dir, s.mnemos.vault_path)\n"
+        "print(s.vesma.data_dir, s.vesma.vault_path)\n"
         "print(json.dumps(sorted(VESMARO_TAG_SUBTYPES)))\n"
     )
     proc = subprocess.run(  # nosec B603 — fixed argv, repo-local src tree

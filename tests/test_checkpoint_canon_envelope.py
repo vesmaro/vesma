@@ -100,7 +100,7 @@ def mgr():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",
@@ -156,13 +156,13 @@ def test_envelope_minted_with_default_language(mgr: MemoryManager) -> None:
         "schema_version": CANON_SCHEMA_VERSION,
         "type": "checkpoint",
         "status": "active",
-        "language": mgr.settings.mnemos.checkpoint_language,
+        "language": mgr.settings.vesma.checkpoint_language,
         "session_ref": None,
     }
 
 
 def test_envelope_language_param_overrides_config(mgr: MemoryManager) -> None:
-    mgr.settings.mnemos.checkpoint_language = "en"
+    mgr.settings.vesma.checkpoint_language = "en"
     memory, _dup = mgr.save_checkpoint({"goals": "g"}, project="canonproj", session="sess-l1")
     memory_ru, _dup2 = mgr.save_checkpoint(
         {"goals": "g", "in_progress": "x"}, project="canonproj", language="ru"
@@ -180,7 +180,7 @@ def test_envelope_invalid_language_fails_loud(mgr: MemoryManager) -> None:
     with pytest.raises(ValueError, match="language must be one of"):
         mgr.save_checkpoint({"goals": "g"}, project="canonproj", language="fr")
     with pytest.raises(ValueError, match="language must be one of"):
-        mgr.settings.mnemos.checkpoint_language = "de"  # type: ignore[assignment]
+        mgr.settings.vesma.checkpoint_language = "de"  # type: ignore[assignment]
         mgr.save_checkpoint({"goals": "g2"}, project="canonproj")
     assert mgr.stats()["total"] == 0  # nothing stored by either rejected call
 
@@ -556,13 +556,13 @@ def test_dedup_key_excludes_render_and_language(mgr: MemoryManager) -> None:
     differing only in render-only details dedup-collide; the hash does
     NOT include the language/config (canon §10 — a dedup hit returns the
     first-minted row, the new call's language never rewrites it)."""
-    mgr.settings.mnemos.checkpoint_language = "en"
+    mgr.settings.vesma.checkpoint_language = "en"
     first, dup1 = mgr.save_checkpoint(
         {"goals": "render-blind payload"}, project="canonproj", agent="rend"
     )
     assert dup1 is False
     # Flip ONLY the render inputs (config-driven placeholder set changes).
-    mgr.settings.mnemos.checkpoint_language = "ru"
+    mgr.settings.vesma.checkpoint_language = "ru"
     second, dup2 = mgr.save_checkpoint(
         {"goals": "render-blind payload"}, project="canonproj", agent="rend"
     )

@@ -38,7 +38,7 @@ _DISALLOWED = "http://evil.example.com"
 def _settings(tmp: Path, **api_kwargs: object) -> Settings:
     """Build an isolated Settings object pointing at a temp directory."""
     s = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

@@ -154,7 +154,7 @@ class HermesMemoryAdapter:
         # strictness knob (the same call VesmaSDK.remember makes later).
         validate_tag_contract(
             [f"project:{project}", f"agent:{agent}", "mnemos:session"],
-            strict=sdk.manager.settings.mnemos.strict_tag_contract,
+            strict=sdk.manager.settings.vesma.strict_tag_contract,
         )
         if sync_interval < 1:
             raise ValueError(f"sync_interval must be >= 1, got {sync_interval!r}")

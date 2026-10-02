@@ -22,7 +22,7 @@ runner = CliRunner()
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cfg = tmp_path / "vesmaro.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: logs-test.db\n"

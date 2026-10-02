@@ -68,7 +68,7 @@ def _settings(tmp: Path, **code_graph: Any) -> Settings:
     cg: dict[str, Any] = {"enabled": True, "watch": True}
     cg.update(code_graph)
     return Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

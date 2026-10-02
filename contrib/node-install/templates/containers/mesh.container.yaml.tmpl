@@ -32,7 +32,7 @@ peers: []
 # How THIS mesh daemon reaches the local core face: TCP leg with
 # server-side mTLS material from the core cert pair. Both containers
 # share the host network namespace, so loopback works.
-mnemos:
+vesma:
   transport: tcp
   address: "127.0.0.1:8790"
   core_fingerprint: ""   # sha256:... of core.pem — fill after cert-gen

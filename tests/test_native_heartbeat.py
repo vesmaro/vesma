@@ -90,7 +90,7 @@ def _settings(
     if heartbeat_rate_limit is not None:
         awareness["heartbeat_rate_limit_per_minute"] = heartbeat_rate_limit
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -308,7 +308,7 @@ class TestHeartbeatConfig:
     def test_env_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE", "canary")
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -721,7 +721,7 @@ SECRET_GOAL = "secret-goal-zq7x-watermark"
 
 
 def _sidecar_events(mgr: MemoryManager) -> list[dict[str, Any]]:
-    db = mgr.settings.mnemos.data_dir / "metrics.sqlite"
+    db = mgr.settings.vesma.data_dir / "metrics.sqlite"
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
     try:

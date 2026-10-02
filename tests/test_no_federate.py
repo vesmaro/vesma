@@ -36,7 +36,7 @@ from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus, MemoryUpdat
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test-no-federate.db",
@@ -513,7 +513,7 @@ class TestImportEndToEnd:
         run_export(mgr, fmt=ExportFormat.JSON, output=out)
 
         settings2 = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault2"),
                 "data_dir": str(tmp_path / "data2"),
                 "db_name": "test-no-federate-2.db",

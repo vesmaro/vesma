@@ -49,7 +49,7 @@ def _settings(tmp: Path, **ccr_overrides: object) -> Settings:
     }
     ccr.update(ccr_overrides)
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

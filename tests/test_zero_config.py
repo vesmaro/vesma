@@ -103,13 +103,13 @@ class TestZeroConfigDefaults:
         assert cfg.totp_enabled is False
 
     def test_load_settings_without_config_uses_safe_defaults(self, clean_home):
-        """No config file anywhere → pure defaults, storage under $HOME/.mnemos."""
+        """No config file anywhere → pure defaults, storage under $HOME/.vesma."""
         assert find_config_file() is None, "fixture must guarantee a config-free env"
         settings = load_settings()
         assert settings.api.host == "127.0.0.1"
         assert settings.api.auth_enabled is False
-        assert settings.mnemos.vault_path == clean_home / ".mnemos" / "vault"
-        assert settings.mnemos.data_dir == clean_home / ".mnemos" / "data"
+        assert settings.vesma.vault_path == clean_home / ".mnemos" / "vault"
+        assert settings.vesma.data_dir == clean_home / ".mnemos" / "data"
         assert settings.db_path == clean_home / ".mnemos" / "data" / "mnemos.db"
 
     def test_find_config_file_explicit_path(self, clean_home, tmp_path):

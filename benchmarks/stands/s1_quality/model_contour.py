@@ -26,7 +26,7 @@ runtime session over its bundled artifact): when the provider cannot be
 built in the run environment (artifact missing, optional dependency
 absent), the S1m section reports ``status: "skipped"`` with the concrete
 reason — NOT red. A skipped S1m is a gate failure only when the operator
-asked for it to be mandatory via ``VESMARO_BENCH_S1M_REQUIRED=1`` (CI
+asked for it to be mandatory via ``VESMA_BENCH_S1M_REQUIRED=1`` (CI
 nightlies); in the default local ``make verify`` posture the skip is
 tolerated.
 """
@@ -43,9 +43,9 @@ from benchmarks.corpus.queries import GOLDEN_QUERIES
 
 K_VALUES: tuple[int, ...] = (5, 10)
 
-#: Skip is tolerated locally; VESMARO_BENCH_S1M_REQUIRED=1 (CI nightlies)
+#: Skip is tolerated locally; VESMA_BENCH_S1M_REQUIRED=1 (CI nightlies)
 #: makes an unavailable production embedder a hard gate failure.
-REQUIRED_ENV = "VESMARO_BENCH_S1M_REQUIRED"
+REQUIRED_ENV = "VESMA_BENCH_S1M_REQUIRED"
 
 #: S1m metrics under the self-comparison corridor (ci95 keys are 1:1,
 #: mirroring the S1 pipeline contour).
@@ -304,7 +304,7 @@ def measure_production_embedder(
 
 
 def s1m_required() -> bool:
-    """``VESMARO_BENCH_S1M_REQUIRED`` in {1,true,yes} → skips are red."""
+    """``VESMA_BENCH_S1M_REQUIRED`` in {1,true,yes} → skips are red."""
     return os.environ.get(REQUIRED_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
@@ -349,7 +349,7 @@ def run_model_contour(
             report["gate"] = {
                 "pass": False,
                 "failures": [
-                    "s1m skipped but VESMARO_BENCH_S1M_REQUIRED is set — the "
+                    "s1m skipped but VESMA_BENCH_S1M_REQUIRED is set — the "
                     "production-embedder contour is mandatory here"
                 ],
             }
@@ -392,7 +392,7 @@ def gate_model_contour(current: dict[str, Any], baseline: dict[str, Any] | None)
             return {
                 "pass": False,
                 "failures": [
-                    "s1m skipped but VESMARO_BENCH_S1M_REQUIRED is set — the "
+                    "s1m skipped but VESMA_BENCH_S1M_REQUIRED is set — the "
                     "production-embedder contour is mandatory here"
                 ],
             }

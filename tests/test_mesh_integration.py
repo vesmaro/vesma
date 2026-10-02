@@ -109,7 +109,7 @@ def _settings_with_peer(tmp_path: Path, socket_path: Path) -> Settings:
     """
     settings = Settings(
         **{  # type: ignore[arg-type]  # pydantic dict→model coercion
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test_mesh_integration.db",

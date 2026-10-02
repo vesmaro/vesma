@@ -117,7 +117,7 @@ class _HashEmbedder:
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={"vault_path": str(tmp / "vault"), "data_dir": str(tmp / "data"), "db_name": "t.db"},
+        vesma={"vault_path": str(tmp / "vault"), "data_dir": str(tmp / "data"), "db_name": "t.db"},
         scanner={"enabled": False},  # type: ignore[arg-type]
     )
     settings.resolve_paths()

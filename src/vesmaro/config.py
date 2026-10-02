@@ -43,7 +43,7 @@ class VesmaConfig(BaseModel):
     #     (invisible); visibility is granted only when the refine cycle
     #     completes and the refined projection passes the publication
     #     gate (refusal at that point enters the lane-(b) quarantine).
-    # Canonical env override: VESMA_MNEMOS__VISIBILITY=curated.
+    # Canonical env override: VESMA_VESMA__VISIBILITY=curated.
     visibility: Literal["immediate", "curated"] = "immediate"
     # ADR-0030 A0 (issue #322) — deterministic relates_to auto-minting on
     # write: after every add, ONE synchronous hybrid search through the
@@ -55,7 +55,7 @@ class VesmaConfig(BaseModel):
     # window, ADR-0030 addendum B.1) — minting is the fuel line the
     # ecosystem builds on. Minting is best-effort: a minting failure
     # never fails the write.
-    # Canonical env override: VESMA_MNEMOS__GRAPH_AUTO_MINT=false.
+    # Canonical env override: VESMA_VESMA__GRAPH_AUTO_MINT=false.
     graph_auto_mint: bool = True
     # ADR-0030 A0 (issue #324) — the 1-hop ``relates_to`` walk in the
     # search graph leg: the leg extends from ``supersedes`` (both
@@ -67,7 +67,7 @@ class VesmaConfig(BaseModel):
     # for letting minted fuel reach search. DEFAULT ON (owner decision
     # 2026-09-28): S1 shipped with the reserved-quota discipline and
     # the dedicated guard floor recall@5 ≥ 0.9121 (ADR-0030 B.3).
-    # Canonical env override: VESMA_MNEMOS__GRAPH_WALK=false.
+    # Canonical env override: VESMA_VESMA__GRAPH_WALK=false.
     graph_walk: bool = True
     # ADR-0030 A1-S2 (issue #325) — feedback APPLY: the edge_stats
     # `used` counters multiply walked-block edge weights by a
@@ -79,7 +79,7 @@ class VesmaConfig(BaseModel):
     # not run); graph_walk=ON + feedback_apply=OFF ⇒ A1-S1 behavior
     # byte-identical. DEFAULT ON (owner decision 2026-09-28); capture
     # telemetry validated in the A0 7-day window.
-    # Canonical env override: VESMA_MNEMOS__FEEDBACK_APPLY=false.
+    # Canonical env override: VESMA_VESMA__FEEDBACK_APPLY=false.
     feedback_apply: bool = True
     # vesma #96: workflow lifecycle guardrails. Stale-lock threshold governs
     # how long a lock survives before a different actor can take it over
@@ -118,7 +118,7 @@ class VesmaConfig(BaseModel):
     # hard error (the composition contract must not break). Without the
     # cap a polling harness reconstructs a neighbor's timeline at
     # arbitrary resolution. 0 disables the limiter.
-    # Canonical env override: VESMA_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
+    # Canonical env override: VESMA_VESMA__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
     awareness_picture_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
     # vesma-canon v1.0.0 (ADR-0003 engine obligation 4) — the
@@ -132,7 +132,7 @@ class VesmaConfig(BaseModel):
     # validator enforces the same set at the manager boundary
     # (``checkpoint_canon_envelope`` raises ValueError fail-loud), so a
     # mistyped config value surfaces on the first save, not silently.
-    # Canonical env override: VESMA_MNEMOS__CHECKPOINT_LANGUAGE=ru.
+    # Canonical env override: VESMA_VESMA__CHECKPOINT_LANGUAGE=ru.
     checkpoint_language: Literal["ru", "en"] = "ru"
     # vesma-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
     # write-path canon enforcement level. The validator
@@ -151,7 +151,7 @@ class VesmaConfig(BaseModel):
     #   * "off" — no canon validation at all.
     # Strict stays default-off until vesma 6.0 (canon §9 freeze: the
     # warn telemetry decides the strict default, owner directive).
-    # Canonical env override: VESMA_MNEMOS__CANON_MODE=strict.
+    # Canonical env override: VESMA_VESMA__CANON_MODE=strict.
     canon_mode: Literal["off", "warn", "strict"] = "warn"
     # ADR-0004 implementation (c) — decision-provider selection for the
     # «semantic if» seam (``vesmaro.decision_provider``). One interface,
@@ -174,7 +174,7 @@ class VesmaConfig(BaseModel):
     #     pre-registered methodology (canon repo,
     #     docs/experiments/provider-calibration.md).
     #   * "off" — the seam is disabled entirely (call sites get None).
-    # Canonical env override: VESMA_MNEMOS__DECISION_PROVIDER=vesma.
+    # Canonical env override: VESMA_VESMA__DECISION_PROVIDER=vesma.
     decision_provider: Literal["off", "deterministic", "vesma", "jev"] = "deterministic"
     # NAME indirection for the Jev adapter's API key: the OpenRouter key
     # is read AT PROVIDER CONSTRUCTION from the environment variable
@@ -1298,7 +1298,7 @@ _ENV_PREFIX_CANONICAL: Final[str] = "VESMA_"
 #
 # ``Settings`` maps env vars with the canonical ``VESMA_`` prefix + ``__``
 # nesting, so the canonical names for the nested ``vesma`` section fields are
-# ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``. Historically the
+# ``VESMA_VESMA__DATA_DIR`` / ``VESMA_VESMA__VAULT_PATH``. Historically the
 # repo docs and ``scripts/mcp-setup.sh`` advertised the shorter
 # ``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH`` forms, which
 # pydantic-settings silently ignores (no matching field). The mapping below
@@ -1309,8 +1309,8 @@ _ENV_PREFIX_CANONICAL: Final[str] = "VESMA_"
 
 _ENV_COMPAT_ALIASES: Final[dict[str, tuple[str, str]]] = {
     # short env name              -> (settings section, field)
-    "VESMA_DATA_DIR": ("mnemos", "data_dir"),
-    "VESMA_VAULT__VAULT_PATH": ("mnemos", "vault_path"),
+    "VESMA_DATA_DIR": ("vesma", "data_dir"),
+    "VESMA_VAULT__VAULT_PATH": ("vesma", "vault_path"),
 }
 
 
@@ -1338,7 +1338,7 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
 
 
 class Settings(BaseSettings):
-    mnemos: VesmaConfig = VesmaConfig()
+    vesma: VesmaConfig = VesmaConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     search: SearchConfig = SearchConfig()
     api: ApiConfig = ApiConfig()
@@ -1397,7 +1397,7 @@ class Settings(BaseSettings):
            pre-existing pydantic-settings behaviour of canonical names
            (verified against pydantic-settings 2.14.2: init > env).
         2. Env: ``VESMA_<SECTION>__<FIELD>`` (e.g.
-           ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``).
+           ``VESMA_VESMA__DATA_DIR`` / ``VESMA_VESMA__VAULT_PATH``).
         3. Short alias (this source): ``VESMA_DATA_DIR`` /
            ``VESMA_VAULT__VAULT_PATH`` — honoured only when neither the file
            nor a canonical name provides the field. A short alias therefore
@@ -1416,8 +1416,8 @@ class Settings(BaseSettings):
         )
 
     def resolve_paths(self) -> None:
-        self.mnemos.vault_path = self.mnemos.vault_path.expanduser().resolve()
-        self.mnemos.data_dir = self.mnemos.data_dir.expanduser().resolve()
+        self.vesma.vault_path = self.vesma.vault_path.expanduser().resolve()
+        self.vesma.data_dir = self.vesma.data_dir.expanduser().resolve()
         # Resolve log_file only if non-empty; an empty Path("") becomes "."
         # which means "stderr only" — leave it as an empty Path().
         log_str = str(self.logging.log_file).strip()
@@ -1443,7 +1443,7 @@ class Settings(BaseSettings):
 
     @property
     def db_path(self) -> Path:
-        return self.mnemos.data_dir / self.mnemos.db_name
+        return self.vesma.data_dir / self.vesma.db_name
 
     def migrate_layout(self) -> list[str]:
         """Migrate scattered old paths to the consolidated ``~/.mnemos/`` layout.
@@ -1464,8 +1464,8 @@ class Settings(BaseSettings):
         """
         actions: list[str] = []
         home = Path.home()
-        new_data = self.mnemos.data_dir
-        new_vault = self.mnemos.vault_path
+        new_data = self.vesma.data_dir
+        new_vault = self.vesma.vault_path
 
         # ── Data dir migration ────────────────────────────────────────────
         # Old layout: ~/.mnemos/mnemos.db (and vectors.db) directly under root.
@@ -1522,10 +1522,10 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
       3. ./config.yaml in cwd
       4. ~/.mnemos/config.yaml
 
-    Env handling for ``mnemos.data_dir`` / ``mnemos.vault_path`` (per field,
+    Env handling for ``vesma.data_dir`` / ``vesma.vault_path`` (per field,
     high → low; full contract in ``Settings.settings_customise_sources``):
-      config-file value > canonical env (``VESMA_MNEMOS__DATA_DIR`` /
-      ``VESMA_MNEMOS__VAULT_PATH``) > short alias (``VESMA_DATA_DIR`` /
+      config-file value > canonical env (``VESMA_VESMA__DATA_DIR`` /
+      ``VESMA_VESMA__VAULT_PATH``) > short alias (``VESMA_DATA_DIR`` /
       ``VESMA_VAULT__VAULT_PATH``, issue #139 compatibility) > ``.env`` file >
       defaults.
     """

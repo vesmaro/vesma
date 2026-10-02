@@ -86,7 +86,7 @@ def _settings(tmp: Path, *, visibility: str | None = None) -> Settings:
     if visibility is not None:
         mnemos["visibility"] = visibility
     settings = Settings(
-        mnemos=mnemos,  # type: ignore[arg-type]
+        vesma=mnemos,  # type: ignore[arg-type]
         scanner={"enabled": False},
     )
     settings.resolve_paths()
@@ -160,7 +160,7 @@ def _quarantined(mgr: MemoryManager, memory_id: str, *, reason: str = "secret") 
 class TestVisibilityConfig:
     def test_default_is_immediate(self) -> None:
         assert VesmaConfig().visibility == "immediate"
-        assert Settings().mnemos.visibility == "immediate"
+        assert Settings().vesma.visibility == "immediate"
 
     def test_curated_accepted(self) -> None:
         assert VesmaConfig(visibility="curated").visibility == "curated"
@@ -170,10 +170,10 @@ class TestVisibilityConfig:
             VesmaConfig(visibility="curved")
 
     def test_env_override_canonical_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("VESMA_MNEMOS__VISIBILITY", "curated")
-        assert Settings().mnemos.visibility == "curated"
-        monkeypatch.setenv("VESMA_MNEMOS__VISIBILITY", "immediate")
-        assert Settings().mnemos.visibility == "immediate"
+        monkeypatch.setenv("VESMA_VESMA__VISIBILITY", "curated")
+        assert Settings().vesma.visibility == "curated"
+        monkeypatch.setenv("VESMA_VESMA__VISIBILITY", "immediate")
+        assert Settings().vesma.visibility == "immediate"
 
 
 # ── 2. Immediate: ingest gate + instant findability (§2) ──────────────────────

@@ -34,7 +34,7 @@ from vesmaro.models import MemoryCreate, MemorySource
 def _make_settings(tmpdir: str, *, auto_filter: bool = True) -> Settings:
     tmp = Path(tmpdir)
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -334,14 +334,14 @@ class TestFilterAllMixed:
     def test_filter_all_skips_empty_content(self, mgr: MemoryManager) -> None:
         """filter_all skips memories with no content (empty string)."""
         # Add a memory with empty content.
-        mgr.settings.mnemos.auto_filter = False
+        mgr.settings.vesma.auto_filter = False
         data = MemoryCreate(
             content="",
             tags=_VALID_TAGS,
             source=MemorySource.CLI,
         )
         mgr.add(data, project="test", agent="filter-test")
-        mgr.settings.mnemos.auto_filter = True
+        mgr.settings.vesma.auto_filter = True
 
         result = mgr.filter_all()
         assert result["status"] == "ok"
@@ -368,14 +368,14 @@ class TestFilterStatsAccuracy:
             mgr.add(data, project="test", agent="filter-test")
 
         # Add 1 memory with auto_filter off (→ unfiltered).
-        mgr.settings.mnemos.auto_filter = False
+        mgr.settings.vesma.auto_filter = False
         data = MemoryCreate(
             content="unfiltered content",
             tags=_VALID_TAGS,
             source=MemorySource.CLI,
         )
         mgr.add(data, project="test", agent="filter-test")
-        mgr.settings.mnemos.auto_filter = True
+        mgr.settings.vesma.auto_filter = True
 
         stats = mgr.sqlite.get_filter_stats()
         assert stats["filtered"] == 3
@@ -514,7 +514,7 @@ class TestCliFilterAllEmpty:
     def test_cli_filter_all_empty_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-filter-empty.db\n"

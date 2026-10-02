@@ -117,9 +117,9 @@ class TestByteEqualityPin:
             for content in rows:
                 _add(mgr, content)
             for limit in (5, 8, 12, 20):
-                mgr.settings.mnemos.graph_walk = True
+                mgr.settings.vesma.graph_walk = True
                 page_on = mgr.search("harbour cranes lighthouse", limit=limit)
-                mgr.settings.mnemos.graph_walk = False
+                mgr.settings.vesma.graph_walk = False
                 page_off = mgr.search("harbour cranes lighthouse", limit=limit)
                 assert len(page_on) == len(page_off), (
                     f"slot-return violated at limit={limit}: "
@@ -547,7 +547,7 @@ class TestBackfillGates:
         )
         # The flag-OFF surface agrees (the empty page is the shared
         # contract, not a flag-ON quirk).
-        walk_manager.settings.mnemos.graph_walk = False
+        walk_manager.settings.vesma.graph_walk = False
         page_off = walk_manager.search("omega psi chi", tags=["wanted"], limit=5)
         assert page_off == []
 

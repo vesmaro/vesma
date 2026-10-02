@@ -213,7 +213,7 @@ class TestPGT5ExportNeverCarriesGraph:
     @pytest.fixture
     def export_manager(self, tmp_path: Path) -> Iterator[MemoryManager]:
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",
@@ -541,7 +541,7 @@ class TestConfigDefaults:
         beacon without an index, zero nodes anywhere. The graph waits
         for an explicit index_project, not the other way around."""
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "test.db",

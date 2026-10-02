@@ -25,7 +25,7 @@ runner = CliRunner()
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -107,7 +107,7 @@ def test_doctor_json_includes_pending_check(
     cfg = tmp_path / ".mnemos" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
         f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
     )

@@ -131,7 +131,7 @@ class VesmaSDK:
         if "tags" in kw:
             kw["tags"] = validate_tag_contract(
                 list(kw["tags"]),
-                strict=self._manager.settings.mnemos.strict_tag_contract,
+                strict=self._manager.settings.vesma.strict_tag_contract,
             )
         data = MemoryCreate(content=content, **kw)
         memory = self._manager.add(data, project=project, agent=agent)

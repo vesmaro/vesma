@@ -101,7 +101,7 @@ bench-s1-record:
 
 # BF-2 stands — NOT in the local merge gate (ADR-0020: S4 rides the
 # nightly contour while within budget; S2 never blocks locally). The
-# VESMARO_BENCH_S1M_REQUIRED=1 flag for CI nightlies is documented in
+# VESMA_BENCH_S1M_REQUIRED=1 flag for CI nightlies is documented in
 # benchmarks/README.md (S1m skip semantics); full CI wiring is BF-4.
 bench-s4:
 	$(PYTHON) benchmarks/stands/s4_availability/run.py
@@ -120,7 +120,7 @@ bench-s2-smoke:
 # (benchmarks/baselines/s2.json) is born HERE ONLY (--record-nightly,
 # ≥3 repeats; overwrite needs --force — event-driven re-baseline).
 #
-# VESMARO_BENCH_S1M_REQUIRED=1 is preset for the WHOLE target (review
+# VESMA_BENCH_S1M_REQUIRED=1 is preset for the WHOLE target (review
 # N4 on #206): the nightly contour is the only place where the
 # required-S1m semantics is mandatory — the S1 gate leg below fails
 # red when the production embedder cannot be verified, while the local
@@ -130,8 +130,8 @@ S2_REPEATS ?= 5
 S2_NIGHTLY_FLAGS ?=
 
 bench-s2-nightly:
-	VESMARO_BENCH_S1M_REQUIRED=1 $(PYTHON) benchmarks/stands/s1_quality/run.py --quiet
-	VESMARO_BENCH_S1M_REQUIRED=1 $(PYTHON) benchmarks/stands/s2_timing/run.py --repeats $(S2_REPEATS) $(S2_NIGHTLY_FLAGS)
+	VESMA_BENCH_S1M_REQUIRED=1 $(PYTHON) benchmarks/stands/s1_quality/run.py --quiet
+	VESMA_BENCH_S1M_REQUIRED=1 $(PYTHON) benchmarks/stands/s2_timing/run.py --repeats $(S2_REPEATS) $(S2_NIGHTLY_FLAGS)
 
 # BF-4 — the one-page owner report (ADR-0020 §5 gate policy 5): traffic
 # light per family F1–F7 from ALL baselines/*.json (bytes, not memory),

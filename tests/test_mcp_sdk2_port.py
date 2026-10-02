@@ -191,7 +191,7 @@ def test_doctor_json_includes_mcp_transport(tmp_path, monkeypatch: pytest.Monkey
 
     cfg = tmp_path / "vesmaro.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: mcp-transport-doctor.db\n",

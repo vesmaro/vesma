@@ -347,7 +347,7 @@ Main note content...
 
 ```yaml
 # config.yaml
-mnemos:
+vesma:
   vault_path: ~/.mnemos/vault         # Obsidian vault
   data_dir: ~/.mnemos/data            # vector index + SQLite
 

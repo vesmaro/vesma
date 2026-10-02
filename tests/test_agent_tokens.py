@@ -328,7 +328,7 @@ def _cli_config(tmp_path: Path) -> list[str]:
     reachable from the test (config-file values outrank env vars — a bare
     env override silently loads the owner's real data dir)."""
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(f"mnemos:\n  data_dir: {tmp_path / 'data'}\n", encoding="utf-8")
+    cfg.write_text(f"vesma:\n  data_dir: {tmp_path / 'data'}\n", encoding="utf-8")
     return ["--config", str(cfg)]
 
 

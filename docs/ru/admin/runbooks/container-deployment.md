@@ -248,8 +248,8 @@ Vesma использует `config.container.yaml` в качестве конф�
 
 | Параметр | Значение | Примечания |
 |---------|---------|-----------|
-| `mnemos.data_dir` | `/data` | Маппится на named volume `vesma-data` |
-| `mnemos.vault_path` | `/vault` | Маппится на named volume `vesma-vault` |
+| `vesma.data_dir` | `/data` | Маппится на named volume `vesma-data` |
+| `vesma.vault_path` | `/vault` | Маппится на named volume `vesma-vault` |
 | `api.host` | `0.0.0.0` | Привязка ко всем интерфейсам — **требует auth** |
 | `api.port` | `8787` | Внутренний порт контейнера; маппинг задаётся в compose/run |
 | `api.auth_enabled` | `true` | Обязательно `true` при `host: 0.0.0.0` |

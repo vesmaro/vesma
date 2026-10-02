@@ -1584,7 +1584,7 @@ def get_graph_service(manager: Any) -> CodeGraphService:
     if service is None:
         service = CodeGraphService(
             main_store=manager.sqlite,
-            data_dir=manager.settings.mnemos.data_dir,
+            data_dir=manager.settings.vesma.data_dir,
             config=manager.settings.code_graph,
         )
         _SERVICE_REGISTRY[manager] = service

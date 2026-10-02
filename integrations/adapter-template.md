@@ -35,8 +35,8 @@ args = ["mcp-server"]
 ```
 
 Ready-made one-liners for major harnesses: [mcp-presets.md](mcp-presets.md).
-No env vars are required; optional `VESMA_MNEMOS__DATA_DIR` /
-`VESMA_MNEMOS__VAULT_PATH` tune store locations — the shorter
+No env vars are required; optional `VESMA_VESMA__DATA_DIR` /
+`VESMA_VESMA__VAULT_PATH` tune store locations — the shorter
 `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` forms work as #139
 compatibility aliases, canonical names preferred
 (loopback needs no API key — never put secrets in the entry).

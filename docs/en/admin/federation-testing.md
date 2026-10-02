@@ -72,8 +72,8 @@ response, not a trigger code; the response body still carries
 > explicit `--config` flag → `VESMA_CONFIG` env var → `./config.yaml` →
 > `~/.mnemos/config.yaml` (`find_config_file` in `src/vesmaro/config.py`).
 > There is **no** `VESMA_HOME` variable. To run an isolated instance,
-> write a per-instance `config.yaml` (own `mnemos.data_dir` /
-> `mnemos.vault_path`) and point `VESMA_CONFIG` at it — every command
+> write a per-instance `config.yaml` (own `vesma.data_dir` /
+> `vesma.vault_path`) and point `VESMA_CONFIG` at it — every command
 > below uses that pattern.
 
 ### Why loopback + SSH tunnel for testing
@@ -120,7 +120,7 @@ present in your checkout, run the steps manually.
 1. **Create two isolated instance configs.**
 
    Each instance gets its own directory with a `config.yaml` pointing
-   `mnemos.data_dir` / `mnemos.vault_path` inside it:
+   `vesma.data_dir` / `vesma.vault_path` inside it:
 
    ```bash
    export VESMA_CONF_A=/tmp/vesma-fed-a/config.yaml

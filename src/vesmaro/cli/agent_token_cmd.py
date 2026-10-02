@@ -53,14 +53,14 @@ def _resolve_settings(config: str | None) -> Settings:
     """Load settings, resolve paths, ensure the data dir exists."""
     settings = load_settings(config)
     settings.resolve_paths()
-    settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 
 def _signing_key(settings: Settings) -> Ed25519PrivateKey:
     """Open (or mint on first use) the Ed25519 agent-token signing key."""
     path = signing_key_path(
-        settings.mnemos.data_dir, override=settings.federation.agent_token_key_path
+        settings.vesma.data_dir, override=settings.federation.agent_token_key_path
     )
     try:
         return load_or_create_signing_key(Path(path))

@@ -238,7 +238,7 @@ def migrate_from_ai_brain(
                 if not dry_run:
                     # Copy file into Vesma vault, preserving relative path
                     rel = md_file.relative_to(source_vault)
-                    target = settings.mnemos.vault_path / rel
+                    target = settings.vesma.vault_path / rel
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(md_file, target)
                 summary["vault_files_migrated"] += 1

@@ -35,7 +35,7 @@ from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test-mcp-export.db",

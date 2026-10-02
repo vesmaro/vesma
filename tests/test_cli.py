@@ -33,7 +33,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     reset_manager()
     cfg = tmp_path / "vesmaro.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: cli-smoke.db\n"
@@ -418,7 +418,7 @@ class TestDoctorCommand:
         """`mnemos doctor` runs all checks and exits 0/1/2 (not a traceback)."""
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: doctor-smoke.db\n"
@@ -437,7 +437,7 @@ class TestDoctorCommand:
         """`mnemos doctor --json` emits valid JSON with a checks array."""
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: doctor-json.db\n"
@@ -462,7 +462,7 @@ class TestDoctorCommand:
         """A config pointing at an unwritable vault path surfaces a non-pass check."""
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: /nonexistent-root-cant-create/vault\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: doctor-fail.db\n"

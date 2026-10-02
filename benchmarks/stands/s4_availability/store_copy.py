@@ -53,7 +53,7 @@ def store_files(settings: Settings) -> dict[str, str]:
     """
     return {
         str(settings.db_path): "memories",
-        str(settings.mnemos.data_dir / "vectors.db"): "vectors",
+        str(settings.vesma.data_dir / "vectors.db"): "vectors",
     }
 
 
@@ -75,7 +75,7 @@ def clone_store(source_settings: Settings, target_settings: Settings) -> None:
     """
     for source_path, _kind in store_files(source_settings).items():
         source = Path(source_path)
-        target_path = target_settings.mnemos.data_dir / source.name
+        target_path = target_settings.vesma.data_dir / source.name
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if not source.exists():
             # A store file that never materialised (e.g. vectors.db with

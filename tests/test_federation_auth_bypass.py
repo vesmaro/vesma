@@ -66,7 +66,7 @@ def fed_settings(tmp_path: Path) -> Settings:
     """Settings with auth_enabled=True and one configured federation peer."""
     os.environ[TOKEN_ENV] = TOKEN_VALUE
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "fed-bypass.db",
@@ -90,7 +90,7 @@ def fed_settings(tmp_path: Path) -> Settings:
         },
     )
     settings.resolve_paths()
-    settings.mnemos.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 
@@ -252,7 +252,7 @@ class TestFederationAccessLogPath:
 
         custom_path = tmp_path / "data" / "federation-access.jsonl"
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "fed-logpath.db",
@@ -293,7 +293,7 @@ class TestFederationAccessLogPath:
         from vesmaro.federation_access_log import DEFAULT_LOG_PATH
 
         settings = Settings(
-            mnemos={
+            vesma={
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": "fed-logpath-default.db",

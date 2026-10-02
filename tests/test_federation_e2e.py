@@ -39,7 +39,7 @@ from vesmaro.models import MemoryCreate, MemorySource, MemoryStatus
 def _make_settings(home: Path) -> Settings:
     """Build an isolated Settings rooted at ``home``."""
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(home / "vault"),
             "data_dir": str(home / "data"),
             "db_name": "federation-e2e.db",

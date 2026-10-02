@@ -119,8 +119,8 @@ class TestMigrationWrite:
     def test_migrates_with_contract_tags(self, ai_brain_db, tmp_path) -> None:
         # Use a fresh data dir so we don't collide with other tests
         settings = load_settings()
-        settings.mnemos.data_dir = tmp_path / ".mnemos"
-        settings.mnemos.vault_path = tmp_path / "mnemos-vault"
+        settings.vesma.data_dir = tmp_path / ".mnemos"
+        settings.vesma.vault_path = tmp_path / "mnemos-vault"
         settings.resolve_paths()
 
         summary = migrate_from_ai_brain(
@@ -144,8 +144,8 @@ class TestMigrationWrite:
 
     def test_source_mapping(self, ai_brain_db, tmp_path) -> None:
         settings = load_settings()
-        settings.mnemos.data_dir = tmp_path / ".mnemos"
-        settings.mnemos.vault_path = tmp_path / "mnemos-vault"
+        settings.vesma.data_dir = tmp_path / ".mnemos"
+        settings.vesma.vault_path = tmp_path / "mnemos-vault"
         settings.resolve_paths()
 
         migrate_from_ai_brain(ai_brain_db, dry_run=False, settings=settings)
@@ -157,8 +157,8 @@ class TestMigrationWrite:
 
     def test_status_preserved(self, ai_brain_db, tmp_path) -> None:
         settings = load_settings()
-        settings.mnemos.data_dir = tmp_path / ".mnemos"
-        settings.mnemos.vault_path = tmp_path / "mnemos-vault"
+        settings.vesma.data_dir = tmp_path / ".mnemos"
+        settings.vesma.vault_path = tmp_path / "mnemos-vault"
         settings.resolve_paths()
 
         migrate_from_ai_brain(ai_brain_db, dry_run=False, settings=settings)
@@ -170,8 +170,8 @@ class TestMigrationWrite:
 
     def test_backup_created(self, ai_brain_db, tmp_path) -> None:
         settings = load_settings()
-        settings.mnemos.data_dir = tmp_path / ".mnemos"
-        settings.mnemos.vault_path = tmp_path / "mnemos-vault"
+        settings.vesma.data_dir = tmp_path / ".mnemos"
+        settings.vesma.vault_path = tmp_path / "mnemos-vault"
         settings.resolve_paths()
 
         # Pre-create a valid SQLite DB so backup triggers
@@ -182,7 +182,7 @@ class TestMigrationWrite:
         conn.close()
 
         migrate_from_ai_brain(ai_brain_db, dry_run=False, settings=settings)
-        backups = list(settings.mnemos.data_dir.glob("*.backup-*"))
+        backups = list(settings.vesma.data_dir.glob("*.backup-*"))
         assert len(backups) >= 1
 
     def test_vault_migration(self, ai_brain_db, tmp_path) -> None:
@@ -194,8 +194,8 @@ class TestMigrationWrite:
         (sub / "deep.md").write_text("## Deep")
 
         settings = load_settings()
-        settings.mnemos.data_dir = tmp_path / ".mnemos"
-        settings.mnemos.vault_path = tmp_path / "mnemos-vault"
+        settings.vesma.data_dir = tmp_path / ".mnemos"
+        settings.vesma.vault_path = tmp_path / "mnemos-vault"
         settings.resolve_paths()
 
         summary = migrate_from_ai_brain(
@@ -205,5 +205,5 @@ class TestMigrationWrite:
             settings=settings,
         )
         assert summary["vault_files_migrated"] == 2
-        assert (settings.mnemos.vault_path / "note.md").exists()
-        assert (settings.mnemos.vault_path / "sub" / "deep.md").exists()
+        assert (settings.vesma.vault_path / "note.md").exists()
+        assert (settings.vesma.vault_path / "sub" / "deep.md").exists()

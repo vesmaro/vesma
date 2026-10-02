@@ -333,7 +333,7 @@ def _apply_leg_settings(mgr: Any, leg: LegDefinition) -> None:
     """Configure the manager for one leg and fail loud on any mismatch.
 
     Direct assignment overrides any env-loaded state
-    (``MNEMOS_LANES__*``); the assert backstop catches a future config
+    (``VESMA_LANES__*``); the assert backstop catches a future config
     path that would ignore the assignment.
     """
     mgr.settings.lanes.enabled = leg.lanes_enabled

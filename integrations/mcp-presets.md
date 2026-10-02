@@ -236,22 +236,22 @@ guide](../docs/en/user/integration-guide.md#hermes-agent).
 
 Optional environment variables on the server entry (defaults shown). The
 names are the canonical `pydantic-settings` form (`VESMA_` prefix +
-`mnemos` section + `__` + field). The shorter variants that
+`vesma` section + `__` + field). The shorter variants that
 `scripts/mcp-setup.sh` writes (`VESMA_DATA_DIR`, `VESMA_VAULT__VAULT_PATH`)
 work as #139 compatibility aliases; the canonical names remain the
 documented form and win when both are set:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite store location |
-| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian vault mirror |
+| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | SQLite store location |
+| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Obsidian vault mirror |
 
 Example — Claude Code with an explicit store path (expanded by your shell):
 
 ```bash
 claude mcp add --scope user vesma \
-  --env VESMA_MNEMOS__DATA_DIR="$HOME/.mnemos/data" \
-  --env VESMA_MNEMOS__VAULT_PATH="$HOME/.mnemos/vault" \
+  --env VESMA_VESMA__DATA_DIR="$HOME/.mnemos/data" \
+  --env VESMA_VESMA__VAULT_PATH="$HOME/.mnemos/vault" \
   -- vesma mcp-server
 ```
 

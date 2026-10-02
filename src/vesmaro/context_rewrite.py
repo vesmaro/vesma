@@ -280,7 +280,7 @@ def context_rewrite(
             quota or the per-project aggregate ceiling is exhausted (W2
             review F1 + C10; REST → 429).
     """
-    mnemos_cfg = mgr.settings.mnemos
+    vesma_cfg = mgr.settings.vesma
     _validate(
         content,
         project,
@@ -288,8 +288,8 @@ def context_rewrite(
         session,
         supersedes,
         diff,
-        max_content_chars=mnemos_cfg.context_rewrite_max_content_chars,
-        max_diff_chars=mnemos_cfg.context_rewrite_max_diff_chars,
+        max_content_chars=vesma_cfg.context_rewrite_max_content_chars,
+        max_diff_chars=vesma_cfg.context_rewrite_max_diff_chars,
     )
 
     event_key = compute_event_key(
@@ -332,7 +332,7 @@ def context_rewrite(
     # Runs only on the write path — a deduplicated delivery (above) never
     # reaches this check, so retry storms stay harmless by construction.
     minute_ago = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
-    limit = mnemos_cfg.context_rewrite_rate_limit_per_minute
+    limit = vesma_cfg.context_rewrite_rate_limit_per_minute
     if limit > 0:
         recent = mgr.sqlite.count_recent_context_rewrites(project, session, minute_ago)
         if recent >= limit:
@@ -361,7 +361,7 @@ def context_rewrite(
     # operator). The distinct-session count is the noisy-neighbor signal
     # carried in the log line and the 429 message. NULL-session events
     # count as rows and as their own session bucket. Same 429 shape.
-    project_limit = mnemos_cfg.context_rewrite_project_rate_limit_per_minute
+    project_limit = vesma_cfg.context_rewrite_project_rate_limit_per_minute
     if project_limit > 0:
         project_rows, project_sessions = mgr.sqlite.count_recent_context_rewrites_by_project(
             project, minute_ago
@@ -400,7 +400,7 @@ def context_rewrite(
     # subtype would extend the shared tag-contract vocabulary (flagged for
     # ArchCom ratification in the #125 report instead of landing silently).
     tags = [f"project:{project}", f"agent:{agent}", "mnemos:session", *extra_tags]
-    tags = validate_tag_contract(tags, strict=mgr.settings.mnemos.strict_tag_contract)
+    tags = validate_tag_contract(tags, strict=mgr.settings.vesma.strict_tag_contract)
 
     metadata: dict[str, Any] = {
         "source": SOURCE_CONTEXT_REWRITE,

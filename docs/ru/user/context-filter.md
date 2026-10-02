@@ -65,7 +65,7 @@
 
 ```yaml
 # config.yaml
-mnemos:
+vesma:
   auto_filter: true
 ```
 
@@ -248,7 +248,7 @@ import logging
 ## Конфигурация
 
 ```yaml
-mnemos:
+vesma:
   auto_filter: true   # запускать фильтр при каждом mnemos_add (по умолчанию: true)
 ```
 
@@ -256,7 +256,7 @@ mnemos:
 вручную позже):
 
 ```yaml
-mnemos:
+vesma:
   auto_filter: false
 ```
 

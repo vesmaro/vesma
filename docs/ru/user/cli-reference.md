@@ -78,9 +78,9 @@ VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное чита�
 | Переменная (канон) | По умолчанию | Назначение |
 |------------|-------------|------------ |
 | `VESMA_CONFIG` | — | Путь к `config.yaml` |
-| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
-| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
-| `VESMA_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
+| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
+| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
+| `VESMA_VESMA__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
 | `VESMA_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
 | `VESMA_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
 | `VESMA_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |

@@ -66,7 +66,7 @@ def _settings(
     if hooks_max_output_chars is not None:
         hooks["max_output_chars"] = hooks_max_output_chars
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

@@ -1396,7 +1396,7 @@ class VesmaCoreServicer:
                 if self._token_key is None:
                     self._token_key = load_or_create_signing_key(
                         signing_key_path(
-                            self._settings.mnemos.data_dir,
+                            self._settings.vesma.data_dir,
                             override=self._settings.federation.agent_token_key_path,
                         )
                     )

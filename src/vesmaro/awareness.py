@@ -565,10 +565,10 @@ def _picture_rate_limit(mgr: MemoryManager) -> int:
     is defensive (an alt manager without the field degrades to the
     constant, never crashes the composition).
     """
-    mnemos_cfg = getattr(getattr(mgr, "settings", None), "mnemos", None)
+    vesma_cfg = getattr(getattr(mgr, "settings", None), "vesma", None)
     return int(
         getattr(
-            mnemos_cfg, "awareness_picture_rate_limit_per_minute", PICTURE_RATE_LIMIT_PER_MINUTE
+            vesma_cfg, "awareness_picture_rate_limit_per_minute", PICTURE_RATE_LIMIT_PER_MINUTE
         )
     )
 

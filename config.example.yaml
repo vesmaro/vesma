@@ -1,4 +1,4 @@
-mnemos:
+vesma:
   # Consolidated layout (v2.1): everything under ~/.mnemos/
   #   ~/.mnemos/config.yaml  ← this file
   #   ~/.mnemos/data/         ← SQLite DBs (mnemos.db, vectors.db)

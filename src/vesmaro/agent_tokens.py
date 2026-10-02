@@ -113,7 +113,7 @@ ROTATE_GRACE_MINUTES: Final[int] = 5
 SCOPE_READ: Final[str] = "read"
 SCOPE_RW: Final[str] = "rw"
 
-#: Default signing-key filename under ``mnemos.data_dir`` (TM §3: the key
+#: Default signing-key filename under ``vesma.data_dir`` (TM §3: the key
 #: lives in Vesma config territory and never leaves the host).
 DEFAULT_KEY_FILENAME: Final[str] = "agent-token-signing.key"
 

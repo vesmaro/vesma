@@ -27,7 +27,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "vesmaro"
 
 def _settings(tmp: Path, **overrides: object) -> Settings:
     payload: dict[str, object] = {
-        "mnemos": {
+        "vesma": {
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

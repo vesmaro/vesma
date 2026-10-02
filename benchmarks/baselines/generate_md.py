@@ -229,7 +229,7 @@ def render_baseline_md(baseline: dict[str, Any]) -> str:
         add(f"- **status:** skipped — {s1m.get('reason') or 'provider unavailable'}")
         add(
             "- skipped is GREEN in the default local posture; set "
-            "`MNEMOS_BENCH_S1M_REQUIRED=1` to make it a gate failure (CI)"
+            "`VESMA_BENCH_S1M_REQUIRED=1` to make it a gate failure (CI)"
         )
     else:
         sm = s1m.get("metrics") or {}
@@ -275,7 +275,7 @@ def render_baseline_md(baseline: dict[str, Any]) -> str:
             metric_ci = (sm.get("ci95") or {}).get(metric, 0.0)
             add(f"| s1m {metric} ≥ | {_corridor(float(sm.get(metric, 0.0)), float(metric_ci))} |")
     else:
-        add("| s1m | skipped (provider unavailable) — green unless MNEMOS_BENCH_S1M_REQUIRED=1 |")
+        add("| s1m | skipped (provider unavailable) — green unless VESMA_BENCH_S1M_REQUIRED=1 |")
     add(
         "| model_fingerprint | exact match vs this baseline — a mismatch is RED "
         "(re-baseline `--record`, same PR, per ADR-0021) |"

@@ -551,8 +551,8 @@ class MemoryManager:
         settings.resolve_paths()
         settings.apply_runtime_env()
         self.sqlite = SQLiteStore(settings.db_path)
-        self.vault = VaultManager(settings.mnemos.vault_path)
-        self.vectors = VectorStore(settings.mnemos.data_dir)
+        self.vault = VaultManager(settings.vesma.vault_path)
+        self.vectors = VectorStore(settings.vesma.data_dir)
         self._embedder: EmbeddingProvider | None = None
         # ADR-0032 slice 6 — the project-graph wiring: the sidecar
         # service is built LAZILY on first use (get_codegraph_service,
@@ -1018,7 +1018,7 @@ class MemoryManager:
         task/decision/report envelope (canon §2) persisting through the
         generic path.
 
-        Modes (``vesmaro.mnemos.canon_mode`` section):
+        Modes (``vesmaro.vesma.canon_mode`` section):
 
         * ``"warn"`` (default) — every violation is logged as ONE
           machine-parseable warning line (``canon_violation:`` + memory id
@@ -1042,7 +1042,7 @@ class MemoryManager:
         gate degrades to a non-fatal log line (same discipline as the
         secrets scanner and the embed upsert).
         """
-        mode = self.settings.mnemos.canon_mode
+        mode = self.settings.vesma.canon_mode
         if mode == "off":
             return
         try:
@@ -1284,7 +1284,7 @@ class MemoryManager:
                 memory, path="direct-seed"
             ):
                 memory.status = MemoryStatus.RAW
-        elif self.settings.mnemos.visibility == "curated":
+        elif self.settings.vesma.visibility == "curated":
             memory.status = MemoryStatus.RAW
             memory.pipeline_state = PipelineState.PENDING
         elif self._publish_gate_verdict(memory, path="ingest"):
@@ -1326,7 +1326,7 @@ class MemoryManager:
 
         # M10: auto-filter on ingest if enabled. Non-fatal: on failure the
         # memory is still saved with raw content (clean_content stays None).
-        if self.settings.mnemos.auto_filter and memory.content:
+        if self.settings.vesma.auto_filter and memory.content:
             try:
                 self.apply_context_filter(memory.id, profile=data.filter_profile)
                 reloaded = self.sqlite.get(memory.id)
@@ -1742,7 +1742,7 @@ class MemoryManager:
             raise ValueError(f"memory {memory_id!r} not found")
 
         # ── Guardrail 5: rate limit ───────────────────────────────────────
-        rate_limit = self.settings.mnemos.workflow_rate_limit_per_minute
+        rate_limit = self.settings.vesma.workflow_rate_limit_per_minute
         minute_ago = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
         recent = self.sqlite.count_workflow_transitions_since(memory_id, minute_ago)
         if recent >= rate_limit:
@@ -1794,7 +1794,7 @@ class MemoryManager:
         validate_transition(from_status, to_status)
 
         # ── Lock guardrails (2 + 4) ───────────────────────────────────────
-        stale_threshold_h = self.settings.mnemos.workflow_stale_lock_threshold_hours
+        stale_threshold_h = self.settings.vesma.workflow_stale_lock_threshold_hours
         force_used = False
         stale_lock_released = False
         previous_locked_by = locked_by
@@ -2087,7 +2087,7 @@ class MemoryManager:
                 (ADR-0019 §5) and refined_only (§4). Headroom-gated: the expansion runs only when
                 the fused legs left room (a full fused page needs no
                 enrichment); no edges → the leg is a no-op. ADR-0030 A0 (issue
-                #324): with ``vesmaro.mnemos.graph_walk`` ON (default ON since the owner
+                #324): with ``vesmaro.vesma.graph_walk`` ON (default ON since the owner
         decision of 2026-09-28) the walk
                 additionally expands ``relates_to`` neighbours under the
                 identical gates and decay — invariants I1-I3 are pinned by
@@ -2506,7 +2506,7 @@ class MemoryManager:
             scores.items(), key=lambda kv: (-kv[1], kv[0])
         )
         fused_fill: int = limit
-        if self.settings.mnemos.graph_walk and _walk_quota(limit) > 0:
+        if self.settings.vesma.graph_walk and _walk_quota(limit) > 0:
             fused_fill = limit - _walk_quota(limit)
         results: list[SearchResult] = []
         for mid, score in fused_sorted:
@@ -2519,7 +2519,7 @@ class MemoryManager:
             if len(results) >= fused_fill:
                 break
         fused_surplus: list[tuple[str, float]] = []
-        if self.settings.mnemos.graph_walk and _walk_quota(limit) > 0:
+        if self.settings.vesma.graph_walk and _walk_quota(limit) > 0:
             # The candidates BEYOND the fused cut, in the same
             # (score desc, id asc) order: the walk's shortfall backfill
             # consumes them; a starved fused page (I1-I3 fixtures)
@@ -2535,7 +2535,7 @@ class MemoryManager:
         # ── Graph leg (v1 issue #313; relates_to walk issue #324; A1-S1 #325) ─
         # Expansion along memory_edges from the fused ids. Kinds walked:
         # ``supersedes`` BOTH directions (v1, the unconditional leg) and,
-        # when ``vesmaro.mnemos.graph_walk`` is ON, ``relates_to`` both directions
+        # when ``vesmaro.vesma.graph_walk`` is ON, ``relates_to`` both directions
         # (ADR-0030 A0, issue #324; invariants I1-I3 are pinned by
         # tests/test_graph_walk_invariants.py).
         #
@@ -2581,7 +2581,7 @@ class MemoryManager:
         # kinds from its first anchor counts as supersedes — the
         # unconditional leg reached it; the walk counter claims only what
         # the relates_to leg alone surfaced.
-        if self.settings.mnemos.graph_walk:
+        if self.settings.vesma.graph_walk:
             # ── Flag-ON: reserved-quota BFS-2 walk + surplus backfill ──
             k = _walk_quota(limit)
             # P1 fix (#415 review): ``seen`` is initialised BEFORE the
@@ -2606,7 +2606,7 @@ class MemoryManager:
                 # reservation).
                 # A1-S2 (ADR-0030 §3 APPLY, #325; ArchCom 2026-09-27,
                 # I6 — THE Security residual): when the
-                # ``vesmaro.mnemos.feedback_apply`` flag is ON, the captured
+                # ``vesmaro.vesma.feedback_apply`` flag is ON, the captured
                 # edge_stats ``used`` counters multiply each walked
                 # row's weight by the SATURATING factor
                 # ``f(used) = 1 + min(used, CAP) x SLOPE`` (bounded at
@@ -2623,7 +2623,7 @@ class MemoryManager:
                 # store yields f(0)=1.0 for every row: flag-on ≡
                 # flag-off byte-identically (pinned).
                 used_counts: dict[str, int] = {}
-                if self.settings.mnemos.feedback_apply and walk_rows:
+                if self.settings.vesma.feedback_apply and walk_rows:
                     try:
                         used_counts = self.sqlite.get_edge_stats_used_counts_batch(
                             [c.neighbour_id for c in walk_rows]
@@ -2750,7 +2750,7 @@ class MemoryManager:
             for pos, anchor_id in enumerate(fused_ids, start=1):
                 supersedes_adj = self._graph_adjacent(anchor_id)
                 relates_adj: set[str] = set()
-                if self.settings.mnemos.graph_walk:
+                if self.settings.vesma.graph_walk:
                     relates_adj = self._graph_adjacent(anchor_id, kind="relates_to")
                 for neighbour_id in sorted(supersedes_adj | relates_adj):
                     if neighbour_id in anchor_rank or neighbour_id in scores:
@@ -2822,7 +2822,7 @@ class MemoryManager:
         ``kind`` is the extension point (ADR-0030): issue #324's walk
         consults ``relates_to`` through the SAME primitive — the walk
         loop in ``_search_core`` holds the flag policy (supersedes
-        always; relates_to only behind ``vesmaro.mnemos.graph_walk``) and tags
+        always; relates_to only behind ``vesmaro.vesma.graph_walk``) and tags
         each appended row with its first-anchor discovery kind.
         """
         neighbours: set[str] = set()
@@ -3018,7 +3018,7 @@ class MemoryManager:
         ``add`` call site's best-effort wrapper; insert failures are
         contained per-edge below.
         """
-        if not self.settings.mnemos.graph_auto_mint:
+        if not self.settings.vesma.graph_auto_mint:
             return 0
         # ── Review M1: FROM-side gates. The selector validates the
         # CANDIDATES; these two checks validate the NEW memory as an
@@ -3338,7 +3338,7 @@ class MemoryManager:
         ``language`` (vesma-canon v1.0.0, ADR-0003 obligation 4):
         primary language of the record body — canon §2 enum ``"ru"``
         /``"en"``, NO heuristics. ``None`` (the default) falls back to the
-        ``vesmaro.mnemos.checkpoint_language`` config value. Every call MUST land
+        ``vesmaro.vesma.checkpoint_language`` config value. Every call MUST land
         on a concrete language: the envelope mint raises ``ValueError``
         on anything outside the canon enum, fail-loud.
 
@@ -3456,7 +3456,7 @@ class MemoryManager:
         # ``str.title()`` re-derivation, drift-pinned to
         # schemas x-canon-sections).
         resolved_language = (
-            language if language is not None else self.settings.mnemos.checkpoint_language
+            language if language is not None else self.settings.vesma.checkpoint_language
         )
         canon = checkpoint_canon_envelope(language=resolved_language, session_ref=session)
         placeholders = {
@@ -4437,7 +4437,7 @@ class MemoryManager:
                 "by_type": self.sqlite.count_by_type(),
             },
             "filter": {
-                "auto_filter": self.settings.mnemos.auto_filter,
+                "auto_filter": self.settings.vesma.auto_filter,
                 "filtered_total": filter_stats["filtered"],
                 "unfiltered_total": filter_stats["unfiltered"],
                 "avg_reduction_pct": filter_stats["avg_reduction_pct"],
@@ -4476,9 +4476,9 @@ class MemoryManager:
             # (graph_walk_enriched_requests_total / requests_total —
             # split from the supersedes leg per the #324 review fix).
             "graph": {
-                "auto_mint_enabled": self.settings.mnemos.graph_auto_mint,
-                "walk_enabled": self.settings.mnemos.graph_walk,
-                "feedback_apply_enabled": self.settings.mnemos.feedback_apply,
+                "auto_mint_enabled": self.settings.vesma.graph_auto_mint,
+                "walk_enabled": self.settings.vesma.graph_walk,
+                "feedback_apply_enabled": self.settings.vesma.feedback_apply,
                 "auto_dedupe_edges_total": g_stats["auto_dedupe_edges_total"],
                 "auto_dedupe_edges_by_project": g_stats["auto_dedupe_edges_by_project"],
                 # ADR-0030 A1-S1 (#325): durable per-project edge-write
@@ -4554,14 +4554,14 @@ class MemoryManager:
             "status": "ok",
             "version": __version__,
             "update_available": update_stats_payload(self.settings),
-            "data_dir": str(self.settings.mnemos.data_dir),
-            "vault_path": str(self.settings.mnemos.vault_path),
+            "data_dir": str(self.settings.vesma.data_dir),
+            "vault_path": str(self.settings.vesma.vault_path),
             "total": self.sqlite.count(),
             "by_status": by_status,
             "vectors": vector_count,
             "projects": self.sqlite.get_project_memory_counts(),
             "filter": {
-                "auto_filter": self.settings.mnemos.auto_filter,
+                "auto_filter": self.settings.vesma.auto_filter,
                 "filtered_count": filter_stats["filtered"],
                 "unfiltered_count": filter_stats["unfiltered"],
                 "avg_reduction_pct": filter_stats["avg_reduction_pct"],
@@ -5230,7 +5230,7 @@ class MemoryManager:
         Returns the outcome code: ``published`` / ``quarantined`` /
         ``skipped``.
         """
-        if self.settings.mnemos.visibility != "curated":
+        if self.settings.vesma.visibility != "curated":
             return "skipped"
         memory = self.sqlite.get(memory_id)
         if memory is None or memory.status != MemoryStatus.RAW:

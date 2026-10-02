@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 достаточно). Минимальный вариант:
 
 ```yaml
-mnemos:
+vesma:
   data_dir: ~/.mnemos/data
   vault_path: ~/.mnemos/vault
   strict_tag_contract: true

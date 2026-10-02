@@ -150,7 +150,7 @@ def _settings(
         peers = {_PEER: {"bearer_token_env": _TOKEN_ENV, "allowed_projects": [_PROJECT]}}
     settings = Settings(
         **{  # type: ignore[arg-type]  # pydantic dict→model coercion
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(tmp_path / "vault"),
                 "data_dir": str(tmp_path / "data"),
                 "db_name": db_name,
@@ -655,7 +655,7 @@ class TestImportPathReuse:
 
 def _cli_config(tmp_path: Path, mesh: MeshFetchDouble, *, with_fetch: bool = True) -> Path:
     cfg: dict[str, Any] = {
-        "mnemos": {
+        "vesma": {
             "data_dir": str(tmp_path / "data"),
             "vault_path": str(tmp_path / "vault"),
             "db_name": "lazy-fetch-cli.db",

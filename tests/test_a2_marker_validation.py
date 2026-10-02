@@ -66,7 +66,7 @@ CONTENT = (
 
 def _settings(tmp: Path, *, validate_markers: bool = False) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",

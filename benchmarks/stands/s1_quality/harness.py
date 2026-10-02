@@ -93,7 +93,7 @@ def golden_settings(root: Path) -> Settings:
     # honest without hand-building three config models.
     settings = Settings.model_validate(
         {
-            "mnemos": {
+            "vesma": {
                 "vault_path": str(root / "vault"),
                 "data_dir": str(root / "data"),
                 "db_name": "golden.db",

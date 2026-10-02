@@ -54,7 +54,7 @@ FAKE_GHP_TOKEN = "ghp_" + "T" * 36
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test-scanner.db",
@@ -562,7 +562,7 @@ class TestScannerCLI:
         reset_scanner()
         cfg = tmp_path / "vesmaro.yaml"
         cfg.write_text(
-            f"mnemos:\n"
+            f"vesma:\n"
             f"  vault_path: {tmp_path / 'vault'}\n"
             f"  data_dir: {tmp_path / 'data'}\n"
             f"  db_name: cli-scanner.db\n"

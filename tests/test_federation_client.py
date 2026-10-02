@@ -41,7 +41,7 @@ def tmp_settings(tmp_path: Path) -> Settings:
     os.environ[TOKEN_ENV] = TOKEN_VALUE
     os.environ["VESMA_FED_PEER_VESMARO_A_URL"] = BASE_URL
     settings = Settings(
-        mnemos={
+        vesma={
             "vault_path": str(tmp_path / "vault"),
             "data_dir": str(tmp_path / "data"),
             "db_name": "test.db",

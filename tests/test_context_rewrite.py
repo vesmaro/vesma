@@ -90,14 +90,14 @@ def _settings(
 ) -> Settings:
     ccr: dict[str, object] = {"min_size_chars": 100, "max_entries": 100, "ttl_days": 1}
     ccr.update(ccr_overrides)
-    mnemos_cfg: dict[str, object] = {
+    vesma_cfg: dict[str, object] = {
         "vault_path": str(tmp / "vault"),
         "data_dir": str(tmp / "data"),
         "db_name": "test.db",
     }
-    mnemos_cfg.update(mnemos_extra or {})
+    vesma_cfg.update(mnemos_extra or {})
     settings = Settings(
-        mnemos=mnemos_cfg,  # type: ignore[arg-type]
+        vesma=vesma_cfg,  # type: ignore[arg-type]
         scanner={"enabled": False},
         ccr=ccr,  # type: ignore[arg-type]
     )
