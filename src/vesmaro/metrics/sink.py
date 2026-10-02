@@ -53,6 +53,7 @@ from vesmaro.metrics.schema import (
     RETENTION_DAYS,
     SCHEMA_SQL,
     TABLE_NAMES,
+    migrate_awareness_events_kinds,
 )
 from vesmaro.metrics.schema import (
     validate_awareness_meta as validate_awareness_meta,  # re-export: sink contract
@@ -297,6 +298,14 @@ class MetricsStore(VerbLedgerMixin):
                         conn.execute("PRAGMA busy_timeout=250")
                         for stmt in SCHEMA_SQL:
                             conn.execute(stmt)
+                        # SEC-4 (ADR-0035 cascade): legacy wave-0 sidecars
+                        # carry a five-kind CHECK that would refuse the
+                        # conflict_hint_emitted funnel event — the
+                        # introspection-gated rebuild migrates them onto
+                        # the born-final enum (no-op on fresh/migrated
+                        # files; raises sqlite3.Error into the same
+                        # degrade-to-unavailable handling as above).
+                        migrate_awareness_events_kinds(conn)
                         conn.commit()
                         self._chmod_sidecar_files()  # belt and braces
                         self._local.conn = conn
