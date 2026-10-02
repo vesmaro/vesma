@@ -252,6 +252,39 @@ def test_garbage_threads_env_is_wrapped_as_load_failure(
     assert excinfo.value.code == "CORTEX-E-LOAD"
 
 
+class _DriftedMetaSession:
+    """Stub ORT session with the right graph contract but drifted
+    metadata_props (the tampered-bundle stand-in)."""
+
+    def __init__(self, props: dict[str, str], *_args: Any, **_kwargs: Any) -> None:
+        self._props = props
+
+    def get_inputs(self) -> list[Any]:
+        return [type("_Input", (), {"name": "features"})()]
+
+    def get_modelmeta(self) -> Any:
+        return type("_Meta", (), {"custom_metadata_map": self._props})()
+
+
+@pytest.mark.parametrize("drift", [{"feature_set_sha256": "0" * 64}, {"version": "2"}])
+def test_metadata_drift_refuses_through_the_real_load_path(
+    monkeypatch: pytest.MonkeyPatch, drift: dict[str, str]
+) -> None:
+    """#459: validate_cortex_metadata_props fires THROUGH _load — a
+    session whose metadata carries wrapper/graph drift raises the typed
+    CORTEX-E-META on construction, not only on the pure-function surface."""
+    import onnxruntime as ort
+
+    monkeypatch.setattr(
+        ort,
+        "InferenceSession",
+        lambda *_a, **_kw: _DriftedMetaSession(dict(_VALID_METADATA, **drift)),
+    )
+    with pytest.raises(CortexMetaError) as excinfo:
+        VesmaProvider(embedder_fingerprint=EMBEDDER_PIN)
+    assert excinfo.value.code == "CORTEX-E-META"
+
+
 # ── Metadata validation (spec §6 steps 2 + 8 — pure unit surface) ────────────
 
 
