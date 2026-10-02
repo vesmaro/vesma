@@ -44,17 +44,17 @@ compatibility aliases since the #139 fix, canonical names preferred
 ## 2 · Expose — grant the tools to the agent
 
 Connection is not exposure: most harnesses hide MCP tools until granted.
-Add the `mnemos_*` tools to the agent's tool list / allow-list / `tools:`
+Add the `vesma_*` tools to the agent's tool list / allow-list / `tools:`
 frontmatter. Minimum read-write core:
 
 | Tool | Purpose |
 |---|---|
-| `mnemos_search` | hybrid FTS5 + vector search |
-| `mnemos_add` | write a memory (tag contract enforced) |
-| `mnemos_recall_context` | relevance-assembled context block |
-| `mnemos_agent_recall` | per-agent recall at session start |
-| `mnemos_save_context` | checkpoint before compaction / session end |
-| `mnemos_stats` | store health at a glance |
+| `vesma_search` | hybrid FTS5 + vector search |
+| `vesma_add` | write a memory (tag contract enforced) |
+| `vesma_recall_context` | relevance-assembled context block |
+| `vesma_agent_recall` | per-agent recall at session start |
+| `vesma_save_context` | checkpoint before compaction / session end |
+| `vesma_stats` | store health at a glance |
 
 Full surface (26 tools): [mcp-tools.md](../docs/en/user/mcp-tools.md).
 
@@ -62,10 +62,10 @@ Then give the agent one behavioural rule (adapt the wording to your
 harness's instruction channel — system prompt, rules file, AGENTS.md):
 
 ```text
-At session start call mnemos_agent_recall before reading files.
+At session start call vesma_agent_recall before reading files.
 Before writing any memory, compose tags: exactly one project:<slug>,
 exactly one agent:<slug>, at least one mnemos:<subtype>.
-Before compaction or session end, call mnemos_save_context.
+Before compaction or session end, call vesma_save_context.
 ```
 
 ## 3 · Configure — slugs and the tag contract
@@ -78,7 +78,7 @@ Pick two slugs once and reuse them everywhere (keeps recall scoped):
 Every write must carry exactly one of each plus at least one
 `mnemos:<subtype>` (`decision`, `rule`, `session`, `checkpoint`, `learning`, …).
 Full schema: [tag-contract.md](../docs/en/user/tag-contract.md). The server
-rejects contract-breaking writes, so a failed `mnemos_add` means bad tags,
+rejects contract-breaking writes, so a failed `vesma_add` means bad tags,
 not a broken connection.
 
 ## Acceptance checklist
@@ -92,11 +92,11 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 - [ ] The Connect entry is pasted verbatim: `command = "vesma"`, `args = ["mcp-server"]`, stdio.
 - [ ] The harness restarted and lists the `vesma` server as connected/healthy.
-- [ ] `mnemos_*` tools from the Expose table are visible to the agent.
-- [ ] `mnemos_agent_recall` returns (possibly empty) results at session start.
+- [ ] `vesma_*` tools from the Expose table are visible to the agent.
+- [ ] `vesma_agent_recall` returns (possibly empty) results at session start.
 - [ ] The wire probe above replies with a JSON-RPC result whose `serverInfo.name` is `vesma`.
-- [ ] A test write roundtrips: `mnemos_add` with `project:test,agent:<slug>,mnemos:learning`,
-      then `mnemos_search "test"` finds it.
+- [ ] A test write roundtrips: `vesma_add` with `project:test,agent:<slug>,mnemos:learning`,
+      then `vesma_search "test"` finds it.
 - [ ] A write missing `project:` is rejected — the tag contract is active.
 - [ ] `vesma doctor` (in a shell) reports no FAIL-level checks.
 - [ ] The behavioural rule from Expose is present in the agent's instruction channel.

@@ -172,7 +172,7 @@ def test_first_contact_via_mcp_dispatcher(
         ):
             result = asyncio.run(
                 mcp_server._dispatch(
-                    "mnemos_assemble_context",
+                    "vesma_assemble_context",
                     {"session": SESSION, "project": PROJECT, "agent": AGENT, "budget": 64},
                 )
             )

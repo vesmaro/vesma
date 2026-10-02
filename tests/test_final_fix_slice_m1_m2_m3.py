@@ -1,6 +1,6 @@
 """Final pre-report fix slice — M1 + m2 + m3 acceptance tests.
 
-M1 (MAJOR) — ``mnemos_filter`` / ``POST /filter/{id}`` unscanned echo:
+M1 (MAJOR) — ``vesma_filter`` / ``POST /filter/{id}`` unscanned echo:
 the channels now route through ``MemoryManager.issue_context_filter``
 (status gate + optional caller-project scope + scan-at-issuance on the
 echoed ``clean_content``; refuse mode drops the content). The maintenance
@@ -8,7 +8,7 @@ primitive ``apply_context_filter`` itself stays ungated (auto-filter on
 ingest, ``filter_all``, CLI) — pinned here by a raw-memory regression
 test.
 
-m2 — ``mnemos_ingest_url`` title echo: ``auto_title()`` derives from the
+m2 — ``vesma_ingest_url`` title echo: ``auto_title()`` derives from the
 fetched page content, so the echoed title is scanned at issuance in BOTH
 the MCP dispatch and the Hermes shim; refuse mode drops it.
 
@@ -114,7 +114,7 @@ def _legacy_published(mgr: MemoryManager, content: str) -> str:
     return memory.id
 
 
-# ── M1: issuance gate on mnemos_filter / POST /filter ────────────────────────
+# ── M1: issuance gate on vesma_filter / POST /filter ────────────────────────
 
 
 class TestFilterIssuanceGateManager:
@@ -225,7 +225,7 @@ class TestFilterIssuanceGateMcp:
         mgr = _manager(_settings(tmp_path))
         memory = _add(mgr, "raw mcp memory", status=MemoryStatus.RAW)
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-            result = await _dispatch("mnemos_filter", {"memory_id": memory.id})
+            result = await _dispatch("vesma_filter", {"memory_id": memory.id})
         assert result["status"] == "error"
         assert result["reason"] == "status_gate"
         assert "clean_content" not in result
@@ -239,14 +239,14 @@ class TestFilterIssuanceGateMcp:
         memory = _add(mgr, "scoped", status=MemoryStatus.PUBLISHED)
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": memory.id, "project": "somebody-elses"},
             )
         assert result["status"] == "error"
         assert result["reason"] == "project_scope"
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             ok = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": memory.id, "project": PROJECT},
             )
         assert ok.get("status") != "error"
@@ -260,7 +260,7 @@ class TestFilterIssuanceGateMcp:
         mgr = _manager(_settings(tmp_path))
         memory_id = _legacy_published(mgr, f"creds {FAKE_AWS_KEY} leaked")
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-            result = await _dispatch("mnemos_filter", {"memory_id": memory_id})
+            result = await _dispatch("vesma_filter", {"memory_id": memory_id})
         assert result["memory_id"] == memory_id
         assert FAKE_AWS_KEY not in result["clean_content"]
         assert "<REDACTED:aws-key>" in result["clean_content"]
@@ -364,7 +364,7 @@ class TestIngestUrlTitleScanMcp:
             patch.object(mgr, "ingest_url", return_value=fake) as mock_ing,
         ):
             result = await _dispatch(
-                "mnemos_ingest_url",
+                "vesma_ingest_url",
                 {
                     "url": "https://example.com/page",
                     "tags": [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
@@ -387,7 +387,7 @@ class TestIngestUrlTitleScanMcp:
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             result = await _dispatch(
-                "mnemos_ingest_url",
+                "vesma_ingest_url",
                 {
                     "url": "https://example.com/page",
                     "tags": [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
@@ -409,7 +409,7 @@ class TestIngestUrlTitleScanMcp:
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             result = await _dispatch(
-                "mnemos_ingest_url",
+                "vesma_ingest_url",
                 {
                     "url": "https://example.com/page",
                     "tags": [f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
@@ -463,7 +463,7 @@ class TestIngestUrlTitleScanHermes:
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             raw = provider.handle_tool_call(
-                "mnemos_ingest_url",
+                "vesma_ingest_url",
                 {"url": "https://example.com/", "tags": [f"project:{PROJECT}"]},
             )
         payload = json.loads(raw)
@@ -491,7 +491,7 @@ class TestIngestUrlTitleScanHermes:
             patch.object(mgr, "ingest_url", return_value=fake),
         ):
             raw = provider.handle_tool_call(
-                "mnemos_ingest_url",
+                "vesma_ingest_url",
                 {"url": "https://example.com/", "tags": [f"project:{PROJECT}"]},
             )
         payload = json.loads(raw)

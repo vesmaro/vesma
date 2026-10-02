@@ -30,50 +30,50 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 | Инструмент | Назначение | Требует теги |
 |------------|------------ |--------------|
-| [`mnemos_add`](#mnemos_add) | Создать новую запись | да |
-| [`mnemos_search`](#mnemos_search) | Гибридный поиск FTS + вектор | нет |
-| [`mnemos_agent_recall`](#mnemos_agent_recall) | Per-agent recall (M3) | нет |
-| [`mnemos_recall_context`](#mnemos_recall_context) | Восстановить контекст сессии для проекта | нет |
-| [`mnemos_save_context`](#mnemos_save_context) | Сохранить контрольную точку сессии | нет (авто) |
-| [`mnemos_list_recent`](#mnemos_list_recent) | Список последних записей | нет |
-| [`mnemos_list_tags`](#mnemos_list_tags) | Список всех тегов с количеством | нет |
-| [`mnemos_tags`](#mnemos_tags) *(пилот #97)* | Сгруппированные операции над тегами: rename / remove / add (`action: enum`) | нет |
-| [`mnemos_tags_rename`](#mnemos_tags_rename) | Массовое переименование префиксов тегов (напр. `gcw:` → `vesma:`); по умолчанию dry-run | нет |
-| [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Жизненный цикл workflow: set / get / history (`action: enum`) | нет |
-| [`mnemos_ingest_url`](#mnemos_ingest_url) | Загрузить и сохранить веб-страницу | да |
-| [`mnemos_ingest_document`](#mnemos_ingest_document) | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) | да |
-| [`mnemos_watch_start`](#mnemos_watch_start) | Регистрирует проект в watch-опросе графа проектов (ADR-0032 §3.2) | нет |
-| [`mnemos_watch_stop`](#mnemos_watch_stop) | Остановить одну или все регистрации watch | нет |
-| [`mnemos_watch_status`](#mnemos_watch_status) | Активные регистрации watch и итог последнего опроса | нет |
-| [`mnemos_index_project`](#mnemos_index_project) | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, включено по умолчанию) | нет |
-| [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Объёмы, свежесть, ошибки разбора и число poisoned-файлов по проекту | нет |
-| [`mnemos_search_graph`](#mnemos_search_graph) | Ранжированный поиск по имени/квалифицированному имени/пути в графе, окно токен-контракта | нет |
-| [`mnemos_trace_path`](#mnemos_trace_path) | BFS по рёбрам графа от одного символа (глубина ≤ 2) | нет |
-| [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Схема символов одного проиндексированного файла (формы, никогда тела) | нет |
-| [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Секрет-сканированное чтение диапазона строк С ДИСКА (PG4) | нет |
-| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / missing / poisoned | нет |
-| [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
-| [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
-| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
-| [`mnemos_register_project`](#mnemos_register_project) | Зарегистрировать корень проекта для графа (#454) — ответ на отказы «not registered» | нет |
-| [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Вектор сигналов сжатия контекста (M7) | нет |
-| [`mnemos_compress`](#mnemos_compress) | Обратимое сжатие (CCR) — кэш оригинала, маркер в вывод | нет |
-| [`mnemos_retrieve`](#mnemos_retrieve) | Извлечение оригинала из кэша CCR или FTS5-сниппеты | нет |
-| [`mnemos_align_prefix`](#mnemos_align_prefix) | CacheAligner — перенос динамического контента для стабильности prefix cache | нет |
-| [`mnemos_filter`](#mnemos_filter) | Запуск / обновление контекстного фильтра для существующей записи (секреты сканируются) | нет |
-| [`mnemos_assemble_context`](#mnemos_assemble_context) *(#125)* | ADR-0017 D1 — сборка контекстного блока перед вызовом LLM (recall → CCR → filter → scan → align → budget) | нет |
-| [`mnemos_context_rewrite`](#mnemos_context_rewrite) *(#125)* | ADR-0018 — событие жизненного цикла `on_context_rewrite`: сообщить о перезаписи контекста, оригинал уходит в LTM (идемпотентно, без версий) | нет |
-| [`mnemos_hooks`](#mnemos_hooks) *(#125)* | Хуки жизненного цикла ADR-0017 D1 / ADR-0018 — групповой инструмент `action:enum`: `pre_llm_call` / `on_session_start` / `post_tool_call` (автосжатие, opt-in) | нет |
-| [`mnemos_awareness`](#mnemos_awareness) *(#254)* | Awareness-пре-флайт — наблюдаемая сервером активность соседей, дельта, подсказки о конфликтах и «операционная картина» swarm v0a/v0b (соседи в том же проекте: только счётчики/ids/времена + заявленная соседом задача — самоподанная, с меткой [unverified]) | нет |
+| [`vesma_add`](#vesma_add) | Создать новую запись | да |
+| [`vesma_search`](#vesma_search) | Гибридный поиск FTS + вектор | нет |
+| [`vesma_agent_recall`](#vesma_agent_recall) | Per-agent recall (M3) | нет |
+| [`vesma_recall_context`](#vesma_recall_context) | Восстановить контекст сессии для проекта | нет |
+| [`vesma_save_context`](#vesma_save_context) | Сохранить контрольную точку сессии | нет (авто) |
+| [`vesma_list_recent`](#vesma_list_recent) | Список последних записей | нет |
+| [`vesma_list_tags`](#vesma_list_tags) | Список всех тегов с количеством | нет |
+| [`vesma_tags`](#vesma_tags) *(пилот #97)* | Сгруппированные операции над тегами: rename / remove / add (`action: enum`) | нет |
+| [`vesma_tags_rename`](#vesma_tags_rename) | Массовое переименование префиксов тегов (напр. `gcw:` → `vesma:`); по умолчанию dry-run | нет |
+| [`vesma_workflow`](#vesma_workflow) *(#96)* | Жизненный цикл workflow: set / get / history (`action: enum`) | нет |
+| [`vesma_ingest_url`](#vesma_ingest_url) | Загрузить и сохранить веб-страницу | да |
+| [`vesma_ingest_document`](#vesma_ingest_document) | Ингест документа чанками с born-quarantine (ADR-0027 Ф3) | да |
+| [`vesma_watch_start`](#vesma_watch_start) | Регистрирует проект в watch-опросе графа проектов (ADR-0032 §3.2) | нет |
+| [`vesma_watch_stop`](#vesma_watch_stop) | Остановить одну или все регистрации watch | нет |
+| [`vesma_watch_status`](#vesma_watch_status) | Активные регистрации watch и итог последнего опроса | нет |
+| [`vesma_index_project`](#vesma_index_project) | Индексация зарегистрированного корня проекта в граф проектов (ADR-0032, включено по умолчанию) | нет |
+| [`vesma_project_graph_status`](#vesma_project_graph_status) | Объёмы, свежесть, ошибки разбора и число poisoned-файлов по проекту | нет |
+| [`vesma_search_graph`](#vesma_search_graph) | Ранжированный поиск по имени/квалифицированному имени/пути в графе, окно токен-контракта | нет |
+| [`vesma_trace_path`](#vesma_trace_path) | BFS по рёбрам графа от одного символа (глубина ≤ 2) | нет |
+| [`vesma_get_file_outline`](#vesma_get_file_outline) | Схема символов одного проиндексированного файла (формы, никогда тела) | нет |
+| [`vesma_get_code_snippet`](#vesma_get_code_snippet) | Секрет-сканированное чтение диапазона строк С ДИСКА (PG4) | нет |
+| [`vesma_check_graph_coverage`](#vesma_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / missing / poisoned | нет |
+| [`vesma_get_graph_schema`](#vesma_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
+| [`vesma_list_graph_projects`](#vesma_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
+| [`vesma_delete_graph_project`](#vesma_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
+| [`vesma_register_project`](#vesma_register_project) | Зарегистрировать корень проекта для графа (#454) — ответ на отказы «not registered» | нет |
+| [`vesma_auto_collect_status`](#vesma_auto_collect_status) | Вектор сигналов сжатия контекста (M7) | нет |
+| [`vesma_compress`](#vesma_compress) | Обратимое сжатие (CCR) — кэш оригинала, маркер в вывод | нет |
+| [`vesma_retrieve`](#vesma_retrieve) | Извлечение оригинала из кэша CCR или FTS5-сниппеты | нет |
+| [`vesma_align_prefix`](#vesma_align_prefix) | CacheAligner — перенос динамического контента для стабильности prefix cache | нет |
+| [`vesma_filter`](#vesma_filter) | Запуск / обновление контекстного фильтра для существующей записи (секреты сканируются) | нет |
+| [`vesma_assemble_context`](#vesma_assemble_context) *(#125)* | ADR-0017 D1 — сборка контекстного блока перед вызовом LLM (recall → CCR → filter → scan → align → budget) | нет |
+| [`vesma_context_rewrite`](#vesma_context_rewrite) *(#125)* | ADR-0018 — событие жизненного цикла `on_context_rewrite`: сообщить о перезаписи контекста, оригинал уходит в LTM (идемпотентно, без версий) | нет |
+| [`vesma_hooks`](#vesma_hooks) *(#125)* | Хуки жизненного цикла ADR-0017 D1 / ADR-0018 — групповой инструмент `action:enum`: `pre_llm_call` / `on_session_start` / `post_tool_call` (автосжатие, opt-in) | нет |
+| [`vesma_awareness`](#vesma_awareness) *(#254)* | Awareness-пре-флайт — наблюдаемая сервером активность соседей, дельта, подсказки о конфликтах и «операционная картина» swarm v0a/v0b (соседи в том же проекте: только счётчики/ids/времена + заявленная соседом задача — самоподанная, с меткой [unverified]) | нет |
 | [Нативное сердцебиение awareness](#нативное-сердцебиение-awareness-adr-0035) *(ADR-0035)* | Хвост awareness, который нативно ездит на каждом ответе MCP-инструмента (без ручного вызова) — регулируется `awareness.native_heartbeat_mode`; волна 0 поставляет `shadow` (измеряется, не рендерится) | — |
-| [`mnemos_export`](#mnemos_export) | Экспорт записей в файл (JSON или SQLite-снимок) | нет |
-| [`mnemos_import`](#mnemos_import) | Импорт записей из файла экспорта (merge или restore) | нет |
-| [`mnemos_reprocess`](#mnemos_reprocess) | Ручной запуск конвейера знаний для записей в очереди raw/processing | нет |
-| [`mnemos_stats`](#mnemos_stats) | Счётчики состояния и ключевые пути | нет |
+| [`vesma_export`](#vesma_export) | Экспорт записей в файл (JSON или SQLite-снимок) | нет |
+| [`vesma_import`](#vesma_import) | Импорт записей из файла экспорта (merge или restore) | нет |
+| [`vesma_reprocess`](#vesma_reprocess) | Ручной запуск конвейера знаний для записей в очереди raw/processing | нет |
+| [`vesma_stats`](#vesma_stats) | Счётчики состояния и ключевые пути | нет |
 
 ---
 
-## `mnemos_add`
+## `vesma_add`
 
 Создать новую запись в памяти. MCP-слой применяет контракт тегов Vesma ([M2](tag-contract.md)) перед записью.
 
@@ -107,7 +107,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
   "id": 1,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_add",
+    "name": "vesma_add",
     "arguments": {
       "content": "Use uv, not pip",
       "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
@@ -131,7 +131,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 ---
 
-## `mnemos_search`
+## `vesma_search`
 
 Гибридный поиск: FTS5 (полнотекстовый) + вектор + Reciprocal Rank Fusion. По умолчанию ищет только среди `published`-записей.
 
@@ -174,7 +174,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
   "id": 2,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_search",
+    "name": "vesma_search",
     "arguments": {
       "query": "how to manage Python dependencies",
       "limit": 5,
@@ -195,7 +195,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 ---
 
-## `mnemos_agent_recall`
+## `vesma_agent_recall`
 
 Per-agent recall (M3). Возвращает последние записи одного агента, опционально фильтруя по проекту и/или подзапросу.
 
@@ -234,7 +234,7 @@ Per-agent recall (M3). Возвращает последние записи од
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_agent_recall",
+    "name": "vesma_agent_recall",
     "arguments": {
       "agent": "cr-security-reviewer",
       "project": "vesma",
@@ -256,7 +256,7 @@ Per-agent recall (M3). Возвращает последние записи од
 
 ---
 
-## `mnemos_recall_context`
+## `vesma_recall_context`
 
 Восстановить последнюю контрольную точку сессии для проекта. **Первое**, что агент должен вызвать при старте сессии, особенно после сжатия контекста.
 
@@ -295,7 +295,7 @@ Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
 Если контрольная точка не найдена:
 
 ```text
-No context found for project 'vesma'. Start by saving context with mnemos_save_context.
+No context found for project 'vesma'. Start by saving context with vesma_save_context.
 ```
 
 В **режиме auto-collect** (`MNEMOS_AUTO_COLLECT=1`) к выводу добавляется блок `## 🔄 Auto-Collect Mode Active` с обязательными правилами сессии.
@@ -308,7 +308,7 @@ No context found for project 'vesma'. Start by saving context with mnemos_save_c
   "id": 4,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_recall_context",
+    "name": "vesma_recall_context",
     "arguments": { "project": "vesma" }
   }
 }
@@ -316,13 +316,13 @@ No context found for project 'vesma'. Start by saving context with mnemos_save_c
 
 ### Связанные ресурсы
 
-- `mnemos_save_context` — парный инструмент записи
+- `vesma_save_context` — парный инструмент записи
 - [architecture.md](../architecture/overview.md)
 - HTTP-эквивалент: [`POST /context/recall`](http-api.md#post-contextrecall--отозвать-контекст-сессии)
 
 ---
 
-## `mnemos_save_context`
+## `vesma_save_context`
 
 Сохранить контрольную точку сессии. Агенты должны вызывать это **превентивно**: после значимой работы, перед переключением задач или при большом размере контекста.
 
@@ -338,7 +338,7 @@ No context found for project 'vesma'. Start by saving context with mnemos_save_c
 | `context` | string | нет | — | Прочий контекст (пути к файлам, архитектура, особенности). |
 | `agent` | string | нет | `"user"` | Идентичность агента для чекпойнта — валидируемый канал идентичности (при указании — непустая строка, из одних пробелов отклоняется). Должен совпадать с серверной привязкой session→agent, если передан `session`. |
 | `session` | string | нет | — | Идентификатор сессии, привязывающий чекпойнт к разговору. Первое предъявление фиксирует привязку session→agent на сервере; последующие вызовы с той же сессией, но другим агентом отклоняются. |
-| `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Штампует тег `task:<slug>` на этом чекпойнте на границе сохранения (одна точка минта, максимум одна задача на запись); отзывается через `task=` в `mnemos_recall_context` / `mnemos_search` / `mnemos_list_recent`. Дедуп-попадание возвращает первую запись с ЕЁ областью задачи (task нового вызова никогда не перезаписывает сохранённую запись). |
+| `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Штампует тег `task:<slug>` на этом чекпойнте на границе сохранения (одна точка минта, максимум одна задача на запись); отзывается через `task=` в `vesma_recall_context` / `vesma_search` / `vesma_list_recent`. Дедуп-попадание возвращает первую запись с ЕЁ областью задачи (task нового вызова никогда не перезаписывает сохранённую запись). |
 
 Vesma синтезирует части в единую запись Markdown с тегами `project:<slug>`, `agent:<валидированный агент>` (`agent:user`, если не указан) и `mnemos:checkpoint` — плюс опциональный `task:<slug>`, если передан `task`. Валидированная идентичность дополнительно штампуется в серверные метаданные (`checkpoint_agent`, `checkpoint_session`) — именно они являются источником истины для атрибуции по агентам; теги носят демонстрационный характер.
 
@@ -359,7 +359,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 5,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_save_context",
+    "name": "vesma_save_context",
     "arguments": {
       "project": "vesma",
       "goals": "Finish M15.1 mypy --strict",
@@ -373,13 +373,13 @@ Vesma синтезирует части в единую запись Markdown с
 
 ### Связанные ресурсы
 
-- `mnemos_recall_context` — парный инструмент чтения
+- `vesma_recall_context` — парный инструмент чтения
 - Режим auto-collect: [mcp-tools.md#режим-auto-collect](#режим-auto-collect)
 - HTTP-эквивалент: [`POST /context/save`](http-api.md#post-contextsave--сохранить-чекпойнт-сессии)
 
 ---
 
-## `mnemos_list_recent`
+## `vesma_list_recent`
 
 Список последних записей в памяти, старые — последними.
 
@@ -414,7 +414,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 6,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_list_recent",
+    "name": "vesma_list_recent",
     "arguments": { "limit": 20, "project": "vesma" }
   }
 }
@@ -427,7 +427,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_list_tags`
+## `vesma_list_tags`
 
 Список всех тегов в памяти с количеством вхождений.
 
@@ -456,7 +456,7 @@ Vesma синтезирует части в единую запись Markdown с
   "jsonrpc": "2.0",
   "id": 7,
   "method": "tools/call",
-  "params": { "name": "mnemos_list_tags", "arguments": {} }
+  "params": { "name": "vesma_list_tags", "arguments": {} }
 }
 ```
 
@@ -466,7 +466,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_tags`
+## `vesma_tags`
 
 Сгруппированные массовые операции над тегами: переименование префикса, удаление или добавление тегов. Диспетчеризация по действию (`action: enum`) — сгруппированный пилотный инструмент (#97); каждое действие идёт через один и тот же безопасный путь записи (обычный `UPDATE`, FTS5-индекс остаётся консистентным), по умолчанию работает как предпросмотр (`dry_run: true`) и идемпотентно.
 
@@ -489,7 +489,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ### Вывод
 
-Словарь-отчёт. `changed` считает записи, чей набор тегов реально изменился; `renamed` сохранён для обратной совместимости с вызывающими `mnemos_tags_rename` и зеркалит `changed`:
+Словарь-отчёт. `changed` считает записи, чей набор тегов реально изменился; `renamed` сохранён для обратной совместимости с вызывающими `vesma_tags_rename` и зеркалит `changed`:
 
 ```json
 {
@@ -513,7 +513,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_tags",
+    "name": "vesma_tags",
     "arguments": {
       "action": "rename",
       "from_prefix": "gcw:",
@@ -534,13 +534,13 @@ Vesma синтезирует части в единую запись Markdown с
 
 ### Связанные ресурсы
 
-- Группированный родственник: [`mnemos_tags_rename`](#mnemos_tags_rename) — legacy-алиас для `action: "rename"`
+- Группированный родственник: [`vesma_tags_rename`](#vesma_tags_rename) — legacy-алиас для `action: "rename"`
 
 ---
 
-## `mnemos_tags_rename`
+## `vesma_tags_rename`
 
-Массовое переименование тегов `from_prefix:<subtype>` → `to_prefix:<subtype>` по всем существующим записям. Сохранён как **неразрывающий алиас**: вызовы диспетчеризируются в тот же путь rename, что и у [`mnemos_tags`](#mnemos_tags) с `action: "rename"` (случайный ключ `action` в аргументах игнорируется). Безопасно — переименование идёт через обычный `UPDATE`, поэтому FTS5 external-content индекс остаётся консистентным, — и идемпотентно: повторный запуск с теми же аргументами переименовывает 0 записей.
+Массовое переименование тегов `from_prefix:<subtype>` → `to_prefix:<subtype>` по всем существующим записям. Сохранён как **неразрывающий алиас**: вызовы диспетчеризируются в тот же путь rename, что и у [`vesma_tags`](#vesma_tags) с `action: "rename"` (случайный ключ `action` в аргументах игнорируется). Безопасно — переименование идёт через обычный `UPDATE`, поэтому FTS5 external-content индекс остаётся консистентным, — и идемпотентно: повторный запуск с теми же аргументами переименовывает 0 записей.
 
 ### Входные параметры
 
@@ -577,7 +577,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 10,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_tags_rename",
+    "name": "vesma_tags_rename",
     "arguments": {
       "from_prefix": "gcw:",
       "to_prefix": "mnemos:",
@@ -589,12 +589,12 @@ Vesma синтезирует части в единую запись Markdown с
 
 ### Связанные ресурсы
 
-- Группированный инструмент: [`mnemos_tags`](#mnemos_tags) — `action: "rename"` — тот же путь кода
+- Группированный инструмент: [`vesma_tags`](#vesma_tags) — `action: "rename"` — тот же путь кода
 - HTTP-эквивалент: `POST /tags/rename` (реализован в API; пока не описан в [http-api.md](http-api.md))
 
 ---
 
-## `mnemos_ingest_url`
+## `vesma_ingest_url`
 
 Загрузить веб-страницу, извлечь основной контент (через `trafilatura`) и сохранить как запись.
 
@@ -603,7 +603,7 @@ Vesma синтезирует части в единую запись Markdown с
 | Поле | Тип | Обязательное | Описание |
 |------|-----|--------------|---------- |
 | `url` | string | **да** | HTTP / HTTPS URL для загрузки. |
-| `tags` | string[] | **да** | Тот же контракт M2, что и в `mnemos_add`. |
+| `tags` | string[] | **да** | Тот же контракт M2, что и в `vesma_add`. |
 
 > **Защита от SSRF.** MCP-слой удаляет `user:password@` из authority URL перед загрузкой (глубокая защита совместно с внутрипроцессной защитой). Не обходите это, собирая URL из строки.
 
@@ -625,7 +625,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 8,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_ingest_url",
+    "name": "vesma_ingest_url",
     "arguments": {
       "url": "https://example.com/article",
       "tags": ["project:research", "agent:user", "mnemos:learning"]
@@ -649,7 +649,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_ingest_document`
+## `vesma_ingest_document`
 
 Ингест целого документа чанками — **docs-as-memory** (ADR-0027, фаза 3). Текст документа разбивается с сохранением структуры (чанки по заголовкам несут метаданные-конвенцию `{doc_id, chunk_idx, heading_path}`), и каждая строка-чанк попадает в память **сразу в карантине** (born-quarantine): ингестируемые документы — недоверенный контент, невидимый для всех поверхностей выдачи, пока их не очистит **danger-sweep**.
 
@@ -662,11 +662,11 @@ Vesma синтезирует части в единую запись Markdown с
    - **ошибка сканера** — fail-closed: чанк остаётся в карантине с причиной `detector-error`.
 3. **Семантика освобождения — чанково-атомарная** — чистый чанк освобождается, даже если соседний чанк того же документа помечен; помеченный остаётся в карантине. Документ никогда не «наполовину видим»: до sweep ни один чанк не допущен, после — ровно чистые.
 4. **Выдача — последняя линия** (инвариант 7 ADR-0027) — освобождённый чанк, contaminated *после* освобождения, всё равно проходит повторный секрет-скан на каждом канале выдачи; refuse-режим отбрасывает запись, redact-режим замазывает совпадения. Sweep — не последняя линия, выдача — последняя.
-5. **Повторный ингест и версия кеша** (инвариант 4 ADR-0027) — повторный ингест того же `doc_id` **заменяет** чанки документа (рефрагментация) и поднимает версию doc-chunk `ccr_cache` **в той же SQLite-транзакции**. Честная рамка: ключ версии — **consumer-facing счётчик инвалидации** (экспонирован в `mnemos_stats` / `GET /stats` как `doc_chunk_cache_version`, та же позиция, что у `graph_epoch`) — поднимается транзакционно при каждой рефрагментации; любой кеширующий потребитель **обязан** его читать и считать изменение полной инвалидацией. В-repo потребителя, завязанного на него, пока нет.
+5. **Повторный ингест и версия кеша** (инвариант 4 ADR-0027) — повторный ингест того же `doc_id` **заменяет** чанки документа (рефрагментация) и поднимает версию doc-chunk `ccr_cache` **в той же SQLite-транзакции**. Честная рамка: ключ версии — **consumer-facing счётчик инвалидации** (экспонирован в `vesma_stats` / `GET /stats` как `doc_chunk_cache_version`, та же позиция, что у `graph_epoch`) — поднимается транзакционно при каждой рефрагментации; любой кеширующий потребитель **обязан** его читать и считать изменение полной инвалидацией. В-repo потребителя, завязанного на него, пока нет.
 
-### Граница с `mnemos_ingest_url`
+### Граница с `vesma_ingest_url`
 
-`mnemos_ingest_url` сохраняет свои семантики до фазы 3: загруженная страница — ОДНА строка памяти через обычную политику видимости, без born-quarantine. Инструмент **не** карантинизируется задним числом — документный путь — вот этот отдельный инструмент.
+`vesma_ingest_url` сохраняет свои семантики до фазы 3: загруженная страница — ОДНА строка памяти через обычную политику видимости, без born-quarantine. Инструмент **не** карантинизируется задним числом — документный путь — вот этот отдельный инструмент.
 
 ### Вход
 
@@ -674,7 +674,7 @@ Vesma синтезирует части в единую запись Markdown с
 |-------|-----|-----------|----------|
 | `text` | string | **да** | Полный текст документа для разбиения и ингеста. |
 | `doc_id` | string | **да** | Логическая идентичность документа; стабильна при повторном ингесте (заменяет чанки + поднимает версию кеша). |
-| `tags` | string[] | **да** | Тот же контракт M2, что и у `mnemos_add`. |
+| `tags` | string[] | **да** | Тот же контракт M2, что и у `vesma_add`. |
 | `title` | string | нет | Необязательный заголовок документа. |
 | `source_url` | string | нет | Необязательный URL-источник. |
 
@@ -701,7 +701,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_ingest_document",
+    "name": "vesma_ingest_document",
     "arguments": {
       "text": "# Деплой\n\nЗапусти раскатку.\n\n# Откат\n\nВерни предыдущий релиз.",
       "doc_id": "dep-guide",
@@ -721,12 +721,12 @@ Vesma синтезирует части в единую запись Markdown с
 ### См. также
 
 - HTTP-эквивалент: [`POST /ingest-document`](http-api.md#post-ingest-document--ингест-документа-чанками-с-born-quarantine)
-- Инструмент одного URL: [`mnemos_ingest_url`](#mnemos_ingest_url) (отдельная семантика — одна строка, без карантина)
+- Инструмент одного URL: [`vesma_ingest_url`](#vesma_ingest_url) (отдельная семантика — одна строка, без карантина)
 - ADR: [ADR-0027](../../project/adr/0027-multi-context-memory.md) (фаза 3, инварианты 4/7/8); [ADR-0019](../../project/adr/0019-optimistic-publication-async-refinement.md) (§5 карантин, Phase A danger-gate)
 
 ---
 
-## `mnemos_watch_start`
+## `vesma_watch_start`
 
 Регистрирует граф кода проекта во внутрипроцессном watch-опросе (ADR-0032 §3.2). Один кооперативный фоновый поток проверяет проиндексированные файлы проекта по mtime+size на адаптивном интервале и переиндексирует при фактических изменениях — с аудитом под причиной `watch`.
 
@@ -772,7 +772,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_watch_start",
+    "name": "vesma_watch_start",
     "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
@@ -793,7 +793,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_watch_stop`
+## `vesma_watch_stop`
 
 Остановить одну регистрацию watch (по `project_id`) или ВСЕ, если аргумент опущен. Идемпотентно.
 
@@ -816,7 +816,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_watch_status`
+## `vesma_watch_status`
 
 Активные регистрации watch и итог последнего опроса по каждому проекту (watch-опрос ADR-0032).
 
@@ -869,7 +869,7 @@ Vesma синтезирует части в единую запись Markdown с
 |----------------------|--------------|----------|
 | `enabled` | `true` | Мастер-флаг 10 инструментов и REST-namespace `/graph/` — ВКЛЮЧЁН по умолчанию (решение владельца 2026-09-28); `false` скрывает всю поверхность. |
 | `beacon` | `true` | Одна строка-хвост в выводе `assemble_context` со свежестью графа (действует только при включённом `enabled`). |
-| `watch` | `true` | Watch-опрос (`mnemos_watch_start`) взведён по умолчанию, но ИНЕРТЕН до явной регистрации; мастер-гейт действует поверх. |
+| `watch` | `true` | Watch-опрос (`vesma_watch_start`) взведён по умолчанию, но ИНЕРТЕН до явной регистрации; мастер-гейт действует поверх. |
 | `auto_index` | `true` | Нативная авто-индексация (см. ниже) — первый контакт через MCP/хуки сам регистрирует и индексирует проект в фоне; `false` оставляет только ручные триггеры. |
 | `index_max_files` | `20000` | Жёсткий лимит проиндексированных файлов на проект. Fail-closed: превышение отклоняет ВЕСЬ индекс — частичный граф не публикуется никогда (PG7). |
 | `index_max_source_mb` | `500` | Жёсткий лимит суммарного объёма исходников на проект, МиБ (тот же fail-closed-принцип). |
@@ -887,8 +887,8 @@ Vesma синтезирует части в единую запись Markdown с
 - **Первый контакт сам регистрирует.** Каждый вызов MCP-инструмента и каждый хук `pre_llm_call` подаёт дешёвый хинт активности. Если проекта ещё нет в таблице projects, а его cwd содержит упаковочный манифест (`pyproject.toml`, `setup.py`, `package.json`, `go.mod`, `Cargo.toml` — **авто-регистрации нужен manifest-маркер, голого `.git` недостаточно**; `$HOME` и корень файловой системы не авто-регистрируются никогда, даже с манифестом), проект авто-регистрируется с этим cwd как корнем — атрибуция (агент, время) попадает в описание проекта и в аудит-строку `auto-register` (PG7). **Один корень = один граф**: хинт с новым именем по уже зарегистрированному корню реиспользует СУЩЕСТВУЮЩИЙ проект (аудит `auto-register-reused`) вместо дублирования строки и повторной индексации того же дерева; глобальный лимит `auto_register_max_projects` (по умолчанию 64) ограничивает, сколько проектов авто-путь вообще может создать — сверх него тихий skip с аудит-строкой `auto-register-capped`.
 - **Дальше работает фон.** Индекса нет → фоновая первичная индексация (аудит-причина `auto-first`); индекс есть → дешёвая проверка свежести mtime+size и при фактических изменениях инкрементальная переиндексация (причина `auto-stale`). Всё едет на том же едином кооперативном потоке-шедулере, что и watch-опрос; вызвавший инструмент НИКОГДА не блокируется и не падает из-за хинта.
 - **Маячок появляется сам.** Как только индекс существует, строка-хвост в `assemble_context` возникает без действий агента.
-- **Ограничители.** Авто-действия троттлятся на проект (`auto_reindex_min_interval_sec`, по умолчанию 300с), атрибутируются агентом хинта (нет `agent` → нет авто-действия, PG7) и проходят через те же fail-closed-лимиты PG7, что и ручные запуски — превышение лимита отменяет всю авто-индексацию с аудит-строкой, частичного графа не бывает. ПРОВАЛЬНАЯ первая авто-индексация ставит авто-путь проекта на паузу (флаг `auto_suspended` в сайдкаре): дальнейшие хинты полностью пропускают дерево — без хождения по диску — пока успешный ручной `mnemos_index_project`, `mnemos_delete_graph_project` или watch-переиндексация не снимут флаг; `auto-stale` по валидному существующему индексу никогда не приостанавливается. Мульти-путевая регистрация индексирует только `paths[0]` (ограничение v1).
-- **REST — не авто-поверхность** (нет cwd для гейта регистрации) — `/graph/*` живёт ровно как задокументировано. Ручные инструменты (`mnemos_index_project`, `mnemos_watch_start`) остаются путём явного контроля; `code_graph.auto_index: false` полностью выключает авто-путь.
+- **Ограничители.** Авто-действия троттлятся на проект (`auto_reindex_min_interval_sec`, по умолчанию 300с), атрибутируются агентом хинта (нет `agent` → нет авто-действия, PG7) и проходят через те же fail-closed-лимиты PG7, что и ручные запуски — превышение лимита отменяет всю авто-индексацию с аудит-строкой, частичного графа не бывает. ПРОВАЛЬНАЯ первая авто-индексация ставит авто-путь проекта на паузу (флаг `auto_suspended` в сайдкаре): дальнейшие хинты полностью пропускают дерево — без хождения по диску — пока успешный ручной `vesma_index_project`, `vesma_delete_graph_project` или watch-переиндексация не снимут флаг; `auto-stale` по валидному существующему индексу никогда не приостанавливается. Мульти-путевая регистрация индексирует только `paths[0]` (ограничение v1).
+- **REST — не авто-поверхность** (нет cwd для гейта регистрации) — `/graph/*` живёт ровно как задокументировано. Ручные инструменты (`vesma_index_project`, `vesma_watch_start`) остаются путём явного контроля; `code_graph.auto_index: false` полностью выключает авто-путь.
 
 ### Токен-контракт
 
@@ -897,13 +897,13 @@ Vesma синтезирует части в единую запись Markdown с
 - Бюджет считается в **байтах = токены × 4** — детерминированный потолок 4 байта UTF-8 на токен, никакой токенизаторной угадайки.
 - Строки **не режутся пополам**: строка, не влезающая в бюджет, отбрасывается ЦЕЛИКОМ; сниппеты — целыми СТРОКАМИ. `has_more: true` и курсор говорят, что осталось.
 - Курсор **строго возрастает** (хотя бы одна строка всегда потребляется). Бюджет, в который не влезает даже одна строка, отклоняется (`GraphBudgetError`, HTTP `400`) вместо зацикливания на той же странице.
-- Детализация — opt-in: сигнатуры едут только при `include_signature: true` в `mnemos_search_graph`.
+- Детализация — opt-in: сигнатуры едут только при `include_signature: true` в `vesma_search_graph`.
 
 Ошибки, общие для всей группы: `disabled` (операторский гейт), `attribution-required` (нет `agent`, PG7), отказы конфайнмента (незарегистрированный проект или путь вне зарегистрированного корня, PG2), отказы бюджета. Каждый вызов — чтение или запись — аудируется по агенту (PG7). REST-близнецы отображают их на HTTP-коды: см. [REST-раздел графа проектов](http-api.md#граф-проектов-adr-0032).
 
 ---
 
-## `mnemos_index_project`
+## `vesma_index_project`
 
 Индексация **зарегистрированного** корня проекта в общий граф проектов — полная или инкрементальная. Сериализуется по проекту: параллельный вызов сразу получает статус `in-progress`. PG2: принимается только проект, зарегистрированный в таблице projects; произвольные пути отклоняются. PG7: лимиты fail-closed, запуск аудируется с вашим agent id.
 
@@ -950,7 +950,7 @@ Vesma синтезирует части в единую запись Markdown с
   "id": 30,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_index_project",
+    "name": "vesma_index_project",
     "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
@@ -963,7 +963,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_project_graph_status`
+## `vesma_project_graph_status`
 
 Статус графа проектов по одному зарегистрированному проекту: объёмы узлов/рёбер/файлов, свежесть (процент fresh, `last_indexed_at`), ошибки разбора (остаются видимыми) и число poisoned-файлов (PG3). Только чтение, с аудитом.
 
@@ -1001,7 +1001,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_search_graph`
+## `vesma_search_graph`
 
 Поиск по графу проектов по имени / квалифицированному имени / пути (подстрока). Ранжирование ДО бюджетного среза: точные совпадения выше префиксных, префиксные выше подстрочных. Действует токен-контракт.
 
@@ -1054,9 +1054,9 @@ Vesma синтезирует части в единую запись Markdown с
 
 ---
 
-## `mnemos_trace_path`
+## `vesma_trace_path`
 
-BFS по `project_edges` от одного символа, разрешаемого по квалифицированному имени (точное совпадение или уникальный dotted-tail — неоднозначные отказы называют `mnemos_search_graph`). Глубина ≤ 2 с лимитом fanout на узел и лимитом суммарной работы (дисциплина обхода ADR-0030). Токен-контракт действует на секцию `nodes`; секция `edges` идёт вне токен-бюджета — её ограничивают только лимиты fanout/total, при достижении честно ставится `truncated` (бюджет рёбер — волна PG-1, ADR-0032).
+BFS по `project_edges` от одного символа, разрешаемого по квалифицированному имени (точное совпадение или уникальный dotted-tail — неоднозначные отказы называют `vesma_search_graph`). Глубина ≤ 2 с лимитом fanout на узел и лимитом суммарной работы (дисциплина обхода ADR-0030). Токен-контракт действует на секцию `nodes`; секция `edges` идёт вне токен-бюджета — её ограничивают только лимиты fanout/total, при достижении честно ставится `truncated` (бюджет рёбер — волна PG-1, ADR-0032).
 
 ### Входные параметры
 
@@ -1105,7 +1105,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_get_file_outline`
+## `vesma_get_file_outline`
 
 Схема символов одного проиндексированного файла: виды, имена, квалифицированные имена, диапазоны строк, формы сигнатур — никогда тела (PG1). Путь относительный (repo-relative) и обязан оставаться внутри зарегистрированного корня (PG2). Ошибки разбора едут в ответе как маркер честности. Действует токен-контракт.
 
@@ -1150,7 +1150,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_get_code_snippet`
+## `vesma_get_code_snippet`
 
 Чтение диапазона строк **с диска** для проиндексированного файла. При каждом вызове выполняется полная последовательность PG4: отказ poisoned (навсегда) → конфайнмент пути → проверка индексации → свежесть по mtime+size+sha256 → секрет-скан выдачи (ЛЮБОЕ попадание отклоняет весь диапазон fail-closed) → целострочное токен-окно. **Кэша сниппетов нет** — каждый вызов перечитывает файл.
 
@@ -1183,7 +1183,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 }
 ```
 
-Файл, изменившийся на диске после индексации, даёт маркер устаревания — но не содержимое; для обновления переиндексируйте. Poisoned-файл (сработал детектор секретов при индексации) отклоняется навсегда — очищает его только `mnemos_delete_graph_project` (PG3).
+Файл, изменившийся на диске после индексации, даёт маркер устаревания — но не содержимое; для обновления переиндексируйте. Poisoned-файл (сработал детектор секретов при индексации) отклоняется навсегда — очищает его только `vesma_delete_graph_project` (PG3).
 
 ### Связанные ресурсы
 
@@ -1191,9 +1191,9 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_check_graph_coverage`
+## `vesma_check_graph_coverage`
 
-Пакетная проверка покрытия: вердикт по каждому пути — `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (пути нет под корнем проекта, #452) / `poisoned`. Честность покрытия — доверять здесь НЕЧЕМУ; проверяйте через `mnemos_get_code_snippet`.
+Пакетная проверка покрытия: вердикт по каждому пути — `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (пути нет под корнем проекта, #452) / `poisoned`. Честность покрытия — доверять здесь НЕЧЕМУ; проверяйте через `vesma_get_code_snippet`.
 
 ### Входные параметры
 
@@ -1224,7 +1224,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_get_graph_schema`
+## `vesma_get_graph_schema`
 
 Карта контракта графа проектов для агентов: виды узлов и рёбер, токен-контракт, лимиты индексации и обхода, версия схемы. Необязательный `project_id` добавляет объёмы этого проекта.
 
@@ -1260,7 +1260,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_list_graph_projects`
+## `vesma_list_graph_projects`
 
 Зарегистрированные проекты вместе со статусом их индекса (объёмы, число poisoned, `last_indexed_at`). Зарегистрированные, но ещё не индексированные проекты остаются видимыми; как и проиндексированные «сироты», чья сущность проекта дерегистрирована.
 
@@ -1303,7 +1303,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_delete_graph_project`
+## `vesma_delete_graph_project`
 
 Удалить ИНДЕКС графа проекта — только sidecar-данные, никогда сущность проекта в основной БД. Единственная операция, очищающая poisoned-набор (PG3, «навсегда»). Аудируется с необязательной причиной.
 
@@ -1328,7 +1328,7 @@ BFS по `project_edges` от одного символа, разрешаемо�
 
 ---
 
-## `mnemos_register_project`
+## `vesma_register_project`
 
 Зарегистрировать корень проекта для графа кода (#454) — ответ агента на отказы
 конфайнмента «not registered» (раньше регистрация была только у оператора, а
@@ -1372,9 +1372,9 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_auto_collect_status`
+## `vesma_auto_collect_status`
 
-Вернуть текущий вектор сигналов обнаружения сжатия контекста (M7). Агент читает это для принятия превентивного решения о вызове `mnemos_save_context`.
+Вернуть текущий вектор сигналов обнаружения сжатия контекста (M7). Агент читает это для принятия превентивного решения о вызове `vesma_save_context`.
 
 ### Входные параметры
 
@@ -1438,7 +1438,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_stats`
+## `vesma_stats`
 
 Вернуть счётчики состояния Vesma.
 
@@ -1469,9 +1469,9 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_reprocess`
+## `vesma_reprocess`
 
-Ручной запуск конвейера знаний для обработки очереди записей `raw` / `processing` в `published` знание: cluster → synthesize → quality gate → publish. Используйте, когда `mnemos_stats` показывает большую `queue_depth`, или после массового импорта.
+Ручной запуск конвейера знаний для обработки очереди записей `raw` / `processing` в `published` знание: cluster → synthesize → quality gate → publish. Используйте, когда `vesma_stats` показывает большую `queue_depth`, или после массового импорта.
 
 ### Входные параметры
 
@@ -1511,7 +1511,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
   "id": 11,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_reprocess",
+    "name": "vesma_reprocess",
     "arguments": { "project": "vesma", "limit": 200 }
   }
 }
@@ -1524,9 +1524,9 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_compress`
+## `vesma_compress`
 
-Сжатие большого контента (вывод инструментов, логи, JSON) **без потери данных**. Оригинал кэшируется в таблице `ccr_cache` SQLite по SHA-256 хешу; сжатый вывод содержит короткий парсимый маркер, по которому LLM может вызвать `mnemos_retrieve` и получить полный оригинал по требованию. Даёт 70–90% сокращения токенов на типичных логах и JSON.
+Сжатие большого контента (вывод инструментов, логи, JSON) **без потери данных**. Оригинал кэшируется в таблице `ccr_cache` SQLite по SHA-256 хешу; сжатый вывод содержит короткий парсимый маркер, по которому LLM может вызвать `vesma_retrieve` и получить полный оригинал по требованию. Даёт 70–90% сокращения токенов на типичных логах и JSON.
 
 Контент короче `min_size_chars` (по умолчанию 500) возвращается как есть — не кэшируется и не сжимается (мелкий контент не даёт экономии токенов).
 
@@ -1544,12 +1544,12 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ```json
 {
-  "compressed_text": "[compressed: a1b2... | 30000→900 chars | retrieve via mnemos_retrieve]\n...отфильтрованный контент...",
+  "compressed_text": "[compressed: a1b2... | 30000→900 chars | retrieve via vesma_retrieve]\n...отфильтрованный контент...",
   "hash": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678",
   "original_size": 30000,
   "compressed_size": 900,
   "reduction_pct": 97.0,
-  "marker": "[compressed: a1b2... | 30000→900 chars | retrieve via mnemos_retrieve]",
+  "marker": "[compressed: a1b2... | 30000→900 chars | retrieve via vesma_retrieve]",
   "cached": true,
   "profile": "log"
 }
@@ -1558,14 +1558,14 @@ CLI-двойник: `vesma graph register <project> <root>`.
 ### Формат маркера
 
 ```text
-[compressed: <sha-256-хеш> | <N>→<M> символов | retrieve via mnemos_retrieve]
+[compressed: <sha-256-хеш> | <N>→<M> символов | retrieve via vesma_retrieve]
 ```
 
 Маркер — единственный оверхед поверх отфильтрованного контента. Короткий, парсимый, удобный для LLM. Хеш адресован по содержимому, поэтому повторное сжатие того же текста — no-op (запись кэша переиспользуется). Пара эмитента (`agent`/`session`) принадлежит ПЕРВОМУ писателю строки `(project, hash)` — поздняя сессия, повторно сжимающая идентичный контент, получает маркер, который строгая валидация привязывает к первому эмитенту (fail-closed; безвредно — повторный сжимающий уже располагает контентом).
 
 ### Пример
 
-Сжать лог сборки на 30K строк → ~900 символов в контекстном окне. Когда LLM нужен полный traceback, он вызывает `mnemos_retrieve` с хешем из маркера.
+Сжать лог сборки на 30K строк → ~900 символов в контекстном окне. Когда LLM нужен полный traceback, он вызывает `vesma_retrieve` с хешем из маркера.
 
 ### Связанные ресурсы
 
@@ -1573,7 +1573,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_retrieve`
+## `vesma_retrieve`
 
 Извлечение оригинального несжатого контента по хешу маркера CCR. Если `query` опущен — возвращается полный оригинал. Если `query` задан — возвращаются FTS5-ранжированные сниппеты из кэшированного оригинала (полезно, когда оригинал большой, а релевантны несколько строк).
 
@@ -1600,7 +1600,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 Любая непройденная проверка возвращает refused-форму с `reason="marker validation failed: <проверка>: <деталь>"` и **без контента** (fail-closed). Причины — ФИКСИРОВАННЫЕ строки без oracle-утечек: они никогда не содержат длину сохранённого оригинала или пару эмитента (утёкшая причина — двухвызовный oracle, ломающий provenance). Строки, сохранённые без идентичности эмитента (легаси-миграции, сжатие без идентичности), проваливают полную валидацию с отдельной причиной `unverifiable legacy marker`. **Закрытие hash-only (раунд ревью F2):** в строгом режиме запрос только с хешем по строке со штампом эмитента отклоняется с `reason="marker validation required"` — срезание опциональных аргументов не обходит гейт; легаси-строки с NULL-эмитентом остаются доступными по hash-only с WARNING (неверифицируемы по построению; отказ окирпичил бы все pre-A2 кэши). Обычные hash-only запросы при выключенном переключателе не затрагиваются. Отказ валидации не инкрементирует `retrieval_count`.
 
-Для `mnemos_assemble_context` с `expand_ccr=true`: передавайте `agent` вместе с `session`, чтобы расширение шло в вашем контексте эмитента; без полной идентичности `(agent, session)` строгое развёртывание ПРОПУСКАЕТ расширение штампованных маркеров (маркер остаётся — модель сохраняет handle по требованию); легаси-строки с NULL-эмитентом расширяются. Статистика CCR-стадии несёт `skipped_refused` для этих случаев.
+Для `vesma_assemble_context` с `expand_ccr=true`: передавайте `agent` вместе с `session`, чтобы расширение шло в вашем контексте эмитента; без полной идентичности `(agent, session)` строгое развёртывание ПРОПУСКАЕТ расширение штампованных маркеров (маркер остаётся — модель сохраняет handle по требованию); легаси-строки с NULL-эмитентом расширяются. Статистика CCR-стадии несёт `skipped_refused` для этих случаев.
 
 Остаточный риск (принят, реестр остаточных рисков ADR-0018): доверенный харнесс с доступом к compress может засеять контент внутри своего проекта и выкупить маркер той же идентичностью — single-operator; пересмотр по первому multi-principal-триггеру.
 
@@ -1639,7 +1639,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ---
 
-## `mnemos_align_prefix`
+## `vesma_align_prefix`
 
 **CacheAligner (P1-5)** — переносит динамический контент (ISO-таймстампы, UUID, session id, короткоживущие токены, календарные даты) из system-prompt-подобного текста в блок `--- Dynamic context ---` в конце, чтобы prefix оставался побайтово идентичным между запросами и KV-кэши провайдеров (Anthropic `cache_control`, OpenAI prefix caching) попадали. Инспирировано headroom CacheAligner (https://github.com/headroomlabs-ai/headroom, Apache 2.0). Оригинальная реализация — код headroom не импортируется.
 
@@ -1720,7 +1720,7 @@ cache_aligner:
 
 ---
 
-## `mnemos_filter`
+## `vesma_filter`
 
 Запустить или обновить контекстный фильтр (M10) для существующей записи и вернуть её `clean_content`. Полезно, когда автофильтр был выключен при приёме или нужно перефильтровать с другим профилем.
 
@@ -1757,7 +1757,7 @@ cache_aligner:
   "id": 12,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_filter",
+    "name": "vesma_filter",
     "arguments": {
       "memory_id": "550e8400-e29b-41d4-a716-446655440000",
       "profile": "terminal"
@@ -1793,7 +1793,7 @@ cache_aligner:
 ```text
 ... normal result ...
 
-⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
+⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling vesma_save_context to preserve your current progress.
 ```
 
 Это информационное сообщение; ничто в Vesma не блокирует вызов. Отключить, установив `MNEMOS_AUTO_COLLECT=0` (по умолчанию).
@@ -1814,7 +1814,7 @@ updated: <старая> → <новая>` — и штамп перезаписы
 
 ## Напоминание о контракте тегов
 
-Инструменты `mnemos_add` и `mnemos_ingest_url` отклоняют вызовы, нарушающие контракт M2. Три обязательных семейства тегов:
+Инструменты `vesma_add` и `vesma_ingest_url` отклоняют вызовы, нарушающие контракт M2. Три обязательных семейства тегов:
 
 | Тег | Формат | Кардинальность | Назначение |
 |-----|--------|----------------|------------ |
@@ -1832,7 +1832,7 @@ updated: <старая> → <новая>` — и штамп перезаписы
 
 ## Сокращение токенов вывода (P1-7)
 
-`mnemos_add`, `mnemos_search` и `mnemos_recall_context` принимают два опциональных параметра, которые управляют стилем вывода вызывающей стороны, не меняя того, что Vesma хранит или возвращает:
+`vesma_add`, `vesma_search` и `vesma_recall_context` принимают два опциональных параметра, которые управляют стилем вывода вызывающей стороны, не меняя того, что Vesma хранит или возвращает:
 
 | Параметр | Значения | Что делает |
 |----------|----------|------------|
@@ -1866,7 +1866,7 @@ output_style:
   "id": 7,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_search",
+    "name": "vesma_search",
     "arguments": {
       "query": "cache aligner prefix stability",
       "verbosity": "terse",
@@ -1888,14 +1888,14 @@ output_style:
 
 ---
 
-## `mnemos_assemble_context`
+## `vesma_assemble_context`
 
 **Контракт провайдера ADR-0017 D1 (vesma #125, волна 1)** — один вызов собирает модельно-ориентированный контекстный блок для инъекции перед вызовом LLM. Любой MCP-совместимый харнесс получает стандартизованную сборку контекста вместо приватного recall-кода адаптера.
 
 Фиксированный конвейер, по порядку (дословно записывается в `stats.stages`):
 
 1. **recall** — гибридный RRF (FTS5 + вектор) через стандартный путь поиска; статусный гейт инварианта входа пропускает только записи `published` / `processed` (`raw` и DLQ недостижимы). Параметр `file` задаёт поисковый запрос и поднимает applyTo-правила в начало списка.
-2. **ccr** *(опционально, `expand_ccr=true`)* — встроенные маркеры `[compressed: <hash> | …]` в найденном контенте разворачиваются через project-scoped извлечение, с учётом бюджета: оригинал, не влезающий в бюджет, остаётся сжатым (маркер на месте — модель может вызвать `mnemos_retrieve` сама).
+2. **ccr** *(опционально, `expand_ccr=true`)* — встроенные маркеры `[compressed: <hash> | …]` в найденном контенте разворачиваются через project-scoped извлечение, с учётом бюджета: оригинал, не влезающий в бюджет, остаётся сжатым (маркер на месте — модель может вызвать `vesma_retrieve` сама).
 3. **filter** — 5-стадийный контекстный фильтр по каждому блоку (профиль автоопределяется).
 4. **scan** *(обязательно)* — каждый блок проходит issuance-скан секретов; редacted-спаны (`<REDACTED:<pattern>>`) считаются по блокам; refuse-режим (`ccr.retrieve_refuse_on_secret`) выбрасывает блок (fail-closed). Ничто не попадает в собранный вывод без скана.
 5. **align** — CacheAligner переносит динамический контент в хвост каждого блока (выполняется ДО обёртки провенансом, чтобы строка провенанса оставалась парсабельной).
@@ -1984,11 +1984,11 @@ output_style:
 
 - REST-близнец: `POST /context/assemble` (тот же путь менеджера) — [http-api.md](http-api.md)
 - Обоснование конвейера: ADR-0017 (D1), ADR-0018 (инвариант входа: скан + провенанс + статусный гейт на каждом пути LTM → контекст)
-- CCR: [`mnemos_compress`](#mnemos_compress) / [`mnemos_retrieve`](#mnemos_retrieve)
+- CCR: [`vesma_compress`](#vesma_compress) / [`vesma_retrieve`](#vesma_retrieve)
 
 ---
 
-## `mnemos_context_rewrite`
+## `vesma_context_rewrite`
 
 **Событие жизненного цикла `on_context_rewrite` (ADR-0018, vesma #125, волна 2)** — харнесс сообщает, что он *перезаписал* блок своего рабочего контекста. Оригинал заменённого блока — источник истины: он без потерь попадает в долговременную память через **обычный knowledge-конвейер** и становится доступен для rehydrate через **существующие** просканированные/гейтованные каналы. Компакция харнесса становится lossless, когда оригиналы ложатся в провайдера.
 
@@ -1997,8 +1997,8 @@ output_style:
 - **Идемпотентность** — повторная доставка того же события не выполняет повторных записей. Ключ идемпотентности content-addressed: SHA-256 по length-prefixed каноническому кортежу `project/agent/session/supersedes/content`, сохраняется как `metadata["rewrite_event_key"]` и проверяется *до* любой записи. Адвизорный `diff` в ключ сознательно не входит — он не load-bearing, поэтому повторная доставка с другим diff — то же событие. Два одинаковых блока, перезаписанные в двух разных сессиях, — два события (`session` участвует в ключе).
 - **Без версий** — никаких обещаний порядка и цепочек версий. Линия замены — ребро `supersedes` (минимальная поверхность `memory_edges` фазы 1); обход/расширение — фаза 2 (ADR-0017 D2).
 - **Вход в конвейер** — оригинал входит как `raw` через `MemoryManager.add`; в контексте он достижим только после продвижения конвейером в `processed`/`published` (гейт `CONTEXT_ADMISSIBLE_STATUSES`). Layer-1 скан на записи выполняется по `content` (при находке автоматом ставится `mnemos:no-federate`; zero-loss — оригинал сохраняется без изменений). Адвизорный diff получает собственный Layer-1-вердикт (`rewrite_diff_scan_verdict`: clean/hit/unknown), и находка тоже помечает запись `mnemos:no-federate` — иначе адвизорная полезная нагрузка федерировалась бы без флага через канал, сканирующий только `content`.
-- **Rehydrate = существующие каналы** — сохранённые перезаписью оригиналы всплывают через `mnemos_retrieve` / `mnemos_assemble_context` (скан на выдаче, провенанс, статусный гейт). Нового пути извлечения сознательно нет.
-- **Маркер** — CCR-маркер остаётся в окне харнесса (на стороне вызывающего). Установите `include_marker=true`, чтобы также получить compress-маркер оригинала; rehydrate этого маркера идёт через `mnemos_retrieve` (скоуп по проекту, скан на выдаче).
+- **Rehydrate = существующие каналы** — сохранённые перезаписью оригиналы всплывают через `vesma_retrieve` / `vesma_assemble_context` (скан на выдаче, провенанс, статусный гейт). Нового пути извлечения сознательно нет.
+- **Маркер** — CCR-маркер остаётся в окне харнесса (на стороне вызывающего). Установите `include_marker=true`, чтобы также получить compress-маркер оригинала; rehydrate этого маркера идёт через `vesma_retrieve` (скоуп по проекту, скан на выдаче).
 
 ### Вход
 
@@ -2027,7 +2027,7 @@ output_style:
 }
 ```
 
-`status` — `stored` (первая доставка; `memory_status` = `raw` — конвейер ещё не отработал) или `deduplicated` (повторная доставка: тот же `memory_id`, новых записей нет; идемпотентная вставка ребра вернёт `edge_created: false`). `ccr_marker` (полный результат `mnemos_compress`) появляется только при `include_marker=true`. Квитанция **не содержит версионных полей и полей порядка** — by design (событие без версий).
+`status` — `stored` (первая доставка; `memory_status` = `raw` — конвейер ещё не отработал) или `deduplicated` (повторная доставка: тот же `memory_id`, новых записей нет; идемпотентная вставка ребра вернёт `edge_created: false`). `ccr_marker` (полный результат `vesma_compress`) появляется только при `include_marker=true`. Квитанция **не содержит версионных полей и полей порядка** — by design (событие без версий).
 
 ### Замечания
 
@@ -2041,16 +2041,16 @@ output_style:
 
 - REST-близнец: `POST /context/rewrite` (тот же путь менеджера) — [http-api.md](http-api.md)
 - Обоснование: ADR-0018 (§"on_context_rewrite": событие жизненного цикла, а не версионируемый примитив)
-- Каналы rehydrate: [`mnemos_retrieve`](#mnemos_retrieve) / [`mnemos_assemble_context`](#mnemos_assemble_context); маркер через [`mnemos_compress`](#mnemos_compress)
+- Каналы rehydrate: [`vesma_retrieve`](#vesma_retrieve) / [`vesma_assemble_context`](#vesma_assemble_context); маркер через [`vesma_compress`](#vesma_compress)
 
 ---
 
-## `mnemos_hooks`
+## `vesma_hooks`
 
 **Хуки жизненного цикла (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3)** — точки интеграции для автоматизации, сгруппированные за `action:enum` (групповой паттерн vesma #97). Три действия, один инструмент:
 
-- **`pre_llm_call`** — собрать контекстный блок для **инъекции перед вызовом модели** (тонкая обёртка над `mnemos_assemble_context`, доставка синхронная). `context_hint` (о чём предстоящий вызов) используется как явный recall-запрос вместо производного термина проект/файл. `task` (ADR-0027 Фаза 0, эпик #308) — идентификатор задачи от харнесса, «голый» slug: сужает recall до записей с тегом `task:<slug>` (доктрина пересечения — task-условие только сужает, никогда не расширяет) и компонует только хвост сборки на этот вызов; закреплённые префиксы и формат провенанса не тронуты. Инвариант входа ADR-0018 — скан секретов, провенанс, гейт статуса — выполняется внутри конвейера сборки; хук ничего к нему не добавляет. С `include_awareness=true` (vesma #254, по умолчанию `false` — выключено означает байт-идентичный вывод) секция awareness-дельты И «операционная картина» swarm v0a/v0b (соседи того же проекта: только счётчики/ids/времена, плюс заявленная каждым соседом задача — swarm v0b, самоподанный `task:<slug>`-тег, рендерится в отдельном маркированном `[unverified]`-подразделе) добавляются ПОСЛЕДНИМИ, никогда не закрепляются, курсор awareness двигается; картина рендерится ниже секции дельты (см. [`mnemos_awareness`](#mnemos_awareness)).
-- **`on_session_start`** — вспомнить недавние чекпоинты для бутстрапа сессии (тонкая обёртка над recall-путём; эхо-контент сканируется на выдаче в самом этом канале, как в `mnemos_recall_context`).
+- **`pre_llm_call`** — собрать контекстный блок для **инъекции перед вызовом модели** (тонкая обёртка над `vesma_assemble_context`, доставка синхронная). `context_hint` (о чём предстоящий вызов) используется как явный recall-запрос вместо производного термина проект/файл. `task` (ADR-0027 Фаза 0, эпик #308) — идентификатор задачи от харнесса, «голый» slug: сужает recall до записей с тегом `task:<slug>` (доктрина пересечения — task-условие только сужает, никогда не расширяет) и компонует только хвост сборки на этот вызов; закреплённые префиксы и формат провенанса не тронуты. Инвариант входа ADR-0018 — скан секретов, провенанс, гейт статуса — выполняется внутри конвейера сборки; хук ничего к нему не добавляет. С `include_awareness=true` (vesma #254, по умолчанию `false` — выключено означает байт-идентичный вывод) секция awareness-дельты И «операционная картина» swarm v0a/v0b (соседи того же проекта: только счётчики/ids/времена, плюс заявленная каждым соседом задача — swarm v0b, самоподанный `task:<slug>`-тег, рендерится в отдельном маркированном `[unverified]`-подразделе) добавляются ПОСЛЕДНИМИ, никогда не закрепляются, курсор awareness двигается; картина рендерится ниже секции дельты (см. [`vesma_awareness`](#vesma_awareness)).
+- **`on_session_start`** — вспомнить недавние чекпоинты для бутстрапа сессии (тонкая обёртка над recall-путём; эхо-контент сканируется на выдаче в самом этом канале, как в `vesma_recall_context`).
 - **`post_tool_call`** — **точка входа автосжатия** (ADR-0018): когда `auto_compress` разрешается в true (аргумент вызова, иначе ручка `hooks.auto_compress`, по умолчанию `false`), вывод инструмента сжимается через CCR и возвращается `compressed_text` с маркером в голове — вызывающий **подставляет** его вместо сырого вывода в своём окне. По умолчанию выключено: конверт сообщает об этом и ничего не пишет.
 
 **Мандат идентичности (реестр A2, N2, громко):** `session` + `project` + `agent` обязательны на КАЖДОМ вызове. Для `post_tool_call` это требование безопасности, а не эргономика — вызов compress всегда протаскивает `(agent, session)` вызывающего в строку кэша (реестр эмитентов A2), чтобы строгая валидация маркеров (`ccr.validate_markers`) могла позже доказать, что маркер отчеканен в собственном контексте погашающего. Сжатие без идентичности чеканит NULL-issuer строки, которые строгая валидация отказывается погашать, — у хука нет режима без идентичности.
@@ -2075,13 +2075,13 @@ output_style:
 
 ### Возвращаемое значение
 
-`pre_llm_call` возвращает полный результат `mnemos_assemble_context` плюс ключи `hook`/`injection` (инъецируйте `text` перед вызовом модели). `on_session_start` возвращает `{hook, session, project, agent, checkpoints: [{id, content, created_at, redactions, redacted_patterns?}], redactions}` — контент чекпоинтов сканируется на выдаче; refuse-режим отбрасывает чекпоинт. `post_tool_call` с включённым автосжатием возвращает конверт CCR (`ccr`, `compressed_text`, `marker`, `compressed`, `action: "substitute …"`); при выключенном — `{auto_compress: false, compressed: false, note}` без записи.
+`pre_llm_call` возвращает полный результат `vesma_assemble_context` плюс ключи `hook`/`injection` (инъецируйте `text` перед вызовом модели). `on_session_start` возвращает `{hook, session, project, agent, checkpoints: [{id, content, created_at, redactions, redacted_patterns?}], redactions}` — контент чекпоинтов сканируется на выдаче; refuse-режим отбрасывает чекпоинт. `post_tool_call` с включённым автосжатием возвращает конверт CCR (`ccr`, `compressed_text`, `marker`, `compressed`, `action: "substitute …"`); при выключенном — `{auto_compress: false, compressed: false, note}` без записи.
 
 ### Замечания
 
 - **Конфигурация** — две ручки: `hooks.auto_compress` (по умолчанию `false`) и `hooks.max_output_chars` (по умолчанию 1 048 576 символов — `post_tool_call` отклоняет превышающий кап `output_text` на границе ДО любой записи, по конвенции капов context-rewrite; `0` отключает). Read-only хуки не требуют включения: они не открывают никаких возможностей, которых не дают поверхности сервера.
-- **Только sync (эта волна)** — ADR-0017 D1 называет режимы sync/async; асинхронная доставка ждёт потребителя, которому она нужна. Харнессы, которым нужны режимы `async`/`code`/`prose`, вызывают `mnemos_assemble_context` напрямую.
-- **Сохранение в память — явно** — `post_tool_call` молча не складывает выводы инструментов в память; используйте `VesmaSDK.remember` (или `mnemos_add`/REST), когда результат стоит сохранения.
+- **Только sync (эта волна)** — ADR-0017 D1 называет режимы sync/async; асинхронная доставка ждёт потребителя, которому она нужна. Харнессы, которым нужны режимы `async`/`code`/`prose`, вызывают `vesma_assemble_context` напрямую.
+- **Сохранение в память — явно** — `post_tool_call` молча не складывает выводы инструментов в память; используйте `VesmaSDK.remember` (или `vesma_add`/REST), когда результат стоит сохранения.
 - **Ошибки** — нарушения границы возвращают `{"error": …}` (REST-близнец отвечает 422; неизвестное действие там — 404). Превышение капа `output_text` — нарушение границы: `{"error": "output_text exceeds hooks.max_output_chars (N > M)"}`, ничего не записано.
 
 ### Связанное
@@ -2092,11 +2092,11 @@ output_style:
 
 ---
 
-## `mnemos_awareness`
+## `vesma_awareness`
 
 **Awareness-пре-флайт (vesma #254, R3; swarm v0a — АрхКом 2026-09-27)** — поверхность, которую параллельная сессия вызывает ПЕРЕД рискованной операцией (контракт PR #224: релиз, закрытый невидимой параллельной сессией). Два действия, один инструмент:
 
-- **`pre_flight`** (только чтение) — наблюдаемая сервером активность соседей: присутствие (кто активен), дельта (что изменилось с вашего курсора — одна строка на соседа), лексические подсказки о конфликтах с вашей последней целью чекпоинта и **операционная картина** (swarm v0a/v0b): явный блок соседей того же проекта, где каждая наблюдаемая строка несёт id агента, последнюю наблюдаемую активность, число записей в 900-секундном окне присутствия и факт наличия чекпоинта — **только счётчики, id агентов и времена**. Ни заголовок, ни тело, ни тег записи соседа никогда не попадают в НАБЛЮДАЕМЫЙ слой. Swarm v0b добавляет ЗАЯВЛЕННУЮ соседом активную задачу — тег `task:<slug>` (ADR-0027) его самой свежей записи с task-тегом: клиентский текст, который проходит двухуровневую машинерию доверия ровно как цели (скан на выдаче fail-closed, вырезание policy-маркеров, рендер в отдельном маркированном подразделе `self-reported` с инлайн-квалификатором `[unverified]`, никогда внутри наблюдаемого заголовка или блоков; дисклеймер картины прямо называет задачу самоподанным утверждением). Строго в рамках одного проекта (`project=None` — отказ; межпроектной видимости не существует — ни параметра, ни флага). Курсор awareness двигается ТОЛЬКО через `mnemos_hooks` `pre_llm_call` с `include_awareness=true` — пре-флайт никогда не помечает записи соседей потреблёнными.
+- **`pre_flight`** (только чтение) — наблюдаемая сервером активность соседей: присутствие (кто активен), дельта (что изменилось с вашего курсора — одна строка на соседа), лексические подсказки о конфликтах с вашей последней целью чекпоинта и **операционная картина** (swarm v0a/v0b): явный блок соседей того же проекта, где каждая наблюдаемая строка несёт id агента, последнюю наблюдаемую активность, число записей в 900-секундном окне присутствия и факт наличия чекпоинта — **только счётчики, id агентов и времена**. Ни заголовок, ни тело, ни тег записи соседа никогда не попадают в НАБЛЮДАЕМЫЙ слой. Swarm v0b добавляет ЗАЯВЛЕННУЮ соседом активную задачу — тег `task:<slug>` (ADR-0027) его самой свежей записи с task-тегом: клиентский текст, который проходит двухуровневую машинерию доверия ровно как цели (скан на выдаче fail-closed, вырезание policy-маркеров, рендер в отдельном маркированном подразделе `self-reported` с инлайн-квалификатором `[unverified]`, никогда внутри наблюдаемого заголовка или блоков; дисклеймер картины прямо называет задачу самоподанным утверждением). Строго в рамках одного проекта (`project=None` — отказ; межпроектной видимости не существует — ни параметра, ни флага). Курсор awareness двигается ТОЛЬКО через `vesma_hooks` `pre_llm_call` с `include_awareness=true` — пре-флайт никогда не помечает записи соседей потреблёнными.
 - **`record_abstention`** — зарегистрировать воздержание-по-присутствию как ДЕЙСТВИЕ с восстановимой цепочкой провенанса (воздержание → дельта-блок → id-чекпоинта → сессия-писателя); передайте `basis_checkpoint_id` из ответа пре-флайта.
 
 **Присутствие — поведенческие метаданные** (id агентов, времена активности, счётчики записей) — гейты поиска покрывают КОНТЕНТ записей и к присутствию не применяются. Картина только дескриптивна (кто / сколько / когда), никогда предиктивна, и это данные, а не управление: блоки картины не несут `memory_id`, никогда не закрепляются, семантики `applyTo:`/`severity:` в них нет. Ноль записей, порождённых картиной, не хранится (курсоры — в meta, действия — в traces); любая будущая awareness-derived запись рождается `mnemos:no-federate`.
@@ -2125,7 +2125,7 @@ output_style:
 
 ### Связанное
 
-- Композиция: `mnemos_hooks` `pre_llm_call` / `on_session_start` с `include_awareness=true` (картина рендерится последней, ниже секции дельты)
+- Композиция: `vesma_hooks` `pre_llm_call` / `on_session_start` с `include_awareness=true` (картина рендерится последней, ниже секции дельты)
 - REST-близнец: `POST /hooks/{action}` с `include_awareness` — [http-api.md](http-api.md)
 
 ---
@@ -2134,7 +2134,7 @@ output_style:
 
 **Контур «дверного звонка»** — awareness об активности соседей доходит до агента НАТИВНО, без ручного вызова и без каких-либо изменений во внешних харнессах: гейтруемый дельтой, наблюдаемый-только хвост awareness, прикрепляемый к ответам ВСЕХ MCP-инструментов через единственную точку входа (обёртка `call_tool`). Доставка происходит на ПЕРВОМ вызове инструмента после записи соседа — цена масштабируется активностью соседей, а не числом вызовов; сама проверка дельты — саб-миллисекундный `SELECT EXISTS`-зонд, поэтому тихие сторы платят один lookup по индексу на вызов.
 
-Хвост — один добавленный `TextContent` после обработчика (никогда инлайн, lane=awareness, хвост-ПОСЛЕДНИЙ по контракту кэша). Deny-list поверхностей никогда его не несёт: `mnemos_assemble_context` (он уже компонует полную картину — хвост там означал бы двойной рендер и двойное продвижение курсора), `mnemos_export` и `mnemos_import` (пара массового переноса). REST-нога в v1 хвост не несёт.
+Хвост — один добавленный `TextContent` после обработчика (никогда инлайн, lane=awareness, хвост-ПОСЛЕДНИЙ по контракту кэша). Deny-list поверхностей никогда его не несёт: `vesma_assemble_context` (он уже компонует полную картину — хвост там означал бы двойной рендер и двойное продвижение курсора), `vesma_export` и `vesma_import` (пара массового переноса). REST-нога в v1 хвост не несёт.
 
 ### Лестница режимов (`awareness.native_heartbeat_mode`)
 
@@ -2149,7 +2149,7 @@ output_style:
 
 ### Конверт (canary/on)
 
-Непустая дельта соседей → блок фиксированного ПОТОЛКА (≤120 токенов, соблюдается наблюдаемым обрезанием): шапка, дословный дисклеймер R3, не более 8 наблюдаемых-только строк — по одной на соседа: санитизированный agent id, счётчик записей, время последней активности с точностью до минуты; без текста целей, без id записей, без численных скоров (ПОРЯДОК и есть сигнал релевантности: пересечение с моей целью → чекпоинт → свежесть → agent id, детерминированно) — и ровно одна описательная флаг-строка, указывающая на `mnemos_awareness` за глубиной. Пустая дельта → ОДНА детерминированная calm-line (~10 токенов, без таймстемпа): «тишина» больше неотличима от «око выключено».
+Непустая дельта соседей → блок фиксированного ПОТОЛКА (≤120 токенов, соблюдается наблюдаемым обрезанием): шапка, дословный дисклеймер R3, не более 8 наблюдаемых-только строк — по одной на соседа: санитизированный agent id, счётчик записей, время последней активности с точностью до минуты; без текста целей, без id записей, без численных скоров (ПОРЯДОК и есть сигнал релевантности: пересечение с моей целью → чекпоинт → свежесть → agent id, детерминированно) — и ровно одна описательная флаг-строка, указывающая на `vesma_awareness` за глубиной. Пустая дельта → ОДНА детерминированная calm-line (~10 токенов, без таймстемпа): «тишина» больше неотличима от «око выключено».
 
 Курсор доставки (неймспейс `awrh:`, ключ `(project, agent)`, без сессии) продвигается строго ДО возврата ответа — доставка at-most-once; ретрай видит «нет дельты». Продвижения логируются с идентичностью.
 
@@ -2160,12 +2160,12 @@ output_style:
 ### Связанное
 
 - Решение: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
-- Поверхность глубины: [`mnemos_awareness`](#mnemos_awareness); композиция хуков: `mnemos_hooks` `pre_llm_call` с `include_awareness=true`
+- Поверхность глубины: [`vesma_awareness`](#vesma_awareness); композиция хуков: `vesma_hooks` `pre_llm_call` с `include_awareness=true`
 - Конфиг: [config.example.yaml](../../../config.example.yaml) — секция `awareness`
 
 ---
 
-## `mnemos_export`
+## `vesma_export`
 
 Экспорт записей в файл на диске. Тонкая обёртка над логикой CLI `vesma export`. Возвращает только метаданные — содержимое экспорта **никогда** не возвращается в теле ответа (stdio-транспорт не может передать бинарный SQLite-tarball или большой JSON-блок через канал JSON-RPC поверх stdout).
 
@@ -2214,7 +2214,7 @@ output_style:
   "id": 8,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_export",
+    "name": "vesma_export",
     "arguments": {
       "output_path": "/tmp/mnemos-backup.json",
       "format": "json",
@@ -2229,7 +2229,7 @@ output_style:
 
 ```json
 {
-  "name": "mnemos_export",
+  "name": "vesma_export",
   "arguments": {
     "output_path": "/tmp/mnemos-snapshot.tar.gz",
     "format": "sqlite",
@@ -2242,7 +2242,7 @@ output_style:
 
 ---
 
-## `mnemos_import`
+## `vesma_import`
 
 Импорт записей из файла экспорта. Тонкая обёртка над логикой CLI `vesma import`. Два режима: **merge** (вставка новых, пропуск или перезапись существующих) и **restore** (полная очистка и импорт — деструктивный, требует `confirm=true`).
 
@@ -2289,7 +2289,7 @@ output_style:
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_import",
+    "name": "vesma_import",
     "arguments": {
       "source_path": "/tmp/mnemos-backup.json",
       "mode": "merge",
@@ -2303,7 +2303,7 @@ Restore (деструктивный) с подтверждением:
 
 ```json
 {
-  "name": "mnemos_import",
+  "name": "vesma_import",
   "arguments": {
     "source_path": "/tmp/mnemos-snapshot.tar.gz",
     "mode": "restore",
@@ -2316,7 +2316,7 @@ Restore (деструктивный) с подтверждением:
 
 ```json
 {
-  "name": "mnemos_import",
+  "name": "vesma_import",
   "arguments": {
     "source_path": "/tmp/encrypted.bin",
     "mode": "merge",
@@ -2327,11 +2327,11 @@ Restore (деструктивный) с подтверждением:
 
 ---
 
-## `mnemos_workflow`
+## `vesma_workflow`
 
 Управление жизненным циклом workflow для памяти (vesma #96). Отделяет изменяемое **состояние workflow** (open → in-progress → done, blocked/resolved, терминальные состояния) от добавляемого только в конец **тегового классификатора** (`project:X`, `mnemos:decision`). Теговый слой остаётся append-only; этот слой — изменяемый жизненный цикл работы.
 
-Диспетчеризация на основе `action` — тот же паттерн `action: enum`, что и у `mnemos_tags`. Конечный автомат и пять guardrail применяются **на стороне сервера** в `MemoryManager.workflow_set`; этот инструмент (и REST `POST /memories/{id}/workflow`) — тонкие обёртки, которые не могут его обойти.
+Диспетчеризация на основе `action` — тот же паттерн `action: enum`, что и у `vesma_tags`. Конечный автомат и пять guardrail применяются **на стороне сервера** в `MemoryManager.workflow_set`; этот инструмент (и REST `POST /memories/{id}/workflow`) — тонкие обёртки, которые не могут его обойти.
 
 ### Состояния и переходы
 
@@ -2453,7 +2453,7 @@ stateDiagram-v2
 
 ```json
 {
-  "name": "mnemos_workflow",
+  "name": "vesma_workflow",
   "arguments": {
     "action": "set",
     "memory_id": "01HXYZ...",
@@ -2466,16 +2466,16 @@ stateDiagram-v2
 Попали в блокер, затем разрешили и завершили:
 
 ```json
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "blocked", "actor": "agent-dba", "reason": "waiting on upstream spec tag"}}
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "resolved", "actor": "agent-dba"}}
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "done", "actor": "agent-dba"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "blocked", "actor": "agent-dba", "reason": "waiting on upstream spec tag"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "resolved", "actor": "agent-dba"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "done", "actor": "agent-dba"}}
 ```
 
 Принудительно перехватить устаревшую блокировку другого актора:
 
 ```json
 {
-  "name": "mnemos_workflow",
+  "name": "vesma_workflow",
   "arguments": {
     "action": "set",
     "memory_id": "01HXYZ...",
@@ -2516,7 +2516,7 @@ stateDiagram-v2
 - [getting-started.md](getting-started.md) — подключение `mcp.json` и первый вызов
 - [http-api.md](http-api.md) — те же возможности через HTTP
 - [cli-reference.md](cli-reference.md) — те же возможности через CLI
-- [tag-contract.md](tag-contract.md) — схема M2, соблюдаемая `mnemos_add`
+- [tag-contract.md](tag-contract.md) — схема M2, соблюдаемая `vesma_add`
 - [security.md](../admin/security.md) — защита от SSRF, безопасность секретов
 - [обзор архитектуры](../architecture/overview.md#mcp-сервер) — жизненный цикл сервера
 

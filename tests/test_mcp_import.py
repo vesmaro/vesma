@@ -1,8 +1,8 @@
-"""Integration tests for the ``mnemos_import`` MCP tool (#84).
+"""Integration tests for the ``vesma_import`` MCP tool (#84).
 
 Covers the federation import surface exposed through MCP. The tool is a
 thin wrapper over :func:`vesmaro.cli.import_.run_import`; these tests drive
-the real dispatch path (``_dispatch("mnemos_import", ...)``) against an
+the real dispatch path (``_dispatch("vesma_import", ...)``) against an
 isolated tmp DB so the #86 import validation (schema drift, oversized
 content, prompt-injection logging) is verified end-to-end through the MCP
 surface.
@@ -105,13 +105,13 @@ def _add(
 
 
 async def _import(mgr: MemoryManager, **args: Any) -> dict[str, Any]:
-    """Invoke the MCP dispatch for mnemos_import and parse the JSON dict result.
+    """Invoke the MCP dispatch for vesma_import and parse the JSON dict result.
 
     ``get_manager`` is patched to return the test's ``mgr`` by the
     ``_patch_manager`` autouse fixture, so ``_dispatch`` drives the test's
     isolated MemoryManager.
     """
-    result = await _dispatch("mnemos_import", args)
+    result = await _dispatch("vesma_import", args)
     assert isinstance(result, dict), f"expected dict result, got {type(result)}: {result!r}"
     return result
 

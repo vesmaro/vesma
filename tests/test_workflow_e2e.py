@@ -1,4 +1,4 @@
-"""End-to-end tests for the ``mnemos_workflow`` MCP tool + REST endpoints
+"""End-to-end tests for the ``vesma_workflow`` MCP tool + REST endpoints
 (issue #96).
 
 Dedicated e2e matrix driving the 15 scenarios (E1-E15) requested by the
@@ -145,7 +145,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
 
     ``mcp_server._checkpoint_reminder()`` may append a nudge like
     ``\n\n⚠️ [vesma] N tool calls since last checkpoint … Consider
-    calling mnemos_save_context …`` after the tool's JSON response. It is
+    calling vesma_save_context …`` after the tool's JSON response. It is
     informational metadata for MCP clients, NOT part of the tool's return
     value — so a correct client must ignore it before parsing.
 
@@ -174,7 +174,7 @@ async def _call_tool_real(mgr: MemoryManager, args: dict) -> Any:
     the single TextContent the handler returns (or raw text on non-JSON).
     """
     with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-        contents = await call_tool("mnemos_workflow", args)
+        contents = await call_tool("vesma_workflow", args)
     assert len(contents) == 1, f"expected exactly one TextContent, got {len(contents)}"
     text = _strip_checkpoint_reminder(contents[0].text)
     try:
@@ -191,7 +191,7 @@ async def _dispatch_real(mgr: MemoryManager, args: dict) -> dict:
     paths that return ``{"error": ...}``.
     """
     with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-        return await _dispatch("mnemos_workflow", args)
+        return await _dispatch("vesma_workflow", args)
 
 
 def _seed_memory(
@@ -244,12 +244,12 @@ def _safe_json(resp) -> dict | str:
 
 
 async def test_e0_workflow_tool_registered_with_action_enum() -> None:
-    """``list_tools()`` (real MCP registration) advertises ``mnemos_workflow``
+    """``list_tools()`` (real MCP registration) advertises ``vesma_workflow``
     with ``action`` enum {set, get, history} and required [action, memory_id]."""
     tools = await list_tools()
     names = {t.name for t in tools}
-    assert "mnemos_workflow" in names, "mnemos_workflow tool not registered"
-    tool = next(t for t in tools if t.name == "mnemos_workflow")
+    assert "vesma_workflow" in names, "vesma_workflow tool not registered"
+    tool = next(t for t in tools if t.name == "vesma_workflow")
     action_schema = tool.input_schema["properties"]["action"]
     assert action_schema["enum"] == ["set", "get", "history"]
     assert tool.input_schema["required"] == ["action", "memory_id"]

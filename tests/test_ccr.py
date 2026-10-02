@@ -353,8 +353,8 @@ class TestMcpDispatch:
         else:
             tools = list_tools()
         names = [t.name for t in tools]
-        assert "mnemos_compress" in names
-        assert "mnemos_retrieve" in names
+        assert "vesma_compress" in names
+        assert "vesma_retrieve" in names
 
     def test_mcp_dispatch_compress_and_retrieve(self, manager):
         import asyncio
@@ -368,12 +368,12 @@ class TestMcpDispatch:
         try:
             text = _large_log(300)
             result = asyncio.new_event_loop().run_until_complete(
-                _dispatch("mnemos_compress", {"text": text, "profile": "log"})
+                _dispatch("vesma_compress", {"text": text, "profile": "log"})
             )
             assert result["cached"] is True
             h = result["hash"]
             retrieved = asyncio.new_event_loop().run_until_complete(
-                _dispatch("mnemos_retrieve", {"hash": h})
+                _dispatch("vesma_retrieve", {"hash": h})
             )
             assert retrieved["found"] is True
             assert retrieved["original"] == text

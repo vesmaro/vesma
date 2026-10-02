@@ -3,9 +3,9 @@
 The facade owns no DOMAIN logic (src/mnemos/sdk.py): every verb is a
 one-line delegation to a ``MemoryManager`` method — EXCEPT the two
 channel-boundary duties the W3 security review pinned (F1/F2): ``recall``
-scans every echoed item at issuance (mirroring ``mnemos_search``) and
+scans every echoed item at issuance (mirroring ``vesma_search``) and
 ``remember`` validates caller tags against the tag contract (mirroring
-``mnemos_add``). These tests pin the delegation (spy/monkeypatch the
+``vesma_add``). These tests pin the delegation (spy/monkeypatch the
 manager methods), the two channel duties, and the facade's other
 boundary behaviours (constructor exactly-one-of, ``forget``'s project
 guard). The delegated-to paths themselves are covered by their own
@@ -115,7 +115,7 @@ class TestRemember:
     ) -> None:
         """F2: the tag contract runs at the facade — an invalid reserved
         ``mnemos:*`` subtype raises BEFORE any write (the store count is
-        unchanged), mirroring the mnemos_add channel."""
+        unchanged), mirroring the vesma_add channel."""
         before = manager.sqlite.count()
         with pytest.raises(TagContractError):
             sdk.remember(

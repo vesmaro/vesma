@@ -21,7 +21,7 @@ Acceptance map (issue #254 acceptance/scope clauses → test):
 * never pinnable (no applyTo/severity, no memory_id) → ``TestNotPinnable``
 * origin=federated exclusion hook → ``TestFederationExclusion``
 * awareness renders LAST (E1 guard wired) → ``TestTailGuard``
-* MCP ``mnemos_awareness`` tool + ``mnemos_hooks`` passthrough →
+* MCP ``vesma_awareness`` tool + ``vesma_hooks`` passthrough →
   ``TestMcpAwarenessTool`` / ``TestMcpHooksPassthrough``
 
 Repair round (consolidated review findings → test):
@@ -468,7 +468,7 @@ class TestScanRefusal:
     def test_clean_delta_carries_no_pattern_names(self, manager: MemoryManager) -> None:
         """#456 shape policy: ``redacted_patterns`` is ABSENT on a clean
         issuance — the count stays 0, no empty-dict noise (the same
-        policy as mnemos_search / assemble / hooks)."""
+        policy as vesma_search / assemble / hooks)."""
         _checkpoint(
             manager, goals="clean goal nothing secret", agent=NEIGHBOR, session=NEIGHBOR_SESSION
         )
@@ -975,13 +975,13 @@ class TestMcpAwarenessTool:
     def test_tool_registered_in_manifest(self) -> None:
         tools = asyncio.run(list_tools())
         names = [t.name for t in tools]
-        assert "mnemos_awareness" in names
+        assert "vesma_awareness" in names
 
     def test_pre_flight_action(self, manager: MemoryManager) -> None:
         _checkpoint(manager, goals="mcp preflight goal", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
         result = _mcp_call(
             manager,
-            "mnemos_awareness",
+            "vesma_awareness",
             {
                 "action": "pre_flight",
                 "session": SESSION,
@@ -1000,7 +1000,7 @@ class TestMcpAwarenessTool:
         )
         result = _mcp_call(
             manager,
-            "mnemos_awareness",
+            "vesma_awareness",
             {
                 "action": "record_abstention",
                 "session": SESSION,
@@ -1016,15 +1016,13 @@ class TestMcpAwarenessTool:
     def test_unknown_action_error_dict(self, manager: MemoryManager) -> None:
         result = _mcp_call(
             manager,
-            "mnemos_awareness",
+            "vesma_awareness",
             {"action": "push", "session": SESSION, "project": PROJECT, "agent": AGENT},
         )
         assert result == {"error": "action must be one of: pre_flight, record_abstention"}
 
     def test_missing_identity_error_dict(self, manager: MemoryManager) -> None:
-        result = _mcp_call(
-            manager, "mnemos_awareness", {"action": "pre_flight", "session": SESSION}
-        )
+        result = _mcp_call(manager, "vesma_awareness", {"action": "pre_flight", "session": SESSION})
         assert "error" in result
 
 
@@ -1039,15 +1037,15 @@ class TestMcpHooksPassthrough:
             "project": PROJECT,
             "agent": AGENT,
         }
-        off = _mcp_call(manager, "mnemos_hooks", dict(base))
+        off = _mcp_call(manager, "vesma_hooks", dict(base))
         assert "awareness" not in off
-        on = _mcp_call(manager, "mnemos_hooks", {**base, "include_awareness": True})
+        on = _mcp_call(manager, "vesma_hooks", {**base, "include_awareness": True})
         assert on["awareness"]["agents"] == [NEIGHBOR]
 
     def test_non_bool_flag_rejected(self, manager: MemoryManager) -> None:
         result = _mcp_call(
             manager,
-            "mnemos_hooks",
+            "vesma_hooks",
             {
                 "action": "pre_llm_call",
                 "session": SESSION,
@@ -1883,7 +1881,7 @@ class TestPictureSurfaces:
         _checkpoint(manager, goals="mcp picture", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
         result = _mcp_call(
             manager,
-            "mnemos_awareness",
+            "vesma_awareness",
             {"action": "pre_flight", "session": SESSION, "project": PROJECT, "agent": AGENT},
         )
         assert result["picture"]["agents"][0]["agent"] == NEIGHBOR
@@ -2291,7 +2289,7 @@ class TestPictureTaskSurfaces:
         _task_row(manager, "mcp-task")
         result = _mcp_call(
             manager,
-            "mnemos_awareness",
+            "vesma_awareness",
             {"action": "pre_flight", "session": SESSION, "project": PROJECT, "agent": AGENT},
         )
         assert result["picture"]["agents"][0]["task"] == "mcp-task"

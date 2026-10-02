@@ -2141,9 +2141,9 @@ class TestSkillPack:
             assert section in body, f"missing standard section {section}"
         # Covers the three publication-engine tools (issue #209).
         for tool in (
-            "mnemos_assemble_context",
-            "mnemos_context_rewrite",
-            'mnemos_hooks(action="on_session_start"',
+            "vesma_assemble_context",
+            "vesma_context_rewrite",
+            'vesma_hooks(action="on_session_start"',
         ):
             assert tool in body, f"skill must document {tool}"
 

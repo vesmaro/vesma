@@ -59,13 +59,13 @@ BREAKING vs the legacy HTTP plugin: ``base_url`` / ``api_key`` /
 ``vault_path`` at the SAME store only if no other process owns it
 (SQLite single-writer: pick one owner per data dir).
 
-Tools exposed (all in-process over the contract; mnemos_align_prefix
+Tools exposed (all in-process over the contract; vesma_align_prefix
 stays MCP-only — no manager verb):
-    mnemos_search / mnemos_add / mnemos_recall_context /
-    mnemos_save_context / mnemos_agent_recall / mnemos_list_recent /
-    mnemos_list_tags / mnemos_stats / mnemos_auto_collect_status /
-    mnemos_compress / mnemos_retrieve / mnemos_ingest_url /
-    mnemos_watch_start / mnemos_watch_stop / mnemos_watch_status
+    vesma_search / vesma_add / vesma_recall_context /
+    vesma_save_context / vesma_agent_recall / vesma_list_recent /
+    vesma_list_tags / vesma_stats / vesma_auto_collect_status /
+    vesma_compress / vesma_retrieve / vesma_ingest_url /
+    vesma_watch_start / vesma_watch_stop / vesma_watch_status
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def _load_config() -> dict:
 #    unchanged names/params from the legacy plugin) ────────────────────────────
 
 MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_search",
+    "name": "vesma_search",
     "description": (
         "Search Vesma memory using hybrid vector + FTS5 search. Results are "
         "secret-scanned at issuance. Use before architectural decisions, "
@@ -169,7 +169,7 @@ MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_ADD_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_add",
+    "name": "vesma_add",
     "description": (
         "Add a memory entry to Vesma. Tag contract is mandatory: "
         "exactly one project:<slug>, one agent:<slug>, and at least one "
@@ -201,7 +201,7 @@ MNEMOS_ADD_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_RECALL_CONTEXT_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_recall_context",
+    "name": "vesma_recall_context",
     "description": (
         "Recall the most recent session checkpoints for the project — the "
         "saved context (goals, progress, decisions) from the last "
@@ -221,11 +221,11 @@ MNEMOS_RECALL_CONTEXT_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_SAVE_CONTEXT_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_save_context",
+    "name": "vesma_save_context",
     "description": (
         "Save a session checkpoint — structured context capturing goals, "
         "completed work, in-progress items, decisions, free-form context. "
-        "Tagged mnemos:checkpoint for recall via mnemos_recall_context. "
+        "Tagged mnemos:checkpoint for recall via vesma_recall_context. "
         "Use at meaningful milestones; write sparingly."
     ),
     "parameters": {
@@ -242,7 +242,7 @@ MNEMOS_SAVE_CONTEXT_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_AGENT_RECALL_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_agent_recall",
+    "name": "vesma_agent_recall",
     "description": (
         "Recall agent-scoped context — entries authored by a specific "
         "agent (default: this deployment's agent slug). Use when resuming "
@@ -261,7 +261,7 @@ MNEMOS_AGENT_RECALL_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_LIST_RECENT_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_list_recent",
+    "name": "vesma_list_recent",
     "description": (
         "List recent memories, optionally filtered by status.\n\n"
         "Returns: list of {id, title, tags, status, created_at}."
@@ -276,19 +276,19 @@ MNEMOS_LIST_RECENT_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_LIST_TAGS_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_list_tags",
+    "name": "vesma_list_tags",
     "description": "List all tags with entry counts.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
 MNEMOS_STATS_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_stats",
+    "name": "vesma_stats",
     "description": "Store statistics — totals, status breakdown, project slice.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
 MNEMOS_AUTO_COLLECT_STATUS_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_auto_collect_status",
+    "name": "vesma_auto_collect_status",
     "description": (
         "Compaction signal vector — tool calls since the last "
         "save_context, elapsed seconds, and a checkpoint recommendation. "
@@ -299,11 +299,11 @@ MNEMOS_AUTO_COLLECT_STATUS_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_COMPRESS_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_compress",
+    "name": "vesma_compress",
     "description": (
         "Compress large content (tool output, logs, JSON) losslessly via "
         "CCR: the original is cached (SHA-256 keyed) and a short marker "
-        "lets the model fetch it back with mnemos_retrieve. 70-90% token "
+        "lets the model fetch it back with vesma_retrieve. 70-90% token "
         "reduction on typical logs; <500 chars returned as-is."
     ),
     "parameters": {
@@ -320,7 +320,7 @@ MNEMOS_COMPRESS_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_RETRIEVE_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_retrieve",
+    "name": "vesma_retrieve",
     "description": (
         "Retrieve the original for a CCR [compressed: …] marker hash — "
         "full text, or FTS5-ranked snippets when query is given."
@@ -337,11 +337,11 @@ MNEMOS_RETRIEVE_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_INGEST_URL_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_ingest_url",
+    "name": "vesma_ingest_url",
     "description": (
         "Fetch a web page, extract main content, save as a memory. "
         "Credentials embedded in the URL are stripped before storage. "
-        "Tags follow the mnemos_add contract."
+        "Tags follow the vesma_add contract."
     ),
     "parameters": {
         "type": "object",
@@ -354,7 +354,7 @@ MNEMOS_INGEST_URL_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_WATCH_START_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_watch_start",
+    "name": "vesma_watch_start",
     "description": (
         "Start the background file watcher — new/modified files under the "
         "watched paths are auto-indexed. Empty paths watches the cwd."
@@ -371,13 +371,13 @@ MNEMOS_WATCH_START_SCHEMA: dict[str, Any] = {
 }
 
 MNEMOS_WATCH_STOP_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_watch_stop",
+    "name": "vesma_watch_stop",
     "description": "Stop the file watcher. Idempotent.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
 MNEMOS_WATCH_STATUS_SCHEMA: dict[str, Any] = {
-    "name": "mnemos_watch_status",
+    "name": "vesma_watch_status",
     "description": "Watcher state: {running, paths, counts}.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
@@ -495,12 +495,12 @@ class VesmaMemoryProvider(MemoryProvider):
         return (
             "# Vesma Memory\n"
             "Long-term memory (Vesma, in-process on the provider contract). "
-            "Use mnemos_search before architectural decisions and web "
-            "searches. Use mnemos_add to persist non-obvious learnings, "
-            "decisions, and bug-patterns. Use mnemos_recall_context at "
-            "session start; mnemos_save_context at milestones. Use "
-            "mnemos_agent_recall to recover your own prior findings. Use "
-            "mnemos_compress / mnemos_retrieve to shrink and rehydrate "
+            "Use vesma_search before architectural decisions and web "
+            "searches. Use vesma_add to persist non-obvious learnings, "
+            "decisions, and bug-patterns. Use vesma_recall_context at "
+            "session start; vesma_save_context at milestones. Use "
+            "vesma_agent_recall to recover your own prior findings. Use "
+            "vesma_compress / vesma_retrieve to shrink and rehydrate "
             "large tool outputs losslessly.\n"
             "Tag contract: project:<slug> + agent:<slug> + mnemos:<subtype> "
             "(session|checkpoint|bug-pattern|learning|decision|rule|"
@@ -590,7 +590,7 @@ class VesmaMemoryProvider(MemoryProvider):
                 logger.debug("Vesma context_rewrite report failed: %s", e)
             hint = (
                 "[Vesma] Discarded conversation preserved in LTM "
-                "(on_context_rewrite); recall via mnemos_search."
+                "(on_context_rewrite); recall via vesma_search."
             )
         return hint
 
@@ -649,7 +649,7 @@ class VesmaMemoryProvider(MemoryProvider):
         adapter = self._ensure()
         mgr = adapter.sdk.manager  # surfaced-operations escape hatch
 
-        if tool_name == "mnemos_search":
+        if tool_name == "vesma_search":
             items = adapter.search(
                 args["query"], limit=int(args.get("limit", 10)), tags=args.get("tags")
             )
@@ -657,7 +657,7 @@ class VesmaMemoryProvider(MemoryProvider):
                 return json.dumps({"result": "No relevant memories found."})
             return json.dumps({"results": items, "count": len(items)})
 
-        if tool_name == "mnemos_add":
+        if tool_name == "vesma_add":
             memory = adapter.add_memory(
                 args["content"],
                 args["tags"],
@@ -674,7 +674,7 @@ class VesmaMemoryProvider(MemoryProvider):
                 }
             )
 
-        if tool_name == "mnemos_recall_context":
+        if tool_name == "vesma_recall_context":
             checkpoints = adapter.recall_checkpoints(
                 query=args.get("query"),
                 limit=min(int(args.get("limit", 5)), 10),
@@ -683,7 +683,7 @@ class VesmaMemoryProvider(MemoryProvider):
                 return json.dumps({"result": "No prior checkpoint found."})
             return json.dumps({"results": checkpoints, "count": len(checkpoints)})
 
-        if tool_name == "mnemos_save_context":
+        if tool_name == "vesma_save_context":
             memory = adapter.save_checkpoint(
                 goals=args.get("goals"),
                 completed=args.get("completed"),
@@ -701,7 +701,7 @@ class VesmaMemoryProvider(MemoryProvider):
                 }
             )
 
-        if tool_name == "mnemos_agent_recall":
+        if tool_name == "vesma_agent_recall":
             items = adapter.agent_recall(
                 args.get("agent"),
                 query=args.get("query"),
@@ -711,9 +711,9 @@ class VesmaMemoryProvider(MemoryProvider):
                 return json.dumps({"result": "No agent-scoped context found."})
             return json.dumps({"results": items, "count": len(items)})
 
-        if tool_name == "mnemos_list_recent":
+        if tool_name == "vesma_list_recent":
             memories = mgr.list_recent(limit=int(args.get("limit", 20)))
-            # Title-only echo — mirror the mnemos_list_recent channel scan.
+            # Title-only echo — mirror the vesma_list_recent channel scan.
             items = []
             for m in memories:
                 scan = mgr.scan_issuance_item(None, title=m.auto_title(), context=f"hermes:{m.id}")
@@ -730,13 +730,13 @@ class VesmaMemoryProvider(MemoryProvider):
                 )
             return json.dumps({"results": items, "count": len(items)})
 
-        if tool_name == "mnemos_list_tags":
+        if tool_name == "vesma_list_tags":
             return json.dumps({"results": mgr.list_tags()})
 
-        if tool_name == "mnemos_stats":
+        if tool_name == "vesma_stats":
             return json.dumps({"results": adapter.stats()})
 
-        if tool_name == "mnemos_auto_collect_status":
+        if tool_name == "vesma_auto_collect_status":
             elapsed = time.time() - self._last_checkpoint_time
             recommendation = (
                 "save_context recommended"
@@ -754,18 +754,18 @@ class VesmaMemoryProvider(MemoryProvider):
                 }
             )
 
-        if tool_name == "mnemos_compress":
+        if tool_name == "vesma_compress":
             # N2 identity mandate: agent+session threaded onto the cache
             # row INSIDE the post_tool_call hook — no identity-less mode.
             envelope = adapter.post_tool_call(
-                tool_name="mnemos_compress",
+                tool_name="vesma_compress",
                 output_text=args["text"],
                 auto_compress=True,
                 profile=args.get("profile"),
             )
             return json.dumps(envelope.get("ccr", {}))
 
-        if tool_name == "mnemos_retrieve":
+        if tool_name == "vesma_retrieve":
             result = mgr.retrieve_content(
                 args["hash"],
                 query=args.get("query"),
@@ -776,7 +776,7 @@ class VesmaMemoryProvider(MemoryProvider):
             )
             return json.dumps(result)
 
-        if tool_name == "mnemos_ingest_url":
+        if tool_name == "vesma_ingest_url":
             memory = mgr.ingest_url(
                 args["url"],
                 tags=args["tags"],
@@ -785,15 +785,15 @@ class VesmaMemoryProvider(MemoryProvider):
             )
             # m2 (final review): auto_title() derives from the fetched page
             # content — scan the echoed title at issuance; refuse mode drops
-            # it (error shape, no echo), mirroring mnemos_filter channels.
+            # it (error shape, no echo), mirroring vesma_filter channels.
             title_scan = mgr.scan_issuance_item(
-                None, title=memory.auto_title(), context=f"hermes:mnemos_ingest_url:{memory.id}"
+                None, title=memory.auto_title(), context=f"hermes:vesma_ingest_url:{memory.id}"
             )
             if title_scan.refused:
                 return json.dumps({"error": f"issuance refused: {title_scan.reason}"})
             return json.dumps({"id": memory.id, "title": title_scan.title, "url": args["url"]})
 
-        if tool_name == "mnemos_watch_start":
+        if tool_name == "vesma_watch_start":
             paths = args.get("paths") or []
             mgr.watch_start(
                 paths=paths,
@@ -802,11 +802,11 @@ class VesmaMemoryProvider(MemoryProvider):
             )
             return json.dumps({"status": "started", "paths": paths})
 
-        if tool_name == "mnemos_watch_stop":
+        if tool_name == "vesma_watch_stop":
             mgr.watch_stop()
             return json.dumps({"status": "stopped"})
 
-        if tool_name == "mnemos_watch_status":
+        if tool_name == "vesma_watch_status":
             return json.dumps(mgr.watch_status())
 
         return tool_error(f"Unknown tool: {tool_name}")

@@ -152,7 +152,7 @@ class GraphWatchScheduler:
         graph_key, root = self._service.watch_probe(project_id)
         if self._service.store.count_files(graph_key) == 0:
             raise GraphToolError(
-                f"project {project_id!r} has no index yet — call mnemos_index_project "
+                f"project {project_id!r} has no index yet — call vesma_index_project "
                 "first (the watch poll reindexes; it never seeds a first index)"
             )
         if self._closed:

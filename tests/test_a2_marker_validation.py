@@ -569,7 +569,7 @@ def test_issuer_populated_by_mcp_compress(mcp_wired: MemoryManager) -> None:
 
     result = asyncio.run(
         mcp_mod._dispatch(
-            "mnemos_compress",
+            "vesma_compress",
             {"text": CONTENT, "project": PROJECT, "agent": AGENT, "session": SESSION},
         )
     )
@@ -585,7 +585,7 @@ def test_mcp_retrieve_strict_refusal(mcp_wired: MemoryManager) -> None:
     marker = _mint(mcp_wired)
     result = asyncio.run(
         mcp_mod._dispatch(
-            "mnemos_retrieve",
+            "vesma_retrieve",
             {
                 "hash": marker["hash"],
                 "project": PROJECT,
@@ -602,15 +602,15 @@ def test_mcp_retrieve_strict_refusal(mcp_wired: MemoryManager) -> None:
 
 
 def test_mcp_boundary_type_guards(mcp_wired: MemoryManager) -> None:
-    """Malformed A2 args get a clean error dict (mnemos_context_rewrite
+    """Malformed A2 args get a clean error dict (vesma_context_rewrite
     boundary pattern), not an AttributeError in the manager."""
     import asyncio
 
     for tool, bad in (
-        ("mnemos_compress", {"text": CONTENT, "agent": 42}),
-        ("mnemos_retrieve", {"hash": "f" * 64, "agent": 42}),
-        ("mnemos_retrieve", {"hash": "f" * 64, "original_chars": "500"}),
-        ("mnemos_retrieve", {"hash": "f" * 64, "original_chars": True}),
+        ("vesma_compress", {"text": CONTENT, "agent": 42}),
+        ("vesma_retrieve", {"hash": "f" * 64, "agent": 42}),
+        ("vesma_retrieve", {"hash": "f" * 64, "original_chars": "500"}),
+        ("vesma_retrieve", {"hash": "f" * 64, "original_chars": True}),
     ):
         result = asyncio.run(mcp_mod._dispatch(tool, bad))
         assert "error" in result, (tool, bad)
@@ -814,7 +814,7 @@ def test_mcp_validate_marker_type_guard(mcp_wired: MemoryManager) -> None:
     import asyncio
 
     bad = asyncio.run(
-        mcp_mod._dispatch("mnemos_retrieve", {"hash": "f" * 64, "validate_marker": "false"})
+        mcp_mod._dispatch("vesma_retrieve", {"hash": "f" * 64, "validate_marker": "false"})
     )
     assert bad == {"error": "validate_marker must be a boolean when provided"}
     # A real bool passes the guard untouched (None-follows-kob default
@@ -822,7 +822,7 @@ def test_mcp_validate_marker_type_guard(mcp_wired: MemoryManager) -> None:
     marker = _mint(mcp_wired)
     refused = asyncio.run(
         mcp_mod._dispatch(
-            "mnemos_retrieve",
+            "vesma_retrieve",
             {"hash": marker["hash"], "project": PROJECT, "validate_marker": True},
         )
     )

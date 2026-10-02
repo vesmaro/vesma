@@ -21,7 +21,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 - **Persisting a task card** — a work item with an owner, priority and size.
 - **Persisting a decision** — a choice with rationale and rejected alternatives.
 - **Persisting a report** — a period or wave report to the owner.
-- **Checkpoints are different**: `mnemos_save_context` auto-mints
+- **Checkpoints are different**: `vesma_save_context` auto-mints
   `metadata.canon` server-side. Never hand-write the envelope for a checkpoint —
   just pick `language` and compose the five fields (see `vesma-checkpoint`).
 - **Not sure it needs the envelope?** A record without `metadata.canon` is out
@@ -78,7 +78,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 5. **Write the record** through a channel that accepts `metadata`:
 
    ```text
-   mnemos_add(content=..., tags=[...], title=...)      # MCP: no metadata field —
+   vesma_add(content=..., tags=[...], title=...)      # MCP: no metadata field —
                                                        # record is written canon-compliant,
                                                        # but carries no envelope
    sdk.remember(content=..., project=..., agent=...,

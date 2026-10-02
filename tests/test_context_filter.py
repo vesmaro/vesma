@@ -339,7 +339,7 @@ class TestAutoFilterOnAdd:
 
 
 class TestMcpFilterTool:
-    """mnemos_filter MCP tool — explicit filter/refresh."""
+    """vesma_filter MCP tool — explicit filter/refresh."""
 
     @pytest.mark.asyncio
     async def test_mnemos_filter_tool_registered(self) -> None:
@@ -347,7 +347,7 @@ class TestMcpFilterTool:
 
         tools = await list_tools()
         names = [t.name for t in tools]
-        assert "mnemos_filter" in names
+        assert "vesma_filter" in names
 
     @pytest.mark.asyncio
     async def test_mnemos_filter_dispatch(self, mgr: MemoryManager) -> None:
@@ -362,7 +362,7 @@ class TestMcpFilterTool:
             source=MemorySource.MCP,
         )
         memory = mgr.add(data, project="test", agent="filter-test")
-        # M1 (final review): mnemos_filter is issuance-gated — raw memories
+        # M1 (final review): vesma_filter is issuance-gated — raw memories
         # are not filterable into context, so advance to published first.
         mgr.sqlite.update_status(memory.id, MemoryStatus.PUBLISHED)
         # Reset clean_content to simulate unfiltered memory
@@ -372,7 +372,7 @@ class TestMcpFilterTool:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": memory.id, "profile": "default"},
             )
 
@@ -398,7 +398,7 @@ class TestMcpFilterTool:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": memory.id, "budget": 50},
             )
 
@@ -412,7 +412,7 @@ class TestMcpFilterTool:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": "nonexistent-id"},
             )
 
@@ -420,7 +420,7 @@ class TestMcpFilterTool:
 
 
 class TestMcpAddAutoFilter:
-    """mnemos_add auto-filters and returns filter metadata."""
+    """vesma_add auto-filters and returns filter metadata."""
 
     @pytest.mark.asyncio
     async def test_mnemos_add_returns_filtered_flag(self, mgr: MemoryManager) -> None:
@@ -436,7 +436,7 @@ class TestMcpAddAutoFilter:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "2024-01-15 [INFO] start\n[INFO] start\nError: boom",
                     "tags": _VALID_TAGS,
@@ -448,7 +448,7 @@ class TestMcpAddAutoFilter:
 
 
 class TestSearchReturnsCleanContent:
-    """mnemos_search / mnemos_recall_context return clean_content after auto-filter."""
+    """vesma_search / vesma_recall_context return clean_content after auto-filter."""
 
     @pytest.mark.asyncio
     async def test_search_returns_clean_content(self, mgr: MemoryManager) -> None:
@@ -469,7 +469,7 @@ class TestSearchReturnsCleanContent:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             results = await _dispatch(
-                "mnemos_search",
+                "vesma_search",
                 {"query": "kubernetes", "limit": 10, "include_raw": True},
             )
 
@@ -494,7 +494,7 @@ class TestSearchReturnsCleanContent:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_recall_context",
+                "vesma_recall_context",
                 {"project": "recall-test"},
             )
 

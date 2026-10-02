@@ -509,7 +509,7 @@ class TestMcpTwins:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             out = await _dispatch(
-                "mnemos_save_context",
+                "vesma_save_context",
                 {"project": PROJECT, "goals": "g", "task": TASK},
             )
         assert isinstance(out, str) and "Context saved" in out
@@ -523,7 +523,7 @@ class TestMcpTwins:
             # The generic dispatch exception path: the "❌ Error: ..."
             # mapping (the surface's pre-W2 contract), never a traceback.
             out = await _call_tool_dispatch(
-                "mnemos_save_context",
+                "vesma_save_context",
                 {"project": PROJECT, "goals": "g", "task": "my/task"},
             )
         text = out[0].text
@@ -537,7 +537,7 @@ class TestMcpTwins:
         mgr.save_checkpoint({"goals": "g2"}, project=PROJECT, agent=AGENT)
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             out = await _dispatch(
-                "mnemos_recall_context",
+                "vesma_recall_context",
                 {"project": PROJECT, "task": TASK},
             )
         assert isinstance(out, str)
@@ -549,7 +549,7 @@ class TestMcpTwins:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mixed_corpus):
             out = await _dispatch(
-                "mnemos_search",
+                "vesma_search",
                 {"query": "alpha", "project": PROJECT, "task": TASK},
             )
         assert isinstance(out, list)
@@ -560,7 +560,7 @@ class TestMcpTwins:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mixed_corpus):
             out = await _dispatch(
-                "mnemos_list_recent",
+                "vesma_list_recent",
                 {"project": PROJECT, "task": TASK},
             )
         assert isinstance(out, list)

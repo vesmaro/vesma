@@ -1,7 +1,7 @@
 """mnemos #251 D0 — checkpoint channel agent identity (save_context).
 
 Covers the un-hardcoded ``agent``/``session`` params on both surfaces
-(MCP ``mnemos_save_context`` + REST ``POST /context/save``) against a
+(MCP ``vesma_save_context`` + REST ``POST /context/save``) against a
 REAL MemoryManager (tmp SQLite), because binding and dedup are
 server-side store behaviours that a MagicMock cannot exercise:
 
@@ -88,11 +88,11 @@ def client(mgr):
 
 
 async def _save(mgr: MemoryManager, **overrides: object) -> str:
-    """Dispatch mnemos_save_context against a real manager, return the text."""
+    """Dispatch vesma_save_context against a real manager, return the text."""
     args: dict[str, object] = {"project": "p251", "goals": "ship #251"}
     args.update(overrides)
     with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-        result = await _dispatch("mnemos_save_context", dict(args))
+        result = await _dispatch("vesma_save_context", dict(args))
     assert isinstance(result, str)
     return result
 

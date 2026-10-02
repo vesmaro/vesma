@@ -12,7 +12,6 @@ Validates three contracts:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -25,60 +24,60 @@ from vesmaro.mcp_server import _dispatch, call_tool, list_tools
 # ---------------------------------------------------------------------------
 
 # Minimum valid arguments per registered tool.
-# Tags for mnemos_add / mnemos_ingest_url include the required
+# Tags for vesma_add / vesma_ingest_url include the required
 # project:/agent:/mnemos: trio so validate_tag_contract (mocked in routing tests)
 # does not need real validation logic.
 _TOOL_ARGS: dict[str, dict] = {
-    "mnemos_add": {
+    "vesma_add": {
         "content": "smoke content",
         "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
     },
-    "mnemos_agent_recall": {"agent": "qa-agent"},
-    "mnemos_auto_collect_status": {},
-    "mnemos_export": {"output_path": "/tmp/smoke-export.json"},
-    "mnemos_import": {"source_path": "/tmp/smoke-import.json"},
-    "mnemos_ingest_url": {
+    "vesma_agent_recall": {"agent": "qa-agent"},
+    "vesma_auto_collect_status": {},
+    "vesma_export": {"output_path": "/tmp/smoke-export.json"},
+    "vesma_import": {"source_path": "/tmp/smoke-import.json"},
+    "vesma_ingest_url": {
         "url": "https://example.com",
         "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
     },
-    "mnemos_list_recent": {},
-    "mnemos_list_tags": {},
-    "mnemos_recall_context": {"project": "smoke"},
-    "mnemos_save_context": {"project": "smoke", "goals": "smoke goals"},
-    "mnemos_search": {"query": "smoke test"},
-    "mnemos_stats": {},
-    "mnemos_watch_start": {"project_id": "smoke", "agent": "qa-agent"},
-    "mnemos_watch_status": {},
-    "mnemos_watch_stop": {},
-    "mnemos_align_prefix": {"text": "Session sess-abc123 at 2026-07-17T10:00:00Z"},
+    "vesma_list_recent": {},
+    "vesma_list_tags": {},
+    "vesma_recall_context": {"project": "smoke"},
+    "vesma_save_context": {"project": "smoke", "goals": "smoke goals"},
+    "vesma_search": {"query": "smoke test"},
+    "vesma_stats": {},
+    "vesma_watch_start": {"project_id": "smoke", "agent": "qa-agent"},
+    "vesma_watch_status": {},
+    "vesma_watch_stop": {},
+    "vesma_align_prefix": {"text": "Session sess-abc123 at 2026-07-17T10:00:00Z"},
 }
 
 # Tools whose dispatch calls a module-level function (run_export / run_import)
 # rather than a manager method. The routing-coverage test patches these so the
 # mock manager never drives the real export/import logic (which needs a live
 # SQLite store and would crash a MagicMock).
-_MODULE_DISPATCH_TOOLS: frozenset[str] = frozenset({"mnemos_export", "mnemos_import"})
+_MODULE_DISPATCH_TOOLS: frozenset[str] = frozenset({"vesma_export", "vesma_import"})
 
 # ---------------------------------------------------------------------------
 # Routing assertions map (mcp-3 finding)
 # tool_name -> (expected_manager_method, [forbidden_manager_methods])
 # Covers all tools with a unique 1:1 manager method.
-# mnemos_save_context (shares mgr.add) and mnemos_auto_collect_status
+# vesma_save_context (shares mgr.add) and vesma_auto_collect_status
 # (no manager data method) are handled in dedicated tests below.
 # ---------------------------------------------------------------------------
 _ROUTING_MAP: dict[str, tuple[str, list[str]]] = {
-    "mnemos_add": ("add", ["search", "list_recent", "recall_context"]),
-    "mnemos_search": ("search", ["add", "list_recent", "agent_recall"]),
-    "mnemos_agent_recall": ("agent_recall", ["search", "add", "recall_context"]),
-    "mnemos_recall_context": ("recall_context", ["search", "add", "agent_recall"]),
-    "mnemos_list_recent": ("list_recent", ["search", "add", "list_tags"]),
-    "mnemos_list_tags": ("list_tags", ["search", "list_recent", "stats"]),
-    "mnemos_stats": ("stats", ["search", "list_tags", "list_recent"]),
-    "mnemos_ingest_url": ("ingest_url", ["add", "search", "list_recent"]),
-    "mnemos_watch_start": ("watch_start", ["watch_stop", "watch_status", "search"]),
-    "mnemos_watch_stop": ("watch_stop", ["watch_start", "watch_status", "search"]),
-    "mnemos_watch_status": ("watch_status", ["watch_start", "watch_stop", "search"]),
-    "mnemos_align_prefix": ("align_prefix", ["search", "add", "recall_context"]),
+    "vesma_add": ("add", ["search", "list_recent", "recall_context"]),
+    "vesma_search": ("search", ["add", "list_recent", "agent_recall"]),
+    "vesma_agent_recall": ("agent_recall", ["search", "add", "recall_context"]),
+    "vesma_recall_context": ("recall_context", ["search", "add", "agent_recall"]),
+    "vesma_list_recent": ("list_recent", ["search", "add", "list_tags"]),
+    "vesma_list_tags": ("list_tags", ["search", "list_recent", "stats"]),
+    "vesma_stats": ("stats", ["search", "list_tags", "list_recent"]),
+    "vesma_ingest_url": ("ingest_url", ["add", "search", "list_recent"]),
+    "vesma_watch_start": ("watch_start", ["watch_stop", "watch_status", "search"]),
+    "vesma_watch_stop": ("watch_stop", ["watch_start", "watch_status", "search"]),
+    "vesma_watch_status": ("watch_status", ["watch_start", "watch_stop", "search"]),
+    "vesma_align_prefix": ("align_prefix", ["search", "add", "recall_context"]),
 }
 
 
@@ -92,7 +91,7 @@ def _make_mock_manager() -> MagicMock:
     mgr = MagicMock()
     mgr.settings.mnemos.strict_tag_contract = False
     mgr.add.return_value = mock_memory
-    # mnemos #251 D0: mnemos_save_context routes through the checkpoint
+    # mnemos #251 D0: vesma_save_context routes through the checkpoint
     # single authority (validation + binding + dedup live in the manager).
     mgr.save_checkpoint.return_value = (mock_memory, False)
     mgr.search.return_value = []
@@ -131,11 +130,11 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
         ),
     ):
         if tool_name in _MODULE_DISPATCH_TOOLS:
-            # mnemos_export / mnemos_import dispatch to module-level
+            # vesma_export / vesma_import dispatch to module-level
             # run_export / run_import functions (imported locally inside
             # _handle_export / _handle_import). Patch them at their source
             # module so the local import picks up the fake.
-            if tool_name == "mnemos_export":
+            if tool_name == "vesma_export":
                 from pathlib import Path
 
                 from vesmaro.cli.export import CompressMode, ExportFormat, ExportResult
@@ -151,7 +150,7 @@ async def test_routing_all_tools_recognized(tool_name: str) -> None:
                 )
                 with patch("vesmaro.cli.export.run_export", return_value=fake):
                     result = await _dispatch(tool_name, _TOOL_ARGS[tool_name])
-            else:  # mnemos_import
+            else:  # vesma_import
                 from vesmaro.cli.import_ import ImportResult
 
                 fake = ImportResult(mode="merge", dry_run=False)
@@ -253,7 +252,7 @@ async def test_routing_invokes_correct_manager_method(tool_name: str) -> None:
 
 
 async def test_save_context_routes_to_save_checkpoint_not_add_or_search() -> None:
-    """mnemos_save_context must route to mgr.save_checkpoint - not mgr.add/search."""
+    """vesma_save_context must route to mgr.save_checkpoint - not mgr.add/search."""
     mock_mgr = _make_mock_manager()
     with (
         patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr),
@@ -262,7 +261,7 @@ async def test_save_context_routes_to_save_checkpoint_not_add_or_search() -> Non
             side_effect=lambda tags, **_kw: tags,
         ),
     ):
-        await _dispatch("mnemos_save_context", _TOOL_ARGS["mnemos_save_context"])
+        await _dispatch("vesma_save_context", _TOOL_ARGS["vesma_save_context"])
 
     mock_mgr.save_checkpoint.assert_called_once()
     mock_mgr.add.assert_not_called()
@@ -276,10 +275,10 @@ async def test_save_context_routes_to_save_checkpoint_not_add_or_search() -> Non
 
 
 async def test_auto_collect_status_touches_no_manager_data_method() -> None:
-    """mnemos_auto_collect_status must read only module-level state - zero mgr data method calls."""
+    """vesma_auto_collect_status must read only module-level state - zero mgr data method calls."""
     mock_mgr = _make_mock_manager()
     with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
-        await _dispatch("mnemos_auto_collect_status", _TOOL_ARGS["mnemos_auto_collect_status"])
+        await _dispatch("vesma_auto_collect_status", _TOOL_ARGS["vesma_auto_collect_status"])
 
     data_methods = [
         "add",
@@ -295,135 +294,48 @@ async def test_auto_collect_status_touches_no_manager_data_method() -> None:
         getattr(mock_mgr, method_name).assert_not_called()
 
 
-# ── Brand aliasing (rebrand mnemos → vesmaro, archcom 2026-09-14) ────────────
+# ── Tool-name contract (6.0.0: vesma_* only, legacy mnemos_* removed) ─────────
 
 
-async def test_no_brand_env_canonical_manifest_only() -> None:
-    """Without VESMARO_MCP_BRAND the manifest stays 38 canonical mnemos_ tools.
+async def test_manifest_vesma_only() -> None:
+    """The manifest registers the canonical ``vesma_*`` names ONLY (6.0.0).
 
-    Ф3 (epic #308): mnemos_ingest_document joined the canonical set —
+    Ф3 (epic #308): vesma_ingest_document joined the canonical set —
     the count pin moved 27 → 28 with it. ADR-0032 PG-0 slice 4: the 10
-    project-graph tools joined — 28 → 38."""
-    with patch("vesmaro.mcp_server._MCP_BRAND", ""):
-        tools = await list_tools()
-    names = [t.name for t in tools]
-    assert len(names) == 39
-    assert all(n.startswith("mnemos_") for n in names)
-
-
-async def test_brand_env_brand_primary_manifest() -> None:
-    """VESMARO_MCP_BRAND=vesmaro: manifest is brand-primary — 38 vesmaro_* names ONLY.
-
-    Owner ruling 2026-10-01: a doubled mnemos_*/brand_* manifest confuses
-    clients. Legacy mnemos_* spellings leave the manifest but stay accepted
-    on the call path (see test_canonicalize_known_alias_and_unknown_passthrough).
-    """
-    from vesmaro.mcp_server import _canonical_tools
-
-    with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
-        tools = await list_tools()
-    names = [t.name for t in tools]
-    assert len(names) == 39
-    assert all(n.startswith("vesmaro_") for n in names)
-    assert not any(n.startswith("mnemos_") for n in names)
-    assert "vesmaro_search" in names
-    assert "vesmaro_retrieve" in names
-    # renamed entries share the canonical schema objects (same Tool input_schema object)
-    canonical = {t.name: t for t in await _canonical_tools()}
-    renamed = next(t for t in tools if t.name == "vesmaro_search")
-    assert renamed.input_schema == canonical["mnemos_search"].input_schema
-
-
-async def test_canonicalize_known_alias_and_unknown_passthrough() -> None:
-    """Known vesmaro_* aliases normalise; unknown branded names fall through."""
-    from vesmaro.mcp_server import _canonicalize_tool_name
-
-    with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
-        assert _canonicalize_tool_name("vesmaro_search") == "mnemos_search"
-        assert _canonicalize_tool_name("vesmaro_save_context") == "mnemos_save_context"
-        assert _canonicalize_tool_name("vesmaro_unknown_tool") == "vesmaro_unknown_tool"
-        # legacy mnemos_* spellings leave the manifest but keep dispatching
-        # (dual-period contract, retires no earlier than 6.0)
-        assert _canonicalize_tool_name("mnemos_search") == "mnemos_search"
-        assert _canonicalize_tool_name("mnemos_save_context") == "mnemos_save_context"
-        assert _canonicalize_tool_name("other_tool") == "other_tool"
-
-
-async def test_brand_alias_harvest_matches_manifest() -> None:
-    """Harvest invariant: harvested names == manifest names (lockstep guard)."""
-    from vesmaro.mcp_server import _canonical_tool_names, _canonical_tools
-
-    manifest = {t.name for t in await _canonical_tools()}
-    assert manifest == set(_canonical_tool_names())
-    # digits are aliasable too (regex covers [a-z0-9_])
-    assert all("_" in n or n.replace("mnemos_", "").isalpha() for n in manifest)
-
-
-async def test_brand_self_alias_and_invalid_brand_rejected() -> None:
-    """brand='mnemos' (self-alias) and malformed brands degrade to canonical-only."""
-    from vesmaro.mcp_server import _canonical_tools
-
-    with patch("vesmaro.mcp_server._MCP_BRAND", "mnemos"):
-        tools = await list_tools()
-    assert len(tools) == 39  # no doubling
-
-    with patch("vesmaro.mcp_server._MCP_BRAND", "Bad Brand!"):
-        tools = await _canonical_tools()
-    assert len(tools) == 39  # malformed brand is a no-op
-
-
-async def test_vesma_mcp_brand_canonical_env_read() -> None:
-    """Rebrand 5.0.0: VESMA_MCP_BRAND canonical env is honoured with vesma_ aliases.
-
-    Regression guard for 84a2579: the brand tests above patch _MCP_BRAND directly
-    and never touch the dual-read env line; this test exercises it via env + import-reload."""
-    import importlib
-
-    from vesmaro import mcp_server as mcp
-
-    with patch.dict(os.environ, {"VESMA_MCP_BRAND": "vesma", "VESMARO_MCP_BRAND": ""}):
-        importlib.reload(mcp)
-        tools = await mcp.list_tools()
+    project-graph tools joined — 28 → 39. 6.0.0 removed the legacy
+    ``mnemos_*`` spellings from the manifest and the call path."""
+    tools = await list_tools()
     names = [t.name for t in tools]
     assert len(names) == 39
     assert all(n.startswith("vesma_") for n in names)
+    assert "vesma_search" in names
+    assert "vesma_retrieve" in names
 
 
-async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
-    """Both envs set and differing → canonical VESMA_MCP_BRAND wins (no vesmaro_ aliases)."""
-    import importlib
+async def test_no_legacy_mnemos_tools_registered() -> None:
+    """Regression (6.0.0): ZERO exposed tools start with ``mnemos_``.
 
-    from vesmaro import mcp_server as mcp
-
-    with patch.dict(
-        os.environ,
-        {"VESMA_MCP_BRAND": "vesma", "VESMARO_MCP_BRAND": "vesmaro"},
-    ):
-        importlib.reload(mcp)
-        tools = await mcp.list_tools()
+    The canonical ``vesma_*`` names stay intact; a client that allowlisted
+    the legacy spellings must switch to ``vesma_*`` (re-run
+    ``vesma integration setup``)."""
+    tools = await list_tools()
     names = [t.name for t in tools]
-    ves_aliases = [n for n in names if n.startswith("vesma_")]
-    vesmaro_aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert len(ves_aliases) == 39
-    assert not vesmaro_aliases
-    assert not any(n.startswith("mnemos_") for n in names)
-    # restore
-    importlib.reload(mcp)
+    assert not [n for n in names if n.startswith("mnemos_")]
+    assert {
+        "vesma_add",
+        "vesma_search",
+        "vesma_save_context",
+        "vesma_recall_context",
+        "vesma_agent_recall",
+    } <= set(names)
 
 
-async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
-    """VESMA_MCP_BRAND unset → deprecated VESMARO_MCP_BRAND still honoured (dual-period)."""
-    import importlib
-
-    from vesmaro import mcp_server as mcp
-
-    with patch.dict(os.environ, {"VESMARO_MCP_BRAND": "vesmaro", "VESMA_MCP_BRAND": ""}):
-        importlib.reload(mcp)
-        tools = await mcp.list_tools()
-    names = [t.name for t in tools]
-    assert len(names) == 39
-    assert all(n.startswith("vesmaro_") for n in names)
-    importlib.reload(mcp)
+async def test_legacy_mnemos_call_is_not_dispatched() -> None:
+    """Regression (6.0.0): a legacy ``mnemos_*`` call hits the unknown-tool sentinel."""
+    mock_mgr = _make_mock_manager()
+    with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
+        result = await _dispatch("mnemos_search", {"query": "smoke"})
+    assert result == "Unknown tool: mnemos_search"
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +384,7 @@ class TestServerUpdateHint:
         from vesmaro.mcp_server import _call_tool_dispatch
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
-            content = await _call_tool_dispatch("mnemos_list_tags", {})
+            content = await _call_tool_dispatch("vesma_list_tags", {})
         return content[0].text
 
     async def test_hint_appears_exactly_once_after_version_change(self) -> None:
@@ -524,12 +436,12 @@ class TestServerUpdateHint:
                 side_effect=[RuntimeError("boom"), {"ok": True}],
             ),
         ):
-            first = (await _call_tool_dispatch("mnemos_list_tags", {}))[0].text
+            first = (await _call_tool_dispatch("vesma_list_tags", {}))[0].text
             assert "❌ Error: boom" in first
             assert "server updated" not in first
             # the meta write happens only on DELIVERY — not burned
             assert store.meta["last_reported_server_version"] == "0.0.1"
-            second = (await _call_tool_dispatch("mnemos_list_tags", {}))[0].text
+            second = (await _call_tool_dispatch("vesma_list_tags", {}))[0].text
             assert "vesma server updated: 0.0.1 → " in second
             assert __version__ in second
         # delivered exactly once, meta stamped on the success path

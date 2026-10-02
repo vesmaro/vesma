@@ -70,7 +70,7 @@ def test_is_terminal(code: TriggerCode, expected: bool) -> None:
     ids=["EXHAUSTIVE", "ALREADY_EXHAUSTED", "PARTIAL", "REFUSED", "OFFLINE_LITE"],
 )
 def test_should_fallback_to_local(code: TriggerCode, expected: bool) -> None:
-    """REFUSED and OFFLINE_LITE → A falls back to local mnemos_search (КП-2)."""
+    """REFUSED and OFFLINE_LITE → A falls back to local vesma_search (КП-2)."""
     assert should_fallback_to_local(code) is expected
 
 

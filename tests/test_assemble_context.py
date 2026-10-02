@@ -21,7 +21,7 @@ Wave 1 (contract core) acceptance for the assemble_context pipeline:
   project-scoped retrieval when ``expand_ccr=True`` and the original fits
   the budget; marker stays otherwise;
 * entry-invariant status gate — ``raw`` memories never surface;
-* MCP (``mnemos_assemble_context``) and REST (``POST /context/assemble``)
+* MCP (``vesma_assemble_context``) and REST (``POST /context/assemble``)
   surfaces ride the same manager path.
 
 All secrets below are obviously fake EXAMPLE-style values built from the
@@ -703,7 +703,7 @@ class TestSurfaces:
 
         result = asyncio.new_event_loop().run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {"session": SESSION, "project": PROJECT},
             )
         )
@@ -715,7 +715,7 @@ class TestSurfaces:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
         result = asyncio.new_event_loop().run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {"session": SESSION, "project": PROJECT, "mode": "bogus"},
             )
         )
@@ -727,7 +727,7 @@ class TestSurfaces:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
         result = asyncio.new_event_loop().run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {"session": SESSION, "project": PROJECT, "file": 12345},
             )
         )
@@ -743,13 +743,13 @@ class TestSurfaces:
         loop = asyncio.new_event_loop()
         envelope = loop.run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {"session": SESSION, "project": PROJECT, "mode": "async"},
             )
         )
         denied = loop.run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {
                     "session": "sess-other",
                     "project": PROJECT,
@@ -767,13 +767,13 @@ class TestSurfaces:
         loop = asyncio.new_event_loop()
         envelope = loop.run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {"session": SESSION, "project": PROJECT, "mode": "async"},
             )
         )
         fetched = loop.run_until_complete(
             _dispatch(
-                "mnemos_assemble_context",
+                "vesma_assemble_context",
                 {
                     "session": SESSION,
                     "project": PROJECT,

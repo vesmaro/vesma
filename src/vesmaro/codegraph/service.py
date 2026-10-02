@@ -106,7 +106,7 @@ PROJECT_MARKERS: tuple[str, ...] = (
 #: One line appended to every unregistered-project confinement refusal
 #: (#454): the caller is told HOW to register, not just that it cannot.
 REGISTER_HINT = (
-    " — to register it: the mnemos_register_project tool "
+    " — to register it: the vesma_register_project tool "
     "(agent attribution required) or 'vesma graph register <project> <root>'"
 )
 
@@ -610,7 +610,7 @@ class CodeGraphService:
                 paths=[validated_root],
                 description=(
                     f"manually registered by {actor} at {datetime.now(UTC).isoformat()} "
-                    "(mnemos_register_project; PG2)"
+                    "(vesma_register_project; PG2)"
                 ),
             )
             self._main.save_project(created)
@@ -924,7 +924,7 @@ class CodeGraphService:
             stamp = (report.last_indexed_at or "unknown")[:19]
             tail = (
                 f" indexed {stamp}, {fresh}/{total} files fresh "
-                f"({stale} stale, {poisoned} poisoned) — call mnemos_search_graph"
+                f"({stale} stale, {poisoned} poisoned) — call vesma_search_graph"
             )
             return _fit_beacon_line(key, tail)
         except Exception:
@@ -1213,7 +1213,7 @@ class CodeGraphService:
             if rec.path == rel:
                 return rec
         raise GraphToolError(
-            f"path {rel!r} is not indexed for this project — call mnemos_index_project first"
+            f"path {rel!r} is not indexed for this project — call vesma_index_project first"
         )
 
     # ── tool 6: get_code_snippet (PG4) ──────────────────────────────────────
@@ -1252,7 +1252,7 @@ class CodeGraphService:
             raise GraphToolError(
                 f"path {rel!r} is POISONED (hit the secrets detector at index time); "
                 "snippet issuance is refused permanently (PG3) — only "
-                "mnemos_delete_graph_project clears it"
+                "vesma_delete_graph_project clears it"
             )
         record = self._record_or_refuse(key, rel)
         for name, value in (("start_line", start_line), ("end_line", end_line)):
@@ -1548,7 +1548,7 @@ class CodeGraphService:
 #: UTF-8 bytes and lives OUTSIDE the assembly token budget entirely.
 BEACON_LINE_MAX_BYTES = 200
 BEACON_LINE_PREFIX = "project-graph: "
-BEACON_CALL_HINT = "call mnemos_search_graph"
+BEACON_CALL_HINT = "call vesma_search_graph"
 
 
 def _fit_beacon_line(project: str, tail: str) -> str:

@@ -61,7 +61,7 @@ existing `mcp.json`; otherwise paste the line above into its `mcpServers`):
 echo '{"mcpServers":{"vesma":{"type":"stdio","command":"vesma","args":["mcp-server"]}}}' > ~/.cursor/mcp.json
 ```
 
-Then restart Cursor (or reload the window). The `mnemos_*` tools appear in the
+Then restart Cursor (or reload the window). The `vesma_*` tools appear in the
 tools list.
 
 ## Claude Code
@@ -148,7 +148,7 @@ config; otherwise paste the line above into `mcp`):
 mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json","mcp":{"vesma":{"type":"local","command":["vesma","mcp-server"]}}}' > ~/.config/opencode/opencode.json
 ```
 
-Restart OpenCode — the `mnemos_*` tools appear in the tools list.
+Restart OpenCode — the `vesma_*` tools appear in the tools list.
 
 ## Pi
 
@@ -156,7 +156,7 @@ Restart OpenCode — the `mnemos_*` tools appear in the tools list.
 (npm `@earendil-works/pi-coding-agent`) has **no built-in MCP client by
 design** — tools arrive via TypeScript extensions, so there is no JSON
 config to paste. Vesma ships a bridge extension that spawns the server over
-stdio (the same `vesma mcp-server` wire) and registers every `mnemos_*`
+stdio (the same `vesma mcp-server` wire) and registers every `vesma_*`
 tool as a native Pi tool:
 
 ```bash
@@ -169,7 +169,7 @@ That deploys:
   registration; Pi loads extensions from that directory automatically)
 - `~/.pi/agent/skills/<name>/SKILL.md` — the skill pack, nested layout
 
-Restart Pi (or run `/reload` inside a session) and the `mnemos_*` tools
+Restart Pi (or run `/reload` inside a session) and the `vesma_*` tools
 appear; `/vesma` reconnects the bridge on demand (legacy alias: `/mnemos`).
 Manual fallback — copy
 `integrations/extensions/vesma-mcp.ts` from the repo into
@@ -202,7 +202,7 @@ on Linux/macOS) or the workspace `.vscode/mcp.json`:
 }
 ```
 
-The `mnemos_*` tools appear in the Copilot Chat tools picker.
+The `vesma_*` tools appear in the Copilot Chat tools picker.
 
 ## ZCode · Claude Code · Codex · Cursor — the `~/.agents` standard
 
@@ -266,7 +266,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 ```
 
 A JSON-RPC reply with `"serverInfo":{"name":"vesma"...}` means the server
-answers. Then ask your agent: *“use mnemos_add to save a memory”* — a valid
+answers. Then ask your agent: *“use vesma_add to save a memory”* — a valid
 roundtrip needs the [tag contract](../docs/en/user/tag-contract.md):
 one `project:<slug>`, one `agent:<slug>`, at least one `mnemos:<subtype>`.
 

@@ -1630,7 +1630,7 @@ HEARTBEAT_PROJECT_ID_MAX_CHARS: Final[int] = 64
 #: The exactly-one server-side action flag line (C11) — DESCRIPTIVE
 #: ONLY: it states where peer detail lives, carries no directive
 #: lexicon ("urgent", "act now"), no policy semantics, nothing pinnable.
-HEARTBEAT_FLAG_LINE: Final[str] = "peer details are available through the mnemos_awareness tool"
+HEARTBEAT_FLAG_LINE: Final[str] = "peer details are available through the vesma_awareness tool"
 
 #: C11 sanitization: everything outside Unicode word characters, dot,
 #: underscore and hyphen collapses to ``_`` — no markdown syntax, no

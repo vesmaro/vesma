@@ -1,6 +1,6 @@
-"""Integration tests for the ``mnemos_align_prefix`` MCP tool (P1-5).
+"""Integration tests for the ``vesma_align_prefix`` MCP tool (P1-5).
 
-These exercise the full ``_dispatch("mnemos_align_prefix", ...)`` path
+These exercise the full ``_dispatch("vesma_align_prefix", ...)`` path
 against a REAL ``MemoryManager`` + REAL ``align()`` — not a mocked
 ``align_prefix`` return value. They cover the QA gaps left by the
 unit-level routing test in ``test_mcp_server.py``:
@@ -64,7 +64,7 @@ class TestAlignPrefixEndToEnd:
         context block."""
         text = "System prompt. Logged at 2026-07-17T10:30:00Z end."
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
-            result = await _dispatch("mnemos_align_prefix", {"text": text})
+            result = await _dispatch("vesma_align_prefix", {"text": text})
 
         assert isinstance(result, dict), f"expected dict, got {type(result)}"
         # The four contract keys MUST be present.
@@ -101,7 +101,7 @@ class TestProfileForwarding:
         text = f"Built at 2026-07-17T10:00:00Z commit {long_token};"
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch(
-                "mnemos_align_prefix",
+                "vesma_align_prefix",
                 {"text": text, "profile": "code"},
             )
         assert isinstance(result, dict)
@@ -121,7 +121,7 @@ class TestProfileForwarding:
         text = f"Updated 2026-07-17T10:00:00Z ref {long_token}."
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
             result = await _dispatch(
-                "mnemos_align_prefix",
+                "vesma_align_prefix",
                 {"text": text, "profile": "docs"},
             )
         assert isinstance(result, dict)
@@ -137,7 +137,7 @@ class TestProfileForwarding:
         long_token = "aBcDeFgHiJkLmNoPqRsTuVwXy"
         text = f"Token: {long_token} at 2026-07-17T10:00:00Z."
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
-            result = await _dispatch("mnemos_align_prefix", {"text": text})
+            result = await _dispatch("vesma_align_prefix", {"text": text})
         assert isinstance(result, dict)
         kinds = {s["kind"] for s in result["extracted"]}
         assert "token" in kinds
@@ -150,12 +150,12 @@ class TestCallToolTextContentWrapping:
     async def test_call_tool_align_prefix_wraps_dict_as_json(
         self, real_manager: MemoryManager
     ) -> None:
-        """call_tool('mnemos_align_prefix', ...) must return a list with
+        """call_tool('vesma_align_prefix', ...) must return a list with
         one TextContent whose .text is valid JSON containing the four
         contract keys."""
         text = "System prompt. At 2026-07-17T10:30:00Z done."
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
-            contents = await call_tool("mnemos_align_prefix", {"text": text})
+            contents = await call_tool("vesma_align_prefix", {"text": text})
 
         assert len(contents) == 1
         payload = json.loads(contents[0].text)
@@ -176,13 +176,13 @@ class TestMissingTextArg:
     async def test_align_prefix_missing_text_arg_returns_error(
         self, real_manager: MemoryManager
     ) -> None:
-        """Calling _dispatch('mnemos_align_prefix', {}) without the required
+        """Calling _dispatch('vesma_align_prefix', {}) without the required
         'text' arg must return an error string (graceful), not raise."""
         with patch("vesmaro.mcp_server.get_manager", return_value=real_manager):
             # _dispatch does args["text"] → KeyError. The call_tool wrapper
             # catches Exception and returns a TextContent with the error.
             # We test via call_tool so the full graceful path is exercised.
-            contents = await call_tool("mnemos_align_prefix", {})
+            contents = await call_tool("vesma_align_prefix", {})
         assert len(contents) == 1
         # The error is surfaced to the caller (not swallowed).
         assert "Error" in contents[0].text or "text" in contents[0].text
@@ -198,4 +198,4 @@ class TestMissingTextArg:
             patch("vesmaro.mcp_server.get_manager", return_value=real_manager),
             pytest.raises(KeyError),
         ):
-            await _dispatch("mnemos_align_prefix", {})
+            await _dispatch("vesma_align_prefix", {})

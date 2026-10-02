@@ -234,7 +234,7 @@ def test_template_config_blocks_match_wire_contract() -> None:
 def test_template_exposes_core_tools() -> None:
     """Checklist items 3-5 reference tools the Expose section must list."""
     text = TEMPLATE.read_text(encoding="utf-8")
-    for tool in ("mnemos_search", "mnemos_add", "mnemos_agent_recall"):
+    for tool in ("vesma_search", "vesma_add", "vesma_agent_recall"):
         assert tool in text, f"Expose section missing core tool: {tool}"
 
 

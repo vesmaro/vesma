@@ -377,7 +377,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
 
     ``mcp_server._checkpoint_reminder()`` may append a nudge like
     ``\n\n⚠️ [vesma] N tool calls since last checkpoint … Consider
-    calling mnemos_save_context …`` after the tool's JSON response. It is
+    calling vesma_save_context …`` after the tool's JSON response. It is
     informational metadata for MCP clients, NOT part of the tool's return
     value — so a correct client must ignore it before parsing.
 
@@ -419,11 +419,11 @@ async def _dispatch_real(real_manager: MemoryManager, name: str, args: dict):
 
 class TestMcpRegistration:
     async def test_workflow_tool_registered(self) -> None:
-        """list_tools() advertises mnemos_workflow with the action enum."""
+        """list_tools() advertises vesma_workflow with the action enum."""
         tools = await list_tools()
         names = {t.name for t in tools}
-        assert "mnemos_workflow" in names
-        tool = next(t for t in tools if t.name == "mnemos_workflow")
+        assert "vesma_workflow" in names
+        tool = next(t for t in tools if t.name == "vesma_workflow")
         action_schema = tool.input_schema["properties"]["action"]
         assert action_schema["enum"] == ["set", "get", "history"]
         assert tool.input_schema["required"] == ["action", "memory_id"]
@@ -434,7 +434,7 @@ class TestMcpDispatch:
         mid = _add_memory(tmp_manager)
         result = await _call_tool_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "set", "memory_id": mid, "to": "in-progress", "actor": "alice"},
         )
         assert result["to_status"] == "in-progress"
@@ -445,14 +445,14 @@ class TestMcpDispatch:
     async def test_action_get_returns_status(self, tmp_manager: MemoryManager) -> None:
         mid = _add_memory(tmp_manager)
         result = await _call_tool_real(
-            tmp_manager, "mnemos_workflow", {"action": "get", "memory_id": mid}
+            tmp_manager, "vesma_workflow", {"action": "get", "memory_id": mid}
         )
         assert result["workflow_status"] == "open"
 
     async def test_action_get_missing_memory_error(self, tmp_manager: MemoryManager) -> None:
         result = await _dispatch_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "get", "memory_id": "no-such-id"},
         )
         assert "error" in result
@@ -462,7 +462,7 @@ class TestMcpDispatch:
         mid = _add_memory(tmp_manager)
         tmp_manager.workflow_set(mid, "in-progress", actor="alice")
         result = await _call_tool_real(
-            tmp_manager, "mnemos_workflow", {"action": "history", "memory_id": mid}
+            tmp_manager, "vesma_workflow", {"action": "history", "memory_id": mid}
         )
         assert result["memory_id"] == mid
         assert len(result["history"]) == 1
@@ -472,7 +472,7 @@ class TestMcpDispatch:
         mid = _add_memory(tmp_manager)
         result = await _dispatch_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "set", "memory_id": mid, "actor": "alice"},
         )
         assert "error" in result
@@ -482,14 +482,14 @@ class TestMcpDispatch:
         mid = _add_memory(tmp_manager)
         result = await _dispatch_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "set", "memory_id": mid, "to": "in-progress"},
         )
         assert "error" in result
         assert "actor" in result["error"]
 
     async def test_missing_memory_id_error(self, tmp_manager: MemoryManager) -> None:
-        result = await _dispatch_real(tmp_manager, "mnemos_workflow", {"action": "get"})
+        result = await _dispatch_real(tmp_manager, "vesma_workflow", {"action": "get"})
         assert "error" in result
         assert "memory_id" in result["error"]
 
@@ -497,7 +497,7 @@ class TestMcpDispatch:
         mid = _add_memory(tmp_manager)
         result = await _dispatch_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "bogus", "memory_id": mid},
         )
         assert "error" in result
@@ -512,7 +512,7 @@ class TestMcpDispatch:
         tmp_manager.workflow_set(mid, "blocked", actor="alice")
         result = await _dispatch_real(
             tmp_manager,
-            "mnemos_workflow",
+            "vesma_workflow",
             {"action": "set", "memory_id": mid, "to": "done", "actor": "alice"},
         )
         assert "error" in result
@@ -702,7 +702,7 @@ class TestServerSideEnforcement:
         result = asyncio.run(
             _dispatch_real(
                 tmp_manager,
-                "mnemos_workflow",
+                "vesma_workflow",
                 {"action": "set", "memory_id": mid, "to": "done", "actor": "alice"},
             )
         )

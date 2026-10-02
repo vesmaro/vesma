@@ -26,7 +26,7 @@ Hard contract (the wrapper's side of ADR-0035):
 * ``canary``/``on`` yield the tail text — ``call_tool`` appends it as
   ONE TextContent, the LAST element of the response (tail-LAST,
   ADR-0028);
-* the deny-list surfaces (``mnemos_assemble_context`` — it already
+* the deny-list surfaces (``vesma_assemble_context`` — it already
   composes the full picture, a tail there means double render and
   double cursor advance; export/import — the bulk transfer pair, the
   MCP legs of the federation class) never carry the tail (but still
@@ -51,12 +51,12 @@ HEARTBEAT_DENY_TOOLS: Final[frozenset[str]] = frozenset(
         # Already composes the full awareness picture inside its own
         # handler: attaching the tail here is double render + double
         # cursor advance (the C13 ruling).
-        "mnemos_assemble_context",
+        "vesma_assemble_context",
         # Bulk transfer / federation class: a tail on a bulk export or
         # restore response is noise on a surface whose contract is
         # metadata-only.
-        "mnemos_export",
-        "mnemos_import",
+        "vesma_export",
+        "vesma_import",
     }
 )
 
@@ -66,10 +66,10 @@ HEARTBEAT_DENY_TOOLS: Final[frozenset[str]] = frozenset(
 #: tags/reprocess mutate rather than write new peer rows.
 HEARTBEAT_WRITE_TOOLS: Final[frozenset[str]] = frozenset(
     {
-        "mnemos_add",
-        "mnemos_save_context",
-        "mnemos_ingest_url",
-        "mnemos_ingest_document",
+        "vesma_add",
+        "vesma_save_context",
+        "vesma_ingest_url",
+        "vesma_ingest_document",
     }
 )
 
@@ -79,7 +79,7 @@ HEARTBEAT_RENDERING_MODES: Final[frozenset[str]] = frozenset({"canary", "on"})
 
 
 def _tag_value(args: dict[str, Any], prefix: str) -> str | None:
-    """Identity from the tag list (the ``mnemos_add`` convention)."""
+    """Identity from the tag list (the ``vesma_add`` convention)."""
     tags = args.get("tags")
     if not isinstance(tags, list):
         return None
@@ -96,7 +96,7 @@ def _identity(args: dict[str, Any]) -> tuple[str | None, str | None, str | None]
 
     Explicit arguments first (``project``/``project_id``/``agent``/
     ``session``); the tag-derived legs (``project:``/``agent:``) cover
-    the ``mnemos_add`` convention where identity rides validated tags.
+    the ``vesma_add`` convention where identity rides validated tags.
     NO cwd fallback, deliberately — unlike the codegraph indexing hint,
     the heartbeat keys PERSISTENT cursor state on ``(project, agent)``
     and must not mint it from a working-directory guess. A call without

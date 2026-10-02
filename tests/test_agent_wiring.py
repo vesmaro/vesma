@@ -347,7 +347,7 @@ class TestWireAgent:
     def test_already_wired_precise_when_wildcard_present(self, agents_dir: Path) -> None:
         """Precise mode on a wildcard-wired agent adds the individual tokens.
 
-        The wildcard ``mnemos/*`` is not the same string as ``mnemos/mnemos_add``,
+        The wildcard ``mnemos/*`` is not the same string as ``mnemos/vesma_add``,
         so precise mode adds the individual tokens. This is correct behaviour —
         the user explicitly asked for precise mode.
         """

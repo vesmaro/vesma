@@ -1,7 +1,7 @@
-"""Tests for the grouped ``mnemos_tags`` MCP tool pilot (issue #97).
+"""Tests for the grouped ``vesma_tags`` MCP tool pilot (issue #97).
 
 Covers the ``action: enum [rename, remove, add]`` dispatch and the
-non-breaking ``mnemos_tags_rename`` alias:
+non-breaking ``vesma_tags_rename`` alias:
 
   - ``MemoryManager.tags_remove`` — exact + wildcard removal, dry-run,
     idempotency, contract enforcement, FTS5 consistency.
@@ -9,11 +9,11 @@ non-breaking ``mnemos_tags_rename`` alias:
     duplicate-suppression, contract-breaking tag is rejected per memory.
   - ``MemoryManager.tags_rename`` still passes through the shared
     ``_commit_tags`` path (regression vs ``test_tags_rename.py``).
-  - MCP ``_dispatch``: ``mnemos_tags`` with each action, the alias, and
+  - MCP ``_dispatch``: ``vesma_tags`` with each action, the alias, and
     unknown-action / missing-arg error returns.
 
 The grouped tool must stay non-breaking: every existing
-``mnemos_tags_rename`` call still works (alias routes to action='rename').
+``vesma_tags_rename`` call still works (alias routes to action='rename').
 """
 
 from __future__ import annotations
@@ -327,7 +327,7 @@ class TestRenameViaSharedCommit:
 
 
 # ---------------------------------------------------------------------------
-# MCP dispatch — mnemos_tags + mnemos_tags_rename alias
+# MCP dispatch — vesma_tags + vesma_tags_rename alias
 # ---------------------------------------------------------------------------
 
 
@@ -345,7 +345,7 @@ class TestMcpDispatch:
         _add_gcw_memory(tmp_manager)
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags",
+            "vesma_tags",
             {
                 "action": "rename",
                 "from_prefix": "gcw:",
@@ -367,7 +367,7 @@ class TestMcpDispatch:
         )
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags",
+            "vesma_tags",
             {"action": "remove", "tags": ["severity:high"], "dry_run": False},
         )
         assert result["changed"] == 1
@@ -381,7 +381,7 @@ class TestMcpDispatch:
         _add_memory(tmp_manager, project="p1")
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags",
+            "vesma_tags",
             {"action": "add", "tags": ["severity:low"], "project": "p1", "dry_run": False},
         )
         assert result["changed"] == 1
@@ -395,7 +395,7 @@ class TestMcpDispatch:
         _add_memory(tmp_manager, project="p1")
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags",
+            "vesma_tags",
             {"action": "add", "tags": ["severity:low"], "project": "p1"},
         )
         assert result["dry_run"] is True
@@ -403,13 +403,13 @@ class TestMcpDispatch:
         assert "severity:low" not in mem.tags
 
     def test_dispatch_alias_tags_rename(self, tmp_manager, monkeypatch) -> None:
-        """The legacy mnemos_tags_rename tool still works (non-breaking alias)."""
+        """The legacy vesma_tags_rename tool still works (non-breaking alias)."""
         from mnemos import mcp_server
 
         _add_gcw_memory(tmp_manager)
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags_rename",
+            "vesma_tags_rename",
             {"from_prefix": "gcw:", "to_prefix": "mnemos:", "dry_run": False},
         )
         # Alias must return the rename-shaped report (existing contract).
@@ -428,7 +428,7 @@ class TestMcpDispatch:
         )
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags_rename",
+            "vesma_tags_rename",
             {
                 "from_prefix": "gcw:",
                 "to_prefix": "mnemos:",
@@ -445,7 +445,7 @@ class TestMcpDispatch:
         from mnemos import mcp_server
 
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
-        result = self._dispatch("mnemos_tags", {"action": "rename"})
+        result = self._dispatch("vesma_tags", {"action": "rename"})
         assert "error" in result
         assert "from_prefix" in result["error"]
 
@@ -454,7 +454,7 @@ class TestMcpDispatch:
         from mnemos import mcp_server
 
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
-        result = self._dispatch("mnemos_tags", {"action": "frobnicate"})
+        result = self._dispatch("vesma_tags", {"action": "frobnicate"})
         assert "error" in result
         assert "rename" in result["error"]
         assert "remove" in result["error"]
@@ -476,7 +476,7 @@ class TestMcpDispatch:
         )
         monkeypatch.setattr(mcp_server, "get_manager", lambda: tmp_manager)
         result = self._dispatch(
-            "mnemos_tags",
+            "vesma_tags",
             {"action": "remove", "tags": ["gcw:"], "wildcard": True, "dry_run": False},
         )
         assert result["changed"] == 1

@@ -143,7 +143,7 @@ def test_beacon_shown_when_enabled_and_indexed(
     text = result["text"]
     assert "project-graph: minirepo indexed " in text
     assert "2/2 files fresh (0 stale, 0 poisoned)" in text
-    assert text.rstrip().endswith("call mnemos_search_graph")
+    assert text.rstrip().endswith("call vesma_search_graph")
     assert len(text.encode("utf-8")) <= 200
 
 
@@ -220,11 +220,11 @@ def test_beacon_line_byte_cap_under_absurd_slug(
 
     long_slug = "п" * 500  # 1000 bytes of slug
     line = _fit_beacon_line(
-        long_slug, " indexed t, 1/1 files fresh (0 stale, 0 poisoned) — call mnemos_search_graph"
+        long_slug, " indexed t, 1/1 files fresh (0 stale, 0 poisoned) — call vesma_search_graph"
     )
     assert len(line.encode("utf-8")) <= 200
     assert line.startswith("project-graph: ")
-    assert line.endswith("call mnemos_search_graph")
+    assert line.endswith("call vesma_search_graph")
 
 
 # ── the watch poll (§3.2 trigger (b)) ────────────────────────────────────────

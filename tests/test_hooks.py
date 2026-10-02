@@ -8,12 +8,12 @@ Pinned here:
   entry invariant runs inside the assemble pipeline, not in the hook.
 * ``on_session_start`` — thin wrapper over ``recall_context``; this
   channel owns the issuance scan of the echoed checkpoints (mirroring
-  ``mnemos_recall_context``); refuse mode drops the checkpoint.
+  ``vesma_recall_context``); refuse mode drops the checkpoint.
 * ``post_tool_call`` — the autocompression entry point: default OFF,
   per-call ``auto_compress`` and the ``hooks.auto_compress`` knob both
   enable it; N2 MANDATE — the compress call ALWAYS threads
   ``(agent, session)`` onto the cache row (issuer ledger verified).
-* The grouped ``mnemos_hooks`` MCP tool (action:enum, #97 pattern) and
+* The grouped ``vesma_hooks`` MCP tool (action:enum, #97 pattern) and
   the parametric REST ``POST /hooks/{action}`` route — both over the
   shared ``dispatch_hook``.
 
@@ -464,7 +464,7 @@ class TestDispatch:
             )
 
 
-# ── MCP surface: mnemos_hooks (grouped action:enum) ──────────────────────────
+# ── MCP surface: vesma_hooks (grouped action:enum) ──────────────────────────
 
 
 class TestMcpHooksTool:
@@ -472,7 +472,7 @@ class TestMcpHooksTool:
         monkeypatch_manager = mgr
         mcp_mod._manager = monkeypatch_manager
         try:
-            return asyncio.new_event_loop().run_until_complete(_dispatch("mnemos_hooks", args))
+            return asyncio.new_event_loop().run_until_complete(_dispatch("vesma_hooks", args))
         finally:
             mcp_mod._manager = None
 

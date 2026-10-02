@@ -144,10 +144,13 @@ class TestToolSchemas:
         p = _make_provider()
         assert len(p.get_tool_schemas()) == 15
 
-    def test_all_names_start_with_mnemos(self):
+    def test_all_names_start_with_vesma(self):
         p = _make_provider()
         for s in p.get_tool_schemas():
-            assert s["name"].startswith("mnemos_"), s["name"]
+            assert s["name"].startswith("vesma_"), s["name"]
+            # 6.0.0: the legacy mnemos_* spellings are gone everywhere —
+            # the in-process Hermes manifest mirrors the MCP wire surface.
+            assert not s["name"].startswith("mnemos_"), s["name"]
 
     def test_schema_names_unique(self):
         p = _make_provider()
@@ -415,7 +418,7 @@ class TestHandleToolCall:
         adapter = _make_mock_adapter()
         adapter.search.side_effect = RuntimeError("boom")
         p._adapter = adapter
-        result = p.handle_tool_call("mnemos_search", {"query": "x"})
+        result = p.handle_tool_call("vesma_search", {"query": "x"})
         data = json.loads(result)
         assert "error" in data
 
@@ -423,7 +426,7 @@ class TestHandleToolCall:
         p = _make_provider()
         adapter = _make_mock_adapter()
         p._adapter = adapter
-        p.handle_tool_call("mnemos_search", {"query": "x"})
-        result = p.handle_tool_call("mnemos_auto_collect_status", {})
+        p.handle_tool_call("vesma_search", {"query": "x"})
+        result = p.handle_tool_call("vesma_auto_collect_status", {})
         data = json.loads(result)
         assert data["signals"]["call_counter"]["calls_since_save"] >= 1

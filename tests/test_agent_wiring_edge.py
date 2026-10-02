@@ -457,7 +457,7 @@ class TestWildcardToPreciseMigration:
 
         This is the documented behaviour: precise mode adds individual tokens
         that are missing. The wildcard ``mnemos/*`` is a different string from
-        ``mnemos/mnemos_add``, so it is not removed. Both coexist after
+        ``mnemos/vesma_add``, so it is not removed. Both coexist after
         migration.
         """
         directory = tmp_path / "agents"

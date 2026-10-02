@@ -27,7 +27,7 @@ Wave 2 acceptance for the rewrite event:
 * **project-scoped supersedes (W2 review F2)** — a target of another
   project is rejected with the SAME message as a nonexistent target (no
   global existence oracle), no edge, no write;
-* **surfaces** — MCP ``mnemos_context_rewrite`` and REST
+* **surfaces** — MCP ``vesma_context_rewrite`` and REST
   ``POST /context/rewrite`` ride the same manager path.
 
 All secrets below are obviously fake EXAMPLE-style values built from the
@@ -554,7 +554,7 @@ class TestRateLimit:
         for i in range(3):
             loop.run_until_complete(
                 _dispatch(
-                    "mnemos_context_rewrite",
+                    "vesma_context_rewrite",
                     {
                         "content": f"mcp block number {i}",
                         "project": PROJECT,
@@ -565,7 +565,7 @@ class TestRateLimit:
             )
         blocked = loop.run_until_complete(
             _dispatch(
-                "mnemos_context_rewrite",
+                "vesma_context_rewrite",
                 {
                     "content": "mcp block number three",
                     "project": PROJECT,
@@ -709,8 +709,8 @@ class TestSurfaces:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
         loop = asyncio.new_event_loop()
         args = {"content": ORIGINAL_V2, "project": PROJECT, "agent": AGENT, "session": SESSION}
-        first = loop.run_until_complete(_dispatch("mnemos_context_rewrite", dict(args)))
-        second = loop.run_until_complete(_dispatch("mnemos_context_rewrite", dict(args)))
+        first = loop.run_until_complete(_dispatch("vesma_context_rewrite", dict(args)))
+        second = loop.run_until_complete(_dispatch("vesma_context_rewrite", dict(args)))
         loop.close()
 
         assert first["status"] == "stored"
@@ -721,17 +721,17 @@ class TestSurfaces:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
         loop = asyncio.new_event_loop()
         missing = loop.run_until_complete(
-            _dispatch("mnemos_context_rewrite", {"project": PROJECT, "agent": AGENT})
+            _dispatch("vesma_context_rewrite", {"project": PROJECT, "agent": AGENT})
         )
         bad_session = loop.run_until_complete(
             _dispatch(
-                "mnemos_context_rewrite",
+                "vesma_context_rewrite",
                 {"content": ORIGINAL_V2, "project": PROJECT, "agent": AGENT, "session": 42},
             )
         )
         ghost = loop.run_until_complete(
             _dispatch(
-                "mnemos_context_rewrite",
+                "vesma_context_rewrite",
                 {
                     "content": ORIGINAL_V2,
                     "project": PROJECT,

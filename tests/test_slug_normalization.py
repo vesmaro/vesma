@@ -9,12 +9,12 @@ The June bug, re-confirmed against current main by the #400 re-diagnosis
 probes:
 
 * ``MemoryManager.save_checkpoint`` (the single authority behind
-  ``mnemos_save_context`` and the REST twin ``POST /context/save``)
+  ``vesma_save_context`` and the REST twin ``POST /context/save``)
   accepted the ``project`` argument VERBATIM — it never passes through
-  the tag contract like ``mnemos_add`` does, so ``MyProject`` /
+  the tag contract like ``vesma_add`` does, so ``MyProject`` /
   ``My Project`` persisted raw into the ``project`` column and the
   ``project:`` tag, while the same logical project written through
-  ``mnemos_add`` landed (strict) rejected or (lax) normalized — two
+  ``vesma_add`` landed (strict) rejected or (lax) normalized — two
   store keys for one project: a namespace island.
 * Read paths (``search``, ``recall_context``, ``list_recent``,
   ``agent_recall``) predicated on the raw query string, so a
@@ -170,7 +170,7 @@ class TestSaveBoundaryNormalizes:
     ) -> None:
         text = await _call(
             real_manager,
-            "mnemos_save_context",
+            "vesma_save_context",
             {"project": PASCAL, "goals": "mcp normalization", "agent": "qa", "session": "s-2"},
         )
         assert "Context saved" in text
@@ -279,11 +279,11 @@ class TestQueryBoundaryNormalizes:
     async def test_mcp_recall_context_via_variant(self, real_manager: MemoryManager) -> None:
         text = await _call(
             real_manager,
-            "mnemos_save_context",
+            "vesma_save_context",
             {"project": LOWER, "goals": "recall mcp", "agent": "qa", "session": "s-5"},
         )
         assert "Context saved" in text
-        text = await _call(real_manager, "mnemos_recall_context", {"project": PASCAL})
+        text = await _call(real_manager, "vesma_recall_context", {"project": PASCAL})
         assert "recall mcp" in text, "PascalCase recall failed to match lowercase checkpoint"
 
     def test_list_recent_matches_via_variant_filter(self, real_manager: MemoryManager) -> None:
@@ -336,7 +336,7 @@ class TestUnsalvageableSlugRejected:
 
     async def test_mcp_save_context_rejects_invalid_slug(self, real_manager: MemoryManager) -> None:
         text = await _call(
-            real_manager, "mnemos_save_context", {"project": "my/project", "goals": "x"}
+            real_manager, "vesma_save_context", {"project": "my/project", "goals": "x"}
         )
         assert text.startswith("❌")
         assert "project must be 1-64 characters" in text
@@ -392,7 +392,7 @@ class TestNoNamespaceIslands:
     async def test_two_spellings_one_namespace(self, real_manager: MemoryManager) -> None:
         await _call(
             real_manager,
-            "mnemos_save_context",
+            "vesma_save_context",
             {
                 "project": "MyProject",
                 "goals": "ship the feature",
@@ -402,7 +402,7 @@ class TestNoNamespaceIslands:
         )
         await _call(
             real_manager,
-            "mnemos_add",
+            "vesma_add",
             {
                 "content": "bob decision note",
                 "tags": ["project:myproject", "agent:bob", "mnemos:decision"],
@@ -415,14 +415,14 @@ class TestNoNamespaceIslands:
         assert projects == {"myproject"}, f"namespace split: {projects}"
 
         # Recall via the OTHER spelling sees alice's checkpoint.
-        text = await _call(real_manager, "mnemos_recall_context", {"project": "myproject"})
+        text = await _call(real_manager, "vesma_recall_context", {"project": "myproject"})
         assert "ship the feature" in text
 
         # Scoped search via the OTHER spelling finds bob's note IN SCOPE
         # (no cross-project soft fallback).
         raw = await _call(
             real_manager,
-            "mnemos_search",
+            "vesma_search",
             {"query": "bob decision", "project": "MyProject", "include_raw": True},
         )
         hits = json.loads(raw)

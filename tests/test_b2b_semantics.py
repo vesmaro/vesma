@@ -263,7 +263,7 @@ class TestImmediateIngest:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(mcp_mod, "_manager", manager)
             result = asyncio.new_event_loop().run_until_complete(
-                _dispatch("mnemos_add", {"content": "mcp default body about ibex", "tags": TAGS})
+                _dispatch("vesma_add", {"content": "mcp default body about ibex", "tags": TAGS})
             )
         assert result["status"] == "published"
         row = manager.sqlite.get(result["id"])
@@ -509,7 +509,7 @@ class TestRetraction:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(mcp_mod, "_manager", manager)
             result = asyncio.new_event_loop().run_until_complete(
-                _dispatch("mnemos_retrieve", {"hash": cached["hash"], "project": PROJECT})
+                _dispatch("vesma_retrieve", {"hash": cached["hash"], "project": PROJECT})
             )
         assert result["found"] is True
         assert RETRACTION_RE.match(result["original"])

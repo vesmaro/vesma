@@ -2,10 +2,10 @@
 
 Bugs covered:
   #1 — include_raw parameter was a no-op in manager.search()
-  #2 — mnemos_search MCP tool missing status parameter
-  #3 — mnemos_agent_recall returns empty for raw entries (query path)
+  #2 — vesma_search MCP tool missing status parameter
+  #3 — vesma_agent_recall returns empty for raw entries (query path)
   #4 — project/agent tag case not normalized in lax mode
-  #5 — mnemos_stats lacks embedding/processor/search health
+  #5 — vesma_stats lacks embedding/processor/search health
 
 Each test adds an entry and immediately searches/recalls — the core
 scenario that was broken (search returns empty for recently-added entries).
@@ -172,7 +172,7 @@ class TestExplicitStatusFilter:
 
 class TestMcpSearchStatusParam:
     async def test_mcp_search_status_param_passes_through(self):
-        """mnemos_search dispatch passes status to manager.search()."""
+        """vesma_search dispatch passes status to manager.search()."""
         from unittest.mock import patch
 
         from vesmaro.mcp_server import _dispatch
@@ -182,7 +182,7 @@ class TestMcpSearchStatusParam:
         mock_mgr.settings.mnemos.strict_tag_contract = False
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
-            await _dispatch("mnemos_search", {"query": "test", "status": "raw"})
+            await _dispatch("vesma_search", {"query": "test", "status": "raw"})
 
         # Verify status was converted to MemoryStatus and passed
         assert mock_mgr.search.called
@@ -200,7 +200,7 @@ class TestMcpSearchStatusParam:
         mock_mgr.settings.mnemos.strict_tag_contract = False
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
-            await _dispatch("mnemos_search", {"query": "test"})
+            await _dispatch("vesma_search", {"query": "test"})
 
         call_kwargs = mock_mgr.search.call_args.kwargs
         assert call_kwargs["status"] is None

@@ -4,10 +4,10 @@ Complements ``test_context_filter.py`` by covering gaps identified during
 the QA audit:
 
 * **FTS5 desync fix robustness**: add → filter → search (FTS still finds it).
-* **Auto-filter with empty content**: ``mnemos_add`` with empty string.
+* **Auto-filter with empty content**: ``vesma_add`` with empty string.
 * **Auto-filter with very large content**: 100KB+ input → completes.
 * **Auto-filter profile auto-detection**: no profile → correct profile.
-* **``mnemos_filter`` on memory without raw_content**: uses ``content``.
+* **``vesma_filter`` on memory without raw_content**: uses ``content``.
 * **``mnemos filter --all`` on empty database**: graceful, 0 filtered.
 * **``mnemos filter --all`` with mixed filtered/unfiltered**: re-filters all.
 * **Filter stats accuracy**: ``get_filter_stats()`` correct counts + avg.
@@ -146,7 +146,7 @@ class TestAutoFilterEmptyContent:
     """Auto-filter with empty content → no crash, clean_content empty/None."""
 
     def test_empty_string_content(self, mgr: MemoryManager) -> None:
-        """``mnemos_add`` with empty string → no crash."""
+        """``vesma_add`` with empty string → no crash."""
         data = MemoryCreate(
             content="",
             tags=_VALID_TAGS,
@@ -256,7 +256,7 @@ class TestAutoFilterProfileAutoDetection:
         assert reloaded.filter_profile == expected_profile
 
 
-# ── mnemos_filter on memory without raw_content ───────────────────────────────
+# ── vesma_filter on memory without raw_content ───────────────────────────────
 
 
 class TestFilterWithoutRawContent:
@@ -529,15 +529,15 @@ class TestCliFilterAllEmpty:
         assert result.exit_code == 0, result.output
 
 
-# ── MCP: mnemos_filter on memory without raw_content ──────────────────────────
+# ── MCP: vesma_filter on memory without raw_content ──────────────────────────
 
 
 class TestMcpFilterWithoutRawContent:
-    """``mnemos_filter`` MCP tool on a memory with no raw_content."""
+    """``vesma_filter`` MCP tool on a memory with no raw_content."""
 
     @pytest.mark.asyncio
     async def test_mnemos_filter_uses_content_fallback(self, mgr: MemoryManager) -> None:
-        """mnemos_filter works on a memory with raw_content=NULL."""
+        """vesma_filter works on a memory with raw_content=NULL."""
         from vesmaro.mcp_server import _dispatch
         from vesmaro.models import MemoryStatus
 
@@ -561,7 +561,7 @@ class TestMcpFilterWithoutRawContent:
 
         with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
             result = await _dispatch(
-                "mnemos_filter",
+                "vesma_filter",
                 {"memory_id": memory.id, "profile": "log"},
             )
 

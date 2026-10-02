@@ -4,7 +4,7 @@ P1-b fix-track tests (issue #146, items 3-4 part-2 + Security-review
 additions) for the content-echo channels:
 
 * M1 — scan-at-issuance on the search/recall paths: MCP
-  ``mnemos_search`` / ``mnemos_agent_recall`` / ``mnemos_recall_context``
+  ``vesma_search`` / ``vesma_agent_recall`` / ``vesma_recall_context``
   and REST ``/search`` (incl. the ``raw_content`` swap) / ``/recall/agent``
   scan the CONTENT field of each result at the boundary — redacted copy
   issued, per-item ``redactions`` note, refuse mode drops the item;
@@ -230,7 +230,7 @@ def _as_legacy_unscanned(mgr: MemoryManager, h: str) -> None:
     conn.commit()
 
 
-# ── M1: MCP mnemos_search ─────────────────────────────────────────────────────
+# ── M1: MCP vesma_search ─────────────────────────────────────────────────────
 
 
 class TestMcpSearchScan:
@@ -239,7 +239,7 @@ class TestMcpSearchScan:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         assert isinstance(results, list) and results, "FTS must match 'unobtanium'"
@@ -258,7 +258,7 @@ class TestMcpSearchScan:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         assert results
@@ -271,7 +271,7 @@ class TestMcpSearchScan:
         monkeypatch.setattr(mcp_mod, "_manager", refuse_manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         # The secret-bearing item is dropped; the mock embedder makes the
@@ -285,14 +285,14 @@ class TestMcpSearchScan:
         monkeypatch.setattr(mcp_mod, "_manager", refuse_manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "quokka", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "quokka", "project": PROJECT})
         )
 
         assert len(results) == 1
         assert "quokka" in results[0]["content"]
 
 
-# ── M1: MCP mnemos_agent_recall ───────────────────────────────────────────────
+# ── M1: MCP vesma_agent_recall ───────────────────────────────────────────────
 
 
 class TestMcpAgentRecallScan:
@@ -302,7 +302,7 @@ class TestMcpAgentRecallScan:
 
         results = asyncio.new_event_loop().run_until_complete(
             _dispatch(
-                "mnemos_agent_recall",
+                "vesma_agent_recall",
                 {"agent": AGENT, "project": PROJECT, "query": "unobtanium"},
             )
         )
@@ -314,7 +314,7 @@ class TestMcpAgentRecallScan:
         assert results[0]["redacted_patterns"] == {"github-token": 1}
 
 
-# ── M1: MCP mnemos_recall_context ─────────────────────────────────────────────
+# ── M1: MCP vesma_recall_context ─────────────────────────────────────────────
 
 
 class TestMcpRecallContextScan:
@@ -328,7 +328,7 @@ class TestMcpRecallContextScan:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         rendered = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_recall_context", {"project": PROJECT})
+            _dispatch("vesma_recall_context", {"project": PROJECT})
         )
 
         assert isinstance(rendered, str)
@@ -537,7 +537,7 @@ class TestScannerExceptionRefusedShape:
         self._break_detector(monkeypatch)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         assert results == []
@@ -609,10 +609,10 @@ class TestScopedRetrievePassThrough:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         wrong = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_retrieve", {"hash": h, "project": "beta"})
+            _dispatch("vesma_retrieve", {"hash": h, "project": "beta"})
         )
         right = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_retrieve", {"hash": h, "project": "alpha"})
+            _dispatch("vesma_retrieve", {"hash": h, "project": "alpha"})
         )
 
         assert wrong["found"] is False
@@ -653,7 +653,7 @@ class TestReviewF1TitleScan:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         assert results, "FTS must match 'unobtanium'"
@@ -696,7 +696,7 @@ class TestReviewF1TitleScan:
         monkeypatch.setattr(mcp_mod, "_manager", manager)
 
         listed = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_list_recent", {"project": PROJECT})
+            _dispatch("vesma_list_recent", {"project": PROJECT})
         )
 
         assert listed
@@ -717,7 +717,7 @@ class TestReviewF1TitleScan:
         monkeypatch.setattr(mcp_mod, "_manager", refuse_manager)
 
         results = asyncio.new_event_loop().run_until_complete(
-            _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+            _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
         )
 
         assert all(FAKE_GITHUB_TOKEN not in r["title"] for r in results)
@@ -794,12 +794,12 @@ class TestReviewF3DropForensics:
 
         with caplog.at_level("WARNING", logger="vesmaro.manager"):
             asyncio.new_event_loop().run_until_complete(
-                _dispatch("mnemos_search", {"query": "unobtanium", "project": PROJECT})
+                _dispatch("vesma_search", {"query": "unobtanium", "project": PROJECT})
             )
 
         refusal_logs = [r for r in caplog.records if "Issuance refused" in r.message]
         assert refusal_logs, "the drop must be WARNING-logged"
-        assert any(f"mcp:mnemos_search:{mem.id}" in r.message for r in refusal_logs)
+        assert any(f"mcp:vesma_search:{mem.id}" in r.message for r in refusal_logs)
 
 
 # ── Review round F4: retrieval counter bump ordering ─────────────────────────

@@ -59,7 +59,7 @@ class TestVerbositySteering:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -83,7 +83,7 @@ class TestVerbositySteering:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -101,7 +101,7 @@ class TestVerbositySteering:
         mock_mgr = _make_mock_manager()
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_search",
+                "vesma_search",
                 {"query": "smoke", "verbosity": "terse"},
             )
         # When steering is active, search returns a dict with results + hint.
@@ -113,7 +113,7 @@ class TestVerbositySteering:
         mock_mgr = _make_mock_manager()
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_recall_context",
+                "vesma_recall_context",
                 {"project": "smoke", "verbosity": "terse"},
             )
         # recall_context returns a string; the suffix is appended.
@@ -135,7 +135,7 @@ class TestDefaultModeUnchanged:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -149,7 +149,7 @@ class TestDefaultModeUnchanged:
         mock_mgr = _make_mock_manager()
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_search",
+                "vesma_search",
                 {"query": "smoke", "verbosity": "default"},
             )
         # No steering → bare list (backward compat).
@@ -166,7 +166,7 @@ class TestDefaultModeUnchanged:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -191,7 +191,7 @@ class TestEffortRouting:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -212,7 +212,7 @@ class TestEffortRouting:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -233,7 +233,7 @@ class TestEffortRouting:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -258,7 +258,7 @@ class TestBackwardCompatibility:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -271,13 +271,13 @@ class TestBackwardCompatibility:
     async def test_search_without_new_params_returns_list(self) -> None:
         mock_mgr = _make_mock_manager()
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
-            result = await _dispatch("mnemos_search", {"query": "smoke"})
+            result = await _dispatch("vesma_search", {"query": "smoke"})
         assert isinstance(result, list)
 
     async def test_recall_context_without_new_params_works(self) -> None:
         mock_mgr = _make_mock_manager()
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
-            result = await _dispatch("mnemos_recall_context", {"project": "smoke"})
+            result = await _dispatch("vesma_recall_context", {"project": "smoke"})
         assert isinstance(result, str)
 
 
@@ -318,7 +318,7 @@ class TestConfigDefaultVerbosity:
         ):
             # NOTE: no "verbosity" key in args — config default must apply.
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -345,7 +345,7 @@ class TestConfigDefaultVerbosity:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -370,7 +370,7 @@ class TestConfigDefaultVerbosity:
             ),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -401,7 +401,7 @@ class TestInvalidVerbosityEffortFallback:
             caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -431,7 +431,7 @@ class TestInvalidVerbosityEffortFallback:
             caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -463,7 +463,7 @@ class TestInvalidVerbosityEffortFallback:
             caplog.at_level(logging.WARNING, logger="vesmaro.mcp_server"),
         ):
             result = await _dispatch(
-                "mnemos_add",
+                "vesma_add",
                 {
                     "content": "smoke content",
                     "tags": ["project:smoke", "agent:qa", "mnemos:decision"],
@@ -491,7 +491,7 @@ class TestRecallContextNonEmptyWithVerbosity:
         mock_mgr.recall_context.return_value = [mock_memory]
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_recall_context",
+                "vesma_recall_context",
                 {"project": "smoke", "verbosity": "terse"},
             )
         assert isinstance(result, str)
@@ -508,7 +508,7 @@ class TestRecallContextNonEmptyWithVerbosity:
         mock_mgr.recall_context.return_value = [mock_memory]
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_recall_context",
+                "vesma_recall_context",
                 {"project": "smoke", "verbosity": "minimal"},
             )
         assert isinstance(result, str)

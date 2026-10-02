@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] — unreleased
+
+### Breaking changes
+
+- **Legacy `mnemos_*` MCP tool names removed — the server registers and accepts the canonical `vesma_*` names only** (`src/vesmaro/mcp_server.py`; the `VESMA_MCP_BRAND`/`VESMARO_MCP_BRAND` manifest brand switch is gone with it, the vesma-only surface is now unconditional). What breaks: clients that allowlist legacy `mnemos_*` tool names stop seeing every tool and their `mnemos_*` calls answer `Unknown tool`. Migration: re-run `vesma integration setup` and update tool allowlists to the `vesma_*` spellings.
+
 ## [Unreleased]
 
 ### Changed

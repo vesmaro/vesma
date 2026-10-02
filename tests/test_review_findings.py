@@ -218,11 +218,11 @@ class TestSearchTypeContribution:
 
 class TestMcpSearchInvalidStatus:
     async def test_mcp_search_invalid_status_error(self):
-        """mnemos_search with status='invalid' → error listing valid values."""
+        """vesma_search with status='invalid' → error listing valid values."""
         from vesmaro.mcp_server import _dispatch
 
         result = await _dispatch(
-            "mnemos_search",
+            "vesma_search",
             {"query": "test", "status": "invalid"},
         )
         assert isinstance(result, str), "error return must be a str"
@@ -236,7 +236,7 @@ class TestMcpSearchInvalidStatus:
         assert "archived" in result
 
     async def test_mcp_search_valid_status_passes_through(self):
-        """mnemos_search with a valid status string does not error."""
+        """vesma_search with a valid status string does not error."""
         from vesmaro.mcp_server import _dispatch
 
         mock_mgr = MagicMock()
@@ -244,7 +244,7 @@ class TestMcpSearchInvalidStatus:
         mock_mgr.settings.mnemos.strict_tag_contract = False
         with patch("vesmaro.mcp_server.get_manager", return_value=mock_mgr):
             result = await _dispatch(
-                "mnemos_search",
+                "vesma_search",
                 {"query": "test", "status": "archived"},
             )
         # Should not be an error string — should be a list (empty results).

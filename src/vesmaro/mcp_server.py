@@ -1,7 +1,7 @@
-"""MCP server for Vesma — exposes mnemos_* memory tools to Copilot/LLM agents.
+"""MCP server for Vesma — exposes vesma_* memory tools to Copilot/LLM agents.
 
-Tools: mnemos_add (enforces Vesma TagContract), mnemos_search, mnemos_recall,
-mnemos_agent_recall (M3), mnemos_auto_collect_status (per-signal compaction
+Tools: vesma_add (enforces Vesma TagContract), vesma_search, vesma_recall_context,
+vesma_agent_recall (M3), vesma_auto_collect_status (per-signal compaction
 vector, M7), and others. Auto-collect driven by VESMARO_AUTO_COLLECT env var.
 
 MCP SDK 2.x port (#185): the 1.x runtime-decorator API
@@ -18,13 +18,9 @@ between the handler contract and the SDK request/response models.
 from __future__ import annotations
 
 import contextlib
-import functools
-import inspect
 import json
 import logging
 import os
-import re
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,78 +66,10 @@ _auto_collect_state = {
     in ("true", "1", "yes", "on"),
 }
 
-# ── Brand aliasing (rebrand mnemos → vesmaro, 2026-09-15) ────────────────────
-# With a brand configured (VESMA_MCP_BRAND=vesma, deprecated VESMARO_MCP_BRAND),
-# the manifest is BRAND-PRIMARY: every tool is advertised under its ``vesma_``
-# name only (owner ruling 2026-10-01: a doubled mnemos_*/vesma_* list confuses
-# clients). Legacy ``mnemos_*`` spellings leave the manifest but stay ACCEPTED
-# on the call path — calls normalise to the canonical mnemos_ name before
-# dispatch (dual-prefix contract, archcom 2026-09-14; legacy prefix retires no
-# earlier than 6.0), so handler bodies keep the canonical spellings untouched.
-_BRAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
-# Rebrand 5.0.0 (vesma): canonical env is VESMA_MCP_BRAND; VESMARO_MCP_BRAND
-# stays as a deprecated alias (dual-period until 6.0, ADR-0031 class).
-_BRAND_ENV_CANON = "VESMA_MCP_BRAND"
-_brand_canon_val = os.environ.get(_BRAND_ENV_CANON, "").strip().lower()
-_brand_depr_val = os.environ.get("VESMARO_MCP_BRAND", "").strip().lower()
-if _brand_canon_val and _brand_depr_val and _brand_canon_val != _brand_depr_val:
-    logger.warning(
-        "%s=%r and deprecated VESMARO_MCP_BRAND=%r differ — canonical wins",
-        _BRAND_ENV_CANON,
-        _brand_canon_val,
-        _brand_depr_val,
-    )
-_raw_brand = (_brand_canon_val or _brand_depr_val).lower()
-# Self-alias guard: brand "mnemos" would double every manifest entry.
-_MCP_BRAND = _raw_brand if _raw_brand != "mnemos" and _BRAND_RE.match(_raw_brand) else ""
-if _raw_brand and not _MCP_BRAND:
-    logger.warning(
-        "%s=%r rejected — must match ^[a-z][a-z0-9_]{0,30}$ and not be 'mnemos'",
-        _BRAND_ENV_CANON,
-        _raw_brand,
-    )
-
-
-def _brand_alias(canonical: str) -> str | None:
-    """Return the branded alias for a canonical tool name, or None.
-
-    Brand ``mnemos`` is refused (self-alias would duplicate every manifest
-    entry under an identical name).
-    """
-    if _MCP_BRAND and _MCP_BRAND != "mnemos" and canonical.startswith("mnemos_"):
-        return f"{_MCP_BRAND}_{canonical[len('mnemos_') :]}"
-    return None
-
-
-def _canonicalize_tool_name(name: str) -> str:
-    """Map a branded alias back to its canonical mnemos_ name.
-
-    Only aliases whose canonical counterpart actually exists are
-    normalised — an unknown branded name falls through untouched so the
-    dispatch error reports the name the caller actually used. The
-    canonical-name set mirrors the manifest built by ``_canonical_tools``
-    (kept in lockstep by ``test_brand_alias_harvest_matches_manifest``),
-    so a new tool added there is automatically aliasable.
-    """
-    if _MCP_BRAND and name.startswith(f"{_MCP_BRAND}_"):
-        candidate = f"mnemos_{name[len(_MCP_BRAND) + 1 :]}"
-        if _is_canonical_tool(candidate):
-            return candidate
-    return name
-
-
-@functools.lru_cache(maxsize=1)
-def _canonical_tool_names() -> frozenset[str]:
-    """Canonical tool names, harvested from this module's own source.
-
-    Harvest regex covers digits too (``mnemos_v2_*`` stays aliasable).
-    """
-    source = inspect.getsource(sys.modules[__name__])
-    return frozenset(re.findall(r'name="(mnemos_[a-z0-9_]+)"', source))
-
-
-def _is_canonical_tool(name: str) -> bool:
-    return name in _canonical_tool_names()
+# ── Tool-name contract (6.0.0) ────────────────────────────────────────────────
+# The server registers and accepts the canonical ``vesma_*`` names ONLY.
+# 6.0.0 removed the legacy ``mnemos_*`` spellings and the VESMA_MCP_BRAND /
+# VESMARO_MCP_BRAND manifest brand switch along with them.
 
 
 # ── Auto-checkpoint tracking ───────────────────────────────────────────────────
@@ -219,7 +147,7 @@ def _checkpoint_reminder() -> str | None:
     if calls >= _remind_calls() or (elapsed > _remind_secs() and calls > 0):
         return (
             f"\n\n⚠️ [vesma] {calls} tool calls since last checkpoint "
-            f"({int(elapsed)}s ago). Consider calling mnemos_save_context "
+            f"({int(elapsed)}s ago). Consider calling vesma_save_context "
             f"to preserve your current progress."
         )
     return None
@@ -311,14 +239,14 @@ def _auto_collect_instructions(project: str) -> str:
         "\n\n---\n"
         "## 🔄 Auto-Collect Mode Active\n\n"
         "You MUST follow these rules for the entire session:\n\n"
-        "1. **Session start**: You already called mnemos_recall_context (good). "
+        "1. **Session start**: You already called vesma_recall_context (good). "
         "Review the context above and continue from where you left off.\n"
-        "2. **Save checkpoints**: Call `mnemos_save_context` after completing meaningful work, "
+        "2. **Save checkpoints**: Call `vesma_save_context` after completing meaningful work, "
         "before switching tasks, or when your context grows large.\n"
-        "3. **Store knowledge**: Use `mnemos_add` to save any discoveries, patterns, decisions, "
+        "3. **Store knowledge**: Use `vesma_add` to save any discoveries, patterns, decisions, "
         "architecture insights, gotchas, or reusable knowledge. Tag with "
         f"`project:{project}` and relevant topic tags.\n"
-        "4. **Search first**: Before complex work, use `mnemos_search` to check if relevant "
+        "4. **Search first**: Before complex work, use `vesma_search` to check if relevant "
         "context was stored in previous sessions.\n"
     )
 
@@ -416,23 +344,13 @@ def _steering_suffix(args: dict[str, Any], settings: Any) -> str:
 
 
 async def list_tools() -> list[Tool]:
-    """Manifest — brand-primary when a brand is configured (see _MCP_BRAND).
+    """Manifest — the canonical ``vesma_*`` tools, unconditionally.
 
-    With a brand, the manifest advertises each tool under its ``<brand>_*``
-    name ONLY; legacy ``mnemos_*`` spellings stay accepted on the call path
-    through :func:`_canonicalize_tool_name` (dual-period until 6.0).
+    6.0.0 removed the legacy ``mnemos_*`` spellings: the manifest carries
+    the ``vesma_*`` names ONLY and the call path accepts nothing else
+    (clients allowlisting ``vesma_*`` must switch to ``vesma_*``).
     """
-    tools = await _canonical_tools()
-    if _MCP_BRAND:
-        tools = [
-            Tool(
-                name=_brand_alias(t.name) or t.name,
-                description=t.description,
-                input_schema=t.input_schema,
-            )
-            for t in tools
-        ]
-    return tools
+    return await _canonical_tools()
 
 
 #: Shared schema fragments of the 10 project-graph tools (ADR-0032 §3.3)
@@ -533,7 +451,7 @@ async def _canonical_tools() -> list[Tool]:
 
     return [
         Tool(
-            name="mnemos_search",
+            name="vesma_search",
             description=_search_desc,
             input_schema={
                 "type": "object",
@@ -592,7 +510,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_add",
+            name="vesma_add",
             description=_add_desc,
             input_schema={
                 "type": "object",
@@ -626,7 +544,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_filter",
+            name="vesma_filter",
             description=(
                 "Run or refresh the context filter on an existing memory. "
                 "Useful when auto_filter was off, or to re-filter with a different profile. "
@@ -661,7 +579,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_agent_recall",
+            name="vesma_agent_recall",
             description=(
                 "Recall memories filtered by agent identity. "
                 "Returns the most recent entries for a specific agent, "
@@ -702,7 +620,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_save_context",
+            name="vesma_save_context",
             description=_save_desc,
             input_schema={
                 "type": "object",
@@ -747,8 +665,8 @@ async def _canonical_tools() -> list[Tool]:
                             "the BARE slug ([a-z0-9_-]{1,64}, no 'task:' prefix). "
                             "Mints the task:<slug> tag on this checkpoint at the "
                             "save boundary (one mint point, at most one task per "
-                            "record); recall it with task= on mnemos_recall_context "
-                            "/ mnemos_search / mnemos_list_recent."
+                            "record); recall it with task= on vesma_recall_context "
+                            "/ vesma_search / vesma_list_recent."
                         ),
                     },
                     "language": {
@@ -764,7 +682,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_recall_context",
+            name="vesma_recall_context",
             description=_recall_desc,
             input_schema={
                 "type": "object",
@@ -791,7 +709,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_list_recent",
+            name="vesma_list_recent",
             description="List the most recent memory entries.",
             input_schema={
                 "type": "object",
@@ -816,12 +734,12 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_list_tags",
+            name="vesma_list_tags",
             description="List all tags in the memory with their counts.",
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="mnemos_tags_rename",
+            name="vesma_tags_rename",
             description=(
                 "Bulk rename tags matching from_prefix:<subtype> → "
                 "to_prefix:<subtype> across existing memories. Safe: uses "
@@ -869,12 +787,12 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_tags",
+            name="vesma_tags",
             description=(
                 "Bulk tag operations across memories: rename a prefix, "
                 "remove tags, or add tags. Action-based dispatch — the "
                 "grouped pilot tool (vesma #97). action='rename' is the "
-                "same as mnemos_tags_rename; 'remove' drops exact (or, "
+                "same as vesma_tags_rename; 'remove' drops exact (or, "
                 "with wildcard=true, prefix-matched) tags; 'add' appends "
                 "tags to memories matching a project/agent filter."
             ),
@@ -947,7 +865,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_ingest_url",
+            name="vesma_ingest_url",
             description="Fetch a web page, extract its content, and save to memory.",
             input_schema={
                 "type": "object",
@@ -963,12 +881,12 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_ingest_document",
+            name="vesma_ingest_document",
             description=(
                 "Ingest a document as chunked memory rows (ADR-0027 Phase 3). "
                 "Chunks are born quarantined (untrusted content) and released "
                 "by a danger-sweep at ingest-completion; flagged chunks stay "
-                "quarantined. NOT a replacement for mnemos_ingest_url — that "
+                "quarantined. NOT a replacement for vesma_ingest_url — that "
                 "tool keeps its single-row semantics."
             ),
             input_schema={
@@ -1005,7 +923,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_watch_start",
+            name="vesma_watch_start",
             description=(
                 "Register a project's code graph for the in-process watch poll "
                 "(ADR-0032 §3.2): checks indexed files by mtime+size on an "
@@ -1034,7 +952,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_watch_stop",
+            name="vesma_watch_stop",
             description=(
                 "Stop one watch registration (by project_id) or ALL of them when "
                 "omitted. Idempotent."
@@ -1047,7 +965,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_watch_status",
+            name="vesma_watch_status",
             description=(
                 "Report active watch registrations and the last poll outcome per "
                 "project (ADR-0032 watch poll)."
@@ -1055,7 +973,7 @@ async def _canonical_tools() -> list[Tool]:
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="mnemos_auto_collect_status",
+            name="vesma_auto_collect_status",
             description=(
                 "Report current compaction-detection signal vector. "
                 "Returns per-signal values + composite recommendation. (M7)"
@@ -1063,16 +981,16 @@ async def _canonical_tools() -> list[Tool]:
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="mnemos_stats",
+            name="vesma_stats",
             description="Get Vesma health statistics and memory counts.",
             input_schema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="mnemos_reprocess",
+            name="vesma_reprocess",
             description=(
                 "Manually trigger the knowledge pipeline to process "
                 "raw/processing entries into published knowledge. "
-                "Use when mnemos_stats shows a large queue_depth."
+                "Use when vesma_stats shows a large queue_depth."
             ),
             input_schema={
                 "type": "object",
@@ -1084,12 +1002,12 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_compress",
+            name="vesma_compress",
             description=(
                 "Compress large content (tool output, logs, JSON) with ZERO data "
                 "loss. The original is cached in SQLite keyed by its hash; the "
                 "compressed output embeds a marker so the LLM can call "
-                "mnemos_retrieve to fetch the full original back. 70-90% token "
+                "vesma_retrieve to fetch the full original back. 70-90% token "
                 "reduction. Inspired by headroom's CCR (Apache 2.0)."
             ),
             input_schema={
@@ -1130,7 +1048,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_retrieve",
+            name="vesma_retrieve",
             description=(
                 "Retrieve the original uncompressed content for a CCR marker hash. "
                 "If query is omitted: returns the full original. If query is "
@@ -1202,7 +1120,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_align_prefix",
+            name="vesma_align_prefix",
             description=(
                 "P1-5 CacheAligner — relocate dynamic content (timestamps, UUIDs, "
                 "session ids, tokens) to the end of text so the prefix stays "
@@ -1231,7 +1149,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_assemble_context",
+            name="vesma_assemble_context",
             description=(
                 "ADR-0017 D1 provider contract — assemble the model-facing "
                 "context block for a pre-LLM-call injection. Fixed pipeline: "
@@ -1320,7 +1238,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_context_rewrite",
+            name="vesma_context_rewrite",
             description=(
                 "ADR-0018 on_context_rewrite lifecycle event — the harness "
                 "reports that it REWROTE a block of its working context: the "
@@ -1335,8 +1253,8 @@ async def _canonical_tools() -> list[Tool]:
                 "ordering promise, no version chains — replacement lineage "
                 "is a supersedes edge (optional 'supersedes' = memory id of "
                 "the replaced block). Rehydrate goes through the EXISTING "
-                "scanned/gated channels (mnemos_retrieve / "
-                "mnemos_assemble_context). Set include_marker=true to also "
+                "scanned/gated channels (vesma_retrieve / "
+                "vesma_assemble_context). Set include_marker=true to also "
                 "get the CCR compress marker for the original to keep in the "
                 "window."
             ),
@@ -1392,7 +1310,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_hooks",
+            name="vesma_hooks",
             description=(
                 "ADR-0017 D1 / ADR-0018 lifecycle hooks — the automation "
                 "integration points, grouped behind action:enum (vesma #97 "
@@ -1508,7 +1426,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_awareness",
+            name="vesma_awareness",
             description=(
                 "Awareness pre-flight (vesma #254, R3): presence + delta + "
                 "conflict-hints for PARALLEL sessions over one project. Call "
@@ -1571,7 +1489,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_export",
+            name="vesma_export",
             description=(
                 "Export memories to a file (JSON or SQLite snapshot). Writes the "
                 "result to disk and returns metadata only (path, memory_count, "
@@ -1650,7 +1568,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_import",
+            name="vesma_import",
             description=(
                 "Import memories from an export file (merge or restore mode). "
                 "Thin wrapper over the CLI import logic. Inherits #86 import "
@@ -1705,12 +1623,12 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_workflow",
+            name="vesma_workflow",
             description=(
                 "Workflow lifecycle management for a memory (vesma #96). "
                 "Separates mutable workflow state (open/in-progress/blocked/"
                 "resolved/done/withdrawn) from append-only tag classification. "
-                "Action-based dispatch — same pattern as mnemos_tags. "
+                "Action-based dispatch — same pattern as vesma_tags. "
                 "'set' transitions the status through a server-enforced state "
                 "machine (blocked->done is forbidden; terminal states are final), "
                 "acquires/releases a lock, and records every transition in an "
@@ -1781,7 +1699,7 @@ async def _canonical_tools() -> list[Tool]:
         # stay in the manifest, every call answers a disabled error —
         # the same gate shape as auto-collect's description swap above.
         Tool(
-            name="mnemos_index_project",
+            name="vesma_index_project",
             description=(
                 "Index a REGISTERED project root into the shared project "
                 "graph (ADR-0032). Full or incremental; serialized per "
@@ -1811,7 +1729,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_project_graph_status",
+            name="vesma_project_graph_status",
             description=(
                 "Project-graph status for one registered project: node/edge/"
                 "file volumes, freshness (fresh %, last_indexed_at), parse "
@@ -1829,7 +1747,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_search_graph",
+            name="vesma_search_graph",
             description=(
                 "Search the project graph by name / qualified name / path "
                 "(substring; exact hits outrank prefix, prefix outranks "
@@ -1875,7 +1793,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_trace_path",
+            name="vesma_trace_path",
             description=(
                 "BFS over project_edges from one symbol (resolve by qname, "
                 "unique — ambiguous refusals name search_graph). Depth ≤ 2, "
@@ -1907,7 +1825,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_get_file_outline",
+            name="vesma_get_file_outline",
             description=(
                 "Symbol outline of one indexed file (kinds, names, qnames, "
                 "line ranges; signatures included — shapes, never bodies, "
@@ -1933,7 +1851,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_get_code_snippet",
+            name="vesma_get_code_snippet",
             description=(
                 "Read a line range FROM DISK for an indexed file (PG4): "
                 "mtime+size+sha256 verified against the indexed record — a "
@@ -1941,7 +1859,7 @@ async def _canonical_tools() -> list[Tool]:
                 "range is secret-scanned at issuance and ANY hit refuses "
                 "fail-closed. Poisoned files (hit the secrets detector at "
                 "index time) are refused permanently — only "
-                "mnemos_delete_graph_project clears them. No snippet cache. "
+                "vesma_delete_graph_project clears them. No snippet cache. "
                 "Token contract applies (whole-line drops)."
             ),
             input_schema={
@@ -1963,11 +1881,11 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_check_graph_coverage",
+            name="vesma_check_graph_coverage",
             description=(
                 "Batch coverage check: per-path verdict indexed / stale / "
                 "parse-error / unindexed / poisoned (coverage honesty — "
-                "trust is NOT here; verify with mnemos_get_code_snippet)."
+                "trust is NOT here; verify with vesma_get_code_snippet)."
             ),
             input_schema={
                 "type": "object",
@@ -1985,7 +1903,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_get_graph_schema",
+            name="vesma_get_graph_schema",
             description=(
                 "The project-graph contract card for agents: node/edge "
                 "kinds, token contract, index and trace limits, schema "
@@ -2005,7 +1923,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_list_graph_projects",
+            name="vesma_list_graph_projects",
             description=(
                 "Registered projects joined with their index status "
                 "(volumes, poisoned count, last_indexed_at); "
@@ -2021,7 +1939,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_delete_graph_project",
+            name="vesma_delete_graph_project",
             description=(
                 "Drop a project's graph INDEX (sidecar data — never the "
                 "project entity in the main DB). The ONLY operation that "
@@ -2040,7 +1958,7 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="mnemos_register_project",
+            name="vesma_register_project",
             description=(
                 "Register a project root for the code graph (#454) — the "
                 "answer to 'not registered' refusals. The root must exist "
@@ -2101,7 +2019,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Time one MCP tool call, record it as a verb, attach the heartbeat.
 
     Thin shell over :func:`_call_tool_dispatch` — every tool, including
-    ``mnemos_assemble_context``, lands in the verb ledger here (the
+    ``vesma_assemble_context``, lands in the verb ledger here (the
     assemble row is a SEPARATE plane written inside the assemble
     handler: ledger says who/what/how-long, the domain table says what
     was assembled — two planes of fact, not double counting).
@@ -2138,7 +2056,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     # suppressed); never raises, never touches `result` bytes. The
     # TextContent lives HERE — ADR-0023 keeps the mcp SDK inside this
     # module only.
-    heartbeat_text = native_heartbeat_tail(_canonicalize_tool_name(name), arguments)
+    heartbeat_text = native_heartbeat_tail(name, arguments)
     if heartbeat_text is not None:
         result = [*result, TextContent(type="text", text=heartbeat_text)]
     return result
@@ -2151,13 +2069,11 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
     the callable importable with the same ``(name, arguments)`` signature
     (the test suite drives it directly).
 
-    Branded aliases (``vesmaro_*`` when ``VESMARO_MCP_BRAND=vesmaro``) are
-    normalised to their canonical ``mnemos_`` spellings before dispatch —
-    handlers below stay on the canonical names (dual-prefix contract,
-    archcom 2026-09-14; legacy retires no earlier than 6.0).
+    6.0.0: the canonical ``vesma_*`` names dispatch as-is; no legacy
+    ``mnemos_*`` normalisation exists any more — an unknown name falls
+    through to the dispatch error reporting the name the caller used.
     """
-    canonical_name = _canonicalize_tool_name(name)
-    _track_call(is_save=(canonical_name == "mnemos_save_context"))
+    _track_call(is_save=(name == "vesma_save_context"))
     reminder = _checkpoint_reminder()
     # #456: the one-time upgrade notice rides the FIRST dispatch of the
     # process (checked once, fail-open on any store error).
@@ -2167,7 +2083,7 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
         update_hint = None
 
     try:
-        result = await _dispatch(canonical_name, arguments)
+        result = await _dispatch(name, arguments)
     except TagContractError as exc:
         return [TextContent(type="text", text=f"❌ Tag contract violation:\n{exc}")]
     except Exception as exc:
@@ -2202,9 +2118,9 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
 
 
 def _handle_awareness(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """``mnemos_awareness`` action dispatch (vesma #254, R3).
+    """``vesma_awareness`` action dispatch (vesma #254, R3).
 
-    Boundary type guards (the ``mnemos_hooks`` pattern): a malformed
+    Boundary type guards (the ``vesma_hooks`` pattern): a malformed
     caller gets a clean error dict; ValueError from the awareness
     boundary (project=None fail-closed, bad cursor, bogus abstention
     basis) maps to the same shape. Thin wrapper over the
@@ -2251,7 +2167,7 @@ def _handle_awareness(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """Dispatch helper for the ``mnemos_export`` tool."""
+    """Dispatch helper for the ``vesma_export`` tool."""
     from vesmaro.cli.export import CompressMode, ExportFilter, ExportFormat, run_export
 
     output_path_str = args.get("output_path")
@@ -2315,7 +2231,7 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                     "encrypt=true but VESMA_EXPORT_PASSPHRASE environment "
                     "variable is not set or empty (deprecated spelling "
                     "VESMARO_EXPORT_PASSPHRASE also accepted until 6.0). Set "
-                    "it before calling mnemos_export — the passphrase value "
+                    "it before calling vesma_export — the passphrase value "
                     "must never appear in tool arguments."
                 )
             }
@@ -2345,7 +2261,7 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_import(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """Dispatch helper for the ``mnemos_import`` tool."""
+    """Dispatch helper for the ``vesma_import`` tool."""
     from vesmaro.cli.import_ import ImportMode, run_import
 
     source_path_str = args.get("source_path")
@@ -2437,8 +2353,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     # cut-in point, cheap (flag + queue put), failure-isolated below.
     _emit_codegraph_hint(mgr, args)
 
-    # ── mnemos_add ──────────────────────────────────────────────────────────
-    if name == "mnemos_add":
+    # ── vesma_add ──────────────────────────────────────────────────────────
+    if name == "vesma_add":
         raw_tags: list[str] = args.get("tags", [])
         # Enforce / patch TagContract
         tags = validate_tag_contract(
@@ -2477,8 +2393,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             result["_output_style_hint"] = _suffix
         return result
 
-    # ── mnemos_search ───────────────────────────────────────────────────────
-    if name == "mnemos_search":
+    # ── vesma_search ───────────────────────────────────────────────────────
+    if name == "vesma_search":
         status_str = args.get("status")
         status: MemoryStatus | None = None
         if status_str:
@@ -2506,7 +2422,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             scan = mgr.scan_issuance_item(
                 r.memory.effective_content(),
                 title=r.memory.auto_title(),
-                context=f"mcp:mnemos_search:{r.memory.id}",
+                context=f"mcp:vesma_search:{r.memory.id}",
             )
             if scan.refused:
                 continue
@@ -2528,8 +2444,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             return {"results": _search_results, "_output_style_hint": _suffix}
         return _search_results
 
-    # ── mnemos_agent_recall (M3) ────────────────────────────────────────────
-    if name == "mnemos_agent_recall":
+    # ── vesma_agent_recall (M3) ────────────────────────────────────────────
+    if name == "vesma_agent_recall":
         recall_query = AgentRecallQuery(
             agent=args["agent"],
             project=args.get("project"),
@@ -2539,13 +2455,13 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         )
         results = mgr.agent_recall(recall_query)
         # ADR-0018 P1-b (M1 + review F1/F3): scan-at-issuance on BOTH echoed
-        # strings (content and title) — same policy as mnemos_search.
+        # strings (content and title) — same policy as vesma_search.
         recalled = []
         for r in results:
             scan = mgr.scan_issuance_item(
                 r.memory.effective_content(),
                 title=r.memory.auto_title(),
-                context=f"mcp:mnemos_agent_recall:{r.memory.id}",
+                context=f"mcp:vesma_agent_recall:{r.memory.id}",
             )
             if scan.refused:
                 continue
@@ -2563,8 +2479,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             recalled.append(item)
         return recalled
 
-    # ── mnemos_save_context ─────────────────────────────────────────────────
-    if name == "mnemos_save_context":
+    # ── vesma_save_context ─────────────────────────────────────────────────
+    if name == "vesma_save_context":
         project = args.get("project") or _detect_project()
         fields = {f: args.get(f) for f in CHECKPOINT_FIELDS}
         # canon v1.0.0: ``language`` is the per-call override of the
@@ -2596,8 +2512,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             )
         return f"✅ Context saved (id={memory.id}).{instructions}"
 
-    # ── mnemos_recall_context ───────────────────────────────────────────────
-    if name == "mnemos_recall_context":
+    # ── vesma_recall_context ───────────────────────────────────────────────
+    if name == "vesma_recall_context":
         project = args.get("project") or _detect_project()
         # Ф2 (epic #308): ValueError from the task boundary (unsalvageable
         # slug / prefix-carrying value) rides the SAME generic exception
@@ -2613,7 +2529,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             )
             return (
                 f"No context found for project '{project}'. "
-                f"Start by saving context with mnemos_save_context.{instructions}"
+                f"Start by saving context with vesma_save_context.{instructions}"
                 + _steering_suffix(args, settings)
             )
         out = [f"# Context for project '{project}'\n"]
@@ -2623,7 +2539,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # the memory's section, logged with the memory id.
             scan = mgr.scan_issuance(
                 m.effective_content(),
-                context=f"mcp:mnemos_recall_context:{m.id}",
+                context=f"mcp:vesma_recall_context:{m.id}",
             )
             if scan.refused:
                 continue
@@ -2631,8 +2547,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         instructions = _auto_collect_instructions(project) if _auto_collect_state["enabled"] else ""
         return "\n".join(out) + instructions + _steering_suffix(args, settings)
 
-    # ── mnemos_list_recent ──────────────────────────────────────────────────
-    if name == "mnemos_list_recent":
+    # ── vesma_list_recent ──────────────────────────────────────────────────
+    if name == "vesma_list_recent":
         memories = mgr.list_recent(
             limit=args.get("limit", 10),
             tags=args.get("tags"),
@@ -2645,7 +2561,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         listed = []
         for m in memories:
             scan = mgr.scan_issuance_item(
-                None, title=m.auto_title(), context=f"mcp:mnemos_list_recent:{m.id}"
+                None, title=m.auto_title(), context=f"mcp:vesma_list_recent:{m.id}"
             )
             if scan.refused:
                 continue
@@ -2662,17 +2578,17 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             listed.append(item)
         return listed
 
-    # ── mnemos_list_tags ────────────────────────────────────────────────────
-    if name == "mnemos_list_tags":
+    # ── vesma_list_tags ────────────────────────────────────────────────────
+    if name == "vesma_list_tags":
         return mgr.list_tags()
 
-    # ── mnemos_tags (grouped: rename/remove/add) — pilot (vesma #97) ───────
-    # Also serves as the backing dispatch for the legacy mnemos_tags_rename
-    # tool (non-breaking alias). When the LLM calls mnemos_tags_rename we
+    # ── vesma_tags (grouped: rename/remove/add) — pilot (vesma #97) ───────
+    # Also serves as the backing dispatch for the legacy vesma_tags_rename
+    # tool (non-breaking alias). When the LLM calls vesma_tags_rename we
     # inject action="rename" and fall through to the same handler.
-    if name in ("mnemos_tags", "mnemos_tags_rename"):
+    if name in ("vesma_tags", "vesma_tags_rename"):
         action = args.get("action")
-        if name == "mnemos_tags_rename":
+        if name == "vesma_tags_rename":
             # Alias: legacy rename tool routes to the grouped rename path.
             # Force action='rename' AFTER merging args so a stray ``action``
             # key in a legacy rename call cannot leak through to the dispatcher.
@@ -2711,13 +2627,13 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             )
         return {"error": f"unknown action {action!r}. Valid actions: 'rename', 'remove', 'add'"}
 
-    # ── mnemos_workflow (grouped: set/get/history) — vesma #96 ────────────
+    # ── vesma_workflow (grouped: set/get/history) — vesma #96 ────────────
     # Thin wrapper over MemoryManager.workflow_set / workflow_get /
     # workflow_history. The state machine + 5 guardrails are enforced
     # server-side in the manager, so this dispatch only translates
     # ValueError (guardrail violation) into a clean error dict — mirroring
-    # how mnemos_tags surfaces validation problems.
-    if name == "mnemos_workflow":
+    # how vesma_tags surfaces validation problems.
+    if name == "vesma_workflow":
         action = args.get("action")
         memory_id = args.get("memory_id")
         if not memory_id:
@@ -2752,19 +2668,19 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             }
         return {"error": f"unknown action {action!r}. Valid actions: 'set', 'get', 'history'"}
 
-    # ── mnemos_stats ────────────────────────────────────────────────────────
-    if name == "mnemos_stats":
+    # ── vesma_stats ────────────────────────────────────────────────────────
+    if name == "vesma_stats":
         return mgr.stats()
-    # ── mnemos_reprocess ─────────────────────────────────────────────────────
-    if name == "mnemos_reprocess":
+    # ── vesma_reprocess ─────────────────────────────────────────────────────
+    if name == "vesma_reprocess":
         _project = args.get("project")
         _agent = args.get("agent")
         _limit = int(args.get("limit", 100))
         return mgr.run_pipeline(project=_project, agent=_agent, limit=_limit)
-    # ── mnemos_compress (P1-4 CCR) ───────────────────────────────────────────
-    if name == "mnemos_compress":
+    # ── vesma_compress (P1-4 CCR) ───────────────────────────────────────────
+    if name == "vesma_compress":
         # A2 issuer-ledger args: type-guarded at the boundary (the
-        # mnemos_context_rewrite pattern) so a malformed caller gets a
+        # vesma_context_rewrite pattern) so a malformed caller gets a
         # clean error dict instead of an AttributeError deep in the
         # manager's normalization.
         cp_agent = args.get("agent")
@@ -2779,13 +2695,13 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             agent=cp_agent,
             session=cp_session,
         )
-    # ── mnemos_retrieve (P1-4 CCR) ───────────────────────────────────────────
-    if name == "mnemos_retrieve":
+    # ── vesma_retrieve (P1-4 CCR) ───────────────────────────────────────────
+    if name == "vesma_retrieve":
         # ADR-0018 P1-a: optional project scopes the cache lookup — a hash
         # cached under another project is reported as not found.
         # A2: marker metadata (original_chars/agent/session) + strict mode
         # run the marker-validation gate before any content is issued.
-        # Boundary type guards (mnemos_context_rewrite pattern).
+        # Boundary type guards (vesma_context_rewrite pattern).
         rt_agent = args.get("agent")
         rt_session = args.get("session")
         rt_chars = args.get("original_chars")
@@ -2809,8 +2725,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             agent=rt_agent,
             session=rt_session,
         )
-    # ── mnemos_filter (M10) ─────────────────────────────────────────────────
-    if name == "mnemos_filter":
+    # ── vesma_filter (M10) ─────────────────────────────────────────────────
+    if name == "vesma_filter":
         memory_id = args["memory_id"]
         filter_project_arg = args.get("project")
         if filter_project_arg is not None and not isinstance(filter_project_arg, str):
@@ -2825,7 +2741,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             profile=args.get("profile"),
             budget=args.get("budget"),
             project=filter_project_arg,
-            channel="mcp:mnemos_filter",
+            channel="mcp:vesma_filter",
         )
         if result.get("status") == "error":
             return result
@@ -2840,8 +2756,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             filter_item["redacted_patterns"] = result["redacted_patterns"]
         return filter_item
 
-    # ── mnemos_ingest_url ───────────────────────────────────────────────────
-    if name == "mnemos_ingest_url":
+    # ── vesma_ingest_url ───────────────────────────────────────────────────
+    if name == "vesma_ingest_url":
         # Security: strip credentials from URL before storing (OWASP A02)
         import re as _re
 
@@ -2859,17 +2775,17 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         # content — the echoed title is scanned at issuance like every
         # other echoed string; refuse mode drops it (error shape, no echo).
         title_scan = mgr.scan_issuance_item(
-            None, title=memory.auto_title(), context=f"mcp:mnemos_ingest_url:{memory.id}"
+            None, title=memory.auto_title(), context=f"mcp:vesma_ingest_url:{memory.id}"
         )
         if title_scan.refused:
             return {"error": f"issuance refused: {title_scan.reason}"}
         return {"id": memory.id, "title": title_scan.title, "url": url_clean}
 
-    # ── mnemos_ingest_document ──────────────────────────────────────────────
-    if name == "mnemos_ingest_document":
+    # ── vesma_ingest_document ──────────────────────────────────────────────
+    if name == "vesma_ingest_document":
         # ADR-0027 Ф3 (epic #308): the DOCUMENT ingest — chunked,
         # born-quarantined, swept at completion. The single-URL
-        # mnemos_ingest_url above keeps its pre-Ф3 semantics untouched.
+        # vesma_ingest_url above keeps its pre-Ф3 semantics untouched.
         raw_tags = args.get("tags", [])
         tags = validate_tag_contract(
             raw_tags,
@@ -2900,8 +2816,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             "truncated": result.truncated,
         }
 
-    # ── mnemos_watch_* (project-graph poll, ADR-0032 §3.2) ──────────────────
-    if name == "mnemos_watch_start":
+    # ── vesma_watch_* (project-graph poll, ADR-0032 §3.2) ──────────────────
+    if name == "vesma_watch_start":
         from vesmaro.codegraph.service import (
             GraphDisabledError,
             GraphToolError,
@@ -2939,18 +2855,18 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             payload["code"] = "disabled" if isinstance(exc, GraphDisabledError) else "bad-request"
             return payload
 
-    if name == "mnemos_watch_stop":
+    if name == "vesma_watch_stop":
         project_id = args.get("project_id")
         if project_id is not None and not isinstance(project_id, str):
             return {"error": "project_id must be a string when provided", "code": "bad-request"}
         mgr.watch_stop(project_id.strip() if isinstance(project_id, str) else None)
         return "✅ Watch stopped."
 
-    if name == "mnemos_watch_status":
+    if name == "vesma_watch_status":
         return mgr.watch_status()
 
-    # ── mnemos_auto_collect_status (M7) ─────────────────────────────────────
-    if name == "mnemos_auto_collect_status":
+    # ── vesma_auto_collect_status (M7) ─────────────────────────────────────
+    if name == "vesma_auto_collect_status":
         calls = _checkpoint_tracker["calls_since_save"]
         elapsed = (
             time.monotonic() - _checkpoint_tracker["last_save_ts"]
@@ -2984,12 +2900,12 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             "next_reminder_in_calls": max(0, _remind_calls() - calls),
         }
 
-    # ── mnemos_align_prefix (P1-5 CacheAligner) ──────────────────────────────
-    if name == "mnemos_align_prefix":
+    # ── vesma_align_prefix (P1-5 CacheAligner) ──────────────────────────────
+    if name == "vesma_align_prefix":
         return mgr.align_prefix(args["text"], profile=args.get("profile"))
 
-    # ── mnemos_assemble_context (ADR-0017 D1, #125) ─────────────────────────
-    if name == "mnemos_assemble_context":
+    # ── vesma_assemble_context (ADR-0017 D1, #125) ─────────────────────────
+    if name == "vesma_assemble_context":
         # Locals are suffixed: `project` is already bound as `str` by the
         # save/recall handlers above in this long dispatch function.
         asm_session = args.get("session")
@@ -3028,8 +2944,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # instead of the generic exception path.
             return {"error": str(exc)}
 
-    # ── mnemos_context_rewrite (ADR-0018, #125 Wave 2) ──────────────────────
-    if name == "mnemos_context_rewrite":
+    # ── vesma_context_rewrite (ADR-0018, #125 Wave 2) ──────────────────────
+    if name == "vesma_context_rewrite":
         cr_content = args.get("content")
         cr_project = args.get("project")
         cr_agent = args.get("agent")
@@ -3066,9 +2982,9 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # error dict, no trace echo.
             return {"error": str(exc)}
 
-    # ── mnemos_hooks (ADR-0017 D1 / ADR-0018 lifecycle hooks, #125 W3) ─────
-    if name == "mnemos_hooks":
-        # Boundary type guards (mnemos_context_rewrite pattern) so a
+    # ── vesma_hooks (ADR-0017 D1 / ADR-0018 lifecycle hooks, #125 W3) ─────
+    if name == "vesma_hooks":
+        # Boundary type guards (vesma_context_rewrite pattern) so a
         # malformed caller gets a clean error dict instead of an
         # exception deep in the hooks. No bool() coercion — auto_compress
         # must be an actual bool, a truthy string is a boundary error.
@@ -3130,16 +3046,16 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # Boundary + per-hook validation — clean error dict.
             return {"error": str(exc)}
 
-    # ── mnemos_awareness (vesma #254, R3 — awareness pre-flight) ──────────
-    if name == "mnemos_awareness":
+    # ── vesma_awareness (vesma #254, R3 — awareness pre-flight) ──────────
+    if name == "vesma_awareness":
         return _handle_awareness(mgr, args)
 
-    # ── mnemos_export (#84 federation export) ──────────────────────────────
-    if name == "mnemos_export":
+    # ── vesma_export (#84 federation export) ──────────────────────────────
+    if name == "vesma_export":
         return _handle_export(mgr, args)
 
-    # ── mnemos_import (#84 federation import) ──────────────────────────────
-    if name == "mnemos_import":
+    # ── vesma_import (#84 federation import) ──────────────────────────────
+    if name == "vesma_import":
         return _handle_import(mgr, args)
 
     # ── project graph (ADR-0032 §3.3 — the 10 tools) ───────────────────────
@@ -3154,22 +3070,22 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
 # The tools are thin MCP adapters over CodeGraphService (vesmaro.codegraph.
 # service) — the policy layers (PG2 confinement, the §3.4 token contract,
 # PG3 poisoning, PG4 issuance, PG7 attribution + audit) live in the service.
-# Boundary guards here follow the mnemos_hooks pattern: a malformed caller
+# Boundary guards here follow the vesma_hooks pattern: a malformed caller
 # gets a clean error dict, never a traceback.
 
 _GRAPH_TOOLS = frozenset(
     {
-        "mnemos_index_project",
-        "mnemos_project_graph_status",
-        "mnemos_search_graph",
-        "mnemos_trace_path",
-        "mnemos_get_file_outline",
-        "mnemos_get_code_snippet",
-        "mnemos_check_graph_coverage",
-        "mnemos_get_graph_schema",
-        "mnemos_list_graph_projects",
-        "mnemos_delete_graph_project",
-        "mnemos_register_project",
+        "vesma_index_project",
+        "vesma_project_graph_status",
+        "vesma_search_graph",
+        "vesma_trace_path",
+        "vesma_get_file_outline",
+        "vesma_get_code_snippet",
+        "vesma_check_graph_coverage",
+        "vesma_get_graph_schema",
+        "vesma_list_graph_projects",
+        "vesma_delete_graph_project",
+        "vesma_register_project",
     }
 )
 
@@ -3188,7 +3104,7 @@ def _graph_req_int(args: dict[str, Any], key: str) -> int | None:
 
 def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     """Dispatch the project-graph tools (the ADR-0032 ten + #454
-    ``mnemos_register_project``) to CodeGraphService."""
+    ``vesma_register_project``) to CodeGraphService."""
     from vesmaro.codegraph.indexer import IndexLimitError
     from vesmaro.codegraph.service import (
         GraphAttributionError,
@@ -3215,7 +3131,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
 
     common: dict[str, Any] = {"agent": agent.strip(), "session": session}
     try:
-        if name == "mnemos_index_project":
+        if name == "vesma_index_project":
             incremental = args.get("incremental", True)
             if not isinstance(incremental, bool):
                 return {"error": "incremental must be a boolean", "code": "bad-request"}
@@ -3228,12 +3144,12 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 reason=_optional_str(args.get("reason")),
                 **common,
             )
-        if name == "mnemos_project_graph_status":
+        if name == "vesma_project_graph_status":
             project_id = _graph_req_str(args, "project_id")
             if project_id is None:
                 return bad("project_id", "a non-empty string")
             return get_graph_service(mgr).status(project_id, **common)
-        if name == "mnemos_search_graph":
+        if name == "vesma_search_graph":
             project_id = _graph_req_str(args, "project_id")
             query = _graph_req_str(args, "query")
             if project_id is None or query is None:
@@ -3248,7 +3164,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 include_signature=bool(args.get("include_signature", False)),
                 **common,
             )
-        if name == "mnemos_trace_path":
+        if name == "vesma_trace_path":
             project_id = _graph_req_str(args, "project_id")
             qname = _graph_req_str(args, "qname")
             if project_id is None or qname is None:
@@ -3260,7 +3176,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 max_output_tokens=args.get("max_output_tokens"),
                 **common,
             )
-        if name == "mnemos_get_file_outline":
+        if name == "vesma_get_file_outline":
             project_id = _graph_req_str(args, "project_id")
             path = _graph_req_str(args, "path")
             if project_id is None or path is None:
@@ -3272,7 +3188,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 max_output_tokens=args.get("max_output_tokens"),
                 **common,
             )
-        if name == "mnemos_get_code_snippet":
+        if name == "vesma_get_code_snippet":
             project_id = _graph_req_str(args, "project_id")
             path = _graph_req_str(args, "path")
             start_line = _graph_req_int(args, "start_line")
@@ -3287,7 +3203,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 max_output_tokens=args.get("max_output_tokens"),
                 **common,
             )
-        if name == "mnemos_check_graph_coverage":
+        if name == "vesma_check_graph_coverage":
             project_id = _graph_req_str(args, "project_id")
             paths = args.get("paths")
             if (
@@ -3297,17 +3213,17 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             ):
                 return bad("project_id, paths", "a string and a list of strings")
             return get_graph_service(mgr).check_coverage(project_id, paths, **common)
-        if name == "mnemos_get_graph_schema":
+        if name == "vesma_get_graph_schema":
             return get_graph_service(mgr).get_graph_schema(args.get("project_id"), **common)
-        if name == "mnemos_list_graph_projects":
+        if name == "vesma_list_graph_projects":
             return get_graph_service(mgr).list_graph_projects(**common)
-        if name == "mnemos_register_project":
+        if name == "vesma_register_project":
             project_id = _graph_req_str(args, "project_id")
             root = _graph_req_str(args, "root")
             if project_id is None or root is None:
                 return bad("project_id, root", "non-empty strings")
             return get_graph_service(mgr).register_project(project_id, root, **common)
-        # name == "mnemos_delete_graph_project"
+        # name == "vesma_delete_graph_project"
         project_id = _graph_req_str(args, "project_id")
         if project_id is None:
             return bad("project_id", "a non-empty string")

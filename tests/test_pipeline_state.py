@@ -15,7 +15,7 @@ Coverage map (one section per B1 deliverable):
   would be undetectable by the caller): the FTS leg and the vector
   resolve leg of ``search`` (default, ``include_raw`` AND the explicit
   ``status=`` drill-down), the listing surface (``list_recent`` —
-  REST GET /memories / MCP mnemos_list_recent),
+  REST GET /memories / MCP vesma_list_recent),
   ``issue_context_filter``, ``recall_context``'s recency leg,
   ``agent_recall``'s recency leg, and ``assemble_context`` (which
   recalls through ``search``). Direct get-by-id is the documented
@@ -792,7 +792,7 @@ class TestRefinedOnly:
             mp.setattr(mcp_mod, "_manager", manager)
             results = asyncio.new_event_loop().run_until_complete(
                 _dispatch(
-                    "mnemos_search",
+                    "vesma_search",
                     {"query": "widget", "project": PROJECT, "refined_only": True},
                 )
             )

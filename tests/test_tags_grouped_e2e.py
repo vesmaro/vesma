@@ -1,4 +1,4 @@
-"""E2E tests for the grouped ``mnemos_tags`` MCP tool (issue #97).
+"""E2E tests for the grouped ``vesma_tags`` MCP tool (issue #97).
 
 Unlike ``test_tags_grouped.py`` (which exercises ``MemoryManager`` methods
 directly and drives ``_dispatch`` with a *mock* manager), these tests drive
@@ -22,7 +22,7 @@ Coverage matrix:
   E4 — action="add" default dry_run                     (no writes)
   E5 — action="remove" of last project:                 (contract guard, E2E)
   E6 — action="add" mnemos:bogus_subtype                (contract guard, E2E)
-  E7 — legacy alias mnemos_tags_rename                  (non-breaking)
+  E7 — legacy alias vesma_tags_rename                  (non-breaking)
   E8 — unknown action                                   (clear error, no mutation)
   E9 — rename missing from_prefix/to_prefix             (clear error)
 
@@ -31,7 +31,7 @@ Report-shape note (F1 FIXED — uniform report contract):
   skipped_invalid, errors, dry_run, from_prefix, to_prefix}`` and DOES
   include ``action="rename"``, matching ``tags_remove`` / ``tags_add``
   (which expose ``action="remove"`` / ``action="add"``). Every
-  ``mnemos_tags`` action therefore exposes a uniform report shape keyed
+  ``vesma_tags`` action therefore exposes a uniform report shape keyed
   by ``action`` first; the rename/rename-alias tests assert on
   ``result["action"] == "rename"`` in addition to ``renamed``/``changed``.
 
@@ -101,7 +101,7 @@ def _strip_checkpoint_reminder(text: str) -> str:
 
     ``mcp_server._checkpoint_reminder()`` may append a nudge like
     ``\n\n⚠️ [vesma] N tool calls since last checkpoint … Consider
-    calling mnemos_save_context …`` after the tool's JSON response. It is
+    calling vesma_save_context …`` after the tool's JSON response. It is
     informational metadata for MCP clients, NOT part of the tool's return
     value — a correct client must ignore it before parsing.
 
@@ -189,14 +189,14 @@ def _tags_of(mgr: MemoryManager, memory_id: str) -> list[str]:
 
 async def test_e0_both_tools_registered_in_mcp_registry() -> None:
     """list_tools() (the real MCP tool registration path) advertises both
-    the grouped ``mnemos_tags`` tool and the legacy ``mnemos_tags_rename``
-    alias, and ``mnemos_tags`` declares the ``action`` enum."""
+    the grouped ``vesma_tags`` tool and the legacy ``vesma_tags_rename``
+    alias, and ``vesma_tags`` declares the ``action`` enum."""
     tools = await list_tools()
     names = {t.name for t in tools}
-    assert "mnemos_tags" in names, "grouped mnemos_tags tool not registered"
-    assert "mnemos_tags_rename" in names, "legacy mnemos_tags_rename alias not registered"
+    assert "vesma_tags" in names, "grouped vesma_tags tool not registered"
+    assert "vesma_tags_rename" in names, "legacy vesma_tags_rename alias not registered"
 
-    grouped = next(t for t in tools if t.name == "mnemos_tags")
+    grouped = next(t for t in tools if t.name == "vesma_tags")
     action_schema = grouped.input_schema["properties"]["action"]
     assert action_schema["enum"] == ["rename", "remove", "add"]
 
@@ -215,7 +215,7 @@ async def test_e1_rename_gcw_to_mnemos(real_manager: MemoryManager) -> None:
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {
             "action": "rename",
             "from_prefix": "gcw:",
@@ -247,7 +247,7 @@ async def test_e2_add_tag(real_manager: MemoryManager) -> None:
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {"action": "add", "tags": ["severity:low"], "project": "e2e-proj", "dry_run": False},
     )
 
@@ -270,7 +270,7 @@ async def test_e3_remove_tag(real_manager: MemoryManager) -> None:
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {"action": "remove", "tags": ["severity:low"], "project": "e2e-proj", "dry_run": False},
     )
 
@@ -294,7 +294,7 @@ async def test_e4_add_default_dry_run_writes_nothing(real_manager: MemoryManager
     # NOTE: no dry_run key at all — exercising the default-true behaviour.
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {"action": "add", "tags": ["severity:low"], "project": "e2e-proj"},
     )
 
@@ -316,7 +316,7 @@ async def test_e5_remove_last_project_tag_is_blocked(real_manager: MemoryManager
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {"action": "remove", "tags": ["project:e2e-proj"], "project": "e2e-proj", "dry_run": False},
     )
 
@@ -343,7 +343,7 @@ async def test_e6_add_invalid_subtype_is_blocked(real_manager: MemoryManager) ->
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {
             "action": "add",
             "tags": ["mnemos:bogus_subtype"],
@@ -361,7 +361,7 @@ async def test_e6_add_invalid_subtype_is_blocked(real_manager: MemoryManager) ->
 
 
 # ---------------------------------------------------------------------------
-# E7 — legacy alias mnemos_tags_rename behaves like action="rename"
+# E7 — legacy alias vesma_tags_rename behaves like action="rename"
 # ---------------------------------------------------------------------------
 
 
@@ -374,7 +374,7 @@ async def test_e7_legacy_alias_rename(real_manager: MemoryManager) -> None:
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags_rename",
+        "vesma_tags_rename",
         {"from_prefix": "gcw:", "to_prefix": "mnemos:", "dry_run": False},
     )
 
@@ -398,7 +398,7 @@ async def test_e7b_alias_ignores_stray_action_key(real_manager: MemoryManager) -
 
     result = await _call_tool_real(
         real_manager,
-        "mnemos_tags_rename",
+        "vesma_tags_rename",
         {
             "from_prefix": "gcw:",
             "to_prefix": "mnemos:",
@@ -432,7 +432,7 @@ async def test_e8_unknown_action_errors_cleanly(real_manager: MemoryManager) -> 
 
     result = await _dispatch_real(
         real_manager,
-        "mnemos_tags",
+        "vesma_tags",
         {"action": "bogus"},
     )
 
@@ -464,7 +464,7 @@ async def test_e9_rename_missing_args_errors_cleanly(
         tags=["project:e2e-proj", "agent:e2e-agent", "gcw:decision"],
     )
 
-    result = await _dispatch_real(real_manager, "mnemos_tags", args)
+    result = await _dispatch_real(real_manager, "vesma_tags", args)
 
     assert isinstance(result, dict), f"expected dict error, got {result!r}"
     assert "error" in result, f"missing 'error' key: {result}"

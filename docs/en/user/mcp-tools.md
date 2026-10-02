@@ -30,50 +30,50 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 
 | Tool | Purpose | Tags required |
 |------|---------|---------------|
-| [`mnemos_add`](#mnemos_add) | Create a new memory entry | yes |
-| [`mnemos_search`](#mnemos_search) | Hybrid FTS + vector search | no |
-| [`mnemos_agent_recall`](#mnemos_agent_recall) | Per-agent recall (M3) | no |
-| [`mnemos_recall_context`](#mnemos_recall_context) | Restore session context for a project | no |
-| [`mnemos_save_context`](#mnemos_save_context) | Persist a session checkpoint | no (auto) |
-| [`mnemos_list_recent`](#mnemos_list_recent) | List recent entries | no |
-| [`mnemos_list_tags`](#mnemos_list_tags) | List all tags with counts | no |
-| [`mnemos_tags`](#mnemos_tags) *(pilot #97)* | Grouped bulk tag ops: rename / remove / add (`action: enum`) | no |
-| [`mnemos_tags_rename`](#mnemos_tags_rename) | Bulk rename tag prefixes across memories (e.g. `gcw:` → `vesma:`); dry-run by default | no |
-| [`mnemos_workflow`](#mnemos_workflow) *(#96)* | Workflow lifecycle: set / get / history (`action: enum`) | no |
-| [`mnemos_ingest_url`](#mnemos_ingest_url) | Fetch and save a web page | yes |
-| [`mnemos_ingest_document`](#mnemos_ingest_document) | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) | yes |
-| [`mnemos_watch_start`](#mnemos_watch_start) | Register the project-graph watch poll (ADR-0032 §3.2) | no |
-| [`mnemos_watch_stop`](#mnemos_watch_stop) | Stop one or all watch registrations | no |
-| [`mnemos_watch_status`](#mnemos_watch_status) | Report watch registrations and last poll outcome | no |
-| [`mnemos_index_project`](#mnemos_index_project) | Index a registered project root into the project graph (ADR-0032, on by default) | no |
-| [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
-| [`mnemos_search_graph`](#mnemos_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
-| [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
-| [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
-| [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
-| [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
-| [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
-| [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
-| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
-| [`mnemos_register_project`](#mnemos_register_project) | Register a project root for the graph (#454) — the answer to "not registered" refusals | no |
-| [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Compaction signal vector (M7) | no |
-| [`mnemos_compress`](#mnemos_compress) | Reversible compression (CCR) — cache original, embed marker | no |
-| [`mnemos_retrieve`](#mnemos_retrieve) | Retrieve a CCR-cached original or FTS5 snippets | no |
-| [`mnemos_align_prefix`](#mnemos_align_prefix) | CacheAligner — relocate dynamic content for prefix cache stability | no |
-| [`mnemos_filter`](#mnemos_filter) | Run / refresh the context filter on an existing memory (secret-scanned `clean_content`) | no |
-| [`mnemos_assemble_context`](#mnemos_assemble_context) *(#125)* | ADR-0017 D1 — assemble the pre-LLM-call context block (recall → CCR → filter → scan → align → budget) | no |
-| [`mnemos_context_rewrite`](#mnemos_context_rewrite) *(#125)* | ADR-0018 — `on_context_rewrite` lifecycle event: report a context rewrite, the original lands in LTM (idempotent, version-less) | no |
-| [`mnemos_hooks`](#mnemos_hooks) *(#125)* | ADR-0017 D1 / ADR-0018 lifecycle hooks — grouped `action:enum` tool: `pre_llm_call` / `on_session_start` / `post_tool_call` (autocompression, opt-in) | no |
-| [`mnemos_awareness`](#mnemos_awareness) *(#254)* | Awareness pre-flight — server-observed neighbor presence, delta, conflict hints, and the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only + the peer's claimed task, self-reported and labeled) | no |
+| [`vesma_add`](#vesma_add) | Create a new memory entry | yes |
+| [`vesma_search`](#vesma_search) | Hybrid FTS + vector search | no |
+| [`vesma_agent_recall`](#vesma_agent_recall) | Per-agent recall (M3) | no |
+| [`vesma_recall_context`](#vesma_recall_context) | Restore session context for a project | no |
+| [`vesma_save_context`](#vesma_save_context) | Persist a session checkpoint | no (auto) |
+| [`vesma_list_recent`](#vesma_list_recent) | List recent entries | no |
+| [`vesma_list_tags`](#vesma_list_tags) | List all tags with counts | no |
+| [`vesma_tags`](#vesma_tags) *(pilot #97)* | Grouped bulk tag ops: rename / remove / add (`action: enum`) | no |
+| [`vesma_tags_rename`](#vesma_tags_rename) | Bulk rename tag prefixes across memories (e.g. `gcw:` → `vesma:`); dry-run by default | no |
+| [`vesma_workflow`](#vesma_workflow) *(#96)* | Workflow lifecycle: set / get / history (`action: enum`) | no |
+| [`vesma_ingest_url`](#vesma_ingest_url) | Fetch and save a web page | yes |
+| [`vesma_ingest_document`](#vesma_ingest_document) | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) | yes |
+| [`vesma_watch_start`](#vesma_watch_start) | Register the project-graph watch poll (ADR-0032 §3.2) | no |
+| [`vesma_watch_stop`](#vesma_watch_stop) | Stop one or all watch registrations | no |
+| [`vesma_watch_status`](#vesma_watch_status) | Report watch registrations and last poll outcome | no |
+| [`vesma_index_project`](#vesma_index_project) | Index a registered project root into the project graph (ADR-0032, on by default) | no |
+| [`vesma_project_graph_status`](#vesma_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
+| [`vesma_search_graph`](#vesma_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
+| [`vesma_trace_path`](#vesma_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
+| [`vesma_get_file_outline`](#vesma_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
+| [`vesma_get_code_snippet`](#vesma_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
+| [`vesma_check_graph_coverage`](#vesma_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
+| [`vesma_get_graph_schema`](#vesma_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
+| [`vesma_list_graph_projects`](#vesma_list_graph_projects) | Registered projects joined with their index status | no |
+| [`vesma_delete_graph_project`](#vesma_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
+| [`vesma_register_project`](#vesma_register_project) | Register a project root for the graph (#454) — the answer to "not registered" refusals | no |
+| [`vesma_auto_collect_status`](#vesma_auto_collect_status) | Compaction signal vector (M7) | no |
+| [`vesma_compress`](#vesma_compress) | Reversible compression (CCR) — cache original, embed marker | no |
+| [`vesma_retrieve`](#vesma_retrieve) | Retrieve a CCR-cached original or FTS5 snippets | no |
+| [`vesma_align_prefix`](#vesma_align_prefix) | CacheAligner — relocate dynamic content for prefix cache stability | no |
+| [`vesma_filter`](#vesma_filter) | Run / refresh the context filter on an existing memory (secret-scanned `clean_content`) | no |
+| [`vesma_assemble_context`](#vesma_assemble_context) *(#125)* | ADR-0017 D1 — assemble the pre-LLM-call context block (recall → CCR → filter → scan → align → budget) | no |
+| [`vesma_context_rewrite`](#vesma_context_rewrite) *(#125)* | ADR-0018 — `on_context_rewrite` lifecycle event: report a context rewrite, the original lands in LTM (idempotent, version-less) | no |
+| [`vesma_hooks`](#vesma_hooks) *(#125)* | ADR-0017 D1 / ADR-0018 lifecycle hooks — grouped `action:enum` tool: `pre_llm_call` / `on_session_start` / `post_tool_call` (autocompression, opt-in) | no |
+| [`vesma_awareness`](#vesma_awareness) *(#254)* | Awareness pre-flight — server-observed neighbor presence, delta, conflict hints, and the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only + the peer's claimed task, self-reported and labeled) | no |
 | [Native awareness heartbeat](#native-awareness-heartbeat-adr-0035) *(ADR-0035)* | The awareness tail that rides every MCP tool response natively (no manual invocation) — gated by `awareness.native_heartbeat_mode`; wave 0 ships `shadow` (measured, not rendered) | — |
-| [`mnemos_export`](#mnemos_export) | Export memories to a file (JSON or SQLite snapshot) | no |
-| [`mnemos_import`](#mnemos_import) | Import memories from an export file (merge or restore) | no |
-| [`mnemos_reprocess`](#mnemos_reprocess) | Manually run the knowledge pipeline over queued raw/processing entries | no |
-| [`mnemos_stats`](#mnemos_stats) | Health counters and key paths | no |
+| [`vesma_export`](#vesma_export) | Export memories to a file (JSON or SQLite snapshot) | no |
+| [`vesma_import`](#vesma_import) | Import memories from an export file (merge or restore) | no |
+| [`vesma_reprocess`](#vesma_reprocess) | Manually run the knowledge pipeline over queued raw/processing entries | no |
+| [`vesma_stats`](#vesma_stats) | Health counters and key paths | no |
 
 ---
 
-## `mnemos_add`
+## `vesma_add`
 
 Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](tag-contract.md)) before writing.
 
@@ -107,7 +107,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
   "id": 1,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_add",
+    "name": "vesma_add",
     "arguments": {
       "content": "Use uv, not pip",
       "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
@@ -131,7 +131,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 
 ---
 
-## `mnemos_search`
+## `vesma_search`
 
 Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `published` memories are searched by default.
 
@@ -174,7 +174,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
   "id": 2,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_search",
+    "name": "vesma_search",
     "arguments": {
       "query": "how to manage Python dependencies",
       "limit": 5,
@@ -195,7 +195,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 
 ---
 
-## `mnemos_agent_recall`
+## `vesma_agent_recall`
 
 Per-agent recall (M3). Returns the most recent entries for a single agent, optionally filtered by project and / or sub-query.
 
@@ -234,7 +234,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_agent_recall",
+    "name": "vesma_agent_recall",
     "arguments": {
       "agent": "cr-security-reviewer",
       "project": "vesma",
@@ -256,7 +256,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
 
 ---
 
-## `mnemos_recall_context`
+## `vesma_recall_context`
 
 Restore the latest session checkpoint for a project. The **first** thing an agent should call at the start of a session, especially after context compaction.
 
@@ -295,7 +295,7 @@ Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
 If no checkpoint is found:
 
 ```text
-No context found for project 'vesma'. Start by saving context with mnemos_save_context.
+No context found for project 'vesma'. Start by saving context with vesma_save_context.
 ```
 
 In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode Active` block is appended with mandatory session rules.
@@ -308,7 +308,7 @@ In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode
   "id": 4,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_recall_context",
+    "name": "vesma_recall_context",
     "arguments": { "project": "vesma" }
   }
 }
@@ -316,13 +316,13 @@ In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode
 
 ### Related
 
-- `mnemos_save_context` — the matching writer
+- `vesma_save_context` — the matching writer
 - [architecture.md](../architecture/overview.md)
 - HTTP equivalent: [`POST /context/recall`](http-api.md#post-contextrecall--recall-session-context)
 
 ---
 
-## `mnemos_save_context`
+## `vesma_save_context`
 
 Persist a session checkpoint. Agents should call this **proactively**: after meaningful work, before switching tasks, or when context is large.
 
@@ -338,7 +338,7 @@ Persist a session checkpoint. Agents should call this **proactively**: after mea
 | `context` | string | no | — | Other context (file paths, architecture, gotchas). |
 | `agent` | string | no | `"user"` | Agent identity for the checkpoint — the validated identity channel (non-empty string when provided, whitespace-only rejected). Must match the server-side session→agent binding when `session` is supplied. |
 | `session` | string | no | — | Session id binding the checkpoint to a conversation. First presentation records the session→agent binding server-side; later calls with the same session but a different agent are rejected. |
-| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `mnemos_recall_context` / `mnemos_search` / `mnemos_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
+| `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `vesma_recall_context` / `vesma_search` / `vesma_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
 
 Vesma synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
 
@@ -359,7 +359,7 @@ A checkpoint whose five payload fields are all empty is trivially rejected befor
   "id": 5,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_save_context",
+    "name": "vesma_save_context",
     "arguments": {
       "project": "vesma",
       "goals": "Finish M15.1 mypy --strict",
@@ -373,13 +373,13 @@ A checkpoint whose five payload fields are all empty is trivially rejected befor
 
 ### Related
 
-- `mnemos_recall_context` — the matching reader
+- `vesma_recall_context` — the matching reader
 - Auto-collect mode: [mcp-tools.md#auto-collect-mode](#auto-collect-mode)
 - HTTP equivalent: [`POST /context/save`](http-api.md#post-contextsave--save-a-session-checkpoint)
 
 ---
 
-## `mnemos_list_recent`
+## `vesma_list_recent`
 
 List the most recent memory entries, oldest-last.
 
@@ -414,7 +414,7 @@ List the most recent memory entries, oldest-last.
   "id": 6,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_list_recent",
+    "name": "vesma_list_recent",
     "arguments": { "limit": 20, "project": "vesma" }
   }
 }
@@ -427,7 +427,7 @@ List the most recent memory entries, oldest-last.
 
 ---
 
-## `mnemos_list_tags`
+## `vesma_list_tags`
 
 List every tag in the memory with its occurrence count.
 
@@ -456,7 +456,7 @@ None.
   "jsonrpc": "2.0",
   "id": 7,
   "method": "tools/call",
-  "params": { "name": "mnemos_list_tags", "arguments": {} }
+  "params": { "name": "vesma_list_tags", "arguments": {} }
 }
 ```
 
@@ -466,7 +466,7 @@ None.
 
 ---
 
-## `mnemos_tags`
+## `vesma_tags`
 
 Grouped bulk tag operations across memories: rename a prefix, remove tags, or add tags. Action-based dispatch — the grouped pilot tool (#97); every action goes through the same safe write path (plain `UPDATE`, so the FTS5 index stays consistent), previews by default (`dry_run: true`) and is idempotent.
 
@@ -489,7 +489,7 @@ Grouped bulk tag operations across memories: rename a prefix, remove tags, or ad
 
 ### Output
 
-A report dict. `changed` counts memories whose tag set actually changed; `renamed` is kept for back-compat with `mnemos_tags_rename` callers and mirrors `changed`:
+A report dict. `changed` counts memories whose tag set actually changed; `renamed` is kept for back-compat with `vesma_tags_rename` callers and mirrors `changed`:
 
 ```json
 {
@@ -513,7 +513,7 @@ A report dict. `changed` counts memories whose tag set actually changed; `rename
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_tags",
+    "name": "vesma_tags",
     "arguments": {
       "action": "rename",
       "from_prefix": "gcw:",
@@ -534,13 +534,13 @@ A report dict. `changed` counts memories whose tag set actually changed; `rename
 
 ### Related
 
-- Grouped sibling: [`mnemos_tags_rename`](#mnemos_tags_rename) — legacy alias for `action: "rename"`
+- Grouped sibling: [`vesma_tags_rename`](#vesma_tags_rename) — legacy alias for `action: "rename"`
 
 ---
 
-## `mnemos_tags_rename`
+## `vesma_tags_rename`
 
-Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` across existing memories. Kept as a **non-breaking alias**: calls are dispatched to the same rename path as [`mnemos_tags`](#mnemos_tags) with `action: "rename"` (a stray `action` key in the arguments is ignored). Safe — the rename goes through a plain `UPDATE` so the FTS5 external-content index stays consistent — and idempotent: a second run with the same arguments renames 0 memories.
+Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` across existing memories. Kept as a **non-breaking alias**: calls are dispatched to the same rename path as [`vesma_tags`](#vesma_tags) with `action: "rename"` (a stray `action` key in the arguments is ignored). Safe — the rename goes through a plain `UPDATE` so the FTS5 external-content index stays consistent — and idempotent: a second run with the same arguments renames 0 memories.
 
 ### Input
 
@@ -577,7 +577,7 @@ Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` acro
   "id": 10,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_tags_rename",
+    "name": "vesma_tags_rename",
     "arguments": {
       "from_prefix": "gcw:",
       "to_prefix": "mnemos:",
@@ -589,12 +589,12 @@ Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` acro
 
 ### Related
 
-- Grouped tool: [`mnemos_tags`](#mnemos_tags) — `action: "rename"` is the same code path
+- Grouped tool: [`vesma_tags`](#vesma_tags) — `action: "rename"` is the same code path
 - HTTP equivalent: `POST /tags/rename` (implemented in the API; not yet covered in [http-api.md](http-api.md))
 
 ---
 
-## `mnemos_ingest_url`
+## `vesma_ingest_url`
 
 Fetch a web page, extract its main content (via `trafilatura`), and save it as a memory.
 
@@ -603,7 +603,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | **yes** | HTTP / HTTPS URL to fetch. |
-| `tags` | string[] | **yes** | Same M2 contract as `mnemos_add`. |
+| `tags` | string[] | **yes** | Same M2 contract as `vesma_add`. |
 
 > **SSRF guard.** The MCP layer strips `user:password@` from the URL authority before fetching (defence in depth alongside the in-process guard). Do not bypass this by building the URL from a string.
 
@@ -625,7 +625,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
   "id": 8,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_ingest_url",
+    "name": "vesma_ingest_url",
     "arguments": {
       "url": "https://example.com/article",
       "tags": ["project:research", "agent:user", "mnemos:learning"]
@@ -649,7 +649,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 
 ---
 
-## `mnemos_ingest_document`
+## `vesma_ingest_document`
 
 Ingest a full document as chunked memory rows — **docs-as-memory** (ADR-0027 Phase 3). The document text is split structure-preservingly (heading-scoped chunks carrying the `{doc_id, chunk_idx, heading_path}` metadata convention) and every chunk row enters memory **born quarantined**: ingested documents are untrusted content, invisible to every recall/assembly path until the **danger-sweep** clears them.
 
@@ -665,11 +665,11 @@ Ingest a full document as chunked memory rows — **docs-as-memory** (ADR-0027 P
 
 ### Re-ingest and the cache version (ADR-0027 invariant 4)
 
-Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-fragmentation) and bumps the doc-chunk `ccr_cache` version key **in the same SQLite transaction**. Honest scope: the version key is a **consumer-facing invalidation counter** (exposed in `mnemos_stats` / `GET /stats` as `doc_chunk_cache_version`, the same posture as `graph_epoch`) — bumped transactionally on every re-fragmentation; any assembly-cache consumer **must** read it and treat a change as a full invalidation. No in-repo consumer keys on it yet.
+Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-fragmentation) and bumps the doc-chunk `ccr_cache` version key **in the same SQLite transaction**. Honest scope: the version key is a **consumer-facing invalidation counter** (exposed in `vesma_stats` / `GET /stats` as `doc_chunk_cache_version`, the same posture as `graph_epoch`) — bumped transactionally on every re-fragmentation; any assembly-cache consumer **must** read it and treat a change as a full invalidation. No in-repo consumer keys on it yet.
 
-### Boundary with `mnemos_ingest_url`
+### Boundary with `vesma_ingest_url`
 
-`mnemos_ingest_url` keeps its pre-Phase-3 semantics: a fetched page saved as ONE memory row through the ordinary visibility policy, no born-quarantine. It is **not** retroactively quarantined — the document path is this separate tool.
+`vesma_ingest_url` keeps its pre-Phase-3 semantics: a fetched page saved as ONE memory row through the ordinary visibility policy, no born-quarantine. It is **not** retroactively quarantined — the document path is this separate tool.
 
 ### Input
 
@@ -677,7 +677,7 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Full document text to chunk and ingest. |
 | `doc_id` | string | **yes** | Logical document identity; stable across re-ingest (replaces the chunks + bumps the cache version). |
-| `tags` | string[] | **yes** | Same M2 contract as `mnemos_add`. |
+| `tags` | string[] | **yes** | Same M2 contract as `vesma_add`. |
 | `title` | string | no | Optional document title. |
 | `source_url` | string | no | Optional provenance URL. |
 
@@ -704,7 +704,7 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_ingest_document",
+    "name": "vesma_ingest_document",
     "arguments": {
       "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
       "doc_id": "dep-guide",
@@ -724,12 +724,12 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
 ### Related
 
 - HTTP equivalent: [`POST /ingest-document`](http-api.md#post-ingest-document--ingest-a-document-as-chunked-quarantined-rows)
-- Single-URL tool: [`mnemos_ingest_url`](#mnemos_ingest_url) (separate semantics — one row, no born-quarantine)
+- Single-URL tool: [`vesma_ingest_url`](#vesma_ingest_url) (separate semantics — one row, no born-quarantine)
 - ADR: [ADR-0027](../../project/adr/0027-multi-context-memory.md) (Phase 3, invariants 4/7/8); [ADR-0019](../../project/adr/0019-optimistic-publication-async-refinement.md) (§5 quarantine, Phase A danger gate)
 
 ---
 
-## `mnemos_watch_start`
+## `vesma_watch_start`
 
 Register a project's code graph for the in-process watch poll (ADR-0032 §3.2). One cooperative background thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes — audited with reason `watch`.
 
@@ -775,7 +775,7 @@ A repeat registration for the same project returns the payload with `"status": "
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_watch_start",
+    "name": "vesma_watch_start",
     "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
@@ -796,7 +796,7 @@ A repeat registration for the same project returns the payload with `"status": "
 
 ---
 
-## `mnemos_watch_stop`
+## `vesma_watch_stop`
 
 Stop one watch registration (by `project_id`) or ALL of them when the argument is omitted. Idempotent.
 
@@ -819,7 +819,7 @@ Stop one watch registration (by `project_id`) or ALL of them when the argument i
 
 ---
 
-## `mnemos_watch_status`
+## `vesma_watch_status`
 
 Report active watch registrations and the last poll outcome per project (ADR-0032 watch poll).
 
@@ -872,7 +872,7 @@ Ten tools over the **project code graph**: symbols and file outlines parsed by t
 |---------------------|---------|---------|
 | `enabled` | `true` | Master flag for the 10 tools and the `/graph/` REST namespace — ON by default (owner decision 2026-09-28); `false` hides the whole surface. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness (effective only when `enabled`). |
-| `watch` | `true` | The watch poll (`mnemos_watch_start`) is armed by default but INERT until an explicit registration; the master gate applies on top. |
+| `watch` | `true` | The watch poll (`vesma_watch_start`) is armed by default but INERT until an explicit registration; the master gate applies on top. |
 | `auto_index` | `true` | Native auto-indexing (see below) — first contact through MCP/hooks auto-registers and background-indexes; `false` leaves only the manual triggers. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project. Fail-closed: a breach refuses the WHOLE index — no partial graph is ever published (PG7). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (same fail-closed discipline). |
@@ -890,8 +890,8 @@ Since wave PG-0.5 (owner directive 2026-09-29) the graph indexes itself — **no
 - **First contact auto-registers.** Every dispatched MCP tool call and every `pre_llm_call` hook emits a cheap activity hint. When the project is not yet in the projects table and its cwd carries a packaging manifest (`pyproject.toml`, `setup.py`, `package.json`, `go.mod`, `Cargo.toml` — **auto-registration requires a manifest marker; a bare `.git` is not enough**, and `$HOME`/the filesystem root never auto-register even with a manifest present), the project is auto-registered with that cwd as its root — attribution (agent, timestamp) lands in the project description and a PG7 `auto-register` audit row. **One root = one graph**: a name hint over an already-registered root reuses the EXISTING project (`auto-register-reused` audit) instead of creating a duplicate row and re-indexing the same tree; the global cap `auto_register_max_projects` (default 64) bounds how many projects the auto path may ever create, past it a silent skip with an `auto-register-capped` audit row.
 - **Then the background work runs.** No index yet → a background first index (audit reason `auto-first`); an existing index → a cheap mtime+size staleness check and, on actual changes, an incremental reindex (audit reason `auto-stale`). All of it rides the same single cooperative scheduler thread as the watch poll; the hinting tool call is never blocked and never fails because of a hint.
 - **The beacon appears by itself.** Once an index exists, the `assemble_context` tail line shows up with no action from the agent.
-- **Guardrails.** Auto actions are throttled per project (`auto_reindex_min_interval_sec`, default 300s), attributed to the hinting agent (no `agent` → no auto action, PG7), and pass through the same fail-closed PG7 limits as manual runs — a limit breach aborts the whole auto index with an audit row, never a partial graph. A FAILED first auto index suspends the auto path for that project (sidecar flag `auto_suspended`): further hints skip the tree entirely — no disk walk — until a successful manual `mnemos_index_project`, a `mnemos_delete_graph_project`, or a watch reindex lifts the flag; `auto-stale` runs over a valid existing index never suspend. A multi-path registration indexes `paths[0]` only (v1 limitation).
-- **REST is not an auto surface** (no cwd to gate a registration on) — `/graph/*` stays exactly as documented. The manual tools (`mnemos_index_project`, `mnemos_watch_start`) remain the explicit-control path; `code_graph.auto_index: false` turns the auto path off entirely.
+- **Guardrails.** Auto actions are throttled per project (`auto_reindex_min_interval_sec`, default 300s), attributed to the hinting agent (no `agent` → no auto action, PG7), and pass through the same fail-closed PG7 limits as manual runs — a limit breach aborts the whole auto index with an audit row, never a partial graph. A FAILED first auto index suspends the auto path for that project (sidecar flag `auto_suspended`): further hints skip the tree entirely — no disk walk — until a successful manual `vesma_index_project`, a `vesma_delete_graph_project`, or a watch reindex lifts the flag; `auto-stale` runs over a valid existing index never suspend. A multi-path registration indexes `paths[0]` only (v1 limitation).
+- **REST is not an auto surface** (no cwd to gate a registration on) — `/graph/*` stays exactly as documented. The manual tools (`vesma_index_project`, `vesma_watch_start`) remain the explicit-control path; `code_graph.auto_index: false` turns the auto path off entirely.
 
 ### Token contract
 
@@ -900,13 +900,13 @@ Every windowed tool takes `max_output_tokens` (integer, 128–1,000,000, default
 - The budget is enforced in **bytes = tokens × 4** — a deterministic 4 UTF-8 bytes per token ceiling, never a tokenizer guess.
 - Rows are **never split**: a row that no longer fits is dropped WHOLE; snippets drop whole LINES. `has_more: true` and a cursor tell you what remains.
 - The cursor **strictly advances** (at least one row is always consumed). A budget that cannot fit even one row is refused (`GraphBudgetError`, HTTP `400`) instead of looping on the same page.
-- Detail is opt-in: signatures ride only when `include_signature: true` is passed to `mnemos_search_graph`.
+- Detail is opt-in: signatures ride only when `include_signature: true` is passed to `vesma_search_graph`.
 
 Errors shared by the whole group — `disabled` (operator gate), `attribution-required` (missing `agent`, PG7), confinement refusals (unregistered project or a path escaping the registered root, PG2), budget refusals. Every call, read or write, is audited per agent (PG7). REST twins map these to HTTP codes: see the [project graph REST section](http-api.md#project-graph-adr-0032).
 
 ---
 
-## `mnemos_index_project`
+## `vesma_index_project`
 
 Index a **registered** project root into the shared project graph — full or incremental. Serialized per project: a concurrent call gets `in-progress` status immediately. PG2: only a project registered in the projects table is accepted; arbitrary paths are refused. PG7: limits are fail-closed, the run is audited with your agent id.
 
@@ -953,7 +953,7 @@ Index a **registered** project root into the shared project graph — full or in
   "id": 30,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_index_project",
+    "name": "vesma_index_project",
     "arguments": { "project_id": "vesma", "agent": "tech-writer" }
   }
 }
@@ -966,7 +966,7 @@ Index a **registered** project root into the shared project graph — full or in
 
 ---
 
-## `mnemos_project_graph_status`
+## `vesma_project_graph_status`
 
 Project-graph status for one registered project: node/edge/file volumes, freshness (fresh %, `last_indexed_at`), parse failures (they stay visible) and the poisoned-file count (PG3). Read-only, audited.
 
@@ -1004,7 +1004,7 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
 
 ---
 
-## `mnemos_search_graph`
+## `vesma_search_graph`
 
 Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
 
@@ -1057,9 +1057,9 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 ---
 
-## `mnemos_trace_path`
+## `vesma_trace_path`
 
-BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `mnemos_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `vesma_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 
@@ -1108,7 +1108,7 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
 
 ---
 
-## `mnemos_get_file_outline`
+## `vesma_get_file_outline`
 
 Symbol outline of one indexed file: kinds, names, qnames, line ranges, signature shapes — never bodies (PG1). The path is repo-relative and must stay inside the registered root (PG2). Parse failures ride along as an honesty marker. Token contract applies.
 
@@ -1153,7 +1153,7 @@ Symbol outline of one indexed file: kinds, names, qnames, line ranges, signature
 
 ---
 
-## `mnemos_get_code_snippet`
+## `vesma_get_code_snippet`
 
 Read a line range **from disk** for an indexed file. The full PG4 sequence runs on every call: poisoned refusal (permanent) → path confinement → indexed check → mtime+size+sha256 freshness → issuance secret scan (ANY hit refuses the whole range fail-closed) → whole-line token window. There is **no snippet cache** — every call re-reads the file.
 
@@ -1186,7 +1186,7 @@ Read a line range **from disk** for an indexed file. The full PG4 sequence runs 
 }
 ```
 
-A file that changed on disk since indexation yields a staleness marker — never content; reindex to refresh. A poisoned file (hit the secrets detector at index time) is refused permanently — only `mnemos_delete_graph_project` clears it (PG3).
+A file that changed on disk since indexation yields a staleness marker — never content; reindex to refresh. A poisoned file (hit the secrets detector at index time) is refused permanently — only `vesma_delete_graph_project` clears it (PG3).
 
 ### Related
 
@@ -1194,9 +1194,9 @@ A file that changed on disk since indexation yields a staleness marker — never
 
 ---
 
-## `mnemos_check_graph_coverage`
+## `vesma_check_graph_coverage`
 
-Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (path does not exist under the project root, #452) / `poisoned`. Coverage honesty — trust is NOT here; verify with `mnemos_get_code_snippet`.
+Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `unindexed` / `missing` (path does not exist under the project root, #452) / `poisoned`. Coverage honesty — trust is NOT here; verify with `vesma_get_code_snippet`.
 
 ### Input
 
@@ -1227,7 +1227,7 @@ Batch coverage check: per-path verdict `indexed` / `stale` / `parse-error` / `un
 
 ---
 
-## `mnemos_get_graph_schema`
+## `vesma_get_graph_schema`
 
 The project-graph contract card for agents: node/edge kinds, the token contract, index and trace limits, schema version. An optional `project_id` adds that project's volumes.
 
@@ -1263,7 +1263,7 @@ The project-graph contract card for agents: node/edge kinds, the token contract,
 
 ---
 
-## `mnemos_list_graph_projects`
+## `vesma_list_graph_projects`
 
 Registered projects joined with their index status (volumes, poisoned count, `last_indexed_at`). Registered-but-never-indexed projects stay visible; so do indexed orphans whose project entity was deregistered.
 
@@ -1304,7 +1304,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 
 ---
 
-## `mnemos_delete_graph_project`
+## `vesma_delete_graph_project`
 
 Drop a project's graph INDEX — the sidecar data only, never the project entity in the main DB. The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
 
@@ -1329,7 +1329,7 @@ Drop a project's graph INDEX — the sidecar data only, never the project entity
 
 ---
 
-## `mnemos_register_project`
+## `vesma_register_project`
 
 Register a project root for the code graph (#454) — the agent-side answer to `not registered` confinement refusals (previously operator-only, and the auto path covers marker roots only, capped at `auto_register_max_projects`).
 
@@ -1358,9 +1358,9 @@ The root must exist on disk, be absolute, carry a packaging manifest (`pyproject
 
 ---
 
-## `mnemos_auto_collect_status`
+## `vesma_auto_collect_status`
 
-Return the current compaction-detection signal vector (M7). The agent reads this to decide whether to call `mnemos_save_context` proactively.
+Return the current compaction-detection signal vector (M7). The agent reads this to decide whether to call `vesma_save_context` proactively.
 
 ### Input
 
@@ -1424,7 +1424,7 @@ Tool descriptions also change (with `🔄 [AUTO-COLLECT] MANDATORY:` prefixes) s
 
 ---
 
-## `mnemos_stats`
+## `vesma_stats`
 
 Return Vesma health counters.
 
@@ -1455,9 +1455,9 @@ Same shape as the CLI `vesma stats` command — see [cli-reference.md#stats](cli
 
 ---
 
-## `mnemos_reprocess`
+## `vesma_reprocess`
 
-Manually trigger the knowledge pipeline to process queued `raw` / `processing` entries into `published` knowledge: cluster → synthesize → quality gate → publish. Use when `mnemos_stats` shows a large `queue_depth`, or after bulk import.
+Manually trigger the knowledge pipeline to process queued `raw` / `processing` entries into `published` knowledge: cluster → synthesize → quality gate → publish. Use when `vesma_stats` shows a large `queue_depth`, or after bulk import.
 
 ### Input
 
@@ -1497,7 +1497,7 @@ Memories that do not form a cluster are promoted individually (`single_promoted`
   "id": 11,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_reprocess",
+    "name": "vesma_reprocess",
     "arguments": { "project": "vesma", "limit": 200 }
   }
 }
@@ -1510,9 +1510,9 @@ Memories that do not form a cluster are promoted individually (`single_promoted`
 
 ---
 
-## `mnemos_compress`
+## `vesma_compress`
 
-Compress large content (tool output, logs, JSON) with **zero data loss**. The original is cached in the `ccr_cache` SQLite table keyed by its SHA-256 hash; the compressed output embeds a short parseable marker so the LLM can call `mnemos_retrieve` to fetch the full original back on demand. Achieves 70–90% token reduction on typical logs and JSON.
+Compress large content (tool output, logs, JSON) with **zero data loss**. The original is cached in the `ccr_cache` SQLite table keyed by its SHA-256 hash; the compressed output embeds a short parseable marker so the LLM can call `vesma_retrieve` to fetch the full original back on demand. Achieves 70–90% token reduction on typical logs and JSON.
 
 Content shorter than `min_size_chars` (default 500) is returned as-is — not cached, not compressed (tiny content has no token savings).
 
@@ -1530,12 +1530,12 @@ Content shorter than `min_size_chars` (default 500) is returned as-is — not ca
 
 ```json
 {
-  "compressed_text": "[compressed: a1b2... | 30000→900 chars | retrieve via mnemos_retrieve]\n...filtered content...",
+  "compressed_text": "[compressed: a1b2... | 30000→900 chars | retrieve via vesma_retrieve]\n...filtered content...",
   "hash": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678",
   "original_size": 30000,
   "compressed_size": 900,
   "reduction_pct": 97.0,
-  "marker": "[compressed: a1b2... | 30000→900 chars | retrieve via mnemos_retrieve]",
+  "marker": "[compressed: a1b2... | 30000→900 chars | retrieve via vesma_retrieve]",
   "cached": true,
   "profile": "log"
 }
@@ -1544,14 +1544,14 @@ Content shorter than `min_size_chars` (default 500) is returned as-is — not ca
 ### Marker format
 
 ```text
-[compressed: <sha-256-hash> | <N>→<M> chars | retrieve via mnemos_retrieve]
+[compressed: <sha-256-hash> | <N>→<M> chars | retrieve via vesma_retrieve]
 ```
 
 The marker is the only overhead added on top of the filtered content. It is short, parseable, and LLM-friendly. The hash is content-addressed, so re-compressing the same text is a no-op (the cache entry is reused). The issuer pair recorded with `agent`/`session` belongs to the FIRST writer of the `(project, hash)` row — a later session re-compressing identical content receives a marker that strict validation binds to that first issuer (fail-closed; harmless, since the re-compressor already holds the content).
 
 ### Example
 
-Compress a 30K-line build log → ~900 chars in the context window. When the LLM needs the full traceback, it calls `mnemos_retrieve` with the hash from the marker.
+Compress a 30K-line build log → ~900 chars in the context window. When the LLM needs the full traceback, it calls `vesma_retrieve` with the hash from the marker.
 
 ### Related
 
@@ -1559,7 +1559,7 @@ Compress a 30K-line build log → ~900 chars in the context window. When the LLM
 
 ---
 
-## `mnemos_retrieve`
+## `vesma_retrieve`
 
 Retrieve the original uncompressed content for a CCR marker hash. If `query` is omitted, returns the full original. If `query` is provided, returns FTS5-ranked snippets from within the cached original — useful when the original is large and only a few lines are relevant.
 
@@ -1586,7 +1586,7 @@ A request is **marker-shaped** when it carries any of `original_chars` / `agent`
 
 Any failed check returns the refused shape with `reason="marker validation failed: <check>: <detail>"` and **no content** (fail-closed). Reasons are FIXED non-oracle strings — they never echo the stored original length or the stored issuer pair (a reason leaking those is a two-call oracle that defeats provenance). Rows stored without issuer identity (legacy migrations, identity-less compress) fail full-shape validation with the distinct `unverifiable legacy marker` reason. **Hash-only closure (review F2):** in strict mode a hash-only retrieve of an issuer-stamped row is refused with `reason="marker validation required"` — stripping the optional args cannot bypass the gate; legacy NULL-issuer rows stay redeemable hash-only with a WARNING (unverifiable by construction; refusing would brick pre-A2 caches). Plain hash-only retrieves on knob-off deployments are unaffected. A refused validation does not bump `retrieval_count`.
 
-For `mnemos_assemble_context` with `expand_ccr=true`: pass `agent` alongside `session` so the expansion runs under your issuer context; without a full `(agent, session)` identity a strict deployment SKIPS the expansion of issuer-stamped markers (the marker stays — the model keeps the on-demand handle); legacy NULL-issuer rows still expand. The CCR stage stats carry `skipped_refused` for these.
+For `vesma_assemble_context` with `expand_ccr=true`: pass `agent` alongside `session` so the expansion runs under your issuer context; without a full `(agent, session)` identity a strict deployment SKIPS the expansion of issuer-stamped markers (the marker stays — the model keeps the on-demand handle); legacy NULL-issuer rows still expand. The CCR stage stats carry `skipped_refused` for these.
 
 Residual (accepted, ADR-0018 residual register): a trusted harness with compress access can still seed content inside its own project and redeem the marker from the same identity — single-operator threat model; revisit on the first multi-principal trigger.
 
@@ -1625,7 +1625,7 @@ If the hash is absent from the cache (e.g. evicted by TTL or LRU), `found` is `f
 
 ---
 
-## `mnemos_align_prefix`
+## `vesma_align_prefix`
 
 **CacheAligner (P1-5)** — relocate dynamic content (ISO timestamps, UUIDs, session ids, short-lived tokens, calendar dates) from system-prompt-like text to a `--- Dynamic context ---` block at the end, so the prefix stays byte-identical across requests and provider KV caches (Anthropic `cache_control`, OpenAI prefix caching) hit. Inspired by headroom's CacheAligner (https://github.com/headroomlabs-ai/headroom, Apache 2.0). Original implementation — no headroom code imported.
 
@@ -1706,7 +1706,7 @@ A kind whose toggle is `false` is added to the skip set and stays in-place (not 
 
 ---
 
-## `mnemos_filter`
+## `vesma_filter`
 
 Run or refresh the Context Filter (M10) on an existing memory and return its `clean_content`. Useful when auto-filter was off at ingest, or to re-filter with a different profile.
 
@@ -1743,7 +1743,7 @@ When `redactions` > 0 the response also carries `redacted_patterns` (pattern nam
   "id": 12,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_filter",
+    "name": "vesma_filter",
     "arguments": {
       "memory_id": "550e8400-e29b-41d4-a716-446655440000",
       "profile": "terminal"
@@ -1779,7 +1779,7 @@ Every non-save tool call returns its normal payload **plus** an optional reminde
 ```text
 ... normal result ...
 
-⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling mnemos_save_context to preserve your current progress.
+⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling vesma_save_context to preserve your current progress.
 ```
 
 This is informational; nothing in Vesma blocks the call. Disable by setting `MNEMOS_AUTO_COLLECT=0` (the default).
@@ -1800,7 +1800,7 @@ once per upgrade, never per call. A store error skips the notice silently
 
 ## Tag contract reminder
 
-The `mnemos_add` and `mnemos_ingest_url` tools reject calls that violate the M2 contract. The three required tag families are:
+The `vesma_add` and `vesma_ingest_url` tools reject calls that violate the M2 contract. The three required tag families are:
 
 | Tag | Format | Cardinality | Purpose |
 |-----|--------|-------------|---------|
@@ -1818,7 +1818,7 @@ Full reference: [tag-contract.md](tag-contract.md).
 
 ## Output token reduction (P1-7)
 
-`mnemos_add`, `mnemos_search`, and `mnemos_recall_context` accept two optional parameters that steer the caller's output style without changing what Vesma stores or returns:
+`vesma_add`, `vesma_search`, and `vesma_recall_context` accept two optional parameters that steer the caller's output style without changing what Vesma stores or returns:
 
 | Parameter | Values | What it does |
 |-----------|--------|--------------|
@@ -1852,7 +1852,7 @@ When `output_style.enabled` is `false`, both resolvers return the no-op defaults
   "id": 7,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_search",
+    "name": "vesma_search",
     "arguments": {
       "query": "cache aligner prefix stability",
       "verbosity": "terse",
@@ -1874,14 +1874,14 @@ The tool result carries the normal payload **plus** a short guidance suffix:
 
 ---
 
-## `mnemos_assemble_context`
+## `vesma_assemble_context`
 
 **ADR-0017 D1 provider contract (vesma #125, Wave 1)** — one call assembles the model-facing context block for a pre-LLM-call injection. Any MCP-capable harness gains standardized context assembly instead of adapter-private recall.
 
 Fixed pipeline, in order (recorded verbatim in `stats.stages`):
 
 1. **recall** — hybrid RRF (FTS5 + vector) via the standard search path; the entry-invariant status gate means only `published` / `processed` memories surface (`raw` and DLQ content is unreachable). A `file` contributes the recall query and pins applyTo-scoped rule memories to the top.
-2. **ccr** *(optional, `expand_ccr=true`)* — inline `[compressed: <hash> | …]` markers found in recalled content are expanded via project-scoped retrieval, budget-aware: an original that would not fit the budget stays compressed (the marker remains; the model can call `mnemos_retrieve` on demand).
+2. **ccr** *(optional, `expand_ccr=true`)* — inline `[compressed: <hash> | …]` markers found in recalled content are expanded via project-scoped retrieval, budget-aware: an original that would not fit the budget stays compressed (the marker remains; the model can call `vesma_retrieve` on demand).
 3. **filter** — the 5-stage context filter per block (auto-detected profile).
 4. **scan** *(mandatory)* — every block passes the issuance secret scan; redacted spans (`<REDACTED:<pattern>>`) are counted per block; refuse mode (`ccr.retrieve_refuse_on_secret`) drops the block (fail-closed). Nothing enters the assembled output unscanned.
 5. **align** — CacheAligner relocates dynamic content to each block's tail (runs before provenance wrapping so the provenance line stays parseable).
@@ -1970,11 +1970,11 @@ For `mode="async"` the call returns only a handle envelope (`{"mode": "async", "
 
 - REST twin: `POST /context/assemble` (same manager path) — [http-api.md](http-api.md)
 - Pipeline rationale: ADR-0017 (D1), ADR-0018 (entry invariant: scan + provenance + status gate on every LTM → context entry)
-- CCR: [`mnemos_compress`](#mnemos_compress) / [`mnemos_retrieve`](#mnemos_retrieve)
+- CCR: [`vesma_compress`](#vesma_compress) / [`vesma_retrieve`](#vesma_retrieve)
 
 ---
 
-## `mnemos_context_rewrite`
+## `vesma_context_rewrite`
 
 **ADR-0018 `on_context_rewrite` lifecycle event (vesma #125, Wave 2)** — the harness reports that it *rewrote* a block of its working context. The original of the replaced block is the source of truth: it is stored to long-term memory losslessly through the **normal knowledge pipeline** and becomes rehydratable through the **existing** scanned/gated channels. Harness compaction becomes lossless when originals land in the provider.
 
@@ -1983,8 +1983,8 @@ Semantics (ADR-0018, verbatim):
 - **Idempotent** — re-delivery of the same event performs no duplicate writes. The idempotency key is content-addressed: SHA-256 over the length-prefixed canonical tuple `project/agent/session/supersedes/content`, persisted as `metadata["rewrite_event_key"]` and looked up *before* any write. The advisory `diff` is deliberately excluded from the key — it is not load-bearing, so a re-delivery carrying a different diff is still the same event. Two identical blocks replaced in two different sessions are two events (`session` participates in the key).
 - **Version-less** — no ordering promise, no version chains. Replacement lineage is a `supersedes` edge (Phase 1 minimal `memory_edges` surface); traversal/expansion is Phase 2 (ADR-0017 D2).
 - **Pipeline entry** — the original enters at `raw` via `MemoryManager.add`; it is context-reachable only after the pipeline advances it to `processed`/`published` (the `CONTEXT_ADMISSIBLE_STATUSES` gate). The Layer-1 write-path secret scan runs on `content` (a hit auto-tags `mnemos:no-federate`; zero-loss — the original is stored unchanged). The advisory diff gets its own Layer-1 verdict (`rewrite_diff_scan_verdict`: clean/hit/unknown) and a hit also tags the record `mnemos:no-federate` — otherwise the advisory payload would federate unflagged through a channel that only scans `content`.
-- **Rehydrate = existing channels** — rewrite-stored originals surface through `mnemos_retrieve` / `mnemos_assemble_context` (scan-at-issuance, provenance, status gate). There is deliberately no new retrieval path.
-- **Marker** — the CCR marker stays in the harness window (caller-side). Set `include_marker=true` to also receive the compress marker for the original; rehydrate of that marker goes through `mnemos_retrieve` (project-scoped, issuance-scanned).
+- **Rehydrate = existing channels** — rewrite-stored originals surface through `vesma_retrieve` / `vesma_assemble_context` (scan-at-issuance, provenance, status gate). There is deliberately no new retrieval path.
+- **Marker** — the CCR marker stays in the harness window (caller-side). Set `include_marker=true` to also receive the compress marker for the original; rehydrate of that marker goes through `vesma_retrieve` (project-scoped, issuance-scanned).
 
 ### Input
 
@@ -2013,7 +2013,7 @@ Semantics (ADR-0018, verbatim):
 }
 ```
 
-`status` is `stored` (first delivery; `memory_status` is `raw` — the pipeline has not run yet) or `deduplicated` (re-delivery: same `memory_id`, no new writes; the idempotent edge insert reports `edge_created: false`). `ccr_marker` (the full `mnemos_compress` result) appears only when `include_marker=true`. The receipt carries **no version or ordering fields** — by design (version-less event).
+`status` is `stored` (first delivery; `memory_status` is `raw` — the pipeline has not run yet) or `deduplicated` (re-delivery: same `memory_id`, no new writes; the idempotent edge insert reports `edge_created: false`). `ccr_marker` (the full `vesma_compress` result) appears only when `include_marker=true`. The receipt carries **no version or ordering fields** — by design (version-less event).
 
 ### Notes
 
@@ -2027,16 +2027,16 @@ Semantics (ADR-0018, verbatim):
 
 - REST twin: `POST /context/rewrite` (same manager path) — [http-api.md](http-api.md)
 - Rationale: ADR-0018 (§"on_context_rewrite": lifecycle event, not a versioned primitive)
-- Rehydrate channels: [`mnemos_retrieve`](#mnemos_retrieve) / [`mnemos_assemble_context`](#mnemos_assemble_context); marker via [`mnemos_compress`](#mnemos_compress)
+- Rehydrate channels: [`vesma_retrieve`](#vesma_retrieve) / [`vesma_assemble_context`](#vesma_assemble_context); marker via [`vesma_compress`](#vesma_compress)
 
 ---
 
-## `mnemos_hooks`
+## `vesma_hooks`
 
 **Lifecycle hooks (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3)** — the automation integration points, grouped behind `action:enum` (the vesma #97 grouped-tool pattern). Three actions, one tool:
 
-- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `mnemos_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (vesma #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`mnemos_awareness`](#mnemos_awareness)).
-- **`on_session_start`** — recall recent checkpoints for session bootstrap (thin wrapper over the recall path; the echoed content is scanned at issuance on this channel, mirroring `mnemos_recall_context`).
+- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `vesma_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (vesma #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`vesma_awareness`](#vesma_awareness)).
+- **`on_session_start`** — recall recent checkpoints for session bootstrap (thin wrapper over the recall path; the echoed content is scanned at issuance on this channel, mirroring `vesma_recall_context`).
 - **`post_tool_call`** — the **autocompression entry point** (ADR-0018): when `auto_compress` resolves true (per-call argument, else the `hooks.auto_compress` config knob, default `false`), the tool output is compressed via CCR and the marker-headed `compressed_text` is returned — the caller **substitutes** it for the raw output in its window. Off by default: the envelope says so and nothing is written.
 
 **Identity mandate (A2 register N2, loudly):** `session` + `project` + `agent` are required on EVERY call. For `post_tool_call` this is a security requirement, not ergonomics — the compress call always threads the caller's `(agent, session)` onto the cache row (the A2 issuer ledger), so strict marker validation (`ccr.validate_markers`) can later prove the marker was minted in the redeemer's own context. Identity-less compression would mint NULL-issuer rows that strict validation refuses to redeem — the hook has no identity-less mode.
@@ -2061,13 +2061,13 @@ Semantics (ADR-0018, verbatim):
 
 ### Output
 
-`pre_llm_call` returns the full `mnemos_assemble_context` result plus `hook`/`injection` keys (inject `text` before the model call). `on_session_start` returns `{hook, session, project, agent, checkpoints: [{id, content, created_at, redactions, redacted_patterns?}], redactions}` — checkpoint content is issuance-scanned; refuse mode drops the checkpoint. `post_tool_call` with autocompression on returns the CCR envelope (`ccr`, `compressed_text`, `marker`, `compressed`, `action: "substitute …"`); with it off, `{auto_compress: false, compressed: false, note}` and no write.
+`pre_llm_call` returns the full `vesma_assemble_context` result plus `hook`/`injection` keys (inject `text` before the model call). `on_session_start` returns `{hook, session, project, agent, checkpoints: [{id, content, created_at, redactions, redacted_patterns?}], redactions}` — checkpoint content is issuance-scanned; refuse mode drops the checkpoint. `post_tool_call` with autocompression on returns the CCR envelope (`ccr`, `compressed_text`, `marker`, `compressed`, `action: "substitute …"`); with it off, `{auto_compress: false, compressed: false, note}` and no write.
 
 ### Notes
 
 - **Config** — two knobs: `hooks.auto_compress` (default `false`) and `hooks.max_output_chars` (default 1,048,576 chars — `post_tool_call` rejects an oversized `output_text` at the boundary BEFORE any write, mirroring the context-rewrite caps convention; `0` disables). The read-only hooks need no enablement; they expose no capability the server surfaces do not already have.
-- **Sync only (this wave)** — ADR-0017 D1 names sync/async hook modes; async delivery waits for a consumer that needs it. Harnesses needing `async`/`code`/`prose` assembly modes call `mnemos_assemble_context` directly.
-- **Memory capture is explicit** — `post_tool_call` does not silently store tool outputs as memories; use `VesmaSDK.remember` (or `mnemos_add`/REST) when a result is worth keeping.
+- **Sync only (this wave)** — ADR-0017 D1 names sync/async hook modes; async delivery waits for a consumer that needs it. Harnesses needing `async`/`code`/`prose` assembly modes call `vesma_assemble_context` directly.
+- **Memory capture is explicit** — `post_tool_call` does not silently store tool outputs as memories; use `VesmaSDK.remember` (or `vesma_add`/REST) when a result is worth keeping.
 - **Errors** — boundary violations return `{"error": …}` (REST twin answers 422; unknown action is 404 there). An over-cap `output_text` is a boundary violation: `{"error": "output_text exceeds hooks.max_output_chars (N > M)"}`, nothing written.
 
 ### Related
@@ -2078,11 +2078,11 @@ Semantics (ADR-0018, verbatim):
 
 ---
 
-## `mnemos_awareness`
+## `vesma_awareness`
 
 **Awareness pre-flight (vesma #254, R3; swarm v0a — ArchCom 2026-09-27)** — the surface a parallel session calls BEFORE a risky operation (the PR #224 contract: a release closed by an invisible parallel session). Two actions, one tool:
 
-- **`pre_flight`** (read-only) — server-observed neighbor activity: presence (who is active), delta (what changed since your cursor — one line per neighbor agent), lexical conflict hints against your last checkpoint goal, and the **operational picture** (swarm v0a/v0b): an explicit block of same-project peers where each observed line carries the agent id, last observed activity, record count in the 900 s presence window, and checkpoint presence — **counts, agent ids and timestamps only**. No title, no body, no tag of a peer record ever enters the OBSERVED layer. Swarm v0b adds each peer's CLAIMED active task — the `task:<slug>` tag (ADR-0027) of its most recent task-tagged row: a client-supplied claim that rides the two-level-trust machinery exactly like goals (issuance-scanned fail-closed, policy markers stripped, rendered in a separate labeled `self-reported` sub-section with an inline `[unverified]` qualifier, never inside the observed header or the blocks, and named by the picture's disclaimer as a self-reported claim). Strictly project-scoped (`project=None` fails closed; cross-project visibility does not exist — no parameter, no flag). The awareness cursor advances ONLY via `mnemos_hooks` `pre_llm_call` with `include_awareness=true` — a pre-flight never marks neighbor entries as consumed.
+- **`pre_flight`** (read-only) — server-observed neighbor activity: presence (who is active), delta (what changed since your cursor — one line per neighbor agent), lexical conflict hints against your last checkpoint goal, and the **operational picture** (swarm v0a/v0b): an explicit block of same-project peers where each observed line carries the agent id, last observed activity, record count in the 900 s presence window, and checkpoint presence — **counts, agent ids and timestamps only**. No title, no body, no tag of a peer record ever enters the OBSERVED layer. Swarm v0b adds each peer's CLAIMED active task — the `task:<slug>` tag (ADR-0027) of its most recent task-tagged row: a client-supplied claim that rides the two-level-trust machinery exactly like goals (issuance-scanned fail-closed, policy markers stripped, rendered in a separate labeled `self-reported` sub-section with an inline `[unverified]` qualifier, never inside the observed header or the blocks, and named by the picture's disclaimer as a self-reported claim). Strictly project-scoped (`project=None` fails closed; cross-project visibility does not exist — no parameter, no flag). The awareness cursor advances ONLY via `vesma_hooks` `pre_llm_call` with `include_awareness=true` — a pre-flight never marks neighbor entries as consumed.
 - **`record_abstention`** — attribute an abstention-on-presence as an ACTION with a reconstructable provenance chain (abstention → delta-block → checkpoint-id → writer-session); pass `basis_checkpoint_id` from the pre-flight response.
 
 **Presence is behavioral metadata** (agent ids, activity timestamps, record counts) — the search gates cover record CONTENT and do not apply to presence. The picture is descriptive only (who / what count / when), never predictive, and it is data, never governance: picture blocks carry no `memory_id`, are never pinnable, and no `applyTo:`/`severity:` semantics ride along. Zero picture-derived records are stored (cursors ride the meta table, actions ride traces); any future awareness-derived record is born `mnemos:no-federate`.
@@ -2111,7 +2111,7 @@ Semantics (ADR-0018, verbatim):
 
 ### Related
 
-- Composition: `mnemos_hooks` `pre_llm_call` / `on_session_start` with `include_awareness=true` (the picture renders last, below the delta section)
+- Composition: `vesma_hooks` `pre_llm_call` / `on_session_start` with `include_awareness=true` (the picture renders last, below the delta section)
 - REST twin: `POST /hooks/{action}` with `include_awareness` — [http-api.md](http-api.md)
 
 ---
@@ -2120,7 +2120,7 @@ Semantics (ADR-0018, verbatim):
 
 **The doorbell contour** — awareness of peer activity reaches the agent NATIVELY, without manual invocation and without any change in foreign harnesses: a delta-gated, observed-only awareness tail attached to the responses of ALL MCP tools through a single injection point (the `call_tool` wrapper). Delivery happens on the FIRST tool call after a peer write — cost scales with peer activity, not with call count; the delta check itself is a sub-millisecond `SELECT EXISTS` probe, so quiet stores pay one index lookup per call.
 
-The tail is one appended `TextContent` after the handler (never inline, lane=awareness, tail-LAST per the cache contract). A deny-list of surfaces never carries it: `mnemos_assemble_context` (it already composes the full picture — a tail there would mean double render and double cursor advance), `mnemos_export` and `mnemos_import` (the bulk transfer pair). The REST leg carries no tail in v1.
+The tail is one appended `TextContent` after the handler (never inline, lane=awareness, tail-LAST per the cache contract). A deny-list of surfaces never carries it: `vesma_assemble_context` (it already composes the full picture — a tail there would mean double render and double cursor advance), `vesma_export` and `vesma_import` (the bulk transfer pair). The REST leg carries no tail in v1.
 
 ### Mode ladder (`awareness.native_heartbeat_mode`)
 
@@ -2135,7 +2135,7 @@ Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rat
 
 ### The envelope (canary/on)
 
-Non-empty peer delta → a fixed-CEILING block (≤120 tokens, enforced by observable truncation): a header, the R3 disclaimer verbatim, at most 8 observed-only lines — one per peer: sanitized agent id, entry count, minute-precision last-seen; no goal text, no record ids, no numeric scores (the ORDER is the relevance signal: my-goal overlap → checkpoint → recency → agent id, deterministic) — and exactly one descriptive flag line pointing at `mnemos_awareness` for depth. Empty delta → ONE deterministic calm-line (~10 tokens, timestamp-free): "quiet" is no longer indistinguishable from "the eye is off".
+Non-empty peer delta → a fixed-CEILING block (≤120 tokens, enforced by observable truncation): a header, the R3 disclaimer verbatim, at most 8 observed-only lines — one per peer: sanitized agent id, entry count, minute-precision last-seen; no goal text, no record ids, no numeric scores (the ORDER is the relevance signal: my-goal overlap → checkpoint → recency → agent id, deterministic) — and exactly one descriptive flag line pointing at `vesma_awareness` for depth. Empty delta → ONE deterministic calm-line (~10 tokens, timestamp-free): "quiet" is no longer indistinguishable from "the eye is off".
 
 The delivery cursor (`awrh:` namespace, keyed `(project, agent)`, session-free) advances strictly BEFORE the response returns — at-most-once delivery; a retry sees "no delta". Advancements are logged with identity.
 
@@ -2146,12 +2146,12 @@ The contour writes zero-content events into the metrics sidecar (90-day retentio
 ### Related
 
 - Decision record: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
-- Depth surface: [`mnemos_awareness`](#mnemos_awareness); hooks composition: `mnemos_hooks` `pre_llm_call` with `include_awareness=true`
+- Depth surface: [`vesma_awareness`](#vesma_awareness); hooks composition: `vesma_hooks` `pre_llm_call` with `include_awareness=true`
 - Config: [config.example.yaml](../../../config.example.yaml) — the `awareness` section
 
 ---
 
-## `mnemos_export`
+## `vesma_export`
 
 Export memories to a file on disk. Thin wrapper over the CLI `vesma export` logic. Returns metadata only — the export content is **never** returned inline (the stdio transport cannot carry a binary SQLite tarball or a large JSON blob over the JSON-RPC stdout channel).
 
@@ -2200,7 +2200,7 @@ Federation defence-in-depth (#86) is inherited automatically because the tool wr
   "id": 8,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_export",
+    "name": "vesma_export",
     "arguments": {
       "output_path": "/tmp/mnemos-backup.json",
       "format": "json",
@@ -2215,7 +2215,7 @@ For an encrypted full snapshot:
 
 ```json
 {
-  "name": "mnemos_export",
+  "name": "vesma_export",
   "arguments": {
     "output_path": "/tmp/mnemos-snapshot.tar.gz",
     "format": "sqlite",
@@ -2228,7 +2228,7 @@ For an encrypted full snapshot:
 
 ---
 
-## `mnemos_import`
+## `vesma_import`
 
 Import memories from an export file. Thin wrapper over the CLI `vesma import` logic. Two modes: **merge** (insert new, skip or overwrite existing) and **restore** (wipe all then import — destructive, requires `confirm=true`).
 
@@ -2275,7 +2275,7 @@ Import validation (#86) is inherited automatically: schema drift, oversized cont
   "id": 9,
   "method": "tools/call",
   "params": {
-    "name": "mnemos_import",
+    "name": "vesma_import",
     "arguments": {
       "source_path": "/tmp/mnemos-backup.json",
       "mode": "merge",
@@ -2289,7 +2289,7 @@ Restore (destructive) with confirmation:
 
 ```json
 {
-  "name": "mnemos_import",
+  "name": "vesma_import",
   "arguments": {
     "source_path": "/tmp/mnemos-snapshot.tar.gz",
     "mode": "restore",
@@ -2302,7 +2302,7 @@ Encrypted import (with `MNEMOS_IMPORT_PASS` set in the server's environment):
 
 ```json
 {
-  "name": "mnemos_import",
+  "name": "vesma_import",
   "arguments": {
     "source_path": "/tmp/encrypted.bin",
     "mode": "merge",
@@ -2313,11 +2313,11 @@ Encrypted import (with `MNEMOS_IMPORT_PASS` set in the server's environment):
 
 ---
 
-## `mnemos_workflow`
+## `vesma_workflow`
 
 Workflow lifecycle management for a memory (vesma #96). Separates mutable **workflow state** (open → in-progress → done, blocked/resolved, terminal states) from the append-only **tag classification** (`project:X`, `mnemos:decision`). The tag layer stays append-only; this layer is the mutable work lifecycle.
 
-Action-based dispatch — the same `action: enum` pattern as `mnemos_tags`. The state machine and the five guardrails are enforced **server-side** in `MemoryManager.workflow_set`; this tool (and the REST `POST /memories/{id}/workflow`) are thin wrappers that cannot bypass it.
+Action-based dispatch — the same `action: enum` pattern as `vesma_tags`. The state machine and the five guardrails are enforced **server-side** in `MemoryManager.workflow_set`; this tool (and the REST `POST /memories/{id}/workflow`) are thin wrappers that cannot bypass it.
 
 ### States and transitions
 
@@ -2439,7 +2439,7 @@ Start work on a memory:
 
 ```json
 {
-  "name": "mnemos_workflow",
+  "name": "vesma_workflow",
   "arguments": {
     "action": "set",
     "memory_id": "01HXYZ...",
@@ -2452,16 +2452,16 @@ Start work on a memory:
 Hit a blocker, then resolve and finish:
 
 ```json
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "blocked", "actor": "agent-dba", "reason": "waiting on upstream spec tag"}}
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "resolved", "actor": "agent-dba"}}
-{"name": "mnemos_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "done", "actor": "agent-dba"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "blocked", "actor": "agent-dba", "reason": "waiting on upstream spec tag"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "resolved", "actor": "agent-dba"}}
+{"name": "vesma_workflow", "arguments": {"action": "set", "memory_id": "01HXYZ...", "to": "done", "actor": "agent-dba"}}
 ```
 
 Force-override a stale lock held by another actor:
 
 ```json
 {
-  "name": "mnemos_workflow",
+  "name": "vesma_workflow",
   "arguments": {
     "action": "set",
     "memory_id": "01HXYZ...",
@@ -2502,7 +2502,7 @@ The same lifecycle is exposed over HTTP, nested under the memory (not a top-leve
 - [getting-started.md](getting-started.md) — wiring `mcp.json` and the first call
 - [http-api.md](http-api.md) — the same capabilities over HTTP
 - [cli-reference.md](cli-reference.md) — the same capabilities over the CLI
-- [tag-contract.md](tag-contract.md) — M2 schema enforced by `mnemos_add`
+- [tag-contract.md](tag-contract.md) — M2 schema enforced by `vesma_add`
 - [security.md](../admin/security.md) — SSRF guard, secrets hygiene
 - [architecture overview](../architecture/overview.md#mcp-server) — server lifecycle
 

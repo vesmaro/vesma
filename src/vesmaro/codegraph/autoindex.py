@@ -3,7 +3,7 @@
 Indexation happens BY ITSELF: the first contact with a project through
 the MCP dispatcher or the ``pre_llm_call`` hook emits an activity HINT,
 and this module turns hints into background work on the shared
-scheduler thread — no explicit ``mnemos_index_project`` call, no
+scheduler thread — no explicit ``vesma_index_project`` call, no
 instruction, no skill. Design invariants (PG1-PG7 unchanged):
 
 * **Hints never block and never break the caller** —

@@ -1,8 +1,8 @@
-"""Integration tests for the ``mnemos_export`` MCP tool (#84).
+"""Integration tests for the ``vesma_export`` MCP tool (#84).
 
 Covers the federation export surface exposed through MCP. The tool is a
 thin wrapper over :func:`vesmaro.cli.export.run_export`; these tests drive
-the real dispatch path (``_dispatch("mnemos_export", ...)``) against an
+the real dispatch path (``_dispatch("vesma_export", ...)``) against an
 isolated tmp DB so the #86 redaction / no-federate exclusion is verified
 end-to-end through the MCP surface.
 
@@ -105,13 +105,13 @@ def _add(
 
 
 async def _export(mgr: MemoryManager, **args: Any) -> dict[str, Any]:
-    """Invoke the MCP dispatch for mnemos_export and parse the JSON dict result.
+    """Invoke the MCP dispatch for vesma_export and parse the JSON dict result.
 
     ``get_manager`` is patched to return the test's ``mgr`` by the
     ``_patch_manager`` autouse fixture, so ``_dispatch`` drives the test's
     isolated MemoryManager.
     """
-    result = await _dispatch("mnemos_export", args)
+    result = await _dispatch("vesma_export", args)
     assert isinstance(result, dict), f"expected dict result, got {type(result)}: {result!r}"
     return result
 

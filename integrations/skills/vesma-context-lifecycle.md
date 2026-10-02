@@ -12,10 +12,10 @@ description: Context lifecycle automation — assemble the pre-LLM context block
 # Vesma Context Lifecycle
 
 The publication-engine tools that run the context lifecycle end to end:
-`mnemos_assemble_context` composes the model-facing context block through a
-fixed, security-gated pipeline; `mnemos_context_rewrite` is the lossless
+`vesma_assemble_context` composes the model-facing context block through a
+fixed, security-gated pipeline; `vesma_context_rewrite` is the lossless
 report of a context rewrite (compaction/slimming) so the original is never
-lost; `mnemos_hooks` groups the automation entry points behind one
+lost; `vesma_hooks` groups the automation entry points behind one
 `action:` enum. ADR-0017 D1 defines the provider contract, ADR-0018 the
 rewrite lifecycle.
 
@@ -44,7 +44,7 @@ rewrite lifecycle.
 1. **Bootstrap a session** — recall recent checkpoints:
 
    ```text
-   mnemos_hooks(action="on_session_start", session=<session-id>,
+   vesma_hooks(action="on_session_start", session=<session-id>,
                 project=<project-slug>, agent=<agent-slug>, limit=5)
    # → recent checkpoints, already secret-scanned at issuance
    ```
@@ -52,7 +52,7 @@ rewrite lifecycle.
 2. **Assemble the pre-LLM context block** (or use the equivalent hook):
 
    ```text
-   mnemos_assemble_context(session=<session-id>, project=<project-slug>,
+   vesma_assemble_context(session=<session-id>, project=<project-slug>,
                            file=<optional-path>, agent=<agent-slug>,
                            budget=2048, mode="sync")
    # → assembled text, per-block provenance lines, redaction counts,
@@ -71,7 +71,7 @@ rewrite lifecycle.
    ORIGINAL of the replaced block:
 
    ```text
-   mnemos_context_rewrite(content=<original text>, project=<project-slug>,
+   vesma_context_rewrite(content=<original text>, project=<project-slug>,
                           agent=<agent-slug>, session=<session-id>,
                           supersedes=<memory-id-of-replaced-block>,
                           include_marker=true)
@@ -81,22 +81,22 @@ rewrite lifecycle.
 
    The original enters the normal knowledge pipeline (raw → processed →
    published); it is context-reachable again only after the pipeline
-   advances it. Rehydrate later via `mnemos_retrieve` or
-   `mnemos_assemble_context` — both re-scan and carry provenance.
+   advances it. Rehydrate later via `vesma_retrieve` or
+   `vesma_assemble_context` — both re-scan and carry provenance.
 
 4. **Compress a tool output through the hook** (autocompression is
    opt-in — pass `auto_compress=true` per call, or enable the
    `hooks.auto_compress` config knob):
 
    ```text
-   mnemos_hooks(action="post_tool_call", session=<session-id>,
+   vesma_hooks(action="post_tool_call", session=<session-id>,
                 project=<project-slug>, agent=<agent-slug>,
                 tool_name=<tool-that-ran>, output_text=<raw output>,
                 auto_compress=true)
    # → marker-headed compressed_text; SUBSTITUTE it into your window
    ```
 
-5. **Handle backpressure** — `mnemos_context_rewrite` may return
+5. **Handle backpressure** — `vesma_context_rewrite` may return
    `{"error": ..., "rate_limited": true}`. Back off and re-deliver later:
    the event is idempotent (content-addressed over
    project/agent/session/supersedes/content), so re-delivery cannot
@@ -115,7 +115,7 @@ rewrite lifecycle.
    - Prefer append-over-rewrite on compaction: append the new summary
      after the stable prefix rather than rewriting the prefix.
    - Align system prompts once, at assembly time
-     (`mnemos_align_prefix`); dynamic values (timestamps, counters,
+     (`vesma_align_prefix`); dynamic values (timestamps, counters,
      volatile state) go to the tail, never the prefix.
 
 ## DISCIPLINE

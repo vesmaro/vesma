@@ -259,7 +259,7 @@ class TestDetectSummaryMarker:
 
 class TestAutoCollectIntegration:
     def test_returns_signal_vector(self, tmp_manager):
-        """mnemos_auto_collect_status returns per-signal vector + recommendation."""
+        """vesma_auto_collect_status returns per-signal vector + recommendation."""
         _mgr = tmp_manager
         # The MCP tool is not directly testable here, but we can test the
         # underlying signal object construction via the manager's config.

@@ -1,4 +1,4 @@
-"""ADR-0018 P0 — issuance secret scan on mnemos_retrieve + status gate.
+"""ADR-0018 P0 — issuance secret scan on vesma_retrieve + status gate.
 
 P0 fix-track tests (docs/project/adr/0018-context-rewrite-ltm-bridge.md,
 Phases row 1) for the CCR rehydrate channel:

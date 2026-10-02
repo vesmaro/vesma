@@ -7,7 +7,7 @@ Covers:
   remediation hint.
 - In-memory MCP handshake probe (SDK 2.x ``create_client_server_memory_streams``):
   initialize → tools/list must return the 27-tool contract (#254 added
-  mnemos_awareness). Skipped when the
+  vesma_awareness). Skipped when the
   real ``mcp`` SDK is not installed (the stub environment cannot drive a
   real session).
 """
@@ -27,11 +27,11 @@ from vesmaro.cli.doctor import CheckStatus, _check_mcp_transport
 
 # The model-visible tool manifest contract (#185): names are frozen; any
 # change here is a breaking contract change and must not happen silently.
-# 26 → 27 (mnemos #254): mnemos_awareness added (R3 awareness pre-flight).
-# 27 → 28 (ADR-0027 Ф3, epic #308): mnemos_ingest_document added — the
+# 26 → 27 (mnemos #254): vesma_awareness added (R3 awareness pre-flight).
+# 27 → 28 (ADR-0027 Ф3, epic #308): vesma_ingest_document added — the
 # docs-as-memory document ingest (born-quarantined chunks, swept at
-# completion; mnemos_ingest_url keeps its single-row semantics).
-# 38 → 39 (#454): mnemos_register_project added (agent-side PG2 registration).
+# completion; vesma_ingest_url keeps its single-row semantics).
+# 38 → 39 (#454): vesma_register_project added (agent-side PG2 registration).
 EXPECTED_TOOL_COUNT = 39
 
 
@@ -263,7 +263,7 @@ def test_in_memory_handshake_lists_full_tool_manifest() -> None:
         names = asyncio.run(_probe())
         assert len(names) == EXPECTED_TOOL_COUNT, names
         # Spot-check a few frozen contract names.
-        for frozen in ("mnemos_add", "mnemos_search", "mnemos_save_context"):
+        for frozen in ("vesma_add", "vesma_search", "vesma_save_context"):
             assert frozen in names
         del _ms
 
@@ -325,9 +325,9 @@ def test_on_call_tool_adapter_wraps_result(monkeypatch: pytest.MonkeyPatch) -> N
 
     # Rebind: the module-level _on_call_tool closes over the module global,
     # so patching the attribute is sufficient — verify via the bound call.
-    params = mcp_server.CallToolRequestParams(name="mnemos_stats", arguments={"a": 1})
+    params = mcp_server.CallToolRequestParams(name="vesma_stats", arguments={"a": 1})
     result = asyncio.run(_on_call_tool(None, params))
-    assert sent == {"name": "mnemos_stats", "arguments": {"a": 1}}
+    assert sent == {"name": "vesma_stats", "arguments": {"a": 1}}
     assert result.content[0].text == "ok"
 
 
@@ -353,9 +353,9 @@ def test_arguments_none_defaults_to_empty_dict(
         return [mcp_server.TextContent(type="text", text="ok")]
 
     monkeypatch.setattr(mcp_server, "call_tool", fake_call_tool)
-    params = mcp_server.CallToolRequestParams(name="mnemos_stats")
+    params = mcp_server.CallToolRequestParams(name="vesma_stats")
     asyncio.run(_on_call_tool(None, params))
-    assert seen == [{"name": "mnemos_stats", "arguments": {}}]
+    assert seen == [{"name": "vesma_stats", "arguments": {}}]
 
 
 def test_mcp_sdk_version_helper(monkeypatch: pytest.MonkeyPatch) -> None:

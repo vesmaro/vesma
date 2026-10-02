@@ -91,12 +91,12 @@ class TestVerbBoundaries:
 
             mcp_mod._manager = manager
             try:
-                result = asyncio.run(call_tool("mnemos_stats", {}))
+                result = asyncio.run(call_tool("vesma_stats", {}))
             finally:
                 mcp_mod._manager = None
             assert result  # a real tool ran
             rows = _verb_rows(manager)
-            assert any(r[1] == "mnemos_stats" and r[0] == "mcp" for r in rows)
+            assert any(r[1] == "vesma_stats" and r[0] == "mcp" for r in rows)
         finally:
             manager.close()
 
@@ -136,7 +136,7 @@ class TestVerbBoundaries:
 
 class TestRollupTick:
     def test_rollup_tick_runs_hourly_and_before_retention(self, mgr: MemoryManager):
-        mgr.record_verb_vitals(surface="mcp", verb="mnemos_search", status="ok", latency_ms=7.0)
+        mgr.record_verb_vitals(surface="mcp", verb="vesma_search", status="ok", latency_ms=7.0)
         store = mgr._vitals_store
         assert store is not None
         # backdate the verb row into the PREVIOUS COMPLETE hour — the
@@ -168,9 +168,7 @@ class TestExpositionEndpoint:
         manager = _manager(settings)
         try:
             api_main._manager = manager
-            manager.record_verb_vitals(
-                surface="mcp", verb="mnemos_add", status="ok", latency_ms=3.0
-            )
+            manager.record_verb_vitals(surface="mcp", verb="vesma_add", status="ok", latency_ms=3.0)
             store = manager._vitals_store
             assert store is not None
             # roll a known hour directly (the tick targets the previous hour)
@@ -188,7 +186,7 @@ class TestExpositionEndpoint:
             assert resp.status_code == 200
             text = resp.text
             assert "mnemos_verb_calls_total" in text
-            assert 'verb="mnemos_add"' in text
+            assert 'verb="vesma_add"' in text
             # RL-S2: project slug never leaks into exposition
             assert "vitals-t" not in text
         finally:

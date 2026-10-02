@@ -3,7 +3,7 @@
 Covers:
   - ``MemoryManager.tags_rename`` — dry-run, real run, subtype filters,
     invalid-subtype handling (skip vs →legacy), idempotency.
-  - FTS5 consistency after rename — ``mnemos_search`` finds records by the
+  - FTS5 consistency after rename — ``vesma_search`` finds records by the
     NEW tag and NOT the old tag.
   - Denormalised ``project``/``agent`` columns stay in sync.
   - Vector search still returns results after rename (vectors keyed by
@@ -239,7 +239,7 @@ class TestInvalidSubtypes:
 
 class TestTagsRenameIntegration:
     def test_fts5_finds_new_tag_not_old(self, tmp_manager: MemoryManager) -> None:
-        """After rename, mnemos_search finds records by mnemos:decision, not gcw:decision."""
+        """After rename, vesma_search finds records by mnemos:decision, not gcw:decision."""
         mid = _add_gcw_memory(tmp_manager, subtype="decision")
         # Before rename: search with gcw:decision tag filter finds it.
         hits_before = tmp_manager.search("gcw memory", tags=["gcw:decision"], limit=10)
@@ -317,7 +317,7 @@ class TestTagsRenameIntegration:
 
 class TestMcpAndHttp:
     def test_mcp_dispatch_tags_rename(self, tmp_manager: MemoryManager, monkeypatch) -> None:
-        """The MCP _dispatch handles mnemos_tags_rename."""
+        """The MCP _dispatch handles vesma_tags_rename."""
         from mnemos import mcp_server
         from vesmaro.mcp_server import _dispatch
 
@@ -329,7 +329,7 @@ class TestMcpAndHttp:
 
         result = asyncio.run(
             _dispatch(
-                "mnemos_tags_rename",
+                "vesma_tags_rename",
                 {"from_prefix": "gcw:", "to_prefix": "mnemos:", "dry_run": False},
             )
         )

@@ -213,7 +213,7 @@ async def test_mcp_language_pass_through(mgr: MemoryManager) -> None:
 
     with patch("vesmaro.mcp_server.get_manager", return_value=mgr):
         out = await _dispatch(
-            "mnemos_save_context",
+            "vesma_save_context",
             {"project": "p251", "goals": "g", "language": "en"},
         )
         assert isinstance(out, str) and "Context saved" in out

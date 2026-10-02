@@ -853,7 +853,7 @@ class TestManualRegister:
     ) -> None:
         service, _ = make_service(tmp_path, mini_repo, register=False)
         try:
-            with pytest.raises(GraphConfinementError, match="mnemos_register_project"):
+            with pytest.raises(GraphConfinementError, match="vesma_register_project"):
                 service.index_project("never-registered", agent=AGENT)
         finally:
             service.close()
@@ -1040,17 +1040,17 @@ class TestMcpLayer:
 
         names = {t.name for t in asyncio.run(_canonical_tools())}
         expected = {
-            "mnemos_index_project",
-            "mnemos_project_graph_status",
-            "mnemos_search_graph",
-            "mnemos_trace_path",
-            "mnemos_get_file_outline",
-            "mnemos_get_code_snippet",
-            "mnemos_check_graph_coverage",
-            "mnemos_get_graph_schema",
-            "mnemos_list_graph_projects",
-            "mnemos_delete_graph_project",
-            "mnemos_register_project",
+            "vesma_index_project",
+            "vesma_project_graph_status",
+            "vesma_search_graph",
+            "vesma_trace_path",
+            "vesma_get_file_outline",
+            "vesma_get_code_snippet",
+            "vesma_check_graph_coverage",
+            "vesma_get_graph_schema",
+            "vesma_list_graph_projects",
+            "vesma_delete_graph_project",
+            "vesma_register_project",
         }
         assert expected <= names
 
@@ -1058,7 +1058,7 @@ class TestMcpLayer:
         from vesmaro.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
-        result = _handle_graph("mnemos_project_graph_status", mgr, {"project_id": PROJECT})
+        result = _handle_graph("vesma_project_graph_status", mgr, {"project_id": PROJECT})
         assert result["code"] == "attribution-required"
 
     def test_disabled_flag_answered_as_disabled(self, tmp_path: Path, mini_repo: Path) -> None:
@@ -1066,7 +1066,7 @@ class TestMcpLayer:
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=False)
         result = _handle_graph(
-            "mnemos_project_graph_status", mgr, {"project_id": PROJECT, "agent": AGENT}
+            "vesma_project_graph_status", mgr, {"project_id": PROJECT, "agent": AGENT}
         )
         assert result["code"] == "disabled"
 
@@ -1078,17 +1078,17 @@ class TestMcpLayer:
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
         mgr.sqlite.projects.clear()  # unregistered — the tool's whole point
         result = _handle_graph(
-            "mnemos_register_project",
+            "vesma_register_project",
             mgr,
             {"project_id": PROJECT, "root": str(mini_repo), "agent": AGENT},
         )
         assert result["status"] == "registered"
         indexable = _handle_graph(
-            "mnemos_index_project", mgr, {"project_id": PROJECT, "agent": AGENT}
+            "vesma_index_project", mgr, {"project_id": PROJECT, "agent": AGENT}
         )
         assert indexable["status"] == "ok"
         refused = _handle_graph(
-            "mnemos_register_project",
+            "vesma_register_project",
             mgr,
             {"project_id": "bad", "root": str(tmp_path / "nope"), "agent": AGENT},
         )
@@ -1099,13 +1099,13 @@ class TestMcpLayer:
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
         result = _handle_graph(
-            "mnemos_index_project",
+            "vesma_index_project",
             mgr,
             {"project_id": PROJECT, "agent": AGENT, "session": "s"},
         )
         assert result["status"] == "ok"
         status = _handle_graph(
-            "mnemos_project_graph_status", mgr, {"project_id": PROJECT, "agent": AGENT}
+            "vesma_project_graph_status", mgr, {"project_id": PROJECT, "agent": AGENT}
         )
         assert status["nodes"] > 0
 

@@ -5,7 +5,7 @@ Inspired by headroom's CacheAligner
 verify our original implementation: dynamic span extraction, prefix
 stability, determinism, profile-aware behaviour, code identifiers not
 mangled, and CCR markers staying atomic (mnemos #282 — protected from
-extraction in every profile so the ``mnemos_retrieve`` round-trip
+extraction in every profile so the ``vesma_retrieve`` round-trip
 survives alignment).
 """
 
@@ -388,10 +388,10 @@ class TestCCRMarkerAtomic:
     """#282 Finding 2 — the aligner must never mangle a CCR marker.
 
     A marker ``[compressed: <hash> | N→M chars | retrieve via
-    mnemos_retrieve]`` carries a 64-hex hash that the bare-token pattern
+    vesma_retrieve]`` carries a 64-hex hash that the bare-token pattern
     matches in token-extracting profiles (log/terminal/web/default).
     Relocating the hash to the trailing Dynamic-context block destroys
-    the marker line and breaks the ``mnemos_retrieve`` round-trip. The
+    the marker line and breaks the ``vesma_retrieve`` round-trip. The
     marker span is therefore protected from extraction in EVERY profile
     (code/docs skip tokens, but the protection is generic — any kind
     overlapping a marker region is dropped).
