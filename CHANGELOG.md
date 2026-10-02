@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cortex provider tails from the PR #458 SHIP review (#472; review thread #459; three P3 hardening items) (`src/vesmaro/decision_provider.py`, `src/vesmaro/decision_jev.py`; tests `tests/test_decision_cortex.py` +4): the output scalar decode (`float(tensor[0])`) in `_run_graph` now sits under the `CortexInferError` guard — a `(1,)`-shaped tensor with an undecodable value degrades that verdict via the typed fail-open seam instead of escaping as a raw `TypeError` (defense-in-depth: the load-time smoke inference still rejects such graphs first); the `CortexPinError` recalibration warn in `resolve_decision_provider` now carries the machine-parseable `code=` token every neighbouring warn already had (a strict `code=`-prefix parser no longer misses exactly the recalibration line), pinned by the wiring test; and `validate_cortex_metadata_props` gained its negative test through the REAL `_load` path — a stubbed `ort.InferenceSession` with drifted `metadata_props` (`feature_set_sha256` mismatch, major-2 version) refuses construction with `CORTEX-E-META`, not only on the pure-function surface.
 
+### Security
+
+- Security dependency floors raised past the moved advisory DB (#476): `pyjwt>=2.15.0` (PYSEC-2026-4140..4152; 2.13.0 floor had covered PYSEC-2026-120/175-179), `urllib3>=2.8.0` (PYSEC-2026-4177); transitive `anyio` lifted to 4.15.1 via the lock (PYSEC-2026-4023/24/25). PYSEC-2026-4146 has no fixed pyjwt release yet — pinned ignore in `make security`, drop when the fix lands.
+
 ## [5.2.0] — 2026-10-02
 
 ### Added
