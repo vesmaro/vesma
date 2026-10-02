@@ -44,6 +44,7 @@ from vesmaro.codegraph.service import (
     GraphConfinementError,
     GraphDisabledError,
     GraphToolError,
+    _is_forbidden_root,
     resolve_token_budget,
     window_rows,
 )
@@ -856,6 +857,162 @@ class TestManualRegister:
                 service.index_project("never-registered", agent=AGENT)
         finally:
             service.close()
+
+
+# ── #464: registration hardening (gate / audited refusals / ghost-only / realpath) ──
+
+
+class TestRegistrationHardening464:
+    """Issue #464: registration IS a read-scope grant — the agent call
+    path is config-gated (P2-1), every manual register/repoint refusal
+    is audited (P3-2), repoint recovers ghosts only (P3-3) and the
+    forbidden-root check runs on the realpath (P3-4)."""
+
+    def _refusals(self, service: CodeGraphService, project: str, action: str) -> list[dict]:
+        return [r for r in service._audit.recent(project) if r["action"] == action]
+
+    def test_gate_off_refuses_agent_registration_and_audits(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """P2-1: ``agent_registration=false`` refuses the agent call
+        path, registers nothing, and the refusal is audited (P3-2)."""
+        service, main = make_service(tmp_path, mini_repo, register=False, agent_registration=False)
+        try:
+            with pytest.raises(GraphConfinementError, match="agent_registration"):
+                service.register_project("fresh", str(mini_repo), agent=AGENT)
+            assert main.get_project_by_name("fresh") is None  # no silent grant
+            rows = self._refusals(service, "fresh", "manual-register-refused")
+            assert len(rows) == 1
+            assert "agent-initiated registration is disabled" in rows[0]["reason"]
+            assert rows[0]["actor"] == AGENT
+            assert rows[0]["details"]["source"] == "agent"
+        finally:
+            service.close()
+
+    def test_gate_off_leaves_operator_path_open(self, tmp_path: Path, mini_repo: Path) -> None:
+        """P2-1: the operator/CLI call path (``source="operator"``) is
+        never gated — the same OFF config still registers."""
+        service, main = make_service(tmp_path, mini_repo, register=False, agent_registration=False)
+        try:
+            result = service.register_project(
+                "fresh", str(mini_repo), agent=AGENT, source="operator"
+            )
+            assert result["status"] == "registered"
+            assert main.get_project_by_name("fresh") is not None
+        finally:
+            service.close()
+
+    def test_gate_defaults_on(self) -> None:
+        """P2-1: the flag follows the code_graph default-on convention —
+        the plain agent path behaves exactly as before #464."""
+        assert CodeGraphConfig().agent_registration is True
+
+    def test_name_collision_refusal_audited(self, tmp_path: Path, mini_repo: Path) -> None:
+        """P3-2: the name-collision refusal (existing registration at a
+        different root) lands exactly one audit row, reason sanitized to
+        basenames."""
+        other = tmp_path / "other-repo"
+        other.mkdir()
+        (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        service, _ = make_service(tmp_path, mini_repo)  # PROJECT → mini_repo
+        try:
+            with pytest.raises(GraphConfinementError, match="already registered at"):
+                service.register_project(PROJECT, str(other), agent=AGENT)
+            rows = self._refusals(service, PROJECT, "manual-register-refused")
+            assert len(rows) == 1
+            assert "already registered at" in rows[0]["reason"]
+            assert str(tmp_path) not in json.dumps(rows)  # basename hygiene
+        finally:
+            service.close()
+
+    def test_bad_root_refusal_audited(self, tmp_path: Path, mini_repo: Path) -> None:
+        """P3-2: a register attempt at a nonexistent root is refused and
+        audited exactly once with the failed gate named."""
+        service, _ = make_service(tmp_path, mini_repo, register=False)
+        try:
+            with pytest.raises(GraphConfinementError, match="does not exist"):
+                service.register_project("bad", str(tmp_path / "nope"), agent=AGENT)
+            rows = self._refusals(service, "bad", "manual-register-refused")
+            assert len(rows) == 1
+            assert "does not exist on disk" in rows[0]["reason"]
+        finally:
+            service.close()
+
+    def test_repoint_live_root_refused_and_audited(self, tmp_path: Path, mini_repo: Path) -> None:
+        """P3-3: repoint is GHOST recovery — a live old root is refused
+        (move-root is not repoint), the registration is untouched and
+        the refusal audited."""
+        other = tmp_path / "moved-here"
+        other.mkdir()
+        (other / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            with pytest.raises(GraphConfinementError, match="ghost recovery only"):
+                service.repoint_project(PROJECT, str(other), agent=AGENT)
+            assert main.get_project_by_name(PROJECT).paths[0] == str(mini_repo)
+            rows = self._refusals(service, PROJECT, "repoint-refused")
+            assert len(rows) == 1
+            assert "ghost recovery only" in rows[0]["reason"]
+            assert str(tmp_path) not in json.dumps(rows)  # basename hygiene
+        finally:
+            service.close()
+
+    def test_repoint_ghost_root_still_recovers(self, tmp_path: Path, mini_repo: Path) -> None:
+        """P3-3 positive: the ghost path is intact — root gone on disk,
+        repoint succeeds and no refusal row exists."""
+        moved = mini_repo.with_name("repo-moved")
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            mini_repo.rename(moved)  # the ghost
+            result = service.repoint_project(PROJECT, str(moved), agent=AGENT)
+            assert result["status"] == "repointed"
+            assert main.get_project_by_name(PROJECT).paths[0] == str(moved)
+            assert not self._refusals(service, PROJECT, "repoint-refused")
+        finally:
+            service.close()
+
+    def test_repoint_relative_root_refused_and_audited(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """P3-3: a relative root never reaches the ghost check — the
+        absolute-path gate refuses, audited per P3-2."""
+        service, _ = make_service(tmp_path, mini_repo)
+        try:
+            with pytest.raises(GraphConfinementError, match="must be an absolute path"):
+                service.repoint_project(PROJECT, "relative/path", agent=AGENT)
+            rows = self._refusals(service, PROJECT, "repoint-refused")
+            assert len(rows) == 1
+            assert "must be an absolute path" in rows[0]["reason"]
+        finally:
+            service.close()
+
+    def test_forbidden_root_symlink_to_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P3-4: a symlink to ``$HOME`` resolves to the forbidden
+        target — the string compare alone would let it register."""
+        monkeypatch.setattr(
+            "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+        )
+        link = tmp_path / "home-link"
+        link.symlink_to(tmp_path)
+        assert _is_forbidden_root(str(link)) is True
+
+    def test_forbidden_root_symlink_to_fs_root(self, tmp_path: Path) -> None:
+        """P3-4: a symlink to the filesystem root is forbidden."""
+        link = tmp_path / "root-link"
+        link.symlink_to(Path(link.anchor))
+        assert _is_forbidden_root(str(link)) is True
+
+    def test_forbidden_root_dotdot_spelling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P3-4: a ``..``-laden spelling of ``$HOME`` never passes the
+        forbidden-root gate."""
+        monkeypatch.setattr(
+            "vesmaro.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
+        )
+        assert _is_forbidden_root(f"{tmp_path}/sub/../../{tmp_path.name}") is True
 
 
 # ── MCP layer ────────────────────────────────────────────────────────────────

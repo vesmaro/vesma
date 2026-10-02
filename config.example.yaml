@@ -132,6 +132,14 @@ code_graph:
   auto_register_max_projects: 64
   # Minimum seconds between background auto (re)index runs per project.
   auto_reindex_min_interval_sec: 300.0
+  # May a connected MCP agent register project roots via
+  # mnemos_register_project? (issue #464) Registration IS a read-scope
+  # grant: the registered tree becomes readable through the graph tools
+  # by every agent on the server. false reserves registration to the
+  # operator (vesma graph register — the CLI path is never gated); a
+  # gated attempt is refused AND audited ("manual-register-refused").
+  # Default true under the single-user stdio assumption.
+  agent_registration: true
 
 # ── Federation (Phase 0 batch sync, issue #85) ───────────────────────────────
 # Operator-curated, OFFLINE, cron-triggered batch sync between two mnemos

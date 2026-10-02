@@ -507,3 +507,48 @@ class TestServerUpdateHint:
         store.fail = True
         text = await self._dispatch(self._manager(store))
         assert "server updated" not in text  # skipped silently, no crash
+
+    async def test_failed_dispatch_keeps_notice_pending(self) -> None:
+        """#464 P3-1: a failed dispatch must not burn the notice — the
+        meta is NOT stamped, the hint stays pending, and the NEXT
+        dispatch delivers it (retry survives)."""
+        from vesmaro import __version__
+        from vesmaro.mcp_server import _call_tool_dispatch
+
+        store = _MetaStore({"last_reported_server_version": "0.0.1"})
+        mgr = self._manager(store)
+        with (
+            patch("vesmaro.mcp_server.get_manager", return_value=mgr),
+            patch(
+                "vesmaro.mcp_server._dispatch",
+                side_effect=[RuntimeError("boom"), {"ok": True}],
+            ),
+        ):
+            first = (await _call_tool_dispatch("mnemos_list_tags", {}))[0].text
+            assert "❌ Error: boom" in first
+            assert "server updated" not in first
+            # the meta write happens only on DELIVERY — not burned
+            assert store.meta["last_reported_server_version"] == "0.0.1"
+            second = (await _call_tool_dispatch("mnemos_list_tags", {}))[0].text
+            assert "vesma server updated: 0.0.1 → " in second
+            assert __version__ in second
+        # delivered exactly once, meta stamped on the success path
+        assert store.meta["last_reported_server_version"] == __version__
+        third = await self._dispatch(mgr)
+        assert "server updated" not in third
+
+    async def test_hint_pending_until_commit(self) -> None:
+        """#464 P3-1, unit level: the hint is returned repeatedly until
+        committed; the meta write happens only in the commit."""
+        from vesmaro import __version__
+        from vesmaro.mcp_server import _commit_server_update_hint, _server_update_hint
+
+        store = _MetaStore({"last_reported_server_version": "0.0.1"})
+        mgr = self._manager(store)
+        first = _server_update_hint(mgr)
+        assert first is not None and "0.0.1" in first
+        assert store.meta["last_reported_server_version"] == "0.0.1"  # nothing stamped yet
+        assert _server_update_hint(mgr) == first  # undelivered → retry survives
+        _commit_server_update_hint(mgr)
+        assert store.meta["last_reported_server_version"] == __version__
+        assert _server_update_hint(mgr) is None  # delivered → quiet

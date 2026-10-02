@@ -131,14 +131,30 @@ def _is_forbidden_root(cwd: str) -> bool:
     review P2-2, now shared by the manual paths #450/#454): even a
     manifest sitting there (a dotfiles repo exporting a
     ``package.json`` into ``$HOME``) must not turn the server's own home
-    into a graph project."""
-    root = Path(cwd)
+    into a graph project. The comparison runs on the REALPATH (issue
+    #464 P3-4): a symlink pointing at ``$HOME``/fs-root resolves to the
+    forbidden target instead of bypassing the string compare, and ``..``
+    segments are resolved against the true filesystem layout rather than
+    normalized lexically."""
+    root = Path(os.path.realpath(cwd))
     if str(root) == root.anchor:  # "/" on POSIX, "C:\\" on Windows
         return True
     try:
-        return root == Path.home()
-    except RuntimeError:  # no resolvable home — the marker gate decides
+        return root == Path.home().resolve()
+    except (RuntimeError, OSError):  # no resolvable home — the marker gate decides
         return False
+
+
+def _refusal_reason(exc: Exception, *roots: str | None) -> str:
+    """Sanitize a refusal message for the audit row (#464 P3-2): the
+    sidecar trail leaves the process (review 10173a2a-4), so root path
+    spellings are collapsed to basenames before the reason rides the
+    ``graph_audit`` table."""
+    msg = str(exc)
+    for root in roots:
+        if isinstance(root, str) and root:
+            msg = msg.replace(root, os.path.basename(root) or root)
+    return msg
 
 
 def auto_suspended_key(project: str) -> str:
@@ -481,6 +497,7 @@ class CodeGraphService:
         *,
         agent: str,
         session: str | None = None,
+        source: str = "agent",
     ) -> dict[str, Any]:
         """Register a project root WITHOUT the operator's Python REPL
         (#454): the agent-facing path for «graph tools answer not
@@ -498,87 +515,136 @@ class CodeGraphService:
         attached. Explicit registration does NOT count against
         ``auto_register_max_projects`` — that cap bounds the AUTO path
         only (provenance lives in the description marker the cap
-        counts, which manual rows never carry)."""
+        counts, which manual rows never carry).
+
+        ``source`` distinguishes the call path (issue #464 P2-1):
+        ``"agent"`` (the MCP tool default) is gated by
+        ``code_graph.agent_registration`` — registration IS a read-scope
+        grant over the registered tree; ``"operator"`` (the
+        ``vesma graph register`` CLI path) is never gated. Every
+        refusal is audited (``manual-register-refused``, #464 P3-2)
+        with the sanitized reason in the row."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
+        if source not in ("agent", "operator"):
+            raise GraphToolError(f"source must be 'agent' or 'operator', got {source!r}")
         if not isinstance(project_id, str) or not project_id.strip():
             raise GraphConfinementError("project_id is required and must be a non-empty string")
         name = project_id.strip()
-        new_root = self._validate_new_root(root, what="registration")
-        existing_by_root = self.find_project_by_root(new_root)
-        if existing_by_root is not None and existing_by_root.name != name:
-            # One root = one graph: the hint rides the existing project.
-            self._audit.record(
-                existing_by_root.name,
-                "manual-register-reused",
-                actor,
-                session=sess,
-                reason="manual-register-reused (root already registered)",
-                details={"hint": name, "root": os.path.basename(new_root)},
-            )
-            return {
-                "project": existing_by_root.name,
-                "status": "already-registered",
-                "root": new_root,
-                "note": f"root already registered under project {existing_by_root.name!r}",
-            }
-        project = self._main.get_project(name) or self._main.get_project_by_name(name)
-        if project is not None:
-            current = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
-            if current and os.path.normpath(os.path.abspath(current[0])) == os.path.normpath(
-                new_root
-            ):
+        validated_root: str | None = None
+        current_root: str | None = None
+        try:
+            if source == "agent" and not self._config.agent_registration:
+                # Issue #464 P2-1: registration widens the graph's read
+                # scope — the agent call path is config-gated; the
+                # operator CLI path (source="operator") never is.
+                raise GraphConfinementError(
+                    "agent-initiated registration is disabled "
+                    "(settings.code_graph.agent_registration=false) — "
+                    "ask the operator to run 'vesma graph register'"
+                )
+            validated_root = self._validate_new_root(root, what="registration")
+            existing_by_root = self.find_project_by_root(validated_root)
+            if existing_by_root is not None and existing_by_root.name != name:
+                # One root = one graph: the hint rides the existing project.
                 self._audit.record(
-                    project.name,
+                    existing_by_root.name,
                     "manual-register-reused",
                     actor,
                     session=sess,
-                    reason="manual-register-reused (same root)",
-                    details={"root": os.path.basename(new_root)},
+                    reason="manual-register-reused (root already registered)",
+                    details={"hint": name, "root": os.path.basename(validated_root)},
                 )
-                return {"project": project.name, "status": "already-registered", "root": new_root}
-            if current:
-                raise GraphConfinementError(
-                    f"project {project.name!r} is already registered at "
-                    f"{current[0]!r} — refusing to re-point an existing root "
-                    f"from the register tool (moved roots: vesma graph repoint)"
+                return {
+                    "project": existing_by_root.name,
+                    "status": "already-registered",
+                    "root": validated_root,
+                    "note": f"root already registered under project {existing_by_root.name!r}",
+                }
+            project = self._main.get_project(name) or self._main.get_project_by_name(name)
+            if project is not None:
+                current = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+                if current:
+                    current_root = current[0]
+                if current and os.path.normpath(os.path.abspath(current[0])) == os.path.normpath(
+                    validated_root
+                ):
+                    self._audit.record(
+                        project.name,
+                        "manual-register-reused",
+                        actor,
+                        session=sess,
+                        reason="manual-register-reused (same root)",
+                        details={"root": os.path.basename(validated_root)},
+                    )
+                    return {
+                        "project": project.name,
+                        "status": "already-registered",
+                        "root": validated_root,
+                    }
+                if current:
+                    raise GraphConfinementError(
+                        f"project {project.name!r} is already registered at "
+                        f"{current[0]!r} — refusing to re-point an existing root "
+                        f"from the register tool (moved roots: vesma graph repoint)"
+                    )
+                # The orphan case: a project row created by memory writes,
+                # no paths — attach the root.
+                updated = _clone_project_with_paths(project, [validated_root])
+                self._main.save_project(updated)
+                self._audit.record(
+                    updated.name,
+                    "manual-register",
+                    actor,
+                    session=sess,
+                    reason="manual-register (root attached to existing project)",
+                    details={"root": os.path.basename(validated_root)},
                 )
-            # The orphan case: a project row created by memory writes,
-            # no paths — attach the root.
-            updated = _clone_project_with_paths(project, [new_root])
-            self._main.save_project(updated)
+                return {"project": updated.name, "status": "registered", "root": validated_root}
+            from datetime import UTC, datetime
+
+            from vesmaro.models import Project as _NewProject
+
+            created = _NewProject(
+                name=name,
+                paths=[validated_root],
+                description=(
+                    f"manually registered by {actor} at {datetime.now(UTC).isoformat()} "
+                    "(mnemos_register_project; PG2)"
+                ),
+            )
+            self._main.save_project(created)
             self._audit.record(
-                updated.name,
+                created.name,
                 "manual-register",
                 actor,
                 session=sess,
-                reason="manual-register (root attached to existing project)",
-                details={"root": os.path.basename(new_root)},
+                reason="manual-register",
+                details={"root": os.path.basename(validated_root)},
             )
-            return {"project": updated.name, "status": "registered", "root": new_root}
-        from datetime import UTC, datetime
-
-        from vesmaro.models import Project as _NewProject
-
-        created = _NewProject(
-            name=name,
-            paths=[new_root],
-            description=(
-                f"manually registered by {actor} at {datetime.now(UTC).isoformat()} "
-                "(mnemos_register_project; PG2)"
-            ),
-        )
-        self._main.save_project(created)
-        self._audit.record(
-            created.name,
-            "manual-register",
-            actor,
-            session=sess,
-            reason="manual-register",
-            details={"root": os.path.basename(new_root)},
-        )
-        logger.info("codegraph: project %s manually registered at %s by %s", name, new_root, actor)
-        return {"project": created.name, "status": "registered", "root": new_root}
+            logger.info(
+                "codegraph: project %s manually registered at %s by %s",
+                name,
+                validated_root,
+                actor,
+            )
+            return {"project": created.name, "status": "registered", "root": validated_root}
+        except GraphToolError as exc:
+            # Issue #464 P3-2: refusals are audit-first-class (the
+            # ``auto-register-capped`` precedent) — exactly one row per
+            # refused attempt, reason sanitized to basenames.
+            self._audit.record(
+                name,
+                "manual-register-refused",
+                actor,
+                session=sess,
+                reason=_refusal_reason(exc, validated_root, root, current_root),
+                details={
+                    "source": source,
+                    "root": os.path.basename(validated_root) if validated_root else None,
+                },
+            )
+            raise
 
     def repoint_project(
         self,
@@ -601,64 +667,100 @@ class CodeGraphService:
         the OLD tree, so it is dropped (derived, rebuildable data) and
         the next index run rebuilds fresh. The one-root-one-graph rule
         binds: a new root already claimed by ANOTHER project is a loud
-        refusal. Audit action ``repoint`` (the reason defaults to
-        ``graph-repoint``); the sidecar row carries BASENAMES only
-        (review 10173a2a-4), the response keeps full paths."""
+        refusal. Ghost-only (issue #464 P3-3): when the OLD root still
+        exists on disk the repoint is refused — move-root is not
+        repoint, and a live registration must not be silently re-pointed
+        at an arbitrary tree (a pathless registration may still be
+        attached its first root). Every refusal is audited
+        (``repoint-refused``, #464 P3-2). Audit action ``repoint`` (the
+        reason defaults to ``graph-repoint``); the sidecar row carries
+        BASENAMES only (review 10173a2a-4), the response keeps full
+        paths."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         if not isinstance(project_id, str) or not project_id.strip():
             raise GraphConfinementError("project_id is required and must be a non-empty string")
         wanted = project_id.strip()
-        project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
-        if project is None:
-            raise GraphConfinementError(
-                f"project {wanted!r} is not registered in the projects table (PG2){REGISTER_HINT}"
+        validated_root: str | None = None
+        old_root: str | None = None
+        try:
+            project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
+            if project is None:
+                raise GraphConfinementError(
+                    f"project {wanted!r} is not registered in the projects table (PG2)"
+                    f"{REGISTER_HINT}"
+                )
+            validated_root = self._validate_new_root(new_root, what="repoint")
+            claimed = self.find_project_by_root(validated_root)
+            if claimed is not None and claimed.name != project.name:
+                raise GraphConfinementError(
+                    f"root {validated_root!r} is already registered under project "
+                    f"{claimed.name!r} (one root = one graph; refusing the cross-jump)"
+                )
+            old = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+            if old:
+                old_root = old[0]
+            if old and os.path.normpath(os.path.abspath(old[0])) == os.path.normpath(
+                validated_root
+            ):
+                return {
+                    "project": project.name,
+                    "status": "unchanged",
+                    "root": validated_root,
+                    "note": "the registration already points at this root",
+                }
+            if old and os.path.isdir(old[0]):
+                # Issue #464 P3-3: repoint is GHOST recovery — the docstring
+                # promise. A live old root is a healthy registration; moving
+                # it is the operator's move-root decision, never a repoint.
+                raise GraphConfinementError(
+                    f"project {project.name!r} old root still exists on disk: {old[0]!r} — "
+                    "repoint is ghost recovery only (move-root is not repoint; "
+                    "register the new root as its own project, or delete first)"
+                )
+            root = validated_root
+            paths = [root, *old[1:]] if old else [root]
+            updated = _clone_project_with_paths(project, paths)
+            self._main.save_project(updated)
+            key = updated.name
+            purged = self._store.purge_project(key)
+            # Fresh start, the delete-tool semantics: suspension lifted,
+            # consumers see a new epoch (the index they cached is gone).
+            self._store.set_meta(auto_suspended_key(key), "0")
+            bump_project_graph_epoch(self._main, key)
+            self._audit.record(
+                key,
+                "repoint",
+                actor,
+                session=sess,
+                reason=reason or "graph-repoint",
+                details={
+                    "old_root": os.path.basename(old[0]) if old else None,
+                    "new_root": os.path.basename(root),
+                    "purged_nodes": purged,
+                },
             )
-        root = self._validate_new_root(new_root, what="repoint")
-        claimed = self.find_project_by_root(root)
-        if claimed is not None and claimed.name != project.name:
-            raise GraphConfinementError(
-                f"root {root!r} is already registered under project {claimed.name!r} "
-                "(one root = one graph; refusing the cross-jump)"
+            logger.info(
+                "codegraph: project %s re-pointed %s -> %s by %s (%d stale nodes purged)",
+                key,
+                old[0] if old else "<none>",
+                root,
+                actor,
+                purged,
             )
-        old = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
-        if old and os.path.normpath(os.path.abspath(old[0])) == os.path.normpath(root):
-            return {
-                "project": project.name,
-                "status": "unchanged",
-                "root": root,
-                "note": "the registration already points at this root",
-            }
-        paths = [root, *old[1:]] if old else [root]
-        updated = _clone_project_with_paths(project, paths)
-        self._main.save_project(updated)
-        key = updated.name
-        purged = self._store.purge_project(key)
-        # Fresh start, the delete-tool semantics: suspension lifted,
-        # consumers see a new epoch (the index they cached is gone).
-        self._store.set_meta(auto_suspended_key(key), "0")
-        bump_project_graph_epoch(self._main, key)
-        self._audit.record(
-            key,
-            "repoint",
-            actor,
-            session=sess,
-            reason=reason or "graph-repoint",
-            details={
-                "old_root": os.path.basename(old[0]) if old else None,
-                "new_root": os.path.basename(root),
-                "purged_nodes": purged,
-            },
-        )
-        logger.info(
-            "codegraph: project %s re-pointed %s -> %s by %s (%d stale nodes purged)",
-            key,
-            old[0] if old else "<none>",
-            root,
-            actor,
-            purged,
-        )
-        return {"project": key, "status": "repointed", "root": root, "purged_nodes": purged}
+            return {"project": key, "status": "repointed", "root": root, "purged_nodes": purged}
+        except GraphToolError as exc:
+            # Issue #464 P3-2: refusals are audit-first-class — exactly
+            # one row per refused attempt, reason sanitized to basenames.
+            self._audit.record(
+                wanted,
+                "repoint-refused",
+                actor,
+                session=sess,
+                reason=_refusal_reason(exc, validated_root, new_root, old_root),
+                details={"root": os.path.basename(validated_root) if validated_root else None},
+            )
+            raise
 
     # ── tool 1: index_project ───────────────────────────────────────────────
     def index_project(
