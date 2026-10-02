@@ -186,7 +186,7 @@ def _server_update_hint(mgr: Any) -> str | None:
     fails, it stays pending and the next dispatch returns it again (the
     notice is never burned unapplied). :func:`_commit_server_update_hint`
     stamps the meta only after the hint actually rode a response."""
-    pending = _server_update_state["pending"]
+    pending: str | None = _server_update_state["pending"]
     if pending is not None:
         return pending  # undelivered notice — retry until it lands
     if _server_update_state["checked"]:
