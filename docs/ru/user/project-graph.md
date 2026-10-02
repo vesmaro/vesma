@@ -251,10 +251,10 @@ vesma graph repoint <project> <new-root>
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Адаптивный интервал опроса: база + 1 с за каждые 500 файлов, с потолком. |
 
 Переопределение через окружение — по каноническому шаблону настроек:
-`VESMARO_CODE_GRAPH__INDEX_MAX_FILES`,
-`VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`,
-`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST` (JSON-массив, например
-`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'`).
+`VESMA_CODE_GRAPH__INDEX_MAX_FILES`,
+`VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`,
+`VESMA_CODE_GRAPH__SECRET_ALLOWLIST` (JSON-массив, например
+`VESMA_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'`).
 
 ---
 

@@ -878,7 +878,7 @@ Vesma синтезирует части в единую запись Markdown с
 | `auto_reindex_min_interval_sec` | `300.0` | Троттлинг на проект между последовательными АВТО-индексациями (ручной путь не троттлится никогда). |
 | `auto_register_max_projects` | `64` | Глобальный лимит проектов, которые АВТО-путь вообще может создать (считается по маркеру `auto-registered by` в описании). Сверх лимита хинт — тихий skip с аудит-строкой `auto-register-capped`, никогда ошибка; реис корня и регистрации оператора не считаются. |
 
-Переопределение через окружение — по канонической схеме настроек: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`, `VESMARO_CODE_GRAPH__AUTO_INDEX`, `VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`, `VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`.
+Переопределение через окружение — по канонической схеме настроек: `VESMA_CODE_GRAPH__INDEX_MAX_FILES`, `VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`, `VESMA_CODE_GRAPH__AUTO_INDEX`, `VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`, `VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`.
 
 ### Нативная авто-индексация (zero-touch)
 
@@ -2145,7 +2145,7 @@ output_style:
 | `canary` | да | да | да | Волна 1: только машины команды, kill-switch наготове. |
 | `on` | да | да | да | Волна 2: дефолт переворачивается только после зелёных гейтов волн 0/1. |
 
-Канонический env-override: `VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. Ручка rate-cap `awareness.heartbeat_rate_limit_per_minute` (по умолчанию 30, `0` отключает) ограничивает композиции на `(project, agent)` в минуту; превышение подавляет хвост с событием — никогда не ошибка.
+Канонический env-override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. Ручка rate-cap `awareness.heartbeat_rate_limit_per_minute` (по умолчанию 30, `0` отключает) ограничивает композиции на `(project, agent)` в минуту; превышение подавляет хвост с событием — никогда не ошибка.
 
 ### Конверт (canary/on)
 

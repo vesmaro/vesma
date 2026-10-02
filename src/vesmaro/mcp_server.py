@@ -61,8 +61,13 @@ logger = logging.getLogger(__name__)
 _manager: Any = None  # MemoryManager — lazy init to avoid import-time side-effects
 
 # ── Auto-collect mode ──────────────────────────────────────────────────────────
+# Dual-prefix contract: canonical VESMA_AUTO_COLLECT wins; deprecated
+# VESMARO_AUTO_COLLECT stays accepted until 6.0.
 _auto_collect_state = {
-    "enabled": os.environ.get("VESMARO_AUTO_COLLECT", "").lower() in ("true", "1", "yes", "on"),
+    "enabled": (
+        os.environ.get("VESMA_AUTO_COLLECT") or os.environ.get("VESMARO_AUTO_COLLECT", "")
+    ).lower()
+    in ("true", "1", "yes", "on"),
 }
 
 # ── Brand aliasing (rebrand mnemos → vesmaro, 2026-09-15) ────────────────────
@@ -2264,17 +2269,22 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     )
 
     # ── Encryption: passphrase from env, never from args ───────────────────
+    # Dual-prefix contract: canonical VESMA_ name wins; the deprecated
+    # VESMARO_ spelling stays accepted until 6.0.
     encrypt = bool(args.get("encrypt", False))
     passphrase: str | None = None
     if encrypt:
-        passphrase = os.environ.get("VESMARO_EXPORT_PASSPHRASE")
+        passphrase = os.environ.get("VESMA_EXPORT_PASSPHRASE") or os.environ.get(
+            "VESMARO_EXPORT_PASSPHRASE"
+        )
         if not passphrase:
             return {
                 "error": (
-                    "encrypt=true but VESMARO_EXPORT_PASSPHRASE environment "
-                    "variable is not set or empty. Set it before calling "
-                    "mnemos_export — the passphrase value must never appear "
-                    "in tool arguments."
+                    "encrypt=true but VESMA_EXPORT_PASSPHRASE environment "
+                    "variable is not set or empty (deprecated spelling "
+                    "VESMARO_EXPORT_PASSPHRASE also accepted until 6.0). Set "
+                    "it before calling mnemos_export — the passphrase value "
+                    "must never appear in tool arguments."
                 )
             }
 

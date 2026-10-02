@@ -83,9 +83,11 @@ supported ways, in order of preference:
 
 The key is injected under **both env spellings** —
 `MNEMOS_API__TOTP_MASTER_KEY` (read by 4.x images) and
-`VESMARO_API__TOTP_MASTER_KEY` (read by 5.x+) — from the single secret key.
-This is the ADR-0031 dual-prefix contract: one value, two names, so the chart
-works across the 4.3.0 → 5.0.0 rebrand boundary unchanged.
+`VESMA_API__TOTP_MASTER_KEY` (canonical since 5.3; 5.0–5.2 images read the
+deprecated `VESMARO_API__TOTP_MASTER_KEY`, accepted until 6.0) — from the
+single secret key. This is the ADR-0031 dual-prefix contract: one value,
+several names, so the chart works across the 4.3.0 → 5.0.0 → 5.3.0 rebrand
+boundaries unchanged.
 
 ## Ingress & TLS
 

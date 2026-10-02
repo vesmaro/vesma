@@ -54,7 +54,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Большинство субкоманд принимают флаг `--config / -c` с путём к YAML-файлу. Порядок поиска:
 
 1. Аргумент `--config` (если указан)
-2. Переменная окружения `$VESMARO_CONFIG` (5.x канон; написание 4.x `MNEMOS_CONFIG` устарело)
+2. Переменная окружения `$VESMA_CONFIG` (канон с 5.3; написание 5.0–5.2 `VESMARO_CONFIG` принимается до 6.0; написание 4.x `MNEMOS_CONFIG` устарело)
 3. `./config.yaml` в текущей рабочей директории
 4. `~/.mnemos/config.yaml`
 
@@ -66,32 +66,32 @@ vesma add --help
 Остальные глобальные флаги — только `--version / -V` (показать версию) и `--verbose / -v` (DEBUG-логирование для `vesma serve` и `vesma mcp-server`). Чтобы изменить уровень логирования на постоянной основе, задайте `logging.level` в конфиге или переменную окружения:
 
 ```bash
-VESMARO_LOGGING__LEVEL=DEBUG vesma serve      # 5.x канон
-# образы 4.x всё ещё читают написание MNEMOS_LOGGING__LEVEL (deprecated)
+VESMA_LOGGING__LEVEL=DEBUG vesma serve      # канон (5.3+)
+# 5.0–5.2 читают VESMARO_LOGGING__LEVEL; образы 4.x — MNEMOS_LOGGING__LEVEL (оба устарели)
 ```
 
 ---
 
 ## Переменные окружения
 
-Все настройки переопределяются через переменные окружения с префиксом `VESMARO_` (канон 5.x). Вложенные ключи разделяются `__`.
+Все настройки переопределяются через переменные окружения с префиксом `VESMA_` (канон с 5.3). Вложенные ключи разделяются `__`.
 
-| Переменная (канон 5.x) | По умолчанию | Назначение |
+| Переменная (канон) | По умолчанию | Назначение |
 |------------|-------------|------------ |
-| `VESMARO_CONFIG` | — | Путь к `config.yaml` |
-| `VESMARO_MNEMOS__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
-| `VESMARO_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
-| `VESMARO_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
-| `VESMARO_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
-| `VESMARO_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
-| `VESMARO_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |
-| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
-| `VESMARO_LLM__PROVIDER` | `ollama` | LLM для синтеза и контекстного фильтра |
-| `VESMARO_LLM__MODEL` | `qwen2.5:3b` | Имя LLM-модели |
-| `VESMARO_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |
-| `VESMARO_LOGGING__LEVEL` | `INFO` | Уровень логирования Python |
+| `VESMA_CONFIG` | — | Путь к `config.yaml` |
+| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
+| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
+| `VESMA_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
+| `VESMA_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
+| `VESMA_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
+| `VESMA_SEARCH__HYBRID_ALPHA` | `0.5` | Вес вектора в RRF-слиянии |
+| `VESMA_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
+| `VESMA_LLM__PROVIDER` | `ollama` | LLM для синтеза и контекстного фильтра |
+| `VESMA_LLM__MODEL` | `qwen2.5:3b` | Имя LLM-модели |
+| `VESMA_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |
+| `VESMA_LOGGING__LEVEL` | `INFO` | Уровень логирования Python |
 
-> **Deprecated: написание MNEMOS_\*.** Таблица выше перечисляет канон для 5.x — имена `VESMARO_*` (контракт двойного префикса ADR-0031; образы 5.x читают `VESMARO_*`). Те же переменные на образах 4.x отгружались как `MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL` и остаются принятыми там до deprecation. Короткие формы `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` — это совместимые алиасы #139 для вложенных канонических имён; при конфликте канон env побеждает.
+> **Устаревшие написания: `VESMARO_*` (5.0–5.2) и `MNEMOS_*` (4.x).** Таблица выше перечисляет канонические имена `VESMA_*` (ребренд 5.3.0; контракт двойного префикса ADR-0031). Если `VESMA_`-близнец не задан, устаревшее написание `VESMARO_*` продолжает работать — оно уходит не раньше 6.0, поэтому существующие развёртывания не меняются; при заданных обоих побеждает `VESMA_`. Написания эпохи 4.x `MNEMOS_*` (`MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL`) больше не читаются. Короткие формы `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` (устаревшие `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` тоже принимаются до 6.0) — это совместимые алиасы #139 для вложенных канонических имён; при конфликте канон env побеждает.
 
 > **Устаревшие алиасы.** Короткие формы появились до вложенного именования и сохранены для совместимости (#139). Работают обе формы. При конфликте каноническое имя переменной — как и явное значение в конфиг-файле — имеет приоритет над алиасом; алиас лишь заполняет пробел, который иначе достался бы значению по умолчанию.
 
@@ -586,7 +586,7 @@ vesma mcp-server [OPTIONS]
 # Прямой вызов (для отладки)
 vesma mcp-server
 
-# С режимом auto-collect (4.x-написание env; 5.x: VESMARO_AUTO_COLLECT)
+# С режимом auto-collect (4.x-написание env; канон 5.3+: VESMA_AUTO_COLLECT)
 MNEMOS_AUTO_COLLECT=1 vesma mcp-server
 
 # Из VS Code (сниппет mcp.json)
@@ -738,7 +738,7 @@ vesma doctor [OPTIONS]
 
 Коды выхода: `0` — все проверки пройдены, `1` — одна или несколько провалены, `2` — только предупреждения.
 
-> У `doctor` нет опции `--config`; конфиг читается из `$VESMARO_CONFIG` (написание 4.x: `MNEMOS_CONFIG`, устарело) или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
+> У `doctor` нет опции `--config`; конфиг читается из `$VESMA_CONFIG` (устаревшие написания: `VESMARO_CONFIG` — до 6.0, `MNEMOS_CONFIG` — 4.x) или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
 
 ### `doctor --paths`
 

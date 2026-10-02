@@ -243,10 +243,10 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
 
 Environment overrides follow the canonical settings pattern:
-`VESMARO_CODE_GRAPH__INDEX_MAX_FILES`,
-`VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`,
-`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST` (JSON array, e.g.
-`VESMARO_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'`).
+`VESMA_CODE_GRAPH__INDEX_MAX_FILES`,
+`VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`,
+`VESMA_CODE_GRAPH__SECRET_ALLOWLIST` (JSON array, e.g.
+`VESMA_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'`).
 
 ---
 

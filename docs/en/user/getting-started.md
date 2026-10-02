@@ -64,13 +64,13 @@ mnemos_memory_server-*.whl artifact name covers the 4.x line until deprecation. 
 **Pre-built image** (published at `ghcr.io/vesmaro/vesmaro`; `docker` works too — swap `podman` for `docker`):
 
 ```bash
-export VESMARO_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 # 4.x images additionally accept the legacy MNEMOS_API__TOTP_MASTER_KEY spelling (deprecated)
 podman run -d --name vesma \
   -p 8787:8787 \
   -v vesma-data:/data \
   -v vesma-vault:/vault \
-  -e VESMARO_API__TOTP_MASTER_KEY="${VESMARO_API__TOTP_MASTER_KEY}" \
+  -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
   ghcr.io/vesmaro/vesma:5.1.2
 <!-- /version:image -->
@@ -250,7 +250,7 @@ Manual VS Code reference — user- or workspace-scope `mcp.json`:
 
 > **Registry-key note.** The `"vesma"` key in MCP config files is the server *registry name* the integration layer reads and manages (`servers["vesma"]`) — it is untouched by the rebrand; the *command* is `vesma mcp-server`.
 
-> **Tip — auto-collect mode.** Set `VESMARO_AUTO_COLLECT=1` ( legacy spelling: `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma nudge your agent to call `mnemos_save_context` every ~6 tool calls. See [mcp-tools.md#auto-collect-mode](mcp-tools.md#auto-collect-mode) for the trade-offs.
+> **Tip — auto-collect mode.** Set `VESMA_AUTO_COLLECT=1` ( legacy spelling: `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma nudge your agent to call `mnemos_save_context` every ~6 tool calls. See [mcp-tools.md#auto-collect-mode](mcp-tools.md#auto-collect-mode) for the trade-offs.
 
 ---
 
@@ -307,10 +307,10 @@ Vesma tells you when a newer release exists and updates itself with one command 
 Offline machines are unaffected: a failed check serves the cached answer (marked stale) and never crashes anything. To turn the check off:
 
 ```bash
-VESMARO_UPDATES_CHECK=off vesma serve      # hard env kill switch
+VESMA_UPDATES_CHECK=off vesma serve      # hard env kill switch
 ```
 
-or in `config.yaml` (env equivalent: `VESMARO_UPDATES__CHECK_ENABLED=false`):
+or in `config.yaml` (env equivalent: `VESMA_UPDATES__CHECK_ENABLED=false`):
 
 ```yaml
 updates:
@@ -370,10 +370,10 @@ Vesma reads `config.yaml` from the current directory or `~/.mnemos/config.yaml`.
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | `vesma serve` defaults |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis & context filter |
 
-Any of these can be overridden by env vars (`VESMARO_*`, with `__` for nesting; the 4.x `MNEMOS_*` spelling is deprecated):
+Any of these can be overridden by env vars (`VESMA_*`, with `__` for nesting; the 5.0–5.2 `VESMARO_*` spelling stays accepted until 6.0, the 4.x `MNEMOS_*` spelling is no longer read):
 
 ```bash
-VESMARO_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
+VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 ```
 
 ### Logging

@@ -72,13 +72,13 @@ mnemos_memory_server-*.whl покрывает линейку 4.x до deprecatio
 **Готовый образ** (публикуется в `ghcr.io/vesmaro/vesmaro`; работает и `docker` — замените `podman` на `docker`):
 
 ```bash
-export VESMARO_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 # образы 4.x дополнительно принимают легаси-написание MNEMOS_API__TOTP_MASTER_KEY (deprecated)
 podman run -d --name vesma \
   -p 8787:8787 \
   -v vesma-data:/data \
   -v vesma-vault:/vault \
-  -e VESMARO_API__TOTP_MASTER_KEY="${VESMARO_API__TOTP_MASTER_KEY}" \
+  -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
   ghcr.io/vesmaro/vesma:5.1.2
 <!-- /version:image -->
@@ -279,7 +279,7 @@ MCP-регистрация (только ключи серверов — vesma �
 > сервера, которое integration-слой читает и ведёт (`servers["vesma"]`); ребрендингом оно не
 > тронуто. *Команда* — `vesma mcp-server`.
 
-> **Подсказка — режим автосбора.** Установите `VESMARO_AUTO_COLLECT=1` (легаси-написание:
+> **Подсказка — режим автосбора.** Установите `VESMA_AUTO_COLLECT=1` (легаси-написание:
 > `MNEMOS_AUTO_COLLECT`, устарело) в блоке `env`
 > сервера, чтобы Vesma предлагал агенту вызывать `mnemos_save_context` каждые ~6
 > вызовов инструментов. О компромиссах см. [mcp-tools.md#auto-collect-mode](mcp-tools.md#режим-auto-collect).
@@ -350,10 +350,10 @@ Vesma сообщает о новой версии и обновляется од
 (с пометкой «stale») и никогда ничего не ломает. Выключить проверку:
 
 ```bash
-VESMARO_UPDATES_CHECK=off vesma serve      # жёсткий env-выключатель
+VESMA_UPDATES_CHECK=off vesma serve      # жёсткий env-выключатель
 ```
 
-или в `config.yaml` (env-эквивалент: `VESMARO_UPDATES__CHECK_ENABLED=false`):
+или в `config.yaml` (env-эквивалент: `VESMA_UPDATES__CHECK_ENABLED=false`):
 
 ```yaml
 updates:
@@ -430,10 +430,10 @@ Vesma читает `config.yaml` из текущего каталога или `
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | Значения по умолчанию для `vesma serve` |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Синтез конвейера и контекстный фильтр |
 
-Любой из них переопределяется переменными окружения (`VESMARO_*`, `__` — разделитель вложенности; написание 4.x `MNEMOS_*` устарело):
+Любой из них переопределяется переменными окружения (`VESMA_*`, `__` — разделитель вложенности; написание 5.0–5.2 `VESMARO_*` принимается до 6.0, написание 4.x `MNEMOS_*` больше не читается):
 
 ```bash
-VESMARO_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
+VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 ```
 
 ### Логирование

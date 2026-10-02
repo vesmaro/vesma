@@ -954,9 +954,11 @@ def serve(
         console.print(f"  data: {settings.mnemos.data_dir}  vault: {settings.mnemos.vault_path}")
     # Propagate effective bind to the app process so the startup guard and
     # AuthMiddleware see the real host/port (CLI overrides must reach
-    # load_settings() inside the worker - finding auth-1).
-    os.environ["VESMARO_API__HOST"] = h
-    os.environ["VESMARO_API__PORT"] = str(p)
+    # load_settings() inside the worker - finding auth-1). Written under the
+    # CANONICAL VESMA_ prefix so it outranks any ambient VESMARO_API__* the
+    # operator may have exported (VESMA_ env > VESMARO_ env).
+    os.environ["VESMA_API__HOST"] = h
+    os.environ["VESMA_API__PORT"] = str(p)
 
     # Native mesh serve wiring (W2, ROADMAP-v2 go-live): when the mesh is
     # enabled, serve the MnemosCore gRPC server on the configured Unix
