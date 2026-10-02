@@ -340,6 +340,94 @@ def check_for_update(
         return None
 
 
+# ── pip alias family latest (#W-C family row) ────────────────────────────────
+
+#: Cache key for the family-wide latest, stored INSIDE the standard
+#: update-check.json next to the per-dist fields (additive — consumers of
+#: the schema-1 payload ignore unknown keys).
+_FAMILY_CACHE_KEY = "family"
+
+
+def family_latest(
+    *,
+    cache_path: Path | None = None,
+    fetcher: Callable[[str], str] | None = None,
+    now: datetime | None = None,
+) -> str | None:
+    """Latest version across the whole pip alias family. Never raises.
+
+    ``CANDIDATE_DISTS`` are canonical PyPI names of the SAME codebase
+    (``vesma-memory-server``, ``vesma``; ``mnemos-memory-server`` is the
+    deprecated legacy mirror, deliberately not fetched). The family
+    latest is the MAX over the aliases' published versions — a report
+    must not call a machine "up to date" because one alias lags behind.
+
+    Cache discipline mirrors :func:`check_for_update`: one shared
+    ``update-check.json`` (the "family" key, same 24h positive / 1h
+    negative TTL); a fresh per-dist entry written by
+    :func:`check_for_update` is reused as one of the candidates, so a
+    single CLI run costs at most one GET per alias. Opt-out
+    (``VESMA_UPDATES_CHECK`` / config) disables the fetch entirely.
+    ``cache_path``/``fetcher``/``now`` are injection points for tests.
+    """
+    try:
+        if env_check_disabled():
+            return None
+        path = cache_path or resolve_cache_path()
+        moment = now or datetime.now(UTC)
+        payload = _read_cache(path) or {}
+        family = payload.get(_FAMILY_CACHE_KEY)
+        if isinstance(family, dict) and _cache_fresh(family, moment):
+            latest = family.get("latest")
+            if isinstance(latest, str) and latest:
+                return latest
+            if family.get("ok") is False:
+                # Fresh negative entry: the 1h TTL bounds the re-check
+                # cost for offline machines (same discipline as
+                # check_for_update) — an unusable answer stands.
+                return None
+
+        do_fetch = fetcher or fetch_latest
+        candidates: list[str] = []
+        pending = set(CANDIDATE_DISTS)
+        # A fresh per-dist answer (written by check_for_update earlier in
+        # this same run) counts toward the family max — no duplicate GET.
+        per_dist_latest = payload.get("latest")
+        per_dist = payload.get("dist")
+        if (
+            payload.get("ok")
+            and isinstance(per_dist, str)
+            and per_dist in pending
+            and isinstance(per_dist_latest, str)
+            and _cache_fresh(payload, moment)
+        ):
+            candidates.append(per_dist_latest)
+            pending.discard(per_dist)
+
+        for dist in sorted(pending):
+            try:
+                candidates.append(do_fetch(dist))
+            except Exception:  # one alias failing must not sink the family
+                continue
+        best = max(candidates, key=version_key) if candidates else None
+
+        merged: dict[str, Any] = dict(payload) if payload else {"schema": 1}
+        merged[_FAMILY_CACHE_KEY] = {
+            "latest": best,
+            "ok": bool(candidates),
+            "checked_at": moment.isoformat(),
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        except Exception:
+            logger.debug("family-latest cache write failed", exc_info=True)
+        return best
+    except Exception:
+        logger.debug("family latest failed", exc_info=True)
+        return None
+
+
 def update_stats_payload(settings: Settings | None = None) -> dict[str, Any] | None:
     """The ``update_available`` object (or ``None``) for the stats payload."""
     try:
