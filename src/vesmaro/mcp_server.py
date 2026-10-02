@@ -548,6 +548,17 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Restrict search to a project (optional)",
                     },
+                    "agent": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "description": (
+                            "Optional caller agent slug (ADR-0035): feeds the "
+                            "native awareness heartbeat identity so search calls "
+                            "participate in the peer-activity picture. Has NO "
+                            "effect on which rows match. Same shape as the "
+                            "agent:<slug> tag contract: 1-64 chars [a-z0-9_-]."
+                        ),
+                    },
                     "task": {
                         "type": "string",
                         "description": (
@@ -772,6 +783,18 @@ async def _canonical_tools() -> list[Tool]:
                     "project": {
                         "type": "string",
                         "description": "Project name (auto-detected from cwd if omitted)",
+                    },
+                    "agent": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "description": (
+                            "Optional caller agent slug (ADR-0035): feeds the "
+                            "native awareness heartbeat identity so recall calls "
+                            "participate in the peer-activity picture. Has NO "
+                            "effect on which checkpoints return. Same shape as "
+                            "the agent:<slug> tag contract: 1-64 chars "
+                            "[a-z0-9_-]."
+                        ),
                     },
                     "query": {
                         "type": "string",
@@ -1494,13 +1517,14 @@ async def _canonical_tools() -> list[Tool]:
                     },
                     "include_awareness": {
                         "type": "boolean",
-                        "default": False,
                         "description": (
                             "pre_llm_call/on_session_start only (vesma #254): "
                             "compose the awareness delta/presence section — "
                             "appended LAST, never pinnable, cursor advances "
-                            "on pre_llm_call only. Default false: output is "
-                            "byte-identical to the pre-#254 shape."
+                            "on pre_llm_call only. ADR-0035 W1 default: "
+                            "AUTO — composes when "
+                            "awareness.native_heartbeat_mode is canary/on, "
+                            "off otherwise; an explicit boolean overrides."
                         ),
                     },
                 },
@@ -3105,8 +3129,12 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         hk_auto = args.get("auto_compress")
         if hk_auto is not None and not isinstance(hk_auto, bool):
             return {"error": "auto_compress must be a boolean when provided"}
-        hk_awareness = args.get("include_awareness", False)
-        if not isinstance(hk_awareness, bool):
+        # ADR-0035 W1: absent (None) resolves to the mode-linked default
+        # inside the awareness-capable hooks (canary/on → compose);
+        # an explicit boolean always wins. No bool() coercion — a truthy
+        # string is a boundary error, same discipline as auto_compress.
+        hk_awareness = args.get("include_awareness")
+        if hk_awareness is not None and not isinstance(hk_awareness, bool):
             return {"error": "include_awareness must be a boolean when provided"}
         try:
             return dispatch_hook(

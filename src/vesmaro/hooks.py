@@ -65,11 +65,15 @@ share the session/project/agent spine; three literal routes would
 triplicate the same body model). Both call :func:`dispatch_hook`.
 
 Awareness composition (vesma #254, R3): ``pre_llm_call`` and
-``on_session_start`` take ``include_awareness`` (default False) — the
-awareness presence/delta section composes HERE, at the hook, never as
-a seventh assemble stage. See :mod:`vesmaro.awareness` for the R3
-security contour; with the flag off every output is byte-identical to
-the pre-#254 shape.
+``on_session_start`` take ``include_awareness`` — the awareness
+presence/delta section composes HERE, at the hook, never as a seventh
+assemble stage. See :mod:`vesmaro.awareness` for the R3 security
+contour. Default (ADR-0035 W1): the argument is mode-linked — when
+``awareness.native_heartbeat_mode`` is canary/on the hooks compose
+awareness by default (the native channel must not depend on a harness
+cooperation that never comes); ``off``/``shadow`` default to False and
+every output is byte-identical to the pre-#254 shape. An explicit
+boolean always wins over the default.
 
 Modes: ADR-0017 D1 names sync/async hook modes. This wave implements
 SYNC only (the automation deployments W3 targets are synchronous
@@ -100,6 +104,22 @@ HOOK_ACTIONS: Final[tuple[str, ...]] = (
 SESSION_START_LIMIT: int = 5
 
 
+def _include_awareness_default(mgr: MemoryManager) -> bool:
+    """The ADR-0035 W1 mode-linked default for ``include_awareness``.
+
+    ``None`` (argument absent) resolves to TRUE only when
+    ``awareness.native_heartbeat_mode`` is a rendering mode (canary/on):
+    the hooks channel then mirrors the native tail by default instead of
+    waiting for a harness that never passes the flag. ``off``/``shadow``
+    resolve to False — output byte-identical to the pre-ADR-0035 shape.
+    An explicit ``True``/``False`` always wins over the default.
+    """
+    from vesmaro.heartbeat import HEARTBEAT_RENDERING_MODES  # local: single source of the ladder
+
+    mode = getattr(getattr(mgr, "settings", None), "awareness", None)
+    return getattr(mode, "native_heartbeat_mode", "off") in HEARTBEAT_RENDERING_MODES
+
+
 def _require_identity(session: str, project: str, agent: str) -> None:
     """Boundary validation shared by every hook (identity is mandatory)."""
     for label, value in (("session", session), ("project", project), ("agent", agent)):
@@ -120,7 +140,7 @@ def pre_llm_call(
     file: str | None = None,
     budget: int = 2048,
     task: str | None = None,
-    include_awareness: bool = False,
+    include_awareness: bool | None = None,
 ) -> dict[str, Any]:
     """Assemble the context block to inject before the model call (sync).
 
@@ -142,17 +162,20 @@ def pre_llm_call(
     wrapped, filter-cleaned, secret-scanned, budget-bounded. The
     harness decides whether and where to inject it.
 
-    ``include_awareness=True`` (vesma #254, R3 — default False)
-    composes the awareness delta section AFTER the assembled output:
-    per-agent delta blocks are appended to ``blocks`` and the rendered
-    section to ``text`` — awareness renders LAST, never inside the
-    pinned lane prefix (the E1 guard is re-asserted over the composed
-    list), and the awareness cursor advances to the consumed
-    high-water mark. With the flag off the output is byte-identical to
-    the pre-#254 shape: no ``awareness`` key, no extra blocks (pinned
-    by tests).
+    ``include_awareness`` (vesma #254, R3) composes the awareness delta
+    section AFTER the assembled output: per-agent delta blocks are
+    appended to ``blocks`` and the rendered section to ``text`` —
+    awareness renders LAST, never inside the pinned lane prefix (the E1
+    guard is re-asserted over the composed list), and the awareness
+    cursor advances to the consumed high-water mark. Default ``None``
+    (ADR-0035 W1): the mode-linked default — composes when
+    ``awareness.native_heartbeat_mode`` is canary/on, off (byte-identical
+    to the pre-#254 shape: no ``awareness`` key, no extra blocks, pinned
+    by tests) otherwise; an explicit boolean always wins.
     """
     _require_identity(session, project, agent)
+    if include_awareness is None:
+        include_awareness = _include_awareness_default(mgr)
     if context_hint is not None and not context_hint.strip():
         raise ValueError("context_hint must be a non-empty string when provided")
 
@@ -215,7 +238,7 @@ def on_session_start(
     project: str,
     agent: str,
     limit: int = SESSION_START_LIMIT,
-    include_awareness: bool = False,
+    include_awareness: bool | None = None,
 ) -> dict[str, Any]:
     """Recall the session bootstrap state — recent checkpoints/context.
 
@@ -226,13 +249,17 @@ def on_session_start(
     the response; refuse mode drops the checkpoint (logged with the
     memory id), redactions are counted per checkpoint.
 
-    ``include_awareness=True`` (vesma #254, R3 — default False) adds a
-    ``presence`` section: server-observed neighbor activity in the
-    presence window plus deterministic conflict-hints against my last
-    checkpoint goal. Pure read — the awareness cursor is NOT touched
-    here (consumption is the ``pre_llm_call`` composition's job).
+    ``include_awareness`` (vesma #254, R3) adds a ``presence`` section:
+    server-observed neighbor activity in the presence window plus
+    deterministic conflict-hints against my last checkpoint goal. Pure
+    read — the awareness cursor is NOT touched here (consumption is the
+    ``pre_llm_call`` composition's job). Default ``None`` (ADR-0035 W1):
+    the mode-linked default (composes under canary/on, off otherwise);
+    an explicit boolean always wins.
     """
     _require_identity(session, project, agent)
+    if include_awareness is None:
+        include_awareness = _include_awareness_default(mgr)
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
         raise ValueError(f"limit must be an integer >= 1, got {limit!r}")
 
@@ -452,7 +479,7 @@ def dispatch_hook(
     output_text: str | None = None,
     auto_compress: bool | None = None,
     profile: str | None = None,
-    include_awareness: bool = False,
+    include_awareness: bool | None = None,
 ) -> dict[str, Any]:
     """Route one ``mnemos_hooks`` action to its hook function.
 
@@ -461,6 +488,8 @@ def dispatch_hook(
     (``ValueError`` → MCP ``{"error": …}`` / REST 422 at the callers).
     ``task`` (ADR-0027 Phase 0) is a ``pre_llm_call``-only argument —
     irrelevant fields for the requested action are simply ignored.
+    ``include_awareness=None`` (absent) resolves to the ADR-0035 W1
+    mode-linked default inside each awareness-capable hook.
     """
     if action == "pre_llm_call":
         return pre_llm_call(
