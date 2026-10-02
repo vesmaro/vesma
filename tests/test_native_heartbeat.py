@@ -36,9 +36,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from vesmaro import mcp_server as mcp_server_module
+from vesmaro.api import main as api_main
+from vesmaro.api.main import app as real_api_app
+from vesmaro.api.main import lifespan
 from vesmaro.awareness import (
     AWARENESS_DISCLAIMER,
     HEARTBEAT_CALM_LINE,
@@ -1291,6 +1296,40 @@ class TestHooksAwarenessDefaultOn:
             mgr = _manager(_settings(Path(tmpdir), mode="canary"))
             assert _include_awareness_default(mgr) is True
             mgr.close()
+
+    def test_rest_absent_include_awareness_resolves_mode_linked(
+        self, tmp_path: Path
+    ) -> None:
+        """The REST twin (POST /hooks/pre_llm_call): the Pydantic None
+        default rides to dispatch_hook unresolved, so the mode-linked
+        default decides — canary composes, shadow stays byte-identical."""
+        for mode, expect_awareness in (("canary", True), ("shadow", False)):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mgr = _manager(_settings(Path(tmpdir), mode=mode))
+                _checkpoint(mgr, goals=f"rest default {mode} goal", agent=NEIGHBOR_A)
+                api_main._manager = mgr
+                test_app = FastAPI(title="awrh-rest-test", version="0.1.0", lifespan=lifespan)
+                for route in real_api_app.routes:
+                    test_app.routes.append(route)
+                try:
+                    with TestClient(test_app) as client:
+                        resp = client.post(
+                            "/hooks/pre_llm_call",
+                            json={
+                                "session": SESSION,
+                                "project": PROJECT,
+                                "agent": AGENT,
+                            },
+                        )
+                    assert resp.status_code == 200
+                    payload = resp.json()
+                    assert ("awareness" in payload) is expect_awareness, (
+                        f"mode={mode}: include_awareness absent must "
+                        f"resolve to {expect_awareness}"
+                    )
+                finally:
+                    api_main._manager = None
+                    mgr.close()
 
 
 class TestSec5DeltaStageHydrationBound:
