@@ -46,6 +46,10 @@ class CheckStatus(StrEnum):
     PASS = "pass"  # nosec B105 — status enum value, not a password
     WARN = "warn"
     FAIL = "fail"
+    #: The check does not apply to this machine (e.g. agent wiring without a
+    #: Copilot install). Neutral like PASS — contributes nothing to the exit
+    #: code; the point is to keep machine-specific noise out of WARN.
+    SKIP = "skip"
 
 
 @dataclass
@@ -381,6 +385,27 @@ def _check_mcp_server() -> CheckResult:
         else:
             notes.append(f"{target.name}: config without a vesma entry ({path})")
 
+    # Legacy well-known VS Code surface (wave W-B, #467): the fix path's
+    # MCP fallback registers the server here for targets without their own
+    # ``mcp.config`` — the check must see that registration too. Scanned
+    # only when the file exists, so MCP-less registries stay "n/a" green.
+    from vesmaro.cli.memory_status import VSCODE_MCP_CONFIG
+
+    vscode_cfg = VSCODE_MCP_CONFIG.expanduser()
+    if vscode_cfg.exists():
+        mcp_surfaces += 1
+        seen = _mcp_keys_seen(vscode_cfg, None)
+        if seen is None:
+            notes.append(f"vscode (legacy): config unreadable ({vscode_cfg})")
+        elif MCP_SERVER_KEY in seen:
+            notes.append(f"vscode (legacy): vesma key ({vscode_cfg})")
+            vesma_seen = True
+        elif MCP_LEGACY_SERVER_KEY in seen:
+            notes.append(f"vscode (legacy): legacy mnemos key ({vscode_cfg})")
+            legacy_seen = True
+        else:
+            notes.append(f"vscode (legacy): config without a vesma entry ({vscode_cfg})")
+
     if vesma_seen:
         extra = f" ({absent} registry surface(s) absent)" if absent else ""
         return CheckResult("MCP server", CheckStatus.PASS, "; ".join(notes) + extra)
@@ -409,10 +434,26 @@ def _check_mcp_server() -> CheckResult:
     )
 
 
+def _cap_listing(lines: list[str], cap: int = 5) -> str:
+    """Render a capped ``target: path`` listing for a check detail.
+
+    Empty input → empty string. Otherwise an indented block with at most
+    ``cap`` lines plus a ``…and N more`` tail when truncated.
+    """
+    if not lines:
+        return ""
+    shown = lines[:cap]
+    more = len(lines) - len(shown)
+    body = "\n".join(f"  {line}" for line in shown)
+    if more > 0:
+        body += f"\n  …and {more} more"
+    return "\n" + body
+
+
 def _check_integration() -> CheckResult:
     """Verify integration layer: installed version + stale status."""
     try:
-        from vesmaro.cli.integration import IntegrationManager, load_targets
+        from vesmaro.cli.integration import DeployStatus, IntegrationManager, load_targets
 
         mgr = IntegrationManager(version=__version__)
         cfg = load_targets()
@@ -427,9 +468,13 @@ def _check_integration() -> CheckResult:
             "no agent harnesses detected — run `vesma integration detect`",
         )
 
-    # Aggregate verify across all detected targets.
+    # Aggregate verify across all detected targets, keeping the concrete
+    # missing/stale file paths so the report names WHERE to look, not just
+    # how many files are affected.
     total_stale = 0
     total_missing = 0
+    missing_lines: list[str] = []
+    stale_lines: list[str] = []
     target_notes: list[str] = []
     for target in detected:
         target_notes.append(f"{target.name} ({target.precedence})")
@@ -437,6 +482,16 @@ def _check_integration() -> CheckResult:
             result = mgr.verify(target.name)
             total_stale += result.stale_count
             total_missing += result.missing_count
+            missing_lines.extend(
+                f"{target.name}: {f.destination}"
+                for f in result.files
+                if f.status == DeployStatus.MISSING
+            )
+            stale_lines.extend(
+                f"{target.name}: {f.destination}"
+                for f in result.files
+                if f.status == DeployStatus.STALE
+            )
         except Exception as exc:  # one target failing shouldn't abort
             logger.warning("integration verify failed for target %s: %s", target.name, exc)
             total_missing += 1
@@ -446,14 +501,16 @@ def _check_integration() -> CheckResult:
             "Integration",
             CheckStatus.WARN,
             f"installed v{__version__}, targets: {', '.join(target_notes)}, "
-            f"{total_missing} missing file(s) — run `vesma integration setup`",
+            f"{total_missing} missing file(s) — run `vesma integration setup`"
+            + _cap_listing(missing_lines)
+            + _cap_listing(stale_lines),
         )
     if total_stale > 0:
         return CheckResult(
             "Integration",
             CheckStatus.WARN,
             f"installed v{__version__}, targets: {', '.join(target_notes)}, "
-            f"{total_stale} stale — run `vesma integration update`",
+            f"{total_stale} stale — run `vesma integration update`" + _cap_listing(stale_lines),
         )
     return CheckResult(
         "Integration",
@@ -612,13 +669,34 @@ def _check_tag_contract(settings: Any) -> CheckResult:
     )
 
 
+def _copilot_harness_detected() -> bool:
+    """Whether the integration registry sees a Copilot harness on this machine.
+
+    Registry-driven (``targets.yaml`` → the ``copilot`` target's detect
+    paths — ``~/.copilot/instructions`` / ``~/.copilot/skills``), NOT the
+    agents directory itself: a leftover ``~/.copilot/agents`` full of
+    unwired agent files on a machine that does not otherwise run Copilot
+    must not produce a WARN. When the registry cannot be LOADED the answer
+    is ``True`` (don't skip) — the check then keeps its full behavior.
+    """
+    try:
+        from vesmaro.cli.integration import load_targets
+
+        target = load_targets().get("copilot")
+        return target is not None and target.is_detected()
+    except Exception as exc:  # doctor reports, doesn't crash
+        logger.debug("doctor copilot-harness detection failed: %s", exc)
+        return True
+
+
 def _check_agent_wiring() -> CheckResult:
     """Check Copilot agent MCP wiring status in ``~/.copilot/agents``.
 
+    * SKIP — no agents directory, or no Copilot harness detected by the
+      integration registry (the wiring is not applicable on this machine).
     * PASS — all detected agents have vesma tools wired (or are skipped
       via ``tool_profile``).
     * WARN — some agents are unwired (lists the count).
-    * SKIP — no agents directory found (non-Copilot setup).
     """
     try:
         from vesmaro.cli.agent_wiring import DEFAULT_AGENTS_DIR, verify_agents
@@ -626,8 +704,15 @@ def _check_agent_wiring() -> CheckResult:
         if not DEFAULT_AGENTS_DIR.is_dir():
             return CheckResult(
                 "Agent wiring",
-                CheckStatus.WARN,
-                f"no agents directory at {DEFAULT_AGENTS_DIR} (non-Copilot setup)",
+                CheckStatus.SKIP,
+                f"no Copilot agents directory at {DEFAULT_AGENTS_DIR} — not applicable",
+            )
+        if not _copilot_harness_detected():
+            return CheckResult(
+                "Agent wiring",
+                CheckStatus.SKIP,
+                "no Copilot harness detected — agent wiring not applicable "
+                f"(agents dir present at {DEFAULT_AGENTS_DIR})",
             )
 
         summary = verify_agents()
@@ -876,6 +961,8 @@ def _render(results: list[CheckResult]) -> None:
             icon = "[green]✓[/green]"
         elif r.status == CheckStatus.WARN:
             icon = "[yellow]⚠[/yellow]"
+        elif r.status == CheckStatus.SKIP:
+            icon = "[dim]○[/dim]"
         else:
             icon = "[red]✗[/red]"
         table.add_row(icon, r.name, r.detail)
@@ -886,70 +973,34 @@ def _render(results: list[CheckResult]) -> None:
 # ── Command ───────────────────────────────────────────────────────────────────
 
 
-@doctor_app.callback(invoke_without_command=True)
-def doctor(
-    json_output: Annotated[
-        bool,
-        typer.Option(
-            "--json",
-            help="Emit results as JSON (for scripting / CI) instead of a table.",
-        ),
-    ] = False,
-    fix: Annotated[
-        bool,
-        typer.Option(
-            "--fix",
-            help="Auto-fix WARN-level checks (stale integration, unwired agents, "
-            "missing MCP registration). FAIL-level checks are not auto-fixable.",
-        ),
-    ] = False,
-    dry_run: Annotated[
-        bool,
-        typer.Option(
-            "--dry-run",
-            help="With --fix: preview what would be fixed without executing.",
-        ),
-    ] = False,
-    paths_only: Annotated[
-        bool,
-        typer.Option(
-            "--paths",
-            help="Show only the paths overview table (skip health checks). "
-            "Useful for quick reference.",
-        ),
-    ] = False,
-) -> None:
-    """Run Vesma health checks and report status.
+def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
+    """One-line deprecation hint for a hidden legacy flag form (stderr).
 
-    Checks: config, data dir, vault, SQLite DB, vector store, pending
-    refinement queue, MCP server, integration layer, agent wiring, tag
-    contract.
-
-    Exit codes: 0 = all pass, 1 = one or more failed, 2 = warnings only.
-
-    With ``--fix``: attempts to auto-fix WARN-level checks (stale
-    integration → ``integration update``, unwired agents →
-    ``vesma integration setup``, missing MCP → MCP setup).
-    After fixes, re-runs the affected checks and reports the new status.
-    ``--fix --dry-run`` previews what would be fixed without executing.
-
-    With ``--paths``: prints only the paths overview table and exits 0.
+    Standing design rule: flags do not replace subcommands. Legacy flag
+    forms keep working (scripts may depend on them) but point at the
+    canonical subcommand spelling.
     """
-    # ── --paths: quick reference, no health checks ──────────────────────
-    if paths_only:
-        try:
-            settings = load_settings()
-            settings.resolve_paths()
-        except Exception as exc:  # doctor must not crash
-            console.print(f"[red]✗[/red] Cannot load settings: {exc}")
-            raise typer.Exit(1) from exc
-        paths = _collect_paths(settings)
-        if json_output:
-            console.print_json(json.dumps({"paths": paths}))
-        else:
-            _render_paths(paths)
-        raise typer.Exit(0)
+    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
 
+
+def _run_paths_overview(*, json_output: bool) -> None:
+    """Print the paths overview table and exit 0 (no health checks)."""
+    try:
+        settings = load_settings()
+        settings.resolve_paths()
+    except Exception as exc:  # doctor must not crash
+        console.print(f"[red]✗[/red] Cannot load settings: {exc}")
+        raise typer.Exit(1) from exc
+    paths = _collect_paths(settings)
+    if json_output:
+        console.print_json(json.dumps({"paths": paths}))
+    else:
+        _render_paths(paths)
+    raise typer.Exit(0)
+
+
+def _run_health_checks(*, json_output: bool, fix: bool = False, dry_run: bool = False) -> None:
+    """Run every health check, optionally auto-fixing WARN-level results."""
     results = _run_all_checks()
 
     # Collect paths from the config check's settings (already loaded).
@@ -1028,5 +1079,119 @@ def doctor(
     raise typer.Exit(code)
 
 
+@doctor_app.callback(invoke_without_command=True)
+def doctor(
+    ctx: typer.Context,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit results as JSON (for scripting / CI) instead of a table.",
+        ),
+    ] = False,
+    fix: Annotated[
+        bool,
+        typer.Option(
+            "--fix",
+            help="Deprecated flag form — use: `vesma doctor fix`.",
+            hidden=True,
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="With the deprecated --fix flag: preview without executing. "
+            "Canonical form: `vesma doctor fix --dry-run`.",
+            hidden=True,
+        ),
+    ] = False,
+    paths_only: Annotated[
+        bool,
+        typer.Option(
+            "--paths",
+            help="Deprecated flag form — use: `vesma doctor paths`.",
+            hidden=True,
+        ),
+    ] = False,
+) -> None:
+    """Run Vesma health checks and report status.
+
+    Checks: config, data dir, vault, SQLite DB, vector store, pending
+    refinement queue, MCP server, integration layer, agent wiring, tag
+    contract.
+
+    Exit codes: 0 = all pass (or skipped as not applicable), 1 = one or
+    more failed, 2 = warnings only.
+
+    Subcommands: `vesma doctor fix` auto-repairs WARN-level checks;
+    `vesma doctor paths` prints the paths overview table.
+    """
+    if ctx.invoked_subcommand is not None:
+        # The subcommand (fix/paths) runs its own logic; options placed
+        # BEFORE the subcommand word would be silently dropped otherwise.
+        if json_output or fix or dry_run or paths_only:
+            typer.echo(
+                "note: options placed before the subcommand are ignored — "
+                "pass them after it (e.g. `vesma doctor fix --json`)",
+                err=True,
+            )
+        return
+    # ── No subcommand: legacy flag forms, then the default check run ────
+    if paths_only:
+        _deprecated_flag_hint("vesma doctor --paths", "vesma doctor paths")
+        _run_paths_overview(json_output=json_output)
+    if fix:
+        _deprecated_flag_hint("vesma doctor --fix", "vesma doctor fix")
+        _run_health_checks(json_output=json_output, fix=True, dry_run=dry_run)
+    _run_health_checks(json_output=json_output)
+
+
+@doctor_app.command(name="fix")
+def doctor_fix(
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview what would be fixed without executing.",
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit results as JSON (for scripting / CI) instead of a table.",
+        ),
+    ] = False,
+) -> None:
+    """Auto-fix WARN-level checks (stale integration, unwired agents, MCP registration).
+
+    Attempts to repair WARN-level checks: stale integration →
+    `integration update`, unwired agents → `vesma integration setup`,
+    missing MCP → MCP registration. FAIL-level checks are not
+    auto-fixable. After fixes, re-runs the affected checks and reports
+    the new status. With `--dry-run`: previews what would be fixed
+    without executing.
+    """
+    _run_health_checks(json_output=json_output, fix=True, dry_run=dry_run)
+
+
+@doctor_app.command(name="paths")
+def doctor_paths(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit the paths object as JSON (for scripting / CI).",
+        ),
+    ] = False,
+) -> None:
+    """Show the paths overview table (config, data dir, DB, vault, …).
+
+    Prints only the paths quick reference — no health checks run. Exit 0.
+    """
+    _run_paths_overview(json_output=json_output)
+
+
 if __name__ == "__main__":  # pragma: no cover — manual invocation
-    doctor()
+    doctor_app()

@@ -22,6 +22,7 @@ All tests use ``tmp_path`` — never the real ``~/.copilot/agents/``.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import frontmatter
@@ -740,6 +741,7 @@ class TestDoctorAgentWiring:
         self,
         agents_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
+        _isolate_copilot_target: None,
     ) -> None:
         """``doctor`` runs the agent wiring check and reports status."""
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
@@ -755,8 +757,9 @@ class TestDoctorAgentWiring:
         self,
         agents_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
+        _isolate_copilot_target: None,
     ) -> None:
-        """Doctor reports WARN when agents are unwired."""
+        """Doctor reports WARN when agents are unwired and Copilot IS detected."""
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
 
         result = runner.invoke(app, ["doctor", "--json"])
@@ -768,9 +771,41 @@ class TestDoctorAgentWiring:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Doctor reports WARN (not crash) when no agents directory exists."""
+        """Doctor reports SKIP (not WARN) when no agents directory exists."""
         monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", tmp_path / "no-agents")
 
         result = runner.invoke(app, ["doctor", "--json"])
         assert "Agent wiring" in result.stdout
-        assert "no agents directory" in result.stdout
+        # Board card vesma-doctor-fixes-467: a machine without the Copilot
+        # agents directory is "not applicable" (SKIP), never a warning.
+        assert "not applicable" in result.stdout
+        checks = json.loads(result.stdout)["checks"]
+        wiring = next(c for c in checks if c["name"] == "Agent wiring")
+        assert wiring["status"] == "skip"
+
+    def test_doctor_skip_when_no_copilot_harness_detected(
+        self,
+        agents_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agents dir present but the registry sees no Copilot harness → SKIP.
+
+        The owner's-machine regression: a leftover ``~/.copilot/agents``
+        full of unwired GCW agents on a machine that does not run the
+        Copilot harness produced a permanent "0/41 wired" WARN.
+        """
+        monkeypatch.setattr("vesmaro.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
+
+        # No _isolate_copilot_target here — but the REAL registry may see a
+        # Copilot harness on a developer box (~/.copilot/instructions exists),
+        # so force the not-detected verdict deterministically.
+        config = TargetsConfig(targets=())
+        monkeypatch.setattr(
+            "vesmaro.cli.integration.load_targets", lambda config_path=None, home=None: config
+        )
+
+        result = runner.invoke(app, ["doctor", "--json"])
+        checks = json.loads(result.stdout)["checks"]
+        wiring = next(c for c in checks if c["name"] == "Agent wiring")
+        assert wiring["status"] == "skip"
+        assert "no Copilot harness detected" in wiring["detail"]
