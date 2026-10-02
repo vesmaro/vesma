@@ -699,7 +699,9 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Установить shell-автодополнение для CLI `vesma`. Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/vesma.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc`; fish автоматически подхватывает свою директорию дополнений). Идемпотентно — повторный запуск не дублирует строку source и мигрирует со старого формата на `eval`.
+Установить shell-автодополнение для CLI `vesma`. Vesma использует собственный движок дополнения (скрытая команда `vesma __complete`): установщик пишет per-shell скрипты, которые опрашивают живое дерево команд, поэтому команды, вложенные подкоманды (любая глубина), имена опций и значения опций/enum дополняются **вместе с описаниями**. Описания показывают zsh и fish; readline в bash не умеет отображать описания вовсе — bash дополняет только значения.
+
+Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/vesma.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc` — размещайте её после `compinit`; fish автоматически подхватывает свою директорию дополнений). Скрипты привязываются к имени вызванного бинарника (`vesma`) плюс легаси-псевдонимы, реально присутствующие на PATH (`vesmaro`, и `mnemos`, если установлен), — Tab работает для любого способа вызова. Идемпотентно — каждый запуск перезаписывает скрипты и оставляет ровно одну каноническую строку source, мигрируя ВСЕ легаси-формы: старые строки `eval "$(… --show-completion …)"`, однострочники и `if [ -f … ]; then source …; fi` блоки до ребрендинга (`mnemos.bash`/`vesmaro.bash`), устаревшие комментарии-маркеры.
 
 ```text
 vesma completion [SHELL] [OPTIONS]
@@ -714,16 +716,27 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesmaro.bash
+# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```
+
+После перезапуска оболочки (показан zsh — описания видны в меню):
+
+```zsh
+vesma tags <TAB>
+# validate  -- Validate tag contract across an existing vault.
+# normalize -- Normalize project:/agent: tag case to lowercase across all memories.
+# rename    -- Bulk rename tags matching `--from <prefix>` → `--to <prefix>`.
+```
+
+> Проверить установку можно в любой момент через `vesma doctor` — проверка «Completion» проходит, когда файл скрипта существует, rc-файл содержит каноническую строку source и скрипт привязывает основное имя программы; иначе выдаётся предупреждение с точной командой исправления.
 
 ---
 
 ## `doctor`
 
-Проверки состояния Vesma: конфигурация, директория данных, vault, БД SQLite, векторное хранилище, MCP-сервер, слой интеграции, подключение агентов, контракт тегов.
+Проверки состояния Vesma: конфигурация, директория данных, vault, БД SQLite, векторное хранилище, MCP-сервер, слой интеграции, shell-автодополнение, подключение агентов, контракт тегов.
 
 ```text
 vesma doctor [OPTIONS]

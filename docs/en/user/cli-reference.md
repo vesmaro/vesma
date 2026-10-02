@@ -700,7 +700,9 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Install shell completion for the `vesma` CLI. With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc`; fish auto-sources its completions directory). Idempotent — re-running does not duplicate the source line and migrates away the old `eval`-based format.
+Install shell completion for the `vesma` CLI. Vesma ships its own completion engine (the hidden `vesma __complete` command): the installer writes per-shell scripts that introspect the live command tree, so commands, nested subcommands (any depth), option names and option/enum values all complete **with descriptions**. Descriptions are rendered by zsh and fish; bash's readline cannot render descriptions at all, so bash completes values only.
+
+With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc` — put it after `compinit`; fish auto-sources its completions directory). The scripts are bound to the program name you invoked (`vesma`) plus legacy aliases that exist on PATH (`vesmaro`, and `mnemos` when installed), so Tab works for every way you call the binary. Idempotent — every run rewrites the scripts and keeps exactly one canonical source line, migrating away ALL legacy forms: old `eval "$(… --show-completion …)"` lines, pre-rebrand `mnemos.bash`/`vesmaro.bash` one-liners and `if [ -f … ]; then source …; fi` blocks, and stale marker comments.
 
 ```text
 vesma completion [SHELL] [OPTIONS]
@@ -715,16 +717,27 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesmaro.bash
+# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```
+
+After restarting the shell (zsh shown — descriptions render in the menu):
+
+```zsh
+vesma tags <TAB>
+# validate  -- Validate tag contract across an existing vault.
+# normalize -- Normalize project:/agent: tag case to lowercase across all memories.
+# rename    -- Bulk rename tags matching `--from <prefix>` → `--to <prefix>`.
+```
+
+> Verify the installation anytime with `vesma doctor` — the "Completion" check passes when the script file exists, the rc file carries the canonical source line, and the script binds the primary program name; otherwise it warns with the exact fix command.
 
 ---
 
 ## `doctor`
 
-Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP server registration, integration layer, agent wiring, tag contract.
+Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP server registration, integration layer, shell completion, agent wiring, tag contract.
 
 ```text
 vesma doctor [OPTIONS]

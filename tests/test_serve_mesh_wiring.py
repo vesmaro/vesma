@@ -71,7 +71,17 @@ def _serve_env() -> Any:
     serve() calls setup_logging() which clears root handlers — restore
     them so these tests do not break caplog in unrelated tests.
     """
-    keys = ("VESMARO_API__HOST", "VESMARO_API__PORT")
+    # serve() exports BOTH key generations (canonical VESMA_ since the
+    # env-prefix wave, legacy VESMARO_ kept for the dual period) — both
+    # must be snapshotted, else the canonical keys leak into later tests
+    # and VESMA_ > VESMARO_ precedence breaks their env-based assertions
+    # (seen as the flaky test_zero_config non-loopback refusal test).
+    keys = (
+        "VESMA_API__HOST",
+        "VESMA_API__PORT",
+        "VESMARO_API__HOST",
+        "VESMARO_API__PORT",
+    )
     saved_env = {k: os.environ.get(k) for k in keys}
     root = logging.getLogger()
     saved_handlers = list(root.handlers)

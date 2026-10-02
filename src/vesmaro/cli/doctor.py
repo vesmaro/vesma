@@ -34,7 +34,7 @@ console = Console()
 doctor_app = typer.Typer(
     name="doctor",
     help="Run Vesma health checks (config, vault, DB, pending refine queue, MCP, "
-    "integration, tags).",
+    "integration, completion, tags).",
     no_args_is_help=False,
 )
 
@@ -462,6 +462,61 @@ def _check_integration() -> CheckResult:
     )
 
 
+def _check_completion() -> CheckResult:
+    """Shell completion installation (custom ``vesma __complete`` engine).
+
+    PASS when the bash script file exists AND ``~/.bashrc`` contains the
+    exact canonical source line AND the script binds the primary program
+    name. WARN otherwise, with the precise fix hint. bash is the
+    representative shell here (the one whose rc-line wiring breaks most
+    often); zsh/fish follow the same installer paths.
+    """
+    try:
+        from vesmaro.cli.completion import (
+            _canonical_source_line,
+            _completion_file_path,
+            _primary_prog_name,
+        )
+
+        primary = _primary_prog_name()
+        script = _completion_file_path("bash")
+        if not script.exists():
+            return CheckResult(
+                "Completion",
+                CheckStatus.WARN,
+                f"no bash completion script at {script} — run `vesma completion bash`",
+            )
+        rc = Path.home() / ".bashrc"
+        canonical = _canonical_source_line("bash")
+        try:
+            rc_lines = rc.read_text(encoding="utf-8").splitlines() if rc.exists() else []
+        except OSError:
+            rc_lines = []
+        if not any(line.strip() == canonical for line in rc_lines):
+            return CheckResult(
+                "Completion",
+                CheckStatus.WARN,
+                f"canonical source line missing from {rc} — run `vesma completion bash`",
+            )
+        try:
+            script_text = script.read_text(encoding="utf-8")
+        except OSError:
+            script_text = ""
+        if f"complete -F _{primary} {primary}" not in script_text:
+            return CheckResult(
+                "Completion",
+                CheckStatus.WARN,
+                f"bash script does not bind `{primary}` — run `vesma completion bash`",
+            )
+        return CheckResult(
+            "Completion",
+            CheckStatus.PASS,
+            f"bash completion installed ({script}, bound: {primary})",
+        )
+    except Exception as exc:  # doctor reports, doesn't crash
+        return CheckResult("Completion", CheckStatus.FAIL, f"check crashed: {exc}")
+
+
 def _check_pending_refine(settings: Any) -> CheckResult:
     """ADR-0019 Phase D — pending-refinement queue diagnostics.
 
@@ -689,7 +744,13 @@ def _run_all_checks() -> list[CheckResult]:
         settings = None
 
     # No-arg checks.
-    for check in (_check_mcp_server, _check_integration, _check_agent_wiring, _check_mcp_transport):
+    for check in (
+        _check_mcp_server,
+        _check_integration,
+        _check_completion,
+        _check_agent_wiring,
+        _check_mcp_transport,
+    ):
         try:
             results.append(check())
         except Exception as exc:  # doctor must never crash
