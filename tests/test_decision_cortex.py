@@ -431,6 +431,13 @@ class _OutOfRangeSession:
         return [np.array([1.5], dtype=np.float32)]
 
 
+class _UndecodableSession:
+    """Stub whose output has the right (1,) shape but no scalar value."""
+
+    def run(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+        return [np.array([object()], dtype=object)]
+
+
 def test_infer_failure_degrades_to_the_deterministic_step(
     provider: VesmaProvider, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -466,6 +473,28 @@ def test_out_of_range_probability_degrades_instead_of_clipping(
         restore()
     assert isinstance(decision, Noul)
     assert decision.probability == 0.0  # 0.5 < 0.92 step rule — NOT a clipped 1.0
+    assert any("CORTEX-E-INFER" in record.message for record in caplog.records)
+
+
+def test_undecodable_output_tensor_degrades_not_escapes(
+    provider: VesmaProvider, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The scalar decode sits under the CortexInferError guard (#459): a
+    (1,)-shaped tensor with no decodable value fails the request the same
+    typed way (never an escaping TypeError past the fail-open seam)."""
+    state = CanonState(
+        record=CanonRecordView(title="t", body="b"),
+        candidate=CanonRecordView(title="t", body="b"),
+        similarity=0.5,
+    )
+    restore = _swap_session(provider, _UndecodableSession())
+    try:
+        with caplog.at_level(logging.WARNING, logger="vesmaro.decision_provider"):
+            decision = provider.evaluate(IsDuplicateRequest(), state)
+    finally:
+        restore()
+    assert isinstance(decision, Noul)
+    assert decision.probability == 0.0  # deterministic step rule
     assert any("CORTEX-E-INFER" in record.message for record in caplog.records)
 
 

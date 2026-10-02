@@ -787,7 +787,12 @@ class VesmaProvider:
         tensor = np.asarray(outputs[0])
         if tensor.shape != (1,):
             raise CortexInferError(f"output shape {tensor.shape} != (1,)")
-        probability = float(tensor[0])
+        try:
+            probability = float(tensor[0])
+        except (TypeError, ValueError) as exc:
+            raise CortexInferError(
+                f"output tensor is not scalar-decodable: {type(exc).__name__}"
+            ) from exc
         if np.isnan(probability) or probability < 0.0 or probability > 1.0:
             raise CortexInferError(
                 f"probability {probability!r} outside [0, 1] — decode error, no clip"
