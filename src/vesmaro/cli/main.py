@@ -1567,6 +1567,20 @@ from vesmaro.cli.completion import completion_app  # noqa: E402
 
 app.add_typer(completion_app, name="completion")
 
+# ── __complete (custom completion engine — hidden plumbing) ────────────────────
+# Backing engine for the shell scripts installed by `vesma completion`.
+# Hidden from --help; argv contract documented in vesmaro/cli/complete_cmd.py.
+
+from vesmaro.cli.complete_cmd import complete as complete_engine  # noqa: E402
+
+app.command(
+    name="__complete",
+    hidden=True,
+    # The engine receives raw words that legitimately start with `-`
+    # (option-name completion): they are data, not options of __complete.
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)(complete_engine)
+
 
 # ── doctor ─────────────────────────────────────────────────────────────────────
 # Health-check: config + data dir + vault + SQLite + vectors + MCP + integration + tags.
