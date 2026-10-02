@@ -60,7 +60,7 @@ Targets, flags, and the full deploy map: [integration-guide.md](user/integration
 
 ### Auto-collect mode
 
-Set `VESMARO_AUTO_COLLECT=1` (legacy spelling `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma prompt your agent to call `mnemos_save_context` after every ~6 tool calls (proactive checkpoint nagging). See [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#auto-collect-mode) for trade-offs.
+Set `VESMA_AUTO_COLLECT=1` (legacy spelling `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma prompt your agent to call `mnemos_save_context` after every ~6 tool calls (proactive checkpoint nagging). See [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#auto-collect-mode) for trade-offs.
 
 ### 38 MCP tools (`vesma_` prefix)
 

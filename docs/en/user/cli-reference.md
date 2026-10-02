@@ -54,7 +54,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Most subcommands accept a `--config / -c` flag pointing at a YAML file. Search order is:
 
 1. `--config` argument (if present)
-2. `$VESMARO_CONFIG` env var (5.x canonical; the 4.x spelling `MNEMOS_CONFIG` is deprecated)
+2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMARO_CONFIG` stays accepted until 6.0; the 4.x spelling `MNEMOS_CONFIG` is deprecated)
 3. `./config.yaml` in the current working directory
 4. `~/.mnemos/config.yaml`
 
@@ -66,32 +66,32 @@ vesma add --help
 The only other global flags are `--version / -V` (print the version) and `--verbose / -v` (DEBUG logging for `vesma serve` and `vesma mcp-server`). To change the log level permanently, set `logging.level` in the config file or the corresponding env var:
 
 ```bash
-VESMARO_LOGGING__LEVEL=DEBUG vesma serve      # 5.x canonical
-# 4.x images still read the MNEMOS_LOGGING__LEVEL spelling (deprecated)
+VESMA_LOGGING__LEVEL=DEBUG vesma serve      # canonical (5.3+)
+# 5.0–5.2 read VESMARO_LOGGING__LEVEL; 4.x images read MNEMOS_LOGGING__LEVEL (both deprecated)
 ```
 
 ---
 
 ## Environment variables
 
-All settings are env-overridable via the `VESMARO_` prefix (the canonical 5.x name). Nested keys use `__` as the delimiter.
+All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). Nested keys use `__` as the delimiter.
 
-| Variable (5.x canonical) | Default | Purpose |
+| Variable (canonical) | Default | Purpose |
 |----------|---------|---------|
-| `VESMARO_CONFIG` | — | Path to `config.yaml` |
-| `VESMARO_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite DB + vector index (canonical form) |
-| `VESMARO_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian mirror directory (canonical form) |
-| `VESMARO_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Enforce M2 tag schema |
-| `VESMARO_API__HOST` | `127.0.0.1` | Default for `vesma serve` |
-| `VESMARO_API__PORT` | `8787` | Default for `vesma serve` |
-| `VESMARO_SEARCH__HYBRID_ALPHA` | `0.5` | Vector weight in RRF fusion |
-| `VESMARO_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
-| `VESMARO_LLM__PROVIDER` | `ollama` | LLM for synthesis + context filter |
-| `VESMARO_LLM__MODEL` | `qwen2.5:3b` | LLM model name |
-| `VESMARO_AUTO_COLLECT` | `0` | Set `1` to enable MCP auto-collect mode |
-| `VESMARO_LOGGING__LEVEL` | `INFO` | Python logging level |
+| `VESMA_CONFIG` | — | Path to `config.yaml` |
+| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite DB + vector index (canonical form) |
+| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian mirror directory (canonical form) |
+| `VESMA_MNEMOS__STRICT_TAG_CONTRACT` | `true` | Enforce M2 tag schema |
+| `VESMA_API__HOST` | `127.0.0.1` | Default for `vesma serve` |
+| `VESMA_API__PORT` | `8787` | Default for `vesma serve` |
+| `VESMA_SEARCH__HYBRID_ALPHA` | `0.5` | Vector weight in RRF fusion |
+| `VESMA_EMBEDDING__PROVIDER` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
+| `VESMA_LLM__PROVIDER` | `ollama` | LLM for synthesis + context filter |
+| `VESMA_LLM__MODEL` | `qwen2.5:3b` | LLM model name |
+| `VESMA_AUTO_COLLECT` | `0` | Set `1` to enable MCP auto-collect mode |
+| `VESMA_LOGGING__LEVEL` | `INFO` | Python logging level |
 
-> **Deprecated: MNEMOS_\* spelling.** The table above lists the 5.x-canonical `VESMARO_*` names (ADR-0031 dual-prefix contract; 5.x images read `VESMARO_*`). The same variables were shipped as `MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL` on 4.x images and remain accepted there until deprecation. The two `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` short forms are #139 compatibility aliases for the nested canonical names — canonical env wins on conflict.
+> **Deprecated spellings: `VESMARO_*` (5.0–5.2) and `MNEMOS_*` (4.x).** The table above lists the canonical `VESMA_*` names (rebrand train 5.3.0; ADR-0031 dual-prefix contract). When the `VESMA_` twin is absent, the deprecated `VESMARO_*` spelling is still honoured — it retires no earlier than 6.0, so existing deployments keep working unchanged; when both are set, `VESMA_` wins. The 4.x-era `MNEMOS_*` spellings (`MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL`) are no longer read. The short forms `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` (deprecated `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` spellings likewise accepted until 6.0) are #139 compatibility aliases for the nested canonical names — canonical env wins on conflict.
 
 > **Legacy aliases.** The short forms predate the nested naming and are kept for compatibility (#139). Both forms work. On conflict the canonical env name — and an explicit value in the config file — wins over the legacy alias; the alias only fills the gap that would otherwise fall through to the default.
 
@@ -587,7 +587,7 @@ The server speaks JSON-RPC 2.0 over stdin/stdout. There is no TCP port. The proc
 # Direct invocation (for debugging)
 vesma mcp-server
 
-# With auto-collect mode (4.x env spelling; 5.x: VESMARO_AUTO_COLLECT)
+# With auto-collect mode (4.x env spelling; canonical 5.3+: VESMA_AUTO_COLLECT)
 MNEMOS_AUTO_COLLECT=1 vesma mcp-server
 
 # From VS Code (mcp.json snippet)
@@ -739,7 +739,7 @@ vesma doctor [OPTIONS]
 
 Exit codes: `0` = all checks pass, `1` = one or more checks failed, `2` = warnings only.
 
-> `doctor` does not take `--config`; it reads the config from `$VESMARO_CONFIG` (4.x spelling: `MNEMOS_CONFIG`, deprecated) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
+> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (deprecated spellings: `VESMARO_CONFIG` until 6.0, `MNEMOS_CONFIG` on 4.x) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
 
 ### `doctor --paths`
 

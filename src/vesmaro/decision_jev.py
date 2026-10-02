@@ -44,7 +44,8 @@ Default-off, enforced twice: the config default is
 ``mnemos.decision_provider="deterministic"`` (zero I/O), and even with
 ``"jev"`` the factory refuses BEFORE any network attempt when the key
 env var is missing. The key travels by env-NAME indirection
-(``decision_jev_api_key_env``, default ``VESMARO_OPENROUTER_API_KEY``)
+(``decision_jev_api_key_env``, default ``VESMA_OPENROUTER_API_KEY``; the
+deprecated ``VESMARO_OPENROUTER_API_KEY`` stays honoured until 6.0)
 — the secret itself never enters config files, git or logs.
 """
 
@@ -95,7 +96,15 @@ NO_FEDERATE_TAG: Final[str] = "mnemos:no-federate"
 
 #: Default env-NAME indirection for the OpenRouter key (config may point
 #: at another name; the value itself is read from the environment only).
-DEFAULT_JEV_KEY_ENV: Final[str] = "VESMARO_OPENROUTER_API_KEY"
+#: Rebrand train 5.3.0: canonical name carries the ``VESMA_`` prefix; the
+#: deprecated ``VESMARO_OPENROUTER_API_KEY`` twin stays honoured when the
+#: canonical name is unset (dual period until 6.0, ADR-0031 pattern).
+DEFAULT_JEV_KEY_ENV: Final[str] = "VESMA_OPENROUTER_API_KEY"
+
+#: Deprecated pre-5.3 name of the OpenRouter key env var — read ONLY as a
+#: fallback when :data:`DEFAULT_JEV_KEY_ENV` (or a config pointing at it)
+#: resolves to an unset variable.
+_DEPRECATED_JEV_KEY_ENV: Final[str] = "VESMARO_OPENROUTER_API_KEY"
 
 #: Outbound HTTP timeout for one probe (matches the ingest leg's 30s).
 JEV_HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
@@ -457,9 +466,25 @@ def resolve_decision_provider(
             return DeterministicProvider()
     key_env = settings.decision_jev_api_key_env
     key = os.environ.get(key_env, "")
+    if not key and key_env == DEFAULT_JEV_KEY_ENV:
+        # Deprecated twin fallback (VESMARO_ retires no earlier than 6.0):
+        # deployments that exported only the legacy name keep working, with
+        # a visible warning instead of a silent swap.
+        key = os.environ.get(_DEPRECATED_JEV_KEY_ENV, "")
+        if key:
+            logger.warning(
+                "code=DEPRECATED-ENV %s is unset; using deprecated %s (accepted until 6.0)",
+                DEFAULT_JEV_KEY_ENV,
+                _DEPRECATED_JEV_KEY_ENV,
+            )
     if not key:
+        hint = (
+            f" (deprecated ${_DEPRECATED_JEV_KEY_ENV} also accepted until 6.0)"
+            if key_env == DEFAULT_JEV_KEY_ENV
+            else ""
+        )
         raise JevConfigError(
-            f"decision_provider=jev requires a non-empty ${key_env} "
+            f"decision_provider=jev requires a non-empty ${key_env}{hint} "
             "(env-NAME indirection — the key itself never enters config)"
         )
     logger.info("jev adapter wired: key_env=%s", key_env)

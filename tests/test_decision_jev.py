@@ -20,6 +20,7 @@ before any connection).
 from __future__ import annotations
 
 import json
+import logging
 import socket
 from typing import Any, cast
 
@@ -304,7 +305,9 @@ def test_config_defaults_pin_deterministic_and_env_name() -> None:
     config = VesmaConfig()
     assert config.decision_provider == "deterministic"  # default-off posture
     assert config.decision_jev_api_key_env == DEFAULT_JEV_KEY_ENV
-    assert DEFAULT_JEV_KEY_ENV == "VESMARO_OPENROUTER_API_KEY"
+    # Rebrand train 5.3.0: canonical VESMA_ name; the deprecated VESMARO_
+    # spelling stays honoured as a fallback until 6.0 (tested below).
+    assert DEFAULT_JEV_KEY_ENV == "VESMA_OPENROUTER_API_KEY"
 
 
 def test_config_rejects_empty_env_name() -> None:
@@ -334,8 +337,38 @@ def test_resolve_jev_without_key_fails_closed_before_network(
         raise AssertionError("network attempt: socket constructed")
 
     monkeypatch.setattr(socket, "socket", _no_sockets)
-    with pytest.raises(JevConfigError, match="VESMARO_OPENROUTER_API_KEY"):
+    monkeypatch.delenv("VESMARO_OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(JevConfigError, match="VESMA_OPENROUTER_API_KEY"):
         resolve_decision_provider(VesmaConfig(decision_provider="jev"))
+
+
+# ── Dual-prefix key resolution (rebrand train 5.3.0) ────────────────────────
+
+
+def test_resolve_jev_deprecated_key_name_fallback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Legacy deployment exporting ONLY ``VESMARO_OPENROUTER_API_KEY`` keeps
+    working after the canonical name flipped to the ``VESMA_`` twin — with a
+    visible deprecation warning, not a silent swap."""
+    monkeypatch.delenv(DEFAULT_JEV_KEY_ENV, raising=False)
+    monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", FAKE_KEY)
+    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+        provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
+    assert isinstance(provider, JevRouterProvider)
+    assert any("DEPRECATED-ENV" in rec.message for rec in caplog.records)
+
+
+def test_resolve_jev_canonical_key_name_wins(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Both names set → canonical VESMA_ value wins, no deprecation warning."""
+    monkeypatch.setenv(DEFAULT_JEV_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", "vesmaro-legacy-key")
+    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+        provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
+    assert isinstance(provider, JevRouterProvider)
+    assert not caplog.records
 
 
 def test_resolve_jev_reads_key_from_env_name_indirection(

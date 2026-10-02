@@ -55,7 +55,9 @@ podman run -d --name vesma \
 `config.container.yaml` как `/app/config.yaml` — монтировать конфиг не требуется,
 если только вы не хотите переопределить настройки. TOTP-мастер-ключ обязателен
 (вшитый конфиг биндится на `0.0.0.0`); образы 4.x читают написание
-`MNEMOS_API__*`, 5.x+ — `VESMARO_API__*`; задать оба всегда безопасно.
+`MNEMOS_API__*`, 5.0–5.2 — `VESMARO_API__*`, а 5.3+ — каноническое
+`VESMA_API__*`; задать все сразу всегда безопасно (устаревшие написания
+принимаются до 6.0, ADR-0031).
 
 Проверка:
 
@@ -124,7 +126,7 @@ podman-секрета и определяет пробы здоровья.
 ### Запуск
 
 ```bash
-printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
+printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\nVESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
@@ -162,12 +164,12 @@ Shortcut:
 ### Задать TOTP-ключ
 
 Юнит читает ключ из `~/.vesmaro.env` (`EnvironmentFile`), править юнит не нужно.
-Оба имени переменной должны нести одно значение — образы 4.x читают `MNEMOS_API__*`,
-5.x читают `VESMARO_API__*` (ADR-0031):
+Все имена переменной должны нести одно значение — образы 4.x читают `MNEMOS_API__*`,
+5.0–5.2 читают `VESMARO_API__*`, 5.3+ читают каноническое `VESMA_API__*` (ADR-0031):
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" > ~/.vesmaro.env
+printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\nVESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
 ```
 
 ### Установка юнита
@@ -252,7 +254,7 @@ Vesma использует `config.container.yaml` в качестве конф�
 | `api.host` | `0.0.0.0` | Привязка ко всем интерфейсам — **требует auth** |
 | `api.port` | `8787` | Внутренний порт контейнера; маппинг задаётся в compose/run |
 | `api.auth_enabled` | `true` | Обязательно `true` при `host: 0.0.0.0` |
-| `api.totp_enabled` | `true` | Требует TOTP 2FA; ключ через `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` с 5.x — ADR-0031) |
+| `api.totp_enabled` | `true` | Требует TOTP 2FA; ключ через `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` на 5.0–5.2, канон `VESMA_API__*` с 5.3 — ADR-0031) |
 | `api.behind_tls_proxy` | `true` | TLS завершается выше по стеку (Caddy, nginx, ingress и т.п.) |
 | `embedding.provider` | `nano` | vesma-embed-v1: встроенная локальная модель, работает офлайн; GPU не требуется |
 

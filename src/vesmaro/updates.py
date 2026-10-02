@@ -18,8 +18,8 @@ Design contract:
   network costs at most one 3s timeout per hour instead of per call;
   a previously cached ``latest`` is still served with ``stale=True``.
 * **Opt-out, two independent switches.** Config ``updates.check_enabled``
-  (default ``true``; env ``VESMARO_UPDATES__CHECK_ENABLED``) and the hard
-  env override ``VESMARO_UPDATES_CHECK`` (``off``/``0``/``false``/``no``).
+  (default ``true``; env ``VESMA_UPDATES__CHECK_ENABLED``) and the hard
+  env override ``VESMA_UPDATES_CHECK`` (``off``/``0``/``false``/``no``).
   Either being off disables the check entirely.
 """
 
@@ -56,8 +56,11 @@ FALLBACK_UPDATE_DIR = Path("~/.local/share/vesma").expanduser()
 #: (first hit wins — this is the dist ``vesma update`` pip-upgrades).
 CANDIDATE_DISTS = ("vesma-memory-server", "vesma")
 
-#: Hard env opt-out (independent of the config knob).
-OPT_OUT_ENV = "VESMARO_UPDATES_CHECK"
+#: Hard env opt-out (independent of the config knob). Canonical ``VESMA_``
+#: name; the deprecated ``VESMARO_UPDATES_CHECK`` spelling stays honoured
+#: until 6.0 (dual-prefix contract, ADR-0031 pattern).
+OPT_OUT_ENV = "VESMA_UPDATES_CHECK"
+_DEPRECATED_OPT_OUT_ENV = "VESMARO_UPDATES_CHECK"
 _OFF_VALUES = frozenset({"off", "0", "false", "no"})
 
 
@@ -102,8 +105,13 @@ def version_key(version: str) -> list[tuple[int, int, str]]:
 
 
 def env_check_disabled() -> bool:
-    """True when ``VESMARO_UPDATES_CHECK`` says off (case-insensitive)."""
-    return os.environ.get(OPT_OUT_ENV, "").strip().lower() in _OFF_VALUES
+    """True when ``VESMA_UPDATES_CHECK`` says off (case-insensitive).
+
+    The deprecated ``VESMARO_UPDATES_CHECK`` spelling is honoured as a
+    fallback (accepted until 6.0).
+    """
+    value = os.environ.get(OPT_OUT_ENV) or os.environ.get(_DEPRECATED_OPT_OUT_ENV, "")
+    return value.strip().lower() in _OFF_VALUES
 
 
 # ── installed dist detection ─────────────────────────────────────────────────

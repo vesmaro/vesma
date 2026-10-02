@@ -725,7 +725,12 @@ class VesmaProvider:
 
         n_threads = max(
             1,
-            int(os.environ.get("VESMARO_ORT_THREADS") or os.environ.get("OMP_NUM_THREADS") or "4"),
+            int(
+                os.environ.get("VESMA_ORT_THREADS")
+                or os.environ.get("VESMARO_ORT_THREADS")
+                or os.environ.get("OMP_NUM_THREADS")
+                or "4"
+            ),
         )
         sess_opts = ort.SessionOptions()
         sess_opts.intra_op_num_threads = n_threads

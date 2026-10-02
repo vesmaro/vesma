@@ -12,7 +12,12 @@ from typing import Any, Final, Literal
 import yaml
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +48,7 @@ class VesmaConfig(BaseModel):
     #     (invisible); visibility is granted only when the refine cycle
     #     completes and the refined projection passes the publication
     #     gate (refusal at that point enters the lane-(b) quarantine).
-    # Canonical env override: VESMARO_MNEMOS__VISIBILITY=curated.
+    # Canonical env override: VESMA_MNEMOS__VISIBILITY=curated.
     visibility: Literal["immediate", "curated"] = "immediate"
     # ADR-0030 A0 (issue #322) — deterministic relates_to auto-minting on
     # write: after every add, ONE synchronous hybrid search through the
@@ -55,7 +60,7 @@ class VesmaConfig(BaseModel):
     # window, ADR-0030 addendum B.1) — minting is the fuel line the
     # ecosystem builds on. Minting is best-effort: a minting failure
     # never fails the write.
-    # Canonical env override: VESMARO_MNEMOS__GRAPH_AUTO_MINT=false.
+    # Canonical env override: VESMA_MNEMOS__GRAPH_AUTO_MINT=false.
     graph_auto_mint: bool = True
     # ADR-0030 A0 (issue #324) — the 1-hop ``relates_to`` walk in the
     # search graph leg: the leg extends from ``supersedes`` (both
@@ -67,7 +72,7 @@ class VesmaConfig(BaseModel):
     # for letting minted fuel reach search. DEFAULT ON (owner decision
     # 2026-09-28): S1 shipped with the reserved-quota discipline and
     # the dedicated guard floor recall@5 ≥ 0.9121 (ADR-0030 B.3).
-    # Canonical env override: VESMARO_MNEMOS__GRAPH_WALK=false.
+    # Canonical env override: VESMA_MNEMOS__GRAPH_WALK=false.
     graph_walk: bool = True
     # ADR-0030 A1-S2 (issue #325) — feedback APPLY: the edge_stats
     # `used` counters multiply walked-block edge weights by a
@@ -79,7 +84,7 @@ class VesmaConfig(BaseModel):
     # not run); graph_walk=ON + feedback_apply=OFF ⇒ A1-S1 behavior
     # byte-identical. DEFAULT ON (owner decision 2026-09-28); capture
     # telemetry validated in the A0 7-day window.
-    # Canonical env override: VESMARO_MNEMOS__FEEDBACK_APPLY=false.
+    # Canonical env override: VESMA_MNEMOS__FEEDBACK_APPLY=false.
     feedback_apply: bool = True
     # vesma #96: workflow lifecycle guardrails. Stale-lock threshold governs
     # how long a lock survives before a different actor can take it over
@@ -118,7 +123,7 @@ class VesmaConfig(BaseModel):
     # hard error (the composition contract must not break). Without the
     # cap a polling harness reconstructs a neighbor's timeline at
     # arbitrary resolution. 0 disables the limiter.
-    # Canonical env override: VESMARO_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
+    # Canonical env override: VESMA_MNEMOS__AWARENESS_PICTURE_RATE_LIMIT_PER_MINUTE=0.
     awareness_picture_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
     # vesma-canon v1.0.0 (ADR-0003 engine obligation 4) — the
@@ -132,7 +137,7 @@ class VesmaConfig(BaseModel):
     # validator enforces the same set at the manager boundary
     # (``checkpoint_canon_envelope`` raises ValueError fail-loud), so a
     # mistyped config value surfaces on the first save, not silently.
-    # Canonical env override: VESMARO_MNEMOS__CHECKPOINT_LANGUAGE=ru.
+    # Canonical env override: VESMA_MNEMOS__CHECKPOINT_LANGUAGE=ru.
     checkpoint_language: Literal["ru", "en"] = "ru"
     # vesma-canon v1.0.0 (canon §9, ADR-0003 obligations 5-6) — the
     # write-path canon enforcement level. The validator
@@ -151,7 +156,7 @@ class VesmaConfig(BaseModel):
     #   * "off" — no canon validation at all.
     # Strict stays default-off until vesma 6.0 (canon §9 freeze: the
     # warn telemetry decides the strict default, owner directive).
-    # Canonical env override: VESMARO_MNEMOS__CANON_MODE=strict.
+    # Canonical env override: VESMA_MNEMOS__CANON_MODE=strict.
     canon_mode: Literal["off", "warn", "strict"] = "warn"
     # ADR-0004 implementation (c) — decision-provider selection for the
     # «semantic if» seam (``vesmaro.decision_provider``). One interface,
@@ -174,15 +179,17 @@ class VesmaConfig(BaseModel):
     #     pre-registered methodology (canon repo,
     #     docs/experiments/provider-calibration.md).
     #   * "off" — the seam is disabled entirely (call sites get None).
-    # Canonical env override: VESMARO_MNEMOS__DECISION_PROVIDER=vesma.
+    # Canonical env override: VESMA_MNEMOS__DECISION_PROVIDER=vesma.
     decision_provider: Literal["off", "deterministic", "vesma", "jev"] = "deterministic"
     # NAME indirection for the Jev adapter's API key: the OpenRouter key
     # is read AT PROVIDER CONSTRUCTION from the environment variable
     # NAMED here (see ``resolve_decision_provider``). The secret itself
     # never enters config files, git or logs — config carries the NAME
-    # of the env var, nothing else.
+    # of the env var, nothing else. Canonical name is the ``VESMA_`` one;
+    # when it is unset the adapter falls back to the deprecated
+    # ``VESMARO_OPENROUTER_API_KEY`` (accepted until 6.0).
     decision_jev_api_key_env: str = Field(
-        default="VESMARO_OPENROUTER_API_KEY", min_length=1, max_length=256
+        default="VESMA_OPENROUTER_API_KEY", min_length=1, max_length=256
     )
 
 
@@ -215,7 +222,7 @@ class EmbeddingConfig(BaseModel):
     ollama_url: str = "http://localhost:11434"
     # M15.2: pin HF Hub downloads to a specific revision to mitigate supply-chain
     # risk (CWE-494 — download of code without integrity check). Override via
-    # VESMARO_EMBEDDING__HF_REVISION env var or config.yaml. The default is
+    # VESMA_EMBEDDING__HF_REVISION env var or config.yaml. The default is
     # empty so the ``if not revision: raise`` guard in ONNXHubProvider fires
     # and forces operators to pin an explicit revision when using the ONNX
     # provider. When changing the ``model`` field, set ``hf_revision`` to a
@@ -241,7 +248,7 @@ class SearchConfig(BaseModel):
     # capture-only has zero ranking influence). Flag off =
     # ``report_search_feedback`` performs no writes and no telemetry
     # (and ``feedback_apply`` stays inert on an empty counter set).
-    # Env: ``VESMARO_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
+    # Env: ``VESMA_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
     feedback_capture_enabled: bool = True
 
 
@@ -258,7 +265,7 @@ class ApiConfig(BaseModel):
     # T-AUTH additions (ADR-0014) ─────────────────────────────────────────────
     auth_enabled: bool = False  # default off — safe for loopback-only bind
     totp_enabled: bool = False  # default off — safe for loopback-only bind
-    # env-only; never written to disk — VESMARO_API__TOTP_MASTER_KEY
+    # env-only; never written to disk — VESMA_API__TOTP_MASTER_KEY
     totp_master_key: SecretStr = SecretStr("")
     session_ttl_sec: int = Field(default=8 * 3600, ge=300, le=24 * 3600)
     session_pin_ip: bool = False  # bind session to creation IP
@@ -446,7 +453,7 @@ class LanesConfig(BaseModel):
     pre-E1 pipeline: no lane queries run and the assembled output is
     byte-identical (the ``lane`` block field is omitted entirely when
     off, not rendered as a default value). Canonical env override:
-    ``VESMARO_LANES__ENABLED=true``.
+    ``VESMA_LANES__ENABLED=true``.
 
     ``type_boost`` is NOT a second lanes enablement path — it is the E3
     leg B0 treatment (E0 §1.1: "type-boost of rules/decisions at recall
@@ -458,7 +465,7 @@ class LanesConfig(BaseModel):
     treatments are mutually exclusive (a leg is exactly one of
     A / B0 / B) — enabling both is a configuration bug, raised here.
     With both flags off the code path is byte-identical to the pre-E1
-    pipeline. Canonical env override: ``VESMARO_LANES__TYPE_BOOST=true``.
+    pipeline. Canonical env override: ``VESMA_LANES__TYPE_BOOST=true``.
     """
 
     enabled: bool = False
@@ -568,7 +575,7 @@ class PeerConfig(BaseModel):
 
     Fields:
         bearer_token_env: NAME of the environment variable holding the
-            per-peer bearer token (e.g. ``VESMARO_FED_PEER_A_TOKEN``).
+            per-peer bearer token (e.g. ``VESMA_FED_PEER_A_TOKEN``).
             Per ``sensitive-data.instructions.md`` we store the NAME,
             never the value — the server reads the token from this env
             var at request time. The token format is
@@ -1019,11 +1026,11 @@ class CodeGraphConfig(BaseModel):
     BEFORE committing its transaction, so a hostile or misconfigured
     root cannot balloon the sidecar store.
 
-    Canonical env override: ``VESMARO_CODE_GRAPH__INDEX_MAX_FILES`` /
-    ``VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`` / ``VESMARO_CODE_GRAPH__AUTO_INDEX`` /
-    ``VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
-    ``VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
-    ``VESMARO_CODE_GRAPH__AGENT_REGISTRATION``.
+    Canonical env override: ``VESMA_CODE_GRAPH__INDEX_MAX_FILES`` /
+    ``VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`` / ``VESMA_CODE_GRAPH__AUTO_INDEX`` /
+    ``VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
+    ``VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
+    ``VESMA_CODE_GRAPH__AGENT_REGISTRATION``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1112,7 +1119,7 @@ class CodeGraphConfig(BaseModel):
             from the sidecar set with an ``allowlist-unpoison`` audit
             row, never silently. Default ``[]`` keeps PG3
             byte-identical. Env override takes a JSON array:
-            ``VESMARO_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'``.
+            ``VESMA_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'``.
     """
 
     enabled: bool = True
@@ -1187,7 +1194,7 @@ class AwarenessConfig(BaseModel):
     #     (covered by tests; not enabled in production until the wave 0/1
     #     gates close green).
     # Canonical env override:
-    # VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow.
+    # VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow.
     native_heartbeat_mode: Literal["off", "shadow", "canary", "on"] = "off"
     # C14 rate cap: heartbeat compositions per (project, agent) per minute,
     # in-process sliding window (the _picture_rate_limit pattern; the key
@@ -1195,7 +1202,7 @@ class AwarenessConfig(BaseModel):
     # disables. Over-limit suppresses the tail with a heartbeat_suppressed
     # {rate_cap} event — never an error, never a shape break.
     # Canonical env override:
-    # VESMARO_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0.
+    # VESMA_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0.
     heartbeat_rate_limit_per_minute: int = Field(default=30, ge=0, le=10_000)
 
 
@@ -1208,13 +1215,13 @@ class UpdatesConfig(BaseModel):
     the ``vesma --version`` stderr hint, and one INFO line at server
     start. See ``vesmaro.updates`` for the full contract.
 
-    The env override ``VESMARO_UPDATES_CHECK=off`` disables the check
+    The env override ``VESMA_UPDATES_CHECK=off`` disables the check
     INDEPENDENTLY of this section (a hard kill switch that works even
     when the config cannot be loaded).
     """
 
     # Default ON (owner directive 2026-10-01: components must report new
-    # versions). Set false (or ``VESMARO_UPDATES__CHECK_ENABLED=false``)
+    # versions). Set false (or ``VESMA_UPDATES__CHECK_ENABLED=false``)
     # to stop all version checks.
     check_enabled: bool = True
 
@@ -1279,16 +1286,39 @@ class MeshConfig(BaseModel):
         return self
 
 
+# ── Dual env prefix: canonical ``VESMA_``, deprecated ``VESMARO_`` ───────────
+#
+# Owner directive (train 5.3.0): the product end-state is ``vesma``-branded,
+# so the canonical settings prefix is ``VESMA_``. Removal of ``VESMARO_*``
+# (and ``MNEMOS_*``) is deferred to 6.0 — the ADR-0031 dual-period pattern
+# (same as ``VESMA_MCP_BRAND``): ``model_config`` keeps ``VESMARO_`` as its
+# built-in prefix (zero behaviour change for existing deployments) and
+# ``settings_customise_sources`` injects a ``VESMA_``-prefixed env/dotenv
+# twin one priority step above each ``VESMARO_`` layer. Per-field precedence
+# (high → low; sources deep-merge):
+#
+#   config.yaml (init kwargs) > VESMA_ env > VESMARO_ env >
+#   #139 short aliases (VESMA_ twin > legacy VESMARO_ name) >
+#   VESMA_ .env > VESMARO_ .env > field defaults.
+
+_ENV_PREFIX_CANONICAL: Final[str] = "VESMA_"
+_ENV_PREFIX_LEGACY: Final[str] = "VESMARO_"
+
+
 # ── Issue #139: legacy short env-name compatibility ──────────────────────────
 #
-# ``Settings`` maps env vars with the ``VESMARO_`` prefix + ``__`` nesting, so
+# ``Settings`` maps env vars with the canonical ``VESMA_`` prefix (the
+# deprecated ``VESMARO_`` twin stays accepted until 6.0) + ``__`` nesting, so
 # the canonical names for the nested ``vesma`` section fields are
-# ``VESMARO_MNEMOS__DATA_DIR`` / ``VESMARO_MNEMOS__VAULT_PATH``. Historically the
+# ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``. Historically the
 # repo docs and ``scripts/mcp-setup.sh`` advertised the shorter
 # ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` forms, which
 # pydantic-settings silently ignores (no matching field). The mapping below
 # restores those two short names as compatibility aliases. Scope is
 # deliberately fixed to these two — this is NOT a general renaming engine.
+# Under the dual-prefix contract each legacy name also has a ``VESMA_`` twin
+# (``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH``) which wins when both are
+# present; the ``VESMARO_`` spellings stay accepted until 6.0.
 
 _ENV_COMPAT_ALIASES: Final[dict[str, tuple[str, str]]] = {
     # legacy env name            -> (settings section, field)
@@ -1303,7 +1333,9 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
     Reads the process environment (NOT ``.env`` files — that is a separate,
     lower-priority source) on every call, so each ``Settings()`` construction
     observes the current ``os.environ``. Empty-string values are treated as
-    unset.
+    unset. Each legacy ``VESMARO_`` name also accepts its canonical
+    ``VESMA_`` twin, which wins when both are set (dual-prefix contract,
+    deprecated names retire no earlier than 6.0).
     """
 
     def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
@@ -1314,7 +1346,8 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
     def __call__(self) -> dict[str, Any]:
         data: dict[str, dict[str, Any]] = {}
         for alias, (section, field_name) in _ENV_COMPAT_ALIASES.items():
-            value = os.environ.get(alias, "")
+            canonical = f"{_ENV_PREFIX_CANONICAL}{alias.removeprefix(_ENV_PREFIX_LEGACY)}"
+            value = os.environ.get(canonical) or os.environ.get(alias, "")
             if value:
                 data.setdefault(section, {})[field_name] = value
         return data
@@ -1347,10 +1380,20 @@ class Settings(BaseSettings):
     policies: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {
-        "env_prefix": "VESMARO_",
+        # Built-in prefix stays the DEPRECATED ``VESMARO_`` (zero behaviour
+        # change for existing deployments); the canonical ``VESMA_`` prefix
+        # rides on twin sources injected in ``settings_customise_sources``.
+        # Dual period until 6.0 (ADR-0031 pattern).
+        "env_prefix": _ENV_PREFIX_LEGACY,
         "env_nested_delimiter": "__",
         "env_file": ".env",
         "env_file_encoding": "utf-8",
+        # Dotenv files only ever contribute values for KNOWN fields. Without
+        # this, pydantic-settings injects every unmatched ``.env`` key as a
+        # top-level extra and ``Settings()`` (extra=forbid) hard-crashes — a
+        # latent fragility this switch also fixes (unknown ``.env`` keys are
+        # now ignored instead of fatal).
+        "dotenv_filtering": "only_existing",
     }
 
     @classmethod
@@ -1362,29 +1405,53 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Insert the #139 legacy alias source between env and dotenv sources.
+        """Insert the canonical ``VESMA_`` prefix twins above their deprecated
+        ``VESMARO_`` layers, and the #139 legacy alias source between env and
+        dotenv sources.
 
-        Resulting precedence for ``mnemos.data_dir`` / ``mnemos.vault_path``
-        (high → low; sources deep-merge, so higher priority wins per field):
+        Resulting precedence for any nested field (high → low; sources
+        deep-merge, so higher priority wins per field):
 
         1. Init kwargs — ``load_settings()`` passes the YAML config file here,
            so an explicit file value beats env vars. This mirrors the
            pre-existing pydantic-settings behaviour of canonical names
            (verified against pydantic-settings 2.14.2: init > env).
-        2. Canonical env: ``VESMARO_MNEMOS__DATA_DIR`` /
-           ``VESMARO_MNEMOS__VAULT_PATH``.
-        3. Compat alias (this source): ``VESMARO_DATA_DIR`` /
-           ``VESMARO_VAULT__VAULT_PATH`` — honoured only when neither the file
-           nor the canonical name provides the field. A short alias therefore
-           never overrides an explicit config-file value and never wins
-           against the canonical name; it only fills the gap that previously
-           fell through to the defaults.
-        4. ``.env`` dotenv file.  5. Field defaults.
+        2. Canonical env: ``VESMA_<SECTION>__<FIELD>`` (e.g.
+           ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``).
+        3. Deprecated env: ``VESMARO_<SECTION>__<FIELD>`` — honoured only when
+           the ``VESMA_`` twin is absent; retires no earlier than 6.0.
+        4. Compat alias (this source): ``VESMA_DATA_DIR`` /
+           ``VESMA_VAULT__VAULT_PATH``, then the legacy short names
+           ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` — honoured
+           only when neither the file nor a canonical name provides the
+           field. A short alias therefore never overrides an explicit
+           config-file value and never wins against a canonical name; it only
+           fills the gap that previously fell through to the defaults.
+        5. Canonical ``.env`` entries: ``VESMA_*``.
+        6. Deprecated ``.env`` entries: ``VESMARO_*``.
+        7. Field defaults.
         """
+        canonical_env = EnvSettingsSource(settings_cls, env_prefix=_ENV_PREFIX_CANONICAL)
+        # Mirror the effective dotenv configuration (``Settings(_env_file=…)``
+        # overrides included) so the twin only ever sees the same file(s).
+        if isinstance(dotenv_settings, DotEnvSettingsSource):
+            dotenv_file = dotenv_settings.env_file
+            dotenv_encoding = dotenv_settings.env_file_encoding
+        else:  # a custom dotenv source — fall back to the declared config
+            dotenv_file = settings_cls.model_config.get("env_file")
+            dotenv_encoding = settings_cls.model_config.get("env_file_encoding")
+        canonical_dotenv = DotEnvSettingsSource(
+            settings_cls,
+            env_file=dotenv_file,
+            env_file_encoding=dotenv_encoding,
+            env_prefix=_ENV_PREFIX_CANONICAL,
+        )
         return (
             init_settings,
+            canonical_env,
             env_settings,
             _EnvCompatAliasSettingsSource(settings_cls),
+            canonical_dotenv,
             dotenv_settings,
             file_secret_settings,
         )
@@ -1492,19 +1559,23 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
 
     Search order (identical to :func:`load_settings`):
       1. Explicit config_path argument
-      2. VESMARO_CONFIG env var
+      2. VESMA_CONFIG env var (deprecated VESMARO_CONFIG accepted until 6.0)
       3. ./config.yaml in cwd
       4. ~/.mnemos/config.yaml
 
     Env handling for ``vesmaro.data_dir`` / ``vesmaro.vault_path`` (per field,
     high → low; full contract in ``Settings.settings_customise_sources``):
-      config-file value > canonical env (``VESMARO_MNEMOS__DATA_DIR`` /
-      ``VESMARO_MNEMOS__VAULT_PATH``) > legacy short alias (``VESMARO_DATA_DIR``
-      / ``VESMARO_VAULT__VAULT_PATH``, issue #139 compatibility) > ``.env``
-      file > defaults.
+      config-file value > canonical env (``VESMA_MNEMOS__DATA_DIR`` /
+      ``VESMA_MNEMOS__VAULT_PATH``) > deprecated env (``VESMARO_MNEMOS__DATA_DIR``
+      / ``VESMARO_MNEMOS__VAULT_PATH``, accepted until 6.0) > legacy short alias
+      (``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH`` and their pre-5.3
+      ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` spellings, issue #139
+      compatibility) > ``.env`` file > defaults.
     """
     if config_path is None:
-        env_config = os.environ.get("VESMARO_CONFIG", "")
+        # Dual-prefix contract: VESMA_CONFIG is canonical; VESMARO_CONFIG is
+        # the deprecated alias (retires no earlier than 6.0).
+        env_config = os.environ.get("VESMA_CONFIG") or os.environ.get("VESMARO_CONFIG") or ""
         candidates: list[Path | None] = [
             Path(env_config) if env_config else None,
             Path.cwd() / "config.yaml",
@@ -1524,7 +1595,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
 
     Search order:
       1. Explicit config_path argument
-      2. VESMARO_CONFIG env var
+      2. VESMA_CONFIG env var (deprecated VESMARO_CONFIG accepted until 6.0)
       3. ./config.yaml in cwd
       4. ~/.mnemos/config.yaml
 

@@ -881,7 +881,7 @@ Ten tools over the **project code graph**: symbols and file outlines parsed by t
 | `auto_reindex_min_interval_sec` | `300.0` | Per-project throttle between consecutive AUTO index actions (the manual path is never throttled). |
 | `auto_register_max_projects` | `64` | Global cap on projects the AUTO path may ever create (counted by the `auto-registered by` description marker). Past the cap a hint is a silent skip with an `auto-register-capped` audit row — never an error; root-reuse and operator registrations never count. |
 
-Env overrides follow the canonical settings pattern: `VESMARO_CODE_GRAPH__INDEX_MAX_FILES`, `VESMARO_CODE_GRAPH__INDEX_MAX_SOURCE_MB`, `VESMARO_CODE_GRAPH__AUTO_INDEX`, `VESMARO_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`, `VESMARO_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`.
+Env overrides follow the canonical settings pattern: `VESMA_CODE_GRAPH__INDEX_MAX_FILES`, `VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`, `VESMA_CODE_GRAPH__AUTO_INDEX`, `VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`, `VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`.
 
 ### Native auto-indexing (zero-touch)
 
@@ -2131,7 +2131,7 @@ The tail is one appended `TextContent` after the handler (never inline, lane=awa
 | `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. |
 | `on` | yes | yes | yes | Wave 2: the default flips only after the wave 0/1 gates close green. |
 
-Canonical env override: `VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
+Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
 
 ### The envelope (canary/on)
 
