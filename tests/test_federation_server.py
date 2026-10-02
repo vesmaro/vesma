@@ -51,7 +51,7 @@ PEER_A = "mnemos-A"
 PEER_B = "mnemos-B"
 PROJECT = "project-mnemos"
 SECRET_PROJECT = "project-secret"
-TOKEN_ENV = "VESMARO_FED_PEER_VESMARO_A_TOKEN"
+TOKEN_ENV = "VESMA_FED_PEER_VESMARO_A_TOKEN"
 TOKEN_VALUE = "mnk_fed_mnemos-A_exampletoken123"
 FAKE_AWS_KEY = "AKIA" + "T" * 16  # obviously fake
 # Long fake OpenAI-style key (sk- + 100 alnum). Used by the refusal test to

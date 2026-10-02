@@ -197,7 +197,7 @@ def test_doctor_json_includes_mcp_transport(tmp_path, monkeypatch: pytest.Monkey
         f"  db_name: mcp-transport-doctor.db\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
     runner = CliRunner()
     result = runner.invoke(doctor_app, ["--json"])
     assert result.exit_code in (0, 1, 2), result.output

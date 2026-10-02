@@ -59,13 +59,13 @@ def mgr(tmp_settings: Settings) -> MemoryManager:
 
 @pytest.fixture(autouse=True)
 def _scrub_export_passphrase() -> Generator[None, None, None]:
-    """Ensure VESMARO_EXPORT_PASSPHRASE never leaks across tests."""
-    saved = os.environ.pop("VESMARO_EXPORT_PASSPHRASE", None)
+    """Ensure VESMA_EXPORT_PASSPHRASE never leaks across tests."""
+    saved = os.environ.pop("VESMA_EXPORT_PASSPHRASE", None)
     yield
     if saved is not None:
-        os.environ["VESMARO_EXPORT_PASSPHRASE"] = saved
+        os.environ["VESMA_EXPORT_PASSPHRASE"] = saved
     else:
-        os.environ.pop("VESMARO_EXPORT_PASSPHRASE", None)
+        os.environ.pop("VESMA_EXPORT_PASSPHRASE", None)
 
 
 @pytest.fixture(autouse=True)
@@ -263,7 +263,7 @@ class TestExportEncrypt:
         _add(mgr, "secret memory")
         out = tmp_path / "encrypted.bin"
         # OBVIOUSLY FAKE passphrase per sensitive-data.instructions.md.
-        monkeypatch.setenv("VESMARO_EXPORT_PASSPHRASE", "test-passphrase-EXAMPLE")
+        monkeypatch.setenv("VESMA_EXPORT_PASSPHRASE", "test-passphrase-EXAMPLE")
 
         result = await _export(mgr, output_path=str(out), encrypt=True)
 
@@ -278,12 +278,12 @@ class TestExportEncrypt:
     ) -> None:
         _add(mgr, "secret memory")
         out = tmp_path / "encrypted.bin"
-        monkeypatch.delenv("VESMARO_EXPORT_PASSPHRASE", raising=False)
+        monkeypatch.delenv("VESMA_EXPORT_PASSPHRASE", raising=False)
 
         result = await _export(mgr, output_path=str(out), encrypt=True)
 
         assert "error" in result
-        assert "VESMARO_EXPORT_PASSPHRASE" in result["error"]
+        assert "VESMA_EXPORT_PASSPHRASE" in result["error"]
         assert not out.exists(), "no file should be written when passphrase is missing"
 
 

@@ -170,9 +170,9 @@ class TestVisibilityConfig:
             VesmaConfig(visibility="curved")
 
     def test_env_override_canonical_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("VESMARO_MNEMOS__VISIBILITY", "curated")
+        monkeypatch.setenv("VESMA_MNEMOS__VISIBILITY", "curated")
         assert Settings().mnemos.visibility == "curated"
-        monkeypatch.setenv("VESMARO_MNEMOS__VISIBILITY", "immediate")
+        monkeypatch.setenv("VESMA_MNEMOS__VISIBILITY", "immediate")
         assert Settings().mnemos.visibility == "immediate"
 
 

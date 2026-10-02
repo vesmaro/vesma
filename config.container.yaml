@@ -24,8 +24,8 @@ api:
   # --- Authentication (optional for container, required for 0.0.0.0 bind) ---
   auth_enabled: true             # set false for loopback testing, must be true for 0.0.0.0
   totp_enabled: true             # require TOTP 2FA for all logins
-  # totp_master_key: env-only — MNEMOS_API__TOTP_MASTER_KEY on 4.x images,
-  # VESMARO_API__TOTP_MASTER_KEY on 5.x+ (ADR-0031 dual prefix; set both).
+  # totp_master_key: env-only — VESMA_API__TOTP_MASTER_KEY (the only
+  # spelling read as of 6.0.0; older MNEMOS_/VESMARO_ prefixes retired).
   session_ttl_sec: 28800         # 8 hours
   session_pin_ip: true           # bind session to client IP
   behind_tls_proxy: true         # TLS terminates upstream (Caddy, nginx, etc.)

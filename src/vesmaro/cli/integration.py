@@ -2385,8 +2385,8 @@ class IntegrationManager:
     def _mcp_env_defaults(self) -> dict[str, str]:
         """Env defaults shared by every MCP entry shape (mirror mcp-setup.sh)."""
         return {
-            "VESMARO_DATA_DIR": str(self.home / ".mnemos/data"),
-            "VESMARO_VAULT__VAULT_PATH": str(self.home / ".mnemos/vault"),
+            "VESMA_DATA_DIR": str(self.home / ".mnemos/data"),
+            "VESMA_VAULT__VAULT_PATH": str(self.home / ".mnemos/vault"),
         }
 
     def _mcp_entry_opencode(

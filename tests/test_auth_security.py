@@ -543,15 +543,15 @@ class TestTotpSecretStorage:
 
 class TestCliHostPropagation:
     def test_env_host_override_triggers_startup_guard(self, monkeypatch):
-        """Setting VESMARO_API__HOST=0.0.0.0 (as the CLI now does) must cause
+        """Setting VESMA_API__HOST=0.0.0.0 (as the CLI now does) must cause
         load_settings() to see a non-loopback bind, so the startup guard
         SystemExits when auth is disabled (finding auth-1)."""
         from vesmaro.config import load_settings as _load_settings
 
-        monkeypatch.setenv("VESMARO_API__HOST", "0.0.0.0")
-        monkeypatch.delenv("VESMARO_API__AUTH_ENABLED", raising=False)
-        monkeypatch.delenv("VESMARO_API__TOTP_ENABLED", raising=False)
-        monkeypatch.delenv("VESMARO_API__BEHIND_TLS_PROXY", raising=False)
+        monkeypatch.setenv("VESMA_API__HOST", "0.0.0.0")
+        monkeypatch.delenv("VESMA_API__AUTH_ENABLED", raising=False)
+        monkeypatch.delenv("VESMA_API__TOTP_ENABLED", raising=False)
+        monkeypatch.delenv("VESMA_API__BEHIND_TLS_PROXY", raising=False)
         # Force fresh load (no config.yaml in cwd that overrides)
         settings = _load_settings(config_path="/nonexistent/path-for-test.yaml")
         assert settings.api.host == "0.0.0.0"

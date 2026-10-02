@@ -137,11 +137,11 @@ if [[ "$CONTAINER" == true ]]; then
   "$RUNTIME" volume create vesma-data 2>/dev/null || true
   "$RUNTIME" volume create vesma-vault 2>/dev/null || true
 
-  if [[ -z "${MNEMOS_API__TOTP_MASTER_KEY:-}" ]]; then
-    warn "MNEMOS_API__TOTP_MASTER_KEY is not set."
+  if [[ -z "${VESMA_API__TOTP_MASTER_KEY:-}" ]]; then
+    warn "VESMA_API__TOTP_MASTER_KEY is not set."
     warn "The container binds 0.0.0.0 and requires auth — it will refuse to start without the key."
     warn "Generate one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
-    die "Set MNEMOS_API__TOTP_MASTER_KEY and re-run, or see docs/en/admin/runbooks/container-deployment.md"
+    die "Set VESMA_API__TOTP_MASTER_KEY and re-run, or see docs/en/admin/runbooks/container-deployment.md"
   fi
 
   "$RUNTIME" run -d \
@@ -149,7 +149,7 @@ if [[ "$CONTAINER" == true ]]; then
     -p "${CONTAINER_PORT}:8787" \
     -v vesma-data:/data \
     -v vesma-vault:/vault \
-    -e MNEMOS_API__TOTP_MASTER_KEY="${MNEMOS_API__TOTP_MASTER_KEY}" \
+    -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
     "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to start container."
 
   ok "Vesma container started on port ${CONTAINER_PORT}."

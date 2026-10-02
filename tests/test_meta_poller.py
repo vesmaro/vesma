@@ -59,7 +59,7 @@ runner = CliRunner()
 
 #: The script double — installed as ``mesh_bin`` so the poller spawns a
 #: REAL subprocess. Behaviour per peer is driven by the JSON state file
-#: (env ``MNEMOS_TEST_MESH_STATE``): ``pages`` (consumed one per call),
+#: (env ``VESMA_TEST_MESH_STATE``): ``pages`` (consumed one per call),
 #: ``loop_page`` (same page forever — cap tests), ``fail``/``fail_code``
 #: (non-zero exit + stderr), ``bad_json`` (garbage stdout — a string is
 #: printed verbatim so tests can shape the garbage, e.g. a broken
@@ -79,7 +79,7 @@ import time
 
 def main() -> int:
     argv = sys.argv[1:]
-    state_path = os.environ["MNEMOS_TEST_MESH_STATE"]
+    state_path = os.environ["VESMA_TEST_MESH_STATE"]
     with open(state_path) as f:
         state = json.load(f)
     peer = argv[argv.index("--peer") + 1] if "--peer" in argv else ""
@@ -158,7 +158,7 @@ class MeshDouble:
         self.state_path = tmp_path / "mesh-state.json"
         self.state: dict[str, Any] = {"peers": {}}
         self._flush()
-        self.env = {**os.environ, "MNEMOS_TEST_MESH_STATE": str(self.state_path)}
+        self.env = {**os.environ, "VESMA_TEST_MESH_STATE": str(self.state_path)}
 
     def _flush(self) -> None:
         self.state_path.write_text(json.dumps(self.state))
@@ -200,7 +200,7 @@ def make_federation(
     if poll_peers is not None:
         meta_poll["peers"] = poll_peers
     return FederationConfig(
-        peers={p: PeerConfig(bearer_token_env="VESMARO_TEST_TOKEN") for p in peers},
+        peers={p: PeerConfig(bearer_token_env="VESMA_TEST_TOKEN") for p in peers},
         meta_poll=meta_poll,
     )
 
@@ -216,7 +216,7 @@ def store(tmp_path: Path) -> SQLiteStore:
 def mesh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MeshDouble:
     """Script double with its env var exported for spawned subprocesses."""
     double = MeshDouble(tmp_path)
-    monkeypatch.setenv("MNEMOS_TEST_MESH_STATE", str(double.state_path))
+    monkeypatch.setenv("VESMA_TEST_MESH_STATE", str(double.state_path))
     return double
 
 
@@ -697,7 +697,7 @@ def _cli_config(tmp_path: Path, mesh: MeshDouble, *, enable: bool = True) -> Pat
         },
         "embedding": {"provider": "nano"},
         "federation": {
-            "peers": {"peer-a": {"bearer_token_env": "VESMARO_TEST_TOKEN"}},
+            "peers": {"peer-a": {"bearer_token_env": "VESMA_TEST_TOKEN"}},
             "meta_poll": {
                 "enabled": enable,
                 "mesh_bin": str(mesh.bin_path),
@@ -821,7 +821,7 @@ class TestServeWiring:
             },
             "embedding": {"provider": "nano"},
             "federation": {
-                "peers": {"peer-a": {"bearer_token_env": "VESMARO_TEST_TOKEN"}},
+                "peers": {"peer-a": {"bearer_token_env": "VESMA_TEST_TOKEN"}},
                 "meta_poll": {
                     "enabled": enable,
                     "mesh_bin": "/nonexistent/mnemos-mesh",

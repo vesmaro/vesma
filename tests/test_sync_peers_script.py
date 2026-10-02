@@ -2,10 +2,10 @@
 
 Covers ``scripts/sync-peers.sh`` (the ExecStart of
 ``contrib/systemd/vesma-sync.service``) and the two systemd unit files. The
-script reads its config from ``VESMARO_SYNC_*`` env vars; these tests exercise
+script reads its config from ``VESMA_SYNC_*`` env vars; these tests exercise
 the env-var validation, the dry-run command logging, and the unit file
 shape. They do NOT run a real mnemos CLI, rsync, or ssh — dry-run mode
-(``VESMARO_SYNC_DRY_RUN=1``) logs the commands and exits before any network
+(``VESMA_SYNC_DRY_RUN=1``) logs the commands and exits before any network
 or filesystem side effect.
 
 All secret/PII fixtures use RFC-reserved values (per
@@ -54,20 +54,20 @@ def _full_env(push_key: Path, trigger_key: Path, export_dir: Path) -> dict[str, 
     Aligns to the script's actual contract (two keys: push + trigger).
     """
     env = {
-        "VESMARO_SYNC_PEER_HOST": "192.0.2.10",
-        "VESMARO_SYNC_PEER_USER": "mnemos-sync",
-        "VESMARO_SYNC_PEER_SSH_KEY": str(push_key),
-        "VESMARO_SYNC_PEER_IMPORT_SSH_KEY": str(trigger_key),
-        "VESMARO_SYNC_LOCAL_EXPORT_DIR": str(export_dir),
-        "VESMARO_SYNC_REMOTE_IMPORT_DIR": "/var/lib/mnemos-sync/incoming",
-        "VESMARO_SYNC_SHARED_PROJECTS": "project-test",
-        "VESMARO_SYNC_ENCRYPT": "true",
-        "VESMARO_SYNC_PASSPHRASE_ENV": "VESMARO_EXPORT_PASSPHRASE",
-        "VESMARO_EXPORT_PASSPHRASE": "dummy-passphrase-not-a-secret",
-        "VESMARO_SYNC_DRY_RUN": "1",
+        "VESMA_SYNC_PEER_HOST": "192.0.2.10",
+        "VESMA_SYNC_PEER_USER": "mnemos-sync",
+        "VESMA_SYNC_PEER_SSH_KEY": str(push_key),
+        "VESMA_SYNC_PEER_IMPORT_SSH_KEY": str(trigger_key),
+        "VESMA_SYNC_LOCAL_EXPORT_DIR": str(export_dir),
+        "VESMA_SYNC_REMOTE_IMPORT_DIR": "/var/lib/mnemos-sync/incoming",
+        "VESMA_SYNC_SHARED_PROJECTS": "project-test",
+        "VESMA_SYNC_ENCRYPT": "true",
+        "VESMA_SYNC_PASSPHRASE_ENV": "VESMA_EXPORT_PASSPHRASE",
+        "VESMA_EXPORT_PASSPHRASE": "dummy-passphrase-not-a-secret",
+        "VESMA_SYNC_DRY_RUN": "1",
         # Force a mnemos binary path so the script does not fail auto-discovery
         # in the test environment (where `mnemos` may not be on PATH).
-        "VESMARO_SYNC_VESMARO_BIN": "/usr/bin/true",
+        "VESMA_SYNC_VESMA_BIN": "/usr/bin/true",
     }
     # Inherit PATH so bash/date/rsync resolve.
     env["PATH"] = os.environ.get("PATH", "/usr/bin:/bin")
@@ -115,18 +115,18 @@ def _run_wrapper(
 def _wrapper_env(tmp_path: Path) -> dict[str, str]:
     """Common env for wrapper tests: temp INCOMING_DIR + temp audit log.
 
-    Uses ``VESMARO_SYNC_*`` names (the wrappers' documented override prefix).
-    RSYNC_BIN/VESMARO_BIN point at ``true`` so no real rsync/mnemos runs.
+    Uses ``VESMA_SYNC_*`` names (the wrappers' documented override prefix).
+    RSYNC_BIN/VESMA_BIN point at ``true`` so no real rsync/mnemos runs.
     """
     incoming = tmp_path / "incoming"
     incoming.mkdir(parents=True, exist_ok=True)
     return {
-        "VESMARO_SYNC_INCOMING_DIR": str(incoming),
-        "VESMARO_SYNC_AUDIT_LOG": str(tmp_path / "audit.log"),
-        "VESMARO_SYNC_PASSPHRASE_ENV": "VESMARO_EXPORT_PASSPHRASE",
-        "VESMARO_EXPORT_PASSPHRASE": "dummy-passphrase-not-a-secret",
+        "VESMA_SYNC_INCOMING_DIR": str(incoming),
+        "VESMA_SYNC_AUDIT_LOG": str(tmp_path / "audit.log"),
+        "VESMA_SYNC_PASSPHRASE_ENV": "VESMA_EXPORT_PASSPHRASE",
+        "VESMA_EXPORT_PASSPHRASE": "dummy-passphrase-not-a-secret",
         "RSYNC_BIN": shutil.which("true") or "/usr/bin/true",
-        "VESMARO_SYNC_REMOTE_VESMARO_BIN": shutil.which("true") or "/usr/bin/true",
+        "VESMA_SYNC_REMOTE_VESMA_BIN": shutil.which("true") or "/usr/bin/true",
     }
 
 
@@ -153,8 +153,8 @@ def test_refuses_with_partial_env_vars(placeholder_keys: tuple[Path, Path]) -> N
     """Only some required vars set → exit 2 naming the missing ones."""
     push_key, _trigger_key = placeholder_keys
     env = {
-        "VESMARO_SYNC_PEER_HOST": "192.0.2.10",
-        "VESMARO_SYNC_PEER_SSH_KEY": str(push_key),
+        "VESMA_SYNC_PEER_HOST": "192.0.2.10",
+        "VESMA_SYNC_PEER_SSH_KEY": str(push_key),
         # Intentionally omit the other 6 required vars.
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
     }
@@ -163,12 +163,12 @@ def test_refuses_with_partial_env_vars(placeholder_keys: tuple[Path, Path]) -> N
     assert "missing required env var" in result.stderr
     # The error should list at least one of the omitted vars.
     omitted = [
-        "VESMARO_SYNC_PEER_IMPORT_SSH_KEY",
-        "VESMARO_SYNC_LOCAL_EXPORT_DIR",
-        "VESMARO_SYNC_REMOTE_IMPORT_DIR",
-        "VESMARO_SYNC_SHARED_PROJECTS",
-        "VESMARO_SYNC_ENCRYPT",
-        "VESMARO_SYNC_PASSPHRASE_ENV",
+        "VESMA_SYNC_PEER_IMPORT_SSH_KEY",
+        "VESMA_SYNC_LOCAL_EXPORT_DIR",
+        "VESMA_SYNC_REMOTE_IMPORT_DIR",
+        "VESMA_SYNC_SHARED_PROJECTS",
+        "VESMA_SYNC_ENCRYPT",
+        "VESMA_SYNC_PASSPHRASE_ENV",
     ]
     assert any(v in result.stderr for v in omitted), (
         f"stderr should name an omitted var; got:\n{result.stderr}"
@@ -216,7 +216,7 @@ def test_rsync_wrapper_rejects_delete_option(tmp_path: Path) -> None:
     exec'ing rsync, log a REJECT line naming the option, and exit non-zero.
     """
     env = _wrapper_env(tmp_path)
-    incoming = env["VESMARO_SYNC_INCOMING_DIR"]
+    incoming = env["VESMA_SYNC_INCOMING_DIR"]
     dest = f"{incoming}/export.json"
     result = _run_wrapper(
         RSYNC_WRAPPER,
@@ -229,7 +229,7 @@ def test_rsync_wrapper_rejects_delete_option(tmp_path: Path) -> None:
     assert "rejected dangerous rsync option: --delete" in result.stderr, (
         f"stderr should name the rejected option; got:\n{result.stderr}"
     )
-    audit = Path(env["VESMARO_SYNC_AUDIT_LOG"]).read_text()
+    audit = Path(env["VESMA_SYNC_AUDIT_LOG"]).read_text()
     assert "REJECT" in audit and "--delete" in audit, (
         f"audit log should record the REJECT with the option; got:\n{audit}"
     )
@@ -247,7 +247,7 @@ def test_rsync_wrapper_rejects_unknown_option(tmp_path: Path) -> None:
     reach INCOMING_DIR through this wrapper.
     """
     env = _wrapper_env(tmp_path)
-    incoming = env["VESMARO_SYNC_INCOMING_DIR"]
+    incoming = env["VESMA_SYNC_INCOMING_DIR"]
     dest = f"{incoming}/export.json"
     result = _run_wrapper(
         RSYNC_WRAPPER,
@@ -260,7 +260,7 @@ def test_rsync_wrapper_rejects_unknown_option(tmp_path: Path) -> None:
     assert "rejected unknown rsync option: --unknown-future-opt" in result.stderr, (
         f"stderr should name the rejected option; got:\n{result.stderr}"
     )
-    audit = Path(env["VESMARO_SYNC_AUDIT_LOG"]).read_text()
+    audit = Path(env["VESMA_SYNC_AUDIT_LOG"]).read_text()
     assert "REJECT" in audit and "--unknown-future-opt" in audit, (
         f"audit log should record the REJECT with the option; got:\n{audit}"
     )
@@ -278,7 +278,7 @@ def test_import_wrapper_rejects_unknown_flag(tmp_path: Path) -> None:
     refuse the flag, log a REJECT line naming it, and exit non-zero.
     """
     env = _wrapper_env(tmp_path)
-    incoming = Path(env["VESMARO_SYNC_INCOMING_DIR"])
+    incoming = Path(env["VESMA_SYNC_INCOMING_DIR"])
     src = incoming / "export.json"
     src.write_text('{"x":1}')
     result = _run_wrapper(
@@ -293,7 +293,7 @@ def test_import_wrapper_rejects_unknown_flag(tmp_path: Path) -> None:
     assert "rejected unknown import flag: --config" in result.stderr, (
         f"stderr should name the rejected flag; got:\n{result.stderr}"
     )
-    audit = Path(env["VESMARO_SYNC_AUDIT_LOG"]).read_text()
+    audit = Path(env["VESMA_SYNC_AUDIT_LOG"]).read_text()
     assert "REJECT" in audit and "--config" in audit, (
         f"audit log should record the REJECT with the flag; got:\n{audit}"
     )

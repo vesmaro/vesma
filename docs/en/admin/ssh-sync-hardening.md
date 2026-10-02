@@ -123,7 +123,7 @@ Rotate quarterly, or immediately on any suspected compromise.
      sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
 2. Add the new .pub to authorized_keys on B (§2) — keep the OLD line in place
    during the cutover so a failed rotation does not break the cron.
-3. Test: run sync-peers.sh manually with MNEMOS_SYNC_DRY_RUN=1 against the
+3. Test: run sync-peers.sh manually with VESMA_SYNC_DRY_RUN=1 against the
    new key, then a real run.
 4. Update sync.env on A to point at the new key path.
 5. Remove the old .pub line from authorized_keys on B.
@@ -147,7 +147,7 @@ Log line shapes (see `rsync-wrapper.sh` and `vesma-import-wrapper.sh`):
 
 ```text
 [2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json
-[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=MNEMOS_EXPORT_PASSPHRASE dry_run=0
+[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
 [2026-07-21T12:01:00Z] rsync-wrapper src=192.0.2.5 REJECT destination outside INCOMING_DIR: /etc/passwd
 ```
 
@@ -223,7 +223,7 @@ Ordered steps, A → B.
      sudo install -m 0644 contrib/systemd/vesma-sync.service /etc/systemd/system/
      sudo install -m 0644 contrib/systemd/vesma-sync.timer   /etc/systemd/system/
      sudo systemctl daemon-reload
-8. Dry-run first:  sudo MNEMOS_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
+8. Dry-run first:  sudo VESMA_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
    (or run sync-peers.sh by hand with the env vars exported).
 9. Enable the timer:  sudo systemctl enable --now vesma-sync.timer
 ```
@@ -238,7 +238,7 @@ How to confirm the hardening holds.
 | `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | rejected — "non-rsync command refused" (exit 2) | rsync-wrapper.sh not the `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | rejected — "destination outside INCOMING_DIR" (exit 2) | rsync-wrapper.sh path check broken |
 | `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | rejected — "non-import command refused" (exit 2) | vesma-import-wrapper.sh guard broken |
-| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
+| `VESMA_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
 | `tail /var/log/vesma-sync.log` after a real run | ACCEPT lines with src IP + timestamp | audit helper not writing |
 
 Run the dry-run first on every new install — it exercises the full
@@ -256,5 +256,5 @@ env-var validation and command construction without touching the network.
 - `contrib/systemd/vesma-import-wrapper.sh` — concrete import-trigger guard
   (§2, §6).
 - `contrib/systemd/sync.env.example` — env var template (RFC-reserved dummies).
-- `scripts/sync-peers.sh` — the ExecStart script (reads `MNEMOS_SYNC_*`).
+- `scripts/sync-peers.sh` — the ExecStart script (reads `VESMA_SYNC_*`).
 - `tests/test_sync_peers_script.py` — tests for the script + systemd units.

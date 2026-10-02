@@ -223,9 +223,9 @@ class TestSyncExport:
         assert not out.exists()
 
     def test_sync_export_encrypt(self, mgr: MemoryManager, tmp_path: Path, monkeypatch) -> None:
-        """--encrypt with VESMARO_EXPORT_PASSPHRASE → encrypted file written."""
+        """--encrypt with VESMA_EXPORT_PASSPHRASE → encrypted file written."""
         _add_memory(mgr, "encryptable clean memory")
-        monkeypatch.setenv("VESMARO_EXPORT_PASSPHRASE", _TEST_PASSPHRASE)
+        monkeypatch.setenv("VESMA_EXPORT_PASSPHRASE", _TEST_PASSPHRASE)
         out = tmp_path / "sync.enc"
         result = run_sync_export(mgr, output=out, shared_projects_arg="mnemos", encrypt=True)
         assert result.encrypted is True
@@ -241,9 +241,9 @@ class TestSyncExport:
     def test_sync_export_encrypt_missing_passphrase(
         self, mgr: MemoryManager, tmp_path: Path, monkeypatch
     ) -> None:
-        """--encrypt without VESMARO_EXPORT_PASSPHRASE → error, no file written."""
+        """--encrypt without VESMA_EXPORT_PASSPHRASE → error, no file written."""
         _add_memory(mgr, "clean memory")
-        monkeypatch.delenv("VESMARO_EXPORT_PASSPHRASE", raising=False)
+        monkeypatch.delenv("VESMA_EXPORT_PASSPHRASE", raising=False)
         out = tmp_path / "sync.enc"
         result = run_sync_export(mgr, output=out, shared_projects_arg="mnemos", encrypt=True)
         assert result.encrypted is False
@@ -390,7 +390,7 @@ class TestSyncImport:
     def test_sync_import_encrypted_default_env(
         self, mgr: MemoryManager, tmp_path: Path, monkeypatch
     ) -> None:
-        """Encrypted import without --passphrase-env falls back to VESMARO_EXPORT_PASSPHRASE."""
+        """Encrypted import without --passphrase-env falls back to VESMA_EXPORT_PASSPHRASE."""
         mem = Memory(
             id="55555555-5555-5555-5555-555555555555",
             content="default-env decision",
@@ -404,7 +404,7 @@ class TestSyncImport:
         src = tmp_path / "sync.enc"
         src.write_bytes(_encrypt(raw, _TEST_PASSPHRASE))
 
-        monkeypatch.setenv("VESMARO_EXPORT_PASSPHRASE", _TEST_PASSPHRASE)
+        monkeypatch.setenv("VESMA_EXPORT_PASSPHRASE", _TEST_PASSPHRASE)
         result = run_sync_import(mgr, source=src)
         assert result.errors == []
         assert result.records_imported == 1

@@ -298,7 +298,7 @@ Active files: src/vesmaro/manager.py, src/vesmaro/api/main.py
 No context found for project 'vesma'. Start by saving context with vesma_save_context.
 ```
 
-В **режиме auto-collect** (`MNEMOS_AUTO_COLLECT=1`) к выводу добавляется блок `## 🔄 Auto-Collect Mode Active` с обязательными правилами сессии.
+В **режиме auto-collect** (`VESMA_AUTO_COLLECT=1`) к выводу добавляется блок `## 🔄 Auto-Collect Mode Active` с обязательными правилами сессии.
 
 ### Пример вызова
 
@@ -1423,7 +1423,7 @@ CLI-двойник: `vesma graph register <project> <root>`.
 
 ### Режим auto-collect
 
-Установите `MNEMOS_AUTO_COLLECT=1` в окружении сервера. Пороги напоминаний ужесточаются:
+Установите `VESMA_AUTO_COLLECT=1` в окружении сервера. Пороги напоминаний ужесточаются:
 
 | Настройка | Обычный | Auto-collect |
 |-----------|---------|--------------|
@@ -1796,7 +1796,7 @@ cache_aligner:
 ⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling vesma_save_context to preserve your current progress.
 ```
 
-Это информационное сообщение; ничто в Vesma не блокирует вызов. Отключить, установив `MNEMOS_AUTO_COLLECT=0` (по умолчанию).
+Это информационное сообщение; ничто в Vesma не блокирует вызов. Отключить, установив `VESMA_AUTO_COLLECT=0` (по умолчанию).
 
 ---
 
@@ -2184,7 +2184,7 @@ output_style:
 | `tags` | array of string | нет | — | Фильтр по тегам (только json). |
 | `since` | string (ISO-8601) | нет | — | Только записи, созданные не ранее этой даты (только json). |
 | `until` | string (ISO-8601) | нет | — | Только записи, созданные до этой даты (только json). |
-| `encrypt` | boolean | нет | `false` | Если `true`, шифрует результат. Парольная фраза читается из переменной окружения `MNEMOS_EXPORT_PASSPHRASE`. |
+| `encrypt` | boolean | нет | `false` | Если `true`, шифрует результат. Парольная фраза читается из переменной окружения `VESMA_EXPORT_PASSPHRASE`. |
 
 ### Возвращаемое значение
 
@@ -2202,7 +2202,7 @@ output_style:
 
 ### Замечание по безопасности
 
-- **Парольная фраза через окружение, никогда в аргументах.** При `encrypt=true` сервер читает парольную фразу из переменной окружения `MNEMOS_EXPORT_PASSPHRASE`. Передача значения в `output_path` или любой другой аргумент приведёт к утечке в логи MCP — никогда так не делайте.
+- **Парольная фраза через окружение, никогда в аргументах.** При `encrypt=true` сервер читает парольную фразу из переменной окружения `VESMA_EXPORT_PASSPHRASE`. Передача значения в `output_path` или любой другой аргумент приведёт к утечке в логи MCP — никогда так не делайте.
 - **Без встроенного контента.** Инструмент пишет в `output_path` и возвращает только метаданные. Прочитайте файл с диска, чтобы осмотреть экспорт.
 - **Наследование #86.** Записи `mnemos:no-federate` исключаются; секреты в проходящих записях редактируются. Дополнительная настройка не нужна.
 
@@ -2238,7 +2238,7 @@ output_style:
 }
 ```
 
-(При установленной в окружении сервера `MNEMOS_EXPORT_PASSPHRASE`.)
+(При установленной в окружении сервера `VESMA_EXPORT_PASSPHRASE`.)
 
 ---
 
@@ -2312,7 +2312,7 @@ Restore (деструктивный) с подтверждением:
 }
 ```
 
-Зашифрованный импорт (при установленной в окружении сервера `MNEMOS_IMPORT_PASS`):
+Зашифрованный импорт (при установленной в окружении сервера `VESMA_IMPORT_PASS`):
 
 ```json
 {
@@ -2320,7 +2320,7 @@ Restore (деструктивный) с подтверждением:
   "arguments": {
     "source_path": "/tmp/encrypted.bin",
     "mode": "merge",
-    "passphrase_env": "MNEMOS_IMPORT_PASS"
+    "passphrase_env": "VESMA_IMPORT_PASS"
   }
 }
 ```

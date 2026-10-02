@@ -1895,7 +1895,7 @@ class TestUniversalTargets:
         entry = data["mcp"]["servers"]["vesma"]  # brand-primary server key
         assert entry["command"] == "/bin/mnemos"
         assert entry["args"] == ["mcp-server"]
-        assert entry["env"]["VESMARO_DATA_DIR"] == str(fake_home / ".mnemos/data")
+        assert entry["env"]["VESMA_DATA_DIR"] == str(fake_home / ".mnemos/data")
 
     def test_register_mcp_zcode_preserves_existing_env(
         self, universal_manager: IntegrationManager, fake_home: Path
@@ -1910,7 +1910,7 @@ class TestUniversalTargets:
                         "servers": {
                             "mnemos": {
                                 "command": "old",
-                                "env": {"VESMARO_DATA_DIR": "/custom/data"},
+                                "env": {"VESMA_DATA_DIR": "/custom/data"},
                             }
                         }
                     }
@@ -1924,8 +1924,8 @@ class TestUniversalTargets:
         # stamp migration: the legacy "mnemos" key moves to the brand-primary key
         assert "mnemos" not in servers
         entry = servers["vesma"]
-        assert entry["env"]["VESMARO_DATA_DIR"] == "/custom/data"  # user tuning kept
-        assert entry["env"]["VESMARO_VAULT__VAULT_PATH"] == str(fake_home / ".mnemos/vault")
+        assert entry["env"]["VESMA_DATA_DIR"] == "/custom/data"  # user tuning kept
+        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(fake_home / ".mnemos/vault")
         assert entry["command"] == "/bin/mnemos"  # command refreshed
 
     def test_register_mcp_agents_creates_file(
@@ -3069,7 +3069,7 @@ class TestUnregisterMcp:
         "type": "stdio",
         "command": "/usr/bin/vesma",
         "args": ["mcp-server"],
-        "env": {"VESMARO_DATA_DIR": "/tmp/data"},
+        "env": {"VESMA_DATA_DIR": "/tmp/data"},
     }
     FOREIGN_ENTRY: ClassVar[dict] = {"command": "some-other-tool", "args": ["serve"]}
 
@@ -3684,7 +3684,7 @@ class TestMemoryStatus:
                             "vesma": {
                                 "command": "vesma",
                                 "args": ["mcp-server"],
-                                "env": {"VESMARO_DATA_DIR": "/home/u/.mnemos/data"},
+                                "env": {"VESMA_DATA_DIR": "/home/u/.mnemos/data"},
                             },
                             "obsidian-mcp": {"command": "node", "args": ["/opt/engine.js"]},
                         }
@@ -4030,7 +4030,7 @@ class TestCodexTarget:
         entry = data["mcp_servers"]["vesma"]
         assert entry["command"] == "/bin/vesma"
         assert entry["args"] == ["mcp-server"]
-        assert entry["env"]["VESMARO_DATA_DIR"] == str(home / ".mnemos/data")
+        assert entry["env"]["VESMA_DATA_DIR"] == str(home / ".mnemos/data")
 
     def test_register_mcp_codex_merges_preserving_user_bytes(self, codex_env: tuple) -> None:
         mgr, _, cfg_path = codex_env
@@ -4051,14 +4051,14 @@ class TestCodexTarget:
     def test_register_mcp_codex_preserves_existing_env(self, codex_env: tuple) -> None:
         mgr, home, cfg_path = codex_env
         cfg_path.write_text(
-            '[mcp_servers.vesma]\ncommand = "old"\nenv = { VESMARO_DATA_DIR = "/custom/data" }\n',
+            '[mcp_servers.vesma]\ncommand = "old"\nenv = { VESMA_DATA_DIR = "/custom/data" }\n',
             encoding="utf-8",
         )
         ok, _ = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
         assert ok
         entry = tomllib.loads(cfg_path.read_text(encoding="utf-8"))["mcp_servers"]["vesma"]
-        assert entry["env"]["VESMARO_DATA_DIR"] == "/custom/data"  # user tuning kept
-        assert entry["env"]["VESMARO_VAULT__VAULT_PATH"] == str(home / ".mnemos/vault")
+        assert entry["env"]["VESMA_DATA_DIR"] == "/custom/data"  # user tuning kept
+        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(home / ".mnemos/vault")
         assert entry["command"] == "/bin/vesma"  # command refreshed
 
     def test_register_mcp_codex_migrates_legacy_key(self, codex_env: tuple) -> None:
@@ -4403,7 +4403,7 @@ class TestMemoryStatusCodex:
         (home / ".codex").mkdir(parents=True)
         (home / ".codex" / "config.toml").write_text(
             '[mcp_servers.vesma]\ncommand = "/bin/vesma"\n'
-            'env = { VESMARO_DATA_DIR = "/secret/data" }\n'
+            'env = { VESMA_DATA_DIR = "/secret/data" }\n'
             "\n"
             '[mcp_servers.obsidian-mcp]\ncommand = "node"\n',
             encoding="utf-8",

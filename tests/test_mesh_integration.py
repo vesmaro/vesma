@@ -120,7 +120,7 @@ def _settings_with_peer(tmp_path: Path, socket_path: Path) -> Settings:
                 shared_projects=[_PROJECT],
                 peers={
                     _PEER_ID: PeerConfig(
-                        bearer_token_env="VESMARO_FED_PEER_TEST_TOKEN",
+                        bearer_token_env="VESMA_FED_PEER_TEST_TOKEN",
                         allowed_projects=[_PROJECT],
                         allowed_types=["decision", "learning"],
                         rate_limit_per_minute=600,

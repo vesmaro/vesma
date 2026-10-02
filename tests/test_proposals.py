@@ -32,7 +32,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point VESMARO_CONFIG at an empty YAML so the CLI uses tmp_path."""
+    """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
     cfg = tmp_path / "vesmaro.yaml"
     cfg.write_text(
         f"mnemos:\n"
@@ -43,7 +43,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f"  provider: nano\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
     return cfg
 
 

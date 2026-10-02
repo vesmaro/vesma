@@ -255,7 +255,7 @@ def test_load_settings_calls_migrate_layout(
 # per sensitive-data.instructions.md — never real tokens.
 
 # Dummy env var NAME (not value) per sensitive-data.instructions.md.
-_DUMMY_TOKEN_ENV = "VESMARO_FED_PEER_A_TOKEN"
+_DUMMY_TOKEN_ENV = "VESMA_FED_PEER_A_TOKEN"
 # Dummy SHA-256 fingerprint (SHA-256 of empty string).
 _DUMMY_FINGERPRINT = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 

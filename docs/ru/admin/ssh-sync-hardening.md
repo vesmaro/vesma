@@ -135,7 +135,7 @@ sudo chown root:root /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
      sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
 2. Добавьте новый .pub в authorized_keys на B (§2) — во время переключения
    оставьте СТАРУЮ строку на месте, чтобы неудавшаяся ротация не сломала cron.
-3. Проверьте: запустите sync-peers.sh вручную с MNEMOS_SYNC_DRY_RUN=1 против
+3. Проверьте: запустите sync-peers.sh вручную с VESMA_SYNC_DRY_RUN=1 против
    нового ключа, затем реальный прогон.
 4. Обновите sync.env на A, указав путь к новому ключу.
 5. Удалите старую строку .pub из authorized_keys на B.
@@ -159,7 +159,7 @@ sudo install -o mnemos-sync -g mnemos-sync -m 0640 /dev/null /var/log/vesma-sync
 
 ```text
 [2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json
-[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=MNEMOS_EXPORT_PASSPHRASE dry_run=0
+[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
 [2026-07-21T12:01:00Z] rsync-wrapper src=192.0.2.5 REJECT destination outside INCOMING_DIR: /etc/passwd
 ```
 
@@ -238,7 +238,7 @@ Match User mnemos-sync
      sudo install -m 0644 contrib/systemd/vesma-sync.service /etc/systemd/system/
      sudo install -m 0644 contrib/systemd/vesma-sync.timer   /etc/systemd/system/
      sudo systemctl daemon-reload
-8. Сначала dry-run:  sudo MNEMOS_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
+8. Сначала dry-run:  sudo VESMA_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
    (или запустите sync-peers.sh руками с экспортированными переменными окружения).
 9. Включите таймер:  sudo systemctl enable --now vesma-sync.timer
 ```
@@ -253,7 +253,7 @@ Match User mnemos-sync
 | `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | отказ — "non-rsync command refused" (код 2) | rsync-wrapper.sh не является `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | отказ — "destination outside INCOMING_DIR" (код 2) | сломана проверка пути в rsync-wrapper.sh |
 | `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | отказ — "non-import command refused" (код 2) | сломан guard vesma-import-wrapper.sh |
-| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (с env) | код выхода 0, в stderr логируются `vesma sync export`, `rsync`, `ssh` | расхождение env-контракта скрипта |
+| `VESMA_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (с env) | код выхода 0, в stderr логируются `vesma sync export`, `rsync`, `ssh` | расхождение env-контракта скрипта |
 | `tail /var/log/vesma-sync.log` после реального прогона | строки ACCEPT с src IP + меткой времени | хелпер аудита не пишет |
 
 На каждой новой установке сначала прогоняйте dry-run — он отрабатывает
@@ -274,7 +274,7 @@ Match User mnemos-sync
   импорта (§2, §6).
 - `contrib/systemd/sync.env.example` — шаблон переменных окружения
   (RFC-зарезервированные dummy).
-- `scripts/sync-peers.sh` — скрипт ExecStart (читает `MNEMOS_SYNC_*`).
+- `scripts/sync-peers.sh` — скрипт ExecStart (читает `VESMA_SYNC_*`).
 - `tests/test_sync_peers_script.py` — тесты скрипта + systemd-юнитов.
 
 ---

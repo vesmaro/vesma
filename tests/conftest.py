@@ -203,5 +203,5 @@ def no_update_check_network(monkeypatch: pytest.MonkeyPatch) -> None:
     offline by contract; tests that exercise the check itself re-enable it
     locally (``monkeypatch.delenv``) or inject a fetcher.
     """
-    monkeypatch.setenv("VESMARO_UPDATES_CHECK", "off")
+    monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     yield

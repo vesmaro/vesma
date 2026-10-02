@@ -83,7 +83,7 @@ Quick single-container start using the released image:
 
 ```bash
 podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0  # 5.3+ images: VESMA_API__TOTP_MASTER_KEY (VESMARO_* accepted until 6.0)
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0  # 6.0.0: the only honoured spelling (older prefixes retired)
 ```
 
 Or with compose from the repo root:

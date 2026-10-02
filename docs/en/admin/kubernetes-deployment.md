@@ -81,13 +81,11 @@ supported ways, in order of preference:
 
 3. **Values file** — never commit the real value; keep it out of git.
 
-The key is injected under **both env spellings** —
-`MNEMOS_API__TOTP_MASTER_KEY` (read by 4.x images) and
-`VESMA_API__TOTP_MASTER_KEY` (canonical since 5.3; 5.0–5.2 images read the
-deprecated `VESMARO_API__TOTP_MASTER_KEY`, accepted until 6.0) — from the
-single secret key. This is the ADR-0031 dual-prefix contract: one value,
-several names, so the chart works across the 4.3.0 → 5.0.0 → 5.3.0 rebrand
-boundaries unchanged.
+The key is injected under a single canonical env name,
+`VESMA_API__TOTP_MASTER_KEY` (6.0.0 retired the 4.x `MNEMOS_API__TOTP_MASTER_KEY`
+and 5.0–5.2 `VESMARO_API__TOTP_MASTER_KEY` spellings — the ADR-0031 dual-read
+period is over). If you upgrade the chart across those rebrand boundaries,
+migrate the secret key name in the same change.
 
 ## Ingress & TLS
 

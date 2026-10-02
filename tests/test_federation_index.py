@@ -88,7 +88,7 @@ _PEER_ID = "mnemos-A"
 _REMOTE_ORIGIN = "mnemos-B"
 _PEER_ID_C = "mnemos-C"
 _AGENT = "gcw-test-agent"
-_TOKEN_ENV = "VESMARO_FED_PEER_TEST_TOKEN"
+_TOKEN_ENV = "VESMA_FED_PEER_TEST_TOKEN"
 
 
 def _peer_cfg(allowed: list[str] | None = None) -> PeerConfig:

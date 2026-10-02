@@ -17,13 +17,11 @@ ContainerName=@@NAME@@-core
 # :8443 must be LAN-reachable; both are trivial only on the host netns.
 # Bridge + published ports is the planned follow-up (README).
 Network=host
-# ADR-0031 dual prefix: 4.x images read MNEMOS_CONFIG, 5.x+ VESMARO_CONFIG.
-Environment=MNEMOS_CONFIG=/etc/vesma/node.yaml
-Environment=VESMARO_CONFIG=/etc/vesma/node.yaml
+# Canonical VESMA_* names only (6.0.0 retired the ADR-0031 dual prefix).
+Environment=VESMA_CONFIG=/etc/vesma/node.yaml
 # Port hint for the image HEALTHCHECK (inert for the server itself: the
 # mounted YAML file wins over env — that is why the config is mounted).
-Environment=MNEMOS_API__PORT=@@PORT@@
-Environment=VESMARO_API__PORT=@@PORT@@
+Environment=VESMA_API__PORT=@@PORT@@
 Volume=@@CONFDIR@@/node.container.yaml:/etc/vesma/node.yaml:ro
 Volume=@@DATADIR@@/data:/data
 Volume=@@DATADIR@@/vault:/vault

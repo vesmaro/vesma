@@ -26,7 +26,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point VESMARO_CONFIG at an empty YAML so the CLI uses tmp_path."""
+    """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
     # Reset the CLI manager singleton so each test gets a fresh DB.
     from vesmaro.cli._manager import reset_manager
 
@@ -40,7 +40,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f"embedding:\n"
         f"  provider: nano\n"
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
     yield cfg
     # Clean up the singleton so it doesn't leak into the next test.
     reset_manager()
@@ -426,7 +426,7 @@ class TestDoctorCommand:
             f"  provider: nano\n",
             encoding="utf-8",
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         result = runner.invoke(app, ["doctor"])
         # Exit code is 0 (all pass), 1 (fail), or 2 (warn) — all acceptable
         # for a smoke test as long as there's no traceback.
@@ -445,7 +445,7 @@ class TestDoctorCommand:
             f"  provider: nano\n",
             encoding="utf-8",
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         result = runner.invoke(app, ["doctor", "--json"])
         assert result.exit_code in (0, 1, 2), result.output
         import json
@@ -470,7 +470,7 @@ class TestDoctorCommand:
             f"  provider: nano\n",
             encoding="utf-8",
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         result = runner.invoke(app, ["doctor"])
         # Unwritable vault → at least one FAIL → exit 1.
         assert result.exit_code == 1, result.output

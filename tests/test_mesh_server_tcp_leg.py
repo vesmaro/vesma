@@ -60,7 +60,7 @@ from vesmaro.mesh_server import MeshServer, MeshTCPLegError
 _PROJECT = "test-project"
 _PEER_ID = "mnemos-A"
 _AGENT = "gcw-test-agent"
-_TOKEN_ENV = "VESMARO_FED_PEER_TEST_TOKEN"
+_TOKEN_ENV = "VESMA_FED_PEER_TEST_TOKEN"
 
 
 # ── Throwaway PKI ────────────────────────────────────────────────────────────

@@ -13,28 +13,28 @@
 # the systemd unit loads /etc/vesma/sync.env via EnvironmentFile=.
 #
 # Required env (refuse to run if any is missing — exit 2):
-#   VESMARO_SYNC_PEER_HOST          — peer (TARGET) host B
-#   VESMARO_SYNC_PEER_SSH_KEY       — ed25519 private key on A for rsync push
-#   VESMARO_SYNC_PEER_IMPORT_SSH_KEY— ed25519 private key on A for import trigger
-#   VESMARO_SYNC_LOCAL_EXPORT_DIR   — local dir where export writes the payload
-#   VESMARO_SYNC_REMOTE_IMPORT_DIR  — dir on B where rsync delivers the payload
-#   VESMARO_SYNC_SHARED_PROJECTS    — comma-separated project slugs to sync
-#   VESMARO_SYNC_ENCRYPT            — "true"|"false"
-#   VESMARO_SYNC_PASSPHRASE_ENV     — NAME of env var holding the passphrase
+#   VESMA_SYNC_PEER_HOST          — peer (TARGET) host B
+#   VESMA_SYNC_PEER_SSH_KEY       — ed25519 private key on A for rsync push
+#   VESMA_SYNC_PEER_IMPORT_SSH_KEY— ed25519 private key on A for import trigger
+#   VESMA_SYNC_LOCAL_EXPORT_DIR   — local dir where export writes the payload
+#   VESMA_SYNC_REMOTE_IMPORT_DIR  — dir on B where rsync delivers the payload
+#   VESMA_SYNC_SHARED_PROJECTS    — comma-separated project slugs to sync
+#   VESMA_SYNC_ENCRYPT            — "true"|"false"
+#   VESMA_SYNC_PASSPHRASE_ENV     — NAME of env var holding the passphrase
 #
 # Optional env:
-#   VESMARO_SYNC_PEER_USER           — ssh user on B (default: mnemos-sync)
-#   VESMARO_SYNC_DRY_RUN             — "1" logs commands only, no writes/ssh
-#   VESMARO_SYNC_SOURCE_CONFIG       — path to A's vesma config.yaml
-#   VESMARO_SYNC_REMOTE_FILE         — basename on B (default: vesma-sync-<ts>.json)
-#   VESMARO_SYNC_MNEMOS_BIN          — vesma CLI on A (default: auto-discover)
+#   VESMA_SYNC_PEER_USER           — ssh user on B (default: mnemos-sync)
+#   VESMA_SYNC_DRY_RUN             — "1" logs commands only, no writes/ssh
+#   VESMA_SYNC_SOURCE_CONFIG       — path to A's vesma config.yaml
+#   VESMA_SYNC_REMOTE_FILE         — basename on B (default: vesma-sync-<ts>.json)
+#   VESMA_SYNC_VESMA_BIN          — vesma CLI on A (default: auto-discover)
 #
-# The path to the vesma CLI on B (VESMARO_SYNC_REMOTE_MNEMOS_BIN) is set on B
+# The path to the vesma CLI on B (VESMA_SYNC_REMOTE_VESMA_BIN) is set on B
 # in /etc/vesma/sync.env — A does not need it because the vesma-import-wrapper
 # on B resolves the binary.
 #
 # Security: the passphrase is NEVER passed on the command line. On A it is read
-# by `vesma sync export` from $VESMARO_SYNC_PASSPHRASE_ENV (which must be set in
+# by `vesma sync export` from $VESMA_SYNC_PASSPHRASE_ENV (which must be set in
 # the service environment). On B it is read by `vesma sync import` from the
 # env var NAME passed via --passphrase-env — that name is pinned on B by the
 # vesma-import-wrapper guard (contrib/systemd/vesma-import-wrapper.sh) and
@@ -57,36 +57,19 @@ _err() {
     printf '[%s] sync-peers: ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >&2
 }
 
-# ── legacy env-name compatibility (ADR-0031 dual period) ─────────────────────
-# Pre-5.0 deployments (and old /etc/mnemos/sync.env files) used MNEMOS_SYNC_*.
-# Map any unset VESMARO_SYNC_* from its MNEMOS_SYNC_* counterpart so old
-# EnvironmentFiles keep working. New names win on conflict.
-for _v in PEER_HOST PEER_USER PEER_SSH_KEY IMPORT_SSH_KEY LOCAL_EXPORT_DIR \
-          REMOTE_IMPORT_DIR SHARED_PROJECTS ENCRYPT PASSPHRASE_ENV \
-          MNEMOS_BIN DELETE_REMOTE KEEP_REMOTE_DAYS DRY_RUN; do
-    _new="VESMARO_SYNC_${_v}"
-    _old="MNEMOS_SYNC_${_v}"
-    if [ -z "${!_new:-}" ] && [ -n "${!_old:-}" ]; then
-        eval "export $_new=\${!_old}"
-    fi
-done
-if [ -z "${VESMARO_SYNC_DRY_RUN:-}" ] && [ "${MNEMOS_SYNC_DRY_RUN:-}" = "1" ]; then
-    export VESMARO_SYNC_DRY_RUN=1
-fi
-
 # ── env-var validation ───────────────────────────────────────────────────────
 # Refuse to run if any required var is missing. Print a clear error pointing
 # the operator at /etc/vesma/sync.env (the EnvironmentFile the service loads).
 
 _required_vars=(
-    VESMARO_SYNC_PEER_HOST
-    VESMARO_SYNC_PEER_SSH_KEY
-    VESMARO_SYNC_PEER_IMPORT_SSH_KEY
-    VESMARO_SYNC_LOCAL_EXPORT_DIR
-    VESMARO_SYNC_REMOTE_IMPORT_DIR
-    VESMARO_SYNC_SHARED_PROJECTS
-    VESMARO_SYNC_ENCRYPT
-    VESMARO_SYNC_PASSPHRASE_ENV
+    VESMA_SYNC_PEER_HOST
+    VESMA_SYNC_PEER_SSH_KEY
+    VESMA_SYNC_PEER_IMPORT_SSH_KEY
+    VESMA_SYNC_LOCAL_EXPORT_DIR
+    VESMA_SYNC_REMOTE_IMPORT_DIR
+    VESMA_SYNC_SHARED_PROJECTS
+    VESMA_SYNC_ENCRYPT
+    VESMA_SYNC_PASSPHRASE_ENV
 )
 
 _missing=()
@@ -103,18 +86,18 @@ if [[ ${#_missing[@]} -gt 0 ]]; then
 fi
 
 # ── optional env with defaults ───────────────────────────────────────────────
-PEER_USER="${VESMARO_SYNC_PEER_USER:-mnemos-sync}"
-DRY_RUN="${VESMARO_SYNC_DRY_RUN:-0}"
-SOURCE_CONFIG="${VESMARO_SYNC_SOURCE_CONFIG:-}"
-REMOTE_FILE="${VESMARO_SYNC_REMOTE_FILE:-mnemos-sync-$(date -u +%Y%m%dT%H%M%SZ).json}"
-MNEMOS_BIN="${VESMARO_SYNC_MNEMOS_BIN:-}"
+PEER_USER="${VESMA_SYNC_PEER_USER:-mnemos-sync}"
+DRY_RUN="${VESMA_SYNC_DRY_RUN:-0}"
+SOURCE_CONFIG="${VESMA_SYNC_SOURCE_CONFIG:-}"
+REMOTE_FILE="${VESMA_SYNC_REMOTE_FILE:-mnemos-sync-$(date -u +%Y%m%dT%H%M%SZ).json}"
+MNEMOS_BIN="${VESMA_SYNC_VESMA_BIN:-}"
 
-# Normalize VESMARO_SYNC_ENCRYPT to a boolean string.
-case "${VESMARO_SYNC_ENCRYPT}" in
+# Normalize VESMA_SYNC_ENCRYPT to a boolean string.
+case "${VESMA_SYNC_ENCRYPT}" in
     true|True|TRUE|1|yes|Yes) ENCRYPT=true ;;
     false|False|FALSE|0|no|No) ENCRYPT=false ;;
     *)
-        _err "VESMARO_SYNC_ENCRYPT must be 'true' or 'false' (got '${VESMARO_SYNC_ENCRYPT}')."
+        _err "VESMA_SYNC_ENCRYPT must be 'true' or 'false' (got '${VESMA_SYNC_ENCRYPT}')."
         exit 2
         ;;
 esac
@@ -122,8 +105,8 @@ esac
 if [[ "$ENCRYPT" == "true" ]]; then
     # The passphrase must be available in the env var NAME we advertise. If the
     # named env var is not set on A, refuse — vesma sync export would fail.
-    if [[ -z "${!VESMARO_SYNC_PASSPHRASE_ENV:-}" ]]; then
-        _err "ENCRYPT=true but \${${VESMARO_SYNC_PASSPHRASE_ENV}} is not set on A."
+    if [[ -z "${!VESMA_SYNC_PASSPHRASE_ENV:-}" ]]; then
+        _err "ENCRYPT=true but \${${VESMA_SYNC_PASSPHRASE_ENV}} is not set on A."
         _err "provision the passphrase in the service environment (systemd LoadCredential or drop-in)."
         exit 2
     fi
@@ -137,24 +120,24 @@ if [[ -z "$MNEMOS_BIN" ]]; then
         MNEMOS_BIN="$(cd "$(dirname "$0")/.." && pwd)/.venv/bin/mnemos"
     else
         _err "vesma CLI not found on PATH and no .venv next to the script."
-        _err "set VESMARO_SYNC_MNEMOS_BIN in /etc/vesma/sync.env."
+        _err "set VESMA_SYNC_VESMA_BIN in /etc/vesma/sync.env."
         exit 2
     fi
 fi
 
 # Sanity: the ssh keys must exist and be readable.
-if [[ ! -r "$VESMARO_SYNC_PEER_SSH_KEY" ]]; then
-    _err "VESMARO_SYNC_PEER_SSH_KEY not readable: $VESMARO_SYNC_PEER_SSH_KEY"
+if [[ ! -r "$VESMA_SYNC_PEER_SSH_KEY" ]]; then
+    _err "VESMA_SYNC_PEER_SSH_KEY not readable: $VESMA_SYNC_PEER_SSH_KEY"
     exit 2
 fi
-if [[ ! -r "$VESMARO_SYNC_PEER_IMPORT_SSH_KEY" ]]; then
-    _err "VESMARO_SYNC_PEER_IMPORT_SSH_KEY not readable: $VESMARO_SYNC_PEER_IMPORT_SSH_KEY"
+if [[ ! -r "$VESMA_SYNC_PEER_IMPORT_SSH_KEY" ]]; then
+    _err "VESMA_SYNC_PEER_IMPORT_SSH_KEY not readable: $VESMA_SYNC_PEER_IMPORT_SSH_KEY"
     exit 2
 fi
 
 # Ensure the local export dir exists.
 if [[ "$DRY_RUN" != "1" ]]; then
-    mkdir -p "$VESMARO_SYNC_LOCAL_EXPORT_DIR"
+    mkdir -p "$VESMA_SYNC_LOCAL_EXPORT_DIR"
 fi
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -162,7 +145,7 @@ fi
 _ssh_opts=(-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o PasswordAuthentication=no)
 
 # Build the export args for `vesma sync export` on A.
-_export_args=(sync export --output "${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" --shared-projects "$VESMARO_SYNC_SHARED_PROJECTS")
+_export_args=(sync export --output "${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" --shared-projects "$VESMA_SYNC_SHARED_PROJECTS")
 if [[ -n "$SOURCE_CONFIG" ]]; then
     _export_args+=(--config "$SOURCE_CONFIG")
 fi
@@ -178,7 +161,7 @@ _log "step 1/3 — export on A: ${MNEMOS_BIN} ${_export_args[*]}"
 if [[ "$DRY_RUN" == "1" ]]; then
     _log "dry-run: skipping actual export."
 else
-    # vesma sync export reads the passphrase from $VESMARO_SYNC_PASSPHRASE_ENV
+    # vesma sync export reads the passphrase from $VESMA_SYNC_PASSPHRASE_ENV
     # (the NAME), which must be set in this process's environment.
     set +e
     "$MNEMOS_BIN" "${_export_args[@]}"
@@ -191,32 +174,32 @@ else
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
-    _log "dry-run: would verify ${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE} exists."
+    _log "dry-run: would verify ${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE} exists."
 else
-    if [[ ! -f "${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" ]]; then
-        _err "export produced no file at ${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}."
+    if [[ ! -f "${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" ]]; then
+        _err "export produced no file at ${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}."
         exit 1
     fi
 fi
 
 # ── 2. TRANSFER: rsync over ssh to B ─────────────────────────────────────────
-# The rsync runs as ${PEER_USER}@${VESMARO_SYNC_PEER_HOST} and is restricted on
+# The rsync runs as ${PEER_USER}@${VESMA_SYNC_PEER_HOST} and is restricted on
 # B by rsync-wrapper.sh (contrib/systemd/rsync-wrapper.sh) pinned in authorized_keys.
 # We use -e "ssh ..." so the wrapper receives the rsync server command via
 # SSH_ORIGINAL_COMMAND and validates the destination against INCOMING_DIR.
-_rsync_log_cmd=(rsync -az -e "ssh -i ${VESMARO_SYNC_PEER_SSH_KEY} ${_ssh_opts[*]}" "${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" "${PEER_USER}@${VESMARO_SYNC_PEER_HOST}:${VESMARO_SYNC_REMOTE_IMPORT_DIR}/${REMOTE_FILE}")
+_rsync_log_cmd=(rsync -az -e "ssh -i ${VESMA_SYNC_PEER_SSH_KEY} ${_ssh_opts[*]}" "${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" "${PEER_USER}@${VESMA_SYNC_PEER_HOST}:${VESMA_SYNC_REMOTE_IMPORT_DIR}/${REMOTE_FILE}")
 _log "step 2/3 — transfer: ${_rsync_log_cmd[*]}"
 if [[ "$DRY_RUN" == "1" ]]; then
     _log "dry-run: skipping actual rsync."
 else
     set +e
-    rsync -az -e "ssh -i ${VESMARO_SYNC_PEER_SSH_KEY} ${_ssh_opts[*]}" \
-        "${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" \
-        "${PEER_USER}@${VESMARO_SYNC_PEER_HOST}:${VESMARO_SYNC_REMOTE_IMPORT_DIR}/${REMOTE_FILE}"
+    rsync -az -e "ssh -i ${VESMA_SYNC_PEER_SSH_KEY} ${_ssh_opts[*]}" \
+        "${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}" \
+        "${PEER_USER}@${VESMA_SYNC_PEER_HOST}:${VESMA_SYNC_REMOTE_IMPORT_DIR}/${REMOTE_FILE}"
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then
-        _err "rsync transfer to ${PEER_USER}@${VESMARO_SYNC_PEER_HOST} failed (exit $rc)."
+        _err "rsync transfer to ${PEER_USER}@${VESMA_SYNC_PEER_HOST} failed (exit $rc)."
         exit 1
     fi
 fi
@@ -229,19 +212,19 @@ fi
 # --passphrase-env to the configured name, and rejects any other command. The
 # passphrase value itself lives on B's environment (provisioned independently —
 # never crosses the wire).
-_remote_import_path="${VESMARO_SYNC_REMOTE_IMPORT_DIR%/}/${REMOTE_FILE}"
-_import_remote_cmd=(vesma sync import "$_remote_import_path" --passphrase-env "$VESMARO_SYNC_PASSPHRASE_ENV")
+_remote_import_path="${VESMA_SYNC_REMOTE_IMPORT_DIR%/}/${REMOTE_FILE}"
+_import_remote_cmd=(vesma sync import "$_remote_import_path" --passphrase-env "$VESMA_SYNC_PASSPHRASE_ENV")
 if [[ "$DRY_RUN" == "1" ]]; then
     _import_remote_cmd+=(--dry-run)
 fi
 
-_log "step 3/3 — import on B: ssh -i ${VESMARO_SYNC_PEER_IMPORT_SSH_KEY} ... ${_import_remote_cmd[*]}"
+_log "step 3/3 — import on B: ssh -i ${VESMA_SYNC_PEER_IMPORT_SSH_KEY} ... ${_import_remote_cmd[*]}"
 if [[ "$DRY_RUN" == "1" ]]; then
     _log "dry-run: skipping actual ssh import trigger."
 else
     set +e
-    ssh -i "${VESMARO_SYNC_PEER_IMPORT_SSH_KEY}" "${_ssh_opts[@]}" \
-        "${PEER_USER}@${VESMARO_SYNC_PEER_HOST}" \
+    ssh -i "${VESMA_SYNC_PEER_IMPORT_SSH_KEY}" "${_ssh_opts[@]}" \
+        "${PEER_USER}@${VESMA_SYNC_PEER_HOST}" \
         "${_import_remote_cmd[*]}"
     rc=$?
     set -e
@@ -251,5 +234,5 @@ else
     fi
 fi
 
-_log "done — sync file: ${VESMARO_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}"
+_log "done — sync file: ${VESMA_SYNC_LOCAL_EXPORT_DIR}/${REMOTE_FILE}"
 exit 0

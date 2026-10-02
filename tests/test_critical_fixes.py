@@ -29,13 +29,13 @@ from vesmaro.storage.sqlite_store import SQLiteStore
 def _restore_compat_env_aliases() -> Iterator[None]:
     """Restore the #139 compat env aliases after each test.
 
-    ``_make_settings`` writes ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH``
+    ``_make_settings`` writes ``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH``
     directly into ``os.environ``. Since the #139 compat shim made these names
     live, a leak would bleed into later modules (e.g. ``test_config_layout``
     asserts default paths under a fake home). Snapshot and restore around
     every test in this module.
     """
-    names = ("VESMARO_DATA_DIR", "VESMARO_VAULT__VAULT_PATH")
+    names = ("VESMA_DATA_DIR", "VESMA_VAULT__VAULT_PATH")
     saved = {name: os.environ.get(name) for name in names}
     yield
     for name, value in saved.items():
@@ -82,8 +82,8 @@ def _make_memory(mid: str = "m1", content: str = "hello world") -> Memory:
 
 def _make_settings(tmp_path: Path) -> Settings:
     """Create Settings with isolated tmp paths via env vars."""
-    os.environ["VESMARO_DATA_DIR"] = str(tmp_path / "data")
-    os.environ["VESMARO_VAULT__VAULT_PATH"] = str(tmp_path / "vault")
+    os.environ["VESMA_DATA_DIR"] = str(tmp_path / "data")
+    os.environ["VESMA_VAULT__VAULT_PATH"] = str(tmp_path / "vault")
     Path(tmp_path / "data").mkdir(parents=True, exist_ok=True)
     Path(tmp_path / "vault").mkdir(parents=True, exist_ok=True)
     s = Settings()
@@ -214,7 +214,7 @@ runner = CliRunner()
 class TestCLI:
     @pytest.fixture()
     def isolated_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        """Point VESMARO_CONFIG at an empty YAML so the CLI uses tmp_path."""
+        """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
         from vesmaro.cli._manager import reset_manager
 
         reset_manager()
@@ -227,7 +227,7 @@ class TestCLI:
             f"embedding:\n"
             f"  provider: nano\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         yield cfg
         reset_manager()
 

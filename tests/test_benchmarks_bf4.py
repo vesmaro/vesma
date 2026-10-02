@@ -22,7 +22,7 @@ Covers:
   generator exits 1), a skipped S1m is YELLOW, a missing S2 baseline is
   YELLOW; a run report older than its baseline is stale and ignored;
 * **Makefile wiring** — ``bench-s2-nightly`` presets
-  VESMARO_BENCH_S1M_REQUIRED=1 (N4 on #206: the nightly contour is the
+  VESMA_BENCH_S1M_REQUIRED=1 (N4 on #206: the nightly contour is the
   only place where required-S1m semantics is mandatory) and runs full
   repeats; ``bench-report`` exists; neither enters ``make verify``
   (S2/S3/S4 stay nightly-class, S1 stays the only local gate).
@@ -375,7 +375,7 @@ class TestReportPage:
 
 class TestMakefileWiring:
     def test_bench_s2_nightly_presets_s1m_required(self) -> None:
-        """N4 on #206: the nightly contour presets VESMARO_BENCH_S1M_REQUIRED=1.
+        """N4 on #206: the nightly contour presets VESMA_BENCH_S1M_REQUIRED=1.
 
         The env var is load-bearing because the target also runs the S1
         gate leg (in required posture) before S2 — a bare S2-only target
@@ -383,7 +383,7 @@ class TestMakefileWiring:
         """
         makefile = MAKEFILE.read_text()
         target = makefile.split("bench-s2-nightly:", 1)[1].split("\n\n", 1)[0]
-        assert "VESMARO_BENCH_S1M_REQUIRED=1" in target
+        assert "VESMA_BENCH_S1M_REQUIRED=1" in target
         assert "s1_quality/run.py" in target  # the flag has a consumer
         assert "--repeats $(S2_REPEATS)" in target
 

@@ -40,7 +40,7 @@ sudo ./vesma-node install --profile laptop
 ```
 
 Artifacts are built locally from the repos (`--vesma-repo` /
-`--mesh-repo`, or `VESMARO_REPO` / `MESH_REPO` env; defaults follow
+`--mesh-repo`, or `VESMA_REPO` / `MESH_REPO` env; defaults follow
 `$HOME/LABs/Projects/Project-Vesma/{vesma,vesma-mesh}`): server via
 `git archive <tag> | uv sync --frozen`, mesh via
 `go build -trimpath -ldflags "-X main.buildVersion=<v>"`. Requirements:
@@ -160,10 +160,10 @@ Decisions documented:
   planned follow-up.
 - **config by bind-mounted YAML, not env** — a YAML file value BEATS
   env vars in the image (init-source precedence), so
-  `VESMARO_API__PORT` etc. cannot re-tune the shipped
+  `VESMA_API__PORT` etc. cannot re-tune the shipped
   `config.container.yaml`; the installer mounts its own
   `node.container.yaml` and points the image at it via
-  `MNEMOS_CONFIG`/`VESMARO_CONFIG` (ADR-0031 dual prefix).
+  `VESMA_CONFIG` (canonical name; 6.0.0 reads no other prefix).
 
 ### host-install vs container-install
 

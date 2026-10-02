@@ -88,9 +88,9 @@ __all__ = [
 # Per ADR-0016 the server identifies itself as ``mnemos-B`` in the
 # ``source_agent`` field of compact records it ships. The id is a
 # deployment constant, not a per-request value — there is one B per
-# instance. Operators can override via the ``VESMARO_FED_SELF_ID`` env
-# var, but the default is stable so the compact-record ``id`` prefix
-# (``fed:mnemos-B:<uuid>``) is reproducible.
+# instance. (Callers that need a different id pass ``self_agent_id``
+# explicitly; the default is stable so the compact-record ``id`` prefix
+# (``fed:mnemos-B:<uuid>``) is reproducible.)
 DEFAULT_SELF_AGENT_ID = "mnemos-B"
 
 

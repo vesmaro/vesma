@@ -174,7 +174,7 @@ appear; `/vesma` reconnects the bridge on demand (legacy alias: `/mnemos`).
 Manual fallback — copy
 `integrations/extensions/vesma-mcp.ts` from the repo into
 `~/.pi/agent/extensions/`. Override the server binary with the
-`MNEMOS_BIN` environment variable when `vesma` is not on `PATH`.
+`VESMA_BIN` environment variable when `vesma` is not on `PATH`.
 
 Note: Pi also reads `~/.agents/skills/`; when both the `pi` and `agents`
 targets are deployed, prefer `--target pi` to avoid duplicate skill
@@ -235,23 +235,23 @@ guide](../docs/en/user/integration-guide.md#hermes-agent).
 ## Tuning
 
 Optional environment variables on the server entry (defaults shown). The
-names are the canonical `pydantic-settings` form (`MNEMOS_` prefix +
-`MNEMOS` section + `__` + field). The shorter variants that
-`scripts/mcp-setup.sh` writes (`MNEMOS_DATA_DIR`, `MNEMOS_VAULT__VAULT_PATH`)
-work again as compatibility aliases since the #139 fix; the
-canonical names remain the documented form and win when both are set:
+names are the canonical `pydantic-settings` form (`VESMA_` prefix +
+`mnemos` section + `__` + field). The shorter variants that
+`scripts/mcp-setup.sh` writes (`VESMA_DATA_DIR`, `VESMA_VAULT__VAULT_PATH`)
+work as #139 compatibility aliases; the canonical names remain the
+documented form and win when both are set:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VESMARO_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite store location |
-| `VESMARO_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian vault mirror |
+| `VESMA_MNEMOS__DATA_DIR` | `~/.mnemos/data` | SQLite store location |
+| `VESMA_MNEMOS__VAULT_PATH` | `~/.mnemos/vault` | Obsidian vault mirror |
 
 Example — Claude Code with an explicit store path (expanded by your shell):
 
 ```bash
 claude mcp add --scope user vesma \
-  --env VESMARO_MNEMOS__DATA_DIR="$HOME/.mnemos/data" \
-  --env VESMARO_MNEMOS__VAULT_PATH="$HOME/.mnemos/vault" \
+  --env VESMA_MNEMOS__DATA_DIR="$HOME/.mnemos/data" \
+  --env VESMA_MNEMOS__VAULT_PATH="$HOME/.mnemos/vault" \
   -- vesma mcp-server
 ```
 

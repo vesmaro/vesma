@@ -244,9 +244,9 @@ def test_corrupt_artifact_is_a_load_error(tmp_path: Path, monkeypatch: pytest.Mo
 def test_garbage_threads_env_is_wrapped_as_load_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Boundary wrap: an unparseable VESMARO_ORT_THREADS is a
+    """Boundary wrap: an unparseable VESMA_ORT_THREADS is a
     CORTEX-E-LOAD (fail-open-able), not an escaping ValueError."""
-    monkeypatch.setenv("VESMARO_ORT_THREADS", "not-a-number")
+    monkeypatch.setenv("VESMA_ORT_THREADS", "not-a-number")
     with pytest.raises(CortexError) as excinfo:
         VesmaProvider(embedder_fingerprint=EMBEDDER_PIN)
     assert excinfo.value.code == "CORTEX-E-LOAD"

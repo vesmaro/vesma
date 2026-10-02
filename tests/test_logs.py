@@ -29,7 +29,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f"embedding:\n"
         f"  provider: nano\n"
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
     return cfg
 
 

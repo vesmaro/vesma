@@ -70,7 +70,7 @@ Options:
 | Option | Default | Purpose |
 |--------|---------|---------|
 | `--output` / `-o` | `vesma-sync.json` | Output file path (absolute recommended). Parent dirs are created. |
-| `--encrypt` | off | Encrypt the payload with AES-256-GCM. Passphrase read from `MNEMOS_EXPORT_PASSPHRASE`. |
+| `--encrypt` | off | Encrypt the payload with AES-256-GCM. Passphrase read from `VESMA_EXPORT_PASSPHRASE`. |
 | `--shared-projects` | config `federation.shared_projects` | Space/comma-separated project slugs (overrides config). |
 | `--dry-run` | off | Build the payload and print the summary; do NOT write the file. |
 | `--config` / `-c` | discovery | Path to `config.yaml`. |
@@ -101,13 +101,13 @@ Output summary:
 
 ### Encryption
 
-`--encrypt` reads the passphrase from the `MNEMOS_EXPORT_PASSPHRASE`
+`--encrypt` reads the passphrase from the `VESMA_EXPORT_PASSPHRASE`
 environment variable — never from a CLI argument (arguments appear in
 process listings and shell history). If the env var is not set, no file
 is written and the command exits with an error.
 
 ```bash
-export MNEMOS_EXPORT_PASSPHRASE="your-passphrase-here"
+export VESMA_EXPORT_PASSPHRASE="your-passphrase-here"
 vesma sync export --output sync.enc --encrypt
 ```
 
@@ -126,7 +126,7 @@ Options:
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| `--passphrase-env` | `MNEMOS_EXPORT_PASSPHRASE` | Name of the env var holding the decryption passphrase (the **name**, not the value). |
+| `--passphrase-env` | `VESMA_EXPORT_PASSPHRASE` | Name of the env var holding the decryption passphrase (the **name**, not the value). |
 | `--dry-run` | off | Validate the payload and report; do NOT write. |
 | `--config` / `-c` | discovery | Path to `config.yaml`. |
 
@@ -134,7 +134,7 @@ What the import does:
 
 1. Reads the file. If encrypted (magic header or `.enc` extension),
    reads the passphrase from the env var named by `--passphrase-env`
-   (falls back to `MNEMOS_EXPORT_PASSPHRASE`).
+   (falls back to `VESMA_EXPORT_PASSPHRASE`).
 2. Parses JSON, validates `schema == "mnemos.federation.v1"`, parses
    each record into a `CompactRecord`.
 3. Validates each record (reuses the #86 import validation — content
@@ -172,41 +172,41 @@ Required env vars (the script refuses to run — exit 2 — if any is missing):
 
 | Var | Purpose |
 |-----|---------|
-| `MNEMOS_SYNC_PEER_HOST` | Peer (target) host B. |
-| `MNEMOS_SYNC_PEER_SSH_KEY` | ed25519 private key on A for the rsync push. |
-| `MNEMOS_SYNC_PEER_IMPORT_SSH_KEY` | ed25519 private key on A for the import trigger. |
-| `MNEMOS_SYNC_LOCAL_EXPORT_DIR` | Local dir where the export payload is written. |
-| `MNEMOS_SYNC_REMOTE_IMPORT_DIR` | Dir on B where rsync delivers the payload. |
-| `MNEMOS_SYNC_SHARED_PROJECTS` | Comma-separated project slugs to sync. |
-| `MNEMOS_SYNC_ENCRYPT` | `true` / `false`. |
-| `MNEMOS_SYNC_PASSPHRASE_ENV` | NAME of the env var holding the passphrase. |
+| `VESMA_SYNC_PEER_HOST` | Peer (target) host B. |
+| `VESMA_SYNC_PEER_SSH_KEY` | ed25519 private key on A for the rsync push. |
+| `VESMA_SYNC_PEER_IMPORT_SSH_KEY` | ed25519 private key on A for the import trigger. |
+| `VESMA_SYNC_LOCAL_EXPORT_DIR` | Local dir where the export payload is written. |
+| `VESMA_SYNC_REMOTE_IMPORT_DIR` | Dir on B where rsync delivers the payload. |
+| `VESMA_SYNC_SHARED_PROJECTS` | Comma-separated project slugs to sync. |
+| `VESMA_SYNC_ENCRYPT` | `true` / `false`. |
+| `VESMA_SYNC_PASSPHRASE_ENV` | NAME of the env var holding the passphrase. |
 
 Optional env vars:
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `MNEMOS_SYNC_PEER_USER` | `mnemos-sync` | ssh user on B. |
-| `MNEMOS_SYNC_DRY_RUN` | — | `1` logs commands only, no writes / ssh. |
-| `MNEMOS_SYNC_SOURCE_CONFIG` | discovery | Per-side `config.yaml` path on A. |
-| `MNEMOS_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Basename of the payload on B. |
-| `MNEMOS_SYNC_MNEMOS_BIN` | auto-discover | Path to the `vesma` CLI on A. |
+| `VESMA_SYNC_PEER_USER` | `mnemos-sync` | ssh user on B. |
+| `VESMA_SYNC_DRY_RUN` | — | `1` logs commands only, no writes / ssh. |
+| `VESMA_SYNC_SOURCE_CONFIG` | discovery | Per-side `config.yaml` path on A. |
+| `VESMA_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Basename of the payload on B. |
+| `VESMA_SYNC_VESMA_BIN` | auto-discover | Path to the `vesma` CLI on A. |
 
-The `vesma` CLI path on B (`MNEMOS_SYNC_REMOTE_MNEMOS_BIN`) is set on B in
+The `vesma` CLI path on B (`VESMA_SYNC_REMOTE_VESMA_BIN`) is set on B in
 `/etc/vesma/sync.env` — A does not need it, the `vesma-import-wrapper` on B
 resolves the binary. The passphrase is never passed on the command line: on A
-it is read from the env var named by `MNEMOS_SYNC_PASSPHRASE_ENV`, on B it is
+it is read from the env var named by `VESMA_SYNC_PASSPHRASE_ENV`, on B it is
 provisioned independently in the systemd environment.
 
 Crontab example (hourly encrypted sync to a peer host):
 
 ```cron
-0 * * * * MNEMOS_SYNC_PEER_HOST=peer.example.com \
-          MNEMOS_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
-          MNEMOS_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
-          MNEMOS_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
-          MNEMOS_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
-          MNEMOS_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
-          MNEMOS_SYNC_ENCRYPT=true MNEMOS_SYNC_PASSPHRASE_ENV=MNEMOS_EXPORT_PASSPHRASE \
+0 * * * * VESMA_SYNC_PEER_HOST=peer.example.com \
+          VESMA_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
+          VESMA_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
+          VESMA_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
+          VESMA_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
+          VESMA_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
+          VESMA_SYNC_ENCRYPT=true VESMA_SYNC_PASSPHRASE_ENV=VESMA_EXPORT_PASSPHRASE \
           /opt/vesma/scripts/sync-peers.sh >> /var/log/vesma-sync.log 2>&1
 ```
 

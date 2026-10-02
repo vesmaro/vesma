@@ -955,8 +955,7 @@ def serve(
     # Propagate effective bind to the app process so the startup guard and
     # AuthMiddleware see the real host/port (CLI overrides must reach
     # load_settings() inside the worker - finding auth-1). Written under the
-    # CANONICAL VESMA_ prefix so it outranks any ambient VESMARO_API__* the
-    # operator may have exported (VESMA_ env > VESMARO_ env).
+    # canonical VESMA_ prefix (6.0.0: the only honoured spelling).
     os.environ["VESMA_API__HOST"] = h
     os.environ["VESMA_API__PORT"] = str(p)
 

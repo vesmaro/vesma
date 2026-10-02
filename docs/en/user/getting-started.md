@@ -65,7 +65,6 @@ mnemos_memory_server-*.whl artifact name covers the 4.x line until deprecation. 
 
 ```bash
 export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-# 4.x images additionally accept the legacy MNEMOS_API__TOTP_MASTER_KEY spelling (deprecated)
 podman run -d --name vesma \
   -p 8787:8787 \
   -v vesma-data:/data \
@@ -250,7 +249,7 @@ Manual VS Code reference — user- or workspace-scope `mcp.json`:
 
 > **Registry-key note.** The `"vesma"` key in MCP config files is the server *registry name* the integration layer reads and manages (`servers["vesma"]`) — it is untouched by the rebrand; the *command* is `vesma mcp-server`.
 
-> **Tip — auto-collect mode.** Set `VESMA_AUTO_COLLECT=1` ( legacy spelling: `MNEMOS_AUTO_COLLECT`, deprecated) in the server's `env` block to make Vesma nudge your agent to call `mnemos_save_context` every ~6 tool calls. See [mcp-tools.md#auto-collect-mode](mcp-tools.md#auto-collect-mode) for the trade-offs.
+> **Tip — auto-collect mode.** Set `VESMA_AUTO_COLLECT=1` in the server's `env` block to make Vesma nudge your agent to call `vesma_save_context` every ~6 tool calls. See [mcp-tools.md#auto-collect-mode](mcp-tools.md#auto-collect-mode) for the trade-offs.
 
 ---
 

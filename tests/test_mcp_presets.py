@@ -61,12 +61,12 @@ README_PRESET_ANCHORS = (
 )
 
 #: Env names as pydantic-settings actually maps them for the nested
-#: ``Settings.mnemos`` section (``VESMARO_`` prefix + ``__`` nesting).
-CANONICAL_ENV_VARS = ("VESMARO_MNEMOS__DATA_DIR", "VESMARO_MNEMOS__VAULT_PATH")
+#: ``Settings.mnemos`` section (``VESMA_`` prefix + ``__`` nesting).
+CANONICAL_ENV_VARS = ("VESMA_MNEMOS__DATA_DIR", "VESMA_MNEMOS__VAULT_PATH")
 #: Legacy short forms — #139 compat aliases (honoured again, but never the
 #: documented form; canonical wins when both are set). Allowed in the
 #: artefacts' prose notes only, never as an instruction.
-LEGACY_ENV_VARS = ("VESMARO_DATA_DIR", "VESMARO_VAULT__VAULT_PATH")
+LEGACY_ENV_VARS = ("VESMA_DATA_DIR", "VESMA_VAULT__VAULT_PATH")
 
 #: Known ``mnemos:`` subtypes — a canary list; ``trace`` is NOT a subtype.
 CANDIDATE_SUBTYPES = (
@@ -316,7 +316,7 @@ def test_canonical_env_names_and_subtypes_steer_src() -> None:
     """Subprocess proof against the src tree (the one import exempt test).
 
     1. The documented env names must actually move ``Settings.mnemos``
-       (pydantic-settings ``VESMARO_`` prefix + ``__`` nesting).
+       (pydantic-settings ``VESMA_`` prefix + ``__`` nesting).
     2. Every ``mnemos:`` subtype listed in the template must exist in
        ``VESMARO_TAG_SUBTYPES`` (``trace`` is a canary: not a subtype).
     Skips when this interpreter cannot import the src deps.
@@ -324,10 +324,10 @@ def test_canonical_env_names_and_subtypes_steer_src() -> None:
     script = (
         "import sys, os, json\n"
         "sys.path.insert(0, sys.argv[1])\n"
-        "os.environ['VESMARO_MNEMOS__DATA_DIR'] = '/tmp/mnemos-pin-data'\n"
-        "os.environ['VESMARO_MNEMOS__VAULT_PATH'] = '/tmp/mnemos-pin-vault'\n"
-        "os.environ.pop('VESMARO_DATA_DIR', None)\n"
-        "os.environ.pop('VESMARO_VAULT__VAULT_PATH', None)\n"
+        "os.environ['VESMA_MNEMOS__DATA_DIR'] = '/tmp/mnemos-pin-data'\n"
+        "os.environ['VESMA_MNEMOS__VAULT_PATH'] = '/tmp/mnemos-pin-vault'\n"
+        "os.environ.pop('VESMA_DATA_DIR', None)\n"
+        "os.environ.pop('VESMA_VAULT__VAULT_PATH', None)\n"
         "from vesmaro.config import Settings\n"
         "from vesmaro.models import VESMARO_TAG_SUBTYPES\n"
         "s = Settings(_env_file=None)\n"

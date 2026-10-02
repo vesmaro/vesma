@@ -14,7 +14,7 @@
  *
  * Deployed by:  vesma integration setup --target pi
  * Location:     ~/.pi/agent/extensions/vesma-mcp.ts
- * Requires:     `vesma` on PATH (legacy `vesma` accepted; override with MNEMOS_BIN).
+ * Requires:     `vesma` on PATH (override with VESMA_BIN).
  * Reload:       /reload  (Pi hot-reloads extensions) or /mnemos to reconnect.
  */
 
@@ -28,9 +28,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-// Brand-primary server binary; the legacy `vesma` binary is accepted in the
-// dual period (engine manifest `command: vesma`). MNEMOS_BIN overrides both.
-const MNEMOS_BIN = process.env.MNEMOS_BIN ?? "vesma";
+// Server binary. VESMA_BIN overrides the PATH default (6.0.0: canonical
+// VESMA_* env names only).
+const VESMA_BIN = process.env.VESMA_BIN ?? "vesma";
 const REQ_TIMEOUT_MS = 60_000;
 
 // Standing behavioral pack, injected into the system prompt on every turn
@@ -111,7 +111,7 @@ export default function vesmaMcpBridge(pi: ExtensionAPI) {
 	async function startBridge(): Promise<McpTool[]> {
 		if (child) killChild();
 		buffer = "";
-		child = spawn(MNEMOS_BIN, ["mcp-server"], { stdio: ["pipe", "pipe", "ignore"] });
+		child = spawn(VESMA_BIN, ["mcp-server"], { stdio: ["pipe", "pipe", "ignore"] });
 		child.on("error", (e: Error) => {
 			started = false;
 		});

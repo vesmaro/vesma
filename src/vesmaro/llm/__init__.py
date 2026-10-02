@@ -9,5 +9,5 @@ Submodules:
   gemini      — Google Gemini
 
 Provider selection order (recommended): Anthropic → Ollama → OpenAI → Azure → Gemini
-Configured in ~/.mnemos/config.yaml or VESMARO_LLM__PROVIDER env var.
+Configured in ~/.mnemos/config.yaml or VESMA_LLM__PROVIDER env var.
 """

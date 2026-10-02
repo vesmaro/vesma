@@ -77,9 +77,9 @@ vesma integration setup
 
 ### Режим автосбора
 
-Установите `VESMA_AUTO_COLLECT=1` (легаси-написание `MNEMOS_AUTO_COLLECT`, устарело)
+Установите `VESMA_AUTO_COLLECT=1`
 в блоке `env` сервера, чтобы Vesma предлагал
-агенту вызывать `mnemos_save_context` каждые ~6 вызовов инструментов
+агенту вызывать `vesma_save_context` каждые ~6 вызовов инструментов
 (проактивные напоминания о чекпоинтах). О компромиссах:
 [mcp-tools.md#auto-collect-mode](user/mcp-tools.md#режим-auto-collect).
 

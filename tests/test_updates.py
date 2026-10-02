@@ -62,10 +62,10 @@ def clear_suite_opt_out_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     """Undo the conftest suite-wide kill switch for THIS file.
 
     Every test here injects its fetcher (no network by construction), and
-    the opt-out behaviour tests set ``VESMARO_UPDATES_CHECK`` explicitly —
+    the opt-out behaviour tests set ``VESMA_UPDATES_CHECK`` explicitly —
     the guard would otherwise short-circuit before those paths run.
     """
-    monkeypatch.delenv("VESMARO_UPDATES_CHECK", raising=False)
+    monkeypatch.delenv("VESMA_UPDATES_CHECK", raising=False)
 
 
 # ── core check: cache write / read / expiry ─────────────────────────────────
@@ -289,7 +289,7 @@ def test_dist_detection_none_when_nothing_installed(
 def test_env_opt_out_disables_check(
     cache_file: Path, monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    monkeypatch.setenv("VESMARO_UPDATES_CHECK", value)
+    monkeypatch.setenv("VESMA_UPDATES_CHECK", value)
 
     def fetcher(dist: str) -> str:  # pragma: no cover — must never run
         raise AssertionError("fetcher called while opted out")
@@ -301,7 +301,7 @@ def test_env_opt_out_disables_check(
 def test_config_knob_disables_check(monkeypatch: pytest.MonkeyPatch) -> None:
     from vesmaro.config import Settings
 
-    monkeypatch.delenv("VESMARO_UPDATES_CHECK", raising=False)  # clear the suite-wide guard
+    monkeypatch.delenv("VESMA_UPDATES_CHECK", raising=False)  # clear the suite-wide guard
     settings = Settings()
     settings.updates.check_enabled = False
 
@@ -328,7 +328,7 @@ def isolated_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: 
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: updates-test.db\n"
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
     reset_manager()
     mgr = get_manager(str(cfg))
     yield mgr
@@ -369,8 +369,8 @@ def test_stats_payload_none_when_config_disabled(
         f"updates:\n"
         f"  check_enabled: false\n"
     )
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
-    monkeypatch.delenv("VESMARO_UPDATES_CHECK", raising=False)  # clear the suite-wide guard
+    monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+    monkeypatch.delenv("VESMA_UPDATES_CHECK", raising=False)  # clear the suite-wide guard
     reset_manager()
     try:
         mgr = get_manager(str(cfg))
@@ -423,7 +423,7 @@ def test_version_no_hint_when_check_returns_none(monkeypatch: pytest.MonkeyPatch
 
 
 def test_version_silent_when_check_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VESMARO_UPDATES_CHECK", "off")
+    monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     # With the env kill switch on, the real check answers None without any
     # network — run it UNPATCHED on purpose to prove the whole path.
     from vesmaro.cli.main import app

@@ -70,12 +70,12 @@ flowchart LR
 | Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/vesmaro/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
 
 > **Изоляция хранилищ.** vesma разрешает свой конфиг в фиксированном
-> порядке — явный флаг `--config` → переменная окружения `MNEMOS_CONFIG` →
+> порядке — явный флаг `--config` → переменная окружения `VESMA_CONFIG` →
 > `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
-> `src/vesmaro/config.py`). Переменной `MNEMOS_HOME` **не существует**.
+> `src/vesmaro/config.py`). Переменной `VESMA_HOME` **не существует**.
 > Чтобы запустить изолированный инстанс, создайте per-instance
 > `config.yaml` (с собственными `mnemos.data_dir` / `mnemos.vault_path`)
-> и укажите `MNEMOS_CONFIG` на него — все команды ниже используют этот
+> и укажите `VESMA_CONFIG` на него — все команды ниже используют этот
 > паттерн.
 
 ### Почему для тестирования loopback + SSH-туннель
@@ -98,7 +98,7 @@ Bearer-токен, используемый в этом руководстве, 
 ```bash
 # Generate a test bearer token (32 bytes, base64)
 TEST_TOKEN=$(openssl rand -base64 32)
-echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
+echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 ```
 
 ---
@@ -107,7 +107,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 
 Смоук-тест на одном хосте запускает два инстанса vesma на одной машине —
 каждый смотрит на своё хранилище через per-instance конфиг-файл,
-выбираемый `MNEMOS_CONFIG` — и проходит цикл export → import → search →
+выбираемый `VESMA_CONFIG` — и проходит цикл export → import → search →
 повторный import (идемпотентность). Он **не** задействует живой эндпоинт
 `POST /api/v1/federation/pull` — это cross-host-тест в §4. Смоук-тест
 проверяет формат compact-payload и CLI `vesma sync`.
@@ -124,8 +124,8 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    указывающим `mnemos.data_dir` / `mnemos.vault_path` внутри неё:
 
    ```bash
-   export MNEMOS_CONF_A=/tmp/vesma-fed-a/config.yaml
-   export MNEMOS_CONF_B=/tmp/vesma-fed-b/config.yaml
+   export VESMA_CONF_A=/tmp/vesma-fed-a/config.yaml
+   export VESMA_CONF_B=/tmp/vesma-fed-b/config.yaml
    for inst in a b; do
      mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
      cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
@@ -137,7 +137,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    ```
 
    Каждая команда в остатке этого раздела выполняется с
-   `MNEMOS_CONFIG="$MNEMOS_CONF_A"` (peer A) или `"$MNEMOS_CONF_B"`
+   `VESMA_CONFIG="$VESMA_CONF_A"` (peer A) или `"$VESMA_CONF_B"`
    (peer B) в окружении.
 
 2. **Наполните peer B тестовой памятью.**
@@ -146,7 +146,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    значения `--tags` через запятую (контракт тегов):
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma add \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
      --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
    ```
@@ -154,7 +154,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 3. **Экспортируйте compact-payload с peer B.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma sync export \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma sync export \
      --shared-projects cross-memory-test \
      --output /tmp/vesma-fed-payload.json
    ```
@@ -164,7 +164,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Исходный файл — позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -175,7 +175,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Запрос — тоже позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma search \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma search \
      "federation pull" --project cross-memory-test
    ```
 
@@ -184,7 +184,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 6. **Повторно импортируйте тот же payload — проверьте идемпотентность.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -254,7 +254,7 @@ federation:
     - cross-memory-test
   peers:
     mnemos-A:
-      bearer_token_env: MNEMOS_FED_PEER_MNEMOS_A_TOKEN
+      bearer_token_env: VESMA_FED_PEER_MNEMOS_A_TOKEN
       allowed_projects:
         - cross-memory-test
       allowed_types:
@@ -275,7 +275,7 @@ federation:
 
 ```bash
 # On peer B (remote host)
-MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
+VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 Сервер читает токен из переменной окружения, названной в
@@ -319,7 +319,8 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 - `trigger_code: "EXHAUSTIVE"`
 - массив `records` непуст (одна запись — тестовая запись из шага b)
 - `records[0].source_agent` совпадает с self-id peer B (`mnemos-B` по
-  умолчанию или значение `MNEMOS_FED_SELF_ID`, если переопределено)
+  умолчанию; переопределения через env нет — другой id задаётся параметром
+  `self_agent_id` в коде)
 - `ttl_class: "ephemeral"` — policy-подсказка; сервер не принуждает TTL
   на стороне A (контракт §3.3)
 
@@ -453,7 +454,7 @@ vesma sync import /tmp/compact-payload.json
 
 3. Удалите тестовый токен из окружения peer B (он был задан инлайн в
    команде serve, так что завершение процесса его очищает; если
-   экспортировали — `unset MNEMOS_FED_PEER_MNEMOS_A_TOKEN`).
+   экспортировали — `unset VESMA_FED_PEER_MNEMOS_A_TOKEN`).
 4. Уберите запись peer'а `mnemos-A` из `config.yaml` peer B или замените
    её на production-конфиг.
 5. Опционально отзовите тестовую память на peer B. CLI-глагола
@@ -505,8 +506,8 @@ production-развёртывания настраивают перечисле�
 | `200` + `trigger_code=ALREADY_EXHAUSTED` + пустой `records` | Ожидаемо при повторном запросе по той же паре `(peer_id, topic)` — журнал доступа зафиксировал прежний `EXHAUSTIVE` | Это корректное поведение, а не ошибка. Чтобы повторить pull, используйте другую строку `query` (журнал доступа ключуется по `sha256(query)`) |
 | `200` + `trigger_code=EXHAUSTIVE` + пустой `records` | На peer B нет записей, совпадающих с запросом в разрешённом scope проектов/типов | Наполните peer B тестовой записью разрешённого проекта и типа, затем повторите pull |
 | Connection refused (ноутбук) | SSH-туннель упал, `vesma serve` не запущен на peer B или порт неверен | Проверьте туннель: `ss -lntp \| grep 18101` на ноутбуке; проверьте serve: `ss -lntp \| grep 8101` на peer B; перезапустите по необходимости |
-| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` при старте | `vesma serve` запущен с non-loopback `--host` (или `api.host` в конфиге) без полного auth-стека | Либо привяжитесь к loopback (`--host 127.0.0.1`) и используйте SSH-туннель для теста, либо задайте `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` и предоставьте `MNEMOS_API__TOTP_MASTER_KEY` (см. [`security.md`](security.md) §9) |
-| `FATAL: api.totp_enabled=true but MNEMOS_API__TOTP_MASTER_KEY is not set` | TOTP включён без master-ключа | Задайте `MNEMOS_API__TOTP_MASTER_KEY` в окружении (только env, никогда на диск) |
+| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` при старте | `vesma serve` запущен с non-loopback `--host` (или `api.host` в конфиге) без полного auth-стека | Либо привяжитесь к loopback (`--host 127.0.0.1`) и используйте SSH-туннель для теста, либо задайте `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` и предоставьте `VESMA_API__TOTP_MASTER_KEY` (см. [`security.md`](security.md) §9) |
+| `FATAL: api.totp_enabled=true but VESMA_API__TOTP_MASTER_KEY is not set` | TOTP включён без master-ключа | Задайте `VESMA_API__TOTP_MASTER_KEY` в окружении (только env, никогда на диск) |
 | `vesma sync import` возвращает `records_skipped=N` при первом импорте | Записи уже были в хранилище peer A с прошлого прогона | Ожидаемо, если тест запускался раньше и не был убран. Подтвердите наличие записей через `vesma search`, затем продолжайте |
 
 ---

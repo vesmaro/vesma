@@ -305,7 +305,7 @@ def test_config_defaults_pin_deterministic_and_env_name() -> None:
     config = VesmaConfig()
     assert config.decision_provider == "deterministic"  # default-off posture
     assert config.decision_jev_api_key_env == DEFAULT_JEV_KEY_ENV
-    # Rebrand train 5.3.0: canonical VESMA_ name; the deprecated VESMARO_
+    # Rebrand train 5.3.0: canonical VESMA_ name; the deprecated VESMA_
     # spelling stays honoured as a fallback until 6.0 (tested below).
     assert DEFAULT_JEV_KEY_ENV == "VESMA_OPENROUTER_API_KEY"
 
@@ -337,32 +337,31 @@ def test_resolve_jev_without_key_fails_closed_before_network(
         raise AssertionError("network attempt: socket constructed")
 
     monkeypatch.setattr(socket, "socket", _no_sockets)
-    monkeypatch.delenv("VESMARO_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("VESMA_OPENROUTER_API_KEY", raising=False)
     with pytest.raises(JevConfigError, match="VESMA_OPENROUTER_API_KEY"):
         resolve_decision_provider(VesmaConfig(decision_provider="jev"))
 
 
-# ── Dual-prefix key resolution (rebrand train 5.3.0) ────────────────────────
+# ── Deprecated key-name retirement (6.0.0) ───────────────────────────────────
 
 
-def test_resolve_jev_deprecated_key_name_fallback(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_resolve_jev_deprecated_key_name_ignored(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Legacy deployment exporting ONLY ``VESMARO_OPENROUTER_API_KEY`` keeps
-    working after the canonical name flipped to the ``VESMA_`` twin — with a
-    visible deprecation warning, not a silent swap."""
+    """6.0.0 retired the deprecated ``VESMARO_OPENROUTER_API_KEY`` spelling:
+    a deployment exporting ONLY the legacy name gets the typed config error
+    naming the canonical var — never a silent legacy read."""
     monkeypatch.delenv(DEFAULT_JEV_KEY_ENV, raising=False)
     monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", FAKE_KEY)
-    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
-        provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
-    assert isinstance(provider, JevRouterProvider)
-    assert any("DEPRECATED-ENV" in rec.message for rec in caplog.records)
+    with pytest.raises(JevConfigError, match="VESMA_OPENROUTER_API_KEY"):
+        resolve_decision_provider(VesmaConfig(decision_provider="jev"))
 
 
-def test_resolve_jev_canonical_key_name_wins(
+def test_resolve_jev_canonical_key_wins_when_deprecated_also_set(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Both names set → canonical VESMA_ value wins, no deprecation warning."""
+    """Both names set → the canonical VESMA_ value is used; the deprecated
+    twin is dead weight (no deprecation machinery anymore)."""
     monkeypatch.setenv(DEFAULT_JEV_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", "vesmaro-legacy-key")
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
@@ -374,7 +373,7 @@ def test_resolve_jev_canonical_key_name_wins(
 def test_resolve_jev_reads_key_from_env_name_indirection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    env_name = "VESMARO_TEST_JEV_KEY"
+    env_name = "VESMA_TEST_JEV_KEY"
     monkeypatch.setenv(env_name, FAKE_KEY)
     config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env=env_name)
     provider = resolve_decision_provider(config)
@@ -387,11 +386,11 @@ def test_key_value_never_enters_config_dump(monkeypatch: pytest.MonkeyPatch) -> 
     """Secrets hygiene pin: even with the env var present, the config's
     serialized form carries the env NAME only — the VALUE must not appear
     anywhere in ``model_dump_json``."""
-    monkeypatch.setenv("VESMARO_TEST_JEV_KEY", FAKE_KEY)
-    config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env="VESMARO_TEST_JEV_KEY")
+    monkeypatch.setenv("VESMA_TEST_JEV_KEY", FAKE_KEY)
+    config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env="VESMA_TEST_JEV_KEY")
     dump = json.dumps(json.loads(config.model_dump_json()))
     assert FAKE_KEY not in dump
-    assert "VESMARO_TEST_JEV_KEY" in dump
+    assert "VESMA_TEST_JEV_KEY" in dump
 
 
 # ── Default transport: pinned at its SSRF-guard boundary (offline) ──────────

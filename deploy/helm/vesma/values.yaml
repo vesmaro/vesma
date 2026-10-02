@@ -43,9 +43,9 @@ ingress:
   #     - vesma.example.com
 
 auth:
-  # TOTP master key. Deployed pods read it from BOTH env spellings
-  # (MNEMOS_API__TOTP_MASTER_KEY on 4.x images, VESMARO_API__TOTP_MASTER_KEY
-  # on 5.x+) — one secret, two names, see ADR-0031 dual-prefix contract.
+  # TOTP master key. Deployed pods read it from the canonical env name
+  # VESMA_API__TOTP_MASTER_KEY (6.0.0: the 4.x MNEMOS_API__* and 5.x
+  # VESMARO_API__* spellings are retired — ADR-0031 dual period is over).
   # With neither existingSecret nor totpMasterKey set, the rendered pods
   # reference a Secret that does not exist and sit in CreateContainerConfigError.
   existingSecret: ""            # pre-created Secret name — preferred for prod

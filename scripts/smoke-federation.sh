@@ -3,8 +3,8 @@
 #
 # Verifies the full Phase 0 federation roundtrip on a single host using
 # two isolated vesma instances (per-instance config.yaml selected via
-# the MNEMOS_CONFIG env var — the only instance-selection mechanism the
-# app understands; see find_config_file in src/mnemos/config.py):
+# the VESMA_CONFIG env var — the only instance-selection mechanism the
+# app understands; see find_config_file in src/vesmaro/config.py):
 #
 #   1. Seed peer B with a clean decision memory.
 #   2. Export B's memories as a compact federation payload.
@@ -12,15 +12,15 @@
 #   4. Search on A — the imported record must be findable.
 #   5. Re-import the same payload — idempotent (skip, no duplicate).
 #
-# Prerequisites: vesma CLI on PATH (or set MNEMOS_BIN), jq, mktemp.
+# Prerequisites: vesma CLI on PATH (or set VESMA_BIN), jq, mktemp.
 # Runtime: < 10 s. Exits 0 on success, non-zero on any failure.
 #
 # See docs/en/admin/federation-testing.md for the cross-host variant.
 set -euo pipefail
 
-MNEMOS_BIN="${MNEMOS_BIN:-mnemos}"
+VESMA_BIN="${VESMA_BIN:-vesma}"
 
-command -v "$MNEMOS_BIN" >/dev/null 2>&1 || { echo "FATAL: $MNEMOS_BIN not on PATH"; exit 1; }
+command -v "$VESMA_BIN" >/dev/null 2>&1 || { echo "FATAL: $VESMA_BIN not on PATH"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "FATAL: jq not on PATH"; exit 1; }
 
 TMPDIR="$(mktemp -d -t vesma-smoke-XXXXXX)"
@@ -39,13 +39,13 @@ AGENT_B="smoke-b"
 PAYLOAD="$TMPDIR/compact.json"
 
 echo "1. Seed peer B with a clean decision memory"
-MNEMOS_CONFIG="$CONF_B" "$MNEMOS_BIN" add \
+VESMA_CONFIG="$CONF_B" "$VESMA_BIN" add \
   "Smoke test: vesma federation verified via local roundtrip." \
   --tags "project:$PROJECT,agent:$AGENT_B,mnemos:decision" \
   --title "Federation smoke seed" >/dev/null
 
 echo "2. Export B's memories as a compact federation payload"
-MNEMOS_CONFIG="$CONF_B" "$MNEMOS_BIN" sync export \
+VESMA_CONFIG="$CONF_B" "$VESMA_BIN" sync export \
   --output "$PAYLOAD" \
   --shared-projects "$PROJECT" >/dev/null
 
@@ -54,20 +54,20 @@ RECORD_COUNT=$(jq '.records | length' "$PAYLOAD")
 echo "   exported $RECORD_COUNT record(s)"
 
 echo "3. Import the payload into peer A"
-IMPORT_OUT="$(MNEMOS_CONFIG="$CONF_A" "$MNEMOS_BIN" sync import "$PAYLOAD" 2>&1)"
+IMPORT_OUT="$(VESMA_CONFIG="$CONF_A" "$VESMA_BIN" sync import "$PAYLOAD" 2>&1)"
 IMPORTED=$(echo "$IMPORT_OUT" | grep -oE 'Imported: [0-9]+' | grep -oE '[0-9]+' || true)
 IMPORTED="${IMPORTED:-0}"
 [[ "$IMPORTED" -ge 1 ]] || { echo "FAIL: import did not import any record"; echo "$IMPORT_OUT"; exit 1; }
 echo "   imported $IMPORTED record(s)"
 
 echo "4. Search on A — imported record must be findable"
-SEARCH_OUT="$(MNEMOS_CONFIG="$CONF_A" "$MNEMOS_BIN" search "federation smoke" --limit 3 2>&1)"
+SEARCH_OUT="$(VESMA_CONFIG="$CONF_A" "$VESMA_BIN" search "federation smoke" --limit 3 2>&1)"
 echo "$SEARCH_OUT" | grep -q "Federation smoke seed" \
   || { echo "FAIL: imported record not found in search"; echo "$SEARCH_OUT"; exit 1; }
 echo "   search found the imported record"
 
 echo "5. Re-import the same payload — idempotent (skip, no duplicate)"
-REIMPORT_OUT="$(MNEMOS_CONFIG="$CONF_A" "$MNEMOS_BIN" sync import "$PAYLOAD" 2>&1)"
+REIMPORT_OUT="$(VESMA_CONFIG="$CONF_A" "$VESMA_BIN" sync import "$PAYLOAD" 2>&1)"
 REIMPORTED=$(echo "$REIMPORT_OUT" | grep -oE 'Imported: [0-9]+' | grep -oE '[0-9]+' || true)
 REIMPORTED="${REIMPORTED:-0}"
 SKIPPED=$(echo "$REIMPORT_OUT" | grep -oE 'skipped: [0-9]+' | grep -oE '[0-9]+' || true)

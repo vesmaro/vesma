@@ -15,18 +15,17 @@
 
 services:
   mnemos:
-    image: ghcr.io/vesmaro/vesma:${VESMARO_IMAGE_TAG:-5.1.2}
+    image: ghcr.io/vesmaro/vesma:${VESMA_IMAGE_TAG:-5.1.2}
     container_name: mnemos
     restart: unless-stopped
     ports:
       - "8787:8787"
     environment:
-      # Dual-prefix contract (ADR-0031): 4.x images read MNEMOS_API__*,
-      # 5.x read VESMARO_API__* — set both from one secret value.
+      # Canonical VESMA_* env names only (6.0.0 retired the ADR-0031
+      # dual-prefix spellings MNEMOS_API__* / VESMARO_API__*).
       # An empty key is rejected at startup (0.0.0.0 bind requires auth+TOTP).
-      - MNEMOS_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY, e.g. openssl rand -hex 32}
-      - VESMARO_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY, e.g. openssl rand -hex 32}
-      - MNEMOS_CONFIG=/app/config.yaml
+      - VESMA_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY, e.g. openssl rand -hex 32}
+      - VESMA_CONFIG=/app/config.yaml
     volumes:
       - mnemos-data:/data
       - mnemos-vault:/vault

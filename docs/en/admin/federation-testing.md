@@ -69,11 +69,11 @@ response, not a trigger code; the response body still carries
 | Loopback bind | The startup guard `_check_non_loopback_auth` (in `src/vesmaro/api/main.py`) exits non-zero if a non-loopback bind is attempted without `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. The test binds to loopback and tunnels over SSH so the full auth stack is not required for the test. |
 
 > **Store isolation.** vesma resolves its config in a fixed order —
-> explicit `--config` flag → `MNEMOS_CONFIG` env var → `./config.yaml` →
+> explicit `--config` flag → `VESMA_CONFIG` env var → `./config.yaml` →
 > `~/.mnemos/config.yaml` (`find_config_file` in `src/vesmaro/config.py`).
-> There is **no** `MNEMOS_HOME` variable. To run an isolated instance,
+> There is **no** `VESMA_HOME` variable. To run an isolated instance,
 > write a per-instance `config.yaml` (own `mnemos.data_dir` /
-> `mnemos.vault_path`) and point `MNEMOS_CONFIG` at it — every command
+> `mnemos.vault_path`) and point `VESMA_CONFIG` at it — every command
 > below uses that pattern.
 
 ### Why loopback + SSH tunnel for testing
@@ -96,7 +96,7 @@ value to a config file or a repository.
 ```bash
 # Generate a test bearer token (32 bytes, base64)
 TEST_TOKEN=$(openssl rand -base64 32)
-echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
+echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 ```
 
 ---
@@ -105,7 +105,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 
 The single-host smoke test runs two vesma instances on the same
 machine — each pointed at its own store through a per-instance config
-file selected by `MNEMOS_CONFIG` — and walks the export → import →
+file selected by `VESMA_CONFIG` — and walks the export → import →
 search → re-import idempotency loop. It does **not** exercise the live
 `POST /api/v1/federation/pull` endpoint — that is the cross-host test
 in §4. The smoke test verifies the compact payload format and the
@@ -123,8 +123,8 @@ present in your checkout, run the steps manually.
    `mnemos.data_dir` / `mnemos.vault_path` inside it:
 
    ```bash
-   export MNEMOS_CONF_A=/tmp/vesma-fed-a/config.yaml
-   export MNEMOS_CONF_B=/tmp/vesma-fed-b/config.yaml
+   export VESMA_CONF_A=/tmp/vesma-fed-a/config.yaml
+   export VESMA_CONF_B=/tmp/vesma-fed-b/config.yaml
    for inst in a b; do
      mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
      cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
@@ -136,7 +136,7 @@ present in your checkout, run the steps manually.
    ```
 
    Every command in the rest of this section runs with
-   `MNEMOS_CONFIG="$MNEMOS_CONF_A"` (peer A) or `"$MNEMOS_CONF_B"`
+   `VESMA_CONFIG="$VESMA_CONF_A"` (peer A) or `"$VESMA_CONF_B"`
    (peer B) in the environment.
 
 2. **Seed peer B with a test memory.**
@@ -145,7 +145,7 @@ present in your checkout, run the steps manually.
    comma-separated `--tags` value (the tag contract):
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma add \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
      --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
    ```
@@ -153,7 +153,7 @@ present in your checkout, run the steps manually.
 3. **Export a compact payload from peer B.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma sync export \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma sync export \
      --shared-projects cross-memory-test \
      --output /tmp/vesma-fed-payload.json
    ```
@@ -163,7 +163,7 @@ present in your checkout, run the steps manually.
    The source file is a positional argument:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -174,7 +174,7 @@ present in your checkout, run the steps manually.
    The query is a positional argument too:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma search \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma search \
      "federation pull" --project cross-memory-test
    ```
 
@@ -183,7 +183,7 @@ present in your checkout, run the steps manually.
 6. **Re-import the same payload — verify idempotency.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -252,7 +252,7 @@ federation:
     - cross-memory-test
   peers:
     mnemos-A:
-      bearer_token_env: MNEMOS_FED_PEER_MNEMOS_A_TOKEN
+      bearer_token_env: VESMA_FED_PEER_MNEMOS_A_TOKEN
       allowed_projects:
         - cross-memory-test
       allowed_types:
@@ -273,7 +273,7 @@ Restart `vesma serve` with the token in the environment:
 
 ```bash
 # On peer B (remote host)
-MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
+VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 The server reads the token from the env var named in
@@ -318,7 +318,8 @@ Expect:
 - `trigger_code: "EXHAUSTIVE"`
 - `records` array non-empty (one entry for the seed record from step b)
 - `records[0].source_agent` matches peer B's self id (`mnemos-B` by
-  default, or the value of `MNEMOS_FED_SELF_ID` if overridden)
+  default; there is no env override — a different id is set via the
+  `self_agent_id` parameter in code)
 - `ttl_class: "ephemeral"` — a policy hint; the server does not enforce
   TTL on the A side (contract §3.3)
 
@@ -455,7 +456,7 @@ skipped, never overwritten.
 
 3. Delete the test token from peer B's environment (it was set inline
    in the serve command, so killing the process clears it; if it was
-   exported, `unset MNEMOS_FED_PEER_MNEMOS_A_TOKEN`).
+   exported, `unset VESMA_FED_PEER_MNEMOS_A_TOKEN`).
 4. Remove the `mnemos-A` peer entry from peer B's `config.yaml`, or
    replace it with the production config.
 5. Optionally withdraw the test memory on peer B. There is no
@@ -508,8 +509,8 @@ the full threat model and the mTLS-vs-bearer rationale.
 | `200` + `trigger_code=ALREADY_EXHAUSTED` + empty `records` | Expected on a repeat query for the same `(peer_id, topic)` — the access log recorded a prior `EXHAUSTIVE` | This is correct behaviour, not an error. To re-pull, use a different `query` string (the access log keys on `sha256(query)`) |
 | `200` + `trigger_code=EXHAUSTIVE` + empty `records` | Peer B has no records matching the query in the allowed project/type scope | Seed peer B with a test record in an allowed project and type, then re-pull |
 | Connection refused (laptop) | SSH tunnel is down, `vesma serve` is not running on peer B, or the port is wrong | Check the tunnel: `ss -lntp \| grep 18101` on the laptop; check the serve: `ss -lntp \| grep 8101` on peer B; restart as needed |
-| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` at startup | `vesma serve` was started with a non-loopback `--host` (or `api.host` in config) without the full auth stack | Either bind to loopback (`--host 127.0.0.1`) and use an SSH tunnel for testing, or set `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` and provide `MNEMOS_API__TOTP_MASTER_KEY` (see [`security.md`](security.md) §9) |
-| `FATAL: api.totp_enabled=true but MNEMOS_API__TOTP_MASTER_KEY is not set` | TOTP enabled without the master key | Set `MNEMOS_API__TOTP_MASTER_KEY` in the environment (env-only, never on disk) |
+| `FATAL: non-loopback bind (...) requires: api.auth_enabled=true, ...` at startup | `vesma serve` was started with a non-loopback `--host` (or `api.host` in config) without the full auth stack | Either bind to loopback (`--host 127.0.0.1`) and use an SSH tunnel for testing, or set `api.auth_enabled=true` + `api.totp_enabled=true` + `api.behind_tls_proxy=true` and provide `VESMA_API__TOTP_MASTER_KEY` (see [`security.md`](security.md) §9) |
+| `FATAL: api.totp_enabled=true but VESMA_API__TOTP_MASTER_KEY is not set` | TOTP enabled without the master key | Set `VESMA_API__TOTP_MASTER_KEY` in the environment (env-only, never on disk) |
 | `vesma sync import` returns `records_skipped=N` on first import | The records were already present in peer A's store from a prior run | Expected if the test was run before and not cleaned up. Use `vesma search` to confirm the records are present, then proceed |
 
 ---

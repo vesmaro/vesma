@@ -70,7 +70,7 @@ vesma sync export \
 | Опция | По умолчанию | Назначение |
 |-------|--------------|------------|
 | `--output` / `-o` | `vesma-sync.json` | Путь выходного файла (рекомендуется абсолютный). Родительские директории создаются. |
-| `--encrypt` | выкл | Шифровать payload через AES-256-GCM. Пароль читается из `MNEMOS_EXPORT_PASSPHRASE`. |
+| `--encrypt` | выкл | Шифровать payload через AES-256-GCM. Пароль читается из `VESMA_EXPORT_PASSPHRASE`. |
 | `--shared-projects` | config `federation.shared_projects` | Список slug'ов через пробел/запятую (переопределяет конфиг). |
 | `--dry-run` | выкл | Собрать payload и вывести сводку; файл НЕ записывать. |
 | `--config` / `-c` | discovery | Путь к `config.yaml`. |
@@ -103,12 +103,12 @@ vesma sync export \
 ### Шифрование
 
 `--encrypt` читает пароль из переменной окружения
-`MNEMOS_EXPORT_PASSPHRASE` — никогда из CLI-аргумента (аргументы попадают
+`VESMA_EXPORT_PASSPHRASE` — никогда из CLI-аргумента (аргументы попадают
 в список процессов и историю shell). Если переменная не задана, файл не
 записывается, команда завершается с ошибкой.
 
 ```bash
-export MNEMOS_EXPORT_PASSPHRASE="your-passphrase-here"
+export VESMA_EXPORT_PASSPHRASE="your-passphrase-here"
 vesma sync export --output sync.enc --encrypt
 ```
 
@@ -127,7 +127,7 @@ vesma sync import /var/tmp/vesma-sync.json
 
 | Опция | По умолчанию | Назначение |
 |-------|--------------|------------|
-| `--passphrase-env` | `MNEMOS_EXPORT_PASSPHRASE` | Имя переменной окружения с паролем для расшифровки (**имя**, не значение). |
+| `--passphrase-env` | `VESMA_EXPORT_PASSPHRASE` | Имя переменной окружения с паролем для расшифровки (**имя**, не значение). |
 | `--dry-run` | выкл | Провалидировать payload и вывести отчёт; НЕ записывать. |
 | `--config` / `-c` | discovery | Путь к `config.yaml`. |
 
@@ -135,7 +135,7 @@ vesma sync import /var/tmp/vesma-sync.json
 
 1. Читает файл. Если зашифрован (magic-заголовок или расширение `.enc`)
    — читает пароль из переменной, названной `--passphrase-env` (fallback
-   на `MNEMOS_EXPORT_PASSPHRASE`).
+   на `VESMA_EXPORT_PASSPHRASE`).
 2. Парсит JSON, проверяет `schema == "mnemos.federation.v1"`, парсит
    каждую запись в `CompactRecord`.
 3. Валидирует каждую запись (переиспользует #86 import validation —
@@ -172,41 +172,41 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
 
 | Переменная | Назначение |
 |------------|------------|
-| `MNEMOS_SYNC_PEER_HOST` | Host peer-узла B (цель). |
-| `MNEMOS_SYNC_PEER_SSH_KEY` | Приватный ключ ed25519 на A для rsync-отправки. |
-| `MNEMOS_SYNC_PEER_IMPORT_SSH_KEY` | Приватный ключ ed25519 на A для запуска импорта. |
-| `MNEMOS_SYNC_LOCAL_EXPORT_DIR` | Локальная директория, куда пишется экспорт. |
-| `MNEMOS_SYNC_REMOTE_IMPORT_DIR` | Директория на B, куда rsync доставляет payload. |
-| `MNEMOS_SYNC_SHARED_PROJECTS` | Slug'и проектов для синхронизации, через запятую. |
-| `MNEMOS_SYNC_ENCRYPT` | `true` / `false`. |
-| `MNEMOS_SYNC_PASSPHRASE_ENV` | ИМЯ переменной окружения с парольной фразой. |
+| `VESMA_SYNC_PEER_HOST` | Host peer-узла B (цель). |
+| `VESMA_SYNC_PEER_SSH_KEY` | Приватный ключ ed25519 на A для rsync-отправки. |
+| `VESMA_SYNC_PEER_IMPORT_SSH_KEY` | Приватный ключ ed25519 на A для запуска импорта. |
+| `VESMA_SYNC_LOCAL_EXPORT_DIR` | Локальная директория, куда пишется экспорт. |
+| `VESMA_SYNC_REMOTE_IMPORT_DIR` | Директория на B, куда rsync доставляет payload. |
+| `VESMA_SYNC_SHARED_PROJECTS` | Slug'и проектов для синхронизации, через запятую. |
+| `VESMA_SYNC_ENCRYPT` | `true` / `false`. |
+| `VESMA_SYNC_PASSPHRASE_ENV` | ИМЯ переменной окружения с парольной фразой. |
 
 Опциональные переменные:
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `MNEMOS_SYNC_PEER_USER` | `mnemos-sync` | ssh-пользователь на B. |
-| `MNEMOS_SYNC_DRY_RUN` | — | `1` — только логировать команды, без записей и ssh. |
-| `MNEMOS_SYNC_SOURCE_CONFIG` | discovery | Путь к `config.yaml` на A. |
-| `MNEMOS_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Имя файла payload на B. |
-| `MNEMOS_SYNC_MNEMOS_BIN` | auto-discover | Путь к CLI `vesma` на A. |
+| `VESMA_SYNC_PEER_USER` | `mnemos-sync` | ssh-пользователь на B. |
+| `VESMA_SYNC_DRY_RUN` | — | `1` — только логировать команды, без записей и ssh. |
+| `VESMA_SYNC_SOURCE_CONFIG` | discovery | Путь к `config.yaml` на A. |
+| `VESMA_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Имя файла payload на B. |
+| `VESMA_SYNC_VESMA_BIN` | auto-discover | Путь к CLI `vesma` на A. |
 
-Путь к CLI `vesma` на B (`MNEMOS_SYNC_REMOTE_MNEMOS_BIN`) задаётся на B в
+Путь к CLI `vesma` на B (`VESMA_SYNC_REMOTE_VESMA_BIN`) задаётся на B в
 `/etc/vesma/sync.env` — на A он не нужен, обёртка `vesma-import-wrapper` на B
 находит бинарник сама. Парольная фраза никогда не передаётся в командной строке:
-на A она читается из переменной, имя которой задано в `MNEMOS_SYNC_PASSPHRASE_ENV`,
+на A она читается из переменной, имя которой задано в `VESMA_SYNC_PASSPHRASE_ENV`,
 на B независимо прописывается в окружении systemd.
 
 Пример crontab (почасовая зашифрованная синхронизация на peer-хост):
 
 ```cron
-0 * * * * MNEMOS_SYNC_PEER_HOST=peer.example.com \
-          MNEMOS_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
-          MNEMOS_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
-          MNEMOS_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
-          MNEMOS_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
-          MNEMOS_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
-          MNEMOS_SYNC_ENCRYPT=true MNEMOS_SYNC_PASSPHRASE_ENV=MNEMOS_EXPORT_PASSPHRASE \
+0 * * * * VESMA_SYNC_PEER_HOST=peer.example.com \
+          VESMA_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
+          VESMA_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
+          VESMA_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
+          VESMA_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
+          VESMA_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
+          VESMA_SYNC_ENCRYPT=true VESMA_SYNC_PASSPHRASE_ENV=VESMA_EXPORT_PASSPHRASE \
           /opt/vesma/scripts/sync-peers.sh >> /var/log/vesma-sync.log 2>&1
 ```
 

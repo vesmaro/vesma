@@ -44,14 +44,14 @@ Config (in $HERMES_HOME/config.yaml under ``memory.mnemos``)::
 
 Env vars (config.yaml ``memory.mnemos`` overrides these)::
 
-    MNEMOS_DATA_DIR           — data dir ("" = default)
-    MNEMOS_VAULT__VAULT_PATH  — vault path ("" = default)
-    MNEMOS_PROJECT            — project slug (default: hermes)
-    MNEMOS_AGENT              — agent slug (default: hermes-default)
-    MNEMOS_AUTO_SYNC          — mirror + sync writes (default: true)
-    MNEMOS_PUBLISH_ON_WRITE   — publish writes immediately (default: true)
-    MNEMOS_SYNC_INTERVAL      — sync every Nth turn (default: 10)
-    MNEMOS_SYNC_MIN_USER_CHARS — significance threshold (default: 50)
+    VESMA_DATA_DIR           — data dir ("" = default)
+    VESMA_VAULT__VAULT_PATH  — vault path ("" = default)
+    VESMA_PROJECT            — project slug (default: hermes)
+    VESMA_AGENT              — agent slug (default: hermes-default)
+    VESMA_AUTO_SYNC          — mirror + sync writes (default: true)
+    VESMA_PUBLISH_ON_WRITE   — publish writes immediately (default: true)
+    VESMA_SYNC_INTERVAL      — sync every Nth turn (default: 10)
+    VESMA_SYNC_MIN_USER_CHARS — significance threshold (default: 50)
 
 BREAKING vs the legacy HTTP plugin: ``base_url`` / ``api_key`` /
 ``totp_secret`` are gone — the plugin embeds the memory server in-process
@@ -105,16 +105,16 @@ def _load_config() -> dict:
     ``memory.mnemos`` last (the wizard writes there).
     """
     config: dict[str, Any] = {
-        "data_dir": os.environ.get("MNEMOS_DATA_DIR", ""),
-        "vault_path": os.environ.get("MNEMOS_VAULT__VAULT_PATH", ""),
-        "project": os.environ.get("MNEMOS_PROJECT", "hermes"),
-        "agent": os.environ.get("MNEMOS_AGENT", "hermes-default"),
-        "auto_sync": os.environ.get("MNEMOS_AUTO_SYNC", "true").lower()
+        "data_dir": os.environ.get("VESMA_DATA_DIR", ""),
+        "vault_path": os.environ.get("VESMA_VAULT__VAULT_PATH", ""),
+        "project": os.environ.get("VESMA_PROJECT", "hermes"),
+        "agent": os.environ.get("VESMA_AGENT", "hermes-default"),
+        "auto_sync": os.environ.get("VESMA_AUTO_SYNC", "true").lower()
         in ("true", "1", "yes", "on"),
-        "publish_on_write": os.environ.get("MNEMOS_PUBLISH_ON_WRITE", "true").lower()
+        "publish_on_write": os.environ.get("VESMA_PUBLISH_ON_WRITE", "true").lower()
         in ("true", "1", "yes", "on"),
-        "sync_interval": int(os.environ.get("MNEMOS_SYNC_INTERVAL", "10")),
-        "sync_min_user_chars": int(os.environ.get("MNEMOS_SYNC_MIN_USER_CHARS", "50")),
+        "sync_interval": int(os.environ.get("VESMA_SYNC_INTERVAL", "10")),
+        "sync_min_user_chars": int(os.environ.get("VESMA_SYNC_MIN_USER_CHARS", "50")),
     }
 
     try:
@@ -819,32 +819,32 @@ class VesmaMemoryProvider(MemoryProvider):
                 "key": "data_dir",
                 "description": "Vesma data dir (empty = vesma default)",
                 "default": "",
-                "env_var": "MNEMOS_DATA_DIR",
+                "env_var": "VESMA_DATA_DIR",
             },
             {
                 "key": "vault_path",
                 "description": "Obsidian vault path (empty = vesma default)",
                 "default": "",
-                "env_var": "MNEMOS_VAULT__VAULT_PATH",
+                "env_var": "VESMA_VAULT__VAULT_PATH",
             },
             {
                 "key": "project",
                 "description": "Default project slug for tag contract",
                 "default": "hermes",
-                "env_var": "MNEMOS_PROJECT",
+                "env_var": "VESMA_PROJECT",
             },
             {
                 "key": "agent",
                 "description": "Default agent slug for tag contract",
                 "default": "hermes-default",
-                "env_var": "MNEMOS_AGENT",
+                "env_var": "VESMA_AGENT",
             },
             {
                 "key": "auto_sync",
                 "description": "Mirror builtin writes and sync significant turns",
                 "default": "true",
                 "choices": ["true", "false"],
-                "env_var": "MNEMOS_AUTO_SYNC",
+                "env_var": "VESMA_AUTO_SYNC",
             },
             {
                 "key": "publish_on_write",
@@ -854,19 +854,19 @@ class VesmaMemoryProvider(MemoryProvider):
                 ),
                 "default": "true",
                 "choices": ["true", "false"],
-                "env_var": "MNEMOS_PUBLISH_ON_WRITE",
+                "env_var": "VESMA_PUBLISH_ON_WRITE",
             },
             {
                 "key": "sync_interval",
                 "description": "Sync every Nth turn",
                 "default": "10",
-                "env_var": "MNEMOS_SYNC_INTERVAL",
+                "env_var": "VESMA_SYNC_INTERVAL",
             },
             {
                 "key": "sync_min_user_chars",
                 "description": "Significance threshold: user-message chars",
                 "default": "50",
-                "env_var": "MNEMOS_SYNC_MIN_USER_CHARS",
+                "env_var": "VESMA_SYNC_MIN_USER_CHARS",
             },
         ]
 

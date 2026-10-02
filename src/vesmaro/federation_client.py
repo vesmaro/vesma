@@ -98,7 +98,7 @@ def _pull_from_peer_impl(
 
     Reads :class:`PeerConfig` from ``settings.federation.peers[peer_id]``
     for the per-peer bearer-token env name. The peer's base URL is
-    read from the ``VESMARO_FED_PEER_<peer_id_upper>_URL`` env var (the
+    read from the ``VESMA_FED_PEER_<peer_id_upper>_URL`` env var (the
     operator configures the peer's HTTP base URL out-of-band, like the
     bearer token; we never bake URLs into config files). The
     ``base_url_override`` is for tests.
@@ -115,7 +115,7 @@ def _pull_from_peer_impl(
         include_content: Forwarded to the server (Phase 2.5 hook).
         base_url_override: Optional override for the peer's HTTP base
             URL. When ``None``, the client reads the URL from the env
-            var ``VESMARO_FED_PEER_<peer_id_upper>_URL``.
+            var ``VESMA_FED_PEER_<peer_id_upper>_URL``.
 
     Returns:
         :class:`PullResult` — ``trigger_code``, ``records``,
@@ -217,13 +217,13 @@ def _resolve_token(peer: PeerConfig) -> str | None:
 
 
 def _resolve_base_url(peer_id: str) -> str | None:
-    """Read the peer's HTTP base URL from ``VESMARO_FED_PEER_<ID>_URL``.
+    """Read the peer's HTTP base URL from ``VESMA_FED_PEER_<ID>_URL``.
 
     The env var name uppercases the peer id and replaces ``-`` with
-    ``_`` so ``mnemos-A`` → ``VESMARO_FED_PEER_VESMARO_A_URL``. Trailing
+    ``_`` so ``vesma-A`` → ``VESMA_FED_PEER_VESMA_A_URL``. Trailing
     slashes are stripped so ``base_url + path`` joins cleanly.
     """
-    env_name = f"VESMARO_FED_PEER_{peer_id.upper().replace('-', '_')}_URL"
+    env_name = f"VESMA_FED_PEER_{peer_id.upper().replace('-', '_')}_URL"
     raw = os.environ.get(env_name, "").strip()
     if not raw:
         return None

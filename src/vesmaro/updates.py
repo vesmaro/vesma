@@ -57,10 +57,9 @@ FALLBACK_UPDATE_DIR = Path("~/.local/share/vesma").expanduser()
 CANDIDATE_DISTS = ("vesma-memory-server", "vesma")
 
 #: Hard env opt-out (independent of the config knob). Canonical ``VESMA_``
-#: name; the deprecated ``VESMARO_UPDATES_CHECK`` spelling stays honoured
-#: until 6.0 (dual-prefix contract, ADR-0031 pattern).
+#: name (6.0.0 retired the deprecated ``VESMARO_UPDATES_CHECK`` spelling —
+#: ADR-0031 dual-period pattern).
 OPT_OUT_ENV = "VESMA_UPDATES_CHECK"
-_DEPRECATED_OPT_OUT_ENV = "VESMARO_UPDATES_CHECK"
 _OFF_VALUES = frozenset({"off", "0", "false", "no"})
 
 
@@ -105,12 +104,8 @@ def version_key(version: str) -> list[tuple[int, int, str]]:
 
 
 def env_check_disabled() -> bool:
-    """True when ``VESMA_UPDATES_CHECK`` says off (case-insensitive).
-
-    The deprecated ``VESMARO_UPDATES_CHECK`` spelling is honoured as a
-    fallback (accepted until 6.0).
-    """
-    value = os.environ.get(OPT_OUT_ENV) or os.environ.get(_DEPRECATED_OPT_OUT_ENV, "")
+    """True when ``VESMA_UPDATES_CHECK`` says off (case-insensitive)."""
+    value = os.environ.get(OPT_OUT_ENV, "")
     return value.strip().lower() in _OFF_VALUES
 
 

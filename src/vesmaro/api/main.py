@@ -974,12 +974,7 @@ async def remove_rule(data: RuleRemoveRequest) -> dict[str, Any]:
 
 _auto_collect_tracker = {"calls_since_save": 0, "last_save_ts": 0.0}
 _auto_collect_state = {
-    # Dual-prefix contract: canonical VESMA_AUTO_COLLECT wins; deprecated
-    # VESMARO_AUTO_COLLECT stays accepted until 6.0.
-    "enabled": (
-        os.environ.get("VESMA_AUTO_COLLECT") or os.environ.get("VESMARO_AUTO_COLLECT", "")
-    ).lower()
-    in ("true", "1", "yes", "on"),
+    "enabled": os.environ.get("VESMA_AUTO_COLLECT", "").lower() in ("true", "1", "yes", "on"),
 }
 _auto_collect_lock = threading.Lock()
 

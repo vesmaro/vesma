@@ -54,7 +54,7 @@ from vesmaro.trigger_codes import TriggerCode
 # RFC-reserved constants — never real credentials.
 PEER_A = "mnemos-A"
 PROJECT = "project-mnemos"
-TOKEN_ENV = "VESMARO_FED_PEER_VESMARO_A_TOKEN"
+TOKEN_ENV = "VESMA_FED_PEER_VESMARO_A_TOKEN"
 TOKEN_VALUE = "mnk_fed_mnemos-A_exampletoken123"
 
 

@@ -10,19 +10,18 @@
 
 services:
   vesmaro:
-    image: ghcr.io/vesmaro/vesma:${VESMARO_IMAGE_TAG:-5.2.0}
+    image: ghcr.io/vesmaro/vesma:${VESMA_IMAGE_TAG:-5.2.0}
     # Legacy namespace (pre-rebrand releases): ghcr.io/korrnals/mnemos
     container_name: vesma
     restart: unless-stopped
     ports:
       - "8787:8787"
     environment:
-      # Dual-prefix contract (ADR-0031): 4.x images read MNEMOS_API__*,
-      # 5.x images read VESMARO_API__* — set both from one secret value.
+      # Canonical VESMA_* names only (6.0.0 retired the ADR-0031 dual-prefix
+      # spellings MNEMOS_API__* / VESMARO_API__*).
       # An empty key is rejected at startup (auth_enabled + totp_enabled are
       # on in the baked container config, required for the 0.0.0.0 bind).
-      - MNEMOS_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY in .env}
-      - VESMARO_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY in .env}
+      - VESMA_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY in .env}
     volumes:
       - vesma-data:/data
       - vesma-vault:/vault

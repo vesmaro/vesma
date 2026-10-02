@@ -41,15 +41,10 @@ spec:
             - name: http
               containerPort: 8787
               protocol: TCP
-          # 4.x images read MNEMOS_API__*; 5.x+ read VESMARO_API__*
-          # (ADR-0031 dual-prefix contract) — set both from one secret.
+          # Canonical VESMA_* env name only (6.0.0 retired the ADR-0031
+          # dual-prefix spellings MNEMOS_API__* / VESMARO_API__*).
           env:
-            - name: MNEMOS_API__TOTP_MASTER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "vesma.secretName" . }}
-                  key: {{ .Values.auth.existingSecretKey }}
-            - name: VESMARO_API__TOTP_MASTER_KEY
+            - name: VESMA_API__TOTP_MASTER_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "vesma.secretName" . }}

@@ -37,20 +37,20 @@ _VALID_TAGS = ["project:demo", "agent:user", "mnemos:learning"]
 
 
 def _clear_mnemos_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Remove every VESMARO_* env var so tests start from a clean slate.
+    """Remove every VESMA_* env var so tests start from a clean slate.
 
-    pydantic-settings maps ``VESMARO_API__HOST`` etc. onto ``Settings``; a
+    pydantic-settings maps ``VESMA_API__HOST`` etc. onto ``Settings``; a
     leftover variable from the developer shell would silently change the
     defaults under test.
     """
     for key in list(os.environ):
-        if key.startswith("VESMARO_"):
+        if key.startswith("VESMA_"):
             monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture
 def clean_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Simulate a clean install: fresh HOME, empty cwd, no VESMARO_* env.
+    """Simulate a clean install: fresh HOME, empty cwd, no VESMA_* env.
 
     Resets the CLI / API manager singletons and the scanner singleton so
     each test constructs its own stores under the temporary home.
@@ -126,11 +126,11 @@ class TestZeroConfigDefaults:
     def test_non_loopback_env_override_still_refuses(self, clean_home):
         """Acceptance 2: env override to a non-loopback bind + no auth → refuse.
 
-        ``VESMARO_API__HOST`` is exactly how ``mnemos serve --host 0.0.0.0``
+        ``VESMA_API__HOST`` is exactly how ``mnemos serve --host 0.0.0.0``
         propagates the bind into the app process; the guard must fire.
         """
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setenv("VESMARO_API__HOST", "0.0.0.0")
+        monkeypatch.setenv("VESMA_API__HOST", "0.0.0.0")
         try:
             settings = load_settings()
             assert settings.api.host == "0.0.0.0"

@@ -1,5 +1,5 @@
 name: vesma
-description: "Vesma — standalone memory & knowledge server for AI agents, embedded IN-PROCESS on the ADR-0017 D1 provider contract (#125 W5): every memory operation routes through VesmaSDK + the lifecycle hooks (pre_llm_call/on_session_start/post_tool_call) — no HTTP hop, no bespoke transport. Hybrid vector+FTS5 search with issuance secret scan, tag contract, Obsidian vault mirror, reversible compression (CCR), URL ingest, file watcher. Exposes 15 tools: mnemos_search, mnemos_add, mnemos_recall_context, mnemos_save_context, mnemos_agent_recall, mnemos_list_recent, mnemos_list_tags, mnemos_ingest_url, mnemos_compress, mnemos_retrieve, mnemos_auto_collect_status, mnemos_stats, mnemos_watch_start, mnemos_watch_stop, mnemos_watch_status."
+description: "Vesma — standalone memory & knowledge server for AI agents, embedded IN-PROCESS on the ADR-0017 D1 provider contract (#125 W5): every memory operation routes through VesmaSDK + the lifecycle hooks (pre_llm_call/on_session_start/post_tool_call) — no HTTP hop, no bespoke transport. Hybrid vector+FTS5 search with issuance secret scan, tag contract, Obsidian vault mirror, reversible compression (CCR), URL ingest, file watcher. Exposes 15 tools: vesma_search, vesma_add, vesma_recall_context, vesma_save_context, vesma_agent_recall, vesma_list_recent, vesma_list_tags, vesma_ingest_url, vesma_compress, vesma_retrieve, vesma_auto_collect_status, vesma_stats, vesma_watch_start, vesma_watch_stop, vesma_watch_status."
 version: "3.0.0"
 author: Korrnals
 license: Apache-2.0
@@ -10,32 +10,32 @@ config_keys:
   data_dir:
     description: "Vesma data dir (empty = vesma default). One owner process per data dir (SQLite single-writer)."
     default: ""
-    env_var: MNEMOS_DATA_DIR
+    env_var: VESMA_DATA_DIR
   vault_path:
     description: "Obsidian vault path (empty = vesma default)"
     default: ""
-    env_var: MNEMOS_VAULT__VAULT_PATH
+    env_var: VESMA_VAULT__VAULT_PATH
   project:
     description: "Default project slug for tag contract"
     default: "hermes"
-    env_var: MNEMOS_PROJECT
+    env_var: VESMA_PROJECT
   agent:
     description: "Default agent slug for tag contract"
     default: "hermes-default"
-    env_var: MNEMOS_AGENT
+    env_var: VESMA_AGENT
   auto_sync:
     description: "Mirror built-in memory writes and sync significant turns"
     default: "true"
-    env_var: MNEMOS_AUTO_SYNC
+    env_var: VESMA_AUTO_SYNC
   publish_on_write:
     description: "Promote writes to published immediately (LLM-less posture; set false when the knowledge pipeline runs)"
     default: "true"
-    env_var: MNEMOS_PUBLISH_ON_WRITE
+    env_var: VESMA_PUBLISH_ON_WRITE
   sync_interval:
     description: "Sync every Nth turn (in addition to significant turns where user message > sync_min_user_chars)"
     default: "10"
-    env_var: MNEMOS_SYNC_INTERVAL
+    env_var: VESMA_SYNC_INTERVAL
   sync_min_user_chars:
     description: "Significance threshold: user-message characters"
     default: "50"
-    env_var: MNEMOS_SYNC_MIN_USER_CHARS
+    env_var: VESMA_SYNC_MIN_USER_CHARS

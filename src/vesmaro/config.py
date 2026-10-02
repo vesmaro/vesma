@@ -12,12 +12,7 @@ from typing import Any, Final, Literal
 import yaml
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
-from pydantic_settings import (
-    BaseSettings,
-    DotEnvSettingsSource,
-    EnvSettingsSource,
-    PydanticBaseSettingsSource,
-)
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +180,7 @@ class VesmaConfig(BaseModel):
     # is read AT PROVIDER CONSTRUCTION from the environment variable
     # NAMED here (see ``resolve_decision_provider``). The secret itself
     # never enters config files, git or logs — config carries the NAME
-    # of the env var, nothing else. Canonical name is the ``VESMA_`` one;
-    # when it is unset the adapter falls back to the deprecated
-    # ``VESMARO_OPENROUTER_API_KEY`` (accepted until 6.0).
+    # of the env var, nothing else.
     decision_jev_api_key_env: str = Field(
         default="VESMA_OPENROUTER_API_KEY", min_length=1, max_length=256
     )
@@ -1286,56 +1279,48 @@ class MeshConfig(BaseModel):
         return self
 
 
-# ── Dual env prefix: canonical ``VESMA_``, deprecated ``VESMARO_`` ───────────
+# ── Env prefix: canonical ``VESMA_`` only ─────────────────────────────────────
 #
 # Owner directive (train 5.3.0): the product end-state is ``vesma``-branded,
-# so the canonical settings prefix is ``VESMA_``. Removal of ``VESMARO_*``
-# (and ``MNEMOS_*``) is deferred to 6.0 — the ADR-0031 dual-period pattern
-# (same as ``VESMA_MCP_BRAND``): ``model_config`` keeps ``VESMARO_`` as its
-# built-in prefix (zero behaviour change for existing deployments) and
-# ``settings_customise_sources`` injects a ``VESMA_``-prefixed env/dotenv
-# twin one priority step above each ``VESMARO_`` layer. Per-field precedence
-# (high → low; sources deep-merge):
+# so the settings prefix is ``VESMA_``. 6.0.0 ends the #471 dual-read period:
+# the deprecated ``VESMARO_*``/``MNEMOS_*`` spellings are no longer honoured —
+# an export of only a deprecated name now falls through to the field default
+# (or errors for required fields), NOT to a silent legacy read. Per-field
+# precedence (high → low; sources deep-merge):
 #
-#   config.yaml (init kwargs) > VESMA_ env > VESMARO_ env >
-#   #139 short aliases (VESMA_ twin > legacy VESMARO_ name) >
-#   VESMA_ .env > VESMARO_ .env > field defaults.
+#   config.yaml (init kwargs) > VESMA_ env > #139 short aliases (VESMA_) >
+#   VESMA_ .env > field defaults.
 
 _ENV_PREFIX_CANONICAL: Final[str] = "VESMA_"
-_ENV_PREFIX_LEGACY: Final[str] = "VESMARO_"
 
 
-# ── Issue #139: legacy short env-name compatibility ──────────────────────────
+# ── Issue #139: short env-name compatibility ─────────────────────────────────
 #
-# ``Settings`` maps env vars with the canonical ``VESMA_`` prefix (the
-# deprecated ``VESMARO_`` twin stays accepted until 6.0) + ``__`` nesting, so
-# the canonical names for the nested ``vesma`` section fields are
+# ``Settings`` maps env vars with the canonical ``VESMA_`` prefix + ``__``
+# nesting, so the canonical names for the nested ``vesma`` section fields are
 # ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``. Historically the
 # repo docs and ``scripts/mcp-setup.sh`` advertised the shorter
-# ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` forms, which
+# ``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH`` forms, which
 # pydantic-settings silently ignores (no matching field). The mapping below
 # restores those two short names as compatibility aliases. Scope is
 # deliberately fixed to these two — this is NOT a general renaming engine.
-# Under the dual-prefix contract each legacy name also has a ``VESMA_`` twin
-# (``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH``) which wins when both are
-# present; the ``VESMARO_`` spellings stay accepted until 6.0.
+# The pre-5.3 ``VESMARO_`` spellings of both names are retired with the rest
+# of the deprecated prefixes in 6.0.0 and no longer read.
 
 _ENV_COMPAT_ALIASES: Final[dict[str, tuple[str, str]]] = {
-    # legacy env name            -> (settings section, field)
-    "VESMARO_DATA_DIR": ("mnemos", "data_dir"),
-    "VESMARO_VAULT__VAULT_PATH": ("mnemos", "vault_path"),
+    # short env name              -> (settings section, field)
+    "VESMA_DATA_DIR": ("mnemos", "data_dir"),
+    "VESMA_VAULT__VAULT_PATH": ("mnemos", "vault_path"),
 }
 
 
 class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
-    """Settings source mapping legacy short env names (#139) to nested fields.
+    """Settings source mapping short env names (#139) to nested fields.
 
     Reads the process environment (NOT ``.env`` files — that is a separate,
     lower-priority source) on every call, so each ``Settings()`` construction
     observes the current ``os.environ``. Empty-string values are treated as
-    unset. Each legacy ``VESMARO_`` name also accepts its canonical
-    ``VESMA_`` twin, which wins when both are set (dual-prefix contract,
-    deprecated names retire no earlier than 6.0).
+    unset.
     """
 
     def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
@@ -1346,8 +1331,7 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
     def __call__(self) -> dict[str, Any]:
         data: dict[str, dict[str, Any]] = {}
         for alias, (section, field_name) in _ENV_COMPAT_ALIASES.items():
-            canonical = f"{_ENV_PREFIX_CANONICAL}{alias.removeprefix(_ENV_PREFIX_LEGACY)}"
-            value = os.environ.get(canonical) or os.environ.get(alias, "")
+            value = os.environ.get(alias, "")
             if value:
                 data.setdefault(section, {})[field_name] = value
         return data
@@ -1380,11 +1364,9 @@ class Settings(BaseSettings):
     policies: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {
-        # Built-in prefix stays the DEPRECATED ``VESMARO_`` (zero behaviour
-        # change for existing deployments); the canonical ``VESMA_`` prefix
-        # rides on twin sources injected in ``settings_customise_sources``.
-        # Dual period until 6.0 (ADR-0031 pattern).
-        "env_prefix": _ENV_PREFIX_LEGACY,
+        # Canonical ``VESMA_`` prefix only (6.0.0 retired the #471 dual-read
+        # period: ``VESMARO_*``/``MNEMOS_*`` spellings are no longer honoured).
+        "env_prefix": _ENV_PREFIX_CANONICAL,
         "env_nested_delimiter": "__",
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -1405,9 +1387,7 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Insert the canonical ``VESMA_`` prefix twins above their deprecated
-        ``VESMARO_`` layers, and the #139 legacy alias source between env and
-        dotenv sources.
+        """Insert the #139 short-alias source between env and dotenv sources.
 
         Resulting precedence for any nested field (high → low; sources
         deep-merge, so higher priority wins per field):
@@ -1416,42 +1396,21 @@ class Settings(BaseSettings):
            so an explicit file value beats env vars. This mirrors the
            pre-existing pydantic-settings behaviour of canonical names
            (verified against pydantic-settings 2.14.2: init > env).
-        2. Canonical env: ``VESMA_<SECTION>__<FIELD>`` (e.g.
+        2. Env: ``VESMA_<SECTION>__<FIELD>`` (e.g.
            ``VESMA_MNEMOS__DATA_DIR`` / ``VESMA_MNEMOS__VAULT_PATH``).
-        3. Deprecated env: ``VESMARO_<SECTION>__<FIELD>`` — honoured only when
-           the ``VESMA_`` twin is absent; retires no earlier than 6.0.
-        4. Compat alias (this source): ``VESMA_DATA_DIR`` /
-           ``VESMA_VAULT__VAULT_PATH``, then the legacy short names
-           ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` — honoured
-           only when neither the file nor a canonical name provides the
-           field. A short alias therefore never overrides an explicit
-           config-file value and never wins against a canonical name; it only
-           fills the gap that previously fell through to the defaults.
-        5. Canonical ``.env`` entries: ``VESMA_*``.
-        6. Deprecated ``.env`` entries: ``VESMARO_*``.
-        7. Field defaults.
+        3. Short alias (this source): ``VESMA_DATA_DIR`` /
+           ``VESMA_VAULT__VAULT_PATH`` — honoured only when neither the file
+           nor a canonical name provides the field. A short alias therefore
+           never overrides an explicit config-file value and never wins
+           against a canonical name; it only fills the gap that previously
+           fell through to the defaults.
+        4. ``.env`` entries: ``VESMA_*``.
+        5. Field defaults.
         """
-        canonical_env = EnvSettingsSource(settings_cls, env_prefix=_ENV_PREFIX_CANONICAL)
-        # Mirror the effective dotenv configuration (``Settings(_env_file=…)``
-        # overrides included) so the twin only ever sees the same file(s).
-        if isinstance(dotenv_settings, DotEnvSettingsSource):
-            dotenv_file = dotenv_settings.env_file
-            dotenv_encoding = dotenv_settings.env_file_encoding
-        else:  # a custom dotenv source — fall back to the declared config
-            dotenv_file = settings_cls.model_config.get("env_file")
-            dotenv_encoding = settings_cls.model_config.get("env_file_encoding")
-        canonical_dotenv = DotEnvSettingsSource(
-            settings_cls,
-            env_file=dotenv_file,
-            env_file_encoding=dotenv_encoding,
-            env_prefix=_ENV_PREFIX_CANONICAL,
-        )
         return (
             init_settings,
-            canonical_env,
             env_settings,
             _EnvCompatAliasSettingsSource(settings_cls),
-            canonical_dotenv,
             dotenv_settings,
             file_secret_settings,
         )
@@ -1559,23 +1518,19 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
 
     Search order (identical to :func:`load_settings`):
       1. Explicit config_path argument
-      2. VESMA_CONFIG env var (deprecated VESMARO_CONFIG accepted until 6.0)
+      2. VESMA_CONFIG env var
       3. ./config.yaml in cwd
       4. ~/.mnemos/config.yaml
 
-    Env handling for ``vesmaro.data_dir`` / ``vesmaro.vault_path`` (per field,
+    Env handling for ``mnemos.data_dir`` / ``mnemos.vault_path`` (per field,
     high → low; full contract in ``Settings.settings_customise_sources``):
       config-file value > canonical env (``VESMA_MNEMOS__DATA_DIR`` /
-      ``VESMA_MNEMOS__VAULT_PATH``) > deprecated env (``VESMARO_MNEMOS__DATA_DIR``
-      / ``VESMARO_MNEMOS__VAULT_PATH``, accepted until 6.0) > legacy short alias
-      (``VESMA_DATA_DIR`` / ``VESMA_VAULT__VAULT_PATH`` and their pre-5.3
-      ``VESMARO_DATA_DIR`` / ``VESMARO_VAULT__VAULT_PATH`` spellings, issue #139
-      compatibility) > ``.env`` file > defaults.
+      ``VESMA_MNEMOS__VAULT_PATH``) > short alias (``VESMA_DATA_DIR`` /
+      ``VESMA_VAULT__VAULT_PATH``, issue #139 compatibility) > ``.env`` file >
+      defaults.
     """
     if config_path is None:
-        # Dual-prefix contract: VESMA_CONFIG is canonical; VESMARO_CONFIG is
-        # the deprecated alias (retires no earlier than 6.0).
-        env_config = os.environ.get("VESMA_CONFIG") or os.environ.get("VESMARO_CONFIG") or ""
+        env_config = os.environ.get("VESMA_CONFIG") or ""
         candidates: list[Path | None] = [
             Path(env_config) if env_config else None,
             Path.cwd() / "config.yaml",
@@ -1595,7 +1550,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
 
     Search order:
       1. Explicit config_path argument
-      2. VESMA_CONFIG env var (deprecated VESMARO_CONFIG accepted until 6.0)
+      2. VESMA_CONFIG env var
       3. ./config.yaml in cwd
       4. ~/.mnemos/config.yaml
 

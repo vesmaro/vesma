@@ -46,8 +46,10 @@ completion_app = typer.Typer(
     no_args_is_help=False,
 )
 
-# Env var Click/Typer uses to dispatch completion requests at runtime.
-_COMPLETE_VAR = "_VESMARO_COMPLETE"
+# Env var Click/Typer uses to dispatch completion requests at runtime
+# (6.0.0: renamed from the deprecated ``_VESMARO_COMPLETE`` — regenerate
+# installed completion scripts with ``vesma completion``).
+_COMPLETE_VAR = "_VESMA_COMPLETE"
 _PROG_NAME = "vesmaro"  # canonical; short hook `vesma` shares this completion
 
 # Shells we support for auto-install.

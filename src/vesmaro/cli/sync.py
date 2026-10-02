@@ -11,7 +11,7 @@ Two subcommands, wired into ``cli/main.py`` as a Typer sub-app:
   payload from memories in the configured ``shared_projects``, run the
   moderation pipeline (Part 1) on each, and write the result to a file
   (optionally AES-256-GCM encrypted with a passphrase from
-  ``VESMARO_EXPORT_PASSPHRASE``).
+  ``VESMA_EXPORT_PASSPHRASE``).
 * ``vesma sync import`` — read a compact payload (decrypting if
   needed), validate each record (reusing the #86 import-validation
   logic, adapted for the compact ``CompactRecord`` shape), and merge
@@ -81,7 +81,7 @@ __all__ = [
 #: Environment variable holding the sync export passphrase. The value
 #: is NEVER accepted as a CLI argument (per ``sensitive-data.instructions.md``
 #: arguments appear in process listings / shell history).
-_EXPORT_PASSPHRASE_ENV: str = "VESMARO_EXPORT_PASSPHRASE"
+_EXPORT_PASSPHRASE_ENV: str = "VESMA_EXPORT_PASSPHRASE"
 
 #: Maximum number of memories fetched per ``shared_projects`` query
 #: batch. The compact payload is built in-memory; cap the query so a
@@ -349,7 +349,7 @@ def run_sync_export(
     """Run a sync export and (unless dry-run) write the compact payload.
 
     See the module docstring for the full contract. The
-    ``VESMARO_EXPORT_PASSPHRASE`` environment variable is read only when
+    ``VESMA_EXPORT_PASSPHRASE`` environment variable is read only when
     ``encrypt=True``; if it is missing, no file is written and the
     result carries an error.
     """

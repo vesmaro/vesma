@@ -54,7 +54,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Most subcommands accept a `--config / -c` flag pointing at a YAML file. Search order is:
 
 1. `--config` argument (if present)
-2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMARO_CONFIG` stays accepted until 6.0; the 4.x spelling `MNEMOS_CONFIG` is deprecated)
+2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMARO_CONFIG` and the 4.x spelling `MNEMOS_CONFIG` are no longer read as of 6.0.0)
 3. `./config.yaml` in the current working directory
 4. `~/.mnemos/config.yaml`
 
@@ -66,8 +66,7 @@ vesma add --help
 The only other global flags are `--version / -V` (print the version) and `--verbose / -v` (DEBUG logging for `vesma serve` and `vesma mcp-server`). To change the log level permanently, set `logging.level` in the config file or the corresponding env var:
 
 ```bash
-VESMA_LOGGING__LEVEL=DEBUG vesma serve      # canonical (5.3+)
-# 5.0–5.2 read VESMARO_LOGGING__LEVEL; 4.x images read MNEMOS_LOGGING__LEVEL (both deprecated)
+VESMA_LOGGING__LEVEL=DEBUG vesma serve      # the only honoured spelling (6.0.0 retired the 5.0–5.2 VESMARO_* and 4.x MNEMOS_* spellings)
 ```
 
 ---
@@ -91,7 +90,7 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 | `VESMA_AUTO_COLLECT` | `0` | Set `1` to enable MCP auto-collect mode |
 | `VESMA_LOGGING__LEVEL` | `INFO` | Python logging level |
 
-> **Deprecated spellings: `VESMARO_*` (5.0–5.2) and `MNEMOS_*` (4.x).** The table above lists the canonical `VESMA_*` names (rebrand train 5.3.0; ADR-0031 dual-prefix contract). When the `VESMA_` twin is absent, the deprecated `VESMARO_*` spelling is still honoured — it retires no earlier than 6.0, so existing deployments keep working unchanged; when both are set, `VESMA_` wins. The 4.x-era `MNEMOS_*` spellings (`MNEMOS_CONFIG`, `MNEMOS_API__HOST`, `MNEMOS_API__PORT`, `MNEMOS_SEARCH__HYBRID_ALPHA`, `MNEMOS_EMBEDDING__PROVIDER`, `MNEMOS_LLM__PROVIDER`, `MNEMOS_LLM__MODEL`, `MNEMOS_AUTO_COLLECT`, `MNEMOS_LOGGING__LEVEL`) are no longer read. The short forms `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` (deprecated `VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` spellings likewise accepted until 6.0) are #139 compatibility aliases for the nested canonical names — canonical env wins on conflict.
+> **Retired spellings: `VESMARO_*` (5.0–5.2) and `MNEMOS_*` (4.x).** The table above lists the canonical `VESMA_*` names — the only ones read as of 6.0.0 (the ADR-0031 dual-read period is over; exports of only a deprecated spelling fall through to defaults). The short forms `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` are #139 compatibility aliases for the nested canonical names — a nested canonical name wins on conflict.
 
 > **Legacy aliases.** The short forms predate the nested naming and are kept for compatibility (#139). Both forms work. On conflict the canonical env name — and an explicit value in the config file — wins over the legacy alias; the alias only fills the gap that would otherwise fall through to the default.
 
@@ -587,8 +586,8 @@ The server speaks JSON-RPC 2.0 over stdin/stdout. There is no TCP port. The proc
 # Direct invocation (for debugging)
 vesma mcp-server
 
-# With auto-collect mode (4.x env spelling; canonical 5.3+: VESMA_AUTO_COLLECT)
-MNEMOS_AUTO_COLLECT=1 vesma mcp-server
+# With auto-collect mode
+VESMA_AUTO_COLLECT=1 vesma mcp-server
 
 # From VS Code (mcp.json snippet)
 ```
@@ -683,7 +682,7 @@ Permanently revoke a token (positional `TOKEN_ID` argument).
 
 | Subcommand | Required options | Purpose |
 |------------|------------------|---------|
-| `enroll` | `--token-id` | Generate a TOTP secret and print the provisioning URI + optional ASCII QR. Requires `MNEMOS_API__TOTP_MASTER_KEY` to encrypt the secret. |
+| `enroll` | `--token-id` | Generate a TOTP secret and print the provisioning URI + optional ASCII QR. Requires `VESMA_API__TOTP_MASTER_KEY` to encrypt the secret. |
 | `disable` | `--token-id` | Remove the TOTP secret from a token (disables 2FA for it). |
 | `test` | `--token-id`, `--code` | Verify a 6-digit code against the enrolled secret (operator smoke-test). |
 
@@ -739,7 +738,7 @@ vesma doctor [OPTIONS]
 
 Exit codes: `0` = all checks pass, `1` = one or more checks failed, `2` = warnings only.
 
-> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (deprecated spellings: `VESMARO_CONFIG` until 6.0, `MNEMOS_CONFIG` on 4.x) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
+> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMARO_CONFIG` and 4.x `MNEMOS_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
 
 ### `doctor --paths`
 

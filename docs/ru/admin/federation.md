@@ -64,7 +64,7 @@ federation:
     - project-umbra
   peers:
     mnemos-A:
-      bearer_token_env: MNEMOS_FED_PEER_A_TOKEN
+      bearer_token_env: VESMA_FED_PEER_A_TOKEN
       allowed_projects:
         - vesma
       allowed_types:
@@ -77,7 +77,7 @@ federation:
 ```
 
 Значение токена живёт в именованной переменной окружения (здесь
-`MNEMOS_FED_PEER_A_TOKEN`), заданной в окружении оператора или в
+`VESMA_FED_PEER_A_TOKEN`), заданной в окружении оператора или в
 секрет-менеджере — в конфиг-файл оно никогда не коммитится.
 
 ## 2. Триггер-коды — `src/vesmaro/trigger_codes.py`

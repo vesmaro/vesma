@@ -491,7 +491,7 @@ class TestFlagOffEquivalence:
         assert Settings().lanes.enabled is False, "LanesConfig.enabled must default to False"
 
     def test_env_override_enables_lanes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("VESMARO_LANES__ENABLED", "true")
+        monkeypatch.setenv("VESMA_LANES__ENABLED", "true")
         assert Settings().lanes.enabled is True
 
     def test_config_model_is_single_switch(self) -> None:
@@ -519,8 +519,8 @@ class TestFlagOffEquivalence:
 
     def test_type_boost_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Canonical env override for the B0 treatment, mirroring the
-        ``VESMARO_LANES__ENABLED`` override test above."""
-        monkeypatch.setenv("VESMARO_LANES__TYPE_BOOST", "true")
+        ``VESMA_LANES__ENABLED`` override test above."""
+        monkeypatch.setenv("VESMA_LANES__TYPE_BOOST", "true")
         assert Settings().lanes.type_boost is True
         assert Settings().lanes.enabled is False
 

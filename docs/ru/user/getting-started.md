@@ -73,7 +73,6 @@ mnemos_memory_server-*.whl покрывает линейку 4.x до deprecatio
 
 ```bash
 export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-# образы 4.x дополнительно принимают легаси-написание MNEMOS_API__TOTP_MASTER_KEY (deprecated)
 podman run -d --name vesma \
   -p 8787:8787 \
   -v vesma-data:/data \
@@ -279,9 +278,8 @@ MCP-регистрация (только ключи серверов — vesma �
 > сервера, которое integration-слой читает и ведёт (`servers["vesma"]`); ребрендингом оно не
 > тронуто. *Команда* — `vesma mcp-server`.
 
-> **Подсказка — режим автосбора.** Установите `VESMA_AUTO_COLLECT=1` (легаси-написание:
-> `MNEMOS_AUTO_COLLECT`, устарело) в блоке `env`
-> сервера, чтобы Vesma предлагал агенту вызывать `mnemos_save_context` каждые ~6
+> **Подсказка — режим автосбора.** Установите `VESMA_AUTO_COLLECT=1` в блоке `env`
+> сервера, чтобы Vesma предлагал агенту вызывать `vesma_save_context` каждые ~6
 > вызовов инструментов. О компромиссах см. [mcp-tools.md#auto-collect-mode](mcp-tools.md#режим-auto-collect).
 
 ---

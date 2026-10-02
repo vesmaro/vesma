@@ -238,7 +238,7 @@ pick_python() {
 # ── repo resolution ──────────────────────────────────────────────────
 default_vesmaro_repo() {
   if [[ -n "$VESMA_REPO_FLAG" ]]; then echo "$VESMA_REPO_FLAG"; return; fi
-  if [[ -n "${VESMARO_REPO:-}" ]]; then echo "$VESMARO_REPO"; return; fi
+  if [[ -n "${VESMA_REPO:-}" ]]; then echo "$VESMA_REPO"; return; fi
   local p="$HOME/LABs/Projects/Project-Vesma/vesma"
   if [[ -d "$p/.git" ]]; then echo "$p"; return; fi
   echo ""

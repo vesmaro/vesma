@@ -2,7 +2,7 @@
 
 Tools: vesma_add (enforces Vesma TagContract), vesma_search, vesma_recall_context,
 vesma_agent_recall (M3), vesma_auto_collect_status (per-signal compaction
-vector, M7), and others. Auto-collect driven by VESMARO_AUTO_COLLECT env var.
+vector, M7), and others. Auto-collect driven by VESMA_AUTO_COLLECT env var.
 
 MCP SDK 2.x port (#185): the 1.x runtime-decorator API
 (``@server.list_tools()`` / ``@server.call_tool()``) was removed in SDK 2.0
@@ -57,13 +57,8 @@ logger = logging.getLogger(__name__)
 _manager: Any = None  # MemoryManager — lazy init to avoid import-time side-effects
 
 # ── Auto-collect mode ──────────────────────────────────────────────────────────
-# Dual-prefix contract: canonical VESMA_AUTO_COLLECT wins; deprecated
-# VESMARO_AUTO_COLLECT stays accepted until 6.0.
 _auto_collect_state = {
-    "enabled": (
-        os.environ.get("VESMA_AUTO_COLLECT") or os.environ.get("VESMARO_AUTO_COLLECT", "")
-    ).lower()
-    in ("true", "1", "yes", "on"),
+    "enabled": os.environ.get("VESMA_AUTO_COLLECT", "").lower() in ("true", "1", "yes", "on"),
 }
 
 # ── Tool-name contract (6.0.0) ────────────────────────────────────────────────
@@ -1498,7 +1493,7 @@ async def _canonical_tools() -> list[Tool]:
                 "Inherits #86 federation defence: excludes mnemos:no-federate "
                 "records and redacts detected secrets in passing records. "
                 "When encrypt=true the passphrase is read from the "
-                "VESMARO_EXPORT_PASSPHRASE environment variable — never pass the "
+                "VESMA_EXPORT_PASSPHRASE environment variable — never pass the "
                 "passphrase value in the tool arguments (it would appear in logs)."
             ),
             input_schema={
@@ -1556,7 +1551,7 @@ async def _canonical_tools() -> list[Tool]:
                         "default": False,
                         "description": (
                             "When true, encrypt the output with the passphrase "
-                            "from the VESMARO_EXPORT_PASSPHRASE env var."
+                            "from the VESMA_EXPORT_PASSPHRASE env var."
                         ),
                     },
                     "output_path": {
@@ -2217,22 +2212,17 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     )
 
     # ── Encryption: passphrase from env, never from args ───────────────────
-    # Dual-prefix contract: canonical VESMA_ name wins; the deprecated
-    # VESMARO_ spelling stays accepted until 6.0.
     encrypt = bool(args.get("encrypt", False))
     passphrase: str | None = None
     if encrypt:
-        passphrase = os.environ.get("VESMA_EXPORT_PASSPHRASE") or os.environ.get(
-            "VESMARO_EXPORT_PASSPHRASE"
-        )
+        passphrase = os.environ.get("VESMA_EXPORT_PASSPHRASE")
         if not passphrase:
             return {
                 "error": (
                     "encrypt=true but VESMA_EXPORT_PASSPHRASE environment "
-                    "variable is not set or empty (deprecated spelling "
-                    "VESMARO_EXPORT_PASSPHRASE also accepted until 6.0). Set "
-                    "it before calling vesma_export — the passphrase value "
-                    "must never appear in tool arguments."
+                    "variable is not set or empty. Set it before calling "
+                    "vesma_export — the passphrase value must never appear "
+                    "in tool arguments."
                 )
             }
 

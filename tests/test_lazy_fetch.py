@@ -64,13 +64,13 @@ runner = CliRunner()
 
 _PROJECT = "proj"
 _PEER = "peer-a"
-_TOKEN_ENV = "VESMARO_TEST_FETCH_TOKEN"
+_TOKEN_ENV = "VESMA_TEST_FETCH_TOKEN"
 _AGENT = "agent-x"
 
 #: The script double — installed as ``federation.fetch.mesh_bin`` so the
 #: fetch leg spawns a REAL subprocess (same pattern as the meta-poller
 #: tests). Behaviour is driven by the JSON state file
-#: (``MNEMOS_TEST_FETCH_STATE``): ``records`` / ``not_found`` (the
+#: (``VESMA_TEST_FETCH_STATE``): ``records`` / ``not_found`` (the
 #: envelope answer), ``fail`` / ``fail_code`` (non-zero exit + stderr),
 #: ``bad_json`` (garbage stdout), ``noise`` (INFO lines on stdout
 #: BEFORE the envelope — the noisy-wire hardening). Every invocation
@@ -84,7 +84,7 @@ import sys
 
 def main() -> int:
     argv = sys.argv[1:]
-    state_path = os.environ["MNEMOS_TEST_FETCH_STATE"]
+    state_path = os.environ["VESMA_TEST_FETCH_STATE"]
     with open(state_path) as f:
         state = json.load(f)
     state.setdefault("calls", []).append(argv)
@@ -135,7 +135,7 @@ class MeshFetchDouble:
 @pytest.fixture
 def mesh(tmp_path: Path) -> MeshFetchDouble:
     d = MeshFetchDouble(tmp_path)
-    os.environ["MNEMOS_TEST_FETCH_STATE"] = str(d.state_path)
+    os.environ["VESMA_TEST_FETCH_STATE"] = str(d.state_path)
     return d
 
 

@@ -306,7 +306,7 @@ class TestHeartbeatConfig:
         assert settings.awareness.native_heartbeat_mode == "shadow"
 
     def test_env_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE", "canary")
+        monkeypatch.setenv("VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE", "canary")
         settings = Settings(
             mnemos={
                 "vault_path": str(tmp_path / "vault"),

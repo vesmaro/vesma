@@ -555,7 +555,7 @@ class TestCliFilterCommand:
             f"embedding:\n"
             f"  provider: nano\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
 
         runner = CliRunner()
         # First add a memory
@@ -590,7 +590,7 @@ class TestCliFilterCommand:
             f"embedding:\n"
             f"  provider: nano\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
 
         runner = CliRunner()
         # Add a couple of memories
@@ -618,7 +618,7 @@ class TestCliFilterCommand:
             f"embedding:\n"
             f"  provider: nano\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
 
         runner = CliRunner()
         result = runner.invoke(cli_app, ["filter"])

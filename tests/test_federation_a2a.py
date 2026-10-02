@@ -46,7 +46,7 @@ from vesmaro.trigger_codes import TriggerCode
 PEER_A = "mnemos-A"
 PEER_B = "mnemos-B"
 PROJECT = "project-mnemos"
-TOKEN_ENV = "VESMARO_FED_PEER_VESMARO_A_TOKEN"
+TOKEN_ENV = "VESMA_FED_PEER_VESMARO_A_TOKEN"
 TOKEN_VALUE = "mnk_fed_mnemos-A_exampletoken123"
 FAKE_AWS_KEY = "AKIA" + "T" * 16
 
@@ -301,7 +301,7 @@ class TestMediatePullASide:
     ) -> None:
         # mediate_pull_a_side with use_a2a=True should fall back to HTTP
         # transport (Phase 2 does not wire the live MCP server).
-        os.environ["VESMARO_FED_PEER_VESMARO_A_URL"] = "https://example.invalid"
+        os.environ["VESMA_FED_PEER_VESMARO_A_URL"] = "https://example.invalid"
 
         from vesmaro.federation_client import pull_from_peer as real_pull
 

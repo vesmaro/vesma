@@ -356,7 +356,7 @@ class TestTagsNormalizeCliStripsSpaces:
             f"embedding:\n"
             f"  provider: nano\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
 
         runner = CliRunner()
 

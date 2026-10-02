@@ -98,7 +98,7 @@ loopback, а также те же классы кодировок для `169.25
    должен передавать `revision=` (путь в `ONNXHubProvider.__init__` поднимает
    `ValueError`, если оператор не предоставил ревизию).
 2. **Конфигурируемость** — SHA можно переопределить через env var
-   `MNEMOS_EMBEDDING__HF_REVISION` или `config.yaml`. Операторы, меняющие
+   `VESMA_EMBEDDING__HF_REVISION` или `config.yaml`. Операторы, меняющие
    `embedding.model`, ОБЯЗАНЫ также обновить `embedding.hf_revision` до
    соответствующего закреплённого SHA.
 3. **Проверка SHA256 (запланировано, не реализовано)** — TODO для следующей
@@ -245,7 +245,7 @@ Vesma использует **непрозрачные bearer-токены** (п�
 
 TOTP-секреты на уровне токена шифруются в покое через AES-128 (Fernet),
 используя ключ, производный от `api.totp_master_key`. Мастер-ключ **только в
-env** (`MNEMOS_API__TOTP_MASTER_KEY`) и никогда не записывается на диск. Пустой
+env** (`VESMA_API__TOTP_MASTER_KEY`) и никогда не записывается на диск. Пустой
 мастер-ключ отклоняется при запуске с `ValueError`, когда `api.totp_enabled=true`.
 
 **Защита от replay**: колонка `totp_last_step` в строке каждого токена фиксирует
@@ -284,7 +284,7 @@ env** (`MNEMOS_API__TOTP_MASTER_KEY`) и никогда не записывае�
 
 ### 9.5 Стартовый guard CLI
 
-`vesma serve` экспортирует `MNEMOS_API__HOST` и `MNEMOS_API__PORT` в окружение
+`vesma serve` экспортирует `VESMA_API__HOST` и `VESMA_API__PORT` в окружение
 перед запуском uvicorn. Стартовый guard воркера проверяет экспортированный хост:
 non-loopback привязка отклоняется с ненулевым кодом выхода, если
 `api.auth_enabled=true` не установлено. Это предотвращает молчаливое открытие
@@ -328,8 +328,8 @@ API-ключи LLM-провайдеров (`openai_api_key`, `anthropic_api_key`
 окружения, никогда через `config.yaml` в VCS:
 
 ```bash
-export MNEMOS_LLM__OPENAI_API_KEY="sk-..."
-export MNEMOS_LLM__ANTHROPIC_API_KEY="sk-ant-..."
+export VESMA_LLM__OPENAI_API_KEY="sk-..."
+export VESMA_LLM__ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 ### 10.2 SSRF — заблокированные URL отклоняются, не сохраняются
@@ -495,7 +495,7 @@ key, database connection strings, и high-entropy base64-последовате�
   контент в compact-summary, `redact` → sanitized-контент, `refuse` →
   запись исключается и учитывается в `records_refused`. Compact-payload
   (`mnemos.federation.v1`) записывается в файл, опционально
-  AES-256-GCM зашифрованным с паролем из `MNEMOS_EXPORT_PASSPHRASE`
+  AES-256-GCM зашифрованным с паролем из `VESMA_EXPORT_PASSPHRASE`
   (никогда из CLI-аргумента).
 - **Импорт** — `vesma sync import` читает compact-payload
   (расшифровывая при необходимости через пароль из переменной

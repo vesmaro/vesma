@@ -31,7 +31,7 @@ from vesmaro.trigger_codes import TriggerCode
 PEER_A = "mnemos-A"
 PEER_B = "mnemos-B"
 PROJECT = "project-mnemos"
-TOKEN_ENV = "VESMARO_FED_PEER_VESMARO_A_TOKEN"
+TOKEN_ENV = "VESMA_FED_PEER_VESMARO_A_TOKEN"
 TOKEN_VALUE = "mnk_fed_mnemos-A_exampletoken123"
 BASE_URL = "https://example.invalid"
 
@@ -39,7 +39,7 @@ BASE_URL = "https://example.invalid"
 @pytest.fixture
 def tmp_settings(tmp_path: Path) -> Settings:
     os.environ[TOKEN_ENV] = TOKEN_VALUE
-    os.environ["VESMARO_FED_PEER_VESMARO_A_URL"] = BASE_URL
+    os.environ["VESMA_FED_PEER_VESMARO_A_URL"] = BASE_URL
     settings = Settings(
         mnemos={
             "vault_path": str(tmp_path / "vault"),
@@ -61,7 +61,7 @@ def tmp_settings(tmp_path: Path) -> Settings:
     )
     settings.resolve_paths()
     yield settings
-    os.environ.pop("VESMARO_FED_PEER_VESMARO_A_URL", None)
+    os.environ.pop("VESMA_FED_PEER_VESMARO_A_URL", None)
 
 
 def _mock(handler, settings: Settings, *, base_url: str = BASE_URL):
@@ -191,7 +191,7 @@ class TestConfigFailClosed:
     def test_missing_base_url_returns_refused_fallback(
         self, tmp_path: Path, tmp_settings: Settings
     ) -> None:
-        os.environ.pop("VESMARO_FED_PEER_VESMARO_A_URL", None)
+        os.environ.pop("VESMA_FED_PEER_VESMARO_A_URL", None)
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_ok_body())
@@ -215,8 +215,8 @@ class TestEnvVarResolution:
     def test_base_url_env_name_uppercases_and_replaces_dashes(
         self, tmp_path: Path, tmp_settings: Settings
     ) -> None:
-        # mnemos-A → VESMARO_FED_PEER_VESMARO_A_URL
-        os.environ["VESMARO_FED_PEER_VESMARO_A_URL"] = "https://example.invalid"
+        # mnemos-A → VESMA_FED_PEER_VESMARO_A_URL
+        os.environ["VESMA_FED_PEER_VESMARO_A_URL"] = "https://example.invalid"
 
         def handler(request: httpx.Request) -> httpx.Response:
             # The request URL must be on example.invalid (BASE_URL).
@@ -227,7 +227,7 @@ class TestEnvVarResolution:
         assert result.fell_back_to_local is False
 
     def test_base_url_override_takes_precedence(self, tmp_settings: Settings) -> None:
-        os.environ["VESMARO_FED_PEER_VESMARO_A_URL"] = "https://wrong.example.invalid"
+        os.environ["VESMA_FED_PEER_VESMARO_A_URL"] = "https://wrong.example.invalid"
 
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.host == "override.example.invalid"

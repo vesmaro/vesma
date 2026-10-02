@@ -35,10 +35,10 @@ args = ["mcp-server"]
 ```
 
 Ready-made one-liners for major harnesses: [mcp-presets.md](mcp-presets.md).
-No env vars are required; optional `VESMARO_MNEMOS__DATA_DIR` /
-`VESMARO_MNEMOS__VAULT_PATH` tune store locations — the shorter
-`VESMARO_DATA_DIR` / `VESMARO_VAULT__VAULT_PATH` (legacy compat aliases) forms also work again as
-compatibility aliases since the #139 fix, canonical names preferred
+No env vars are required; optional `VESMA_MNEMOS__DATA_DIR` /
+`VESMA_MNEMOS__VAULT_PATH` tune store locations — the shorter
+`VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` forms work as #139
+compatibility aliases, canonical names preferred
 (loopback needs no API key — never put secrets in the entry).
 
 ## 2 · Expose — grant the tools to the agent

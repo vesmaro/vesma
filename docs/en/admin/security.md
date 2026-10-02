@@ -97,7 +97,7 @@ This is **CWE-494** (download of code without integrity check).
    `revision=` (the code path in `ONNXHubProvider.__init__` raises
    `ValueError` if the operator does not provide one).
 2. **Configurable** — the SHA can be overridden via
-   `MNEMOS_EMBEDDING__HF_REVISION` env var or `config.yaml`. Operators
+   `VESMA_EMBEDDING__HF_REVISION` env var or `config.yaml`. Operators
    changing `embedding.model` MUST also update `embedding.hf_revision`
    to a matching pinned SHA.
 3. **SHA256 verification (planned, not yet implemented)** — TODO for a
@@ -243,7 +243,7 @@ hash, not a usable bearer string.
 
 Per-token TOTP secrets are encrypted at rest with AES-128 (Fernet) using a
 key derived from `api.totp_master_key`. The master key is **env-only**
-(`MNEMOS_API__TOTP_MASTER_KEY`) and is never written to disk. An empty
+(`VESMA_API__TOTP_MASTER_KEY`) and is never written to disk. An empty
 master key is rejected at startup with a `ValueError` when
 `api.totp_enabled=true`.
 
@@ -293,7 +293,7 @@ reuse issues. The middleware checks: `mnk_`-prefixed tokens with
 
 ### 9.5 CLI startup guard
 
-`vesma serve` exports `MNEMOS_API__HOST` and `MNEMOS_API__PORT` into the
+`vesma serve` exports `VESMA_API__HOST` and `VESMA_API__PORT` into the
 environment before launching uvicorn. The worker's startup guard checks the
 exported host: a non-loopback bind is refused with a non-zero exit unless
 `api.auth_enabled=true`. This prevents a misconfigured "auth later" deploy
@@ -337,8 +337,8 @@ This prevents accidental leakage through:
 via `config.yaml` in VCS:
 
 ```bash
-export MNEMOS_LLM__OPENAI_API_KEY="sk-..."
-export MNEMOS_LLM__ANTHROPIC_API_KEY="sk-ant-..."
+export VESMA_LLM__OPENAI_API_KEY="sk-..."
+export VESMA_LLM__ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 ### 10.2 SSRF — blocked URLs rejected, not stored
@@ -501,7 +501,7 @@ into the federation batch-sync path. See
   sanitized content, `refuse` → record excluded and counted in
   `records_refused`. The compact payload (`mnemos.federation.v1`) is
   written to a file, optionally AES-256-GCM encrypted with a passphrase
-  from `MNEMOS_EXPORT_PASSPHRASE` (never a CLI argument).
+  from `VESMA_EXPORT_PASSPHRASE` (never a CLI argument).
 - **Import** — `vesma sync import` reads the compact payload
   (decrypting if needed via a passphrase from the env var **named** by
   `--passphrase-env`), validates each record (reuses #86

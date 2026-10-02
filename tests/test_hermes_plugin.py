@@ -180,20 +180,20 @@ class TestToolSchemas:
 
 class TestConfigLoading:
     def test_default_project_and_agent(self, monkeypatch):
-        for var in ("VESMARO_PROJECT", "VESMARO_AGENT"):
+        for var in ("VESMA_PROJECT", "VESMA_AGENT"):
             monkeypatch.delenv(var, raising=False)
         cfg = _load_config()
         assert cfg["project"] == "hermes"
         assert cfg["agent"] == "hermes-default"
 
     def test_default_sync_interval(self, monkeypatch):
-        monkeypatch.delenv("VESMARO_SYNC_INTERVAL", raising=False)
+        monkeypatch.delenv("VESMA_SYNC_INTERVAL", raising=False)
         cfg = _load_config()
         assert cfg["sync_interval"] == 10
 
     def test_default_store_paths_empty(self, monkeypatch):
         """Empty data_dir/vault_path = mnemos defaults (no HTTP base_url)."""
-        for var in ("VESMARO_DATA_DIR", "VESMARO_VAULT__VAULT_PATH"):
+        for var in ("VESMA_DATA_DIR", "VESMA_VAULT__VAULT_PATH"):
             monkeypatch.delenv(var, raising=False)
         cfg = _load_config()
         assert cfg["data_dir"] == ""
@@ -202,7 +202,7 @@ class TestConfigLoading:
         assert "api_key" not in cfg
 
     def test_default_publish_on_write_true(self, monkeypatch):
-        monkeypatch.delenv("VESMARO_PUBLISH_ON_WRITE", raising=False)
+        monkeypatch.delenv("VESMA_PUBLISH_ON_WRITE", raising=False)
         cfg = _load_config()
         assert cfg["publish_on_write"] is True
 

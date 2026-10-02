@@ -298,7 +298,7 @@ If no checkpoint is found:
 No context found for project 'vesma'. Start by saving context with vesma_save_context.
 ```
 
-In **auto-collect mode** (`MNEMOS_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode Active` block is appended with mandatory session rules.
+In **auto-collect mode** (`VESMA_AUTO_COLLECT=1`), a `## 🔄 Auto-Collect Mode Active` block is appended with mandatory session rules.
 
 ### Example call
 
@@ -1409,7 +1409,7 @@ The `recommendation` field is one of:
 
 ### Auto-collect mode
 
-Set `MNEMOS_AUTO_COLLECT=1` in the server's environment. The reminder thresholds tighten:
+Set `VESMA_AUTO_COLLECT=1` in the server's environment. The reminder thresholds tighten:
 
 | Setting | Normal | Auto-collect |
 |---------|--------|--------------|
@@ -1782,7 +1782,7 @@ Every non-save tool call returns its normal payload **plus** an optional reminde
 ⚠️ [vesma] 12 tool calls since last checkpoint (970s ago). Consider calling vesma_save_context to preserve your current progress.
 ```
 
-This is informational; nothing in Vesma blocks the call. Disable by setting `MNEMOS_AUTO_COLLECT=0` (the default).
+This is informational; nothing in Vesma blocks the call. Disable by setting `VESMA_AUTO_COLLECT=0` (the default).
 
 ---
 
@@ -2170,7 +2170,7 @@ Federation defence-in-depth (#86) is inherited automatically because the tool wr
 | `tags` | array of string | no | — | Filter by tags (json only). |
 | `since` | string (ISO-8601) | no | — | Only memories created on or after this date (json only). |
 | `until` | string (ISO-8601) | no | — | Only memories created before this date (json only). |
-| `encrypt` | boolean | no | `false` | When `true`, encrypt the output. The passphrase is read from the `MNEMOS_EXPORT_PASSPHRASE` environment variable. |
+| `encrypt` | boolean | no | `false` | When `true`, encrypt the output. The passphrase is read from the `VESMA_EXPORT_PASSPHRASE` environment variable. |
 
 ### Returns
 
@@ -2188,7 +2188,7 @@ Federation defence-in-depth (#86) is inherited automatically because the tool wr
 
 ### Security note
 
-- **Passphrase via environment, never in arguments.** When `encrypt=true`, the server reads the passphrase from the `MNEMOS_EXPORT_PASSPHRASE` environment variable. Passing the passphrase value in `output_path` or any other argument would leak it into MCP logs — never do this.
+- **Passphrase via environment, never in arguments.** When `encrypt=true`, the server reads the passphrase from the `VESMA_EXPORT_PASSPHRASE` environment variable. Passing the passphrase value in `output_path` or any other argument would leak it into MCP logs — never do this.
 - **No inline content.** The tool writes to `output_path` and returns metadata only. Read the file from disk to inspect the export.
 - **`#86` inheritance.** `mnemos:no-federate` records are excluded; secrets in passing records are redacted. No extra configuration needed.
 
@@ -2224,7 +2224,7 @@ For an encrypted full snapshot:
 }
 ```
 
-(With `MNEMOS_EXPORT_PASSPHRASE` set in the server's environment.)
+(With `VESMA_EXPORT_PASSPHRASE` set in the server's environment.)
 
 ---
 
@@ -2298,7 +2298,7 @@ Restore (destructive) with confirmation:
 }
 ```
 
-Encrypted import (with `MNEMOS_IMPORT_PASS` set in the server's environment):
+Encrypted import (with `VESMA_IMPORT_PASS` set in the server's environment):
 
 ```json
 {
@@ -2306,7 +2306,7 @@ Encrypted import (with `MNEMOS_IMPORT_PASS` set in the server's environment):
   "arguments": {
     "source_path": "/tmp/encrypted.bin",
     "mode": "merge",
-    "passphrase_env": "MNEMOS_IMPORT_PASS"
+    "passphrase_env": "VESMA_IMPORT_PASS"
   }
 }
 ```

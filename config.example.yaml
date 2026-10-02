@@ -33,7 +33,7 @@ api:
   # --- Authentication (T-AUTH, ADR-0014) ---
   auth_enabled: false             # set true to enforce token auth on all routes
   totp_enabled: false             # set true to require TOTP 2FA after token login
-  # totp_master_key is env-only — set via MNEMOS_API__TOTP_MASTER_KEY; required when totp_enabled=true
+  # totp_master_key is env-only — set via VESMA_API__TOTP_MASTER_KEY; required when totp_enabled=true
   session_ttl_sec: 28800          # session lifetime in seconds (range 300–86400; default 8 h)
   session_pin_ip: false           # bind session token to the creation client IP
   behind_tls_proxy: false         # set true when TLS terminates upstream (required for non-loopback bind)
@@ -179,7 +179,7 @@ federation:
   #     # (format: mnk_fed_<peer_id>_<random> per ADR-0016). Never the
   #     # value — the server reads the token from this env var at
   #     # request time.
-  #     bearer_token_env: MNEMOS_FED_PEER_A_TOKEN
+  #     bearer_token_env: VESMA_FED_PEER_A_TOKEN
   #     # Which projects this peer may pull. Empty = none (fail-closed).
   #     # ["*"] = all projects in `shared_projects` (explicit wildcard).
   #     allowed_projects:
@@ -249,9 +249,9 @@ mesh:
 # <data_dir>/update-check.json. Surfaces: the `update_available` field of
 # `mnemos_stats`, a stderr hint on `vesma --version`, and one INFO line at
 # server start. Hard env kill switch (independent of this section):
-# VESMARO_UPDATES_CHECK=off
+# VESMA_UPDATES_CHECK=off
 updates:
-  # Set false (env: VESMARO_UPDATES__CHECK_ENABLED=false) to stop all
+  # Set false (env: VESMA_UPDATES__CHECK_ENABLED=false) to stop all
   # version checks. Default: on.
   check_enabled: true
 
@@ -271,13 +271,13 @@ awareness:
   #            rendered into agent responses (the measuring wave)
   #   canary — wave 1: the envelope renders as the last TextContent
   #   on     — wave 2: the default flips after the wave 0/1 gates close
-  # Env: VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow
+  # Env: VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow
   native_heartbeat_mode: "off"
   # C14 rate cap: heartbeat compositions per (project, agent) per minute
   # (in-process; the key carries no session — session churn must not
   # reopen the window). 0 disables. Over-limit suppresses the tail with
   # a heartbeat_suppressed{rate_cap} event, never an error.
-  # Env: VESMARO_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0
+  # Env: VESMA_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0
   heartbeat_rate_limit_per_minute: 30
 
 # ── Logging (v2.1) ───────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Legacy `mnemos_*` MCP tool names removed — the server registers and accepts the canonical `vesma_*` names only** (`src/vesmaro/mcp_server.py`; the `VESMA_MCP_BRAND`/`VESMARO_MCP_BRAND` manifest brand switch is gone with it, the vesma-only surface is now unconditional). What breaks: clients that allowlist legacy `mnemos_*` tool names stop seeing every tool and their `mnemos_*` calls answer `Unknown tool`. Migration: re-run `vesma integration setup` and update tool allowlists to the `vesma_*` spellings.
 
+- **Deprecated `VESMARO_*`/`MNEMOS_*` env spellings removed — `VESMA_*` is the only honoured prefix** (6.0.0 ends the #471 dual-read period, ADR-0031 pattern). What breaks: deployments exporting `VESMARO_*` env vars (`VESMARO_CONFIG`, `VESMARO_API__*`, `VESMARO_UPDATES_CHECK`, `VESMARO_AUTO_COLLECT`, `VESMARO_ORT_THREADS`, `VESMARO_EXPORT_PASSPHRASE`, `VESMARO_OPENROUTER_API_KEY`, `VESMARO_FED_PEER_*_URL`, `VESMARO_SYNC_*`), the 4.x `MNEMOS_*` spellings in `scripts/`, or the `_VESMARO_COMPLETE` shell-completion variable silently fall through to defaults / lose the setting. Migration: rename exports to the `VESMA_*` spellings (nested form `VESMA_<SECTION>__<FIELD>`, #139 short aliases `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` still work), regenerate shell completion (`vesma completion`), re-run `vesma integration setup` (generated env blocks now write canonical names), and update `VESMA_SYNC_*` environment files for `sync-peers.sh` (the `MNEMOS_SYNC_*` compatibility shim is removed too).
+
 ## [Unreleased]
 
 ### Changed

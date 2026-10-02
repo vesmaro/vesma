@@ -555,7 +555,7 @@ class TestScannerCLI:
 
     @pytest.fixture
     def isolated_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        """Point VESMARO_CONFIG at an empty YAML so the CLI uses tmp_path."""
+        """Point VESMA_CONFIG at an empty YAML so the CLI uses tmp_path."""
         from vesmaro.cli._manager import reset_manager
 
         reset_manager()
@@ -574,7 +574,7 @@ class TestScannerCLI:
             f"  interval_hours: 1\n"
             f"  incremental: true\n"
         )
-        monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         yield cfg
         reset_manager()
         reset_scanner()

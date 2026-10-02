@@ -91,7 +91,7 @@ _AGENT = "gcw-test-agent"
 #: Bearer token env var name — value is irrelevant for the mesh server
 #: (auth is via the Unix socket + filesystem perms, not bearer tokens),
 #: but :class:`PeerConfig` requires the field.
-_TOKEN_ENV = "VESMARO_FED_PEER_TEST_TOKEN"
+_TOKEN_ENV = "VESMA_FED_PEER_TEST_TOKEN"
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────

@@ -59,7 +59,7 @@ def test_warns_when_peer_mtls_pinning_off(tmp_path: Path, caplog: pytest.LogCapt
         tmp_path,
         peers={
             "mnemos-A": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN",
+                bearer_token_env="VESMA_FED_PEER_TOKEN",
                 mtls_cert_fingerprint=None,
             ),
         },
@@ -79,7 +79,7 @@ def test_no_warning_when_peer_mtls_pinning_on(
         tmp_path,
         peers={
             "mnemos-A": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN",
+                bearer_token_env="VESMA_FED_PEER_TOKEN",
                 mtls_cert_fingerprint="aa:bb:cc:dd",
             ),
         },
@@ -107,15 +107,15 @@ def test_warns_per_peer_with_off_peer(tmp_path: Path, caplog: pytest.LogCaptureF
         tmp_path,
         peers={
             "mnemos-A": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN_A",
+                bearer_token_env="VESMA_FED_PEER_TOKEN_A",
                 mtls_cert_fingerprint=None,
             ),
             "mnemos-B": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN_B",
+                bearer_token_env="VESMA_FED_PEER_TOKEN_B",
                 mtls_cert_fingerprint=None,
             ),
             "mnemos-C": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN_C",
+                bearer_token_env="VESMA_FED_PEER_TOKEN_C",
                 mtls_cert_fingerprint="11:22:33:44",
             ),
         },
@@ -135,7 +135,7 @@ def test_warning_is_non_blocking(tmp_path: Path, caplog: pytest.LogCaptureFixtur
         tmp_path,
         peers={
             "mnemos-A": PeerConfig(
-                bearer_token_env="VESMARO_FED_PEER_TOKEN",
+                bearer_token_env="VESMA_FED_PEER_TOKEN",
                 mtls_cert_fingerprint=None,
             ),
         },

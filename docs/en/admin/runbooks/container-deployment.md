@@ -47,17 +47,16 @@ podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest tracks the newest relea
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
   ghcr.io/vesmaro/vesmaro:4.3.0
 ```
 
 `docker` works identically — swap `podman` for `docker`. The image includes
 `config.container.yaml` baked in as `/app/config.yaml` — no config mount is
 required unless you want to override settings. The TOTP master key is
-mandatory (the baked config binds to `0.0.0.0`); 4.x images read the
-`MNEMOS_API__*` spelling, 5.0–5.2 read `VESMARO_API__*`, and 5.3+ read the
-canonical `VESMA_API__*` — setting all of them is always safe (the
-deprecated spellings stay accepted until 6.0, ADR-0031).
+mandatory (the baked config binds to `0.0.0.0`). The canonical env name is
+`VESMA_API__TOTP_MASTER_KEY` — 6.0.0 retired the 4.x `MNEMOS_API__*` and
+5.0–5.2 `VESMARO_API__*` spellings (ADR-0031 dual period is over).
 
 Verify:
 
@@ -126,7 +125,7 @@ podman secret, and defines health probes.
 ### Start
 
 ```bash
-printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\nVESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
+printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
@@ -163,13 +162,12 @@ automatically; to run a local build instead, build the image first (see
 ### Set the TOTP key
 
 The unit reads the key from `~/.vesmaro.env` (`EnvironmentFile`), so no unit
-editing is needed. All env spellings must carry the same value — 4.x images
-read `MNEMOS_API__*`, 5.0–5.2 read `VESMARO_API__*`, 5.3+ read the canonical
-`VESMA_API__*` (ADR-0031):
+editing is needed. 6.0.0 reads the canonical `VESMA_API__*` spelling only
+(4.x `MNEMOS_API__*` / 5.0–5.2 `VESMARO_API__*` are retired, ADR-0031):
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\nVESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
+printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesmaro.env
 ```
 
 ### Install the unit
@@ -253,7 +251,7 @@ Key settings:
 | `api.host` | `0.0.0.0` | Binds to all interfaces — **requires auth** |
 | `api.port` | `8787` | Container-internal port; host mapping set in compose/run |
 | `api.auth_enabled` | `true` | Must stay `true` when `host` is `0.0.0.0` |
-| `api.totp_enabled` | `true` | Requires TOTP 2FA; key via `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` on 5.0–5.2, canonical `VESMA_API__*` from 5.3 — ADR-0031) |
+| `api.totp_enabled` | `true` | Requires TOTP 2FA; key via the canonical `VESMA_API__TOTP_MASTER_KEY` (6.0.0: older spellings retired — ADR-0031) |
 | `api.behind_tls_proxy` | `true` | TLS terminates upstream (Caddy, nginx, ingress, etc.) |
 | `embedding.provider` | `nano` | vesma-embed-v1: bundled local model, works offline; no GPU required |
 

@@ -66,13 +66,8 @@ def _check_config() -> CheckResult:
         settings.resolve_paths()
     except Exception as exc:  # doctor must report, not crash
         return CheckResult("Config", CheckStatus.FAIL, f"load failed: {exc}")
-    # Dual-prefix contract (see vesmaro.config.find_config_file): VESMA_CONFIG
-    # canonical, VESMARO_CONFIG deprecated alias (retires no earlier than 6.0).
-    cfg_path = (
-        os.environ.get("VESMA_CONFIG")
-        or os.environ.get("VESMARO_CONFIG")
-        or str(Path.home() / ".mnemos" / "config.yaml")
-    )
+    # See vesmaro.config.find_config_file for the full search order.
+    cfg_path = os.environ.get("VESMA_CONFIG") or str(Path.home() / ".mnemos" / "config.yaml")
     return CheckResult(
         "Config",
         CheckStatus.PASS,

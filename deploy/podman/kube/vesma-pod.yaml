@@ -2,7 +2,7 @@
 # For a real cluster (K8s/K3s) use the Helm chart: deploy/helm/vesma/.
 #
 # Usage:
-#   printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<your-key>\n' \
+#   printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
 #     | podman secret create vesma-totp -
 #   podman volume create vesma-data && podman volume create vesma-vault
 #   podman kube play deploy/podman/kube/mnemos-pod.yaml
@@ -25,10 +25,10 @@ spec:
           hostPort: 8787
           protocol: TCP
       env:
-        - name: MNEMOS_CONFIG
+        - name: VESMA_CONFIG
           value: /app/config.yaml
-      # 4.x images read MNEMOS_API__*, 5.x read VESMARO_API__* (ADR-0031) —
-      # the secret must carry both lines (see header example).
+      # Canonical VESMA_* names only (6.0.0): the secret carries
+      # VESMA_API__TOTP_MASTER_KEY (see header example).
       envFrom:
         - secretRef:
             name: vesma-totp
