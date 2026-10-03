@@ -66,6 +66,10 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
   `<!-- version:… -->` marker blocks (the release pipeline rewrites versions inside them).
 - Frozen history: `docs/project/` (ADRs, reports, milestones) is not kept "current" — do not
   restate it, reference it.
+- **CHANGELOG entries target `[Unreleased]` only.** A wave's entries are never written directly
+  into an already-released version section, and released sections are never silently rewritten —
+  a correction is an explicit relocation with a dated correction marker (see the "Corrected
+  2026-10-03" subsection of [5.4.0] in [CHANGELOG.md](CHANGELOG.md)).
 
 ## Where things live
 
