@@ -1149,7 +1149,7 @@ class ProjectIndexer:
         write — the previous graph survives untouched."""
         started = time.perf_counter()
         root = os.fspath(root)
-        surface = FileSurface(root).collect()
+        surface = FileSurface(root, self._config.exclude_globs).collect()
         self.check_limits(surface, root)
         result = IndexResult()
         _, extractions, records = self._parse_all(project, surface, result)

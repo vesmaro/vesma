@@ -127,6 +127,15 @@ code_graph:
   # secret_allowlist:
   #   - "tests/**"
   #   - "benchmarks/**"
+  # Ephemeral-directory exclusion (defect 2026-10-03: a git worktree
+  # checked out INSIDE the registered root was indexed like first-party
+  # sources — duplicated symbols, re-poisoned fixtures). Directory globs
+  # pruned ON TOP of the built-in denylist: a bare name matches a
+  # directory of that name at ANY depth; an entry with "/" matches the
+  # repo-relative directory path (fnmatch). Setting the field REPLACES
+  # this default list — the built-in denylist (.git/wt/node_modules & co)
+  # can never be lifted. Env: VESMA_CODE_GRAPH__EXCLUDE_GLOBS (JSON).
+  exclude_globs: ["wt", ".venv", "venv", "node_modules", "dist", "build", ".tox", ".git"]
   # Watch poll: global registration cap + adaptive interval
   # base + 1s per 500 indexed files, capped.
   watch_max_registrations: 8
