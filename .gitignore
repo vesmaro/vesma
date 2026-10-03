@@ -98,3 +98,6 @@ benchmarks/experiments/f1_task_scope/runs/
 /.local/
 /.zcode/
 integrations/skills/.remember/
+
+# 481: machine-local release symlink — repo-local only, never tracked again
+scripts/run-release-local.sh
