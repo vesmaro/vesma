@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # pypi-publish.sh — local PyPI publish pipeline for the vesma
-# distribution (mnemos-memory-server on PyPI; import package: vesma).
+# distribution (PyPI project: vesma; import package: vesmaro — since the
+# 5.0.0 rebrand; CLIs: vesmaro canonical, vesma short hook, mnemos deprecated).
 #
 # WHY: GitHub Actions is billing-locked (#117) so the release workflow
 # does not fire, and a first PyPI publish is an IRREVERSIBLE owner
@@ -38,8 +39,8 @@
 # only), twine check and --full-smoke.
 #
 # First publish is an OWNER-executed step (irreversible on PyPI; the
-# distribution name is decided: mnemos-memory-server). Matrix history +
-# procedure:
+# PyPI project is live: vesma — update uploads use --i-own-name).
+# Name-matrix history + procedure:
 #   docs/en/admin/runbooks/pypi-publish.md
 #
 # See: issue #122 (ADR-0017 Phase 0), scripts/local-release.sh (sibling
@@ -98,7 +99,8 @@ fi
 
 PKG_NAME=$(grep -m1 '^name' pyproject.toml | cut -d'"' -f2)
 # PEP 503 / wheel-filename normalization: hyphens and dots become underscores
-# ("mnemos-memory-server" -> wheel "mnemos_memory_server-...").
+# (dist "vesma" -> wheel "vesma-..."; mirror "vesma-memory-server" ->
+# wheel "vesma_memory_server-...").
 PKG_FS="${PKG_NAME//[-.]/_}"
 PYV=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
 
@@ -243,7 +245,7 @@ echo ""
 echo "=== [$IDX/$TOTAL] G4 metadata smoke (--no-deps venv) ==="
 if $DRY_RUN; then echo "→ DRY-RUN: venv install --no-deps + version + integrations/scripts check"; record "G4 metadata smoke" "SKIP"
 else
-  SMOKE_DIR=$(mktemp -d /tmp/mnemos-pypi-smoke.XXXXXX)
+  SMOKE_DIR=$(mktemp -d /tmp/vesmaro-pypi-smoke.XXXXXX)
   SMV="$SMOKE_DIR/.venv"
   # Debian/Ubuntu often ships python3 without ensurepip (python3-venv not
   # installed): fall back to a pip-less venv + the OUTER pip targeting the
@@ -261,7 +263,7 @@ from importlib.metadata import version
 name, expected = os.environ["NAME"], os.environ["EXPECTED"]
 v = version(name)
 assert v == expected, f"installed {v} != expected {expected}"
-p = r.files("vesma")
+p = r.files("vesmaro")
 assert (p / "integrations").is_dir(), "integrations/ missing from wheel — integration setup would break on pip installs"
 assert (p / "scripts").is_dir(), "scripts/ missing from wheel — mcp-setup.sh would not be found"
 print(f"✓ installed {name} {v}; integrations/ + scripts/ shipped")
@@ -280,7 +282,7 @@ if $FULL_SMOKE; then
   echo ""; echo "=== [$IDX/$TOTAL] Full smoke (throwaway venv, full deps, CLI) ==="
   if $DRY_RUN; then echo "→ DRY-RUN: venv install + vesma --version"; record "Full smoke" "SKIP"
   else
-    SMOKE_DIR=$(mktemp -d /tmp/mnemos-pypi-fullsmoke.XXXXXX)
+    SMOKE_DIR=$(mktemp -d /tmp/vesmaro-pypi-fullsmoke.XXXXXX)
     SMV="$SMOKE_DIR/.venv"
     FULL_PIP="$SMV/bin/pip install -q"
     if ! python -m venv "$SMV" 2>/dev/null || [[ ! -x "$SMV/bin/pip" ]]; then
@@ -289,7 +291,7 @@ if $FULL_SMOKE; then
     fi
     set +e
     $FULL_PIP "$WHEEL" \
-      && OUT="$("$SMV/bin/mnemos" --version 2>&1)"; rc=$?
+      && OUT="$("$SMV/bin/vesma" --version 2>&1)"; rc=$?
     set -e
     rm -rf "$SMOKE_DIR"
     if [[ $rc -eq 0 ]]; then echo "→ $OUT"; record "Full smoke" "PASS"
@@ -330,11 +332,11 @@ if ! $PUBLISH; then
   echo ""
   echo "════════════════════════════════════════════════════════════════"
   echo " HARD STOP — everything prepared, NOTHING uploaded to PyPI."
-  echo " First publish is an OWNER-executed step (name decided: see pyproject)."
-  echo " (PyPI names/versions are immutable — see the runbook):"
+  echo " Uploads are OWNER-executed steps (project live: vesma; updates"
+  echo " need --i-own-name; PyPI names/versions are immutable — runbook):"
   echo "   docs/en/admin/runbooks/pypi-publish.md"
   echo "════════════════════════════════════════════════════════════════"
-  echo " Ready-to-run publish command (after owner decides the name):"
+  echo " Ready-to-run publish command (version must NOT already be on PyPI):"
   echo "   export PYPI_TOKEN=<api-token>"
   echo "   git checkout vX.Y.Z && scripts/pypi-publish.sh --publish --full-smoke"
 fi

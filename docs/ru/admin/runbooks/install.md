@@ -32,9 +32,11 @@ pipx install vesma
 curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
 ```
 
-> ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш). Доребрендинговый
-> `mnemos-memory-server` живёт до deprecation; голый `pip install vesma` —
-> посторонний сторонний проект.
+> ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш — основной канал;
+> `pip install vesma` ставит этот проект). Доребрендинговый
+> `mnemos-memory-server` живёт до deprecation (заморожен на 5.2.0),
+> `vesma-memory-server` — наше живое зеркало. Таблица каналов:
+> [ранбук публикации в PyPI](pypi-publish.md).
 
 ## Конфигурация
 
