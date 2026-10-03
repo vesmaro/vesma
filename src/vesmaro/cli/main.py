@@ -1806,6 +1806,10 @@ app.add_typer(scanner_app, name="scanner")
 #                                             mnemos_register_project, #454)
 #   vesma graph repoint <project> <root>    — re-point a ghost registration
 #                                             whose root moved on disk (#450)
+#   vesma graph delete <project>            — drop the graph index; a ghost
+#                                             (root missing) is removed
+#                                             entirely behind --force +
+#                                             --confirm-name
 
 from vesmaro.cli.graph_cmd import graph_app  # noqa: E402
 

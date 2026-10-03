@@ -1344,12 +1344,12 @@ curl -s "http://127.0.0.1:8000/graph/projects?agent=ci-runner"
 
 ### `DELETE /graph/projects/{project_id}` — drop a graph index
 
-Drop the project's graph INDEX (sidecar data only — never the project entity). The ONLY operation that clears the poisoned set (PG3). `agent` is a required query parameter; the request body carries optional `session` and `reason`.
+Drop the project's graph INDEX (sidecar data). A **live** registration keeps its project entity; a **ghost** registration (root missing on disk) is removed ENTIRELY — index and registration row — behind the evidence gate: body `confirm=true` plus `confirm_name` echoing the project name (a gate-less attempt answers `403 confinement-refused`). The ONLY operation that clears the poisoned set (PG3). `agent` is a required query parameter; the request body carries optional `session`, `reason`, `confirm`, `confirm_name`.
 
 **Response 200**
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
 
 **Example**

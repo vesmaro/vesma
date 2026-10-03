@@ -2067,10 +2067,13 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_delete_graph_project",
             description=(
-                "Drop a project's graph INDEX (sidecar data — never the "
-                "project entity in the main DB). The ONLY operation that "
-                "clears the poisoned set (PG3 'forever'). Audited with a "
-                "reason."
+                "Drop a project's graph INDEX (sidecar data). A LIVE "
+                "registration keeps its project entity in the main DB; "
+                "a GHOST registration (root missing on disk) is removed "
+                "ENTIRELY — index AND registration row — behind the "
+                "evidence gate: confirm=true plus confirm_name echoing "
+                "the project name. The ONLY operation that clears the "
+                "poisoned set (PG3 'forever'). Audited with a reason."
             ),
             input_schema={
                 "type": "object",
@@ -2079,6 +2082,21 @@ async def _canonical_tools() -> list[Tool]:
                     "agent": _GRAPH_AGENT_PROP,
                     "session": _GRAPH_SESSION_PROP,
                     "reason": {"type": "string", "description": "Audit reason (optional)."},
+                    "confirm": {
+                        "type": "boolean",
+                        "description": (
+                            "Required true to delete a GHOST registration "
+                            "(registered root missing on disk). A live-root "
+                            "delete purges the index only and needs no gate."
+                        ),
+                    },
+                    "confirm_name": {
+                        "type": "string",
+                        "description": (
+                            "Echo of the project name — required together "
+                            "with confirm for a ghost deletion."
+                        ),
+                    },
                 },
                 "required": ["project_id", "agent"],
             },
@@ -3360,7 +3378,11 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         if project_id is None:
             return bad("project_id", "a non-empty string")
         return get_graph_service(mgr).delete_graph_project(
-            project_id, reason=_optional_str(args.get("reason")), **common
+            project_id,
+            confirm=bool(args.get("confirm", False)),
+            confirm_name=_optional_str(args.get("confirm_name")),
+            reason=_optional_str(args.get("reason")),
+            **common,
         )
     except GraphToolError as exc:
         payload = {"error": str(exc)}

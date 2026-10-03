@@ -54,7 +54,7 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | The graph contract card: kinds, limits, token contract | no |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Registered projects joined with their index status | no |
-| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (sidecar only); clears the poisoned set | no |
+| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Drop the graph index (ghosts: also the registration row, behind confirm + name echo); clears the poisoned set | no |
 | [`mnemos_register_project`](#mnemos_register_project) | Register a project root for the graph (#454) — the answer to "not registered" refusals | no |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Compaction signal vector (M7) | no |
 | [`mnemos_compress`](#mnemos_compress) | Reversible compression (CCR) — cache original, embed marker | no |
@@ -1360,7 +1360,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 }
 ```
 
-`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`.
+`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`, or remove the ghost outright with `mnemos_delete_graph_project` behind the evidence gate (`confirm=true` + `confirm_name`).
 
 ### Related
 
@@ -1370,7 +1370,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 
 ## `mnemos_delete_graph_project`
 
-Drop a project's graph INDEX — the sidecar data only, never the project entity in the main DB. The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
+Drop a project's graph INDEX — the sidecar data (index subtree, poisoned set, freshness stamp). A **live** registration (root exists on disk) keeps its project entity in the main DB — the v1 contract. A **ghost** registration (registered root missing on disk) is removed ENTIRELY — index AND the registration row — behind the explicit evidence gate: `confirm=true` plus `confirm_name` echoing the project name (a gate-less attempt is refused with `confinement-refused` and audited as `delete-refused`). The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
 
 ### Input
 
@@ -1380,12 +1380,16 @@ Drop a project's graph INDEX — the sidecar data only, never the project entity
 | `agent` | string | **yes** | — | Caller identity (PG7). |
 | `session` | string | no | — | Optional session id for the audit trail. |
 | `reason` | string | no | — | Audit reason. |
+| `confirm` | boolean | no | `false` | Required `true` to delete a GHOST registration (root missing on disk). A live-root delete purges the index only and needs no gate. |
+| `confirm_name` | string | no | — | Echo of the project name — required together with `confirm` for a ghost. |
 
 ### Output
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
+
+`ghost: true` + `deregistered: true` mark the evidence-gated ghost removal — the registration row is gone; `mnemos_register_project` brings it back when needed. CLI twin: `vesma graph delete <project>` (ghosts: `--force --confirm-name <project>`).
 
 ### Related
 

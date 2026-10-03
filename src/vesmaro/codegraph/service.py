@@ -205,7 +205,10 @@ class ProjectDirectory(Protocol):
     """Main-store surface the service is allowed to see: project
     registration (PG2) plus the meta surface the epoch helpers use.
     ``save_project`` joined in PG-0.5 — the auto-indexer's marker-gated
-    auto-registration writes through the same boundary (never raw SQL)."""
+    auto-registration writes through the same boundary (never raw SQL).
+    ``delete_project`` joined with the ghost-delete surface (#450
+    family) — the confirm-gated removal of a registration whose root
+    is gone on disk writes through the same boundary too."""
 
     def get_project(self, project_id: str) -> ProjectRecord | None: ...
 
@@ -214,6 +217,8 @@ class ProjectDirectory(Protocol):
     def list_projects(self) -> list[ProjectRecord]: ...
 
     def save_project(self, project: Project) -> None: ...
+
+    def delete_project(self, project_id: str) -> bool: ...
 
     def get_meta(self, key: str) -> str | None: ...
 
@@ -1716,30 +1721,91 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
         reason: str | None = None,
+        confirm: bool = False,
+        confirm_name: str | None = None,
     ) -> dict[str, Any]:
-        """Drop the INDEX (sidecar subtree + poisoned set + freshness
-        stamp) — never the project entity in the main DB. Audit first-
-        class event."""
+        """Drop a project's graph INDEX (sidecar subtree + poisoned set
+        + freshness stamp); a GHOST registration (registered root
+        missing on disk) is removed ENTIRELY — index AND the main-DB
+        registration row — behind an explicit evidence gate. Audit
+        first-class event.
+
+        The project is resolved BY NAME/ID — deliberately NOT through
+        ``_resolve_root``, which refuses exactly the missing-root state
+        a ghost delete must be able to remove (the #450 repoint
+        precedent). A LIVE registration (root exists) keeps the v1
+        contract: only the derived index is dropped, the registration
+        row stays. A ghost (no registered path, a non-absolute one, or
+        ``paths[0]`` gone on disk) is dead weight nothing can index —
+        the delete removes the row too, but only behind the evidence
+        gate: ``confirm=True`` AND ``confirm_name`` echoing the project
+        name (the mesh-RESTORE ``confirm`` hard-gate precedent). Every
+        ghost-gate refusal is audited (``delete-refused``, the #464
+        P3-2 audit-first-class precedent)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
-        registered = self._resolve_root(project_id)
-        key = registered.graph_key
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise GraphConfinementError("project_id is required and must be a non-empty string")
+        wanted = project_id.strip()
+        project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
+        if project is None:
+            raise GraphConfinementError(
+                f"project {wanted!r} is not registered in the projects table "
+                f"(PG2: the graph indexes only registered roots){REGISTER_HINT}"
+            )
+        key = project.name
+        registered = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+        root = registered[0] if registered else None
+        ghost = root is None or not os.path.isabs(root) or not os.path.isdir(root)
+        if ghost and (not confirm or (confirm_name or "").strip() != key):
+            missing: list[str] = []
+            if not confirm:
+                missing.append("confirm=true")
+            if (confirm_name or "").strip() != key:
+                missing.append(f"confirm_name={key!r} (echo of the project name)")
+            self._audit.record(
+                key,
+                "delete-refused",
+                actor,
+                session=sess,
+                reason=reason,
+                details={"ghost": True, "gate": "missing " + " and ".join(missing)},
+            )
+            raise GraphConfinementError(
+                f"project {key!r} is a GHOST (registered root missing on disk); deleting "
+                f"the registration requires the evidence gate — pass {' and '.join(missing)}"
+            )
         deleted = self._store.purge_project(key)
         # The purge clears only the poisoned set + last_indexed stamp;
         # the auto-path suspension flag is this operation's to lift too
         # (fresh start — the next hint may auto-index from scratch).
         self._store.set_meta(auto_suspended_key(key), "0")
         bump_project_graph_epoch(self._main, key)
+        deregistered = False
+        if ghost:
+            deregistered = bool(self._main.delete_project(key))
         self._audit.record(
             key,
             "delete",
             actor,
             session=sess,
             reason=reason,
-            details={"deleted_nodes": deleted},
+            details={"deleted_nodes": deleted, "ghost": ghost},
         )
-        logger.info("codegraph: project graph %s deleted (%d nodes) by %s", key, deleted, actor)
-        return {"project": key, "deleted_nodes": deleted, "status": "deleted"}
+        logger.info(
+            "codegraph: project graph %s deleted (%d nodes%s) by %s",
+            key,
+            deleted,
+            ", registration removed" if deregistered else "",
+            actor,
+        )
+        return {
+            "project": key,
+            "deleted_nodes": deleted,
+            "status": "deleted",
+            "ghost": ghost,
+            "deregistered": deregistered,
+        }
 
 
 #: Beacon v1 (§3.5) budget discipline: the whole line is capped at 200

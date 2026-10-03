@@ -1819,6 +1819,8 @@ class GraphDeleteRequest(BaseModel):
     agent: str
     session: str | None = None
     reason: str | None = None
+    confirm: bool = False
+    confirm_name: str | None = None
 
 
 def _graph_error_status(exc: Exception) -> int:
@@ -1974,10 +1976,17 @@ async def graph_projects(agent: str, session: str | None = None) -> dict[str, An
 
 @app.delete("/graph/projects/{project_id}")
 async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict[str, Any]:
-    """Twin of mnemos_delete_graph_project (the sidecar index, never the project)."""
+    """Twin of mnemos_delete_graph_project (index purge; a GHOST
+    registration — root missing on disk — is removed entirely behind
+    the confirm + confirm_name evidence gate)."""
     return _graph_call(
         lambda: _graph_service().delete_graph_project(
-            project_id, agent=req.agent, session=req.session, reason=req.reason
+            project_id,
+            agent=req.agent,
+            session=req.session,
+            reason=req.reason,
+            confirm=req.confirm,
+            confirm_name=req.confirm_name,
         )
     )
 

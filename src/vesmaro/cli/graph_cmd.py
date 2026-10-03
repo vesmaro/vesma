@@ -8,8 +8,12 @@ Operator/agent commands around the PG2 registration table:
 * ``vesma graph repoint <project> <new-root>`` — re-point a GHOST
   registration (root moved on disk) at its new location, purging the
   stale index (#450).
+* ``vesma graph delete <project>`` — drop a project's graph index; a
+  GHOST registration (root gone on disk) is removed ENTIRELY — index
+  and registration row — behind the evidence gate (``--force`` plus
+  ``--confirm-name`` echoing the project name).
 
-Both are thin adapters over :class:`vesmaro.codegraph.service.
+All are thin adapters over :class:`vesmaro.codegraph.service.
 CodeGraphService` — the confinement gates (existing dir, marker-or-
 ``.git``, not ``$HOME``/fs-root, one-root-one-graph), the PG7
 attribution binding and the audit trail live in the service, exactly
@@ -30,7 +34,7 @@ console = Console()
 
 graph_app = typer.Typer(
     name="graph",
-    help="Project-graph registration lifecycle (register / repoint).",
+    help="Project-graph registration lifecycle (register / repoint / delete).",
     no_args_is_help=True,
 )
 
@@ -123,3 +127,57 @@ def repoint_cmd(
     )
     if result.get("status") == "repointed":
         console.print("[dim]next: index the project to rebuild the graph[/dim]")
+
+
+@graph_app.command(name="delete")
+def delete_cmd(
+    project: Annotated[str, typer.Argument(help="Project id or name to delete.")],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Required to delete a GHOST registration (registered root missing on disk).",
+        ),
+    ] = False,
+    confirm_name: Annotated[
+        str | None,
+        typer.Option(
+            "--confirm-name",
+            help="Echo of the project name — required together with --force for a ghost.",
+        ),
+    ] = None,
+    agent: Annotated[
+        str, typer.Option("--agent", help="Audit actor (PG7 attribution).")
+    ] = CLI_ACTOR,
+    reason: Annotated[
+        str, typer.Option("--reason", help="Audit reason (default: graph-delete).")
+    ] = "graph-delete",
+    config: str = ConfigOption,
+) -> None:
+    """Delete a project's graph index (#450 family).
+
+    A LIVE registration (root exists on disk) loses only its derived
+    index — the registration row stays. A GHOST (registered root gone
+    from disk) is removed ENTIRELY — index and registration row —
+    behind the evidence gate: ``--force`` plus ``--confirm-name
+    <project>`` echoing the name. Audited as action 'delete' (ghost-gate
+    refusals: 'delete-refused').
+    """
+    from vesmaro.codegraph.service import GraphToolError
+
+    try:
+        result = _service(config).delete_graph_project(
+            project, agent=agent, reason=reason, confirm=force, confirm_name=confirm_name
+        )
+    except GraphToolError as exc:
+        _refused(exc)
+    console.print(
+        f"[green]{result['status']}[/green] project {result['project']!r} "
+        f"({result['deleted_nodes']} nodes)"
+        + (" — ghost registration removed" if result.get("ghost") else "")
+    )
+    if result.get("ghost"):
+        console.print(
+            "[dim]the registration row is gone; "
+            "'vesma graph register' brings it back when needed[/dim]"
+        )
