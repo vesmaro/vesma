@@ -210,7 +210,31 @@ exclude = ["benchmarks", "training"]
 # inside the wheel so `mnemos integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
 # `vesmaro/scripts/` — reachable via `importlib.resources.files("vesmaro") / "scripts"`.
-"scripts" = "vesmaro/scripts"
+#
+# Enumerated file-by-file, NOT as a directory mapping (#481): scripts/ contains
+# a machine-local symlink (run-release-local.sh, untracked since #481). A
+# directory force-include walks it — in source-tree wheel builds it leaked the
+# target's content into the artefact, and on any fresh clone the dangling
+# symlink crashed every build (hatchling os.stat). Enumeration pins wheel
+# content independent of checkout state; add new scripts here explicitly.
+# The list equals the sdist-visible scripts (release wheels are built FROM the
+# sdist): scripts/local-ci is sdist-excluded, so local-ci/run-all.sh ships in
+# no wheel — source-tree builds used to differ here (latent divergence, #481).
+"scripts/check_version.py" = "vesmaro/scripts/check_version.py"
+"scripts/deploy.sh" = "vesmaro/scripts/deploy.sh"
+"scripts/gen-proto.sh" = "vesmaro/scripts/gen-proto.sh"
+"scripts/install.sh" = "vesmaro/scripts/install.sh"
+"scripts/local-ci.sh" = "vesmaro/scripts/local-ci.sh"
+"scripts/local-release.sh" = "vesmaro/scripts/local-release.sh"
+"scripts/mcp-setup.sh" = "vesmaro/scripts/mcp-setup.sh"
+"scripts/publish-all.mjs" = "vesmaro/scripts/publish-all.mjs"
+"scripts/pypi-publish.sh" = "vesmaro/scripts/pypi-publish.sh"
+"scripts/release.sh" = "vesmaro/scripts/release.sh"
+"scripts/setup-distrobox.sh" = "vesmaro/scripts/setup-distrobox.sh"
+"scripts/smoke-federation.sh" = "vesmaro/scripts/smoke-federation.sh"
+"scripts/sync-peers.sh" = "vesmaro/scripts/sync-peers.sh"
+"scripts/sync-readme-version.sh" = "vesmaro/scripts/sync-readme-version.sh"
+"scripts/sync-version.mjs" = "vesmaro/scripts/sync-version.mjs"
 
 [tool.ruff]
 target-version = "py311"
