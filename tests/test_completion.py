@@ -18,12 +18,14 @@ alias set does not depend on the machine running the suite.
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+import vesmaro.cli.completion as completion_mod
 from vesmaro.cli.complete_cmd import get_completions
 from vesmaro.cli.completion import (
     _canonical_source_line,
@@ -307,6 +309,253 @@ class TestInstallerRc:
         assert "mnemos/completion/" not in content
 
 
+# ── Wave W-I: rc integrity — block-aware migration + syntax validation ───────
+
+
+class TestRcIntegrity:
+    """The 2026-10-03 field-incident class: a half-removed legacy block left
+    an orphaned ``fi`` in ~/.bashrc; bash aborts parsing the ENTIRE rc at
+    that line, so completion stayed dead even with the canonical source line
+    present — and the line-grep ``_is_installed`` reported "already
+    installed". These tests pin: whole-construct migration, orphan cleanup,
+    byte-stable idempotency, and never-write-a-broken-rc validation."""
+
+    def rc_text(self, fake_home: Path) -> str:
+        return (fake_home / ".bashrc").read_text(encoding="utf-8")
+
+    def assert_bash_n_ok(self, rc: Path) -> None:
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode == 0, f"rc does not parse: {proc.stderr}"
+
+    def test_field_incident_orphan_fi_removed_and_rc_parses(self, fake_home: Path) -> None:
+        """EXACT field incident: comment + orphaned fi + old one-liner source."""
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "# Mnemos (AI Agents memorize)\n"
+            "fi\n"
+            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
+            "&& source ~/.mnemos/completion/vesmaro.bash\n"
+            "export PATH=$PATH:/usr/local/bin\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        # The orphaned closer is gone; the rc parses again.
+        assert not any(line.strip() == "fi" for line in content.splitlines())
+        self.assert_bash_n_ok(rc)
+        # The old one-liner is migrated, the canonical line added exactly once.
+        assert "vesmaro.bash" not in content
+        assert content.count(CANONICAL_BASH) == 1
+        # Unrelated content survives — including the unrelated comment.
+        assert "export PATH=$PATH:/usr/local/bin" in content
+        assert "# Mnemos (AI Agents memorize)" in content
+
+    def test_multiline_legacy_if_removed_whole_no_orphan(self, fake_home: Path) -> None:
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "export EDITOR=vim\n"
+            "# Mnemos completion\n"
+            "if [ -f ~/.mnemos/completion/mnemos.bash ]; then\n"
+            "    source ~/.mnemos/completion/mnemos.bash\n"
+            "fi\n"
+            "export PATH=$PATH:/usr/local/bin\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        assert "mnemos.bash" not in content
+        assert not any(line.strip() == "fi" for line in content.splitlines())
+        assert "export EDITOR=vim" in content
+        assert "export PATH=$PATH:/usr/local/bin" in content
+        assert content.count(CANONICAL_BASH) == 1
+        self.assert_bash_n_ok(rc)
+
+    def test_legacy_if_else_block_removed_whole(self, fake_home: Path) -> None:
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "if [ -f ~/.mnemos/completion/mnemos.bash ]; then\n"
+            "    source ~/.mnemos/completion/mnemos.bash\n"
+            "else\n"
+            "    echo skip\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        # Whole-block semantics: even non-legacy inner lines go with the block.
+        assert "else" not in content
+        assert "echo skip" not in content
+        assert not any(line.strip() in ("fi", "then") for line in content.splitlines())
+        assert content.count(CANONICAL_BASH) == 1
+        self.assert_bash_n_ok(rc)
+
+    def test_nested_legacy_if_removed_to_matching_fi(self, fake_home: Path) -> None:
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "if [ -f ~/.mnemos/completion/mnemos.bash ]; then\n"
+            "  if [ -x /usr/bin/foo ]; then\n"
+            "    source ~/.mnemos/completion/mnemos.bash\n"
+            "  fi\n"
+            "fi\n"
+            "echo kept\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        assert "mnemos.bash" not in content
+        assert "/usr/bin/foo" not in content
+        assert not any(line.strip() == "fi" for line in content.splitlines())
+        assert "echo kept" in content
+        self.assert_bash_n_ok(rc)
+
+    def test_user_own_block_survives_legacy_removal(self, fake_home: Path) -> None:
+        """Over-removal guard: a healthy user if-block keeps its fi; only the
+        legacy one-liner goes."""
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            'if [ -d "$HOME/.local/bin" ]; then\n'
+            '    export PATH="$HOME/.local/bin:$PATH"\n'
+            "fi\n"
+            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
+            "&& source ~/.mnemos/completion/vesmaro.bash\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        assert 'if [ -d "$HOME/.local/bin" ]; then' in content
+        assert 'export PATH="$HOME/.local/bin:$PATH"' in content
+        assert "fi" in content  # the user block's closer survives
+        assert "vesmaro.bash" not in content
+        assert content.count(CANONICAL_BASH) == 1
+        self.assert_bash_n_ok(rc)
+
+    def test_orphaned_then_done_else_removed(self, fake_home: Path) -> None:
+        """Orphaned continuations/closers whose opener is historically gone
+        are cleaned up too (same damage class as the orphaned fi)."""
+        rc = fake_home / ".bashrc"
+        rc.write_text("then\ndone\nelse\nexport A=1\n", encoding="utf-8")
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        assert "then" not in content
+        assert "done" not in content
+        assert "else" not in content
+        assert "export A=1" in content
+        assert content.count(CANONICAL_BASH) == 1
+        self.assert_bash_n_ok(rc)
+
+    def test_unbalanced_legacy_opener_removes_only_itself(self, fake_home: Path) -> None:
+        """An opener whose block never closes (rc damaged before us): only
+        the opener is removed — user content below is never consumed to
+        EOF. The result parses, so the install succeeds."""
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "if [ -f ~/.mnemos/completion/mnemos.bash ]; then\necho user-stuff\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0, result.output
+        content = self.rc_text(fake_home)
+        assert "mnemos.bash" not in content
+        assert "echo user-stuff" in content
+        assert content.count(CANONICAL_BASH) == 1
+        self.assert_bash_n_ok(rc)
+
+    def test_healthy_rc_untouched_byte_for_byte_on_rerun(self, fake_home: Path) -> None:
+        """Idempotency regression: once installed, re-runs must not touch the
+        rc at all (no churn, no validation-triggered rewrites)."""
+        rc = fake_home / ".bashrc"
+        rc.write_text("export EDITOR=vim\nalias ll='ls -la'\n", encoding="utf-8")
+        assert runner.invoke(app, ["completion", "bash"]).exit_code == 0
+        first = rc.read_bytes()
+        for _ in range(2):
+            assert runner.invoke(app, ["completion", "bash"]).exit_code == 0
+        assert rc.read_bytes() == first
+        assert first.count(CANONICAL_BASH.encode()) == 1
+
+    def test_migration_write_rejected_by_validation_restores_original(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Validation failure on the legacy-migration write: original content
+        restored byte-for-byte, non-zero exit, clear error."""
+        rc = fake_home / ".bashrc"
+        original = (
+            "export KEEP=1\n"
+            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
+            "&& source ~/.mnemos/completion/vesmaro.bash\n"
+        )
+        rc.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(
+            completion_mod,
+            "_check_shell_syntax",
+            lambda shell, path: (False, "bash: line 2: syntax error near unexpected token"),
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 1
+        assert rc.read_text(encoding="utf-8") == original
+        assert "syntax validation" in result.output
+        assert "restored" in result.output
+        assert CANONICAL_BASH not in rc.read_text(encoding="utf-8")
+
+    def test_append_write_rejected_by_validation_restores_original(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Validation failure on the canonical-line append: the pre-append
+        content is restored, non-zero exit (migration was a no-op, so only
+        the append write is on trial)."""
+        rc = fake_home / ".bashrc"
+        original = "export KEEP=1\n"
+        rc.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(
+            completion_mod,
+            "_check_shell_syntax",
+            lambda shell, path: (False, "bash: line 3: parse error"),
+        )
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 1
+        assert rc.read_text(encoding="utf-8") == original
+        assert CANONICAL_BASH not in rc.read_text(encoding="utf-8")
+
+    def test_real_bash_n_rejection_restores_and_exits_nonzero(self, fake_home: Path) -> None:
+        """End-to-end with the REAL bash -n: a pre-damaged rc (unterminated
+        quote) fails validation after the append → restore + exit 1."""
+        rc = fake_home / ".bashrc"
+        original = 'echo "unterminated\n'
+        rc.write_text(original, encoding="utf-8")
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode != 0  # fixture is genuinely broken for bash
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 1
+        assert rc.read_text(encoding="utf-8") == original
+        assert "syntax validation" in result.output
+        assert CANONICAL_BASH not in rc.read_text(encoding="utf-8")
+
+    def test_validation_invokes_shell_minus_n_per_shell(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """bash -n / zsh -n run on the rc after writes; fish never validates."""
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, returncode=0, stderr="")
+
+        monkeypatch.setattr(completion_mod.subprocess, "run", fake_run)
+        assert runner.invoke(app, ["completion", "bash"]).exit_code == 0
+        assert ["bash", "-n", str(fake_home / ".bashrc")] in calls
+        calls.clear()
+        assert runner.invoke(app, ["completion", "zsh"]).exit_code == 0
+        assert ["zsh", "-n", str(fake_home / ".zshrc")] in calls
+        calls.clear()
+        assert runner.invoke(app, ["completion", "fish"]).exit_code == 0
+        assert calls == []  # fish: rc-less, validation not applicable
+
+
 # ── Doctor: Completion check ──────────────────────────────────────────────────
 
 
@@ -348,3 +597,29 @@ class TestDoctorCompletionCheck:
 
     def test_canonical_line_helper_is_exact_contract(self, fake_home: Path) -> None:
         assert _canonical_source_line("bash") == CANONICAL_BASH
+
+    def test_warn_when_rc_does_not_parse_field_incident(self, fake_home: Path) -> None:
+        """Wave W-I: canonical line present + script fine, but the rc aborts
+        parsing (orphaned fi ABOVE the source line) → WARN with the exact
+        failing line and the repair hint — not PASS."""
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        runner.invoke(app, ["completion", "bash"])
+        rc = fake_home / ".bashrc"
+        rc.write_text(f"# Mnemos (AI Agents memorize)\nfi\n{CANONICAL_BASH}\n", encoding="utf-8")
+        result = _check_completion()
+        assert result.status == CheckStatus.WARN
+        assert "does not parse" in result.detail
+        assert "line 2" in result.detail
+        assert "fi" in result.detail
+        assert "vesma completion bash" in result.detail
+
+    def test_pass_when_rc_parses_healthy(self, fake_home: Path) -> None:
+        """Healthy rc (parses clean) keeps the PASS — the new parse gate does
+        not misfire on well-formed files."""
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        runner.invoke(app, ["completion", "bash"])
+        result = _check_completion()
+        assert result.status == CheckStatus.PASS
+        assert "does not parse" not in result.detail
