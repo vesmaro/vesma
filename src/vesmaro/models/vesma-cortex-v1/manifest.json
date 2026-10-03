@@ -1,12 +1,10 @@
 {
   "name": "vesma-cortex-v1",
   "version": "1",
-  "weights_sha256": "281bd0fd39bf9935c86a8b32fed68191fa9b7da95a83b53eb10844a5fd100ac7",
-  "size_bytes": 98404,
-  "opset": 15,
+  "sha256": "71f0572de76c0657c6dd33df81c1155ede4f3e05b4e44f1c75e0080ff367baa7",
   "embedder_pin": "nano:sha256:3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
-  "corpus_fingerprint": "beea9355e855fcf041d8689bfbecd3b2f7be8e1fe65a2c524f9b35d1fc5ad278",
-  "trained_at": "2026-10-01T03:20:07+00:00",
+  "corpus_fingerprint": "ebd9b17ad4635d32959a751968689363a2d2e45178f3416b905006973a34ba21",
+  "trained_at": "2026-10-03T07:02:16+00:00",
   "candidate": "d-boost",
   "features": [
     "cos_target",
@@ -24,8 +22,6 @@
     "lang_match"
   ],
   "feature_set_sha256": "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af",
-  "graph_input": "features: float32[13]",
-  "graph_output": "probability: float32[1] (sigmoid inside the graph)",
-  "license": "Apache-2.0",
-  "source": "vesmaro/vesma-cortex data/stage2/artifact-ds1000 (W5d bundle, calibration ADOPT 2026-10-01)"
+  "size_bytes": 98404,
+  "weights_path": "data/stage2/artifact-b2/model.onnx"
 }
