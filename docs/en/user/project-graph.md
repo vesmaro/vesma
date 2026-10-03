@@ -101,6 +101,43 @@ manual flow above keeps its full contract either way.
 
 ---
 
+## Hybrid search: the literal fallback (W-H)
+
+The symbol index is shapes-only — string literals (tool names, route
+paths, env-var names) are invisible to it. Since W-H, `mnemos_search_graph`
+is **hybrid**: when the symbol graph returns ZERO hits for a query, a
+bounded read-only literal scan of the registered project root answers with
+content rows instead of an empty result.
+
+Behavior:
+
+- **Symbol first, always.** Any symbol hit — the answer is symbol rows
+  only; the fallback never runs. Every symbol row now carries the additive
+  `match_kind: "symbol"`.
+- **Literal rows.** On an empty symbol result the scan answers
+  `match_kind: "literal"` rows (`path` / `line` / `snippet`, repo-relative,
+  line-text trimmed and capped at 240 chars, max 20 rows). They carry no
+  node ids — they are file content, not graph nodes. A top-level
+  `fallback_used: true` marker appears ONLY when the fallback ran (absent
+  otherwise — the shape never carries null placeholders).
+- **Bounded.** The scan reuses the indexer's surface denylists
+  (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles,
+  secret-bearing file names are never opened), never follows symlinks,
+  skips binary content and files over 1 MiB, and stops at a hard cap
+  (file count, ~2 s wall clock). A capped scan is logged as incomplete.
+- **Confined.** The scan never leaves the registered root. An
+  unregistered project is refused before any scan.
+- **PG4 holds.** Every literal row passes the same secrets detector as
+  snippet issuance; a finding DROPS the row (raw content is never issued),
+  and poisoned paths (PG3) never issue content at all. A scan that cannot
+  complete safely degrades to a no-fallback empty answer — never raw
+  content.
+- **Knob.** `code_graph.literal_fallback` (default `true`) disables the
+  leg; `search_graph` then stays symbol-only. The REST twin
+  `POST /graph/search` inherits the whole behavior unchanged.
+
+---
+
 ## Native auto-indexing (zero-touch)
 
 Since PG-0.5 the graph indexes **by itself**: every MCP tool call and every
@@ -191,8 +228,8 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
 |------|--------------|
 | `mnemos_index_project` | Full or incremental index of a registered root; serialized per project |
 | `mnemos_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
-| `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures |
-| `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag) |
+| `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H) |
+| `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails answer a candidate list (W-H) |
 | `mnemos_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
 | `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
 | `mnemos_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
@@ -279,6 +316,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
 | `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
+| `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
 | `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |

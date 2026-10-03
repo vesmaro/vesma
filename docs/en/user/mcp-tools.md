@@ -47,8 +47,8 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`mnemos_watch_status`](#mnemos_watch_status) | Report watch registrations and last poll outcome | no |
 | [`mnemos_index_project`](#mnemos_index_project) | Index a registered project root into the project graph (ADR-0032, on by default) | no |
 | [`mnemos_project_graph_status`](#mnemos_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
-| [`mnemos_search_graph`](#mnemos_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
-| [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
+| [`mnemos_search_graph`](#mnemos_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed; hybrid literal fallback on an empty result (W-H) | no |
+| [`mnemos_trace_path`](#mnemos_trace_path) | BFS over project edges from one symbol (depth ≤ 2); ambiguous tails answer a candidate list (W-H) | no |
 | [`mnemos_get_file_outline`](#mnemos_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
 | [`mnemos_get_code_snippet`](#mnemos_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
 | [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
@@ -1017,6 +1017,8 @@ fixtures, not a waiver of the issuance scan (PG4).
 
 Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
 
+**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
+
 ### Input
 
 | Field | Type | Required | Default | Description |
@@ -1059,6 +1061,28 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 }
 ```
 
+Literal-fallback response (W-H — the symbol graph had zero hits):
+
+```json
+{
+  "project": "vesma",
+  "query_kind": null,
+  "results": [
+    {
+      "match_kind": "literal",
+      "path": "src/vesmaro/mcp_server.py",
+      "line": 1864,
+      "snippet": "name=\"mnemos_search_graph\","
+    }
+  ],
+  "total_matches": 0,
+  "cursor": 0,
+  "has_more": false,
+  "fallback_used": true,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
 ### Related
 
 - HTTP equivalent: [`POST /graph/search`](http-api.md#post-graphsearch--search-the-project-graph)
@@ -1068,7 +1092,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 ## `mnemos_trace_path`
 
-BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `mnemos_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 
@@ -1110,6 +1134,37 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
 ```
 
 `truncated: true` means a fanout or total-work cap bit — the walk is honest about what it skipped.
+
+Ambiguous-tail response (W-H — a helpful payload, not an error):
+
+```json
+{
+  "project": "vesma",
+  "query": "update_fields",
+  "candidates": true,
+  "candidate_list": [
+    {
+      "qname": "vesmaro.models.Project.update_fields",
+      "kind": "Method",
+      "path": "src/vesmaro/models.py",
+      "start_line": 210,
+      "end_line": 240
+    },
+    {
+      "qname": "vesmaro.store.Row.update_fields",
+      "kind": "Method",
+      "path": "src/vesmaro/store.py",
+      "start_line": 88,
+      "end_line": 96
+    }
+  ],
+  "candidate_count": 2,
+  "has_more": false,
+  "cursor": 0,
+  "hint": "ambiguous symbol tail — re-run trace_path with the qualified name (qname) of the intended candidate",
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
 
 ### Related
 
