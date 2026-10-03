@@ -356,7 +356,7 @@ class AutoIndexer:
                     exc_info=True,
                 )
             return
-        report = staleness_check(graph_key, root, self._service.store)
+        report = staleness_check(graph_key, root, self._service.store, self._config)
         if not report.changed_files:
             return  # fresh — the beacon already says so; nothing to do
         self._service.index_project(

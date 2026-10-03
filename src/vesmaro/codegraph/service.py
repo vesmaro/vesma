@@ -887,7 +887,7 @@ class CodeGraphService:
     # ── freshness (§3.2 trigger (c): cheap, read-only) ──────────────────────
 
     def _staleness_payload(self, graph_key: str, root: str) -> dict[str, Any]:
-        report = incremental_mod.staleness_check(graph_key, root, self._store)
+        report = incremental_mod.staleness_check(graph_key, root, self._store, self._config)
         return {
             "total_files": report.total_files,
             "fresh_percent": report.fresh_percent,
@@ -927,7 +927,9 @@ class CodeGraphService:
             key = registered.graph_key
             if self._store.count_files(key) == 0:
                 return None  # no index yet — nothing to advertise
-            report = incremental_mod.staleness_check(key, registered.root, self._store)
+            report = incremental_mod.staleness_check(
+                key, registered.root, self._store, self._config
+            )
             stale = len(report.changed_files)
             total = report.total_files
             fresh = max(total - stale, 0)
@@ -1081,6 +1083,7 @@ class CodeGraphService:
                 registered.root,
                 query,
                 max_files=self._config.index_max_files,
+                exclude_globs=self._config.exclude_globs,
             )
         except Exception:
             logger.warning(

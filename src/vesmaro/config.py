@@ -1015,6 +1015,27 @@ class MeshTCPConfig(BaseModel):
         return self
 
 
+#: Default directory-name globs excluded from the code-graph index
+#: surface (defect 2026-10-03: an ephemeral ``wt/`` git-worktree inside
+#: a registered root was walked like first-party sources — duplicate
+#: symbols in the graph, re-poisoned fixtures). A bare name matches a
+#: directory of that name at ANY nesting depth; an entry containing
+#: ``/`` matches the repo-relative directory path (``fnmatch``
+#: semantics, same as ``secret_allowlist``). The built-in
+#: ``file_surface.DENY_DIRS`` always applies too; this list is the
+#: operator-extensible complement.
+DEFAULT_EXCLUDE_DIR_GLOBS: tuple[str, ...] = (
+    "wt",  # git-worktree convention (git worktree add wt/<name>)
+    ".venv",
+    "venv",
+    "node_modules",
+    "dist",
+    "build",
+    ".tox",
+    ".git",
+)
+
+
 class CodeGraphConfig(BaseModel):
     """Project code graph indexer knobs (ADR-0032 PG-0, ArchCom 2026-09-28).
 
@@ -1135,6 +1156,20 @@ class CodeGraphConfig(BaseModel):
             issue content. Default ON; set ``false`` to keep
             ``search_graph`` symbol-only. Env override:
             ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
+        exclude_globs: Directory-name globs excluded from the index
+            surface ON TOP of the built-in ``file_surface.DENY_DIRS``
+            denylist (defect 2026-10-03: a ``wt/`` git-worktree inside
+            a registered root was indexed like first-party sources —
+            376→746 duplicated files, re-poisoned fixtures). A bare
+            name (``"wt"``) matches a directory of that name at ANY
+            nesting depth; an entry containing ``/`` matches the
+            repo-relative directory path (``fnmatch`` semantics, same
+            as ``secret_allowlist``). Setting the field REPLACES the
+            default list (``DEFAULT_EXCLUDE_DIR_GLOBS``); the built-in
+            ``DENY_DIRS`` still applies and cannot be lifted —
+            ``.git``/``wt``/``node_modules`` & co. are never first-party
+            sources. Env override takes a JSON array:
+            ``VESMA_CODE_GRAPH__EXCLUDE_GLOBS='["wt", "gen/**"]'``.
     """
 
     enabled: bool = True
@@ -1151,6 +1186,13 @@ class CodeGraphConfig(BaseModel):
     # call (audited, reason ``allowlist-unpoison``). Default [] = today's
     # PG3 «навсегда» semantics, byte-identical.
     secret_allowlist: list[str] = Field(default_factory=list)
+    # Defect 2026-10-03: ephemeral directories (git worktrees, venvs,
+    # build output, dependency trees) are never first-party sources.
+    # Defaults to DEFAULT_EXCLUDE_DIR_GLOBS; replacing the list does
+    # NOT lift the built-in file_surface.DENY_DIRS (defense in depth).
+    exclude_globs: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_EXCLUDE_DIR_GLOBS)
+    )
     beacon: bool = True
     # W-H hybrid search: literal-content fallback on an EMPTY symbol
     # result (read-only bounded scan of the registered root; PG4-redacted
