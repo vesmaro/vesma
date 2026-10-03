@@ -31,7 +31,7 @@ Scripted variant (venv at `~/.mnemos/venv` + launcher in `~/.local/bin` + option
 curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
 ```
 
-> ⚠️ **Names.** The PyPI package is `vesma` (bare slot, ours — the primary channel; `pip install vesma` installs this project). The pre-rebrand `mnemos-memory-server` stays published until deprecation (frozen at 5.2.0), and `vesma-memory-server` is our live mirror. Channel table: [PyPI publish runbook](pypi-publish.md).
+> ⚠️ **Names.** The PyPI package is `vesma` (bare slot, ours — the primary channel; `pip install vesma` installs this project). The pre-rebrand `mnemos-memory-server` stays published until deprecation (frozen at 5.2.0), and `vesma-memory-server` is our live mirror. The scripted installer above installs `vesma` and probes the same channel for the latest version — the mirror is consulted only as a logged fallback. Channel table: [PyPI publish runbook](pypi-publish.md).
 
 ## Configuration
 

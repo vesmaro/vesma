@@ -35,7 +35,9 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 > ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш — основной канал;
 > `pip install vesma` ставит этот проект). Доребрендинговый
 > `mnemos-memory-server` живёт до deprecation (заморожен на 5.2.0),
-> `vesma-memory-server` — наше живое зеркало. Таблица каналов:
+> `vesma-memory-server` — наше живое зеркало. Скриптовый установщик выше
+> ставит `vesma` и опрашивает тот же канал для последней версии — зеркало
+> используется только как fallback с предупреждением. Таблица каналов:
 > [ранбук публикации в PyPI](pypi-publish.md).
 
 ## Конфигурация
