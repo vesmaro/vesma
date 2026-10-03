@@ -33,7 +33,7 @@ distribution name from `pyproject.toml` and adapts automatically.
 | Channel | PyPI status | Used by |
 | --- | --- | --- |
 | `vesma` | ours, live (5.0.0 → 5.4.0) | primary — `pip install vesma`, README badge |
-| `vesma-memory-server` | ours, live (5.0.0 → 5.4.0) | mirror; `scripts/install.sh` probes it for latest-version detection |
+| `vesma-memory-server` | ours, live (5.0.0 → 5.4.0) | mirror; `scripts/install.sh` probes `vesma` first and consults the mirror only as a logged fallback |
 | `mnemos-memory-server` | ours, frozen at 5.2.0 | legacy pre-rebrand channel, live until deprecation |
 
 The original 2026-09-01 decision matrix is kept as written that day

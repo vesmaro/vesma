@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     --no-wire-agents)  WIRE_AGENTS="no"; shift ;;
     --container) CONTAINER=true; shift ;;
     --port)      CONTAINER_PORT="$2"; shift 2 ;;
-    --help|-h)  sed -n '2,27p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --help|-h)  sed -n '2,28p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *)          die "Unknown flag: $1 (use --help)" ;;
   esac
 done
@@ -99,12 +99,23 @@ if [[ "$USE_UV" == false ]] && command -v uv &>/dev/null; then
 fi
 
 # ── Resolve version ───────────────────────────────────────────────
+# Probe the channel that is actually installed — the canonical PyPI name
+# `vesma`. The `vesma-memory-server` mirror is an explicit, LOGGED fallback
+# for a transient primary-channel failure; it must never silently decide the
+# version of a different channel. Channel table:
+# docs/en/admin/runbooks/pypi-publish.md
 VERSION_EXPLICIT=true
 if [[ -z "$VERSION" ]]; then
   VERSION_EXPLICIT=false
-  info "Detecting latest Vesma version on PyPI…"
-  VERSION="$(curl -fsSL "https://pypi.org/pypi/vesma-memory-server/json" 2>/dev/null \
+  info "Detecting latest Vesma version on PyPI (channel: vesma)…"
+  VERSION="$(curl -fsSL "https://pypi.org/pypi/vesma/json" 2>/dev/null \
     | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || true)"
+  if [[ -z "$VERSION" ]]; then
+    warn "Primary channel 'vesma' did not answer — probing the 'vesma-memory-server' mirror."
+    VERSION="$(curl -fsSL "https://pypi.org/pypi/vesma-memory-server/json" 2>/dev/null \
+      | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || true)"
+    [[ -n "$VERSION" ]] && warn "Latest version ${VERSION} taken from the mirror channel 'vesma-memory-server'."
+  fi
   [[ -z "$VERSION" ]] && die "Could not detect latest version. Specify --version manually."
 fi
 info "Installing Vesma v${VERSION} (extras: ${EXTRAS})"
@@ -137,11 +148,15 @@ if [[ "$CONTAINER" == true ]]; then
   "$RUNTIME" volume create vesma-data 2>/dev/null || true
   "$RUNTIME" volume create vesma-vault 2>/dev/null || true
 
-  if [[ -z "${MNEMOS_API__TOTP_MASTER_KEY:-}" ]]; then
-    warn "MNEMOS_API__TOTP_MASTER_KEY is not set."
+  # Canonical env spelling since 5.3 is VESMA_API__* (ADR-0031); the
+  # VESMARO_API__* and MNEMOS_API__* spellings of the same key stay accepted
+  # during the dual-period, so honor all three and forward the canonical one.
+  TOTP_KEY="${VESMA_API__TOTP_MASTER_KEY:-${VESMARO_API__TOTP_MASTER_KEY:-${MNEMOS_API__TOTP_MASTER_KEY:-}}}"
+  if [[ -z "$TOTP_KEY" ]]; then
+    warn "VESMA_API__TOTP_MASTER_KEY is not set (legacy spellings VESMARO_API__* / MNEMOS_API__* are also accepted)."
     warn "The container binds 0.0.0.0 and requires auth — it will refuse to start without the key."
     warn "Generate one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
-    die "Set MNEMOS_API__TOTP_MASTER_KEY and re-run, or see docs/en/admin/runbooks/container-deployment.md"
+    die "Set VESMA_API__TOTP_MASTER_KEY and re-run, or see docs/en/admin/runbooks/container-deployment.md"
   fi
 
   "$RUNTIME" run -d \
@@ -149,7 +164,7 @@ if [[ "$CONTAINER" == true ]]; then
     -p "${CONTAINER_PORT}:8787" \
     -v vesma-data:/data \
     -v vesma-vault:/vault \
-    -e MNEMOS_API__TOTP_MASTER_KEY="${MNEMOS_API__TOTP_MASTER_KEY}" \
+    -e VESMA_API__TOTP_MASTER_KEY="${TOTP_KEY}" \
     "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to start container."
 
   ok "Vesma container started on port ${CONTAINER_PORT}."
@@ -164,7 +179,11 @@ if [[ "$CONTAINER" == true ]]; then
 fi
 
 # ── Build package spec (PyPI is the primary distribution channel) ─
-PKG_SPEC="mnemos-memory-server"
+# Canonical PyPI name since the 5.0.0 rebrand. The version above is probed
+# from the SAME channel, so install and detection cannot diverge.
+# `mnemos-memory-server` is the frozen legacy channel; `vesma-memory-server`
+# the live mirror — see docs/en/admin/runbooks/pypi-publish.md.
+PKG_SPEC="vesma"
 if [[ -n "$EXTRAS" ]]; then
   PKG_SPEC="${PKG_SPEC}[${EXTRAS}]"
 fi
@@ -195,22 +214,27 @@ fi
 
 # ── Resolve the vesma binary ─────────────────────────────────────
 if [[ "$NO_VENV" == false ]]; then
-  MNEMOS_BIN="${VENV_PATH}/bin/mnemos"
+  VESMA_BIN="${VENV_PATH}/bin/vesma"
 else
-  MNEMOS_BIN="$(command -v vesma 2>/dev/null || true)"
+  VESMA_BIN="$(command -v vesma 2>/dev/null || true)"
 fi
 
 # ── Drop a launcher into ~/.local/bin (no venv activation needed) ──
+# Only the canonical `vesma` launcher goes onto the user's PATH. The
+# deprecated `mnemos` alias still ships INSIDE the venv (<venv>/bin/mnemos),
+# so legacy scripts keep working without the installer promoting the
+# pre-rebrand name globally (alias retires no earlier than 6.0 —
+# pyproject [project.scripts]).
 LINKED=false
-if [[ "$NO_VENV" == false && -x "$MNEMOS_BIN" ]]; then
+if [[ "$NO_VENV" == false && -x "$VESMA_BIN" ]]; then
   mkdir -p "$LOCAL_BIN"
-  ln -sf "$MNEMOS_BIN" "${LOCAL_BIN}/mnemos"
+  ln -sf "$VESMA_BIN" "${LOCAL_BIN}/vesma"
   LINKED=true
-  MNEMOS_BIN="${LOCAL_BIN}/mnemos"
+  VESMA_BIN="${LOCAL_BIN}/vesma"
 fi
 
 # ── Verify ────────────────────────────────────────────────────────
-if [[ -x "$MNEMOS_BIN" ]] || command -v vesma &>/dev/null; then
+if [[ -x "$VESMA_BIN" ]] || command -v vesma &>/dev/null; then
   ok "Vesma v${VERSION} installed successfully!"
 else
   warn "vesma CLI not found — check the install output above."
@@ -220,7 +244,7 @@ fi
 setup_mcp() {
   info "Setting up VS Code MCP integration…"
   if curl -fsSL "https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh" \
-       | bash -s -- --command "$MNEMOS_BIN"; then
+       | bash -s -- --command "$VESMA_BIN"; then
     ok "VS Code MCP integration ready — reload your VS Code window."
   else
     warn "MCP setup didn't complete. Run it later:"
@@ -251,7 +275,7 @@ setup_instructions() {
   # below. Without this flag, the default flow prints a noisy "Non-interactive
   # terminal — skipping agent wiring" message even though wiring is about to
   # run in its own dedicated step.
-  if "$MNEMOS_BIN" integration setup --target all --no-mcp --no-wire-agents; then
+  if "$VESMA_BIN" integration setup --target all --no-mcp --no-wire-agents; then
     ok "Agent integration pack deployed — reload your VS Code window."
   else
     warn "Integration pack deployment didn't complete. Run it later:"
@@ -278,7 +302,7 @@ esac
 # ── Optional: wire Vesma MCP into Copilot agent tools: frontmatter ────
 setup_wire_agents() {
   info "Wiring Vesma MCP into Copilot agent tools: frontmatter…"
-  if "$MNEMOS_BIN" integration setup --wire-agents --all --no-mcp; then
+  if "$VESMA_BIN" integration setup --wire-agents --all --no-mcp; then
     ok "Agent MCP wiring complete — reload your VS Code window."
   else
     warn "Agent wiring didn't complete. Run it later:"
