@@ -329,8 +329,10 @@ class TestToolHappyPaths:
         with pytest.raises(GraphToolError, match="depth"):
             indexed.trace_path(PROJECT, derived["qname"], agent=AGENT, depth=3)
 
-    def test_trace_symbol_resolution_ambiguous_refused(self, indexed: CodeGraphService) -> None:
-        with pytest.raises(GraphToolError, match="not found or ambiguous"):
+    def test_trace_symbol_resolution_missing_refused(self, indexed: CodeGraphService) -> None:
+        # W-H: a missing symbol stays a clear not-found refusal (the
+        # AMBIGUOUS case is no longer an error — see the hybrid suite).
+        with pytest.raises(GraphToolError, match="not found in the project graph"):
             indexed.trace_path(PROJECT, "no.such.symbol", agent=AGENT)
 
     def test_file_outline(self, indexed: CodeGraphService) -> None:

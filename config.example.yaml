@@ -97,6 +97,14 @@ code_graph:
   # One tail line in assemble_context output advertising graph freshness
   # (effective only when enabled).
   beacon: true
+  # Hybrid search_graph (W-H): when a SYMBOL search returns zero hits, a
+  # bounded read-only literal scan of the registered root answers with
+  # match_kind:"literal" rows (path/line/snippet) + fallback_used:true.
+  # Every row passes the same PG4 secrets detector as snippet issuance
+  # (findings are dropped, never issued); poisoned paths (PG3) never
+  # issue content; scan caps: file count / 1 MiB per file / ~2s.
+  # false keeps search_graph symbol-only.
+  literal_fallback: true
   # Watch poll (mnemos_watch_start / POST /watch/start): armed by default,
   # inert until an explicit registration; the master gate applies on top.
   watch: true

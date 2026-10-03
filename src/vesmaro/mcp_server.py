@@ -1865,10 +1865,16 @@ async def _canonical_tools() -> list[Tool]:
             description=(
                 "Search the project graph by name / qualified name / path "
                 "(substring; exact hits outrank prefix, prefix outranks "
-                "substring). Token contract: max_output_tokens 128-1M "
-                "(default 3200), whole-row drops, strictly advancing "
-                "cursor, has_more; signatures are opt-in via "
-                "include_signature. Read-only, audited per agent."
+                "substring). Hybrid (W-H): when the symbol graph has ZERO "
+                "hits, a bounded read-only literal scan of the registered "
+                "root answers with match_kind:'literal' rows "
+                "(path/line/snippet, secrets-redacted) and a "
+                "fallback_used:true marker (absent on symbol hits; "
+                "disable via code_graph.literal_fallback). Token "
+                "contract: max_output_tokens 128-1M (default 3200), "
+                "whole-row drops, strictly advancing cursor, has_more; "
+                "signatures are opt-in via include_signature. Read-only, "
+                "audited per agent."
             ),
             input_schema={
                 "type": "object",
@@ -1909,10 +1915,16 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="mnemos_trace_path",
             description=(
-                "BFS over project_edges from one symbol (resolve by qname, "
-                "unique — ambiguous refusals name search_graph). Depth ≤ 2, "
-                "per-node fanout cap, total-work cap (the ADR-0030 walk "
-                "discipline). Token contract applies."
+                "BFS over project_edges from one symbol. Resolution: an "
+                "exact qname traces directly; a bare tail (e.g. "
+                "'update_fields') that resolves UNIQUELY also traces; an "
+                "AMBIGUOUS tail returns a ranked candidate list "
+                "(candidates:true, candidate_list with qname/kind/path/"
+                "lines, max 10) plus a hint to re-run with the qualified "
+                "name — a helpful payload, not an error; a missing symbol "
+                "is a clear not-found. Depth ≤ 2, per-node fanout cap, "
+                "total-work cap (the ADR-0030 walk discipline). Token "
+                "contract applies."
             ),
             input_schema={
                 "type": "object",

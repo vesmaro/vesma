@@ -38,11 +38,12 @@ import os
 import weakref
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Collection, Protocol
 
 from vesmaro.codegraph import incremental as incremental_mod
 from vesmaro.codegraph.audit import GraphAudit
 from vesmaro.codegraph.indexer import IndexLimitError, IndexResult
+from vesmaro.codegraph.literal_scan import LITERAL_ROW_CAP, scan_literals
 from vesmaro.config import CodeGraphConfig
 from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
 from vesmaro.storage.code_graph_store import (
@@ -71,6 +72,10 @@ BYTES_PER_TOKEN = 4
 TRACE_MAX_DEPTH = 2
 TRACE_FANOUT_CAP = 32
 TRACE_TOTAL_WORK_CAP = 512
+
+#: W-H trace disambiguation: the ranked tail-candidate list an AMBIGUOUS
+#: bare tail answers with (never more than this many rows).
+TRACE_CANDIDATE_CAP = 10
 
 #: Search surface: hard row ceiling of ONE page regardless of budget.
 SEARCH_ROW_CAP = 200
@@ -986,7 +991,16 @@ class CodeGraphService:
 
         ``total_matches`` is the HONEST count of the predicate over the
         whole graph (``CodeGraphStore.count_search_nodes``); the cursor
-        pages the top-``limit`` ranked slice (review 10173a2a-5)."""
+        pages the top-``limit`` ranked slice (review 10173a2a-5).
+
+        W-H hybrid leg: on an EMPTY symbol result (and when
+        ``code_graph.literal_fallback`` is on, default) a bounded
+        READ-ONLY literal scan of the REGISTERED root answers with
+        ``match_kind: "literal"`` rows (path/line/snippet) — every row
+        redacted through the same PG4 secrets detector as snippet
+        issuance, poisoned paths (PG3) never issuing content. The
+        ``fallback_used: true`` marker is present ONLY when the
+        fallback ran (shape policy: absent, never null/empty)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -1004,6 +1018,13 @@ class CodeGraphService:
         rows = [self._ranked_row(asdict(n), query) for n in matches]
         rows.sort(key=lambda r: (-r.pop("score"), str(r["qname"])))
         rows = rows[: max(int(limit), 1)]
+        # W-H: the literal leg fires ONLY on an empty symbol result —
+        # symbol answers are never mixed with, or replaced by, content.
+        fallback_used = False
+        if total == 0 and not rows and self._config.literal_fallback:
+            rows, fallback_used = self._literal_fallback_rows(registered, query)
+        for row in rows:
+            row.setdefault("match_kind", "symbol")
         # Detail flags are OPT-IN (§3.4): signatures ride only when asked.
         if not include_signature:
             for row in rows:
@@ -1015,9 +1036,14 @@ class CodeGraphService:
             actor,
             session=sess,
             reason="search",
-            details={"matches": len(rows), "returned": len(page), "total": total},
+            details={
+                "matches": len(rows),
+                "returned": len(page),
+                "total": total,
+                "literal_fallback": fallback_used,
+            },
         )
-        return {
+        payload: dict[str, Any] = {
             "project": key,
             "query_kind": kind,
             "results": page,
@@ -1026,6 +1052,66 @@ class CodeGraphService:
             "has_more": has_more,
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
         }
+        if fallback_used:  # shape policy: present only when it ran
+            payload["fallback_used"] = True
+        return payload
+
+    def _literal_fallback_rows(
+        self, registered: _RegisteredRoot, query: str
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """The W-H literal-content leg: a bounded read-only scan of the
+        REGISTERED root (confinement by construction — the scan never
+        leaves the registered root), PG4-redacted.
+
+        Every candidate line passes the SAME secrets detector as
+        snippet issuance: a finding DROPS the row (fail-closed — the
+        raw line is never issued), and a poisoned path (PG3) never
+        issues content at all. The leg can never break the search: any
+        scan failure degrades to no-fallback (honest empty) with a
+        warning — never raw content."""
+        try:
+            poisoned = self._store.get_poisoned_paths(registered.graph_key)
+            matches, truncated = scan_literals(
+                registered.root,
+                query,
+                max_files=self._config.index_max_files,
+            )
+        except Exception:
+            logger.warning(
+                "codegraph: literal fallback scan failed for project %s — "
+                "degrading to symbol-only search",
+                os.path.basename(registered.root),
+                exc_info=True,
+            )
+            return [], False
+        if truncated:
+            logger.warning(
+                "codegraph: literal fallback hit a scan cap for project %s "
+                "(results may be incomplete)",
+                os.path.basename(registered.root),
+            )
+        rows: list[dict[str, Any]] = []
+        for m in matches:
+            if len(rows) >= LITERAL_ROW_CAP:
+                break
+            if m.path in poisoned:
+                continue  # PG3: a poisoned path never issues content
+            if detect_secrets(m.snippet):
+                continue  # PG4: a secret-detected literal is dropped
+            rows.append(
+                {
+                    "match_kind": "literal",
+                    "path": m.path,
+                    "line": m.line,
+                    "snippet": m.snippet,
+                }
+            )
+        logger.info(
+            "codegraph: literal fallback for query on project %s issued %d row(s)",
+            os.path.basename(registered.root),
+            len(rows),
+        )
+        return rows, True
 
     @staticmethod
     def _ranked_row(node_dict: dict[str, Any], query: str) -> dict[str, Any]:
@@ -1057,7 +1143,14 @@ class CodeGraphService:
         max_output_tokens: Any = None,
     ) -> dict[str, Any]:
         """BFS over outgoing project_edges from a symbol — depth ≤ 2,
-        per-node fanout cap, total-work cap (the ADR-0030 discipline)."""
+        per-node fanout cap, total-work cap (the ADR-0030 discipline).
+
+        W-H resolution: an exact qname behaves byte-identically to the
+        pre-W-H tool; a bare tail that resolves UNIQUELY traces
+        directly; an AMBIGUOUS tail answers with a ranked candidate
+        list (``candidates: true`` — a helpful payload, not an error)
+        and the hint to re-run with the qualified name; a missing
+        symbol stays a clear not-found refusal."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -1070,7 +1163,22 @@ class CodeGraphService:
             or not 1 <= depth <= TRACE_MAX_DEPTH
         ):
             raise GraphToolError(f"depth must be an integer in [1, {TRACE_MAX_DEPTH}]")
-        start = self._resolve_symbol(key, qname.strip())
+        query = qname.strip()
+        start, candidates = self._resolve_trace_start(key, query)
+        if start is None:
+            if not candidates:
+                raise GraphToolError(
+                    f"symbol {query!r} not found in the project graph — "
+                    "use search_graph to locate the exact qname"
+                )
+            return self._trace_candidates_payload(
+                key,
+                query,
+                candidates,
+                agent=actor,
+                session=sess,
+                max_output_tokens=max_output_tokens,
+            )
         visited: dict[str, dict[str, Any]] = {
             start.id: self._trace_node(start, 0),
         }
@@ -1146,6 +1254,90 @@ class CodeGraphService:
             f"symbol {qname!r} not found or ambiguous in the project graph — "
             "use search_graph to locate the exact qname"
         )
+
+    def _resolve_trace_start(
+        self, project: str, query: str
+    ) -> tuple[Any | None, list[dict[str, Any]]]:
+        """W-H trace resolution: exact/unique → ``(node, [])`` (the
+        pre-W-H behavior, byte-identical for exact qnames); otherwise
+        ``(None, ranked tail candidates)`` — a UNIQUE tail candidate is
+        traced directly, an ambiguous set is answered with the
+        candidate list. A tail candidate matches on NAME (or dotted
+        qname tail) exactly — a tail resolution, never a substring
+        guess."""
+        try:
+            return self._resolve_symbol(project, query), []
+        except GraphToolError:
+            candidates = self._tail_candidates(project, query)
+            if len(candidates) == 1:
+                exact = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=1)
+                if exact:
+                    return exact[0], []
+            return None, candidates
+
+    def _tail_candidates(self, project: str, query: str) -> list[dict[str, Any]]:
+        """ALL ranked exact-tail candidates for a failed trace
+        resolution (the payload caps the ISSUED list at
+        :data:`TRACE_CANDIDATE_CAP`; the count stays honest). Ranked
+        like search_graph (exact name hits outrank qname-tail hits,
+        then qname order) so the list is deterministic."""
+        tail = query.rsplit(".", 1)[-1]
+        if not tail:
+            return []
+        hits = self._store.search_nodes(project, tail, limit=SEARCH_ROW_CAP)
+        rows = [
+            {
+                "qname": n.qname,
+                "kind": n.kind,
+                "path": n.path,
+                "start_line": n.start_line,
+                "end_line": n.end_line,
+                "score": self._ranked_row({"name": n.name, "qname": n.qname}, tail)["score"],
+            }
+            for n in hits
+            if n.name == tail or n.qname.rsplit(".", 1)[-1] == tail
+        ]
+        rows.sort(key=lambda r: (-r.pop("score"), str(r["qname"])))
+        return rows
+
+    def _trace_candidates_payload(
+        self,
+        key: str,
+        query: str,
+        candidates: list[dict[str, Any]],
+        *,
+        agent: str,
+        session: str | None,
+        max_output_tokens: Any,
+    ) -> dict[str, Any]:
+        """The AMBIGUOUS-tail answer: a helpful, NOT error-shaped
+        payload with the ranked candidate list (capped, count honest)
+        and the re-run hint."""
+        page, has_more, next_cursor = window_rows(
+            candidates[:TRACE_CANDIDATE_CAP], max_output_tokens, 0
+        )
+        self._audit.record(
+            key,
+            "graph-read",
+            agent,
+            session=session,
+            reason="trace-candidates",
+            details={"query": query, "candidates": len(candidates)},
+        )
+        return {
+            "project": key,
+            "query": query,
+            "candidates": True,
+            "candidate_list": page,
+            "candidate_count": len(candidates),
+            "has_more": has_more,
+            "cursor": next_cursor,
+            "hint": (
+                "ambiguous symbol tail — re-run trace_path with the "
+                "qualified name (qname) of the intended candidate"
+            ),
+            "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
+        }
 
     @staticmethod
     def _trace_node(node: Any, depth: int) -> dict[str, Any]:
@@ -1571,7 +1763,7 @@ POISONED_FIXTURE_HINT = (
 )
 
 
-def poisoned_fixture_hint(poisoned_paths: list[str]) -> list[str]:
+def poisoned_fixture_hint(poisoned_paths: Collection[str]) -> list[str]:
     """Status hints for the poisoned set (W-G adoption).
 
     One hint, and only when EVERY poisoned path lives under a test-like
