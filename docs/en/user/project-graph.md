@@ -43,6 +43,42 @@ claims more certainty than it has.
 
 ---
 
+## Supported languages
+
+| Language | Since | Indexed surface |
+|----------|-------|-----------------|
+| Python | PG-0 (#438) | `.py` |
+| Go (#470) | 2026-10 | `.go` |
+
+Anything else is simply not indexed — an unknown extension never falls
+through to a wrong parser. What the graph sees in a Go tree:
+
+- **Symbols** — top-level functions (`Function`), methods with receivers
+  (`Method`, qname `pkg.Type.Name`), struct and interface types (`Class`),
+  other defined types and aliases (`Type`). Qualified names carry the dotted
+  package directory (`pkg.util.Greeter.Greet`); a module node's qname is the
+  package directory.
+- **Proven `CALLS`** — plain-identifier calls inside one Go package (package
+  scope makes the name unique, including across files of the same package)
+  and `pkg.Ident(...)` calls through a resolved import. Type conversions
+  (`Base(x)`) count as calls to the type, mirroring the Python constructor
+  rule.
+- **Heuristic `USES`** — method calls on values/pointers (`obj.Method(...)`;
+  the receiver's type is not inferred, so a name match stays heuristic) and
+  type references from composite literals (`&Server{...}`) and `new`/`make`
+  type arguments.
+- **`INHERITS`** for struct/interface embedding; **`IMPORTS`** when an import
+  path matches an in-repo package directory (the edge lands on the package's
+  first sorted file's module; stdlib/external paths resolve to nothing);
+  **`TESTS`** from `foo_test.go` to its own package's module.
+- **Honestly skipped** — interface satisfaction (implicit in Go; no edge is
+  invented), calls through function variables, generic instantiations
+  (`F[T](...)`), dot- and blank-imports. The import path string is the only
+  string content ever read, and only to resolve imports — it never reaches
+  the store (PG1 holds for Go sources the same way it holds for Python).
+
+---
+
 ## Turn it on for a project
 
 The graph indexes **registered roots only** (PG2). A root is the first

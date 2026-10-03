@@ -1,10 +1,11 @@
 """Language registry for the code graph indexer (ADR-0032 PG-0 slice 2).
 
-Wave 1 is Python-only (ArchCom 2026-09-28 §1). The registry maps a
-file extension to the language that parses it; everything else is
-simply NOT indexed — an unknown extension never falls through to a
-wrong parser. Adding a language (wave PG-3) is one ``LanguageSpec``
-entry plus its import resolver; the indexer looks everything up here.
+Wave 1 was Python-only (ArchCom 2026-09-28 §1); issue #470 adds Go.
+The registry maps a file extension to the language that parses it;
+everything else is simply NOT indexed — an unknown extension never
+falls through to a wrong parser. Adding a language is one
+``LanguageSpec`` entry plus its import resolver; the indexer looks
+everything up here and dispatches to the language's file parser.
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ def _python_test_file(name: str) -> bool:
     return name.startswith("test_") or name.endswith("_test.py")
 
 
-#: Python (wave 1 — the only first-class language).
+#: Python (wave 1 — the first first-class language).
 PYTHON = LanguageSpec(
     name="python",
     extensions=(".py",),
@@ -75,8 +76,44 @@ PYTHON = LanguageSpec(
     test_file_predicates=(_python_test_file,),
 )
 
+
+def _go_language() -> Any:
+    import tree_sitter_go
+    from tree_sitter import Language
+
+    return Language(tree_sitter_go.language())
+
+
+def _go_import_resolver(import_path: str) -> list[str]:
+    """Go import path -> candidate package DIRECTORIES (repo-relative).
+
+    A Go import path (``example.com/org/repo/pkg/api``) maps onto a
+    directory inside the repo only as a SUFFIX match — the module
+    prefix outside the repo is unknown. Every trailing-segments
+    candidate is returned (``pkg/api``, ``api``, ...) longest first;
+    the indexer picks the longest directory that actually exists in
+    the indexed tree. Only repo-internal packages can match — stdlib
+    and external paths resolve to nothing, silently.
+    """
+    parts = [p for p in import_path.split("/") if p]
+    return ["/".join(parts[i:]) for i in range(len(parts))]
+
+
+def _go_test_file(name: str) -> bool:
+    return name.endswith("_test.go")
+
+
+#: Go (issue #470) — the second first-class language.
+GO = LanguageSpec(
+    name="go",
+    extensions=(".go",),
+    language_factory=_go_language,
+    import_resolver=_go_import_resolver,
+    test_file_predicates=(_go_test_file,),
+)
+
 #: All registered languages, keyed by name.
-LANGUAGES: dict[str, LanguageSpec] = {spec.name: spec for spec in (PYTHON,)}
+LANGUAGES: dict[str, LanguageSpec] = {spec.name: spec for spec in (PYTHON, GO)}
 
 #: Extension -> language lookup (denylist/allowlist boundary input).
 EXTENSION_TO_LANGUAGE: dict[str, LanguageSpec] = {
