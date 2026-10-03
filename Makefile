@@ -70,7 +70,7 @@ typecheck:
 
 security:
 	$(VENV)/bandit -r src/ -f json -o bandit-report.json || true
-	$(VENV)/pip-audit --ignore-vuln CVE-2026-45829
+	$(VENV)/pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146  # PYSEC-2026-4146: no fixed pyjwt yet — tracked in #476, drop when fixed
 
 security-reminder:
 	@echo "⚠️  SECURITY REMINDER: review the pip-audit output weekly (make security / make update-deps);"

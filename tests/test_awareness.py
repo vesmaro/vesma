@@ -75,10 +75,12 @@ from vesma.awareness import (
     AWARENESS_LANE,
     AWARENESS_MAX_RENDERED_AGENTS,
     DELTA_MAX_WINDOW_SEC,
+    FEDERATED_ORIGIN_META_KEY,
     PICTURE_RATE_LIMITED_LINE,
     PICTURE_TASK_DISCLAIMER,
     PRESENCE_WINDOW_SEC,
     assert_awareness_tail,
+    compose_heartbeat,
     compose_pre_llm_awareness,
     compose_session_presence,
     conflict_hints,
@@ -2358,3 +2360,62 @@ class TestPictureTaskSurfaces:
         assert result["picture"]["agents"][0]["task"] == "compose-task"
         presence = compose_session_presence(manager, project=PROJECT, agent=AGENT)
         assert presence["picture"]["agents"][0]["task"] == "compose-task"
+
+
+class TestArch2ExcludedRowHighWaterClamp:
+    """Cascade ARCH-2 (ADR-0035 W1): an excluded (no-federate) row inside
+    the awareness window must not pin the cursor below itself. The C12
+    probe counts excluded rows (deliberate over-approximation), so a
+    high-water computed over the eligible rows only would re-force the
+    expensive probe→compose leg on EVERY call up to the C14 rate cap."""
+
+    def test_cursor_advances_past_excluded_rows(self, manager: MemoryManager) -> None:
+        _checkpoint(manager, goals="arch2 eligible goal", agent=NEIGHBOR, session=NEIGHBOR_SESSION)
+        excluded = manager.add(
+            MemoryCreate(
+                content="arch2 excluded body",
+                tags=[f"project:{PROJECT}", f"agent:{NEIGHBOR}", "mnemos:learning"],
+                source=MemorySource.MCP,
+                status=MemoryStatus.PUBLISHED,
+                metadata={FEDERATED_ORIGIN_META_KEY: "mesh-peer"},
+            ),
+            project=PROJECT,
+            agent=NEIGHBOR,
+        )
+        assert is_delta_excluded(excluded)
+        compose_pre_llm_awareness(manager, session=SESSION, project=PROJECT, agent=AGENT)
+        cursor = read_awareness_cursor(manager, project=PROJECT, agent=AGENT, session=SESSION)
+        assert cursor is not None
+        assert datetime.fromisoformat(cursor) > excluded.created_at
+
+    def test_probe_goes_quiet_after_compose_with_only_excluded_rows(
+        self, manager: MemoryManager
+    ) -> None:
+        """Only an excluded row beyond the cursor: the FIRST compose runs
+        the delta stage (probe fired) and advances the cursor past the
+        excluded row; the SECOND call must reach the calm state through
+        the cheap probe alone — no second delta stage."""
+        excluded = manager.add(
+            MemoryCreate(
+                content="arch2 excluded-only body",
+                tags=[f"project:{PROJECT}", f"agent:{NEIGHBOR}", "mnemos:learning"],
+                source=MemorySource.MCP,
+                status=MemoryStatus.PUBLISHED,
+                metadata={FEDERATED_ORIGIN_META_KEY: "mesh-peer"},
+            ),
+            project=PROJECT,
+            agent=NEIGHBOR,
+        )
+        assert is_delta_excluded(excluded)
+        first = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert first["state"] == "calm"  # the envelope renders nothing…
+        assert any(kind == "delta_available" for kind, _ in first["events"])  # …but composed
+        assert datetime.fromisoformat(first["cursor_after"]) > excluded.created_at
+
+        second = compose_heartbeat(manager, project=PROJECT, agent=AGENT)
+        assert second["state"] == "calm"
+        # Pre-ARCH-2 the cursor stayed below the excluded row and the
+        # second call re-ran the delta stage (a delta_available event
+        # again). Now the probe alone answers: exactly one delivery event.
+        assert [kind for kind, _ in second["events"]] == ["heartbeat_delivery"]
+        assert second["cursor_before"] == second["cursor_after"]

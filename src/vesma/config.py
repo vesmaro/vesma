@@ -1023,7 +1023,8 @@ class CodeGraphConfig(BaseModel):
     ``VESMA_CODE_GRAPH__INDEX_MAX_SOURCE_MB`` / ``VESMA_CODE_GRAPH__AUTO_INDEX`` /
     ``VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
     ``VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
-    ``VESMA_CODE_GRAPH__AGENT_REGISTRATION``.
+    ``VESMA_CODE_GRAPH__AGENT_REGISTRATION`` /
+    ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1113,6 +1114,20 @@ class CodeGraphConfig(BaseModel):
             row, never silently. Default ``[]`` keeps PG3
             byte-identical. Env override takes a JSON array:
             ``VESMA_CODE_GRAPH__SECRET_ALLOWLIST='["tests/fixtures/**"]'``.
+        literal_fallback: Hybrid search_graph literal-content fallback
+            (wave W-H, owner directive 2026-10-03): when a symbol search
+            returns ZERO graph hits, a bounded READ-ONLY case-insensitive
+            substring scan of the REGISTERED root answers with
+            ``match_kind: "literal"`` rows (path/line/snippet) on top of
+            the empty symbol result, marked ``fallback_used: true``. The
+            scan reuses the indexer surface denylists, never follows
+            symlinks, skips binaries, and is hard-capped (file count,
+            1 MiB per file, ~2s wall clock); every issued row passes the
+            same PG4 secrets detector as snippet issuance — findings are
+            dropped, never issued raw — and poisoned paths (PG3) never
+            issue content. Default ON; set ``false`` to keep
+            ``search_graph`` symbol-only. Env override:
+            ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
     """
 
     enabled: bool = True
@@ -1130,6 +1145,10 @@ class CodeGraphConfig(BaseModel):
     # PG3 «навсегда» semantics, byte-identical.
     secret_allowlist: list[str] = Field(default_factory=list)
     beacon: bool = True
+    # W-H hybrid search: literal-content fallback on an EMPTY symbol
+    # result (read-only bounded scan of the registered root; PG4-redacted
+    # rows). Default ON; false keeps search_graph symbol-only.
+    literal_fallback: bool = True
     watch: bool = True
     auto_index: bool = True
     auto_reindex_min_interval_sec: float = Field(default=300.0, ge=0.0)

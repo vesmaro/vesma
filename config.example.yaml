@@ -97,6 +97,14 @@ code_graph:
   # One tail line in assemble_context output advertising graph freshness
   # (effective only when enabled).
   beacon: true
+  # Hybrid search_graph (W-H): when a SYMBOL search returns zero hits, a
+  # bounded read-only literal scan of the registered root answers with
+  # match_kind:"literal" rows (path/line/snippet) + fallback_used:true.
+  # Every row passes the same PG4 secrets detector as snippet issuance
+  # (findings are dropped, never issued); poisoned paths (PG3) never
+  # issue content; scan caps: file count / 1 MiB per file / ~2s.
+  # false keeps search_graph symbol-only.
+  literal_fallback: true
   # Watch poll (mnemos_watch_start / POST /watch/start): armed by default,
   # inert until an explicit registration; the master gate applies on top.
   watch: true
@@ -107,14 +115,18 @@ code_graph:
   # repo-relative fnmatch globs whose files SKIP poison-marking at index
   # time (still indexed normally). A previously-poisoned path that now
   # matches is un-poisoned on the next index run — audited as
-  # "allowlist-unpoison", never silent. The per-range issuance scan
-  # (PG4) is never waived. Default [] keeps PG3 semantics byte-identical.
+  # "allowlist-unpoison", never silent. The PRODUCT default stays []
+  # — PG3 is a security gate, not an inconvenience: keep the allowlist
+  # empty unless your repo carries known-fake secret FIXTURES. The
+  # per-range issuance scan (PG4) is NEVER waived by the allowlist.
   # Note: removing a glob is not retroactive (a cleaned file stays clean
   # until its content changes); fnmatch "*" matches across "/" too.
   secret_allowlist: []
+  # The canonical fixture pattern (fake-secret test data), as applied in
+  # practice: test trees and benchmark trees only — never source trees.
   # secret_allowlist:
-  #   - "tests/fixtures/fake_secrets.py"
-  #   - "docs/samples/**"
+  #   - "tests/**"
+  #   - "benchmarks/**"
   # Watch poll: global registration cap + adaptive interval
   # base + 1s per 500 indexed files, capped.
   watch_max_registrations: 8

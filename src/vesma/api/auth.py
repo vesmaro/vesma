@@ -8,7 +8,7 @@ Endpoints (all mounted under ``/auth`` via ``main.py``):
   GET   /auth/me      — Return session / token metadata
 
 TOTP secrets are encrypted at rest with ``cryptography.Fernet`` keyed from
-``api.totp_master_key`` (env-only, ``VESMARO_API__TOTP_MASTER_KEY``).
+``api.totp_master_key`` (env-only, ``VESMA_API__TOTP_MASTER_KEY``).
 """
 
 from __future__ import annotations

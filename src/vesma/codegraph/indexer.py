@@ -19,13 +19,27 @@ Extraction contract (ArchCom 2026-09-28 §3.2):
   repo-root heuristic with a dotted-tail fallback for roots that are
   not the sys.path entry (src-layout); an unresolved import produces
   NO edge, silently — garbage edges are worse than absent ones.
+* Go (issue #470): ``function_declaration`` → Function,
+  ``method_declaration`` → Method (qname ``<pkg>.<Type>.<name>``),
+  struct/interface ``type_spec`` → Class, other types/aliases → Type.
+  Symbol qnames carry the dotted package-directory prefix — Go
+  identifier resolution is package-scoped, and unambiguous qnames are
+  what trace/search resolve against. Import paths (the ONE string
+  content ever read — structural, used for resolution, never stored)
+  resolve by longest repo-directory suffix match; unresolved paths
+  produce NO edge. Call honesty: a PLAIN identifier call resolving to
+  a package-level func/type is CALLS (Go package scope makes the name
+  unique); ``pkg.Ident`` with a resolved import is CALLS;
+  ``obj.Method`` is USES heuristic (no type inference — the receiver
+  type is unknown); type references (composite literals, new/make
+  type arguments) are USES heuristic (name-matched, not type-proven).
 
 Limits (PG7, fail-closed): ``index_max_files``/``index_max_source_mb``
 are checked BEFORE the publish transaction; a breach raises
 :class:`IndexLimitError` and the project keeps its previous graph —
 a partial graph is never published.
 
-Wave-1 call attribution: a CALLS/USES edge is attributed to the
+Call attribution: a CALLS/USES edge is attributed to the
 ENCLOSING function/method node of the call site when there is one
 (the module node otherwise) — the edge endpoints live in one file,
 so the resolution is local and needs no cross-file index.
@@ -39,13 +53,15 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from vesma.codegraph.file_surface import FileSurface, SurfaceFile
 from vesma.codegraph.languages import (
+    GO,
     LanguageSpec,
     is_test_file,
     language_for_path,
@@ -112,6 +128,12 @@ class _FileExtraction:
     class_bases: dict[str, list[str]] = field(default_factory=dict)
     #: (call head, enclosing-definition qname or None) pairs.
     call_refs: list[tuple[str, str | None]] = field(default_factory=list)
+    #: (alias-or-None, import path) pairs — Go only (Python dotted
+    #: names carry no alias; the Go qualifier is alias or last segment).
+    import_pairs: list[tuple[str | None, str]] = field(default_factory=list)
+    #: (type head, enclosing-definition qname or None) pairs — Go type
+    #: references from composite literals and new/make type arguments.
+    type_refs: list[tuple[str, str | None]] = field(default_factory=list)
     poisoned: bool = False
     parse_ok: bool = True
     parse_error: str | None = None
@@ -237,6 +259,138 @@ def _module_qname(rel_path: str) -> str:
         stem = rel_path.removesuffix(".py")
         parts = [p for p in stem.split("/") if p]
     return ".".join(parts) or "."
+
+
+def _go_dir(rel_path: str) -> str:
+    """Package directory of a Go file: ``a/b/c.go`` -> ``a/b``, root -> ``""``."""
+    return rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+
+
+def _go_package_prefix(rel_path: str) -> str:
+    """Dotted package-directory prefix for Go symbol qnames:
+    ``a/b/c.go`` -> ``a.b.``, root files carry no prefix."""
+    directory = _go_dir(rel_path)
+    return directory.replace("/", ".") + "." if directory else ""
+
+
+def _go_type_shape(src: bytes, type_node: Any) -> str:
+    """Signature shape of ONE Go type expression — identifiers and type
+    names only, space-joined (the Python ``_sig_part_text`` flattening:
+    punctuation such as ``*``/``[]`` is structural, not a name)."""
+    if type_node is None or not type_node.is_named or type_node.type in _LITERAL_TYPES:
+        return ""
+    if type_node.type == "qualified_type":
+        pkg = type_node.child_by_field_name("package")
+        name = type_node.child_by_field_name("name")
+        return (
+            f"{_text(src, pkg)}.{_text(src, name)}" if pkg is not None and name is not None else ""
+        )
+    if type_node.type in ("identifier", "type_identifier", "package_identifier"):
+        return _text(src, type_node)
+    inner = [_go_type_shape(src, c) for c in type_node.named_children]
+    return " ".join(s for s in inner if s)
+
+
+def _go_signature_of(src: bytes, def_node: Any) -> str | None:
+    """Signature SHAPE of a Go function/method — parameter names and
+    type names only. Go has no parameter defaults, so there is nothing
+    to drop; comments are not named children and never contribute."""
+    params_node = def_node.child_by_field_name("parameters")
+    if params_node is None or params_node.type != "parameter_list":
+        return None
+    parts: list[str] = []
+    for p in params_node.named_children:
+        name_node = p.child_by_field_name("name")
+        name = _text(src, name_node) if name_node is not None else ""
+        shape = _go_type_shape(src, p.child_by_field_name("type"))
+        text = f"{name} {shape}".strip()
+        if text:
+            parts.append(text)
+    return "(" + ", ".join(parts) + ")" if parts else None
+
+
+def _go_receiver_type(src: bytes, method_node: Any) -> str | None:
+    """The receiver TYPE name of a method declaration — the first type
+    identifier inside the receiver list (``*T``/``T``/generic forms
+    unwrap to ``T``); ``None`` when the receiver is unparseable."""
+    receiver = method_node.child_by_field_name("receiver")
+
+    def first_type_identifier(node: Any) -> str | None:
+        if node.type == "type_identifier":
+            return _text(src, node)
+        for child in node.named_children:
+            found = first_type_identifier(child)
+            if found is not None:
+                return found
+        return None
+
+    if receiver is None:
+        return None
+    for param in receiver.named_children:
+        type_node = param.child_by_field_name("type")
+        if type_node is not None:
+            found = first_type_identifier(type_node)
+            if found is not None:
+                return found
+    return None
+
+
+def _go_string_text(src: bytes, literal: Any) -> str | None:
+    """The CONTENT of one Go string literal — used ONLY for import
+    paths (structural resolution input; it never reaches the store).
+    Every other string in a Go file stays unread (PG1)."""
+    for child in literal.named_children:
+        if child.type in ("interpreted_string_literal_content", "raw_string_literal_content"):
+            return _text(src, child)
+    text = _text(src, literal).strip('"`')
+    return text or None
+
+
+def _go_embedded_bases(type_node: Any, src: bytes) -> list[str]:
+    """Embedded type names of a struct/interface body — the Go shape of
+    «base classes»: nameless struct fields (``pkg.Base`` / ``Base``)
+    and interface ``type_elem`` entries. Named fields and interface
+    ``method_elem`` signatures are skipped."""
+    bases: list[str] = []
+    if type_node.type == "struct_type":
+        for field in type_node.named_children:
+            if field.type != "field_declaration_list":
+                continue
+            for entry in field.named_children:
+                if (
+                    entry.type != "field_declaration"
+                    or entry.child_by_field_name("name") is not None
+                ):
+                    continue
+                entry_type = entry.child_by_field_name("type")
+                if entry_type is not None and entry_type.type in (
+                    "type_identifier",
+                    "qualified_type",
+                ):
+                    bases.append(_text(src, entry_type))
+    elif type_node.type == "interface_type":
+        for elem in type_node.named_children:
+            if elem.type != "type_elem":
+                continue
+            for entry in elem.named_children:
+                if entry.type in ("type_identifier", "qualified_type"):
+                    bases.append(_text(src, entry))
+    return bases
+
+
+def _go_collect_type_names(
+    src: bytes, node: Any, out: list[tuple[str, str | None]], enclosing: str | None
+) -> None:
+    """Collect the type names named inside ONE type expression (the
+    ``new(T)``/``make(...T...)`` argument): ``*T``, ``[]T``,
+    ``map[K]V`` contribute each named type they mention."""
+    if not node.is_named or node.type in _LITERAL_TYPES:
+        return
+    if node.type in ("type_identifier", "qualified_type"):
+        out.append((_text(src, node), enclosing))
+        return
+    for child in node.named_children:
+        _go_collect_type_names(src, child, out, enclosing)
 
 
 def _collect_call_heads(
@@ -439,6 +593,302 @@ class PythonFileParser:
         return None
 
 
+class GoFileParser:
+    """Parses ONE Go file into nodes/edges (pre-resolution) — the Go
+    twin of :class:`PythonFileParser`, same extraction contract:
+
+    * File + Module nodes; the Module is the Go PACKAGE: qname is the
+      package directory (``pkg/util``), name is the ``package`` clause
+      identifier (falling back to the directory basename). One Module
+      node per file — multi-file packages share the qname.
+    * ``function_declaration`` → Function, ``method_declaration`` →
+      Method (qname ``<pkg>.<Receiver>.<name>``), struct/interface
+      ``type_spec`` → Class, other defined types and ``type_alias`` →
+      Type. Symbol qnames carry the dotted package-directory prefix —
+      Go resolution is package-scoped and trace resolves on qnames.
+    * Package-level names (funcs + types, NOT methods — Go methods are
+      type-scoped) land in ``top_level_defs`` for the resolution pass;
+      embedded struct fields / interface ``type_elem`` land in
+      ``class_bases`` for INHERITS.
+    * Import paths are collected with their aliases. The path string is
+      the ONE string content this parser ever reads — structural
+      resolution input that never reaches the store (PG1: every other
+      string/comment node type is skipped by the traversal).
+    * ``call_expression`` heads (identifier / selector text) and type
+      references (composite-literal types, ``new``/``make`` type
+      arguments) are collected as (head, enclosing qname) pairs for the
+      project-wide honesty pass — see the module docstring for what
+      resolves to CALLS vs heuristic USES vs nothing.
+
+    Interface method signatures (``method_elem``) are NOT separate
+    nodes — the interface is indexed whole, like a Python class body.
+    Function literals (closures) are not nodes; their calls attribute
+    to the enclosing top-level function.
+    """
+
+    def __init__(self, language: Any, secret_allowlist: tuple[str, ...] = ()) -> None:
+        from tree_sitter import Parser
+
+        self._parser = Parser(language)
+        self._secret_allowlist = secret_allowlist
+
+    def parse(self, project: str, rel_path: str, source: bytes) -> _FileExtraction:
+        tree = self._parser.parse(source)
+        root = tree.root_node
+        spec = language_for_path(rel_path)
+        assert spec is not None  # the surface passed the allowlist
+
+        poisoned = not _secret_allowlisted(rel_path, self._secret_allowlist) and bool(
+            detect_secrets(source.decode("utf-8", "replace"))
+        )
+        meta: dict[str, Any] | None = {"poisoned": True} if poisoned else None
+        fid = _file_id(project, rel_path)
+        package_name = self._package_name(root, source, rel_path)
+        mid = _module_id(project, rel_path)
+
+        extraction = _FileExtraction(
+            nodes=[
+                CodeGraphNode(
+                    id=fid,
+                    project=project,
+                    kind=_KIND_FILE,
+                    name=rel_path.rsplit("/", 1)[-1],
+                    qname=rel_path,
+                    path=rel_path,
+                    start_line=1,
+                    end_line=root.end_point[0] + 1,
+                    lang=spec.name,
+                    metadata=meta,
+                ),
+                CodeGraphNode(
+                    id=mid,
+                    project=project,
+                    kind=_KIND_MODULE,
+                    name=package_name,
+                    qname=_go_dir(rel_path) or ".",
+                    path=rel_path,
+                    lang=spec.name,
+                    metadata=meta,
+                ),
+            ],
+            edges=[CodeGraphEdge(from_id=fid, to_id=mid, kind="DEFINES")],
+            qname_to_node={},
+            poisoned=poisoned,
+            parse_ok=not root.has_error,
+            parse_error="syntax-error" if root.has_error else None,
+        )
+        self._walk(root, source, project, rel_path, extraction, None)
+        return extraction
+
+    # ── traversal ──────────────────────────────────────────────────────────
+
+    def _walk(
+        self,
+        block: Any,
+        source: bytes,
+        project: str,
+        rel_path: str,
+        extraction: _FileExtraction,
+        enclosing: str | None,
+    ) -> None:
+        """Single disciplined traversal: named children only; bodies of
+        functions/methods recurse with the definition's qname as the
+        enclosing scope; comment/string node types are never read."""
+        for child in block.named_children:
+            ctype = child.type
+            if ctype == "import_declaration":
+                self._collect_imports(child, source, extraction)
+                continue
+            if ctype in ("function_declaration", "method_declaration"):
+                qname = self._define_function(child, source, project, rel_path, extraction)
+                body = child.child_by_field_name("body")
+                if body is not None:
+                    self._walk(body, source, project, rel_path, extraction, qname)
+                continue
+            if ctype == "type_declaration":
+                self._define_types(child, source, project, rel_path, extraction)
+                continue
+            if ctype == "call_expression":
+                self._collect_call(child, source, extraction, enclosing)
+            elif ctype == "composite_literal":
+                self._collect_composite(child, source, extraction, enclosing)
+            self._walk(child, source, project, rel_path, extraction, enclosing)
+
+    # ── definitions ────────────────────────────────────────────────────────
+
+    def _define_function(
+        self,
+        node: Any,
+        source: bytes,
+        project: str,
+        rel_path: str,
+        extraction: _FileExtraction,
+    ) -> str:
+        """Emit the Function/Method node; return its qname (the
+        enclosing scope for the body's references)."""
+        spec = language_for_path(rel_path)
+        assert spec is not None
+        name_node = node.child_by_field_name("name")
+        name = _text(source, name_node) if name_node is not None else ""
+        if node.type == "method_declaration":
+            receiver = _go_receiver_type(source, node)
+            qname = f"{_go_package_prefix(rel_path)}{receiver}.{name}" if receiver else name
+            kind = "Method"
+        else:
+            qname = f"{_go_package_prefix(rel_path)}{name}"
+            kind = "Function"
+            if name:
+                extraction.top_level_defs.add(name)
+        graph_node = CodeGraphNode(
+            id=_node_id(project, rel_path, name, node.start_point[0] + 1),
+            project=project,
+            kind=kind,
+            name=name,
+            qname=qname,
+            path=rel_path,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            lang=spec.name,
+            signature=_go_signature_of(source, node),
+            metadata={"poisoned": True} if extraction.poisoned else None,
+        )
+        extraction.nodes.append(graph_node)
+        if qname:
+            extraction.qname_to_node[qname] = graph_node
+        extraction.edges.append(
+            CodeGraphEdge(from_id=_file_id(project, rel_path), to_id=graph_node.id, kind="DEFINES")
+        )
+        return qname
+
+    def _define_types(
+        self,
+        decl: Any,
+        source: bytes,
+        project: str,
+        rel_path: str,
+        extraction: _FileExtraction,
+    ) -> None:
+        """``type_declaration`` → one node per ``type_spec`` /
+        ``type_alias``: struct/interface → Class, everything else →
+        Type. Embedded struct fields and interface ``type_elem`` feed
+        the INHERITS pass."""
+        spec = language_for_path(rel_path)
+        assert spec is not None
+        prefix = _go_package_prefix(rel_path)
+        for spec_node in decl.named_children:
+            name_node = spec_node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = _text(source, name_node)
+            if spec_node.type == "type_alias":
+                kind = _KIND_TYPE
+                bases: list[str] = []
+            else:
+                type_node = spec_node.child_by_field_name("type")
+                composite = type_node is not None and type_node.type in (
+                    "struct_type",
+                    "interface_type",
+                )
+                kind = _KIND_CLASS if composite else _KIND_TYPE
+                bases = _go_embedded_bases(type_node, source) if composite else []
+            qname = f"{prefix}{name}"
+            graph_node = CodeGraphNode(
+                id=_node_id(project, rel_path, name, spec_node.start_point[0] + 1),
+                project=project,
+                kind=kind,
+                name=name,
+                qname=qname,
+                path=rel_path,
+                start_line=spec_node.start_point[0] + 1,
+                end_line=spec_node.end_point[0] + 1,
+                lang=spec.name,
+                signature=None,
+                metadata={"poisoned": True} if extraction.poisoned else None,
+            )
+            extraction.nodes.append(graph_node)
+            extraction.qname_to_node[qname] = graph_node
+            extraction.top_level_defs.add(name)
+            if bases:
+                extraction.class_bases[qname] = bases
+            extraction.edges.append(
+                CodeGraphEdge(
+                    from_id=_file_id(project, rel_path), to_id=graph_node.id, kind="DEFINES"
+                )
+            )
+
+    # ── reference collection ───────────────────────────────────────────────
+
+    def _collect_imports(self, decl: Any, source: bytes, extraction: _FileExtraction) -> None:
+        """import_spec paths (+ aliases). The path string is read for
+        resolution only — it never reaches the store (PG1); blank and
+        dot aliases are dropped (blank = side-effect import with no
+        qualifier, dot-imports have no package qualifier at all)."""
+
+        def specs(node: Any) -> Iterator[Any]:
+            for child in node.named_children:
+                if child.type == "import_spec":
+                    yield child
+                elif child.type == "import_spec_list":
+                    yield from specs(child)
+
+        for imp in specs(decl):
+            path_node = imp.child_by_field_name("path")
+            if path_node is None:
+                continue
+            path = _go_string_text(source, path_node)
+            if not path:
+                continue
+            alias_node = imp.child_by_field_name("name")
+            alias = _text(source, alias_node) if alias_node is not None else None
+            if alias in (".", "_"):
+                alias = None
+            extraction.imports.append(path)
+            extraction.import_pairs.append((alias, path))
+
+    def _collect_call(
+        self,
+        node: Any,
+        source: bytes,
+        extraction: _FileExtraction,
+        enclosing: str | None,
+    ) -> None:
+        """``call_expression`` head +, for ``new``/``make``, the type
+        argument's type names. The head is an identifier, a selector or
+        a conversion's type name — never an argument literal (PG1)."""
+        fn = node.child_by_field_name("function")
+        if fn is not None and fn.type in ("identifier", "selector_expression", "type_identifier"):
+            extraction.call_refs.append((_text(source, fn), enclosing))
+        if fn is not None and fn.type == "identifier" and _text(source, fn) in ("new", "make"):
+            args = node.child_by_field_name("arguments")
+            if args is not None and args.named_children:
+                _go_collect_type_names(
+                    source, args.named_children[0], extraction.type_refs, enclosing
+                )
+
+    def _collect_composite(
+        self,
+        node: Any,
+        source: bytes,
+        extraction: _FileExtraction,
+        enclosing: str | None,
+    ) -> None:
+        """``&Foo{…}`` / ``pkg.Foo{…}`` — the canonical Go construction
+        site; the composite's type name becomes a type reference."""
+        type_node = node.child_by_field_name("type")
+        if type_node is not None and type_node.type in ("type_identifier", "qualified_type"):
+            extraction.type_refs.append((_text(source, type_node), enclosing))
+
+    def _package_name(self, root: Any, source: bytes, rel_path: str) -> str:
+        """The ``package`` clause identifier, falling back to the
+        directory basename (a parse-broken file still gets a name)."""
+        for child in root.named_children:
+            if child.type == "package_clause":
+                ident = child.child_by_field_name("name")
+                if ident is not None:
+                    return _text(source, ident)
+        return _go_dir(rel_path).rsplit("/", 1)[-1] or rel_path
+
+
 def _resolve_import(
     imported: str,
     rel_path: str,
@@ -563,8 +1013,32 @@ def _tested_module_name(test_rel: str) -> str:
     return name
 
 
+def _go_package_dir(import_path: str, go_dirs: dict[str, list[str]]) -> str | None:
+    """Longest repo-directory suffix match for one Go import path.
+
+    The module prefix outside the repo is unknown, so the path matches
+    a package only as a trailing-segments suffix (``example.com/o/r/pkg/api``
+    tries ``pkg/api`` after ``api``); the LONGEST existing directory
+    wins (most specific). Only directories that contain indexed .go
+    files can match — stdlib/external imports resolve to ``None`` and
+    produce no edge, silently.
+    """
+    parts = [p for p in import_path.split("/") if p]
+    for i in range(len(parts)):
+        candidate = "/".join(parts[i:])
+        if candidate in go_dirs:
+            return candidate
+    return None
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+class _FileParser(Protocol):
+    """The per-language file-parser surface the indexer dispatches to."""
+
+    def parse(self, project: str, rel_path: str, source: bytes) -> _FileExtraction: ...
 
 
 class ProjectIndexer:
@@ -585,16 +1059,22 @@ class ProjectIndexer:
     ) -> None:
         self.store = store
         self._config = data or CodeGraphConfig()
-        self._parsers: dict[str, PythonFileParser] = {}
+        self._parsers: dict[str, _FileParser] = {}
         # Issue #449: the allowlist is fixed for the indexer's lifetime
         # (config is immutable here), so the parsers are built with it.
         self._secret_allowlist = tuple(self._config.secret_allowlist)
 
-    def _parser_for(self, spec: LanguageSpec) -> PythonFileParser:
+    def _parser_for(self, spec: LanguageSpec) -> _FileParser:
         cached = self._parsers.get(spec.name)
         if cached is None:
-            cached = PythonFileParser(spec.language_factory(), self._secret_allowlist)
-            self._parsers[spec.name] = cached
+            language = spec.language_factory()
+            parser: _FileParser
+            if spec.name == GO.name:
+                parser = GoFileParser(language, self._secret_allowlist)
+            else:
+                parser = PythonFileParser(language, self._secret_allowlist)
+            self._parsers[spec.name] = parser
+            return parser
         return cached
 
     @property
@@ -819,6 +1299,14 @@ class ProjectIndexer:
            a head matching a known in-file symbol otherwise gets USES
            with ``provenance='heuristic'``; unknown heads get no edge
            at all (external/stdlib surface is not wave-1 material).
+
+        Go (issue #470) runs the same pass shape over package indexes:
+        package dirs → package-level defs (merged across a package's
+        files), per-file import qualifiers → package dirs (longest
+        repo-directory suffix match). Plain-identifier calls and
+        ``pkg.Ident`` calls resolve to CALLS; method and type-name
+        references resolve to heuristic USES; everything else is
+        silently dropped.
         """
         path_index: dict[str, str] = {sf.rel_path: sf.rel_path for sf in surface}
         module_index: dict[str, str] = {_module_qname(sf.rel_path): sf.rel_path for sf in surface}
@@ -827,6 +1315,12 @@ class ProjectIndexer:
         for ex in extractions.values():
             for qname, node in ex.qname_to_node.items():
                 qname_index[qname] = node
+
+        go_dirs, go_packages, go_imports = self._go_indexes(surface, extractions)
+        go_names: dict[str, list[CodeGraphNode]] = {}
+        for package_defs in go_packages.values():
+            for name, node in package_defs.items():
+                go_names.setdefault(name, []).append(node)
 
         nodes: list[CodeGraphNode] = []
         edges: list[CodeGraphEdge] = []
@@ -837,6 +1331,26 @@ class ProjectIndexer:
         # IMPORTS (module-to-module, alias-free).
         for rel, ex in extractions.items():
             mid = _module_id(project, rel)
+            spec = language_for_path(rel)
+            if spec is not None and spec.name == GO.name:
+                # Go: the edge lands on the package's first (sorted)
+                # file's Module node — the package is the semantic unit;
+                # per-file modules are a store-shape artifact.
+                for _, import_path in ex.import_pairs:
+                    package_dir = _go_package_dir(import_path, go_dirs)
+                    if package_dir is None:
+                        continue  # stdlib/external/unmatched: NO edge
+                    representative = go_dirs[package_dir][0]
+                    if representative == rel:
+                        continue
+                    edges.append(
+                        CodeGraphEdge(
+                            from_id=mid,
+                            to_id=_module_id(project, representative),
+                            kind="IMPORTS",
+                        )
+                    )
+                continue
             for imported in ex.imports:
                 target = _resolve_import(imported, rel, path_index, fallback)
                 if target is None or target == rel:
@@ -850,13 +1364,25 @@ class ProjectIndexer:
                 )
 
         # INHERITS (provenance: tree-sitter — the base IS in source).
-        for ex in extractions.values():
+        for rel, ex in extractions.items():
             for qname, bases in ex.class_bases.items():
                 class_node = ex.qname_to_node.get(qname)
                 if class_node is None:
                     continue
+                spec = language_for_path(rel)
+                go_embed = spec is not None and spec.name == GO.name
                 for base in bases:
-                    base_node = qname_index.get(base) or qname_index.get(base.rsplit(".", 1)[-1])
+                    if go_embed:
+                        # Go embedding: qualified ``pkg.Base`` resolves
+                        # through the file's import qualifiers, a plain
+                        # name through the own package first, then a
+                        # PROJECT-UNIQUE name (an ambiguous name never
+                        # invents an edge).
+                        base_node = self._go_base_node(base, rel, go_packages, go_imports, go_names)
+                    else:
+                        base_node = qname_index.get(base) or qname_index.get(
+                            base.rsplit(".", 1)[-1]
+                        )
                     if base_node is not None and base_node.id != class_node.id:
                         edges.append(
                             CodeGraphEdge(
@@ -869,7 +1395,10 @@ class ProjectIndexer:
             spec = language_for_path(sf.rel_path)
             if spec is None or not is_test_file(spec, sf.rel_path):
                 continue
-            tested_rel = self._tested_target(sf.rel_path, module_index, path_index)
+            if spec.name == GO.name:
+                tested_rel = self._go_tested_target(sf.rel_path, go_dirs)
+            else:
+                tested_rel = self._tested_target(sf.rel_path, module_index, path_index)
             if tested_rel is not None and tested_rel != sf.rel_path:
                 edges.append(
                     CodeGraphEdge(
@@ -883,6 +1412,10 @@ class ProjectIndexer:
         # CALLS (proven) / USES (heuristic fallback — USAGE-honesty).
         for rel, ex in extractions.items():
             mid = _module_id(project, rel)
+            spec = language_for_path(rel)
+            if spec is not None and spec.name == GO.name:
+                edges.extend(self._resolve_go_refs(rel, ex, mid, go_packages, go_imports))
+                continue
             imported_modules = {imp for imp in ex.imports if not imp.startswith(".")}
             imported_top: set[str] = set()
             for imp in imported_modules:
@@ -968,6 +1501,149 @@ class ProjectIndexer:
                 if qname.rsplit(".", 1)[-1] == tail:
                     return node.id
         return mid
+
+    # ── Go resolution (issue #470) ─────────────────────────────────────────
+
+    def _go_indexes(
+        self,
+        surface: list[SurfaceFile],
+        extractions: dict[str, _FileExtraction],
+    ) -> tuple[
+        dict[str, list[str]], dict[str, dict[str, CodeGraphNode]], dict[str, dict[str, str]]
+    ]:
+        """Go resolution indexes, built once per run:
+
+        * dirs — package directory -> sorted .go rel paths;
+        * packages — package directory -> package-level def name -> node
+          (funcs + types merged across the package's files; Go package
+          scope makes these names unique — methods are type-scoped and
+          excluded);
+        * imports — file rel path -> call qualifier -> package dir
+          (alias if the import names one, else the path's last segment).
+        """
+        go_dirs: dict[str, list[str]] = {}
+        for sf in surface:
+            spec = language_for_path(sf.rel_path)
+            if spec is not None and spec.name == GO.name:
+                go_dirs.setdefault(_go_dir(sf.rel_path), []).append(sf.rel_path)
+        for rels in go_dirs.values():
+            rels.sort()
+        go_packages: dict[str, dict[str, CodeGraphNode]] = {}
+        go_imports: dict[str, dict[str, str]] = {}
+        for rel, ex in extractions.items():
+            spec = language_for_path(rel)
+            if spec is None or spec.name != GO.name:
+                continue
+            bucket = go_packages.setdefault(_go_dir(rel), {})
+            for node in ex.qname_to_node.values():
+                if node.name in ex.top_level_defs:
+                    bucket[node.name] = node
+            qualifiers: dict[str, str] = {}
+            for alias, import_path in ex.import_pairs:
+                package_dir = _go_package_dir(import_path, go_dirs)
+                if package_dir is None:
+                    continue
+                qualifiers[alias or import_path.rsplit("/", 1)[-1]] = package_dir
+            go_imports[rel] = qualifiers
+        return go_dirs, go_packages, go_imports
+
+    def _go_tested_target(self, test_rel: str, go_dirs: dict[str, list[str]]) -> str | None:
+        """``foo_test.go`` tests its OWN package: the heuristic target is
+        the first (sorted) non-test .go file in the same directory.
+        A test-only package gets NO edge."""
+        for rel in go_dirs.get(_go_dir(test_rel), ()):
+            if rel != test_rel and not is_test_file(GO, rel):
+                return rel
+        return None
+
+    def _go_base_node(
+        self,
+        base: str,
+        rel: str,
+        go_packages: dict[str, dict[str, CodeGraphNode]],
+        go_imports: dict[str, dict[str, str]],
+        go_names: dict[str, list[CodeGraphNode]],
+    ) -> CodeGraphNode | None:
+        """The node an embedded type name points at: a qualified
+        embedding (``pkg.Base``) resolves through the embedding file's
+        import qualifiers; a plain name through the own package first,
+        then a PROJECT-UNIQUE name (ambiguous → ``None`` — no edge)."""
+        if "." in base:
+            qual, _, tail = base.rpartition(".")
+            return go_packages.get(go_imports.get(rel, {}).get(qual, ""), {}).get(tail)
+        own = go_packages.get(_go_dir(rel), {}).get(base)
+        if own is not None:
+            return own
+        candidates = go_names.get(base, ())
+        return candidates[0] if len(candidates) == 1 else None
+
+    def _resolve_go_refs(
+        self,
+        rel: str,
+        ex: _FileExtraction,
+        mid: str,
+        go_packages: dict[str, dict[str, CodeGraphNode]],
+        go_imports: dict[str, dict[str, str]],
+    ) -> list[CodeGraphEdge]:
+        """CALLS/USES edges for ONE Go file — the honesty ladder:
+
+        * ``ident(…)`` hitting a package-level def → CALLS (proven: Go
+          package scope makes the name unique — functions AND type
+          conversions, mirroring the Python class-ctor rule);
+        * ``pkg.Ident(…)`` with ``pkg`` a resolved import qualifier and
+          ``Ident`` a package-level def → CALLS (proven);
+        * anything else (``obj.Method(…)`` — the receiver type is not
+          inferred) falling back to a known in-file symbol tail → USES
+          heuristic; unknown heads get NO edge;
+        * type references (composite literals, new/make type args)
+          name-matching a package-level type (own or imported package)
+          → USES heuristic (the name match is not a type identity).
+        """
+        edges: list[CodeGraphEdge] = []
+        package_defs = go_packages.get(_go_dir(rel), {})
+        qualifiers = go_imports.get(rel, {})
+        for head, enclosing in ex.call_refs:
+            caller = self._caller_id(ex, mid, enclosing)
+            if "." not in head:
+                target = package_defs.get(head)
+                if target is not None and target.id != caller:
+                    edges.append(CodeGraphEdge(from_id=caller, to_id=target.id, kind="CALLS"))
+                    continue
+                known = self._known_symbol(ex, head, head)
+                if known is not None and known.id != caller:
+                    edges.append(
+                        CodeGraphEdge(
+                            from_id=caller, to_id=known.id, kind="USES", provenance="heuristic"
+                        )
+                    )
+                continue
+            qual, _, tail = head.rpartition(".")
+            imported_defs = go_packages.get(qualifiers.get(qual, ""), {})
+            target = imported_defs.get(tail)
+            if target is not None and target.id != caller:
+                edges.append(CodeGraphEdge(from_id=caller, to_id=target.id, kind="CALLS"))
+                continue
+            known = self._known_symbol(ex, head, tail)
+            if known is not None and known.id != caller:
+                edges.append(
+                    CodeGraphEdge(
+                        from_id=caller, to_id=known.id, kind="USES", provenance="heuristic"
+                    )
+                )
+        for type_head, enclosing in ex.type_refs:
+            caller = self._caller_id(ex, mid, enclosing)
+            if "." in type_head:
+                qual, _, tail = type_head.rpartition(".")
+                target = go_packages.get(qualifiers.get(qual, ""), {}).get(tail)
+            else:
+                target = package_defs.get(type_head)
+            if target is not None and target.id != caller:
+                edges.append(
+                    CodeGraphEdge(
+                        from_id=caller, to_id=target.id, kind="USES", provenance="heuristic"
+                    )
+                )
+        return edges
 
     def _top_def_node(
         self, ex: _FileExtraction, head: str, local_name: str, tail: str

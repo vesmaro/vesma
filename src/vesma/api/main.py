@@ -148,7 +148,7 @@ def _check_non_loopback_auth(api_cfg: ApiConfig) -> None:
     # TOTP enabled but master key missing → refuse to start
     if api_cfg.totp_enabled and not api_cfg.totp_master_key.get_secret_value():
         print(
-            "FATAL: api.totp_enabled=true but VESMARO_API__TOTP_MASTER_KEY is not set.",
+            "FATAL: api.totp_enabled=true but VESMA_API__TOTP_MASTER_KEY is not set.",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -1269,8 +1269,11 @@ class HooksRequest(BaseModel):
     output_text: str | None = None
     auto_compress: bool | None = None
     profile: str | None = None
-    # pre_llm_call / on_session_start (vesma #254 awareness composition)
-    include_awareness: bool = False
+    # pre_llm_call / on_session_start (vesma #254 awareness composition).
+    # ADR-0035 W1: None (field absent) resolves to the mode-linked
+    # default inside the awareness-capable hooks — canary/on compose by
+    # default; an explicit boolean always wins.
+    include_awareness: bool | None = None
 
 
 @app.post("/hooks/{action}")

@@ -5,9 +5,11 @@ Entry point: vesma (declared in pyproject.toml [project.scripts]).
 
 from __future__ import annotations
 
+import json
+import sqlite3
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
@@ -48,7 +50,7 @@ def _print_update_hint() -> None:
     Best-effort by contract: the check never raises, is served from the
     24h disk cache when warm, and is capped by the module's 3s HTTP
     timeout. Honors both opt-outs (``updates.check_enabled`` and the
-    ``VESMARO_UPDATES_CHECK`` env kill switch) via ``check_for_update``.
+    ``VESMA_UPDATES_CHECK`` env kill switch) via ``check_for_update``.
     """
     try:
         from vesma.updates import check_for_update
@@ -529,6 +531,197 @@ def tags_rename(
             console.print(f"  - {err}")
         if len(report["errors"]) > 20:
             console.print(f"  ... ({len(report['errors']) - 20} more)")
+
+
+# ── tags audit (board card vesma-doctor-fixes-467) ───────────────────────────
+
+
+def _audit_slug(value: str) -> str:
+    """Lax-mode slug normalization for audit heal values.
+
+    Matches ``tags normalize`` / ``validate_tag_contract`` lax mode:
+    strip, lowercase, spaces → hyphens.
+    """
+    return value.strip().lower().replace(" ", "-")
+
+
+def _audit_heal_tags(raw_tags: str, project_col: str) -> tuple[list[str], list[str], bool]:
+    """Compute the healed tag list for one memory row.
+
+    The owner-approved heal policy is ADDITIVE-ONLY: existing (parseable)
+    tags are never removed; only the missing tag-contract prefixes are
+    appended. ``project:*`` heals to the row's ``project`` column value
+    slug-normalized, or ``project:unsorted`` when the column is empty;
+    ``agent:*`` heals to ``agent:user``; ``mnemos:*`` heals to
+    ``mnemos:legacy``.
+
+    Returns ``(healed_tags, missing_prefixes, unparseable)`` where
+    ``missing_prefixes`` is empty exactly when the row already conforms.
+    A row whose tags JSON cannot be parsed is non-conformant by
+    definition; nothing is salvageable, so the healed list is the three
+    contract prefixes.
+    """
+    unparseable = False
+    tags: list[str] | None
+    try:
+        parsed = json.loads(raw_tags) if raw_tags else []
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    if isinstance(parsed, list) and all(isinstance(t, str) for t in parsed):
+        tags = list(parsed)
+    else:
+        tags = []
+        # Non-empty raw value that did not parse into a list of strings —
+        # corrupt by the contract. An empty/NULL column is just "no tags".
+        unparseable = bool((raw_tags or "").strip())
+
+    missing: list[str] = []
+    healed = list(tags or [])
+    if not any(t.startswith("project:") for t in healed):
+        slug = _audit_slug(project_col or "")
+        healed.append(f"project:{slug or 'unsorted'}")
+        missing.append("project:*")
+    if not any(t.startswith("agent:") for t in healed):
+        healed.append("agent:user")
+        missing.append("agent:*")
+    if not any(t.startswith("mnemos:") for t in healed):
+        healed.append("mnemos:legacy")
+        missing.append("mnemos:*")
+    return healed, missing, unparseable
+
+
+@_tags_app.command(name="audit")
+def tags_audit(
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help="Heal: add the missing contract prefixes to every non-conformant "
+            "entry (additive only — existing tags are never removed; idempotent). "
+            "Default is a dry-run report.",
+        ),
+    ] = False,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            "-l",
+            help="Cap the number of LISTED rows (0 = list all). The scan itself "
+            "always covers the whole store.",
+        ),
+    ] = 0,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit the report as JSON (for scripting / CI)."),
+    ] = False,
+    config: str = ConfigOption,
+) -> None:
+    """Audit memories for tag-contract conformance; optionally heal.
+
+    Every entry needs at least one ``project:*``, one ``agent:*`` and one
+    ``mnemos:*`` tag (the same contract the doctor's tag-contract check
+    enforces); entries whose tags JSON is unparseable are flagged too.
+
+    Default (dry-run): report only. With ``--apply``: add the missing
+    prefixes — never remove existing tags (idempotent by construction).
+    """
+    mgr = get_manager(config)
+
+    rows: list[tuple[Any, ...]] = []
+    db_path = mgr.sqlite.db_path
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT id, content, title, tags, project FROM memories ORDER BY created_at DESC"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                rows = []  # fresh/empty store — nothing to audit
+            else:
+                console.print(f"[red]✗ Tag scan failed:[/red] {exc}")
+                raise typer.Exit(1) from exc
+        except sqlite3.Error as exc:
+            console.print(f"[red]✗ Tag scan failed:[/red] {exc}")
+            raise typer.Exit(1) from exc
+        finally:
+            conn.close()
+
+    findings: list[dict[str, Any]] = []
+    for mem_id, content, title, raw_tags, project_col in rows:
+        healed, missing, unparseable = _audit_heal_tags(str(raw_tags or ""), str(project_col or ""))
+        if not missing:
+            continue
+        if unparseable:
+            tags_display = "(unparseable)"
+        else:
+            try:
+                tags_display = ", ".join(json.loads(raw_tags)) if raw_tags else ""
+            except (json.JSONDecodeError, TypeError):
+                tags_display = "(unparseable)"
+        snippet = f"{title or content or ''}".strip().replace("\n", " ")
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "…"
+        findings.append(
+            {
+                "id": str(mem_id),
+                "snippet": snippet,
+                "tags": tags_display,
+                "missing": missing,
+                "healed": healed,
+            }
+        )
+
+    shown = findings if limit <= 0 else findings[:limit]
+    tags_added: dict[str, int] = {}
+    healed_count = 0
+    if apply:
+        for f in findings:
+            if mgr.sqlite.update_fields(f["id"], tags=f["healed"]):
+                healed_count += 1
+            for prefix in f["missing"]:
+                tags_added[prefix] = tags_added.get(prefix, 0) + 1
+
+    if json_output:
+        payload: dict[str, Any] = {
+            "mode": "applied" if apply else "dry-run",
+            "scanned": len(rows),
+            "non_conformant": len(findings),
+            "rows": [
+                {"id": f["id"], "snippet": f["snippet"], "tags": f["tags"], "missing": f["missing"]}
+                for f in shown
+            ],
+        }
+        if apply:
+            payload["healed"] = healed_count
+            payload["tags_added"] = tags_added
+        console.print_json(json.dumps(payload))
+        return
+
+    mode_label = "[green]applied[/green]" if apply else "[yellow]dry-run (no writes)[/yellow]"
+    title = f"Tags audit — {len(rows):,} scanned, {len(findings):,} non-conformant — {mode_label}"
+    table = Table(title=title)
+    table.add_column("ID", style="cyan")
+    table.add_column("Entry", style="white", max_width=60)
+    table.add_column("Tags", style="dim")
+    table.add_column("Missing", style="red")
+    for f in shown:
+        table.add_row(f["id"][:8] + "…", f["snippet"], f["tags"], ", ".join(f["missing"]))
+    console.print(table)
+    if len(findings) > len(shown):
+        console.print(f"[dim]…and {len(findings) - len(shown)} more (raise --limit)[/dim]")
+
+    if apply:
+        plural = "y" if healed_count == 1 else "ies"
+        console.print(f"[green]Healed:[/green] {healed_count} entr{plural}")
+        for prefix in ("project:*", "agent:*", "mnemos:*"):
+            if prefix in tags_added:
+                console.print(f"  {prefix}: {tags_added[prefix]} tag(s) added")
+        console.print(
+            "[dim]Re-run `vesma tags audit` — a second pass must report 0 non-conformant.[/dim]"
+        )
+    elif findings:
+        console.print("[yellow]Dry-run only — re-run with --apply to heal.[/yellow]")
 
 
 # ── workflow (#96) ────────────────────────────────────────────────────────────
@@ -1444,7 +1637,7 @@ def totp_enroll(
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
         console.print(
-            "[red]VESMARO_API__TOTP_MASTER_KEY is not set — cannot encrypt TOTP secret.[/red]"
+            "[red]VESMA_API__TOTP_MASTER_KEY is not set — cannot encrypt TOTP secret.[/red]"
         )
         raise typer.Exit(1)
 
@@ -1508,7 +1701,7 @@ def totp_test(
     settings = load_settings(config)
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
-        console.print("[red]VESMARO_API__TOTP_MASTER_KEY is not set.[/red]")
+        console.print("[red]VESMA_API__TOTP_MASTER_KEY is not set.[/red]")
         raise typer.Exit(1)
 
     store = _auth_store(config)
@@ -1566,6 +1759,20 @@ from vesma.cli.completion import completion_app  # noqa: E402
 
 app.add_typer(completion_app, name="completion")
 
+# ── __complete (custom completion engine — hidden plumbing) ────────────────────
+# Backing engine for the shell scripts installed by `vesma completion`.
+# Hidden from --help; argv contract documented in vesmaro/cli/complete_cmd.py.
+
+from vesma.cli.complete_cmd import complete as complete_engine  # noqa: E402
+
+app.command(
+    name="__complete",
+    hidden=True,
+    # The engine receives raw words that legitimately start with `-`
+    # (option-name completion): they are data, not options of __complete.
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)(complete_engine)
+
 
 # ── doctor ─────────────────────────────────────────────────────────────────────
 # Health-check: config + data dir + vault + SQLite + vectors + MCP + integration + tags.
@@ -1583,7 +1790,7 @@ from vesma.cli.import_cmd import import_app  # noqa: E402
 from vesma.cli.logs import logs_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
-from vesma.cli.update_cmd import update as update_cmd  # noqa: E402
+from vesma.cli.update_cmd import update_app  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
@@ -1602,9 +1809,13 @@ app.add_typer(scanner_app, name="scanner")
 from vesma.cli.graph_cmd import graph_app  # noqa: E402
 
 app.add_typer(graph_app, name="graph")
-app.command(name="update", help="Check for updates / update the user-site install (issue #445).")(
-    update_cmd
-)
+
+# update family: a sub-app (board card vesma-update-family-components) —
+# plain `vesma update` keeps the 5.2.0 report+prompt behavior via the
+# group callback; check/apply/timer/components are subcommands and the
+# old flags remain hidden deprecated aliases (the shipped systemd unit's
+# ExecStart depends on them).
+app.add_typer(update_app, name="update")
 
 
 def cli_main() -> None:

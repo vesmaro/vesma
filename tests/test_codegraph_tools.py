@@ -38,6 +38,7 @@ from vesma.codegraph.indexer import IndexLimitError
 from vesma.codegraph.service import (
     BYTES_PER_TOKEN,
     DEFAULT_MAX_OUTPUT_TOKENS,
+    POISONED_FIXTURE_HINT,
     CodeGraphService,
     GraphAttributionError,
     GraphBudgetError,
@@ -45,6 +46,7 @@ from vesma.codegraph.service import (
     GraphDisabledError,
     GraphToolError,
     _is_forbidden_root,
+    poisoned_fixture_hint,
     resolve_token_budget,
     window_rows,
 )
@@ -327,8 +329,10 @@ class TestToolHappyPaths:
         with pytest.raises(GraphToolError, match="depth"):
             indexed.trace_path(PROJECT, derived["qname"], agent=AGENT, depth=3)
 
-    def test_trace_symbol_resolution_ambiguous_refused(self, indexed: CodeGraphService) -> None:
-        with pytest.raises(GraphToolError, match="not found or ambiguous"):
+    def test_trace_symbol_resolution_missing_refused(self, indexed: CodeGraphService) -> None:
+        # W-H: a missing symbol stays a clear not-found refusal (the
+        # AMBIGUOUS case is no longer an error — see the hybrid suite).
+        with pytest.raises(GraphToolError, match="not found in the project graph"):
             indexed.trace_path(PROJECT, "no.such.symbol", agent=AGENT)
 
     def test_file_outline(self, indexed: CodeGraphService) -> None:
@@ -527,6 +531,77 @@ class TestSecretAllowlistService:
             with pytest.raises(GraphToolError, match="POISONED"):
                 service.get_code_snippet(PROJECT, "secret.py", 1, 1, agent=AGENT)
             assert all(r["reason"] != "allowlist-unpoison" for r in service._audit.recent(PROJECT))
+        finally:
+            service.close()
+
+
+class TestPoisonedFixtureHint:
+    """W-G graph adoption: status points at the allowlist escape hatch
+    when the poisoned set is entirely test-fixture noise — and stays
+    silent when any poisoned path is NOT test-like (real scrutiny)."""
+
+    @staticmethod
+    def _fixture_repo(tmp_path: Path) -> Path:
+        """A repo whose ONLY poisoned file lives under ``tests/``."""
+        repo = tmp_path / "fixture-repo"
+        (repo / "tests").mkdir(parents=True)
+        (repo / "pyproject.toml").write_text("[project]\nname = 'fixt'\n", encoding="utf-8")
+        (repo / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+        (repo / "tests" / "fake_key_fixture.py").write_text(
+            f'AWS_ID = "{SECRET_AWS_KEY}"\n', encoding="utf-8"
+        )
+        return repo
+
+    def test_unit_all_testlike_paths_hint(self) -> None:
+        hint = poisoned_fixture_hint(["tests/fixtures/fake.py", "benchmarks/bench_secret.py"])
+        assert hint == [POISONED_FIXTURE_HINT]
+        assert "secret_allowlist" in hint[0]
+
+    def test_unit_real_or_mixed_or_empty_no_hint(self) -> None:
+        assert poisoned_fixture_hint([]) == []
+        assert poisoned_fixture_hint(["secret.py"]) == []
+        # One real poisoned path suppresses the hint — mixed sets are scrutiny.
+        assert poisoned_fixture_hint(["tests/fixtures/fake.py", "secret.py"]) == []
+        assert poisoned_fixture_hint(["tests/fake.py", "src/leak.py"]) == []
+
+    def test_status_hints_on_all_fixture_poisoning(self, tmp_path: Path) -> None:
+        repo = self._fixture_repo(tmp_path)
+        service, _ = make_service(tmp_path, repo)
+        try:
+            result = service.index_project(PROJECT, agent=AGENT)
+            assert result["poisoned"] == ["tests/fake_key_fixture.py"]
+            status = service.status(PROJECT, agent=AGENT)
+            assert status["poisoned_count"] == 1
+            assert status["hints"] == [POISONED_FIXTURE_HINT]
+        finally:
+            service.close()
+
+    def test_status_no_hint_for_real_poison(self, indexed: CodeGraphService) -> None:
+        # The mini_repo poison (secret.py at the repo root) is NOT test-like.
+        status = indexed.status(PROJECT, agent=AGENT)
+        assert status["poisoned_count"] == 1
+        assert status["hints"] == []
+
+    def test_status_no_hint_after_partial_allowlist_unpoison(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """Allowlisting the fixture tree drains the fixture poison; the
+        remaining REAL poison (secret.py) keeps the hint silent."""
+        fixture = mini_repo / "tests" / "fake_key_fixture.py"
+        fixture.parent.mkdir(exist_ok=True)
+        fixture.write_text(f'AWS_ID = "{SECRET_AWS_KEY}"\n', encoding="utf-8")
+        first, _ = make_service(tmp_path, mini_repo)
+        try:
+            first.index_project(PROJECT, agent=AGENT)
+        finally:
+            first.close()
+        service, _ = make_service(tmp_path, mini_repo, secret_allowlist=["tests/**"])
+        try:
+            again = service.index_project(PROJECT, agent=AGENT, incremental=False)
+            assert again["unpoisoned"] == ["tests/fake_key_fixture.py"]
+            status = service.status(PROJECT, agent=AGENT)
+            assert status["poisoned_count"] == 1  # secret.py remains
+            assert status["hints"] == []  # remaining poison is real, not fixtures
         finally:
             service.close()
 

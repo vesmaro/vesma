@@ -290,12 +290,15 @@ class TestCompletionCommand:
         # Completion script file stored under ~/.mnemos/completion/
         script_file = fake_home / ".mnemos" / "completion" / "vesma.bash"
         assert script_file.exists()
-        assert "_vesma" in script_file.read_text(encoding="utf-8")
-        # rc file gets an active (uncommented) source line, not eval.
+        assert "_vesma()" in script_file.read_text(encoding="utf-8")
+        # rc file gets the exact canonical guarded source line.
         rc = fake_home / ".bashrc"
         assert rc.exists()
         content = rc.read_text(encoding="utf-8")
-        assert "source ~/.mnemos/completion/vesma.bash" in content
+        assert (
+            "[ -f ~/.mnemos/completion/vesma.bash ] "
+            "&& source ~/.mnemos/completion/vesma.bash" in content
+        )
         assert "eval " not in content
 
     def test_completion_is_idempotent(
@@ -349,7 +352,7 @@ class TestCompletionCommand:
     def test_completion_is_installed_true_for_active_source(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`_is_installed()` returns True for an active (uncommented) source line."""
+        """`_is_installed()` returns True for the exact canonical source line."""
         from vesma.cli.completion import _is_installed
 
         fake_home = tmp_path / "fakehome"
@@ -357,8 +360,7 @@ class TestCompletionCommand:
         monkeypatch.setenv("HOME", str(fake_home))
         rc = fake_home / ".bashrc"
         rc.write_text(
-            "[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash\n",
+            "[ -f ~/.mnemos/completion/vesma.bash ] && source ~/.mnemos/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert _is_installed("bash", rc)
@@ -383,8 +385,11 @@ class TestCompletionCommand:
         # Old eval line and its marker comment must be gone.
         assert "mnemos --show-completion" not in content
         assert "eval " not in content
-        # New source line must be present.
-        assert "source ~/.mnemos/completion/vesma.bash" in content
+        # New canonical source line must be present.
+        assert (
+            "[ -f ~/.mnemos/completion/vesma.bash ] "
+            "&& source ~/.mnemos/completion/vesma.bash" in content
+        )
         # User content preserved.
         assert "# some user content" in content
 

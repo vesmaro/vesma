@@ -1,9 +1,25 @@
-"""``vesma completion`` CLI subcommand — shell completion auto-install.
+"""``vesma completion`` CLI subcommand — custom shell completion auto-install.
 
-Generates a shell completion script for bash/zsh/fish, stores it as a file
-under ``~/.mnemos/completion/`` (alongside data, vault, logs, cache), and adds
-a single ``source`` line to the shell rc file. Idempotent: re-running does
-not duplicate the source line and migrates away the old ``eval`` format.
+Installs Vesma's OWN completion scripts (backed by the ``vesma __complete``
+engine, :mod:`vesmaro.cli.complete_cmd`) instead of typer's generated ones,
+which carry no candidate descriptions in any shell. The custom scripts
+surface commands/subcommands/options WITH their descriptions in zsh and
+fish; bash's readline cannot render descriptions, so it completes values
+only (honestly documented in ``--show-instructions`` and the user docs).
+
+Prog binding
+------------
+
+The scripts are bound to the PRIMARY program name — the ``sys.argv[0]``
+basename at install time when it is one of Vesma's real binary names,
+defaulting to ``vesma`` — plus the legacy alias names that exist as real
+binaries (``vesmaro`` always, ``mnemos`` when found on PATH). Each
+registered name gets the same completion function, so Tab works for every
+way the user actually invokes the CLI. This fixes the historical bug where
+the installer registered completion for ``vesmaro`` while the binary users
+invoke is ``vesma`` (dead Tab completion), compounded by stale pre-rebrand
+``source ~/.mnemos/completion/vesmaro.bash`` rc lines making the installer
+report "already installed".
 
 File layout::
 
@@ -16,27 +32,48 @@ File layout::
           ├── vesma.bash
           ├── vesma.zsh
           └── vesma.fish
+    ~/.config/fish/completions/<name>.fish   ← fish auto-sourced (per name)
 
 Subcommand tree::
 
     vesma completion                     — auto-detect shell + auto-install
     vesma completion bash|zsh|fish        — explicit shell + auto-install
     vesma completion --show-instructions — print manual steps, no file changes
+
+Installer semantics: every run REWRITES the script files (stay in sync with
+the installed vesma version) and ensures EXACTLY ONE canonical guarded
+source line per shell in the rc file. All legacy forms are migrated away:
+old ``eval "$(… --show-completion …)"`` lines, ``# Added by`` marker
+comments, ``if [ -f … ]; then source …; fi`` blocks and ``[ -f … ] &&
+source …`` one-liners referencing ANY old script name (mnemos.bash,
+vesmaro.bash, vesma.zsh, ...). ``_is_installed`` matches ONLY the exact
+canonical line — a stale legacy line is never mistaken for an install.
+
+rc integrity (wave W-I): the migration operates on WHOLE shell constructs —
+a matched ``if …; then`` opener removes the entire if/then(/else)/fi block,
+and orphaned control lines (``fi``/``then``/``else``/``done``) left behind
+by an older partial edit (ours or external) are cleaned up too. The field
+incident this fixes: a half-removed legacy block left an orphaned ``fi`` in
+``~/.bashrc``; bash aborts parsing the ENTIRE rc at that line, so nothing
+below it ever ran and completion stayed dead even with the canonical source
+line present. Additionally, every rc write is validated with ``bash -n``
+(``zsh -n`` when a zsh binary exists; fish needs no check) against the
+pre-edit content kept in memory — a write that would produce a non-parsing
+rc is rolled back and the installer exits non-zero.
 """
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
-from typer.completion import (  # type: ignore[attr-defined]  # typer stubs don't export this, but it exists at runtime
-    get_completion_script,
-)
 
 console = Console()
 
@@ -46,40 +83,65 @@ completion_app = typer.Typer(
     no_args_is_help=False,
 )
 
-# Env var Click/Typer uses to dispatch completion requests at runtime
-# (6.0.0: renamed from the deprecated ``_VESMARO_COMPLETE`` — regenerate
-# installed completion scripts with ``vesma completion``).
-_COMPLETE_VAR = "_VESMA_COMPLETE"
-_PROG_NAME = "vesma"  # canonical; legacy hooks `vesmaro`/`mnemos` share this completion
-
 # Shells we support for auto-install.
 _SUPPORTED_SHELLS = ("bash", "zsh", "fish")
 
+# Real binary names Vesma has shipped under. The primary name is derived
+# from sys.argv[0] only when it is one of these (a pytest/uv-run argv must
+# not rename the installed scripts); otherwise the brand default wins.
+_KNOWN_PROG_NAMES = ("vesma", "vesmaro", "mnemos")
+_DEFAULT_PROG_NAME = "vesma"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _primary_prog_name() -> str:
+    """Primary program name: ``sys.argv[0]`` basename when it is a known
+    Vesma binary, else the brand default ``vesma``."""
+    argv0 = Path(sys.argv[0] if sys.argv else "").name
+    if argv0 in _KNOWN_PROG_NAMES:
+        return argv0
+    return _DEFAULT_PROG_NAME
 
 
-def _detect_shell() -> str | None:
-    """Detect the current shell from ``$SHELL``.
+def _prog_names() -> list[str]:
+    """All program names the completion must be bound to.
 
-    Returns the bare shell name (``bash``/``zsh``/``fish``) or ``None`` if
-    unknown/unsupported.
+    Primary first, then legacy aliases: ``vesmaro`` always (the historical
+    binary name), ``mnemos`` only when it exists as a real binary on PATH.
     """
-    raw = os.environ.get("SHELL", "")
-    if not raw:
-        return None
-    name = raw.split("/")[-1].lower()
-    if name in _SUPPORTED_SHELLS:
-        return name
-    return None
+    primary = _primary_prog_name()
+    names = [primary]
+    if "vesmaro" not in names:
+        names.append("vesmaro")
+    if "mnemos" not in names and shutil.which("mnemos"):
+        names.append("mnemos")
+    return names
+
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+
+def _completion_dir() -> Path:
+    """Directory holding the generated scripts: ``~/.mnemos/completion``."""
+    return Path.home() / ".mnemos" / "completion"
+
+
+def _completion_file_path(shell: str) -> Path:
+    """Path of the stored completion script for the given shell."""
+    return _completion_dir() / f"{_primary_prog_name()}.{shell}"
+
+
+def _fish_completions_file(prog: str) -> Path:
+    """fish's auto-sourced completions file for one program name."""
+    return Path.home() / ".config" / "fish" / "completions" / f"{prog}.fish"
 
 
 def _rc_path(shell: str) -> Path:
-    """Return the rc file path for the given shell.
+    """Rc file receiving the completion for the given shell.
 
-    For bash/zsh this is the rc file that receives the ``source`` line.
-    For fish this is the auto-sourced completions file
-    (``~/.config/fish/completions/vesma.fish``).
+    For bash/zsh this is the rc file that receives the canonical ``source``
+    line. For fish there is no rc line (fish auto-sources its completions
+    directory) — the path returned is the PRIMARY program's completions
+    file, which is what "installed" means for fish.
     """
     home = Path.home()
     if shell == "bash":
@@ -87,147 +149,516 @@ def _rc_path(shell: str) -> Path:
     if shell == "zsh":
         return home / ".zshrc"
     if shell == "fish":
-        return home / ".config" / "fish" / "completions" / f"{_PROG_NAME}.fish"
+        return _fish_completions_file(_primary_prog_name())
     raise ValueError(f"Unsupported shell: {shell}")
 
 
-def _completion_file_path(shell: str) -> Path:
-    """Return the path to the stored completion script for the given shell.
+def _canonical_source_line(shell: str) -> str:
+    """The ONE guarded source line the installer guarantees in the rc file.
 
-    All shells get a copy under ``~/.mnemos/completion/vesma.{shell}`` for
-    discoverability. Fish additionally uses the auto-sourced completions dir.
+    ``_is_installed`` compares rc lines against this exact string — never a
+    substring match — so stale lines merely MENTIONING the completion dir
+    (pre-rebrand ``vesmaro.bash``, ``mnemos.bash`` one-liners/if-blocks)
+    can never be mistaken for an installed completion.
     """
-    return Path.home() / ".mnemos" / "completion" / f"{_PROG_NAME}.{shell}"
-
-
-def _source_line(shell: str) -> str:
-    """Build the single ``source`` line to append to the rc file.
-
-    For bash/zsh we write a guarded source line that does not error if the
-    file is missing. For fish no source line is needed (fish auto-sources
-    its completions directory).
-    """
-    if shell == "fish":
-        # fish: auto-sources ~/.config/fish/completions/*.fish — no rc line.
-        return ""
     path = _completion_file_path(shell)
-    # Use ~ to keep the rc file portable across home directories.
     tilde_path = f"~/{path.relative_to(Path.home())}"
     return f"[ -f {tilde_path} ] && source {tilde_path}"
 
 
+# ── Script generation (per shell, backed by `vesma __complete`) ──────────────
+
+
+def _bash_script(prog_names: list[str]) -> str:
+    """bash completion script: feed COMP_WORDS/COMP_CWORD to the engine.
+
+    bash's readline cannot render candidate descriptions — only the value
+    column (before the first TAB) is completed. Commands, subcommands,
+    options and option values complete at ALL levels because the engine
+    does the walking; the glue is stateless.
+    """
+    bound = " ".join(prog_names)
+    return f"""\
+# vesma bash completion — custom engine backed by `{prog_names[0]} __complete`.
+# Installed by `{prog_names[0]} completion bash`; rewritten on every run.
+# NOTE: bash's readline cannot show candidate descriptions; values only.
+
+_{prog_names[0]}() {{
+    local line value
+    while IFS= read -r line; do
+        value="${{line%%$'\\t'*}}"
+        [ -n "$value" ] && COMPREPLY+=("$value")
+    done < <({prog_names[0]} __complete "${{COMP_WORDS[@]:1}}" "$((COMP_CWORD - 1))" 2>/dev/null)
+    return 0
+}}
+# Bound to every registered program name (primary + legacy aliases).
+complete -F _{prog_names[0]} {bound}
+"""
+
+
+def _zsh_script(prog_names: list[str]) -> str:
+    """zsh completion script: value/description pairs via _describe.
+
+    The engine emits ``value<TAB>description`` lines; the glue splits on the
+    TAB so zsh SHOWS the descriptions in its completion menu. Source this
+    file AFTER ``compinit`` in ``~/.zshrc`` (the guarded compdef below is a
+    no-op otherwise).
+    """
+    bound = " ".join(prog_names)
+    compdefs = " ".join(prog_names)
+    raw_call = (
+        f'raw="$({prog_names[0]} __complete "${{(@)words[2,-1]}}" '
+        f'"$((CURRENT - 2))" 2>/dev/null)" || return 0'
+    )
+    return f"""\
+#compdef {bound}
+# vesma zsh completion — custom engine backed by `{prog_names[0]} __complete`.
+# Installed by `{prog_names[0]} completion zsh`; rewritten on every run.
+# Source this file AFTER compinit in ~/.zshrc so compdef can bind.
+
+_{prog_names[0]}() {{
+    local -a completions
+    local raw line word desc
+    {raw_call}
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        word="${{line%%$'\\t'*}}"
+        desc="${{line#*$'\\t'}}"
+        [[ "$desc" == "$line" ]] && desc=""
+        completions+=("${{word}}:${{desc}}")
+    done <<< "$raw"
+    (( ${{#completions[@]}} )) || return 0
+    _describe -t {prog_names[0]}-completions '{prog_names[0]} completion' completions
+}}
+# Bind every registered program name (primary + legacy aliases).
+if (( $+functions[compdef] )); then
+  compdef _{prog_names[0]} {compdefs}
+fi
+"""
+
+
+def _fish_script(prog_names: list[str]) -> str:
+    """fish completion script: one ``complete -c <name>`` per registered name.
+
+    fish renders ``value\\tdescription`` pairs from ``-a`` output natively,
+    so descriptions show without extra work. The glue strips the program
+    name token and appends the 0-based index (fish's empty current token
+    expands to zero arguments — the engine treats an index equal to the
+    word count as "empty fragment").
+    """
+    blocks: list[str] = [
+        f"# vesma fish completion — custom engine backed by `{prog_names[0]} __complete`.",
+        f"# Installed by `{prog_names[0]} completion fish`; rewritten on every run.",
+        "",
+        "function __vesma_complete",
+        "    set -l toks (commandline -opc)",
+        "    "
+        f"{prog_names[0]} __complete $toks[2..-1] (commandline -ct) "
+        "(math (count $toks) - 1) 2>/dev/null",
+        "end",
+    ]
+    for prog in prog_names:
+        blocks.append(f"complete -c {prog} -f -a '(__vesma_complete)'")
+    return "\n".join(blocks) + "\n"
+
+
 def _completion_script(shell: str) -> str:
     """Generate the completion script for the given shell."""
-    return get_completion_script(
-        prog_name=_PROG_NAME,
-        complete_var=_COMPLETE_VAR,
-        shell=shell,  # nosec B604 — shell is a completion type string (bash/zsh/fish), not shell=True
-    )
+    names = _prog_names()
+    if shell == "bash":
+        return _bash_script(names)
+    if shell == "zsh":
+        return _zsh_script(names)
+    if shell == "fish":
+        return _fish_script(names)
+    raise ValueError(f"Unsupported shell: {shell}")
+
+
+# ── Installer ─────────────────────────────────────────────────────────────────
 
 
 def _is_installed(shell: str, rc: Path) -> bool:
-    """Check whether an active (uncommented) source line is in the rc file.
+    """Whether the rc file contains the EXACT canonical source line.
 
-    For fish, installation is determined by the presence of the auto-sourced
-    completions file. For bash/zsh, the rc file must contain the source line
-    on a line that does **not** start with ``#`` (after optional leading
-    whitespace). This avoids false positives from commented-out entries.
+    Only a line equal (after stripping surrounding whitespace) to
+    :func:`_canonical_source_line` counts. Commented lines, stale legacy
+    forms (``vesmaro.bash``/``mnemos.bash`` sources, if-blocks, eval lines)
+    never count — this is the fix for the historical false positive where a
+    pre-rebrand ``source ~/.mnemos/completion/vesmaro.bash`` line made the
+    installer report "already installed" while Tab completion was dead for
+    ``vesma``.
+
+    For fish, installation is the presence of the auto-sourced completions
+    file for the primary program name.
     """
     if shell == "fish":
         return rc.exists()
     if not rc.exists():
         return False
-    rel = _completion_file_path(shell).relative_to(Path.home())
-    marker = f"source {rel}"
-    tilde_marker = f"source ~/{rel}"
+    canonical = _canonical_source_line(shell)
     try:
         content = rc.read_text(encoding="utf-8")
     except OSError:
         return False
-    for line in content.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("#"):
-            continue
-        if marker in line or tilde_marker in line:
+    return any(line.strip() == canonical for line in content.splitlines())
+
+
+# ── rc integrity: block-aware migration + never write a broken rc ─────────────
+
+# Block-control words recognized by the simple rc block parser. This is
+# deliberately NOT a bash grammar (rc files in scope are simple): it needs to
+# (a) tell when a to-be-removed line OPENS a multi-line conditional so the
+# removal consumes the whole construct, and (b) drop pure control lines whose
+# opener is gone — removed by us or by an earlier external edit (the
+# 2026-10-03 field incident: an orphaned `fi` aborted .bashrc parsing and
+# silently killed every later rc line, our canonical source line included).
+_KEYWORD_RE = re.compile(
+    r"(?<![\w$-])(if|then|else|elif|fi|for|while|until|do|done|case|esac)(?![\w-])"
+)
+_OPEN_KIND: dict[str, str] = {
+    "if": "if",
+    "for": "loop",
+    "while": "loop",
+    "until": "loop",
+    "case": "case",
+}
+_CLOSE_KIND: dict[str, str] = {"fi": "if", "done": "loop", "esac": "case"}
+_CONTINUATION_KIND: dict[str, str] = {"then": "if", "else": "if", "elif": "if", "do": "loop"}
+
+
+def _syntax_relevant_text(line: str) -> str:
+    """The line with quoted strings and comments removed — the text the block
+    parser counts keywords on. Naive single-pass scanner: no heredoc bodies,
+    no ``$'…'`` quoting, no backticks (documented limits)."""
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            if ch == "\\" and quote == '"':
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#":
+            break  # comment till end of line
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _keyword_tokens(line: str) -> list[str]:
+    """Block-control keywords on a line, in order (quotes/comments ignored)."""
+    return _KEYWORD_RE.findall(_syntax_relevant_text(line))
+
+
+def _pop_nearest(stack: list[str], kind: str) -> None:
+    """Pop the nearest opener of ``kind`` (inner unmatched openers stay)."""
+    for idx in range(len(stack) - 1, -1, -1):
+        if stack[idx] == kind:
+            del stack[idx]
+            return
+
+
+def _apply_block_tokens(tokens: list[str], stack: list[str]) -> None:
+    """Update the block stack with one line's control tokens, in order.
+    Closers without a matching opener are ignored here — on pure control
+    lines the orphan pass drops the line instead; mixed lines are left
+    alone (conservative)."""
+    for tok in tokens:
+        if tok in _OPEN_KIND:
+            stack.append(_OPEN_KIND[tok])
+        elif tok in _CLOSE_KIND and _CLOSE_KIND[tok] in stack:
+            _pop_nearest(stack, _CLOSE_KIND[tok])
+
+
+def _control_line_is_orphaned(tokens: list[str], stack: list[str]) -> bool:
+    """Whether a pure-control line contains a closer or continuation whose
+    opener is absent from the current block stack."""
+    sim = list(stack)
+    for tok in tokens:
+        if tok in _OPEN_KIND:
+            sim.append(_OPEN_KIND[tok])
+        elif tok in _CLOSE_KIND:
+            if _CLOSE_KIND[tok] not in sim:
+                return True
+            _pop_nearest(sim, _CLOSE_KIND[tok])
+        elif tok in _CONTINUATION_KIND and _CONTINUATION_KIND[tok] not in sim:
             return True
     return False
 
 
-def _remove_old_completion_entries(rc: Path) -> None:
-    """Remove legacy ``eval "$(mnemos --show-completion ...)"`` lines.
+def _strip_orphaned_control_lines(lines: list[str]) -> list[str]:
+    """Drop pure block-control lines (``fi``/``then``/``else``/``elif``/
+    ``do``/``done``/``esac`` — optionally with a trailing comment) whose
+    opener is gone from the surrounding kept content."""
+    kept: list[str] = []
+    stack: list[str] = []
+    for line in lines:
+        tokens = [t for t in re.split(r"[\s;]+", _syntax_relevant_text(line)) if t]
+        if tokens and all(
+            t in _OPEN_KIND or t in _CLOSE_KIND or t in _CONTINUATION_KIND for t in tokens
+        ):
+            if _control_line_is_orphaned(tokens, stack):
+                continue  # orphaned construct remnant — the rc parses better without it
+            _apply_block_tokens(tokens, stack)
+        else:
+            _apply_block_tokens(_keyword_tokens(line), stack)
+        kept.append(line)
+    return kept
 
-    Strips any line containing ``vesma --show-completion`` (commented or
-    not) and the ``# Added by `vesma completion` ...`` marker comments left
-    by the old installer. This keeps the rc file clean during migration.
+
+def _check_shell_syntax(shell: str, rc: Path) -> tuple[bool, str]:
+    """Syntax-check an rc file with the shell's own parser (``bash -n`` /
+    ``zsh -n``). fish has no parse-only mode — skipped. Returns ``(True,
+    "")`` when the file parses, when validation does not apply (fish), or
+    when the shell binary is missing / the check could not run (an install
+    is never blocked by a broken validator tool). ``(False, stderr)``
+    means the file does NOT parse.
+    """
+    if shell == "fish":
+        return True, ""
+    try:
+        proc = subprocess.run(
+            [shell, "-n", str(rc)],  # FileNotFoundError below = binary not installed
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True, ""
+    if proc.returncode == 0:
+        return True, ""
+    return False, (proc.stderr or "").strip()
+
+
+_FAILURE_LINE_RE = re.compile(r"line (\d+)|:(\d+):")
+
+
+def _parse_failure_line(stderr: str) -> int | None:
+    """Extract the failing 1-based line number from ``bash -n``/``zsh -n``
+    output (bash: ``…: line N: …``; zsh: ``path:N: …``), else None."""
+    m = _FAILURE_LINE_RE.search(stderr)
+    if m is None:
+        return None
+    return int(m.group(1) or m.group(2))
+
+
+def _write_rc_validated(rc: Path, new_content: str, shell: str) -> bool:
+    """Write an rc file, then prove the result still parses; restore on
+    failure. The pre-edit content is kept in memory: when ``bash -n`` /
+    ``zsh -n`` rejects the new content, the original bytes are written back,
+    the failing line plus the shell's own error are printed, and False is
+    returned (the installer exits non-zero). An rc that did not exist before
+    is removed again. Returns True only when the file on disk parses."""
+    original: str | None = None
+    if rc.exists():
+        try:
+            original = rc.read_text(encoding="utf-8")
+        except OSError:
+            original = None
+    try:
+        rc.write_text(new_content, encoding="utf-8")
+    except OSError as exc:
+        console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
+        return False
+    ok, err = _check_shell_syntax(shell, rc)
+    if ok:
+        return True
+    restored = False
+    try:
+        if original is None:
+            rc.unlink()
+        else:
+            rc.write_text(original, encoding="utf-8")
+        restored = True
+    except OSError:
+        pass
+    if restored:
+        console.print(
+            f"[red]✗ {rc} failed {shell} syntax validation — "
+            "original content restored, nothing changed.[/red]"
+        )
+    else:
+        console.print(
+            f"[red]✗ {rc} failed {shell} syntax validation AND could not be restored — "
+            "inspect and fix the file manually.[/red]"
+        )
+    line_no = _parse_failure_line(err)
+    if line_no is not None:
+        content_lines = new_content.splitlines()
+        failing = content_lines[line_no - 1].strip() if 1 <= line_no <= len(content_lines) else ""
+        console.print(f"[red]  failing line {line_no}: {failing}[/red]")
+    if err:
+        console.print(f"[red]  {shell} -n: {err.splitlines()[-1]}[/red]")
+    return False
+
+
+def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
+    """Migrate away every legacy completion entry from the rc file — WHOLE
+    shell constructs, not bare lines.
+
+    Removed:
+
+    * any line mentioning the completion directory that is NOT the exact
+      canonical source line for this shell — pre-rebrand
+      ``[ -f … ] && source …`` one-liners, wrong-shell/wrong-name
+      references, and stale marker comments;
+    * ``if [ -f … ]; then source …; fi`` blocks referencing the completion
+      dir. When the matched line OPENS a multi-line conditional, the removal
+      consumes the entire if/then(/else)/fi block down to the MATCHING
+      ``fi`` (nesting-aware); a self-contained one-line ``if …; then …; fi``
+      stays a single-line removal. An opener whose block never closes (rc
+      damaged before us) removes only itself — the write-time syntax
+      validation decides whether the result is shippable;
+    * orphaned pure control lines — ``fi``/``then``/``else``/``elif``/
+      ``do``/``done``/``esac`` whose opener is gone, whether we just removed
+      it or a historical edit did (the 2026-10-03 field incident);
+    * old ``eval "$(… --show-completion …)"`` lines (vesma/mnemos spelling).
+
+    Duplicate copies of the canonical line itself collapse to the first
+    occurrence (exactly ONE canonical line stays).
+
+    Block-parser limits (rc files in scope are simple): keywords are counted
+    on a comment- and quote-stripped copy of each line; heredoc bodies,
+    ``$'…'`` quoting, backticks and lines mixing unrelated openers/closers
+    can confuse it. The final ``bash -n``/``zsh -n`` validation
+    (:func:`_write_rc_validated`) is the safety net — a parse-breaking write
+    is rolled back to the original content.
+
+    Returns True when the rc is intact (unchanged, or migrated and
+    re-validated); False when the migrated content failed syntax validation
+    (original restored) or the write failed.
     """
     if not rc.exists():
-        return
+        return True
     try:
         content = rc.read_text(encoding="utf-8")
     except OSError:
-        return
-    old_marker_re = re.compile(r"mnemos --show-completion", re.IGNORECASE)
+        return True  # unreadable: nothing to migrate here (installer reports separately)
+    canonical = _canonical_source_line(shell)
+    show_completion_re = re.compile(r"--show-completion", re.IGNORECASE)
     added_by_re = re.compile(r"#\s*Added by `vesma completion`")
-    kept: list[str] = []
-    for line in content.splitlines(keepends=True):
-        if old_marker_re.search(line) or added_by_re.search(line):
+    lines = content.splitlines(keepends=True)
+    remove = [False] * len(lines)
+    canonical_seen = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == canonical:
+            if canonical_seen:
+                remove[i] = True  # dedupe: exactly one canonical line
+            canonical_seen = True
+        elif "mnemos/completion/" in line:
+            remove[i] = True  # any completion-dir mention that is not the canonical line
+        elif show_completion_re.search(line) or added_by_re.search(line):
+            remove[i] = True  # pre-custom-engine eval format and its markers
+    # Consume whole multi-line conditionals opened by a removed line.
+    for i, line in enumerate(lines):
+        if not remove[i]:
             continue
-        kept.append(line)
+        depth = sum(1 for t in _keyword_tokens(line) if t in _OPEN_KIND)
+        depth -= sum(1 for t in _keyword_tokens(line) if t in _CLOSE_KIND)
+        if depth <= 0:
+            continue  # self-contained one-liner (e.g. `if …; then …; fi`) or no block at all
+        j = i + 1
+        while j < len(lines):
+            toks = _keyword_tokens(lines[j])
+            depth += sum(1 for t in toks if t in _OPEN_KIND)
+            depth -= sum(1 for t in toks if t in _CLOSE_KIND)
+            if depth <= 0:
+                break
+            j += 1
+        if depth <= 0:
+            for k in range(i, j + 1):
+                remove[k] = True
+        # else: unbalanced at EOF — rc was already broken; only the opener
+        # goes, validation decides the fate of the write.
+    kept = [line for i, line in enumerate(lines) if not remove[i]]
+    kept = _strip_orphaned_control_lines(kept)
     new_content = "".join(kept)
-    if new_content != content:
-        with contextlib.suppress(OSError):
-            rc.write_text(new_content, encoding="utf-8")
+    if new_content == content:
+        return True
+    return _write_rc_validated(rc, new_content, shell)
+
+
+def _write_script(path: Path, content: str) -> bool:
+    """Write a completion script file; returns False (and reports) on error."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        console.print(f"[red]✗ Failed to write {path}: {exc}[/red]")
+        return False
+    return True
 
 
 def _install(shell: str) -> bool:
     """Install completion for the given shell.
 
-    Writes the completion script to ``~/.mnemos/completion/vesma.{shell}``
-    and adds a single ``source`` line to the rc file (bash/zsh). For fish,
-    writes the script to the auto-sourced completions directory and a copy
-    to ``~/.mnemos/completion/`` for discoverability.
+    Always rewrites the script file(s) so they stay in sync with the
+    installed vesma version; migrates legacy rc entries; ensures exactly
+    one canonical guarded source line in the rc file (bash/zsh) or one
+    auto-sourced completions file per registered program name (fish).
 
-    Returns True if installed (or already installed), False on write error.
+    Returns True if installed (or already installed), False on write or
+    rc-syntax-validation error (a validated-then-rejected rc write leaves
+    the file byte-identical to its pre-run state).
     """
-    rc = _rc_path(shell)
     script_file = _completion_file_path(shell)
 
-    # Always (re)write the completion script file so it stays in sync with
-    # the current vesma version.
     try:
-        script_file.parent.mkdir(parents=True, exist_ok=True)
-        script_file.write_text(_completion_script(shell), encoding="utf-8")
-    except OSError as exc:
-        console.print(f"[red]✗ Failed to write {script_file}: {exc}[/red]")
+        script = _completion_script(shell)
+    except ValueError:
+        console.print(f"[red]Unsupported shell: {shell!r}.[/red]")
+        return False
+    if not _write_script(script_file, script):
         return False
 
     if shell == "fish":
-        # fish: write the completion script into the auto-sourced completions
-        # dir (fish sources it automatically — no rc line needed).
-        try:
-            rc.parent.mkdir(parents=True, exist_ok=True)
-            rc.write_text(_completion_script(shell), encoding="utf-8")
-        except OSError as exc:
-            console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
-            return False
-        console.print(f"[green]✓[/green] Installed {shell} completion → {rc}")
-        console.print(f"  [dim]Copy stored at {script_file}[/dim]")
+        # fish: write the auto-sourced completions file per registered name
+        # (fish sources ~/.config/fish/completions/<name>.fish when the user
+        # completes <name> — aliases need their own file, one script each).
+        for prog in _prog_names():
+            target = _fish_completions_file(prog)
+            if not _write_script(target, script):
+                return False
+        console.print(f"[green]✓[/green] Installed {shell} completion → {script_file}")
+        console.print(
+            f"  [dim]Auto-sourced copies: "
+            f"{', '.join(str(_fish_completions_file(p)) for p in _prog_names())}[/dim]"
+        )
         return True
 
-    # bash/zsh: migrate old eval-based entries, then check/install source line.
-    _remove_old_completion_entries(rc)
+    # bash/zsh: migrate ALL legacy forms, then ensure the canonical line.
+    # Both rc writes go through syntax validation — the rc on disk after a
+    # successful install always parses (never-write-a-broken-rc contract).
+    rc = _rc_path(shell)
+    if not _remove_old_completion_entries(rc, shell):
+        return False
 
     if _is_installed(shell, rc):
-        console.print(f"[green]✓[/green] Completion for {shell} already installed at {rc}")
+        console.print(f"[green]✓[/green] Completion for {shell} installed at {script_file}")
+        console.print(f"  [dim]Source line already present in {rc}[/dim]")
         return True
 
-    line = _source_line(shell)
     try:
         rc.parent.mkdir(parents=True, exist_ok=True)
-        with rc.open("a", encoding="utf-8") as fh:
-            fh.write(f"\n# Added by `vesma completion` ({shell})\n{line}\n")
+        existing = rc.read_text(encoding="utf-8") if rc.exists() else ""
     except OSError as exc:
-        console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
+        console.print(f"[red]✗ Failed to read {rc}: {exc}[/red]")
+        return False
+    # Single-quoted marker: the migration regex targets the OLD
+    # double-quoted `# Added by \`vesma completion\`` comments, this
+    # fresh marker must survive re-runs.
+    marker = f"\n# Added by 'vesma completion' ({shell}) — custom __complete engine\n"
+    new_content = f"{existing}{marker}{_canonical_source_line(shell)}\n"
+    if not _write_rc_validated(rc, new_content, shell):
         return False
     console.print(f"[green]✓[/green] Installed {shell} completion → {script_file}")
     console.print(f"  [dim]Source line added to {rc}[/dim]")
@@ -241,6 +672,10 @@ def _install(shell: str) -> bool:
 def _print_instructions() -> None:
     """Print manual install instructions for all supported shells."""
     console.print("[bold]Manual completion installation[/bold]\n")
+    console.print(
+        "Candidates carry descriptions: zsh and fish SHOW them; bash's readline "
+        "cannot render descriptions, so bash completes values only.\n"
+    )
     for shell in _SUPPORTED_SHELLS:
         script_file = _completion_file_path(shell)
         rc = _rc_path(shell)
@@ -248,9 +683,10 @@ def _print_instructions() -> None:
             console.print(f"[bold cyan]{shell}[/bold cyan]  →  {rc} (auto-sourced)")
             console.print(f"    Copy also stored at {script_file}")
         else:
-            line = _source_line(shell)
             console.print(f"[bold cyan]{shell}[/bold cyan]  →  {script_file}")
-            console.print(f"    {rc.name}: {line}")
+            console.print(f"    {rc.name}: {_canonical_source_line(shell)}")
+            if shell == "zsh":
+                console.print("    Put the source line AFTER compinit in your .zshrc.")
         console.print()
 
 
@@ -277,9 +713,13 @@ def completion(
     """Install shell completion for vesma.
 
     With no arguments: auto-detects the current shell from ``$SHELL`` and
-    auto-installs the completion script into ``~/.mnemos/completion/`` plus
-    a single ``source`` line in the rc file. Idempotent — re-running won't
-    duplicate the source line and migrates away the old ``eval`` format.
+    auto-installs the custom completion script (backed by ``vesma
+    __complete`` — commands, subcommands, options and option values, WITH
+    descriptions where the shell can show them) plus a single canonical
+    ``source`` line in the rc file. Idempotent — re-running rewrites the
+    scripts and keeps exactly one canonical source line, migrating away all
+    legacy forms (old eval lines, pre-rebrand vesmaro/mnemos script names,
+    if-blocks and one-liner sources).
 
     Pass an explicit shell (bash/zsh/fish) to override auto-detection.
 
@@ -308,3 +748,18 @@ def completion(
     ok = _install(target)
     if not ok:
         raise typer.Exit(1)
+
+
+def _detect_shell() -> str | None:
+    """Detect the current shell from ``$SHELL``.
+
+    Returns the bare shell name (``bash``/``zsh``/``fish``) or ``None`` if
+    unknown/unsupported.
+    """
+    raw = os.environ.get("SHELL", "")
+    if not raw:
+        return None
+    name = raw.split("/")[-1].lower()
+    if name in _SUPPORTED_SHELLS:
+        return name
+    return None

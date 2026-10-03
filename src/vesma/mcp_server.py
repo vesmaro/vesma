@@ -24,7 +24,7 @@ import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -163,7 +163,13 @@ def _checkpoint_reminder() -> str | None:
 
 SERVER_VERSION_META_KEY = "last_reported_server_version"
 
-_server_update_state: dict[str, Any] = {"checked": False, "pending": None}
+
+class _ServerUpdateState(TypedDict):
+    pending: str | None
+    checked: bool
+
+
+_server_update_state: _ServerUpdateState = {"checked": False, "pending": None}
 
 
 def _reset_server_update_state() -> None:
@@ -461,6 +467,17 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Restrict search to a project (optional)",
                     },
+                    "agent": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "description": (
+                            "Optional caller agent slug (ADR-0035): feeds the "
+                            "native awareness heartbeat identity so search calls "
+                            "participate in the peer-activity picture. Has NO "
+                            "effect on which rows match. Same shape as the "
+                            "agent:<slug> tag contract: 1-64 chars [a-z0-9_-]."
+                        ),
+                    },
                     "task": {
                         "type": "string",
                         "description": (
@@ -685,6 +702,18 @@ async def _canonical_tools() -> list[Tool]:
                     "project": {
                         "type": "string",
                         "description": "Project name (auto-detected from cwd if omitted)",
+                    },
+                    "agent": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "description": (
+                            "Optional caller agent slug (ADR-0035): feeds the "
+                            "native awareness heartbeat identity so recall calls "
+                            "participate in the peer-activity picture. Has NO "
+                            "effect on which checkpoints return. Same shape as "
+                            "the agent:<slug> tag contract: 1-64 chars "
+                            "[a-z0-9_-]."
+                        ),
                     },
                     "query": {
                         "type": "string",
@@ -1407,13 +1436,14 @@ async def _canonical_tools() -> list[Tool]:
                     },
                     "include_awareness": {
                         "type": "boolean",
-                        "default": False,
                         "description": (
                             "pre_llm_call/on_session_start only (vesma #254): "
                             "compose the awareness delta/presence section — "
                             "appended LAST, never pinnable, cursor advances "
-                            "on pre_llm_call only. Default false: output is "
-                            "byte-identical to the pre-#254 shape."
+                            "on pre_llm_call only. ADR-0035 W1 default: "
+                            "AUTO — composes when "
+                            "awareness.native_heartbeat_mode is canary/on, "
+                            "off otherwise; an explicit boolean overrides."
                         ),
                     },
                 },
@@ -1729,7 +1759,9 @@ async def _canonical_tools() -> list[Tool]:
                 "Project-graph status for one registered project: node/edge/"
                 "file volumes, freshness (fresh %, last_indexed_at), parse "
                 "failures ('clean ≠ proof' — they stay visible) and the "
-                "poisoned-file count (PG3). Read-only, audited."
+                "poisoned-file count (PG3); a poisoned set made entirely "
+                "of test-fixture paths carries a `hints` line pointing at "
+                "code_graph.secret_allowlist. Read-only, audited."
             ),
             input_schema={
                 "type": "object",
@@ -1746,10 +1778,16 @@ async def _canonical_tools() -> list[Tool]:
             description=(
                 "Search the project graph by name / qualified name / path "
                 "(substring; exact hits outrank prefix, prefix outranks "
-                "substring). Token contract: max_output_tokens 128-1M "
-                "(default 3200), whole-row drops, strictly advancing "
-                "cursor, has_more; signatures are opt-in via "
-                "include_signature. Read-only, audited per agent."
+                "substring). Hybrid (W-H): when the symbol graph has ZERO "
+                "hits, a bounded read-only literal scan of the registered "
+                "root answers with match_kind:'literal' rows "
+                "(path/line/snippet, secrets-redacted) and a "
+                "fallback_used:true marker (absent on symbol hits; "
+                "disable via code_graph.literal_fallback). Token "
+                "contract: max_output_tokens 128-1M (default 3200), "
+                "whole-row drops, strictly advancing cursor, has_more; "
+                "signatures are opt-in via include_signature. Read-only, "
+                "audited per agent."
             ),
             input_schema={
                 "type": "object",
@@ -1790,10 +1828,16 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="vesma_trace_path",
             description=(
-                "BFS over project_edges from one symbol (resolve by qname, "
-                "unique — ambiguous refusals name search_graph). Depth ≤ 2, "
-                "per-node fanout cap, total-work cap (the ADR-0030 walk "
-                "discipline). Token contract applies."
+                "BFS over project_edges from one symbol. Resolution: an "
+                "exact qname traces directly; a bare tail (e.g. "
+                "'update_fields') that resolves UNIQUELY also traces; an "
+                "AMBIGUOUS tail returns a ranked candidate list "
+                "(candidates:true, candidate_list with qname/kind/path/"
+                "lines, max 10) plus a hint to re-run with the qualified "
+                "name — a helpful payload, not an error; a missing symbol "
+                "is a clear not-found. Depth ≤ 2, per-node fanout cap, "
+                "total-work cap (the ADR-0030 walk discipline). Token "
+                "contract applies."
             ),
             input_schema={
                 "type": "object",
@@ -3011,8 +3055,12 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         hk_auto = args.get("auto_compress")
         if hk_auto is not None and not isinstance(hk_auto, bool):
             return {"error": "auto_compress must be a boolean when provided"}
-        hk_awareness = args.get("include_awareness", False)
-        if not isinstance(hk_awareness, bool):
+        # ADR-0035 W1: absent (None) resolves to the mode-linked default
+        # inside the awareness-capable hooks (canary/on → compose);
+        # an explicit boolean always wins. No bool() coercion — a truthy
+        # string is a boundary error, same discipline as auto_compress.
+        hk_awareness = args.get("include_awareness")
+        if hk_awareness is not None and not isinstance(hk_awareness, bool):
             return {"error": "include_awareness must be a boolean when provided"}
         try:
             return dispatch_hook(

@@ -1027,7 +1027,17 @@ def project_delta(
     # sharing the exact same microsecond at the top of the window tie —
     # the +1µs cursor can skip the twin rendered with it. Accepted v0
     # #254 residual; an E0 D-batch reporting line, not a silent gap.
-    high_water = max((m.created_at for m in rows), default=since_dt)
+    #
+    # Cascade ARCH-2 (ADR-0035 W1): the high-water spans the FULL window
+    # feed, INCLUDING the delta-excluded rows. The C12 probe
+    # (``exists_since``) is a deliberate over-approximation that counts
+    # excluded rows; if the cursor parked below a no-federate write, the
+    # probe would keep answering "delta" on every call while the compose
+    # rendered nothing — the expensive leg forced up to the C14 rate cap.
+    # Excluded rows never render, so consuming them silently is exactly
+    # what the cursor means (the caller's own rows were already covered —
+    # they ride ``rows`` unfiltered by ``exclude_agent``).
+    high_water = max((m.created_at for m in window), default=since_dt)
 
     redactions = 0
     goals_refused = 0

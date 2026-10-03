@@ -24,6 +24,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`search`](#search) | Hybrid FTS5 + vector search |
 | [`recall`](#recall) | List recent memories, optionally per agent / per project |
 | [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
+| [`tags audit`](#tags-audit) | Scan for tag-contract non-conformance; `--apply` heals additively |
 | [`workflow`](#workflow) | Memory workflow lifecycle: `get` / `set` / `history` |
 | [`stats`](#stats) | Show health counters |
 | [`fts`](#fts) | FTS5 index management (`rebuild`) |
@@ -36,7 +37,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`auth`](#auth) | API bearer tokens (`auth token`) and TOTP 2FA (`auth totp`) |
 | [`integration`](integration-guide.md) | Deploy / verify the integration layer (dedicated page) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
-| [`doctor`](#doctor) | Diagnose the installation (paths, config, database, vault) |
+| [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` subcommands; checks: config, database, vault, …) |
 | [`update`](#update) | Check for updates / update the user-site install |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
@@ -229,6 +230,34 @@ vesma tags validate VAULT_PATH
 
 ```bash
 vesma tags validate ~/.mnemos/vault
+```
+
+---
+
+## `tags audit`
+
+Scan the SQLite store for tag-contract non-conformance and optionally heal. Every entry needs at least one `project:*`, one `agent:*` and one `mnemos:*` tag (the same contract the doctor's "Tag contract" check enforces); entries whose tags JSON is unparseable are flagged too.
+
+```text
+vesma tags audit [--apply] [--limit N] [--json]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--apply` | `false` | Heal: add the missing contract prefixes to every non-conformant entry. Additive only — existing tags are never removed. Default is a dry-run report. |
+| `--limit / -l` | `0` | Cap the number of LISTED rows (`0` = list all). The scan always covers the whole store. |
+| `--json` | `false` | Emit the report as JSON (for scripting / CI). |
+
+Heal policy (idempotent by construction — a second `--apply` run heals nothing): missing `mnemos:*` → `mnemos:legacy`; missing `agent:*` → `agent:user`; missing `project:*` → the row's `project` column value slug-normalized (lowercase, spaces → hyphens), or `project:unsorted` when the column is empty.
+
+### Example
+
+```bash
+# Report only (default)
+vesma tags audit
+
+# Heal the store
+vesma tags audit --apply
 ```
 
 ---
@@ -699,7 +728,11 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ## `completion`
 
-Install shell completion for the `vesma` CLI. With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc`; fish auto-sources its completions directory). Idempotent — re-running does not duplicate the source line and migrates away the old `eval`-based format.
+Install shell completion for the `vesma` CLI. Vesma ships its own completion engine (the hidden `vesma __complete` command): the installer writes per-shell scripts that introspect the live command tree, so commands, nested subcommands (any depth), option names and option/enum values all complete **with descriptions**. Descriptions are rendered by zsh and fish; bash's readline cannot render descriptions at all, so bash completes values only.
+
+With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc` — put it after `compinit`; fish auto-sources its completions directory). The scripts are bound to the program name you invoked (`vesma`) plus legacy aliases that exist on PATH (`vesmaro`, and `mnemos` when installed), so Tab works for every way you call the binary. Idempotent — every run rewrites the scripts and keeps exactly one canonical source line, migrating away ALL legacy forms: old `eval "$(… --show-completion …)"` lines, pre-rebrand `mnemos.bash`/`vesmaro.bash` one-liners and `if [ -f … ]; then source …; fi` blocks, and stale marker comments.
+
+Integrity guarantees: rc edits are block-aware and validated. The legacy migration operates on whole shell constructs — a matched `if …; then` line removes the entire if/then(/else)/fi block, and orphaned control lines (`fi`, `then`, `else`, `done`) left behind by older partial edits are cleaned up too, so a half-removed legacy block can no longer abort parsing of the rest of your rc (a non-parsing rc silently disables everything below the break, completion included). After every rc write the result is checked with `bash -n` (or `zsh -n` when a zsh binary exists; fish needs no check) and the original content is restored verbatim if the file would not parse, with the installer exiting non-zero. `vesma doctor` reports the same damage as a Completion warning with the exact failing line number and text.
 
 ```text
 vesma completion [SHELL] [OPTIONS]
@@ -719,57 +752,71 @@ vesma completion bash
 #   Restart your shell or run: source /home/you/.bashrc
 ```
 
+After restarting the shell (zsh shown — descriptions render in the menu):
+
+```zsh
+vesma tags <TAB>
+# validate  -- Validate tag contract across an existing vault.
+# normalize -- Normalize project:/agent: tag case to lowercase across all memories.
+# rename    -- Bulk rename tags matching `--from <prefix>` → `--to <prefix>`.
+# audit     -- Scan for tag-contract non-conformance; optionally heal.
+```
+
+> Verify the installation anytime with `vesma doctor` — the "Completion" check passes when the script file exists, the rc file carries the canonical source line, and the script binds the primary program name; otherwise it warns with the exact fix command.
+
 ---
 
 ## `doctor`
 
-Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP server registration, integration layer, agent wiring, tag contract.
+Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP server registration, integration layer, shell completion, agent wiring, tag contract.
 
 ```text
 vesma doctor [OPTIONS]
+vesma doctor fix [--dry-run] [--json]
+vesma doctor paths [--json]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--json` | `false` | Emit results as JSON (for scripting / CI) instead of a table. |
-| `--fix` | `false` | Auto-fix WARN-level checks (stale integration, unwired agents, missing MCP registration). FAIL-level checks are not auto-fixable. |
-| `--dry-run` | `false` | With `--fix`: preview what would be fixed without executing. |
-| `--paths` | `false` | Print all resolved paths (data dir, vault, logs, cache, completion) and exit. |
 
-Exit codes: `0` = all checks pass, `1` = one or more checks failed, `2` = warnings only.
+Exit codes: `0` = all checks pass (checks reported as `skip` — not applicable to this machine — count as pass), `1` = one or more checks failed, `2` = warnings only.
 
 > `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMARO_CONFIG` and 4.x `MNEMOS_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
 
-### `doctor --paths`
+### `doctor paths`
 
 Shows every path Vesma uses, resolved from config and environment:
 
 ```bash
-vesma doctor --paths
-# data_dir:      /home/you/.vesma/data
-# vault_path:    /home/you/.vesma/vault
-# log_file:      /home/you/.mnemos/logs/mnemos.log
-# cache_dir:     /home/you/.vesma/cache
-# completion:    /home/you/.vesma/completion
-# config_file:   /home/you/.vesma/config.yaml
+vesma doctor paths
+# Root:         ~/.mnemos
+# Data dir:     ~/.mnemos/data
+# Vault:        ~/.mnemos/vault
+# Logs:         ~/.mnemos/logs/vesma.log
+# Cache:        ~/.mnemos/cache
+# Completion:   ~/.mnemos/completion
+# MCP config:   ~/.config/Code/User/mcp.json
 ```
 
-Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration.
+Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration. With `--json`, the paths object is emitted for scripting.
 
-### `doctor --fix` and `--dry-run`
+### `doctor fix`
 
-With `--fix`, WARN-level checks are repaired in place (stale integration → `integration update`, unwired agents → `vesma integration setup`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. Combine with `--dry-run` to preview the fixes without executing them. `--json --fix` reports the `fixed` / `fix_skipped` lists in the JSON payload.
+Auto-repairs WARN-level checks in place (stale integration → `integration update`, unwired agents → `vesma integration setup`, missing MCP registration → MCP setup); the affected checks are then re-run and the new status reported. `--dry-run` previews the fixes without executing them. `--json` reports the `fixed` / `fix_skipped` lists in the JSON payload.
 
 ```bash
 # Preview only
-vesma doctor --fix --dry-run
+vesma doctor fix --dry-run
 
 # Apply fixes
-vesma doctor --fix
+vesma doctor fix
 
 # CI: machine-readable verdict, no fixes
 vesma doctor --json
 ```
+
+> **Deprecated flag forms.** `vesma doctor --fix` and `vesma doctor --paths` still work (scripts may depend on them) but are hidden aliases of the `fix` / `paths` subcommands and print a one-line deprecation hint on stderr. Move to the subcommand spellings.
 
 ---
 
@@ -812,33 +859,49 @@ health gate — `doctor` and `integration verify` govern health).
 
 ## `update`
 
-One command for the whole update family: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) plain `vesma update` stays check-only and prints `apply with: vesma update --yes`. It can also upgrade the pip user-site install non-interactively (plus the global npm package, best-effort), pin a version for rollback, or manage the weekly auto-update timer.
+One command family for updating Vesma. Plain `vesma update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint, so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep working.
 
 ```text
-vesma update [OPTIONS]
+vesma update                     # report + interactive apply prompt (5.2.0 behavior)
+vesma update check
+vesma update apply [OPTIONS]
+vesma update timer install|uninstall|status
+vesma update components [--json]
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--check` | `false` | Report surfaces only — never applies, never prompts. |
-| `--yes`, `-y` | `false` | Apply without the confirmation prompt: `pip install --user --upgrade`; the npm package is updated best-effort. |
-| `--verbose` | `false` | Print the full pip output instead of a one-line summary per surface (on failure the last pip lines are shown either way). |
-| `--scope` | `user` | Update scope. Only `user` exists — prod venvs, Go binaries and containers are never auto-updated. |
-| `--to <version>` | — | Pin the pip target version (rollback path), e.g. `--to 5.1.1`. Requires `--yes`/`-y`. |
-| `--install-timer` | `false` | Install and enable the weekly systemd user update timer (`vesma-update.timer`, `Persistent=true`). |
-| `--uninstall-timer` | `false` | Disable and remove the timer and its service unit. |
+### Subcommands
 
-The update check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than the published latest, the report marks it `newer than published latest (local build?)` instead of `up to date`.
+| Subcommand | Description |
+|------------|-------------|
+| `check` | Report surfaces only — never applies, never prompts. Safe in pipes and CI. |
+| `apply` | The apply path: `pip install --user --upgrade` plus the global npm package, best-effort. Never prompts (invoking `apply` IS the confirmation); `-y/--yes` is accepted as a no-op. `--to <version>` pins a (rollback) version; `--scope` — only `user` exists; `--verbose` prints the full pip output. |
+| `timer install` | Install and enable the weekly systemd user timer (`Persistent=true`). Inside a distrobox/container this REFUSES with exit 1 by default — units installed there would be dead (#468). Run it on the host, or pass `--force` for the intentional box-aware install (units land in the HOST home, one ExecStart line per box). |
+| `timer uninstall` | Disable and remove the timer; from a box it removes only this box's ExecStart line from the HOST units. |
+| `timer status` | Unit presence, enabled state and last trigger (`--json` for scripting); inside a box it also reports the HOST units and names the box. |
+| `components` | The component inventory (below) — local state only, no network. |
 
-### Report-only surfaces
+Deprecated flag aliases (each prints `use: vesma update …` once on stderr; stdout stays clean): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Options placed before the subcommand word are ignored with an explicit stderr note.
 
-The report lists every update surface found on this machine. Only the pip user-site (and npm) is ever changed; prod venvs and Go binaries are report-only by design:
+The check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than everything published, the report says `newer than published latest (local build?)`.
 
-- **pip dist** — the surface `--yes` upgrades (`--break-system-packages` is appended automatically under PEP 668 externally-managed interpreters); every run appends a record to `~/.local/share/vesma/update-history.json`.
-- **npm `@vesmaro/vesma`** — upgraded best-effort with `--yes` when installed.
-- **prod venvs** — `MANUAL GATE` in the report; update them via the upgrade runbook.
-- **Go binaries** (`vesmaro-agent`/`vesma-agent`, `mnemos-mesh`/`vesma-mesh`) — updated via goreleaser releases with checksum verification.
-- **container images** — CI release artifacts.
+### The pip alias family row
+
+`vesma` and `vesma-memory-server` are canonical PyPI names of the SAME codebase (`mnemos-memory-server` is the deprecated legacy mirror — noted here, not in the table). The report collapses the aliases into ONE row, `pip: vesma (family)`: Installed = the detected dist and version, Latest = the family max over the aliases' published versions (fetched per alias, cached in the shared `update-check.json`), and the Note names the alias actually installed — e.g. `up to date (installed as vesma-memory-server — same codebase, alias package)`. With nothing installed the row reads `not installed — pip install --user vesma`.
+
+### Component inventory
+
+`vesma update components` shows what is installed and how each piece updates — every row is read from local state (files, sqlite, `systemctl --user`, `npm ls`), never from the network. Honest `-` where a component is absent or its version is not cheaply readable.
+
+| Component | Installed | Update path |
+|-----------|-----------|-------------|
+| pip dist | `<dist> <version>` (first of `vesma-memory-server` / `vesma` found) | `vesma update apply` |
+| integration pack | pack version + aggregate stale/missing across detected targets | `vesma integration update` (`setup` when files are missing) |
+| cortex bundle | `vesma-cortex-v1` name + weights revision from the shipped manifest | ships with the wheel |
+| embedder | model id + fingerprint (vector-store vintage when readable; `VINTAGE MISMATCH` on a stale index) | `vesma reindex` after a model switch |
+| npm package `@vesmaro/vesma` | global version or `-` | `vesma update apply` (npm leg, best-effort) |
+| update timer | enabled / installed (disabled) / not installed — plus the box note | `vesma update timer install` |
+| prod venvs | comma-separated venv names, ONE row | MANUAL GATE — upgrade runbook |
+| go binaries | comma-separated names, report only | goreleaser releases (checksums) |
 
 ### Example
 
@@ -846,20 +909,23 @@ The report lists every update surface found on this machine. Only the pip user-s
 # Report all update surfaces, then ask to apply (in a terminal)
 vesma update
 
-# Check only (default behavior in pipes/CI)
-vesma update --check
+# Check only — canonical spelling of the old `--check`
+vesma update check
 
-# Apply without the prompt (scripts, CI)
-vesma update --yes --scope=user
+# Apply without any prompt (scripts, CI; the old `--yes --scope=user`)
+vesma update apply
 
 # Apply with the full pip output
-vesma update -y --verbose
+vesma update apply --verbose
 
 # Roll back to a pinned version
-vesma update --yes --to 5.1.1
+vesma update apply --to 5.1.1
 
-# Weekly auto-update of the user-site (survives reboot)
-vesma update --install-timer
+# Weekly auto-update of the user-site (run ON THE HOST — #468)
+vesma update timer install
+
+# What is installed, and what updates it
+vesma update components
 ```
 
 Restart running clients (MCP / `serve`) after a successful update to pick up the new version.

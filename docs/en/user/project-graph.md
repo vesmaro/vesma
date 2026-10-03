@@ -43,6 +43,42 @@ claims more certainty than it has.
 
 ---
 
+## Supported languages
+
+| Language | Since | Indexed surface |
+|----------|-------|-----------------|
+| Python | PG-0 (#438) | `.py` |
+| Go (#470) | 2026-10 | `.go` |
+
+Anything else is simply not indexed — an unknown extension never falls
+through to a wrong parser. What the graph sees in a Go tree:
+
+- **Symbols** — top-level functions (`Function`), methods with receivers
+  (`Method`, qname `pkg.Type.Name`), struct and interface types (`Class`),
+  other defined types and aliases (`Type`). Qualified names carry the dotted
+  package directory (`pkg.util.Greeter.Greet`); a module node's qname is the
+  package directory.
+- **Proven `CALLS`** — plain-identifier calls inside one Go package (package
+  scope makes the name unique, including across files of the same package)
+  and `pkg.Ident(...)` calls through a resolved import. Type conversions
+  (`Base(x)`) count as calls to the type, mirroring the Python constructor
+  rule.
+- **Heuristic `USES`** — method calls on values/pointers (`obj.Method(...)`;
+  the receiver's type is not inferred, so a name match stays heuristic) and
+  type references from composite literals (`&Server{...}`) and `new`/`make`
+  type arguments.
+- **`INHERITS`** for struct/interface embedding; **`IMPORTS`** when an import
+  path matches an in-repo package directory (the edge lands on the package's
+  first sorted file's module; stdlib/external paths resolve to nothing);
+  **`TESTS`** from `foo_test.go` to its own package's module.
+- **Honestly skipped** — interface satisfaction (implicit in Go; no edge is
+  invented), calls through function variables, generic instantiations
+  (`F[T](...)`), dot- and blank-imports. The import path string is the only
+  string content ever read, and only to resolve imports — it never reaches
+  the store (PG1 holds for Go sources the same way it holds for Python).
+
+---
+
 ## Turn it on for a project
 
 The graph indexes **registered roots only** (PG2). A root is the first
@@ -98,6 +134,43 @@ Then the flow is three tool calls (every one needs an `agent` — see
 
 Prefer zero-touch? The next section describes the native auto path — the
 manual flow above keeps its full contract either way.
+
+---
+
+## Hybrid search: the literal fallback (W-H)
+
+The symbol index is shapes-only — string literals (tool names, route
+paths, env-var names) are invisible to it. Since W-H, `vesma_search_graph`
+is **hybrid**: when the symbol graph returns ZERO hits for a query, a
+bounded read-only literal scan of the registered project root answers with
+content rows instead of an empty result.
+
+Behavior:
+
+- **Symbol first, always.** Any symbol hit — the answer is symbol rows
+  only; the fallback never runs. Every symbol row now carries the additive
+  `match_kind: "symbol"`.
+- **Literal rows.** On an empty symbol result the scan answers
+  `match_kind: "literal"` rows (`path` / `line` / `snippet`, repo-relative,
+  line-text trimmed and capped at 240 chars, max 20 rows). They carry no
+  node ids — they are file content, not graph nodes. A top-level
+  `fallback_used: true` marker appears ONLY when the fallback ran (absent
+  otherwise — the shape never carries null placeholders).
+- **Bounded.** The scan reuses the indexer's surface denylists
+  (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles,
+  secret-bearing file names are never opened), never follows symlinks,
+  skips binary content and files over 1 MiB, and stops at a hard cap
+  (file count, ~2 s wall clock). A capped scan is logged as incomplete.
+- **Confined.** The scan never leaves the registered root. An
+  unregistered project is refused before any scan.
+- **PG4 holds.** Every literal row passes the same secrets detector as
+  snippet issuance; a finding DROPS the row (raw content is never issued),
+  and poisoned paths (PG3) never issue content at all. A scan that cannot
+  complete safely degrades to a no-fallback empty answer — never raw
+  content.
+- **Knob.** `code_graph.literal_fallback` (default `true`) disables the
+  leg; `search_graph` then stays symbol-only. The REST twin
+  `POST /graph/search` inherits the whole behavior unchanged.
 
 ---
 
@@ -191,8 +264,8 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
 |------|--------------|
 | `mnemos_index_project` | Full or incremental index of a registered root; serialized per project |
 | `mnemos_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
-| `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures |
-| `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag) |
+| `vesma_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H) |
+| `vesma_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails answer a candidate list (W-H) |
 | `mnemos_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
 | `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
 | `mnemos_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
@@ -208,6 +281,36 @@ Every windowed tool takes `max_output_tokens` (128–1,000,000, default 3200)
 under a deterministic token contract: rows drop whole, never split, and the
 cursor strictly advances. Full input schemas and examples:
 [mcp-tools.md, "Project graph tools"](mcp-tools.md#project-graph-tools-adr-0032).
+
+---
+
+## Using the graph day-to-day
+
+The graph earns its keep only when it is the FIRST stop, not the last
+resort. The working loop:
+
+1. **Find the symbol** — `vesma_search_graph` by name / qualified name /
+   path. Ranked hits with opt-in signatures — narrower than grep noise.
+2. **Follow the callers** — `vesma_trace_path` from the resolved
+   qualified name. Edge traversal (calls / imports / inheritance) is the
+   one answer text search structurally cannot give.
+3. **Read exactly what you need** — `vesma_get_file_outline` before
+   opening a big file, `vesma_get_code_snippet` for the chosen line
+   ranges.
+
+**When grep wins.** The graph indexes symbols only (zero source bytes,
+PG1) — it does not see string literals. Tool names, route paths, env var
+names, log strings, comments and docs-sample prose stay grep territory.
+An unregistered repo has no graph at all — check
+`vesma_list_graph_projects` first. And «unindexed» is not «missing»:
+`vesma_check_graph_coverage` distinguishes `indexed` / `stale` /
+`unindexed` / `poisoned` before you conclude a symbol does not exist.
+
+**Hygiene.** `vesma_project_graph_status` / `vesma_check_graph_coverage`
+are the honesty gates: parse failures stay visible («clean ≠ proof»), and
+a poisoned count made entirely of test fixtures is an allowlist question,
+not a fear question — the status answer says so (`hints`) and
+`secret_allowlist` below is the escape hatch.
 
 ---
 
@@ -249,6 +352,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
 | `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
+| `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
 | `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |
@@ -258,6 +362,18 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
+
+The product default stays `[]` — PG3 is a security gate, not an
+inconvenience. The canonical fixture pattern (fake-secret test data, as
+applied in practice 2026-10-03) scopes the hatch to test and benchmark
+trees only, never source trees:
+
+```yaml
+code_graph:
+  secret_allowlist:
+    - "tests/**"
+    - "benchmarks/**"
+```
 
 Environment overrides follow the canonical settings pattern:
 `VESMA_CODE_GRAPH__INDEX_MAX_FILES`,
@@ -309,4 +425,4 @@ _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
 150cdfe). Feature map: [features.md](../features.md)._
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-10-03_

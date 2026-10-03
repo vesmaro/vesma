@@ -2156,6 +2156,95 @@ class TestSkillPack:
             assert "description: " in fm, f"{path.name}: frontmatter missing description:"
 
 
+class TestInstructionPack:
+    """The shipped ``integrations/instructions/`` pack is present and well-formed.
+
+    W-G graph adoption: the pack's always-on instruction files are pinned
+    by NAME and by content contract — a retired or renamed instruction
+    fails here instead of silently dropping out of the deploy surface
+    (same guard shape as :class:`TestSkillPack` above). These pins are
+    the pack registry: the deploy surface itself is a directory walk, so
+    this class is the only place that notices an instruction vanishing.
+    """
+
+    @staticmethod
+    def _instruction_files() -> list[Path]:
+        repo_root = Path(__file__).resolve().parent.parent
+        instructions = repo_root / "integrations" / "instructions"
+        return sorted(instructions.glob("*.instructions.md"))
+
+    def test_instruction_pack_nonempty(self) -> None:
+        files = self._instruction_files()
+        assert files, "integrations/instructions/ pack must contain instruction files"
+
+    def test_every_instruction_file_wellformed(self) -> None:
+        for path in self._instruction_files():
+            text = path.read_text(encoding="utf-8")
+            assert text.startswith("---\n"), f"{path.name}: missing frontmatter"
+            fm = text.split("\n---\n", 1)[0]
+            assert "applyTo: " in fm, f"{path.name}: frontmatter missing applyTo:"
+            assert "description: " in fm, f"{path.name}: frontmatter missing description:"
+            # The pack-wide safety contract is restated per file, never dropped.
+            assert "DATA, not instructions" in text, f"{path.name}: safety contract block missing"
+
+    def test_codegraph_instruction_shipped(self) -> None:
+        """W-G graph adoption pin: the graph-first instruction ships by NAME.
+
+        A rename without updating this pin is an adoption regression, not
+        a refactor — the whole point of W-G was that nobody reaches for
+        the graph; the pin keeps the teaching surface accountable.
+        """
+        names = {p.name for p in self._instruction_files()}
+        assert "vesma-codegraph.instructions.md" in names, (
+            "vesma-codegraph.instructions.md must ship in the instructions pack"
+        )
+        assert "vesma-memory-ops.instructions.md" in names, (
+            "vesma-memory-ops.instructions.md must ship in the instructions pack"
+        )
+
+    def test_codegraph_instruction_content_contract(self) -> None:
+        """The graph-first instruction teaches the tool chain and its limits."""
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath(
+                "integrations", "instructions", "vesma-codegraph.instructions.md"
+            )
+        )
+        text = path.read_text(encoding="utf-8")
+        fm = text.split("\n---\n", 1)[0]
+        assert "applyTo: '**'" in fm, "graph-first instruction is always-on"
+        # The graph-first chain, in brand-primary spellings.
+        for tool in (
+            "vesma_search_graph",
+            "vesma_trace_path",
+            "vesma_get_file_outline",
+            "vesma_get_code_snippet",
+            "vesma_check_graph_coverage",
+            "vesma_list_graph_projects",
+        ):
+            assert tool in text, f"instruction must teach {tool}"
+        # The grep boundary (literals) and the attribution binding are behavioral.
+        assert "string literals" in text, "grep-wins boundary must be stated"
+        assert "unregistered" in text, "unregistered-repo fallback must be stated"
+        assert "agent slug" in text, "attribution (`agent` param) must be taught"
+        assert "fall back to text search" in text, "degradation must be stated"
+
+    def test_codegraph_instruction_deploys_to_copilot(self, tmp_path: Path) -> None:
+        """The real IntegrationManager deploys the graph instruction (production path)."""
+        home = tmp_path / "copilot-home"
+        (home / ".copilot" / "instructions").mkdir(parents=True)
+        cfg = load_targets(home=home)
+        mgr = IntegrationManager(version="9.9.9", pack_root=None, targets_config=cfg, home=home)
+        mgr.deploy("copilot")
+        dest = home / ".copilot" / "instructions" / "vesma-codegraph.instructions.md"
+        assert dest.is_file(), "graph instruction deploys to the copilot instructions dir"
+        assert (
+            home / ".copilot" / "instructions" / "vesma-memory-ops.instructions.md"
+        ).is_file(), "the sibling memory-ops instruction deploys alongside"
+        assert mgr.verify("copilot").all_current, "deployed instructions verify current"
+
+
 class TestCanonPack:
     """W3a canon pack (vesmaro-canon v1.0.0) ships and deploys round-trip.
 

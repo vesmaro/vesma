@@ -47,8 +47,8 @@ The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on st
 | [`vesma_watch_status`](#vesma_watch_status) | Report watch registrations and last poll outcome | no |
 | [`vesma_index_project`](#vesma_index_project) | Index a registered project root into the project graph (ADR-0032, on by default) | no |
 | [`vesma_project_graph_status`](#vesma_project_graph_status) | Volumes, freshness, parse failures, poisoned count for one project | no |
-| [`vesma_search_graph`](#vesma_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed | no |
-| [`vesma_trace_path`](#vesma_trace_path) | BFS over project edges from one symbol (depth ≤ 2) | no |
+| [`vesma_search_graph`](#vesma_search_graph) | Ranked name/qname/path search over the graph, token-contract windowed; hybrid literal fallback on an empty result (W-H) | no |
+| [`vesma_trace_path`](#vesma_trace_path) | BFS over project edges from one symbol (depth ≤ 2); ambiguous tails answer a candidate list (W-H) | no |
 | [`vesma_get_file_outline`](#vesma_get_file_outline) | Symbol outline of one indexed file (shapes, never bodies) | no |
 | [`vesma_get_code_snippet`](#vesma_get_code_snippet) | Secret-scanned line range read FROM DISK (PG4) | no |
 | [`vesma_check_graph_coverage`](#vesma_check_graph_coverage) | Per-path verdict: indexed / stale / parse-error / unindexed / missing / poisoned | no |
@@ -144,6 +144,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
 | `query` | string | **yes** | — | Natural language search string. Matched as ONE whole phrase by the FTS5 leg (see Query semantics above). |
 | `tags` | string[] | no | — | Filter: all of these tags must be present. |
 | `project` | string | no | — | Restrict to a project slug. |
+| `agent` | string | no | — | ADR-0035 W1: optional caller agent slug (1–64 chars of `[a-z0-9_-]`) — feeds the native awareness heartbeat identity so search calls participate in the peer-activity picture. Has NO effect on which rows match. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to `tags=["task:<slug>"]` (the F1 arm-C surface): narrows results to that task's entries; composes with `tags` by intersection (both must hold). Normalized first (`My Task` → `my-task`); unsalvageable slugs fail loud. Bare-slug note (#455): a bare slug passed in `tags` (not `task`) matches nothing by itself — when such a query returns zero rows and `task:<slug>` entries exist, the search retries once with the exact tag and marks the surfaced rows (`task_tag_fallback`). |
 | `limit` | integer | no | `10` | Max results. |
 | `include_raw` | boolean | no | `false` | If true, returns `raw_content` instead of cleaned `content`. |
@@ -265,6 +266,7 @@ Restore the latest session checkpoint for a project. The **first** thing an agen
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `project` | string | no | auto (cwd) | Project name. Auto-detected from the current working directory if omitted. |
+| `agent` | string | no | — | ADR-0035 W1: optional caller agent slug (1–64 chars of `[a-z0-9_-]`) — feeds the native awareness heartbeat identity so recall calls participate in the peer-activity picture. Has NO effect on which checkpoints return. |
 | `query` | string | no | — | Optional focus aspect. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to the checkpoint tag filter plus `task:<slug>` (the F1 arm-C surface): returns only checkpoints saved under that task. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -989,6 +991,7 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
   "parse_errors": {"legacy/parser.py": "unsupported syntax"},
   "parse_error_count": 1,
   "poisoned_count": 1,
+  "hints": [],
   "staleness": {
     "total_files": 400,
     "fresh_percent": 97.5,
@@ -997,6 +1000,12 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
   }
 }
 ```
+
+`hints` is additive and usually `[]`; when EVERY poisoned path lives under
+a test-like tree (`tests/**` / `benchmarks/**`), status carries one line —
+«all poisoned files match test fixtures — consider
+`code_graph.secret_allowlist`» — the escape hatch for known-fake secret
+fixtures, not a waiver of the issuance scan (PG4).
 
 ### Related
 
@@ -1007,6 +1016,8 @@ Project-graph status for one registered project: node/edge/file volumes, freshne
 ## `vesma_search_graph`
 
 Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
+
+**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
 
 ### Input
 
@@ -1050,6 +1061,28 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 }
 ```
 
+Literal-fallback response (W-H — the symbol graph had zero hits):
+
+```json
+{
+  "project": "vesma",
+  "query_kind": null,
+  "results": [
+    {
+      "match_kind": "literal",
+      "path": "src/vesma/mcp_server.py",
+      "line": 1864,
+      "snippet": "name=\"vesma_search_graph\","
+    }
+  ],
+  "total_matches": 0,
+  "cursor": 0,
+  "has_more": false,
+  "fallback_used": true,
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
+
 ### Related
 
 - HTTP equivalent: [`POST /graph/search`](http-api.md#post-graphsearch--search-the-project-graph)
@@ -1059,7 +1092,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 ## `vesma_trace_path`
 
-BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique dotted-tail match — ambiguous refusals name `vesma_search_graph`). Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 
@@ -1101,6 +1134,37 @@ BFS over `project_edges` from one symbol, resolved by qname (exact, or a unique 
 ```
 
 `truncated: true` means a fanout or total-work cap bit — the walk is honest about what it skipped.
+
+Ambiguous-tail response (W-H — a helpful payload, not an error):
+
+```json
+{
+  "project": "vesma",
+  "query": "update_fields",
+  "candidates": true,
+  "candidate_list": [
+    {
+      "qname": "vesmaro.models.Project.update_fields",
+      "kind": "Method",
+      "path": "src/vesmaro/models.py",
+      "start_line": 210,
+      "end_line": 240
+    },
+    {
+      "qname": "vesmaro.store.Row.update_fields",
+      "kind": "Method",
+      "path": "src/vesmaro/store.py",
+      "start_line": 88,
+      "end_line": 96
+    }
+  ],
+  "candidate_count": 2,
+  "has_more": false,
+  "cursor": 0,
+  "hint": "ambiguous symbol tail — re-run trace_path with the qualified name (qname) of the intended candidate",
+  "last_indexed_at": "2026-09-28T12:00:04+00:00"
+}
+```
 
 ### Related
 
@@ -2035,7 +2099,7 @@ Semantics (ADR-0018, verbatim):
 
 **Lifecycle hooks (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3)** — the automation integration points, grouped behind `action:enum` (the vesma #97 grouped-tool pattern). Three actions, one tool:
 
-- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `vesma_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (vesma #254, default `false` — off means byte-identical output), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`vesma_awareness`](#vesma_awareness)).
+- **`pre_llm_call`** — assemble the context block to **inject before a model call** (thin wrapper over `vesma_assemble_context`, delivery pinned to sync). `context_hint` (what the upcoming call is about) is used as the recall query instead of the derived project/file term. `task` (ADR-0027 Phase 0, epic #308) is the harness-passed task identifier — the bare task slug: it narrows recall to entries tagged `task:<slug>` (intersection doctrine — a task condition only narrows, never widens) and composes the per-call assembled tail only; pinned prefixes and the provenance format are untouched. The ADR-0018 entry invariant — secret scan, provenance, status gate — runs inside the assemble pipeline; the hook adds nothing to it. With `include_awareness=true` (vesma #254; ADR-0035 W1 default is MODE-LINKED: omitted means compose when `awareness.native_heartbeat_mode` is `canary`/`on`, stay byte-identical off otherwise — an explicit boolean always wins), the awareness delta section AND the swarm v0a/v0b operational picture (same-project peers: counts/ids/timestamps only, plus each peer's claimed task — swarm v0b, a self-reported `task:<slug>` claim rendered in a labeled `[unverified]` sub-section) are appended LAST, never pinnable, and the awareness cursor advances; the picture renders below the delta section (see [`vesma_awareness`](#vesma_awareness)).
 - **`on_session_start`** — recall recent checkpoints for session bootstrap (thin wrapper over the recall path; the echoed content is scanned at issuance on this channel, mirroring `vesma_recall_context`).
 - **`post_tool_call`** — the **autocompression entry point** (ADR-0018): when `auto_compress` resolves true (per-call argument, else the `hooks.auto_compress` config knob, default `false`), the tool output is compressed via CCR and the marker-headed `compressed_text` is returned — the caller **substitutes** it for the raw output in its window. Off by default: the envelope says so and nothing is written.
 
@@ -2120,7 +2184,7 @@ Semantics (ADR-0018, verbatim):
 
 **The doorbell contour** — awareness of peer activity reaches the agent NATIVELY, without manual invocation and without any change in foreign harnesses: a delta-gated, observed-only awareness tail attached to the responses of ALL MCP tools through a single injection point (the `call_tool` wrapper). Delivery happens on the FIRST tool call after a peer write — cost scales with peer activity, not with call count; the delta check itself is a sub-millisecond `SELECT EXISTS` probe, so quiet stores pay one index lookup per call.
 
-The tail is one appended `TextContent` after the handler (never inline, lane=awareness, tail-LAST per the cache contract). A deny-list of surfaces never carries it: `vesma_assemble_context` (it already composes the full picture — a tail there would mean double render and double cursor advance), `vesma_export` and `vesma_import` (the bulk transfer pair). The REST leg carries no tail in v1.
+The tail is one appended `TextContent` after the handler (never inline, lane=awareness, tail-LAST per the cache contract). A deny-list of surfaces never carries it: `vesma_assemble_context` (it already composes the full picture — a tail there would mean double render and double cursor advance), `vesma_export` and `vesma_import` (the bulk transfer pair), and — cascade SEC-2 — the awareness surfaces themselves, `vesma_awareness` and `vesma_hooks` (under `canary`/`on` a hooks call composes its own awareness by default; a native tail on top would be a double render). Denied surfaces still land in the `tool_call` denominator. The REST leg carries no tail in v1.
 
 ### Mode ladder (`awareness.native_heartbeat_mode`)
 
@@ -2128,7 +2192,7 @@ The tail is one appended `TextContent` after the handler (never inline, lane=awa
 |------|---------------|---------------|--------|-------|
 | `off` *(default)* | no | no | no | The kill switch: engine behaviour is byte-identical to the pre-ADR-0035 build (CI-pinned). |
 | `shadow` | yes | **no** | yes | Wave 0: the whole contour is computed and logged in the metrics sidecar, nothing reaches the agent. |
-| `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. |
+| `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. W1 additions: the optional `agent` argument on `vesma_search` / `vesma_recall_context` feeds the heartbeat identity (the most frequent calls used to stay identity-less), and the hooks channel (`vesma_hooks` / `POST /hooks/{action}`) composes awareness by DEFAULT — see `include_awareness` above. |
 | `on` | yes | yes | yes | Wave 2: the default flips only after the wave 0/1 gates close green. |
 
 Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
@@ -2141,7 +2205,7 @@ The delivery cursor (`awrh:` namespace, keyed `(project, agent)`, session-free) 
 
 ### Events (shadow metrics)
 
-The contour writes zero-content events into the metrics sidecar (90-day retention): `peer_write` (write-class verbs), `delta_available`, `heartbeat_delivery` (tool, lines, token estimate, `state: calm|delta`, cursor before/after), `heartbeat_suppressed` (reason: `rate_cap` / `probe_error` / …), and `tool_call` (name, ts, session — the funnel denominator). No peer content ever lands in an event (counts, enums and the caller's identity slugs only).
+The contour writes zero-content events into the metrics sidecar (90-day retention): `peer_write` (write-class verbs), `delta_available`, `heartbeat_delivery` (tool, lines, token estimate, `state: calm|delta`, cursor before/after), `heartbeat_suppressed` (reason: `rate_cap` / `probe_error` / …), `tool_call` (name, ts, session — the funnel denominator) and `conflict_hint_emitted` (cascade SEC-4: sidecars created before the kind existed are migrated onto the extended CHECK on their next open — no rows lost). No peer content ever lands in an event (counts, enums and the caller's identity slugs only).
 
 ### Related
 

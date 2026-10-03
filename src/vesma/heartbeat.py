@@ -29,8 +29,10 @@ Hard contract (the wrapper's side of ADR-0035):
 * the deny-list surfaces (``vesma_assemble_context`` — it already
   composes the full picture, a tail there means double render and
   double cursor advance; export/import — the bulk transfer pair, the
-  MCP legs of the federation class) never carry the tail (but still
-  land in the ``tool_call`` denominator).
+  MCP legs of the federation class; ``mnemos_awareness`` /
+  ``mnemos_hooks`` — the awareness surfaces themselves, cascade SEC-2)
+  never carry the tail (but still land in the ``tool_call``
+  denominator).
 
 The REST leg carries no tail in v1 (a silent text tail would break the
 typed JSON contract — ADR-0035 Configuration).
@@ -57,6 +59,15 @@ HEARTBEAT_DENY_TOOLS: Final[frozenset[str]] = frozenset(
         # metadata-only.
         "vesma_export",
         "vesma_import",
+        # The awareness surfaces themselves (cascade SEC-2, ADR-0035 W1):
+        # ``vesma_awareness`` pre_flight IS the depth render, and under
+        # canary/on a hooks pre_llm_call/on_session_start composes its own
+        # awareness section by default (the mode-linked include_awareness
+        # default) — a native tail on those responses is a double render
+        # on one surface, the C13 assemble_context ruling verbatim. They
+        # still land in the ``tool_call`` denominator.
+        "vesma_awareness",
+        "vesma_hooks",
     }
 )
 
