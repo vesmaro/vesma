@@ -48,14 +48,26 @@ comments, ``if [ -f … ]; then source …; fi`` blocks and ``[ -f … ] &&
 source …`` one-liners referencing ANY old script name (mnemos.bash,
 vesmaro.bash, vesma.zsh, ...). ``_is_installed`` matches ONLY the exact
 canonical line — a stale legacy line is never mistaken for an install.
+
+rc integrity (wave W-I): the migration operates on WHOLE shell constructs —
+a matched ``if …; then`` opener removes the entire if/then(/else)/fi block,
+and orphaned control lines (``fi``/``then``/``else``/``done``) left behind
+by an older partial edit (ours or external) are cleaned up too. The field
+incident this fixes: a half-removed legacy block left an orphaned ``fi`` in
+``~/.bashrc``; bash aborts parsing the ENTIRE rc at that line, so nothing
+below it ever ran and completion stayed dead even with the canonical source
+line present. Additionally, every rc write is validated with ``bash -n``
+(``zsh -n`` when a zsh binary exists; fish needs no check) against the
+pre-edit content kept in memory — a write that would produce a non-parsing
+rc is rolled back and the installer exits non-zero.
 """
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -291,51 +303,288 @@ def _is_installed(shell: str, rc: Path) -> bool:
     return any(line.strip() == canonical for line in content.splitlines())
 
 
-def _remove_old_completion_entries(rc: Path, shell: str) -> None:
-    """Migrate away every legacy completion entry from the rc file.
+# ── rc integrity: block-aware migration + never write a broken rc ─────────────
 
-    Removed (one line per match, no reflowing of the rest):
+# Block-control words recognized by the simple rc block parser. This is
+# deliberately NOT a bash grammar (rc files in scope are simple): it needs to
+# (a) tell when a to-be-removed line OPENS a multi-line conditional so the
+# removal consumes the whole construct, and (b) drop pure control lines whose
+# opener is gone — removed by us or by an earlier external edit (the
+# 2026-10-03 field incident: an orphaned `fi` aborted .bashrc parsing and
+# silently killed every later rc line, our canonical source line included).
+_KEYWORD_RE = re.compile(
+    r"(?<![\w$-])(if|then|else|elif|fi|for|while|until|do|done|case|esac)(?![\w-])"
+)
+_OPEN_KIND: dict[str, str] = {
+    "if": "if",
+    "for": "loop",
+    "while": "loop",
+    "until": "loop",
+    "case": "case",
+}
+_CLOSE_KIND: dict[str, str] = {"fi": "if", "done": "loop", "esac": "case"}
+_CONTINUATION_KIND: dict[str, str] = {"then": "if", "else": "if", "elif": "if", "do": "loop"}
+
+
+def _syntax_relevant_text(line: str) -> str:
+    """The line with quoted strings and comments removed — the text the block
+    parser counts keywords on. Naive single-pass scanner: no heredoc bodies,
+    no ``$'…'`` quoting, no backticks (documented limits)."""
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            if ch == "\\" and quote == '"':
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#":
+            break  # comment till end of line
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _keyword_tokens(line: str) -> list[str]:
+    """Block-control keywords on a line, in order (quotes/comments ignored)."""
+    return _KEYWORD_RE.findall(_syntax_relevant_text(line))
+
+
+def _pop_nearest(stack: list[str], kind: str) -> None:
+    """Pop the nearest opener of ``kind`` (inner unmatched openers stay)."""
+    for idx in range(len(stack) - 1, -1, -1):
+        if stack[idx] == kind:
+            del stack[idx]
+            return
+
+
+def _apply_block_tokens(tokens: list[str], stack: list[str]) -> None:
+    """Update the block stack with one line's control tokens, in order.
+    Closers without a matching opener are ignored here — on pure control
+    lines the orphan pass drops the line instead; mixed lines are left
+    alone (conservative)."""
+    for tok in tokens:
+        if tok in _OPEN_KIND:
+            stack.append(_OPEN_KIND[tok])
+        elif tok in _CLOSE_KIND and _CLOSE_KIND[tok] in stack:
+            _pop_nearest(stack, _CLOSE_KIND[tok])
+
+
+def _control_line_is_orphaned(tokens: list[str], stack: list[str]) -> bool:
+    """Whether a pure-control line contains a closer or continuation whose
+    opener is absent from the current block stack."""
+    sim = list(stack)
+    for tok in tokens:
+        if tok in _OPEN_KIND:
+            sim.append(_OPEN_KIND[tok])
+        elif tok in _CLOSE_KIND:
+            if _CLOSE_KIND[tok] not in sim:
+                return True
+            _pop_nearest(sim, _CLOSE_KIND[tok])
+        elif tok in _CONTINUATION_KIND and _CONTINUATION_KIND[tok] not in sim:
+            return True
+    return False
+
+
+def _strip_orphaned_control_lines(lines: list[str]) -> list[str]:
+    """Drop pure block-control lines (``fi``/``then``/``else``/``elif``/
+    ``do``/``done``/``esac`` — optionally with a trailing comment) whose
+    opener is gone from the surrounding kept content."""
+    kept: list[str] = []
+    stack: list[str] = []
+    for line in lines:
+        tokens = [t for t in re.split(r"[\s;]+", _syntax_relevant_text(line)) if t]
+        if tokens and all(
+            t in _OPEN_KIND or t in _CLOSE_KIND or t in _CONTINUATION_KIND for t in tokens
+        ):
+            if _control_line_is_orphaned(tokens, stack):
+                continue  # orphaned construct remnant — the rc parses better without it
+            _apply_block_tokens(tokens, stack)
+        else:
+            _apply_block_tokens(_keyword_tokens(line), stack)
+        kept.append(line)
+    return kept
+
+
+def _check_shell_syntax(shell: str, rc: Path) -> tuple[bool, str]:
+    """Syntax-check an rc file with the shell's own parser (``bash -n`` /
+    ``zsh -n``). fish has no parse-only mode — skipped. Returns ``(True,
+    "")`` when the file parses, when validation does not apply (fish), or
+    when the shell binary is missing / the check could not run (an install
+    is never blocked by a broken validator tool). ``(False, stderr)``
+    means the file does NOT parse.
+    """
+    if shell == "fish":
+        return True, ""
+    try:
+        proc = subprocess.run(
+            [shell, "-n", str(rc)],  # FileNotFoundError below = binary not installed
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True, ""
+    if proc.returncode == 0:
+        return True, ""
+    return False, (proc.stderr or "").strip()
+
+
+_FAILURE_LINE_RE = re.compile(r"line (\d+)|:(\d+):")
+
+
+def _parse_failure_line(stderr: str) -> int | None:
+    """Extract the failing 1-based line number from ``bash -n``/``zsh -n``
+    output (bash: ``…: line N: …``; zsh: ``path:N: …``), else None."""
+    m = _FAILURE_LINE_RE.search(stderr)
+    if m is None:
+        return None
+    return int(m.group(1) or m.group(2))
+
+
+def _write_rc_validated(rc: Path, new_content: str, shell: str) -> bool:
+    """Write an rc file, then prove the result still parses; restore on
+    failure. The pre-edit content is kept in memory: when ``bash -n`` /
+    ``zsh -n`` rejects the new content, the original bytes are written back,
+    the failing line plus the shell's own error are printed, and False is
+    returned (the installer exits non-zero). An rc that did not exist before
+    is removed again. Returns True only when the file on disk parses."""
+    original: str | None = None
+    if rc.exists():
+        try:
+            original = rc.read_text(encoding="utf-8")
+        except OSError:
+            original = None
+    try:
+        rc.write_text(new_content, encoding="utf-8")
+    except OSError as exc:
+        console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
+        return False
+    ok, err = _check_shell_syntax(shell, rc)
+    if ok:
+        return True
+    restored = False
+    try:
+        if original is None:
+            rc.unlink()
+        else:
+            rc.write_text(original, encoding="utf-8")
+        restored = True
+    except OSError:
+        pass
+    if restored:
+        console.print(
+            f"[red]✗ {rc} failed {shell} syntax validation — "
+            "original content restored, nothing changed.[/red]"
+        )
+    else:
+        console.print(
+            f"[red]✗ {rc} failed {shell} syntax validation AND could not be restored — "
+            "inspect and fix the file manually.[/red]"
+        )
+    line_no = _parse_failure_line(err)
+    if line_no is not None:
+        content_lines = new_content.splitlines()
+        failing = content_lines[line_no - 1].strip() if 1 <= line_no <= len(content_lines) else ""
+        console.print(f"[red]  failing line {line_no}: {failing}[/red]")
+    if err:
+        console.print(f"[red]  {shell} -n: {err.splitlines()[-1]}[/red]")
+    return False
+
+
+def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
+    """Migrate away every legacy completion entry from the rc file — WHOLE
+    shell constructs, not bare lines.
+
+    Removed:
 
     * any line mentioning the completion directory that is NOT the exact
       canonical source line for this shell — pre-rebrand
-      ``source ~/.mnemos/completion/vesmaro.bash`` lines,
-      ``if [ -f ~/.mnemos/completion/mnemos.bash ]; then source …; fi``
-      blocks, ``[ -f … ] && source …`` one-liners, wrong-shell/wrong-name
+      ``[ -f … ] && source …`` one-liners, wrong-shell/wrong-name
       references, and stale marker comments;
-    * old ``eval "$(… --show-completion …)"`` lines (vesma/mnemos spelling);
-    * old ``# Added by`` marker comments.
+    * ``if [ -f … ]; then source …; fi`` blocks referencing the completion
+      dir. When the matched line OPENS a multi-line conditional, the removal
+      consumes the entire if/then(/else)/fi block down to the MATCHING
+      ``fi`` (nesting-aware); a self-contained one-line ``if …; then …; fi``
+      stays a single-line removal. An opener whose block never closes (rc
+      damaged before us) removes only itself — the write-time syntax
+      validation decides whether the result is shippable;
+    * orphaned pure control lines — ``fi``/``then``/``else``/``elif``/
+      ``do``/``done``/``esac`` whose opener is gone, whether we just removed
+      it or a historical edit did (the 2026-10-03 field incident);
+    * old ``eval "$(… --show-completion …)"`` lines (vesma/mnemos spelling).
 
     Duplicate copies of the canonical line itself collapse to the first
     occurrence (exactly ONE canonical line stays).
+
+    Block-parser limits (rc files in scope are simple): keywords are counted
+    on a comment- and quote-stripped copy of each line; heredoc bodies,
+    ``$'…'`` quoting, backticks and lines mixing unrelated openers/closers
+    can confuse it. The final ``bash -n``/``zsh -n`` validation
+    (:func:`_write_rc_validated`) is the safety net — a parse-breaking write
+    is rolled back to the original content.
+
+    Returns True when the rc is intact (unchanged, or migrated and
+    re-validated); False when the migrated content failed syntax validation
+    (original restored) or the write failed.
     """
     if not rc.exists():
-        return
+        return True
     try:
         content = rc.read_text(encoding="utf-8")
     except OSError:
-        return
+        return True  # unreadable: nothing to migrate here (installer reports separately)
     canonical = _canonical_source_line(shell)
     show_completion_re = re.compile(r"--show-completion", re.IGNORECASE)
     added_by_re = re.compile(r"#\s*Added by `vesma completion`")
-    kept: list[str] = []
+    lines = content.splitlines(keepends=True)
+    remove = [False] * len(lines)
     canonical_seen = False
-    for line in content.splitlines(keepends=True):
+    for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped == canonical:
             if canonical_seen:
-                continue  # dedupe: exactly one canonical line
+                remove[i] = True  # dedupe: exactly one canonical line
             canonical_seen = True
-            kept.append(line)
+        elif "mnemos/completion/" in line:
+            remove[i] = True  # any completion-dir mention that is not the canonical line
+        elif show_completion_re.search(line) or added_by_re.search(line):
+            remove[i] = True  # pre-custom-engine eval format and its markers
+    # Consume whole multi-line conditionals opened by a removed line.
+    for i, line in enumerate(lines):
+        if not remove[i]:
             continue
-        if "mnemos/completion/" in line:
-            continue  # any completion-dir mention that is not the canonical line
-        if show_completion_re.search(line) or added_by_re.search(line):
-            continue  # pre-custom-engine eval format and its markers
-        kept.append(line)
+        depth = sum(1 for t in _keyword_tokens(line) if t in _OPEN_KIND)
+        depth -= sum(1 for t in _keyword_tokens(line) if t in _CLOSE_KIND)
+        if depth <= 0:
+            continue  # self-contained one-liner (e.g. `if …; then …; fi`) or no block at all
+        j = i + 1
+        while j < len(lines):
+            toks = _keyword_tokens(lines[j])
+            depth += sum(1 for t in toks if t in _OPEN_KIND)
+            depth -= sum(1 for t in toks if t in _CLOSE_KIND)
+            if depth <= 0:
+                break
+            j += 1
+        if depth <= 0:
+            for k in range(i, j + 1):
+                remove[k] = True
+        # else: unbalanced at EOF — rc was already broken; only the opener
+        # goes, validation decides the fate of the write.
+    kept = [line for i, line in enumerate(lines) if not remove[i]]
+    kept = _strip_orphaned_control_lines(kept)
     new_content = "".join(kept)
-    if new_content != content:
-        with contextlib.suppress(OSError):
-            rc.write_text(new_content, encoding="utf-8")
+    if new_content == content:
+        return True
+    return _write_rc_validated(rc, new_content, shell)
 
 
 def _write_script(path: Path, content: str) -> bool:
@@ -357,7 +606,9 @@ def _install(shell: str) -> bool:
     one canonical guarded source line in the rc file (bash/zsh) or one
     auto-sourced completions file per registered program name (fish).
 
-    Returns True if installed (or already installed), False on write error.
+    Returns True if installed (or already installed), False on write or
+    rc-syntax-validation error (a validated-then-rejected rc write leaves
+    the file byte-identical to its pre-run state).
     """
     script_file = _completion_file_path(shell)
 
@@ -385,8 +636,11 @@ def _install(shell: str) -> bool:
         return True
 
     # bash/zsh: migrate ALL legacy forms, then ensure the canonical line.
+    # Both rc writes go through syntax validation — the rc on disk after a
+    # successful install always parses (never-write-a-broken-rc contract).
     rc = _rc_path(shell)
-    _remove_old_completion_entries(rc, shell)
+    if not _remove_old_completion_entries(rc, shell):
+        return False
 
     if _is_installed(shell, rc):
         console.print(f"[green]✓[/green] Completion for {shell} installed at {script_file}")
@@ -395,14 +649,16 @@ def _install(shell: str) -> bool:
 
     try:
         rc.parent.mkdir(parents=True, exist_ok=True)
-        with rc.open("a", encoding="utf-8") as fh:
-            # Single-quoted marker: the migration regex targets the OLD
-            # double-quoted `# Added by \`vesma completion\`` comments, this
-            # fresh marker must survive re-runs.
-            fh.write(f"\n# Added by 'vesma completion' ({shell}) — custom __complete engine\n")
-            fh.write(f"{_canonical_source_line(shell)}\n")
+        existing = rc.read_text(encoding="utf-8") if rc.exists() else ""
     except OSError as exc:
-        console.print(f"[red]✗ Failed to write {rc}: {exc}[/red]")
+        console.print(f"[red]✗ Failed to read {rc}: {exc}[/red]")
+        return False
+    # Single-quoted marker: the migration regex targets the OLD
+    # double-quoted `# Added by \`vesma completion\`` comments, this
+    # fresh marker must survive re-runs.
+    marker = f"\n# Added by 'vesma completion' ({shell}) — custom __complete engine\n"
+    new_content = f"{existing}{marker}{_canonical_source_line(shell)}\n"
+    if not _write_rc_validated(rc, new_content, shell):
         return False
     console.print(f"[green]✓[/green] Installed {shell} completion → {script_file}")
     console.print(f"  [dim]Source line added to {rc}[/dim]")

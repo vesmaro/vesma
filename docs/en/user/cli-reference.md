@@ -733,6 +733,8 @@ Install shell completion for the `vesma` CLI. Vesma ships its own completion eng
 
 With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc` — put it after `compinit`; fish auto-sources its completions directory). The scripts are bound to the program name you invoked (`vesma`) plus legacy aliases that exist on PATH (`vesmaro`, and `mnemos` when installed), so Tab works for every way you call the binary. Idempotent — every run rewrites the scripts and keeps exactly one canonical source line, migrating away ALL legacy forms: old `eval "$(… --show-completion …)"` lines, pre-rebrand `mnemos.bash`/`vesmaro.bash` one-liners and `if [ -f … ]; then source …; fi` blocks, and stale marker comments.
 
+Integrity guarantees: rc edits are block-aware and validated. The legacy migration operates on whole shell constructs — a matched `if …; then` line removes the entire if/then(/else)/fi block, and orphaned control lines (`fi`, `then`, `else`, `done`) left behind by older partial edits are cleaned up too, so a half-removed legacy block can no longer abort parsing of the rest of your rc (a non-parsing rc silently disables everything below the break, completion included). After every rc write the result is checked with `bash -n` (or `zsh -n` when a zsh binary exists; fish needs no check) and the original content is restored verbatim if the file would not parse, with the installer exiting non-zero. `vesma doctor` reports the same damage as a Completion warning with the exact failing line number and text.
+
 ```text
 vesma completion [SHELL] [OPTIONS]
 ```

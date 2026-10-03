@@ -36,9 +36,10 @@ from __future__ import annotations
 import logging
 import os
 import weakref
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Collection, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from vesmaro.codegraph import incremental as incremental_mod
 from vesmaro.codegraph.audit import GraphAudit

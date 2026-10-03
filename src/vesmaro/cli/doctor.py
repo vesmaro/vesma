@@ -522,16 +522,24 @@ def _check_integration() -> CheckResult:
 def _check_completion() -> CheckResult:
     """Shell completion installation (custom ``vesma __complete`` engine).
 
-    PASS when the bash script file exists AND ``~/.bashrc`` contains the
-    exact canonical source line AND the script binds the primary program
-    name. WARN otherwise, with the precise fix hint. bash is the
-    representative shell here (the one whose rc-line wiring breaks most
-    often); zsh/fish follow the same installer paths.
+    PASS when the bash script file exists AND ``~/.bashrc`` parses
+    (``bash -n``) AND it contains the exact canonical source line AND the
+    script binds the primary program name. WARN otherwise, with the precise
+    fix hint. bash is the representative shell here (the one whose rc-line
+    wiring breaks most often); zsh/fish follow the same installer paths.
+
+    The parse check (wave W-I) exists because a canonical source line is
+    worthless when the rc aborts parsing BEFORE reaching it: the
+    2026-10-03 field incident — an orphaned ``fi`` left by a half-removed
+    legacy completion block — made bash discard every later rc line while
+    the line-grep checks below stayed green.
     """
     try:
         from vesmaro.cli.completion import (
             _canonical_source_line,
+            _check_shell_syntax,
             _completion_file_path,
+            _parse_failure_line,
             _primary_prog_name,
         )
 
@@ -544,6 +552,29 @@ def _check_completion() -> CheckResult:
                 f"no bash completion script at {script} — run `vesma completion bash`",
             )
         rc = Path.home() / ".bashrc"
+        if rc.exists():
+            rc_ok, rc_err = _check_shell_syntax("bash", rc)
+            if not rc_ok:
+                line_no = _parse_failure_line(rc_err)
+                where = ""
+                if line_no is not None:
+                    try:
+                        rc_lines = rc.read_text(encoding="utf-8").splitlines()
+                    except OSError:
+                        rc_lines = []
+                    if 1 <= line_no <= len(rc_lines):
+                        where = f" at line {line_no}: {rc_lines[line_no - 1].strip()}"
+                    else:
+                        where = f" at line {line_no}"
+                elif rc_err:
+                    where = f" ({rc_err.splitlines()[-1]})"
+                return CheckResult(
+                    "Completion",
+                    CheckStatus.WARN,
+                    f"{rc} does not parse{where} — completion cannot load even when the "
+                    "source line is present; run `vesma completion bash` to repair the "
+                    "damaged legacy block",
+                )
         canonical = _canonical_source_line("bash")
         try:
             rc_lines = rc.read_text(encoding="utf-8").splitlines() if rc.exists() else []
