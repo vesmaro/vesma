@@ -1350,12 +1350,12 @@ curl -s "http://127.0.0.1:8000/graph/projects?agent=ci-runner"
 
 ### `DELETE /graph/projects/{project_id}` — удаление индекса графа
 
-Удалить ИНДЕКС графа проекта (только sidecar-данные — никогда сущность проекта). Единственная операция, очищающая poisoned-набор (PG3). `agent` — обязательный query-параметр; тело запроса несёт необязательные `session` и `reason`.
+Удалить ИНДЕКС графа проекта (sidecar-данные). «Живая» регистрация сохраняет сущность проекта; «призрак» (корень отсутствует на диске) удаляется ЦЕЛИКОМ — индекс и строка регистрации — за evidence-гейтом: тело `confirm=true` плюс `confirm_name`, эхо имени проекта (попытка без гейта отвечает `403 confinement-refused`). Единственная операция, очищающая poisoned-набор (PG3). `agent` — обязательный query-параметр; тело запроса несёт необязательные `session`, `reason`, `confirm`, `confirm_name`.
 
 **Ответ 200**
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
 
 **Пример**

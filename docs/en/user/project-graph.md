@@ -256,6 +256,14 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
   rebuildable data), the auto-path suspension is lifted, and the next
   index run rebuilds fresh.
 
+A ghost can also be removed outright — `mnemos_delete_graph_project` (or
+`vesma graph delete <project>` on the CLI) drops the index and, behind the
+evidence gate (`confirm=true` + `confirm_name` echoing the project name;
+`--force --confirm-name <project>` on the CLI), the registration row
+itself. A gate-less attempt is refused and audited (`delete-refused`). A
+**live** registration (root exists on disk) keeps its row — the delete
+purges only the derived index.
+
 ---
 
 ## The graph tools
@@ -397,7 +405,9 @@ Environment overrides follow the canonical settings pattern:
 - **My project root moved on disk.** The registration goes ghost:
   `mnemos_list_graph_projects` shows `root_missing: true`, indexing refuses.
   Repair with `vesma graph repoint <project> <new-root>` (#450) — the stale
-  index is purged and the next index rebuilds fresh.
+  index is purged and the next index rebuilds fresh. Not worth repairing?
+  Remove the ghost entirely: `vesma graph delete <project> --force
+  --confirm-name <project>`.
 - **A file changed after indexing.** Snippets come back with a `stale` marker
   instead of content; reindex (or let the watch poll do it) to refresh.
 - **How do I turn it all off?** `code_graph.enabled: false` — tools answer
@@ -405,7 +415,9 @@ Environment overrides follow the canonical settings pattern:
   tools but stop the background auto path? `code_graph.auto_index: false`.
 - **Do I need to back up `code_graph.db`?** No. It is a rebuildable sidecar
   in the data dir; `mnemos_delete_graph_project` drops only the index, never
-  the project entity or its memories.
+  the project entity or its memories (a ghost registration behind the
+  evidence gate is the one exception — its row goes too; memories are never
+  touched).
 
 ---
 

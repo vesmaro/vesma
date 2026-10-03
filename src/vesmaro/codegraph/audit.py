@@ -59,6 +59,7 @@ AUDIT_ACTIONS = (
     "manual-register-refused",
     "repoint",
     "repoint-refused",
+    "delete-refused",
 )
 
 

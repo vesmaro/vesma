@@ -54,7 +54,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 | [`mnemos_check_graph_coverage`](#mnemos_check_graph_coverage) | Вердикт по каждому пути: indexed / stale / parse-error / unindexed / missing / poisoned | нет |
 | [`mnemos_get_graph_schema`](#mnemos_get_graph_schema) | Карта контракта графа: виды, лимиты, токен-контракт | нет |
 | [`mnemos_list_graph_projects`](#mnemos_list_graph_projects) | Зарегистрированные проекты вместе со статусом индекса | нет |
-| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (только sidecar); очищает poisoned-набор | нет |
+| [`mnemos_delete_graph_project`](#mnemos_delete_graph_project) | Удалить индекс графа (призраки: и строку регистрации, за confirm-гейтом с эхом имени); очищает poisoned-набор | нет |
 | [`mnemos_register_project`](#mnemos_register_project) | Зарегистрировать корень проекта для графа (#454) — ответ на отказы «not registered» | нет |
 | [`mnemos_auto_collect_status`](#mnemos_auto_collect_status) | Вектор сигналов сжатия контекста (M7) | нет |
 | [`mnemos_compress`](#mnemos_compress) | Обратимое сжатие (CCR) — кэш оригинала, маркер в вывод | нет |
@@ -1359,7 +1359,9 @@ BFS по `project_edges` от одного символа. Разрешение 
 
 `root_missing: true` (#450) помечает **призрака**: зарегистрированный корень
 исчез с диска (перенесён/переименован), индексация застряла — чинится
-командой `vesma graph repoint <project> <new-root>`.
+командой `vesma graph repoint <project> <new-root>`, либо призрак удаляется
+целиком через `mnemos_delete_graph_project` за evidence-гейтом
+(`confirm=true` + `confirm_name`).
 
 ### Связанные ресурсы
 
@@ -1369,7 +1371,7 @@ BFS по `project_edges` от одного символа. Разрешение 
 
 ## `mnemos_delete_graph_project`
 
-Удалить ИНДЕКС графа проекта — только sidecar-данные, никогда сущность проекта в основной БД. Единственная операция, очищающая poisoned-набор (PG3, «навсегда»). Аудируется с необязательной причиной.
+Удалить ИНДЕКС графа проекта — sidecar-данные (поддерево индекса, poisoned-набор, штамп свежести). «Живая» регистрация (корень существует на диске) сохраняет сущность проекта в основной БД — контракт v1. «Призрак» (зарегистрированный корень отсутствует на диске) удаляется ЦЕЛИКОМ — индекс и строка регистрации — за явным evidence-гейтом: `confirm=true` плюс `confirm_name`, эхом повторяющий имя проекта (попытка без гейта отвечает `confinement-refused` и аудируется как `delete-refused`). Единственная операция, очищающая poisoned-набор (PG3, «навсегда»). Аудируется с необязательной причиной.
 
 ### Входные параметры
 
@@ -1379,12 +1381,16 @@ BFS по `project_edges` от одного символа. Разрешение 
 | `agent` | string | **да** | — | Идентичность вызывающего (PG7). |
 | `session` | string | нет | — | Необязательный id сессии для аудита. |
 | `reason` | string | нет | — | Причина для аудита. |
+| `confirm` | boolean | нет | `false` | Обязателен `true` для удаления «призрака» (корень отсутствует на диске). Удаление по живому корню сносит только индекс и гейта не требует. |
+| `confirm_name` | string | нет | — | Эхо имени проекта — обязательно вместе с `confirm` для призрака. |
 
 ### Вывод
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
+
+`ghost: true` + `deregistered: true` означают удаление призрака за evidence-гейтом — строка регистрации снята; `mnemos_register_project` вернёт её при необходимости. CLI-двойник: `vesma graph delete <project>` (для призраков: `--force --confirm-name <project>`).
 
 ### Связанные ресурсы
 

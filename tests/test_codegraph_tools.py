@@ -97,6 +97,14 @@ class FakeMainStore:
                 return
         self.projects.append(project)
 
+    def delete_project(self, project_id: str) -> bool:
+        """Remove by id OR name (the ghost-delete surface)."""
+        before = len(self.projects)
+        self.projects = [
+            p for p in self.projects if project_id not in (p.id, p.name)
+        ]
+        return len(self.projects) < before
+
     def get_meta(self, key: str) -> str | None:
         return self.meta.get(key)
 
@@ -807,6 +815,94 @@ class TestGhostRepoint:
             service.close()
 
 
+class TestGhostDelete:
+    """A ghost registration (root gone on disk) was UNDELETABLE: the
+    delete went through ``_resolve_root``, which refuses exactly the
+    missing-root state (confinement-refused). The delete now resolves
+    BY NAME/ID (the #450 repoint precedent): a live registration loses
+    only its derived index; a ghost is removed ENTIRELY — index AND
+    registration row — behind the evidence gate (``confirm=true`` plus
+    the ``confirm_name`` echo of the project name)."""
+
+    def test_delete_ghost_removes_registration(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            service.index_project(PROJECT, agent=AGENT)
+            assert service.store.count_nodes(PROJECT) > 0
+            mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+
+            result = service.delete_graph_project(
+                PROJECT, agent=AGENT, confirm=True, confirm_name=PROJECT
+            )
+            assert result["status"] == "deleted"
+            assert result["ghost"] is True
+            assert result["deregistered"] is True
+            assert result["deleted_nodes"] > 0
+            # the sidecar subtree is gone...
+            assert service.store.count_nodes(PROJECT) == 0
+            # ...and so is the registration row (the ghost left the list)
+            assert main.get_project_by_name(PROJECT) is None
+            names = [
+                p["project"] for p in service.list_graph_projects(agent=AGENT)["projects"]
+            ]
+            assert PROJECT not in names
+            rows = [r for r in service._audit.recent(PROJECT) if r["action"] == "delete"]
+            assert rows and rows[0]["details"]["ghost"] is True
+        finally:
+            service.close()
+
+    def test_delete_ghost_refused_without_confirmation(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+            with pytest.raises(GraphConfinementError, match="evidence gate"):
+                service.delete_graph_project(PROJECT, agent=AGENT)
+            # the refusal removed nothing: the ghost stays visible
+            assert main.get_project_by_name(PROJECT) is not None
+            row = next(
+                p
+                for p in service.list_graph_projects(agent=AGENT)["projects"]
+                if p["project"] == PROJECT
+            )
+            assert row["root_missing"] is True
+            refused = [
+                r for r in service._audit.recent(PROJECT) if r["action"] == "delete-refused"
+            ]
+            assert refused, "expected the delete-refused audit row"
+        finally:
+            service.close()
+
+    def test_delete_ghost_refused_on_name_mismatch(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        """``confirm=true`` alone is not the gate — the name echo is
+        the second factor."""
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            mini_repo.rename(mini_repo.with_name("repo-moved"))
+            with pytest.raises(GraphConfinementError, match="confirm_name"):
+                service.delete_graph_project(
+                    PROJECT, agent=AGENT, confirm=True, confirm_name="other"
+                )
+            assert main.get_project_by_name(PROJECT) is not None
+        finally:
+            service.close()
+
+    def test_delete_live_root_keeps_registration(self, service: CodeGraphService) -> None:
+        """Back-compat: a live-root delete is the v1 index purge — no
+        gate, the registration row stays."""
+        service.index_project(PROJECT, agent=AGENT)
+        result = service.delete_graph_project(PROJECT, agent=AGENT)
+        assert result["status"] == "deleted"
+        assert result["ghost"] is False
+        assert result["deregistered"] is False
+        assert service.main.get_project_by_name(PROJECT) is not None
+
+
 # ── #454: agent-side registration ────────────────────────────────────────────
 
 
@@ -1168,6 +1264,29 @@ class TestMcpLayer:
             {"project_id": "bad", "root": str(tmp_path / "nope"), "agent": AGENT},
         )
         assert refused["code"] == "confinement-refused"
+
+    def test_delete_ghost_dispatch_passes_the_gate(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        from vesmaro.mcp_server import _handle_graph
+
+        mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
+        mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+        # without the evidence gate: confinement-refused, row stays
+        refused = _handle_graph(
+            "mnemos_delete_graph_project", mgr, {"project_id": PROJECT, "agent": AGENT}
+        )
+        assert refused["code"] == "confinement-refused"
+        assert mgr.sqlite.get_project_by_name(PROJECT) is not None
+        # with confirm + the name echo: ghost removed entirely
+        result = _handle_graph(
+            "mnemos_delete_graph_project",
+            mgr,
+            {"project_id": PROJECT, "agent": AGENT, "confirm": True, "confirm_name": PROJECT},
+        )
+        assert result["status"] == "deleted"
+        assert result["ghost"] is True
+        assert mgr.sqlite.get_project_by_name(PROJECT) is None
 
     def test_index_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
         from vesmaro.mcp_server import _handle_graph

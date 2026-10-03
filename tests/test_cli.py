@@ -896,3 +896,28 @@ class TestGraphLifecycleCli:
         result = runner.invoke(app, ["graph", "repoint", "cliproj", str(tmp_path / "nope")])
         assert result.exit_code == 1, result.output
         assert "refused" in result.output
+
+    def test_delete_ghost_with_evidence_gate(self, isolated_config: Path, tmp_path: Path) -> None:
+        """The ghost twin of the register/repoint lifecycle: --force plus
+        the --confirm-name echo removes the registration entirely."""
+        repo = self._repo(tmp_path, "cli-repo")
+        runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        repo.rename(repo.with_name("cli-repo-moved"))  # the ghost
+        result = runner.invoke(
+            app,
+            ["graph", "delete", "cliproj", "--force", "--confirm-name", "cliproj"],
+        )
+        assert result.exit_code == 0, result.output
+        assert "deleted" in result.output
+        assert "ghost registration removed" in result.output
+
+    def test_delete_ghost_refused_without_gate(
+        self, isolated_config: Path, tmp_path: Path
+    ) -> None:
+        repo = self._repo(tmp_path, "cli-repo")
+        runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        repo.rename(repo.with_name("cli-repo-moved"))  # the ghost
+        result = runner.invoke(app, ["graph", "delete", "cliproj"])
+        assert result.exit_code == 1, result.output
+        assert "refused" in result.output
+        assert "evidence gate" in result.output
