@@ -869,7 +869,9 @@ def _cortex_component() -> tuple[str, str]:
     except Exception:
         return "-", "ships with the wheel"
     name = str(manifest.get("name") or "vesma-cortex-v1")
-    rev = str(manifest.get("weights_sha256") or "")[:12]
+    # B2 manifests key the weights hash `sha256`; pre-B2 carried
+    # `weights_sha256` — read both so older installed bundles keep reporting.
+    rev = str(manifest.get("sha256") or manifest.get("weights_sha256") or "")[:12]
     trained = str(manifest.get("trained_at") or "")[:10]
     return f"{name} (rev {rev}, trained {trained})", "ships with the wheel"
 

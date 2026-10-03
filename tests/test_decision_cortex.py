@@ -60,11 +60,11 @@ from vesmaro.embeddings import NanoProvider, config_fingerprint
 
 from .test_decision_provider import load_corpus
 
-# ── Frozen W5d pins (brief §0 + artifact manifest) ────────────────────────────
+# ── Frozen pins (B2 revision, 465d33e; brief §0 + artifact manifest) ──────────
 
 #: The bundled artifact's weights sha256 — the recalibration identity
 #: (a new sha = new weights = recalibration event, spec §8).
-WEIGHTS_SHA256: Final[str] = "281bd0fd39bf9935c86a8b32fed68191fa9b7da95a83b53eb10844a5fd100ac7"
+WEIGHTS_SHA256: Final[str] = "71f0572de76c0657c6dd33df81c1155ede4f3e05b4e44f1c75e0080ff367baa7"
 
 #: The artifact's embedder pin — exactly the default engine vintage
 #: (``config_fingerprint(EmbeddingConfig())`` → ``nano:sha256:<hash>``).
@@ -74,6 +74,9 @@ EMBEDDER_PIN: Final[str] = (
 
 #: sha256 of the ``\\n``-joined frozen feature names (spec §4).
 FEATURE_SET_SHA256: Final[str] = "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af"
+
+#: The artifact's train-corpus fingerprint (B2 manifest + ONNX metadata).
+CORPUS_FINGERPRINT: Final[str] = "ebd9b17ad4635d32959a751968689363a2d2e45178f3416b905006973a34ba21"
 
 #: The frozen 13-feature contract — literal pin (cortex repo, A3a freeze).
 FROZEN_FEATURE_NAMES: Final[tuple[str, ...]] = (
@@ -150,7 +153,7 @@ def test_bundle_onnx_is_byte_identical_to_the_adopted_artifact() -> None:
     onnx_path = Path(str(resource_files("vesmaro") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx"))
     payload = onnx_path.read_bytes()
     assert hashlib.sha256(payload).hexdigest() == WEIGHTS_SHA256, (
-        "bundled model.onnx sha256 drifted from the W5d-adopted artifact — "
+        "bundled model.onnx sha256 drifted from the B2-adopted artifact — "
         "a new sha is a RECALIBRATION EVENT (spec §8), never a silent swap"
     )
     assert len(payload) <= CORTEX_MAX_ARTIFACT_BYTES
@@ -163,8 +166,11 @@ def test_bundle_manifest_pins_the_same_weights() -> None:
         ).read_text(encoding="utf-8")
     )
     assert manifest["name"] == "vesma-cortex-v1"
-    assert manifest["weights_sha256"] == WEIGHTS_SHA256
+    # B2 manifest contract: the weights hash lives under `sha256`
+    # (pre-B2 manifests keyed it `weights_sha256`).
+    assert manifest["sha256"] == WEIGHTS_SHA256
     assert manifest["embedder_pin"] == EMBEDDER_PIN
+    assert manifest["corpus_fingerprint"] == CORPUS_FINGERPRINT
     assert manifest["feature_set_sha256"] == FEATURE_SET_SHA256
 
 
@@ -175,7 +181,7 @@ def test_provider_loads_and_passes_the_pin(provider: VesmaProvider) -> None:
     assert provider.name == "vesma-cortex"
     assert provider.weights_sha256 == WEIGHTS_SHA256
     assert provider.embedder_pin == EMBEDDER_PIN
-    assert provider.corpus_fingerprint  # telemetry carries the train-corpus id
+    assert provider.corpus_fingerprint == CORPUS_FINGERPRINT  # train-corpus id
 
 
 def test_provider_loads_with_the_doctor_side_fingerprint() -> None:
@@ -610,12 +616,26 @@ def test_resolver_without_fingerprint_refuses_the_pin(
 
 def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoProvider) -> None:
     """Real corpus records + the real embedder's measured cosine (the
-    minting-flow shape) — the verdicts the calibration ADOPT rests on."""
+    minting-flow shape).
+
+    B2 REVISION REALITY (weights ``71f0572d…``, measured 2026-10-03): the
+    B2 graph grades EVERY real-record pair BELOW the 0.5 cut, including a
+    record against ITSELF — inverting the W4c calibration surface these
+    assertions encoded for W5d (self ≥ cut, family ≥ cut, twin < cut).
+    Per-dimension sensitivity of the B2 graph shows ``cos_target`` nearly
+    unweighted while ``char4_containment`` and ``body_len_delta`` dominate
+    — the signature of a feature-column-order desync between the B2 export
+    and the frozen 13-feature contract its own metadata claims. These
+    pins assert the MEASURED truth of the byte-pinned artifact; they are
+    NOT calibration-adopt evidence — the artifact is flagged for
+    investigation/recalibration (release-preflight finding, 2026-10-03).
+    """
     checkpoint = _corpus_view("examples/after/checkpoint.json")
     decision = _corpus_view("examples/after/decision.json")
     report = _corpus_view("examples/after/report.json")
 
-    # A record against itself: measured cosine 1.0 → duplicate.
+    # A record against itself (measured cosine 1.0): B2 grades ~0.011 —
+    # below the cut (W5d gave ~0.80). Regression, pinned as measured.
     self_state = CanonState(
         record=checkpoint,
         candidate=checkpoint,
@@ -623,11 +643,11 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     )
     self_verdict = provider.evaluate(IsDuplicateRequest(), self_state)
     assert isinstance(self_verdict, Noul)
-    assert self_verdict.probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert 0.0 < self_verdict.probability < 1.0  # graded, not a step
+    assert self_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert self_verdict.probability == pytest.approx(0.010807, rel=0.05)
 
-    # Template twins with different fields (checkpoint/decision, cosine
-    # ≈ 0.86): the model grades BELOW the cut while the raw cosine sits in
-    # the ambiguous band — the W4c lesson the artifact exists for.
+    # Template twins (checkpoint/decision, cosine ≈ 0.86): below the cut.
     twin_state = CanonState(
         record=checkpoint,
         candidate=decision,
@@ -636,9 +656,11 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     twin_verdict = provider.evaluate(IsDuplicateRequest(), twin_state)
     assert isinstance(twin_verdict, Noul)
     assert twin_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert twin_verdict.probability == pytest.approx(0.005246, rel=0.05)
 
     # Structurally similar family members (checkpoint/report, cosine
-    # ≈ 0.98): the calibrated readout says duplicate — graded, not a step.
+    # ≈ 0.98): B2 grades ~0.005 — below the cut (W5d said duplicate).
+    # Regression, pinned as measured.
     family_state = CanonState(
         record=checkpoint,
         candidate=report,
@@ -647,4 +669,5 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     family_verdict = provider.evaluate(IsDuplicateRequest(), family_state)
     assert isinstance(family_verdict, Noul)
     assert 0.0 < family_verdict.probability < 1.0
-    assert family_verdict.probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert family_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert family_verdict.probability == pytest.approx(0.005246, rel=0.05)
