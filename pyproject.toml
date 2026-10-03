@@ -44,10 +44,13 @@ dependencies = [
     # ``tree-sitter`` (the old ``py-tree-sitter`` distribution was renamed;
     # the old name no longer resolves). ``tree-sitter-python`` 0.25.0
     # requires ``tree-sitter~=0.24``, hence the <0.27 ceiling keeps the
-    # pair resolver-stable; wave 1 stays Python-only, PG-3 adds language
-    # packs here.
+    # pair resolver-stable; language packs (PG-3) pin to the same
+    # tree-sitter org release line here.
     "tree-sitter>=0.24,<0.27",
     "tree-sitter-python>=0.25.0,<0.26",
+    # Go grammar (#470): same org (tree-sitter/tree-sitter-go), 0.25.0 is
+    # the python-pack's sibling release — same ceiling discipline.
+    "tree-sitter-go>=0.25.0,<0.26",
     # Transitive CVE closure (M15.5.1) — pinned directly to force resolver
     # past vulnerable transitive versions still pulled by fastapi/uvicorn.
     # Floor 3.14.3 (#267): PYSEC-2026-3546/3547 fixed in 3.14.2,
