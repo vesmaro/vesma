@@ -41,7 +41,7 @@ flush-paren + evidence tightening (the dotted-receiver twin of the #3
 rule — "compare node.js (the runtime)" / "e.g (note)" no longer match the
 pattern), the signal-#3 no-space comma residual pinned as documented
 behavior ("options(a, b, or c)"), and the ``\\Z`` anchor sweep across
-``_PROJECT_RE``/``_AGENT_RE``/``_VESMARO_RE`` (newline pins in
+``_PROJECT_RE``/``_AGENT_RE``/``_VESMA_TAG_RE`` (newline pins in
 ``tests/test_f0_task_scope.py``).
 
 Test embedder: ``_HashEmbedder`` (deterministic hashed bag-of-tokens) —

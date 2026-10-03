@@ -1670,7 +1670,7 @@ class MemoryManager:
     # ── Workflow lifecycle (vesma #96) ────────────────────────────────────
     #
     # Server-side enforcement of the workflow state machine. The MCP tool
-    # (mnemos_workflow tool route) and the REST endpoints (/memories/{id}/workflow) are
+    # (vesma_workflow tool route) and the REST endpoints (/memories/{id}/workflow) are
     # thin wrappers over these three methods — the validation MUST live here
     # so no caller can bypass the state machine or the 5 guardrails:
     #   1. Audit log       — every transition recorded in memory_workflow_history
@@ -3279,7 +3279,7 @@ class MemoryManager:
         """Store a session checkpoint with validated agent identity (#251 D0).
 
         Single authority for the checkpoint channel — the MCP tool
-        (``mnemos_save_context`` MCP tool) and the REST twin (``POST /context/save``)
+        (``vesma_save_context`` MCP tool) and the REST twin (``POST /context/save``)
         are thin wrappers over this method. Order of operations:
 
         1. Identity validation (``_require_identity`` semantics: non-empty
@@ -3376,7 +3376,7 @@ class MemoryManager:
         # vesma #400 — project slug: normalize at the SAVE boundary (the
         # single-authority doctrine of #263, applied to slugs). The MCP tool
         # and the REST twin pass ``project`` directly (NOT through the tag
-        # contract like the ``mnemos_add`` tool does), so without this gate a
+        # contract like the ``vesma_add`` tool does), so without this gate a
         # ``MyProject`` checkpoint persisted under a different store key than
         # the ``myproject`` rows written via the tag-contract path — a silent
         # namespace island. ``normalize_project_slug`` is the SAME
@@ -3513,7 +3513,7 @@ class MemoryManager:
         since: str | None = None,
         until: str | None = None,
     ) -> list[Memory]:
-        """Most recent memories (REST ``GET /memories``, MCP ``mnemos_list_recent``).
+        """Most recent memories (REST ``GET /memories``, MCP ``vesma_list_recent``).
 
         vesma #400 — the QUERY boundary normalizes a non-empty
         ``project`` (single authority, same as ``search`` /
@@ -3545,7 +3545,7 @@ class MemoryManager:
             until=until,
         )
         # ADR-0019 §5 — absolute quarantine exclusion on the listing
-        # surface too (REST GET /memories, MCP mnemos_list_recent): the
+        # surface too (REST GET /memories, MCP vesma_list_recent): the
         # explicit-status drill-down must not serve terminal danger-lane
         # rows here — pipeline_state is not part of the external payload,
         # so the caller could not detect the contamination. Direct
@@ -3647,7 +3647,7 @@ class MemoryManager:
         """Validate and (unless ``dry_run``) persist a new tag set for one memory.
 
         Shared commit path for ``tags_rename`` / ``tags_remove`` / ``tags_add``
-        (the grouped ``mnemos_tags`` MCP tool). Keeping the contract check and
+        (the grouped ``vesma_tags`` MCP tool). Keeping the contract check and
         the ``update_fields`` write in one place guarantees every tag mutation
         goes through the same FTS5-safe ``UPDATE`` (the ``memories_au`` trigger
         fires) and the same ``validate_tag_contract`` gate.
@@ -3749,16 +3749,16 @@ class MemoryManager:
                 via ``list_all(project=...)`` to reduce rows inspected).
             agent: Scope the scan to a single agent slug.
             invalid_subtypes_to_legacy: When ``False`` (default) a tag whose
-                subtype is not in ``VESMARO_TAG_SUBTYPES`` is skipped and
+                subtype is not in ``VESMA_TAG_SUBTYPES`` is skipped and
                 counted in ``skipped_invalid``. When ``True`` it is renamed
                 to ``<to_prefix>legacy`` instead.
 
         Returns:
             ``{"scanned": N, "renamed": N, "changed": N, "skipped_invalid": N,
             "errors": [...]}``. ``changed`` mirrors ``renamed`` so every
-            ``mnemos_tags`` action (rename/remove/add) exposes a ``changed``
+            ``vesma_tags`` action (rename/remove/add) exposes a ``changed``
             key for a uniform report shape; ``renamed`` is kept for back-compat
-            with existing ``mnemos_tags_rename`` callers. In dry-run mode
+            with existing ``vesma_tags_rename`` callers. In dry-run mode
             ``renamed`` reflects what *would* be renamed; nothing is written.
 
         Idempotency:
@@ -3779,7 +3779,7 @@ class MemoryManager:
             trigger) carries tag-filtered queries. If exact tag-vector
             alignment is required, run ``vesma reindex`` (CLI legacy name) afterwards.
         """
-        from vesma.models import VESMARO_TAG_SUBTYPES
+        from vesma.models import VESMA_TAG_SUBTYPES
         from vesma.traces import TraceRecorder
 
         report: dict[str, Any] = {
@@ -3826,7 +3826,7 @@ class MemoryManager:
                             new_tags.append(tag)
                             continue
                         # Decide target subtype.
-                        if subtype in VESMARO_TAG_SUBTYPES:
+                        if subtype in VESMA_TAG_SUBTYPES:
                             target = to_prefix + subtype
                         elif invalid_subtypes_to_legacy:
                             target = to_prefix + "legacy"
@@ -3844,8 +3844,8 @@ class MemoryManager:
                     continue
 
                 # Shared commit: contract check + FTS5-safe UPDATE. Both the
-                # grouped ``mnemos_tags`` tool (action=rename alias) and the
-                # legacy ``mnemos_tags_rename`` tool route through here, so
+                # grouped ``vesma_tags`` tool (action=rename alias) and the
+                # legacy ``vesma_tags_rename`` tool route through here, so
                 # the behaviour is byte-identical.
                 changed, err = self._commit_tags(mem, new_tags, dry_run=dry_run)
                 if err:
@@ -3853,7 +3853,7 @@ class MemoryManager:
                 if changed:
                     report["renamed"] += 1
 
-        # ``changed`` mirrors ``renamed`` so the grouped ``mnemos_tags`` tool
+        # ``changed`` mirrors ``renamed`` so the grouped ``vesma_tags`` tool
         # exposes a uniform ``changed`` key across rename/remove/add.
         report["changed"] = report["renamed"]
 
@@ -3881,7 +3881,7 @@ class MemoryManager:
     ) -> dict[str, Any]:
         """Remove tags from memories. Explicit removal — never a magic empty target.
 
-        Backs the ``mnemos_tags`` MCP tool with ``action="remove"``. Each tag
+        Backs the ``vesma_tags`` MCP tool with ``action="remove"``. Each tag
         in ``tags`` is matched against every memory's tag set; matches are
         dropped. With ``wildcard=False`` (default) the match is exact; with
         ``wildcard=True`` each entry is treated as a prefix and any tag
@@ -3976,7 +3976,7 @@ class MemoryManager:
     ) -> dict[str, Any]:
         """Append tags to every memory matching the project/agent filter.
 
-        Backs the ``mnemos_tags`` MCP tool with ``action="add"``. Each tag in
+        Backs the ``vesma_tags`` MCP tool with ``action="add"``. Each tag in
         ``tags`` is appended (if not already present) to every memory returned
         by the ``project`` / ``agent`` filter. When neither filter is set the
         operation spans all memories — callers should scope it deliberately.
@@ -4687,7 +4687,7 @@ class MemoryManager:
         ``apply_context_filter`` is the maintenance primitive — it is also
         called internally on ingest (auto-filter) and by ``filter_all``,
         so it cannot carry the context gates. THIS method is what
-        content-echoing channels (MCP ``mnemos_filter``, REST
+        content-echoing channels (MCP ``vesma_filter``, REST
         ``POST /filter/{id}``) must call; it enforces the ADR-0018 entry
         invariant on the echoed ``clean_content``:
 
@@ -5950,7 +5950,7 @@ class MemoryManager:
         """Record one assemble call into the vitals sidecar (non-fatal).
 
         Called by the two collection boundaries AFTER the result exists
-        (the MCP ``mnemos_assemble_context`` handler and the
+        (the MCP ``vesma_assemble_context`` handler and the
         ``pre_llm_call`` hook) — never from the assemble pipeline
         itself: S2 measures that verb directly and the wrapper must stay
         out of its path. All failure modes are swallowed by the sink.
@@ -6437,7 +6437,7 @@ class MemoryManager:
         """Scan one issuance-boundary string and redact/refuse (P1-b M1).
 
         Single helper for every content-echoing path — MCP
-        ``mnemos_search`` / ``mnemos_agent_recall`` / ``mnemos_recall_context``
+        ``vesma_search`` / ``vesma_agent_recall`` / ``vesma_recall_context``
         and REST ``/search`` / ``/recall/agent`` — so no channel can drift
         from the P0 ``retrieve_content`` semantics: matched spans become
         ``<REDACTED:<pattern>>`` in the returned copy (zero-loss storage —
@@ -6525,7 +6525,7 @@ class MemoryManager:
         either can carry a secret, so scanning only the content leaks
         the title verbatim in the same response). ``text``/``title`` are
         ``None`` when the item does not echo that field (e.g. title-only
-        ``mnemos_list_recent``); at least one must be given. Refuse mode
+        ``vesma_list_recent``); at least one must be given. Refuse mode
         refuses the item when EITHER field trips; ``redactions`` /
         ``redacted_patterns`` are merged across both fields. The
         ``context`` label should carry the item id (F3 forensics); the

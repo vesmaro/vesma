@@ -152,7 +152,7 @@ def render_retraction(memory: Memory) -> str:
 
 
 # Valid mnemos:* subtypes (enforced when strict_tag_contract=True)
-VESMARO_TAG_SUBTYPES: frozenset[str] = frozenset(
+VESMA_TAG_SUBTYPES: frozenset[str] = frozenset(
     {
         "session",
         "bug-pattern",
@@ -357,7 +357,7 @@ _TASK_SLUG_PATTERN = r"[a-z0-9_\-]{1,64}"
 # row.tags) can never hit "task:t1\n" (Ф1-PREP, #360 review item 2).
 TASK_SLUG_RE: re.Pattern[str] = re.compile(rf"^{_TASK_SLUG_PATTERN}\Z")
 _TASK_RE = re.compile(rf"^task:{_TASK_SLUG_PATTERN}\Z")
-_VESMARO_RE = re.compile(r"^mnemos:[a-z][a-z0-9\-]*\Z")
+_VESMA_TAG_RE = re.compile(r"^mnemos:[a-z][a-z0-9\-]*\Z")
 
 
 def normalize_project_slug(value: str) -> str:
@@ -451,7 +451,7 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
     for t in tags:
         if t.startswith("gcw:"):
             subtype = t[4:]
-            if subtype in VESMARO_TAG_SUBTYPES:
+            if subtype in VESMA_TAG_SUBTYPES:
                 _migrated.append(f"mnemos:{subtype}")
             else:
                 _migrated.append(t)  # invalid gcw: subtype, keep as-is for error msg
@@ -507,18 +507,18 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
     if not mnemos_tags:
         patchable_errors.append(
             "missing required tag: mnemos:<subtype> "
-            f"(valid subtypes: {', '.join(sorted(VESMARO_TAG_SUBTYPES))})"
+            f"(valid subtypes: {', '.join(sorted(VESMA_TAG_SUBTYPES))})"
         )
     else:
         for mnemos_tag in mnemos_tags:
-            if not _VESMARO_RE.match(mnemos_tag):
+            if not _VESMA_TAG_RE.match(mnemos_tag):
                 patchable_errors.append(f"invalid mnemos: tag format: '{mnemos_tag}'")
             else:
                 subtype = mnemos_tag[len("mnemos:") :]
-                if subtype not in VESMARO_TAG_SUBTYPES:
+                if subtype not in VESMA_TAG_SUBTYPES:
                     patchable_errors.append(
                         f"invalid mnemos: subtype '{subtype}' — "
-                        f"allowed: {', '.join(sorted(VESMARO_TAG_SUBTYPES))}"
+                        f"allowed: {', '.join(sorted(VESMA_TAG_SUBTYPES))}"
                     )
 
     # Always fatal errors raise regardless of strict flag

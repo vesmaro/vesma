@@ -55,7 +55,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Most subcommands accept a `--config / -c` flag pointing at a YAML file. Search order is:
 
 1. `--config` argument (if present)
-2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMARO_CONFIG` and the 4.x spelling `MNEMOS_CONFIG` are no longer read as of 6.0.0)
+2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMA_CONFIG` and the 4.x spelling `MNEMOS_CONFIG` are no longer read as of 6.0.0)
 3. `./config.yaml` in the current working directory
 4. `~/.mnemos/config.yaml`
 
@@ -195,7 +195,7 @@ vesma recall [OPTIONS]
 | `--limit / -l` | `10` | Maximum results. |
 | `--config / -c` | — | Path to `config.yaml`. |
 
-When `--agent` is passed **without** a query, the result is the N most recent entries for that agent, ordered by `created_at desc`. This is the same data the MCP tool [`mnemos_agent_recall`](mcp-tools.md#mnemos_agent_recall) returns.
+When `--agent` is passed **without** a query, the result is the N most recent entries for that agent, ordered by `created_at desc`. This is the same data the MCP tool [`vesma_agent_recall`](mcp-tools.md#vesma_agent_recall) returns.
 
 ### Examples
 
@@ -317,7 +317,7 @@ vesma workflow history "$ID" --limit 20
 
 ### Related
 
-- MCP tool: [`mnemos_workflow`](mcp-tools.md#mnemos_workflow)
+- MCP tool: [`vesma_workflow`](mcp-tools.md#vesma_workflow)
 
 ---
 
@@ -466,7 +466,7 @@ vesma filter 550e8400-e29b-41d4-a716-446655440000 --profile terminal
 ### Related
 
 - [context-filter.md](context-filter.md) — profiles, pipeline stages, auto-filter behaviour
-- MCP tool: [`mnemos_filter`](mcp-tools.md#mnemos_filter)
+- MCP tool: [`vesma_filter`](mcp-tools.md#vesma_filter)
 
 ---
 
@@ -782,7 +782,7 @@ vesma doctor paths [--json]
 
 Exit codes: `0` = all checks pass (checks reported as `skip` — not applicable to this machine — count as pass), `1` = one or more checks failed, `2` = warnings only.
 
-> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMARO_CONFIG` and 4.x `MNEMOS_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
+> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMA_CONFIG` and 4.x `MNEMOS_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
 
 ### `doctor paths`
 

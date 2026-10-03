@@ -87,7 +87,7 @@ SYNC_INTERVAL = 10
 #: plugin mislabeled its HTTP writes ``source="mcp"``).
 _CHANNEL = "hermes-adapter"
 
-#: Checkpoint markdown sections, mirroring the mnemos_save_context
+#: Checkpoint markdown sections, mirroring the vesma_save_context
 #: MCP/REST channels so recall stays format-compatible.
 _CHECKPOINT_FIELDS = ("goals", "completed", "in_progress", "decisions", "context")
 
@@ -298,7 +298,7 @@ class HermesMemoryAdapter:
         memory_type: MemoryType = MemoryType.NOTE,
         metadata: dict[str, Any] | None = None,
     ) -> Memory:
-        """Store one caller-tagged memory (the ``mnemos_add`` counterpart).
+        """Store one caller-tagged memory (the ``vesma_add`` counterpart).
 
         Tags pass through ``VesmaSDK.remember``'s channel validation —
         contract-breaking tags raise before any write. No explicit
@@ -467,7 +467,7 @@ class HermesMemoryAdapter:
     ) -> Memory:
         """Store a structured ``mnemos:checkpoint`` (session checkpoint).
 
-        Builds the same sectioned markdown as the ``mnemos_save_context``
+        Builds the same sectioned markdown as the ``vesma_save_context``
         MCP/REST channels (format-compatible recall) but threads the
         ADAPTER's agent identity instead of the hardcoded ``agent:user``.
         """
@@ -516,7 +516,7 @@ class HermesMemoryAdapter:
     ) -> list[dict[str, Any]]:
         """Recall recent checkpoints, scanned at THIS channel.
 
-        Mirrors the ``mnemos_recall_context`` / ``on_session_start``
+        Mirrors the ``vesma_recall_context`` / ``on_session_start``
         channels: ``MemoryManager.recall_context`` returns raw stored rows,
         so this channel owns the boundary scan (refuse mode drops the
         checkpoint, logged with the memory id).
@@ -555,7 +555,7 @@ class HermesMemoryAdapter:
     ) -> list[dict[str, Any]]:
         """Agent-scoped recall, scanned at THIS channel (M3 counterpart).
 
-        Mirrors the ``mnemos_agent_recall`` MCP channel: content AND title
+        Mirrors the ``vesma_agent_recall`` MCP channel: content AND title
         are scanned; refuse mode drops the item.
         """
         recall_query = AgentRecallQuery(

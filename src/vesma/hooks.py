@@ -10,7 +10,7 @@ logic of its own:
   budget). Returns the assembled block; the harness injects ``text``
   into its prompt before the model call. Delivery is pinned to SYNC —
   the hook call must return something injectable now; async handles are
-  manual orchestration via ``mnemos_assemble_context`` and are
+  manual orchestration via ``vesma_assemble_context`` and are
   deliberately not exposed here.
 * ``on_session_start``  → ``MemoryManager.recall_context`` (recent
   checkpoints). Returns session bootstrap state.
@@ -40,7 +40,7 @@ re-implemented:
   and removes nothing.
 * ``on_session_start`` — ``recall_context`` returns raw stored rows
   (the recall path itself has no issuance scan), so THIS channel owns
-  the boundary scan — mirroring ``mnemos_recall_context`` / POST
+  the boundary scan — mirroring ``vesma_recall_context`` / POST
   ``/context/recall``: each checkpoint's content is
   ``scan_issuance``-scanned before it enters the response; refuse mode
   drops the checkpoint (logged with the memory id).
@@ -57,7 +57,7 @@ the per-call ``auto_compress`` argument overrides it per invocation) and
 size cap, W3 review F3). The read-only hooks need no enablement: they
 add no capability the server surfaces do not already expose.
 
-Surfaces: one grouped MCP tool ``mnemos_hooks`` with
+Surfaces: one grouped MCP tool ``vesma_hooks`` with
 ``action: enum [pre_llm_call, on_session_start, post_tool_call]``
 (the vesma #97 action:enum pattern — NOT oneOf), and REST
 ``POST /hooks/{action}`` (one parametric route — the three actions
@@ -93,7 +93,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Valid ``mnemos_hooks`` actions (the #97 action:enum surface).
+#: Valid ``vesma_hooks`` actions (the #97 action:enum surface).
 HOOK_ACTIONS: Final[tuple[str, ...]] = (
     "pre_llm_call",
     "on_session_start",
@@ -244,7 +244,7 @@ def on_session_start(
 
     Thin wrapper over ``MemoryManager.recall_context``. The recall path
     returns raw stored rows, so THIS channel owns the entry-invariant
-    boundary scan (mirroring ``mnemos_recall_context``): each
+    boundary scan (mirroring ``vesma_recall_context``): each
     checkpoint's content is ``scan_issuance``-scanned before it enters
     the response; refuse mode drops the checkpoint (logged with the
     memory id), redactions are counted per checkpoint.
@@ -357,7 +357,7 @@ def post_tool_call(
     is compressed via ``MemoryManager.compress_content`` and the CCR
     envelope is returned — the harness substitutes ``compressed_text``
     (marker-headed) for the raw output in its window; the marker is the
-    on-demand rehydrate handle (``mnemos_retrieve``).
+    on-demand rehydrate handle (``vesma_retrieve``).
 
     ⚠ N2 MANDATE (ADR-0018 residual register): the compress call ALWAYS
     carries the caller's ``(agent, session)`` — identity-less
@@ -460,7 +460,7 @@ def post_tool_call(
     }
 
 
-# ── Grouped dispatch (mnemos_hooks action:enum — the #97 pattern) ─────────────
+# ── Grouped dispatch (vesma_hooks action:enum — the #97 pattern) ─────────────
 
 
 def dispatch_hook(
@@ -481,7 +481,7 @@ def dispatch_hook(
     profile: str | None = None,
     include_awareness: bool | None = None,
 ) -> dict[str, Any]:
-    """Route one ``mnemos_hooks`` action to its hook function.
+    """Route one ``vesma_hooks`` action to its hook function.
 
     Single authority for the action surface shared by the MCP tool and
     the REST route; per-action arguments are validated inside each hook

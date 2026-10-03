@@ -276,7 +276,7 @@ class TestTagsAdd:
         """Adding a tag with an invalid mnemos: subtype is rejected per memory.
 
         Strict validation rejects the resulting set because ``bogus_subtype``
-        is not in ``VESMARO_TAG_SUBTYPES``. The memory is reported as an error,
+        is not in ``VESMA_TAG_SUBTYPES``. The memory is reported as an error,
         nothing is written, and the store is left untouched.
         """
         _add_memory(tmp_manager, tags=["project:p", "agent:a", "mnemos:decision"])

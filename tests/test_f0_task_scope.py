@@ -234,7 +234,7 @@ class TestAnchorCompletionNewlineSweep:
     """#368 item 3 — the ``\\Z`` anchor sweep completed across the four
     scope regexes.
 
-    ``_PROJECT_RE``/``_AGENT_RE``/``_VESMARO_RE`` were still on ``$``:
+    ``_PROJECT_RE``/``_AGENT_RE``/``_VESMA_TAG_RE`` were still on ``$``:
     'project:p1\\n' (confirmed live) and 'agent:a1\\n' passed STRICT
     validation with a trailing newline. No behavioral coupling with the
     task regexes (project/agent are matched columnally at query time,

@@ -31,7 +31,7 @@ hypothesis H2 surface (E0 §2.2). Lane order is fixed:
 ``rules → decisions → knowledge``.
 
 Tag contract: CLOSED. ``area:`` is NOT added to
-``ALLOWED_OPTIONAL_PREFIXES``; the closed ``VESMARO_TAG_SUBTYPES`` set
+``ALLOWED_OPTIONAL_PREFIXES``; the closed ``VESMA_TAG_SUBTYPES`` set
 keeps ``mnemos:rule`` / ``mnemos:decision`` as the only lane selectors.
 
 ── Cascade-ready contracts (fields only, no mechanics — R2) ──────────

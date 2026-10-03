@@ -43,7 +43,7 @@ the delta where recall would drown it among hundreds of rows).
   is the neighbor goal title; it passes ``scan_issuance`` (fail-closed
   — scanner error refuses, refuse mode drops the goal with the
   checkpoint id logged) exactly like every other echo channel
-  (``mnemos_search`` / hooks ``on_session_start``).
+  (``vesma_search`` / hooks ``on_session_start``).
 * **Project scoping** — ``project=None`` fails closed (cross-project
   awareness is an information leak; R3: delta is strictly
   project-scoped).
@@ -72,7 +72,7 @@ the delta where recall would drown it among hundreds of rows).
   ``awareness`` key anywhere — pinned by tests the E1 way).
 * ``on_session_start(include_awareness=True)`` — a presence section
   (observed neighbors + conflict hints against my last goal).
-* MCP tool ``mnemos_awareness`` — the pre-flight surface an agent
+* MCP tool ``vesma_awareness`` — the pre-flight surface an agent
   calls BEFORE risky operations (the anti-#224 contract), plus the
   ``record_abstention`` action. Pre-flight is READ-ONLY: the awareness
   cursor advances only in the ``pre_llm_call`` composition.
@@ -578,7 +578,7 @@ def _picture_rate_refused(
 ) -> bool:
     """Admit ONE picture/awareness surface query under C9, or refuse it.
 
-    The unit is the SURFACE CALL (``mnemos_awareness`` pre-flight, the
+    The unit is the SURFACE CALL (``vesma_awareness`` pre-flight, the
     hooks compositions, their REST twins) — the thing a polling harness
     drives; the internal legs of one compose (presence + delta reads)
     are one query from the caller's side. REFUSED queries consume no
@@ -1533,7 +1533,7 @@ def pre_flight_snapshot(
     session: str,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """The ``mnemos_awareness`` pre-flight — READ-ONLY (cursor untouched).
+    """The ``vesma_awareness`` pre-flight — READ-ONLY (cursor untouched).
 
     The anti-#224 surface an agent calls BEFORE a risky operation:
     presence + delta (cursor-clamped window, neighbors only) + conflict

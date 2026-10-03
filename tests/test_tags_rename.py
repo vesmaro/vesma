@@ -24,7 +24,7 @@ import pytest
 from vesma.config import Settings
 from vesma.manager import MemoryManager
 from vesma.models import (
-    VESMARO_TAG_SUBTYPES,
+    VESMA_TAG_SUBTYPES,
     MemoryCreate,
     MemorySource,
     MemoryStatus,
@@ -98,7 +98,7 @@ def _add_gcw_memory(mgr: MemoryManager, *, subtype: str = "decision") -> str:
 
 class TestSynthesizedSubtype:
     def test_synthesized_in_whitelist(self) -> None:
-        assert "synthesized" in VESMARO_TAG_SUBTYPES
+        assert "synthesized" in VESMA_TAG_SUBTYPES
 
     def test_validate_accepts_mnemos_synthesized(self) -> None:
         tags = ["project:p", "agent:a", "mnemos:synthesized"]

@@ -87,7 +87,7 @@ step — projects auto-created by memory writes carry no paths, so a graph call
 for them answers a confinement refusal (the refusal text names the fix) until
 a root is registered. Two ways to register:
 
-- **Agent-side** (#454): the `mnemos_register_project` tool — `project_id`,
+- **Agent-side** (#454): the `vesma_register_project` tool — `project_id`,
   the absolute `root`, and the mandatory `agent` attribution. The root must
   exist, carry a packaging manifest or a `.git`, and not be `$HOME`/the
   filesystem root (compared on the realpath, so a symlink or `..` spelling
@@ -123,14 +123,14 @@ Explicit registration does **not** count against `auto_register_max_projects`
 Then the flow is three tool calls (every one needs an `agent` — see
 [Boundaries & FAQ](#boundaries--faq)):
 
-1. **Index** — `mnemos_index_project` with `project_id` and `agent`. The first
+1. **Index** — `vesma_index_project` with `project_id` and `agent`. The first
    run is a full index; later runs are incremental by default (skip when
    nothing changed, per mtime+size classification).
-2. **Check** — `mnemos_project_graph_status`: node/edge/file volumes, fresh %,
+2. **Check** — `vesma_project_graph_status`: node/edge/file volumes, fresh %,
    parse failures and the poisoned count.
-3. **Use** — `mnemos_search_graph` for ranked symbol search,
-   `mnemos_get_file_outline` for a file's shape, `mnemos_trace_path` for
-   call/navigation walks, `mnemos_get_code_snippet` for line ranges.
+3. **Use** — `vesma_search_graph` for ranked symbol search,
+   `vesma_get_file_outline` for a file's shape, `vesma_trace_path` for
+   call/navigation walks, `vesma_get_code_snippet` for line ranges.
 
 Prefer zero-touch? The next section describes the native auto path — the
 manual flow above keeps its full contract either way.
@@ -178,7 +178,7 @@ Behavior:
 
 Since PG-0.5 the graph indexes **by itself**: every MCP tool call and every
 `pre_llm_call` hook fires a background *hint*, and a hint can auto-register
-and index the project — no `mnemos_index_project` call, no instruction, no
+and index the project — no `vesma_index_project` call, no instruction, no
 skill. Auto work goes through the same serialization, PG7 limits and audit
 trail as manual runs; only the audit `reason` (`auto-first` / `auto-stale`)
 and the actor (the hinting agent) differ.
@@ -208,7 +208,7 @@ Guardrails specific to the auto path:
 | **One root = one graph** | Before registering anything, the auto path looks for an existing project holding the same resolved root and reuses it (audit `auto-register-reused`) — never a duplicate project row, never a second full index. |
 | **Registration cap** | `auto_register_max_projects` (64) bounds how many projects the auto path may ever create; past it, hints are silently skipped with an `auto-register-capped` audit row — never an error to the caller. |
 | **Throttle** | `auto_reindex_min_interval_sec` (300 s) gates consecutive auto actions per project. The stamp is written *before* the action (reserve-then-act): a failing auto index is not retried on every subsequent hint. |
-| **Suspension** | A failed *first* auto index suspends the auto path for that project: further hints skip it entirely — until a successful manual `mnemos_index_project` (the watch poll rides the same method) or a `mnemos_delete_graph_project` lifts the flag. A failed *stale* reindex never suspends anything. |
+| **Suspension** | A failed *first* auto index suspends the auto path for that project: further hints skip it entirely — until a successful manual `vesma_index_project` (the watch poll rides the same method) or a `vesma_delete_graph_project` lifts the flag. A failed *stale* reindex never suspends anything. |
 
 v1 boundaries: a call without an `agent` never triggers the auto path; REST
 is deliberately not a hint surface; a multi-path registration still indexes
@@ -219,25 +219,25 @@ is deliberately not a hint surface; a multi-path registration still indexes
 
 ## Keep it fresh: the watch poll
 
-`mnemos_watch_start` registers an indexed project with an in-process poll
+`vesma_watch_start` registers an indexed project with an in-process poll
 thread (no daemon). On an adaptive interval — 5 s base, +1 s per 500 indexed
 files, capped at 60 s — it classifies files by mtime+size and reindexes only
 on actual changes, audited with reason `watch`.
 
 - Registrations live for the process lifetime; a restart drops them.
 - Global cap: 8 active registrations (`code_graph.watch_max_registrations`).
-- `mnemos_watch_status` shows every registration and its last poll outcome;
-  `mnemos_watch_stop` stops one or all (idempotent).
+- `vesma_watch_status` shows every registration and its last poll outcome;
+  `vesma_watch_stop` stops one or all (idempotent).
 
 ---
 
 ## Moved roots: ghosts and `vesma graph repoint` (#450)
 
 A project directory renamed or moved on disk leaves a **ghost**
-registration: the auto path no-ops silently, `mnemos_index_project`
+registration: the auto path no-ops silently, `vesma_index_project`
 refuses confinement ("registered root is missing on disk"), and — before
 #450 — the only exit was deleting the graph. Ghosts are visible:
-`mnemos_list_graph_projects` marks them `root_missing: true`.
+`vesma_list_graph_projects` marks them `root_missing: true`.
 
 Repair is one operator command:
 
@@ -262,20 +262,20 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
 
 | Tool | What it does |
 |------|--------------|
-| `mnemos_index_project` | Full or incremental index of a registered root; serialized per project |
-| `mnemos_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
+| `vesma_index_project` | Full or incremental index of a registered root; serialized per project |
+| `vesma_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
 | `vesma_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H) |
 | `vesma_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails answer a candidate list (W-H) |
-| `mnemos_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
-| `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
-| `mnemos_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
-| `mnemos_get_graph_schema` | The contract card: kinds, limits, token contract |
-| `mnemos_list_graph_projects` | Registered projects joined with index status; ghosts marked `root_missing` |
-| `mnemos_delete_graph_project` | Drop the index (sidecar only); the only way to clear the poisoned set |
-| `mnemos_register_project` | Register a root (#454) — the agent-side answer to "not registered" |
+| `vesma_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
+| `vesma_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
+| `vesma_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
+| `vesma_get_graph_schema` | The contract card: kinds, limits, token contract |
+| `vesma_list_graph_projects` | Registered projects joined with index status; ghosts marked `root_missing` |
+| `vesma_delete_graph_project` | Drop the index (sidecar only); the only way to clear the poisoned set |
+| `vesma_register_project` | Register a root (#454) — the agent-side answer to "not registered" |
 
-Plus the watch family: `mnemos_watch_start` / `mnemos_watch_stop` /
-`mnemos_watch_status`.
+Plus the watch family: `vesma_watch_start` / `vesma_watch_stop` /
+`vesma_watch_status`.
 
 Every windowed tool takes `max_output_tokens` (128–1,000,000, default 3200)
 under a deterministic token contract: rows drop whole, never split, and the
@@ -333,7 +333,7 @@ for you:
 | Guardrail | What you experience |
 |-----------|---------------------|
 | **Confinement (PG2)** | Only operator-registered roots are ever touched. Arbitrary paths, symlink escapes and `..` traversal are refused. |
-| **Poisoned files (PG3)** | A file that trips the secrets detector at index time is poisoned **forever**: its symbols stay in the graph, its snippets are never issued. Two exits only: `mnemos_delete_graph_project`, and the operator's `secret_allowlist` (below) — an allowlisted path skips poison-marking, and a previously-poisoned allowlisted path is un-poisoned on the next index run with an `allowlist-unpoison` audit row (never silent). The per-range issuance scan (PG4) is never waived by the allowlist. |
+| **Poisoned files (PG3)** | A file that trips the secrets detector at index time is poisoned **forever**: its symbols stay in the graph, its snippets are never issued. Two exits only: `vesma_delete_graph_project`, and the operator's `secret_allowlist` (below) — an allowlisted path skips poison-marking, and a previously-poisoned allowlisted path is un-poisoned on the next index run with an `allowlist-unpoison` audit row (never silent). The per-range issuance scan (PG4) is never waived by the allowlist. |
 | **Scan at issue (PG4)** | Snippets are read from disk at request time — there is no snippet cache. A mtime+size+sha256 mismatch yields a `stale` marker, never content; a secret found in the requested range refuses the whole range, fail-closed. |
 | **Fail-closed limits (PG7)** | 20,000 files / 500 MB per project. A breach refuses the WHOLE index — no partial graph is ever published. |
 | **Export-blind (PG5)** | The code map never leaves the server: export bundles and federation/mesh payloads never carry graph artifacts. Peers index their own local sources. |
@@ -350,13 +350,13 @@ The surface is **on by default** (owner decision 2026-09-28).
 | Key (`code_graph.`) | Default | Meaning |
 |---------------------|---------|---------|
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
-| `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
-| `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
+| `agent_registration` | `true` | Whether connected MCP agents may register roots via `vesma_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
+| `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call vesma_search_graph»). Only when `enabled`. |
 | `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
 | `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |
-| `watch` | `true` | Arms the watch poll (`mnemos_watch_start`); inert until an explicit registration. |
+| `watch` | `true` | Arms the watch poll (`vesma_watch_start`); inert until an explicit registration. |
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
 | `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
@@ -386,7 +386,7 @@ Environment overrides follow the canonical settings pattern:
 ## Boundaries & FAQ
 
 - **Why does every call demand `agent`?** PG7 attribution: audit trails and
-  per-agent accountability. `mnemos_recall_context` carries no `agent`, so the
+  per-agent accountability. `vesma_recall_context` carries no `agent`, so the
   graph surface never rides on it — pass the caller's identity explicitly.
 - **My project is a bare `.git` checkout / has no packaging manifest.** For
   the *manual* path that is fine — registration is by project record, not by
@@ -395,7 +395,7 @@ Environment overrides follow the canonical settings pattern:
 - **Multiple paths on one project?** The graph indexes the first registered
   path (`paths[0]`) — one root, one graph per project.
 - **My project root moved on disk.** The registration goes ghost:
-  `mnemos_list_graph_projects` shows `root_missing: true`, indexing refuses.
+  `vesma_list_graph_projects` shows `root_missing: true`, indexing refuses.
   Repair with `vesma graph repoint <project> <new-root>` (#450) — the stale
   index is purged and the next index rebuilds fresh.
 - **A file changed after indexing.** Snippets come back with a `stale` marker
@@ -404,7 +404,7 @@ Environment overrides follow the canonical settings pattern:
   `disabled`, the beacon hides, nothing indexes. Want to keep the manual
   tools but stop the background auto path? `code_graph.auto_index: false`.
 - **Do I need to back up `code_graph.db`?** No. It is a rebuildable sidecar
-  in the data dir; `mnemos_delete_graph_project` drops only the index, never
+  in the data dir; `vesma_delete_graph_project` drops only the index, never
   the project entity or its memories.
 
 ---

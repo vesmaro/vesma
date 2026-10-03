@@ -318,7 +318,7 @@ def test_canonical_env_names_and_subtypes_steer_src() -> None:
     1. The documented env names must actually move ``Settings.vesma``
        (pydantic-settings ``VESMA_`` prefix + ``__`` nesting).
     2. Every ``mnemos:`` subtype listed in the template must exist in
-       ``VESMARO_TAG_SUBTYPES`` (``trace`` is a canary: not a subtype).
+       ``VESMA_TAG_SUBTYPES`` (``trace`` is a canary: not a subtype).
     Skips when this interpreter cannot import the src deps.
     """
     script = (
@@ -329,10 +329,10 @@ def test_canonical_env_names_and_subtypes_steer_src() -> None:
         "os.environ.pop('VESMA_DATA_DIR', None)\n"
         "os.environ.pop('VESMA_VAULT__VAULT_PATH', None)\n"
         "from vesma.config import Settings\n"
-        "from vesma.models import VESMARO_TAG_SUBTYPES\n"
+        "from vesma.models import VESMA_TAG_SUBTYPES\n"
         "s = Settings(_env_file=None)\n"
         "print(s.vesma.data_dir, s.vesma.vault_path)\n"
-        "print(json.dumps(sorted(VESMARO_TAG_SUBTYPES)))\n"
+        "print(json.dumps(sorted(VESMA_TAG_SUBTYPES)))\n"
     )
     proc = subprocess.run(  # nosec B603 — fixed argv, repo-local src tree
         [sys.executable, "-c", script, str(REPO_ROOT / "src")],
