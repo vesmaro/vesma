@@ -192,7 +192,12 @@ Every JSON export carries two version markers in its metadata:
 | Field | Meaning |
 |-------|---------|
 | `format_version` | The export schema version (currently `1.0`). Bumped when the JSON structure changes in a breaking way. |
-| `mnemos_version` | The Vesma version that produced the export. |
+| `vesma_version` | The Vesma version that produced the export. Renamed from `mnemos_version` in 6.0.0 — the importer still accepts the legacy `mnemos_version` key from pre-6.0 exports (one deprecation note per import). |
+
+> `mnemos:` is the canonical storage prefix, stable by contract; `vesma:`
+> is accepted as an input alias everywhere. Tag values inside an export
+> are always stored (and imported) in the canonical `mnemos:*` form —
+> see [tag-contract.md](tag-contract.md).
 
 On import, Vesma checks `format_version` and warns if it does not
 recognise the schema. This provides forward compatibility — a future
@@ -308,7 +313,7 @@ Upload an export file as multipart form data and import it.
   "errors": [],
   "warnings": [],
   "format_version": "1.0",
-  "mnemos_version": "4.0.0"
+  "vesma_version": "6.0.0"
 }
 ```
 

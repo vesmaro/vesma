@@ -46,7 +46,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`meta-poll`](#meta-poll) | Federation metadata poll: run one poller pass manually (S2 phase 2) |
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
 
-> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. The `mnemos:` prefix in tag namespaces is a data contract unchanged by the rebrand (6.0 decision) — renames of the project namespace do not touch it.
+> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. The `mnemos:` prefix in tag namespaces is a data contract unchanged by the rebrand (6.0 decision) — renames of the project namespace do not touch it. `mnemos:` is the canonical storage prefix, stable by contract; `vesma:` is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -109,7 +109,7 @@ vesma add [CONTENT] [OPTIONS]
 |--------|---------|-------------|
 | `CONTENT` (positional) | — | Text to remember. If omitted, reads from stdin. |
 | `--title / -t` | auto | Short title. Auto-generated from content if omitted. |
-| `--tags / -T` | `""` | Comma-separated tags (e.g. `project:test,agent:me,mnemos:learning`). |
+| `--tags / -T` | `""` | Comma-separated tags (e.g. `project:test,agent:me,vesma:learning`). |
 | `--file / -f` | — | Import the contents of a file. Mutually exclusive with `CONTENT` and `--url`. |
 | `--url / -u` | — | Fetch and ingest a URL. Requires tags. |
 | `--source / -s` | `cli` | Memory source enum: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
@@ -123,22 +123,22 @@ vesma add [CONTENT] [OPTIONS]
 
 ```bash
 # Inline content
-vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer mnemos:learning
+vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer vesma:learning
 
 # With a title
 vesma add "Always validate SQL with parameterized queries" \
   --title "SQL safety rule" \
-  --tags "project:vesma,agent:security,mnemos:rule,severity:high"
+  --tags "project:vesma,agent:security,vesma:rule,severity:high"
 
 # From a file
-vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
+vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead vesma:decision
 
 # From a URL (fetches, extracts, saves)
-vesma add --url https://example.com/article --tags project:research agent:user mnemos:learning
+vesma add --url https://example.com/article --tags project:research agent:user vesma:learning
 
 # From stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
-  | vesma add --tags project:vesma agent:sre mnemos:bug-pattern,severity:medium
+  | vesma add --tags project:vesma agent:sre vesma:bug-pattern,severity:medium
 ```
 
 ---

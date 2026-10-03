@@ -46,7 +46,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`meta-poll`](#meta-poll) | Опрос метаданных федерации: один проход поллера вручную (S2 фаза 2) |
 | [`scanner`](#scanner) | Фоновый сканер секретов: `run` / `status` |
 
-> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают.
+> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают. `mnemos:` — канонический префикс хранения, стабильный по контракту; `vesma:` принимается как входной алиас везде (см. [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -109,7 +109,7 @@ vesma add [CONTENT] [OPTIONS]
 |-------|-------------|---------- |
 | `CONTENT` (позиционный) | — | Текст для сохранения. Если не указан, читается из stdin. |
 | `--title / -t` | авто | Краткий заголовок. Автогенерируется из контента, если не указан. |
-| `--tags / -T` | `""` | Теги через запятую (напр. `project:test,agent:me,mnemos:learning`). |
+| `--tags / -T` | `""` | Теги через запятую (напр. `project:test,agent:me,vesma:learning`). |
 | `--file / -f` | — | Импортировать содержимое файла. Взаимоисключающее с `CONTENT` и `--url`. |
 | `--url / -u` | — | Получить и сохранить URL. Требует тегов. |
 | `--source / -s` | `cli` | Источник записи: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
@@ -123,22 +123,22 @@ vesma add [CONTENT] [OPTIONS]
 
 ```bash
 # Встроенный контент
-vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer mnemos:learning
+vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer vesma:learning
 
 # С заголовком
 vesma add "Always validate SQL with parameterized queries" \
   --title "SQL safety rule" \
-  --tags "project:vesma,agent:security,mnemos:rule,severity:high"
+  --tags "project:vesma,agent:security,vesma:rule,severity:high"
 
 # Из файла
-vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
+vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead vesma:decision
 
 # Из URL (загружает, извлекает, сохраняет)
-vesma add --url https://example.com/article --tags project:research agent:user mnemos:learning
+vesma add --url https://example.com/article --tags project:research agent:user vesma:learning
 
 # Из stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
-  | vesma add --tags project:vesma agent:sre mnemos:bug-pattern,severity:medium
+  | vesma add --tags project:vesma agent:sre vesma:bug-pattern,severity:medium
 ```
 
 ---

@@ -20,6 +20,26 @@ The tag contract:
 
 ---
 
+## Storage prefix: `mnemos:` vs the `vesma:` input alias
+
+`mnemos:` is the canonical storage prefix, stable by contract; `vesma:` is
+accepted as an input alias everywhere.
+
+- **You type** `vesma:<subtype>` — at the CLI (`--tags`), in HTTP API tag
+  filters and in MCP add calls. Vesma normalizes it to `mnemos:<subtype>`
+  before anything is written or matched.
+- **Storage keeps `mnemos:*`.** The prefix is a frozen data format
+  (6.0 decision, ArchCom 2026-10-03): exports, stores and federation
+  traffic stay byte-stable across the rebrand.
+- **Unknown subtypes are refused loudly** in either spelling: `vesma:bogus`
+  fails with `invalid vesma: alias ...`, exactly like `mnemos:bogus` does.
+- `vesma:no-federate` normalizes too — the exclusion marker is always
+  stored as `mnemos:no-federate` (a byte-stable trust marker, see below).
+- Legacy input keeps working unchanged: `mnemos:*` passes through as-is,
+  and old `gcw:*` tags still migrate on validation.
+
+---
+
 ## Required tags (must be present on all new entries)
 
 | Tag | Format | Cardinality | Purpose |
@@ -124,8 +144,9 @@ tests on every surface):
 ## `mnemos:no-federate` — federation exclusion marker
 
 `mnemos:no-federate` is an **exclusion marker**, not a cognitive category.
-It lives in the `vesma:` subtype namespace (so it passes tag-contract
-validation without a new prefix) but its semantics are operational, not
+It lives in the `mnemos:` subtype namespace (so it passes tag-contract
+validation without a new prefix; typing `vesma:no-federate` normalizes to
+the same stored tag) but its semantics are operational, not
 cognitive: a record carrying this tag is **excluded from all external
 exchange** — both batch export and mediated pull (federation).
 
@@ -193,21 +214,23 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 ```python
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
-# Validate a list of tags (strict, raises on violations)
+# Validate a list of tags (strict, raises on violations).
+# You type the vesma: alias — the result carries the canonical mnemos: form.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "mnemos:learning"],
+    ["project:myproject", "agent:copilot", "vesma:learning"],
     strict=True,
 )
+# clean_tags == ["project:myproject", "agent:copilot", "mnemos:learning"]
 
 # Use TagContract model directly
-tc = TagContract(tags=["project:myproject", "agent:copilot", "mnemos:decision"])
+tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
 print(tc.project)       # "myproject"
 print(tc.agent)         # "copilot"
 print(tc.mnemos_subtypes)  # {"decision"}
 
 # With an (optional) task scope tag
 tc = TagContract(
-    tags=["project:myproject", "agent:copilot", "mnemos:learning", "task:refactor-auth"]
+    tags=["project:myproject", "agent:copilot", "vesma:learning", "task:refactor-auth"]
 )
 print(tc.task)          # "refactor-auth" ("" when the entry carries no task:)
 
@@ -215,7 +238,7 @@ print(tc.task)          # "refactor-auth" ("" when the entry carries no task:)
 from vesma.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
-    tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],
+    tags=["project:vesma", "agent:tech-lead", "vesma:decision"],
     project="vesma",
     agent="tech-lead",
 )
@@ -228,7 +251,7 @@ m = Memory(
 ```
 mnemos_add(
     content="Discovered timing issue in FTS5 query planner.",
-    tags=["project:vesma", "agent:copilot", "mnemos:bug-pattern"],
+    tags=["project:vesma", "agent:copilot", "vesma:bug-pattern"],
     project="vesma",
     agent="copilot",
 )
@@ -386,6 +409,7 @@ Common messages:
 | `exactly one agent:` | 0 or ≥2 `agent:` tags |
 | `at least one vesma:` | No `vesma:` tag present |
 | `invalid mnemos: subtype` | Subtype not in allowed set |
+| `invalid vesma: alias` | A `vesma:`-spelled tag whose subtype is not in the allowed set (see the input alias above) |
 | `invalid slug for project:` | Slug contains uppercase or special chars |
 | `invalid slug for agent:` | Slug contains uppercase or special chars |
 | `at most one task:` | ≥2 `task:` tags (always fatal, strict and lax) |

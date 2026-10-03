@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -47,7 +47,9 @@ from vesma.models import (
     RuleIngestRequest,
     RuleRemoveRequest,
     SearchQuery,
+    TagContractError,
     is_quarantined,
+    normalize_tag_aliases,
     validate_tag_contract,
 )
 from vesma.sessions import SessionStore
@@ -231,6 +233,21 @@ app = FastAPI(
 # T-AUTH: rate limiter state + exception handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+
+def _tag_contract_error_handler(_request: Request, exc: TagContractError) -> JSONResponse:
+    """A refused tag set answers 422 with the contract message, never a 500.
+
+    6.0.0 input alias: the ``vesma:*`` alias normalizes at every input
+    boundary, and an UNKNOWN alias subtype (or any other contract
+    violation) must refuse LOUDLY but cleanly — the same caller-facing
+    discipline as the #407 task-boundary 400s: the contract error string
+    reaches the client, a raw traceback does not.
+    """
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+app.add_exception_handler(TagContractError, _tag_contract_error_handler)
 
 # T-AUTH: auth middleware (runs after CORS, before routes)
 app.add_middleware(AuthMiddleware)
@@ -490,7 +507,9 @@ async def list_memories(
             ) from exc
     tag_list: list[str] | None = None
     if tags:
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        # Input boundary (6.0.0): normalize vesma:* aliases so a typed
+        # alias filters against the stored mnemos:* tags.
+        tag_list = normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()])
     # Ф2 (epic #308): the task boundary's ValueError (unsalvageable
     # slug / prefix-carrying value) maps to 400 like the recall twin —
     # the #407 twin discipline: the SAME error string, never a raw
@@ -626,7 +645,9 @@ async def search(query: SearchQuery) -> list[dict[str, Any]]:
     try:
         results = mgr.search(
             query=query.query,
-            tags=query.tags,
+            # Input boundary (6.0.0): vesma:* aliases normalize to the
+            # stored mnemos:* form before the exact-match tag filter.
+            tags=normalize_tag_aliases(query.tags) if query.tags else query.tags,
             project=query.project,
             task=query.task,
             status=query.status,
@@ -1652,7 +1673,9 @@ async def api_export(
         project=req.project,
         agent=req.agent,
         status=status_enum,
-        tags=req.tags,
+        # Input boundary (6.0.0): vesma:* aliases normalize to the stored
+        # mnemos:* form before the export filter matches row tags.
+        tags=normalize_tag_aliases(req.tags) if req.tags else req.tags,
         since=since_dt,
         until=until_dt,
     )

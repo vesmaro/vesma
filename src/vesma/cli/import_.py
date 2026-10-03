@@ -323,7 +323,12 @@ class ImportResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     format_version: str | None = None
-    mnemos_version: str | None = None
+    # 6.0.0: renamed from ``mnemos_version`` (the export schema is a
+    # user-visible surface, ArchCom 2026-10-03 option B). The importer
+    # reads BOTH keys — ``vesma_version`` preferred, the legacy
+    # ``mnemos_version`` from pre-6.0 exports still accepted (one
+    # deprecation note per import, never per record).
+    vesma_version: str | None = None
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -335,7 +340,7 @@ class ImportResult:
             "errors": list(self.errors),
             "warnings": list(self.warnings),
             "format_version": self.format_version,
-            "mnemos_version": self.mnemos_version,
+            "vesma_version": self.vesma_version,
         }
 
 
@@ -488,7 +493,16 @@ def _import_json(
 ) -> ImportResult:
     result = ImportResult(mode=mode, dry_run=dry_run)
     result.format_version = payload.get("format_version")
-    result.mnemos_version = payload.get("mnemos_version")
+    # 6.0.0 schema rename: ``vesma_version`` preferred; the legacy
+    # ``mnemos_version`` key from pre-6.0 exports stays accepted. Exactly
+    # one deprecation note per import run — never per record, never spam.
+    result.vesma_version = payload.get("vesma_version")
+    if result.vesma_version is None and payload.get("mnemos_version") is not None:
+        result.vesma_version = payload["mnemos_version"]
+        result.warnings.append(
+            "export used the legacy 'mnemos_version' field; renamed to "
+            "'vesma_version' in 6.0.0 (accepted, no action needed)"
+        )
 
     memories: list[dict[str, Any]] = payload.get("memories", [])
     projects: list[dict[str, Any]] = payload.get("projects", [])

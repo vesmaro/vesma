@@ -2361,7 +2361,9 @@ def _handle_import(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         "errors": list(result.errors),
         "warnings": list(result.warnings),
         "format_version": result.format_version,
-        "mnemos_version": result.mnemos_version,
+        # 6.0.0: mirrors the renamed export-schema field (was
+        # ``mnemos_version``); the importer still reads the legacy key.
+        "vesma_version": result.vesma_version,
     }
 
 

@@ -20,6 +20,28 @@ Vesma применяет структурированную схему тего�
 
 ---
 
+## Префикс хранения: `mnemos:` против входного алиаса `vesma:`
+
+`mnemos:` — канонический префикс хранения, стабильный по контракту;
+`vesma:` принимается как входной алиас везде.
+
+- **Вы печатаете** `vesma:<subtype>` — в CLI (`--tags`), в фильтрах тегов
+  HTTP API и в MCP-вызовах добавления. Vesma нормализует его в
+  `mnemos:<subtype>` до того, как что-то будет записано или сопоставлено.
+- **Хранилище сохраняет `mnemos:*`.** Префикс — замороженный формат
+  данных (решение 6.0, ArchCom 2026-10-03): экспорты, хранилища и
+  federation-трафик остаются байт-стабильными независимо от ребрендинга.
+- **Неизвестные подтипы громко отклоняются** в любом написании:
+  `vesma:bogus` падает с `invalid vesma: alias ...` — точно так же,
+  как `mnemos:bogus`.
+- `vesma:no-federate` тоже нормализуется — маркер исключения всегда
+  хранится как `mnemos:no-federate` (байт-стабильный маркер доверия,
+  см. ниже).
+- Старый ввод продолжает работать без изменений: `mnemos:*` проходит
+  как есть, а старые теги `gcw:*` по-прежнему мигрируют при валидации.
+
+---
+
 ## Обязательные теги (должны присутствовать во всех новых записях)
 
 | Тег | Формат | Кардинальность | Назначение |
@@ -128,8 +150,9 @@ A==C, закреплённая тестами на каждой поверхно
 ## `mnemos:no-federate` — маркер исключения из федерации
 
 `mnemos:no-federate` — это **маркер исключения**, а не когнитивная категория.
-Он живёт в пространстве имён подтипов `vesma:` (поэтому проходит валидацию
-тег-контракта без нового префикса), но его семантика операционная, не
+Он живёт в пространстве имён подтипов `mnemos:` (поэтому проходит валидацию
+тег-контракта без нового префикса; напечатанный как `vesma:no-federate`,
+он нормализуется в тот же хранимый тег), но его семантика операционная, не
 когнитивная: запись с этим тегом **исключается из всего внешнего обмена** —
 и из batch export, и из mediated pull (федерация).
 
@@ -198,21 +221,23 @@ base64-последовательности), сканер:
 ```python
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
-# Валидация списка тегов (strict, выбрасывает исключение при нарушениях)
+# Валидация списка тегов (strict, выбрасывает исключение при нарушениях).
+# Вы печатаете алиас vesma: — результат несёт каноническую форму mnemos:.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "mnemos:learning"],
+    ["project:myproject", "agent:copilot", "vesma:learning"],
     strict=True,
 )
+# clean_tags == ["project:myproject", "agent:copilot", "mnemos:learning"]
 
 # Использование модели TagContract напрямую
-tc = TagContract(tags=["project:myproject", "agent:copilot", "mnemos:decision"])
+tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
 print(tc.project)       # "myproject"
 print(tc.agent)         # "copilot"
 print(tc.mnemos_subtypes)  # {"decision"}
 
 # С (опциональным) тегом task-области
 tc = TagContract(
-    tags=["project:myproject", "agent:copilot", "mnemos:learning", "task:refactor-auth"]
+    tags=["project:myproject", "agent:copilot", "vesma:learning", "task:refactor-auth"]
 )
 print(tc.task)          # "refactor-auth" ("" — если записи не присвоена задача)
 
@@ -220,7 +245,7 @@ print(tc.task)          # "refactor-auth" ("" — если записи не п�
 from vesma.models import Memory
 m = Memory(
     content="Decided to use FTS5 over a dedicated search service.",
-    tags=["project:vesma", "agent:tech-lead", "mnemos:decision"],
+    tags=["project:vesma", "agent:tech-lead", "vesma:decision"],
     project="vesma",
     agent="tech-lead",
 )
@@ -233,7 +258,7 @@ m = Memory(
 ```
 mnemos_add(
     content="Discovered timing issue in FTS5 query planner.",
-    tags=["project:vesma", "agent:copilot", "mnemos:bug-pattern"],
+    tags=["project:vesma", "agent:copilot", "vesma:bug-pattern"],
     project="vesma",
     agent="copilot",
 )
@@ -396,6 +421,7 @@ mnemos.models.TagContractError
 | `exactly one agent:` | 0 или ≥2 тегов `agent:` |
 | `at least one vesma:` | Нет тега `vesma:` |
 | `invalid mnemos: subtype` | Подтип не входит в допустимое множество |
+| `invalid vesma: alias` | Тег с префиксом `vesma:`, подтип которого не входит в допустимое множество (см. входной алиас выше) |
 | `invalid slug for project:` | Slug содержит заглавные буквы или спецсимволы |
 | `invalid slug for agent:` | Slug содержит заглавные буквы или спецсимволы |
 | `at most one task:` | ≥2 тегов `task:` (всегда фатально, strict и lax) |

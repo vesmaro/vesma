@@ -117,7 +117,7 @@ The default provider is `ollama` pointing at `http://localhost:11434`. See [conf
 ## First memory (CLI)
 
 ```bash
-vesma add "Hello world" --tags project:test agent:getting-started mnemos:learning
+vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
 ```
 
 Expected output:
@@ -130,9 +130,9 @@ Vesma automatically:
 
 1. **Wrote the entry to SQLite** at `~/.mnemos/data/mnemos.db` (created on first run).
 2. **Mirrored it to your Obsidian vault** at `~/.mnemos/vault/` as a markdown file with YAML frontmatter.
-3. **Validated the tag contract** — `project:test` + `agent:getting-started` + `mnemos:learning` is a valid trio. Skip one and you get `❌ Tag contract violation: ...` instead.
+3. **Validated the tag contract** — `project:test` + `agent:getting-started` + `vesma:learning` is a valid trio. Skip one and you get `❌ Tag contract violation: ...` instead.
 
-The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `mnemos:learning`, `mnemos:bug-pattern`, `mnemos:decision`).
+The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). You always type the `vesma:` alias; `mnemos:` is the canonical storage prefix, stable by contract, and `vesma:` is accepted as an input alias everywhere — stored tags keep the canonical `mnemos:*` form.
 
 > **Note.** Newly added memories start in the `raw` state. The background processor (running in both MCP and HTTP API modes) automatically clusters, synthesises, quality-gates, and publishes them. The vector search index only includes `published` memories. To rebuild it manually: `vesma reindex` (CLI) or `POST /reindex` (HTTP API).
 

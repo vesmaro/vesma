@@ -89,13 +89,15 @@ def _add_memory(
 
 
 class TestExportJSON:
-    def test_json_export_has_format_version_and_mnemos_version(self, mgr, tmp_path):
+    def test_json_export_has_format_version_and_vesma_version(self, mgr, tmp_path):
+        """6.0.0 schema rename: exports carry ``vesma_version`` (was ``mnemos_version``)."""
         _add_memory(mgr, "hello world")
         out = tmp_path / "backup.json"
         run_export(mgr, fmt=ExportFormat.JSON, output=out)
         payload = json.loads(out.read_text())
         assert payload["format_version"] == "1.0"
-        assert payload["mnemos_version"]  # present and non-empty
+        assert payload["vesma_version"]  # present and non-empty
+        assert "mnemos_version" not in payload  # legacy key retired on export
         assert "exported_at" in payload
         assert isinstance(payload["memories"], list)
         assert len(payload["memories"]) == 1
@@ -631,6 +633,64 @@ class TestImportDryRun:
         result = run_import(mgr, tmp_path / "nope.json", mode=ImportMode.MERGE, dry_run=True)
         assert result.errors
         assert any("not found" in e for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Import — export schema version field (6.0.0 rename, both keys accepted)
+# ---------------------------------------------------------------------------
+
+
+class TestImportSchemaVersionField:
+    def test_import_reports_vesma_version(self, mgr, tmp_path):
+        """A 6.0.0 export (``vesma_version``) imports without notes."""
+        _add_memory(mgr, "x")
+        out = tmp_path / "backup.json"
+        run_export(mgr, fmt=ExportFormat.JSON, output=out)
+        result = run_import(mgr, out, mode=ImportMode.MERGE)
+        assert result.vesma_version  # present and non-empty
+        assert not any("mnemos_version" in w for w in result.warnings), (
+            "a current-format import must not emit the deprecation note"
+        )
+
+    def test_import_accepts_legacy_mnemos_version_with_one_note(self, mgr, tmp_path):
+        """Pre-6.0 exports (legacy ``mnemos_version`` key) still import —
+        with exactly ONE deprecation note per run, never per record."""
+        out = tmp_path / "legacy.json"
+        payload = {
+            "format_version": "1.0",
+            "mnemos_version": "5.9.0",
+            "memories": [
+                {
+                    "id": f"legacy-version-row-{i:04d}",
+                    "content": f"legacy export row {i}",
+                    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"],
+                    "source": "cli",
+                    "status": "published",
+                }
+                for i in range(3)
+            ],
+            "projects": [],
+        }
+        out.write_text(json.dumps(payload), encoding="utf-8")
+
+        result = run_import(mgr, out, mode=ImportMode.MERGE)
+        assert result.imported == 3
+        assert result.vesma_version == "5.9.0"
+        notes = [w for w in result.warnings if "mnemos_version" in w]
+        assert len(notes) == 1, (
+            "exactly one deprecation note per import run — no warning spam"
+        )
+
+    def test_summary_reports_vesma_version_key(self, mgr, tmp_path):
+        """The report dict (CLI/MCP/API surfaces) carries the renamed key."""
+        _add_memory(mgr, "x")
+        out = tmp_path / "backup.json"
+        run_export(mgr, fmt=ExportFormat.JSON, output=out)
+        result = run_import(mgr, out, mode=ImportMode.MERGE)
+        summary = result.summary()
+        assert "vesma_version" in summary
+        assert "mnemos_version" not in summary
+        assert summary["vesma_version"]
 
 
 # ---------------------------------------------------------------------------

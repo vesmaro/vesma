@@ -92,8 +92,8 @@ def import_cmd(
     console.print(f"  skipped: {result.skipped}, updated: {result.updated}")
     if result.format_version:
         console.print(f"  format_version: {result.format_version}")
-    if result.mnemos_version:
-        console.print(f"  mnemos_version: {result.mnemos_version}")
+    if result.vesma_version:
+        console.print(f"  vesma_version: {result.vesma_version}")
     for w in result.warnings:
         console.print(f"  [yellow]⚠[/yellow] {w}")
     if result.errors:

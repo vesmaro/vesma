@@ -232,6 +232,91 @@ def test_get_manager_returns_memory_manager(
     mgr.close()
 
 
+# ── vesma:* input alias (6.0.0 store block, ArchCom 2026-10-03 option B) ─────
+
+
+class TestVesmaTagInputAlias:
+    """`vesma:<subtype>` typed at the CLI is stored as `mnemos:<subtype>`.
+
+    Storage format is frozen: the alias exists at the input boundary only
+    (``normalize_tag_aliases`` runs on the parsed ``--tags`` value).
+    """
+
+    def test_add_accepts_alias_and_stores_mnemos(self, isolated_config: Path) -> None:
+        from vesma.cli._manager import get_manager
+
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "alias storage probe",
+                "--tags",
+                "project:cli-smoke,agent:cli,vesma:learning",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        mems = get_manager(str(isolated_config)).list_recent(limit=10)
+        assert any("mnemos:learning" in m.tags for m in mems)
+        assert not any(t.startswith("vesma:") for m in mems for t in m.tags)
+
+    def test_add_alias_round_trip_equals_legacy(self, isolated_config: Path) -> None:
+        """Alias spelling produces byte-identical stored tags as legacy spelling."""
+        from vesma.cli._manager import get_manager
+
+        for content, tag in [
+            ("alias roundtrip alpha", "vesma:learning"),
+            ("legacy roundtrip alpha", "mnemos:learning"),
+        ]:
+            result = runner.invoke(
+                app,
+                ["add", content, "--tags", f"project:cli-smoke,agent:cli,{tag}"],
+            )
+            assert result.exit_code == 0, result.output
+
+        mems = get_manager(str(isolated_config)).sqlite.list_all(limit=100)
+        by_content = {m.content: m.tags for m in mems}
+        assert by_content["alias roundtrip alpha"] == by_content["legacy roundtrip alpha"]
+
+    def test_add_no_federate_alias_stores_byte_stable(self, isolated_config: Path) -> None:
+        """The federation trust marker normalizes to its frozen storage form."""
+        from vesma.cli._manager import get_manager
+
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "no-federate alias probe",
+                "--tags",
+                "project:cli-smoke,agent:cli,vesma:no-federate",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        mems = get_manager(str(isolated_config)).list_recent(limit=10)
+        assert any("mnemos:no-federate" in m.tags for m in mems)
+
+    def test_search_tag_filter_accepts_alias(self, isolated_config: Path) -> None:
+        """A memory added under the alias is found by BOTH filter spellings."""
+        add = runner.invoke(
+            app,
+            [
+                "add",
+                "vesma alias search probe xyzzy",
+                "--tags",
+                "project:cli-smoke,agent:cli,vesma:rule",
+            ],
+        )
+        assert add.exit_code == 0, add.output
+
+        alias = runner.invoke(app, ["search", "xyzzy", "--tags", "vesma:rule"])
+        legacy = runner.invoke(app, ["search", "xyzzy", "--tags", "mnemos:rule"])
+        assert alias.exit_code == 0, alias.output
+        assert legacy.exit_code == 0, legacy.output
+        assert "No results" not in alias.output
+        assert "cli-smoke" in alias.output
+        # The alias filter and the legacy filter must see the same rows.
+        assert alias.output == legacy.output
+
+
 # ── Defensive: invalid config path is caught gracefully ──────────────────────
 
 

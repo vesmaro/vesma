@@ -130,7 +130,7 @@ uv pip install "vesma[gemini]"      # Google Gemini
 ## Первая запись (CLI)
 
 ```bash
-vesma add "Hello world" --tags project:test agent:getting-started mnemos:learning
+vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
 ```
 
 Ожидаемый вывод:
@@ -143,13 +143,13 @@ Vesma автоматически:
 
 1. **Записал запись в SQLite** по пути `~/.mnemos/data/mnemos.db` (создаётся при первом запуске).
 2. **Отразил её в Obsidian-vault** `~/.mnemos/vault/` как markdown-файл с YAML-фронтматтером.
-3. **Проверил контракт тегов** — `project:test` + `agent:getting-started` + `mnemos:learning` —
+3. **Проверил контракт тегов** — `project:test` + `agent:getting-started` + `vesma:learning` —
    корректная тройка. Пропустите один из тегов, и вместо подтверждения получите
    `❌ Tag contract violation: ...`.
 
 Контракт тегов описан в [tag-contract.md](tag-contract.md). Коротко: каждая запись требует
 **ровно одного** `project:<slug>`, **ровно одного** `agent:<slug>` и **хотя бы одного**
-`vesma:<subtype>` (например, `mnemos:learning`, `mnemos:bug-pattern`, `mnemos:decision`).
+`vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Вы всегда печатаете алиас `vesma:`; `mnemos:` — канонический префикс хранения, стабильный по контракту, а `vesma:` принимается как входной алиас везде — в хранилище теги сохраняют каноническую форму `mnemos:*`.
 
 > **Замечание.** Только что добавленные записи получают статус `raw`. Фоновый процессор
 > (работает в режимах MCP и HTTP API) автоматически кластеризует, синтезирует, проверяет

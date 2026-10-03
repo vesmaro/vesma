@@ -18,7 +18,7 @@ from rich.table import Table
 from vesma.cli._manager import get_manager
 from vesma.config import find_config_file, load_settings
 from vesma.logging_setup import setup_logging
-from vesma.models import MemoryCreate, MemorySource, MemoryType
+from vesma.models import MemoryCreate, MemorySource, MemoryType, normalize_tag_aliases
 from vesma.storage.sqlite_store import (
     EDGE_STATS_LAST_PURGE_META_KEY,
     EDGE_STATS_TOTAL_ROWS_CAP,
@@ -107,7 +107,15 @@ ConfigOption = typer.Option(None, "--config", "-c", help="Path to config.yaml")
 def add(
     content: str = typer.Argument(None, help="Text content to remember"),
     title: str = typer.Option(None, "--title", "-t"),
-    tags: str = typer.Option("", "--tags", "-T", help="Comma-separated tags"),
+    tags: str = typer.Option(
+        "",
+        "--tags",
+        "-T",
+        help=(
+            "Comma-separated tags. `mnemos:` is the canonical storage prefix, "
+            "stable by contract; `vesma:` is accepted as an input alias everywhere."
+        ),
+    ),
     file: Annotated[Path | None, typer.Option("--file", "-f", help="Import from file")] = None,
     url: str = typer.Option(None, "--url", "-u", help="Import from URL"),
     source: Annotated[MemorySource, typer.Option("--source", "-s")] = MemorySource.CLI,
@@ -129,7 +137,11 @@ def add(
     Useful for previewing how the M10 Context Filter will transform input
     before committing it to the store.
     """
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Input boundary (6.0.0): vesma:* aliases normalize to the stored
+    # mnemos:* form before anything downstream sees the tag list.
+    tag_list = (
+        normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()]) if tags else []
+    )
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
@@ -225,7 +237,15 @@ def search(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(10, "--limit", "-l", help="Max results"),
     project: str = typer.Option(None, "--project", "-p", help="Filter by project slug"),
-    tags: str = typer.Option(None, "--tags", "-T", help="Comma-separated tags to filter by"),
+    tags: str = typer.Option(
+        None,
+        "--tags",
+        "-T",
+        help=(
+            "Comma-separated tags to filter by. `mnemos:` is the canonical storage "
+            "prefix, stable by contract; `vesma:` is accepted as an input alias everywhere."
+        ),
+    ),
     include_raw: bool = typer.Option(
         True,
         "--include-raw/--published-only",
@@ -256,7 +276,13 @@ def search(
     from vesma.models import MemoryStatus
 
     mgr = get_manager(config)
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    # Input boundary (6.0.0): normalize vesma:* aliases so a typed alias
+    # filters against the stored mnemos:* tags (exact-match filter).
+    tag_list = (
+        normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()])
+        if tags
+        else None
+    )
     status_enum = MemoryStatus(status) if status else None
     results = mgr.search(
         query=query,

@@ -18,6 +18,7 @@ from vesma.models import (
     Memory,
     TagContract,
     TagContractError,
+    normalize_tag_aliases,
     validate_tag_contract,
 )
 
@@ -286,3 +287,68 @@ class TestMnemosSubtypes:
                 ["project:x", "agent:y", "mnemos:totally-unknown"],
                 strict=True,
             )
+
+
+# ---------------------------------------------------------------------------
+# vesma:* input alias (6.0.0 store block, ArchCom 2026-10-03 option B)
+# ---------------------------------------------------------------------------
+
+
+class TestVesmaInputAlias:
+    """``vesma:<subtype>`` is accepted as input, stored as ``mnemos:<subtype>``.
+
+    Storage format is frozen: ``mnemos:`` stays the canonical written
+    prefix; the alias exists only at input boundaries (normalized by
+    ``normalize_tag_aliases`` — the single shared helper — and inside
+    ``validate_tag_contract``, so every write path accepts it).
+    """
+
+    def test_alias_normalized_to_mnemos(self):
+        result = validate_tag_contract(
+            ["project:x", "agent:y", "vesma:learning"], strict=True
+        )
+        assert "mnemos:learning" in result
+        assert not any(t.startswith("vesma:") for t in result)
+
+    def test_no_federate_alias_normalized(self):
+        """The federation trust marker normalizes too — storage stays byte-stable."""
+        result = validate_tag_contract(
+            ["project:x", "agent:y", "vesma:no-federate"], strict=True
+        )
+        assert "mnemos:no-federate" in result
+
+    def test_legacy_form_unchanged(self):
+        legacy = ["project:x", "agent:y", "mnemos:learning"]
+        assert validate_tag_contract(list(legacy), strict=True) == legacy
+
+    def test_round_trip_alias_equals_legacy(self):
+        """Normalized alias input produces the byte-identical tag list as legacy."""
+        legacy = ["project:x", "agent:y", "mnemos:learning", "mnemos:no-federate"]
+        alias = ["project:x", "agent:y", "vesma:learning", "vesma:no-federate"]
+        assert (
+            validate_tag_contract(normalize_tag_aliases(alias), strict=True)
+            == validate_tag_contract(list(legacy), strict=True)
+        )
+
+    def test_unknown_alias_subtype_refuses_loudly(self):
+        with pytest.raises(TagContractError, match="invalid vesma: alias 'vesma:bogus'"):
+            validate_tag_contract(["project:x", "agent:y", "vesma:bogus"], strict=True)
+
+    def test_alias_typo_refused_not_repaired(self):
+        """A mistyped subtype fails with the offending tag named, never minted."""
+        with pytest.raises(TagContractError, match="vesma:leanring"):
+            validate_tag_contract(["project:x", "agent:y", "vesma:leanring"], strict=True)
+
+    def test_normalize_helper_leaves_other_namespaces_alone(self):
+        tags = ["project:p", "agent:a", "task:t", "gcw:decision", "source:chat", "freeform"]
+        assert normalize_tag_aliases(list(tags)) == tags
+
+    def test_normalize_helper_unknown_subtype_passthrough(self):
+        """The helper never drops or repairs — refusal belongs to the contract."""
+        assert normalize_tag_aliases(["vesma:bogus"]) == ["vesma:bogus"]
+
+    def test_alias_accepted_in_lax_mode(self):
+        result = validate_tag_contract(
+            ["project:x", "agent:y", "vesma:decision"], strict=False
+        )
+        assert "mnemos:decision" in result

@@ -16,7 +16,8 @@ Design (owner-confirmed, 2026-06-20):
   ``cryptography``). Passphrase is read from a prompt or
   ``--passphrase-file``.
 * **Versioning** — every JSON export carries ``format_version`` +
-  ``mnemos_version`` for forward compatibility.
+  ``vesma_version`` for forward compatibility (renamed from
+  ``mnemos_version`` in 6.0.0; the importer still reads the legacy key).
 
 The module exposes :func:`run_export` (pure logic, testable) and a Typer
 command wired into ``cli/main.py``.
@@ -302,7 +303,10 @@ def build_json_payload(
     projects = mgr.sqlite.list_projects()
     payload: dict[str, Any] = {
         "format_version": FORMAT_VERSION,
-        "mnemos_version": __version__,
+        # 6.0.0: renamed from ``mnemos_version`` (ArchCom 2026-10-03 option
+        # B — the export schema is a user-visible surface). The importer
+        # still reads the legacy key from pre-6.0 exports.
+        "vesma_version": __version__,
         "exported_at": datetime.now(UTC).isoformat(),
         "filter": filt.to_dict(),
         "memories": export_memories,

@@ -2335,7 +2335,7 @@ output_style:
   "errors": [],
   "warnings": [],
   "format_version": "1.0",
-  "mnemos_version": "4.0.0"
+  "vesma_version": "6.0.0"
 }
 ```
 

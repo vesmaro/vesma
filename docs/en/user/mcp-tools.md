@@ -2321,7 +2321,7 @@ Import validation (#86) is inherited automatically: schema drift, oversized cont
   "errors": [],
   "warnings": [],
   "format_version": "1.0",
-  "mnemos_version": "4.0.0"
+  "vesma_version": "6.0.0"
 }
 ```
 

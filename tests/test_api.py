@@ -68,6 +68,10 @@ def client(tmp_settings):
     # Copy all routes from the real app
     for route in app.routes:
         test_app.routes.append(route)
+    # Copy exception handlers too — route copies alone skip the handlers
+    # registered on the real app (rate limiting, TagContractError → 422),
+    # so the fixture must mirror production error mapping exactly.
+    test_app.exception_handlers.update(app.exception_handlers)
 
     # Override get_manager to return our isolated mgr
 
@@ -558,3 +562,88 @@ class TestTags:
         assert learning["count"] == 2
         assert decision["count"] == 1
         assert items.index(learning) < items.index(decision)
+
+
+# ---------------------------------------------------------------------------
+# vesma:* input alias (6.0.0 store block, ArchCom 2026-10-03 option B)
+# ---------------------------------------------------------------------------
+
+
+class TestVesmaTagInputAlias:
+    """`vesma:<subtype>` accepted at API boundaries, stored as `mnemos:<subtype>`.
+
+    Storage format is frozen: ``mnemos:`` stays the written prefix; the
+    alias normalizes at the input boundary (create via
+    ``validate_tag_contract``, filters via ``normalize_tag_aliases``).
+    """
+
+    def test_create_normalizes_alias(self, client):
+        resp = client.post(
+            "/memories",
+            json={
+                "content": "api alias storage probe",
+                "tags": ["project:mnemos", "agent:reviewer", "vesma:learning"],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        tags = resp.json()["tags"]
+        assert "mnemos:learning" in tags
+        assert not any(t.startswith("vesma:") for t in tags)
+
+    def test_create_no_federate_alias_normalizes(self, client):
+        resp = client.post(
+            "/memories",
+            json={
+                "content": "api no-federate alias probe",
+                "tags": ["project:mnemos", "agent:reviewer", "vesma:no-federate"],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        assert "mnemos:no-federate" in resp.json()["tags"]
+
+    def test_create_unknown_alias_refused_with_422(self, client):
+        """Unknown alias subtype refuses loudly (422 + named tag), never a 500."""
+        resp = client.post(
+            "/memories",
+            json={
+                "content": "api unknown alias probe",
+                "tags": ["project:mnemos", "agent:reviewer", "vesma:bogus"],
+            },
+        )
+        assert resp.status_code == 422
+        assert "vesma:bogus" in resp.text
+
+    def test_list_filter_accepts_alias(self, client):
+        client.post(
+            "/memories",
+            json={
+                "content": "api alias filter probe",
+                "tags": ["project:mnemos", "agent:reviewer", "vesma:decision"],
+            },
+        )
+        resp = client.get("/memories?tags=vesma:decision")
+        assert resp.status_code == 200
+        results = resp.json()
+        assert len(results) == 1
+        assert "mnemos:decision" in results[0]["tags"]
+        # Legacy spelling sees the identical row set.
+        resp_legacy = client.get("/memories?tags=mnemos:decision")
+        assert resp_legacy.json() == results
+
+    def test_search_accepts_alias_tags(self, client):
+        client.post(
+            "/memories",
+            json={
+                "content": "quuxly alias search probe",
+                "tags": ["project:mnemos", "agent:reviewer", "vesma:learning"],
+            },
+        )
+        resp = client.post("/search", json={"query": "quuxly", "tags": ["vesma:learning"]})
+        assert resp.status_code == 200
+        results = resp.json()
+        assert len(results) == 1
+        assert "quuxly" in results[0]["content"]
+        resp_legacy = client.post(
+            "/search", json={"query": "quuxly", "tags": ["mnemos:learning"]}
+        )
+        assert resp_legacy.json() == results

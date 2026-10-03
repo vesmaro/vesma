@@ -20,7 +20,7 @@ from vesma.cli.export import (
     ExportFormat,
     run_export,
 )
-from vesma.models import MemoryStatus
+from vesma.models import MemoryStatus, normalize_tag_aliases
 
 console = Console()
 
@@ -65,7 +65,14 @@ def export_cmd(
     ] = None,
     tags: Annotated[
         str | None,
-        typer.Option("--tags", help="Comma-separated tags to filter by"),
+        typer.Option(
+            "--tags",
+            help=(
+                "Comma-separated tags to filter by. `mnemos:` is the canonical "
+                "storage prefix, stable by contract; `vesma:` is accepted as an "
+                "input alias everywhere."
+            ),
+        ),
     ] = None,
     since: Annotated[
         str | None,
@@ -85,7 +92,13 @@ def export_cmd(
     """Export memories to a backup file (JSON metadata or SQLite snapshot)."""
     mgr = get_manager(config)
 
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    # Input boundary (6.0.0): vesma:* aliases normalize to the stored
+    # mnemos:* form before the export filter matches against row tags.
+    tag_list = (
+        normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()])
+        if tags
+        else None
+    )
     filt = ExportFilter(
         project=project,
         agent=agent,

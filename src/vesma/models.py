@@ -359,6 +359,49 @@ TASK_SLUG_RE: re.Pattern[str] = re.compile(rf"^{_TASK_SLUG_PATTERN}\Z")
 _TASK_RE = re.compile(rf"^task:{_TASK_SLUG_PATTERN}\Z")
 _VESMA_TAG_RE = re.compile(r"^mnemos:[a-z][a-z0-9\-]*\Z")
 
+# ── Input alias: vesma:* → mnemos:* (6.0.0 store block) ──────────────────────
+# ArchCom 2026-10-03, 6.0.0 store-migration verdict option B (split): the
+# tag prefix is a FROZEN storage data format — every record is still WRITTEN
+# as ``mnemos:*`` — while users type the product prefix at every input
+# surface. One shared helper here (next to ``_VESMA_TAG_RE``); the CLI
+# (``add``/``search``/``export --tags``) and the HTTP API (tag-filter query
+# parsing, plus every ``validate_tag_contract`` caller) reuse it — no
+# duplicated prefix/regex logic at the boundaries.
+#: ``mnemos:`` is the canonical storage prefix, stable by contract;
+#: ``vesma:`` is accepted as an input alias everywhere.
+INPUT_ALIAS_PREFIX: Final[str] = "vesma:"
+
+
+def normalize_tag_alias(tag: str) -> str:
+    """Normalize one ``vesma:<subtype>`` input alias to ``mnemos:<subtype>``.
+
+    A tag is rewritten ONLY when its subtype is in
+    :data:`VESMA_TAG_SUBTYPES` — this includes ``no-federate``, so the
+    ``mnemos:no-federate`` trust marker stays byte-stable in storage no
+    matter which spelling the caller typed. Anything else (other
+    namespaces, unknown subtypes) is returned UNCHANGED so the tag
+    contract validator refuses it loudly — this helper never mints,
+    drops, or silently repairs a tag.
+    """
+    if not tag.startswith(INPUT_ALIAS_PREFIX):
+        return tag
+    subtype = tag[len(INPUT_ALIAS_PREFIX) :]
+    if subtype in VESMA_TAG_SUBTYPES:
+        return f"mnemos:{subtype}"
+    return tag
+
+
+def normalize_tag_aliases(tags: list[str]) -> list[str]:
+    """Apply :func:`normalize_tag_alias` across a tag list (input boundary).
+
+    The list-level form the CLI and API input boundaries call after
+    splitting comma-separated ``--tags`` / query parameters. Legacy
+    ``mnemos:*`` input passes through byte-identical, so the normalized
+    value always equals what the legacy form produces (round-trip
+    guarantee pinned by tests).
+    """
+    return [normalize_tag_alias(t) for t in tags]
+
 
 def normalize_project_slug(value: str) -> str:
     """Normalize a project slug to the canonical ``_PROJECT_RE`` form.
@@ -447,6 +490,10 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
     """
     # Backward compat: gcw: is accepted as an alias for mnemos:
     # Old memories with gcw: tags are auto-migrated to mnemos: on validation.
+    # 6.0.0 input alias: vesma:<valid-subtype> normalizes the same way
+    # (normalize_tag_alias — the single alias authority); unknown vesma:
+    # subtypes survive the migration and are refused below with the alias
+    # named, never silently repaired.
     _migrated: list[str] = []
     for t in tags:
         if t.startswith("gcw:"):
@@ -456,7 +503,7 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
             else:
                 _migrated.append(t)  # invalid gcw: subtype, keep as-is for error msg
         else:
-            _migrated.append(t)
+            _migrated.append(normalize_tag_alias(t))
     tags = _migrated
 
     project_tags = [t for t in tags if t.startswith("project:")]
@@ -520,6 +567,16 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
                         f"invalid mnemos: subtype '{subtype}' — "
                         f"allowed: {', '.join(sorted(VESMA_TAG_SUBTYPES))}"
                     )
+
+    # 6.0.0 input alias: any vesma:-prefixed tag that SURVIVED the alias
+    # migration carries an unknown subtype — refuse it with the offending
+    # tag named (instead of the generic missing-mnemos error), so a typo
+    # like vesma:leanring fails loud at every input boundary.
+    for stray_alias in (t for t in tags if t.startswith(INPUT_ALIAS_PREFIX)):
+        patchable_errors.append(
+            f"invalid vesma: alias '{stray_alias}' — unknown subtype "
+            f"(allowed: {', '.join(sorted(VESMA_TAG_SUBTYPES))})"
+        )
 
     # Always fatal errors raise regardless of strict flag
     if fatal_errors:
