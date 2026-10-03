@@ -2,43 +2,50 @@
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/pypi-publish.md)
 
-First-publish pipeline for the `mnemos-memory-server` package on PyPI —
-issue #122, ADR-0017 Phase 0 (Distribution). GitHub Actions is
+Publish pipeline for the `vesma` package on PyPI — built in issue #122,
+ADR-0017 Phase 0 (Distribution) for the first publish and now the
+routine update pipeline as well. GitHub Actions is
 billing-locked (#117), so the whole pipeline runs locally via
 `scripts/pypi-publish.sh` (sibling of `scripts/local-release.sh`, which
 owns the container image + GitHub Release half).
 
-**First publish is an owner-executed step.** PyPI names and versions are
+**Uploads are owner-executed steps.** PyPI names and versions are
 immutable: a published version can never be re-uploaded or replaced, and
 a project name cannot be silently migrated. Everything below prepares and
 verifies the artifacts — the actual `twine upload` is a deliberate,
 manual step.
 
-## Package name — DECIDED: `mnemos-memory-server` (2026-09-01)
+## PyPI channels — LIVE: `vesma` (primary; re-verified 2026-10-03)
 
-The distribution name was decided 2026-09-01 and set in `pyproject.toml`
-(`name = "mnemos-memory-server"`). The import package stays `vesma` and
-the CLI stays `vesma` — only the installable/PyPI name changed. The
-matrix below is kept as decision history; it was last re-checked
-2026-09-01 (statuses unchanged since 2026-08-21).
+The distribution name decided 2026-09-01 was `mnemos-memory-server`. In
+the 5.0.0 rebrand the release channels moved: the bare `vesma` slot is
+ours and is the primary channel (`pyproject.toml` `name = "vesma"`),
+`vesma-memory-server` is a live mirror, and the pre-rebrand
+`mnemos-memory-server` stays published, frozen at 5.2.0 until deprecation.
+All three carry the "(Vesmaro Project)" summary.
 
-| Name | PyPI status | Occupied by |
+Since 5.0.0 the import package is `vesmaro` (a `mnemos` compat shim still
+ships) and the CLIs are `vesmaro` (canonical), `vesma` (short hook) and
+`mnemos` (deprecated alias). Only the installable/PyPI name and the
+Python import name differ — `scripts/pypi-publish.sh` reads the
+distribution name from `pyproject.toml` and adapts automatically.
+
+| Channel | PyPI status | Used by |
 | --- | --- | --- |
-| `vesma` | ❌ taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
+| `vesma` | ours, live (5.0.0 → 5.4.0) | primary — `pip install vesma`, README badge |
+| `vesma-memory-server` | ours, live (5.0.0 → 5.4.0) | mirror; `scripts/install.sh` probes it for latest-version detection |
+| `mnemos-memory-server` | ours, frozen at 5.2.0 | legacy pre-rebrand channel, live until deprecation |
+
+The original 2026-09-01 decision matrix is kept as written that day
+(note: its `vesma` entry does not match today's PyPI state — see the
+verified table above; no `v0.1.1` exists in the release list):
+
+| Name | PyPI status (2026-09-01, as recorded) | Occupied by |
+| --- | --- | --- |
+| `vesma` | ❌ recorded taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
 | `mnemos-memory` | ❌ taken (v0.6.0) | "Biomimetic memory architectures for LLMs" |
-| `mnemos-memory-server` | ✅ free | — |
-| `vesma-server` | ✅ free | — |
-| `vesma-mcp` | ✅ free | — |
-| `vesma-ai` | ✅ free | — |
-| `vesma-agent-memory` | ✅ free | — |
-
-Both taken names are **AI-memory projects in the same domain** — a third
-similar name maximizes user confusion, so the fallback should be
-self-descriptive rather than minimal.
-
-**Chosen: `mnemos-memory-server`** — states exactly what the
-package is ("a memory server named vesma"), matches the project
-description, and is unambiguous against both taken neighbors.
+| `mnemos-memory-server` | ✅ free then | — chosen first, frozen at 5.2.0 after the rebrand |
+| `vesma-server` / `vesma-mcp` / `vesma-ai` / `vesma-agent-memory` | ✅ free then | — |
 
 How to re-check (no auth needed):
 
@@ -53,19 +60,20 @@ curl -s https://pypi.org/pypi/<name>/json | python3 -c \
 
 Caveats:
 
-- **PEP 503 normalization** — `mnemos-memory-server`, `mnemos_memory_server`
-  and `mnemos.memory.server` are the SAME PyPI name. The check must use
+- **PEP 503 normalization** — `vesma-memory-server`, `vesma_memory_server`
+  and `vesma.memory.server` are the SAME PyPI name. The check must use
   the normalized form.
 - **Similarity/squatting screen** — PyPI rejects new registrations
   confusable with existing popular packages. The exact threshold is
   server-side; final confirmation of any name happens only at the first
   upload. If rejected, take the next candidate from the matrix above.
 
-**Changing the name** is a one-line edit (`name = "..."` in
+**Changing the name** was a one-line edit (`name = "..."` in
 `pyproject.toml`) followed by a rebuild — `scripts/pypi-publish.sh`
 reads the name from `pyproject.toml` and adapts automatically (wheel
-filename normalization included). Do it BEFORE the first publish;
-afterwards the name is fixed forever.
+filename normalization included). That window is closed: `vesma` is
+published, so the name is fixed forever (see Immutability rules) — a new
+name would mean a new, parallel project.
 
 > **Asset note (2026-09-01):** tag `v3.1.0` was cut with the old name and
 > is NOT re-cut (its npm channel `pi-mnemos@3.1.0` is already published).
@@ -99,9 +107,15 @@ Makefile alias: `make pypi-publish` (check mode).
 | G3 | wheel + sdist filename versions == `pyproject.toml` version | `--publish` mode |
 | G4 | smoke-installed package version == `pyproject.toml` version | always (artifact proof) |
 
-G0 stays as a hard safety net even though the name is now decided (see
-the matrix above): an accidental `--publish` against a taken or renamed
-name still fails cleanly BEFORE any upload attempt.
+G4 verifies the post-rebrand wheel layout: it checks the installed
+`vesmaro` package resources (`integrations/`, `scripts/`), not the
+deprecated `mnemos` shim.
+
+G0 stays as a hard safety net now that the project is live: a rebuild of
+an already-published version fails cleanly BEFORE any upload attempt
+(versions are immutable — bump and rebuild instead), and `--publish`
+against a name/version state that does not match our project is refused
+without `--i-own-name`.
 
 ## Publish procedure (owner)
 

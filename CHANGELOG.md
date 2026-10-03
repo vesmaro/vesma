@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`scripts/pypi-publish.sh` works post-rebrand again: G4 smoke checks the `vesmaro` package** (`scripts/pypi-publish.sh`; docs `docs/en|ru/admin/runbooks/pypi-publish.md`, names note in `docs/en|ru/admin/runbooks/install.md`) — the mechanical rebrand sweep flipped the G4 metadata probe from `importlib.resources.files("vesmaro")` back to the nonexistent `vesma` import package (the PyPI distribution name `vesma` and the import package `vesmaro` are different names), so every pre-upload G4 gate would fail on a post-5.0.0 build; the `--full-smoke` step now exercises the shipped `vesma` CLI entry point instead of the deprecated `mnemos` alias, stale `mnemos-memory-server` header/normalization comments and `/tmp/mnemos-pypi-*` smoke-dir prefixes are cleaned. Verified end-to-end on the built 5.4.0 artifact set: `--dry-run --full-smoke` exits 0 without upload, and both smoke paths pass for real against the wheel (G4 `vesmaro` resources + full-deps `vesma --version`). The runbooks' name section was rewritten from the outdated «decided: `mnemos-memory-server`» to the verified channel reality (primary `vesma` 5.4.0, live mirror `vesma-memory-server` — the one `install.sh` probes, legacy `mnemos-memory-server` frozen at 5.2.0), and the install docs no longer describe the bare `pip install vesma` as a third-party project.
+
 ## [5.4.0] — 2026-10-03
 
 ### Added
