@@ -180,7 +180,13 @@ flowchart TD
   (review-хвосты), #422/#423 (task= REST-гэп и recency-окно), #316
   (idf-floor) и #329 (Snowball) — поисковые P3; #357 sweep-5.0.0;
   mesh-notes #353–#376; Cache-Phase-2 M1 живёт в vitals-сессии
-  (ADR-0026 sidecar); D-behavioral — главный поведенческий эксперимент
+  (ADR-0026 sidecar); **vitals фаза C (лин­eage `6b96d21` ветки; 72
+  теста, полный сьют зелёный, ruff/mypy чисто): петля использования
+  (`record_usage` + `UsageAnalyzer`) и экспозиция `mnemos_usage_*` в
+  `/api/v1/metrics` завезены в вендоренный `vesmaro.metrics`;
+  калибровка каппы ожидает протокол абляции — touched_share остаётся
+  informational (`corridor_eligible: False`), коридорный статус без
+  изменений**; D-behavioral — главный поведенческий эксперимент
   нейро-трека, за NM-3a/3b (см. §4a; recall-пул готов к замеру).
 - **Граф проектов (ADR-0032, узел PG)** — линия ОТДЕЛЬНАЯ от 4.4.0
   (граф воспоминаний ADR-0030): sidecar `code_graph.db`, memory-first,
