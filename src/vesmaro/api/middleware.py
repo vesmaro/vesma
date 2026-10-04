@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import logging
+import threading
 from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -282,3 +283,151 @@ class VitalsVerbMiddleware(BaseHTTPMiddleware):
                 )
             except Exception:
                 pass
+
+
+# ── REST deprecation aliases (card vesma-rest-deprecation-middleware) ────────
+#
+# Canon is ``/api/v1``; the root-level routes below are legacy aliases. The
+# frozenset holds route TEMPLATES (Starlette ``route.path``), not concrete
+# paths — parameterised routes (``/memories/{memory_id}``) must match too.
+# The physical route move happens in 6.0; until then the aliases keep
+# serving and are only decorated with deprecation headers.
+#
+# Deliberately NOT in this set (and orthogonal to AuthMiddleware's
+# ``_ALWAYS_BYPASS``/``_METRICS_BYPASS`` and VitalsVerbMiddleware's
+# ``_EXCLUDED`` — those lists gate auth/vitals semantics and are untouched
+# here; deprecation headers neither widen nor narrow them):
+#   ``/health``                 — liveness convention, never deprecated;
+#   ``/v1/...``                 — A2A Sessions API (M16): a separate, already
+#                                 versioned surface mounted at ``/v1`` by
+#                                 design, not an alias of ``/api/v1``;
+#   ``/auth/...``               — T-AUTH surface (ADR-0014): no ``/api/v1``
+#                                 counterpart exists, so it is not a legacy
+#                                 alias;
+#   ``/docs``, ``/redoc``, ``/openapi.json`` — schema UI, not API endpoints.
+#
+# ``/metrics`` IS an alias: the canonical Prometheus exposition is
+# ``/api/v1/metrics``; the root path serves a legacy JSON body.
+_LEGACY_ROOT_PATHS = frozenset(
+    {
+        "/metrics",
+        "/memories",
+        "/memories/{memory_id}",
+        "/memories/{memory_id}/workflow",
+        "/memories/{memory_id}/quarantine/release",
+        "/search",
+        "/recall/agent/{name}",
+        "/process",
+        "/reindex",
+        "/synthesize",
+        "/publish/{memory_id}",
+        "/dlq",
+        "/dlq/{dlq_id}/retry",
+        "/dlq/{dlq_id}",
+        "/filter/{memory_id}",
+        "/tags",
+        "/tags/rename",
+        "/traces",
+        "/rules/ingest",
+        "/context/save",
+        "/context/recall",
+        "/context/assemble",
+        "/context/rewrite",
+        "/hooks/{action}",
+        "/compress",
+        "/retrieve",
+        "/auto-collect",
+        "/ingest-url",
+        "/ingest-document",
+        "/watch/start",
+        "/watch/stop",
+        "/watch/status",
+        "/graph/index",
+        "/graph/status/{project_id}",
+        "/graph/search",
+        "/graph/trace",
+        "/graph/outline",
+        "/graph/snippet",
+        "/graph/coverage",
+        "/graph/schema",
+        "/graph/projects",
+        "/graph/projects/{project_id}",
+    }
+)
+
+# Per-template hit counter — light, in-process (single event loop per
+# worker), no new telemetry backend. Surfaced via logs (INFO on the first
+# hit of a template, DEBUG afterwards) and :func:`get_deprecation_hits`.
+# Wired into the vitals exposition only if the migration dashboard needs
+# it (6.0 follow-up decision).
+_DEPRECATION_HITS_LOCK = threading.Lock()
+_DEPRECATION_HITS: dict[str, int] = {}
+
+
+def get_deprecation_hits() -> dict[str, int]:
+    """Return a copy of per-legacy-template deprecation hit counts."""
+    with _DEPRECATION_HITS_LOCK:
+        return dict(_DEPRECATION_HITS)
+
+
+def reset_deprecation_hits() -> None:
+    """Clear the hit counter (test hook)."""
+    with _DEPRECATION_HITS_LOCK:
+        _DEPRECATION_HITS.clear()
+
+
+class DeprecationMiddleware(BaseHTTPMiddleware):
+    """Decorate legacy root API paths with deprecation headers.
+
+    Why: the API versioning canon is ``/api/v1``; the ~40 root-level routes
+    (``/memories``, ``/search``, ``/context/*``, ``/graph/*``, ...) remain
+    as backward-compatibility aliases until Vesma 6.0 physically moves them
+    (card ``vesma-rest-deprecation-middleware``; alias removal lands in the
+    6.0 pocket together with the route move). This middleware marks every
+    response served via a legacy alias so clients can migrate early.
+
+    Headers on a legacy-alias hit:
+
+    - ``Deprecation: true`` — the location is deprecated.
+    - ``Link: </api/v1<template>>; rel="suggested-version"`` — the canonical
+      location to migrate to (matched by route TEMPLATE, so parameterised
+      aliases resolve to their ``/api/v1`` counterpart).
+
+    Sunset (RFC 8594) is deliberately NOT sent: it requires an absolute
+    HTTP-date and the 6.0 release date is not fixed. Fabricating one would
+    violate the RFC and mislead clients. ``Sunset`` is added in the 6.0
+    line as soon as the date exists.
+
+    Path resolution follows the ``VitalsVerbMiddleware`` pattern: the route
+    template is read from ``request.scope["route"]`` after ``call_next``,
+    so only responses produced by an actual route match are decorated
+    (auth-rejected 401s happen before routing and are not decorated).
+    Canonical ``/api/v1/*``, ``/health`` and the ``/v1`` sessions surface
+    never match the template set and stay clean.
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        # Route template only — never fall back to the raw concrete path:
+        # an unmatched 404 or an auth-rejected 401 (rejected before routing)
+        # has no ``scope["route"]`` and must stay clean. A 405 (path matched,
+        # method not allowed) still carries the matched template and IS
+        # decorated — the response was served at the legacy location.
+        route = request.scope.get("route")
+        template = str(getattr(route, "path", "")) if route is not None else ""
+        if template not in _LEGACY_ROOT_PATHS:
+            return response
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = f'</api/v1{template}>; rel="suggested-version"'
+        with _DEPRECATION_HITS_LOCK:
+            count = _DEPRECATION_HITS.get(template, 0) + 1
+            _DEPRECATION_HITS[template] = count
+        if count == 1:
+            logger.info("deprecation: legacy REST alias hit template=%s (first)", template)
+        else:
+            logger.debug("deprecation: legacy REST alias hit template=%s count=%d", template, count)
+        return response
