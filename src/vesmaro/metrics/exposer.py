@@ -138,7 +138,9 @@ def _usage_block(conn: sqlite3.Connection) -> list[str]:
                 f"mnemos_usage_wrong_tool_rate {flagged / reports}",
             ),
         ]
-        if tokens_out:
+        # render whenever reports exist: a reported sum of 0 is a REAL zero
+        # (defined family), not NO-DATA — absence would invert the discipline.
+        if reports > 0:
             lines.append(
                 (
                     "# HELP mnemos_usage_tokens_out_total Output tokens reported"

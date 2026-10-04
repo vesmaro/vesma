@@ -485,6 +485,14 @@ class MetricsStore(VerbLedgerMixin):
             return int(cur.lastrowid or 0)
         except (sqlite3.Error, ValueError, TypeError, AttributeError, OSError) as exc:
             self._fail("record_awareness_event", exc)
+            # rollback discipline (restored post-rebase — review MAJOR #1):
+            # a failed awareness write must not leave the thread's connection
+            # holding an open WAL write transaction until its next commit.
+            conn = getattr(self._local, "conn", None)
+            if conn is not None:
+                with suppress(sqlite3.Error):
+                    conn.rollback()
+            return None
 
     # ── Phase C write path: the usage loop (post_llm_call annex) ──────────
 
