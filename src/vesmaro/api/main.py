@@ -30,7 +30,11 @@ from vesmaro import __version__
 from vesmaro.api.auth import router as auth_router
 from vesmaro.api.auth_store import AuthStore
 from vesmaro.api.federation import router as federation_router
-from vesmaro.api.middleware import AuthMiddleware, VitalsVerbMiddleware
+from vesmaro.api.middleware import (
+    AuthMiddleware,
+    DeprecationMiddleware,
+    VitalsVerbMiddleware,
+)
 from vesmaro.api.rate_limit import limiter
 from vesmaro.config import ApiConfig, Settings, load_settings
 from vesmaro.context_rewrite import ContextRewriteRateLimitError
@@ -236,6 +240,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 app.add_middleware(AuthMiddleware)
 # ADR-0026 phase A2 — REST verb boundary (innermost, route-template only).
 app.add_middleware(VitalsVerbMiddleware)
+# REST deprecation aliases (card vesma-rest-deprecation-middleware): root
+# API paths get Deprecation/Link headers pointing at /api/v1/* until 6.0
+# moves the routes physically. Orthogonal to the AuthMiddleware/VitalsVerb
+# bypass lists — no auth or vitals semantics change here.
+app.add_middleware(DeprecationMiddleware)
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

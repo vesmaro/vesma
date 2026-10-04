@@ -35,6 +35,17 @@ For the same capabilities over other transports, see [mcp-tools.md](mcp-tools.md
 - Standard HTTP status codes only — no custom error codes.
 - `200 OK` and `201 Created` carry a JSON body. `204 No Content` is used for deletes that return no body.
 
+### Route versioning — root paths are legacy aliases
+
+The canonical API location is **`/api/v1/<path>`**. The root-level routes (`/memories`, `/search`, `/context/*`, `/graph/*`, `/watch/*`, ...) currently serve without the prefix and are **legacy aliases** kept for backward compatibility. Every response served via a legacy alias carries:
+
+| Header | Meaning |
+|--------|---------|
+| `Deprecation: true` | This location is deprecated — migrate to the canonical path. |
+| `Link: </api/v1/<path>>; rel="suggested-version"` | The canonical location (matched by route template, so parameterised aliases resolve to their `/api/v1` counterpart). |
+
+No `Sunset` header is sent: RFC 8594 requires an absolute HTTP-date, and the removal date is not fixed yet — `Sunset` will be added once it is. Not deprecated: `/health` (liveness convention), the A2A Sessions API at `/v1` (its own versioned surface), and `/auth/*` (no `/api/v1` counterpart). In **Vesma 6.0** the routes move under `/api/v1` physically and the root aliases are removed — migrate before then.
+
 ---
 
 ## Status codes
