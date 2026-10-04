@@ -495,3 +495,28 @@ class TestUsageExposition:
         usage_pos = text.find("mnemos_usage_loop_rate")
         gauges_pos = text.find("memories_total 7")
         assert 0 < usage_pos < gauges_pos  # appended after verb planes
+
+
+class TestAwarenessRollbackPin:
+    """Review MAJOR #1 regression pin: the record_usage rebase re-homed
+    record_awareness_event's rollback tail into the new method (defect
+    class: silent code loss on rebase). Make the drop RED again."""
+
+    def test_awareness_event_handler_keeps_rollback_tail(self):
+        import ast
+
+        from vesmaro.metrics import sink as sink_mod
+
+        tree = ast.parse(Path(sink_mod.__file__).read_text(encoding="utf-8"))
+        fn = next(
+            f
+            for n in ast.walk(tree)
+            if isinstance(n, ast.ClassDef)
+            for f in n.body
+            if isinstance(f, ast.FunctionDef) and f.name == "record_awareness_event"
+        )
+        handler = next(n for n in fn.body if isinstance(n, ast.Try)).handlers[0]
+        body = ast.unparse(handler)
+        assert "self._fail(" in body
+        assert "conn.rollback()" in body
+        assert "return None" in body
