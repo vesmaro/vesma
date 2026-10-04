@@ -363,15 +363,13 @@ vesma stats
 
 ## `fts`
 
-FTS5 index management. One action is currently defined: `rebuild`.
+FTS5 index maintenance — a subcommand group with one verb: `rebuild`.
 
 ```text
-vesma fts ACTION
+vesma fts rebuild
 ```
 
-| Argument | Description |
-|----------|-------------|
-| `ACTION` (positional) | `rebuild` — rebuild the FTS5 index and report the number of rows indexed. Any other value exits with an error. |
+The former positional form (`vesma fts ACTION`) is unchanged — the `rebuild` spelling is identical. Bare `vesma fts` shows the subcommand help; an unknown verb is a usage error (exit 2).
 
 ### Example
 
@@ -384,17 +382,22 @@ vesma fts rebuild
 
 ## `processor`
 
-Background processor (knowledge pipeline) management: inspect the queue, run a manual pass, or start / stop the background loop.
+Background processor (knowledge pipeline) control — a subcommand group: inspect the queue, run a manual pass, or start / stop the background loop.
 
 ```text
-vesma processor ACTION
+vesma processor status|run|start|stop
 ```
 
-| Argument | Description |
-|----------|-------------|
-| `ACTION` (positional) | `status` — queue depth, last processed timestamp, running flag. `run` — one synchronous pipeline pass (cluster → synthesize → quality gate → publish). `start` — start the background processor. `stop` — stop it. |
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Queue depth, last processed timestamp, running flag. |
+| `run` | One synchronous pipeline pass (cluster → synthesize → quality gate → publish). |
+| `start` | Start the background processor. |
+| `stop` | Stop it. |
 
 The `run` summary reports `clusters`, `synthesized`, `published`, and `failed_quality_gate` counts.
+
+The former positional form (`vesma processor ACTION`) is unchanged — the verb spellings are identical. Bare `vesma processor` shows the subcommand help; an unknown verb is a usage error (exit 2).
 
 ### Example
 

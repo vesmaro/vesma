@@ -858,51 +858,104 @@ def stats(config: str = ConfigOption) -> None:
         console.print(f"  [bold]{k}[/bold]: {v}")
 
 
-@app.command(name="fts")
-def fts_cmd(
-    action: str = typer.Argument(..., help="Action: rebuild"),
-    config: str = ConfigOption,
-) -> None:
-    """FTS5 index management."""
+# ── fts / processor / edge-stats sub-apps (CLI-architecture rework W1) ────────
+#
+# Standing design rule: subcommand = function (WHAT), flag = configuration
+# (HOW). The former positional-action commands (`vesma fts rebuild`,
+# `vesma processor status|run|start|stop`, `vesma edge-stats stats|purge`)
+# are real typer sub-apps now. The restructuring is textually compatible —
+# the old positional spellings ARE the new subcommand spellings, so no
+# alias cycle is needed (design doc docs/project/cli-architecture-rework.md
+# §2.1-2.3, §3.5). Behavioral deltas: an unknown verb is a typer usage
+# error (exit 2, was a custom message + exit 1) and the bare
+# `vesma edge-stats` shows help instead of running `stats`.
+
+_fts_app = typer.Typer(
+    name="fts",
+    help=(
+        "FTS5 full-text index maintenance.\n\n"
+        "Subcommand: `rebuild` — rebuild the index and report the number of "
+        "rows indexed. The former positional form (`vesma fts rebuild`) keeps "
+        "the same spelling."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(_fts_app, name="fts")
+
+
+@_fts_app.command(name="rebuild")
+def fts_rebuild(config: str = ConfigOption) -> None:
+    """Rebuild the FTS5 index and report the number of rows indexed."""
     mgr = get_manager(config)
-    if action == "rebuild":
+    try:
         count = mgr.sqlite.rebuild_fts_index()
         console.print(f"[green]✓ FTS5 index rebuilt: {count} rows indexed[/green]")
-    else:
-        console.print(f"[red]Unknown action: {action}. Use 'rebuild'.[/red]")
-        raise typer.Exit(1)
-    mgr.close()
+    finally:
+        mgr.close()
 
 
-@app.command(name="processor")
-def processor_cmd(
-    action: str = typer.Argument(..., help="Action: status|run|start|stop"),
-    config: str = ConfigOption,
-) -> None:
-    """Background processor management."""
+_processor_app = typer.Typer(
+    name="processor",
+    help=(
+        "Background processor (knowledge pipeline) management.\n\n"
+        "Subcommands: `status` (queue depth, last processed timestamp, running "
+        "flag), `run` (one synchronous pipeline pass: cluster → synthesize → "
+        "quality gate → publish), `start` / `stop` (the background loop). The "
+        "former positional form (`vesma processor run`) keeps the same spelling."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(_processor_app, name="processor")
+
+
+@_processor_app.command(name="status")
+def processor_status(config: str = ConfigOption) -> None:
+    """Queue depth, last processed timestamp, running flag."""
     mgr = get_manager(config)
-    if action == "status":
+    try:
         s = mgr.stats()
         proc = s.get("processor", {})
         console.print(f"  queue_depth: {proc.get('queue_depth', 'N/A')}")
         console.print(f"  last_processed_at: {proc.get('last_processed_at', 'N/A')}")
         console.print(f"  running: {mgr.processor_running}")
-    elif action == "run":
+    finally:
+        mgr.close()
+
+
+@_processor_app.command(name="run")
+def processor_run(config: str = ConfigOption) -> None:
+    """Run one synchronous pipeline pass (cluster → synthesize → quality gate → publish)."""
+    mgr = get_manager(config)
+    try:
         result = mgr.run_pipeline()
         console.print(f"  clusters: {result['clusters']}")
         console.print(f"  synthesized: {result['synthesized']}")
         console.print(f"  published: {result['published']}")
         console.print(f"  failed_quality_gate: {result['failed_quality_gate']}")
-    elif action == "start":
+    finally:
+        mgr.close()
+
+
+@_processor_app.command(name="start")
+def processor_start(config: str = ConfigOption) -> None:
+    """Start the background processor loop (the daemon for CLI-only deployments)."""
+    mgr = get_manager(config)
+    try:
         mgr.start_background_processor()
         console.print("[green]✓ Background processor started[/green]")
-    elif action == "stop":
+    finally:
+        mgr.close()
+
+
+@_processor_app.command(name="stop")
+def processor_stop(config: str = ConfigOption) -> None:
+    """Stop the background processor loop (a no-op when it is not running)."""
+    mgr = get_manager(config)
+    try:
         mgr.stop_background_processor()
         console.print("[green]✓ Background processor stopped[/green]")
-    else:
-        console.print(f"[red]Unknown action: {action}. Use: status|run|start|stop[/red]")
-        raise typer.Exit(1)
-    mgr.close()
+    finally:
+        mgr.close()
 
 
 # ── reindex ───────────────────────────────────────────────────────────────────
@@ -959,33 +1012,71 @@ def backfill_embedding_ids_cmd(
     mgr.close()
 
 
-# ── edge-stats maintenance (ADR-0030 A0, review #338 N2) ────────────────────
+# ── edge-stats maintenance (ADR-0030 A0, review #338 N2; sub-app since W1) ───
 
 
-@app.command(name="edge-stats")
-def edge_stats_cmd(
-    action: str = typer.Argument("stats", help="Action: stats | purge"),
-    keep_last: int = typer.Option(
-        None,
-        "--keep-last",
-        "-k",
-        help=(
-            "Purge retention target: the NEWEST N edge_stats rows survive, "
-            "everything older is dropped. Required for 'purge' — there is no "
-            "default retention by design (an operator states it explicitly)."
-        ),
+_edge_stats_app = typer.Typer(
+    name="edge-stats",
+    help=(
+        "edge_stats (used/rejected feedback capture) maintenance (ADR-0030 A0).\n\n"
+        "Subcommands: `stats` (row counts vs the global cap, capture flag, last "
+        "purge stamp), `purge` (drop the OLDEST rows past an explicit "
+        "--keep-last retention; dry run by default). The former positional verb "
+        "forms (`vesma edge-stats stats|purge`) keep the same spelling; the "
+        "former bare form `vesma edge-stats` (which ran `stats`) now shows this "
+        "help — spell the subcommand."
     ),
-    apply: bool = typer.Option(
-        False,
-        "--apply",
-        help=(
-            "Execute the purge (default is a dry run that only reports what "
-            "would be dropped: review it, then re-run with --apply)."
+    no_args_is_help=True,
+)
+app.add_typer(_edge_stats_app, name="edge-stats")
+
+
+@_edge_stats_app.command(name="stats")
+def edge_stats_stats(config: str = ConfigOption) -> None:
+    """Report edge_stats row counts vs the global cap, capture flag, last purge."""
+    mgr = get_manager(config)
+    try:
+        by_kind = mgr.sqlite.count_edge_stats_by_kind()
+        console.print(
+            f"  [cyan]rows total: {sum(by_kind.values())}[/cyan] "
+            f"(global cap {EDGE_STATS_TOTAL_ROWS_CAP})"
+        )
+        for k in sorted(by_kind):
+            console.print(f"  {k}: {by_kind[k]}")
+        console.print(f"  capture flag: {mgr.settings.search.feedback_capture_enabled}")
+        stamp = mgr.sqlite.get_meta(EDGE_STATS_LAST_PURGE_META_KEY)
+        console.print(f"  last purge: {stamp or 'never'}")
+    finally:
+        mgr.close()
+
+
+@_edge_stats_app.command(name="purge")
+def edge_stats_purge(
+    keep_last: Annotated[
+        int | None,
+        typer.Option(
+            "--keep-last",
+            "-k",
+            help=(
+                "Purge retention target: the NEWEST N edge_stats rows survive, "
+                "everything older is dropped. Required for 'purge' — there is no "
+                "default retention by design (an operator states it explicitly)."
+            ),
         ),
-    ),
+    ] = None,
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help=(
+                "Execute the purge (default is a dry run that only reports what "
+                "would be dropped: review it, then re-run with --apply)."
+            ),
+        ),
+    ] = False,
     config: str = ConfigOption,
 ) -> None:
-    """edge_stats (used/rejected feedback capture) maintenance.
+    """Drop the OLDEST edge_stats rows past an explicit --keep-last retention.
 
     The table is append-only (I5): UPDATE and DELETE abort at the DB
     level, and capture volume is bounded per principal AND globally
@@ -1006,36 +1097,21 @@ def edge_stats_cmd(
     """
     mgr = get_manager(config)
     try:
-        if action == "stats":
-            by_kind = mgr.sqlite.count_edge_stats_by_kind()
-            console.print(
-                f"  [cyan]rows total: {sum(by_kind.values())}[/cyan] "
-                f"(global cap {EDGE_STATS_TOTAL_ROWS_CAP})"
-            )
-            for k in sorted(by_kind):
-                console.print(f"  {k}: {by_kind[k]}")
-            console.print(f"  capture flag: {mgr.settings.search.feedback_capture_enabled}")
-            stamp = mgr.sqlite.get_meta(EDGE_STATS_LAST_PURGE_META_KEY)
-            console.print(f"  last purge: {stamp or 'never'}")
-        elif action == "purge":
-            if keep_last is None:
-                console.print("[red]'purge' requires --keep-last N (no default retention)[/red]")
-                raise typer.Exit(1)
-            if keep_last < 0:
-                console.print("[red]--keep-last must be >= 0[/red]")
-                raise typer.Exit(1)
-            result = mgr.sqlite.purge_edge_stats_oldest(keep_last=keep_last, dry_run=not apply)
-            if result["dry_run"]:
-                console.print("  [cyan]dry run (no writes)[/cyan] — re-run with --apply to purge")
-            console.print(f"  rows before: {result['rows_before']}")
-            color = "green" if apply else "yellow"
-            console.print(
-                f"  [{color}]{'purged' if apply else 'would purge'}: {result['purged']}[/{color}]"
-            )
-            console.print(f"  rows after: {result['rows_after']}")
-        else:
-            console.print("[red]Unknown action: {action}. Use 'stats' or 'purge'.[/red]")
+        if keep_last is None:
+            console.print("[red]'purge' requires --keep-last N (no default retention)[/red]")
             raise typer.Exit(1)
+        if keep_last < 0:
+            console.print("[red]--keep-last must be >= 0[/red]")
+            raise typer.Exit(1)
+        result = mgr.sqlite.purge_edge_stats_oldest(keep_last=keep_last, dry_run=not apply)
+        if result["dry_run"]:
+            console.print("  [cyan]dry run (no writes)[/cyan] — re-run with --apply to purge")
+        console.print(f"  rows before: {result['rows_before']}")
+        color = "green" if apply else "yellow"
+        console.print(
+            f"  [{color}]{'purged' if apply else 'would purge'}: {result['purged']}[/{color}]"
+        )
+        console.print(f"  rows after: {result['rows_after']}")
     finally:
         mgr.close()
 
