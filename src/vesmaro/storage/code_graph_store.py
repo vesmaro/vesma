@@ -25,12 +25,15 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
+
+logger = logging.getLogger(__name__)
 
 #: Allowed node kinds (ADR-0032 §3.1; CHECK-enforced). ``Command`` /
 #: ``Route`` (card vesma-graph-command-route-nodes, schema v2) are
@@ -356,6 +359,14 @@ class CodeGraphStore:
         ).fetchone()
         if row is not None and str(row[0]) == str(SCHEMA_VERSION):
             return
+        nodes_before = int(conn.execute("SELECT COUNT(*) FROM project_nodes").fetchone()[0])
+        logger.info(
+            "code_graph store: migrating sidecar schema to v%d (previous stamp: %s, "
+            "%d node rows carried over)",
+            SCHEMA_VERSION,
+            row[0] if row is not None else "none (pre-versioning)",
+            nodes_before,
+        )
         prev_isolation = conn.isolation_level
         conn.isolation_level = None  # manual txn control (PRAGMA must sit outside a txn)
         try:
