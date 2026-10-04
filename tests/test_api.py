@@ -24,6 +24,7 @@ from vesmaro.api import main as api_main
 from vesmaro.api.main import app, lifespan
 from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
+from vesmaro.models import TagContractError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -558,3 +559,163 @@ class TestTags:
         assert learning["count"] == 2
         assert decision["count"] == 1
         assert items.index(learning) < items.index(decision)
+
+
+# ---------------------------------------------------------------------------
+# Bulk tags REST twins (#454 tail): /api/v1/tags/add, /api/v1/tags/remove
+# ---------------------------------------------------------------------------
+
+
+class TestTagsAddRemoveTwins:
+    """REST twins of the grouped ``mnemos_tags`` MCP tool actions
+    ``add``/``remove`` (the #454 tail). Coverage per twin: happy path,
+    the contract surface (per-row refusals ride the report at 200 — MCP
+    parity; an escaping contract ``ValueError`` maps to 422, never a raw
+    500) and the project/agent filter scoping."""
+
+    def _seed(self, client: TestClient, agent: str = "twins-agent") -> str:
+        resp = client.post(
+            "/memories",
+            json={
+                "content": f"tags-twin seed {agent}",
+                "tags": ["project:twins-proj", f"agent:{agent}", "mnemos:decision"],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    def _tags_of(self, client: TestClient, memory_id: str) -> list[str]:
+        resp = client.get(f"/memories/{memory_id}")
+        assert resp.status_code == 200, resp.text
+        return list(resp.json()["tags"])
+
+    def test_add_twin_happy(self, client):
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "agent": "twins-agent",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["action"] == "add"
+        assert body["changed"] == 1
+        assert body["dry_run"] is False
+        assert "severity:low" in self._tags_of(client, mid)
+
+    def test_remove_twin_happy(self, client):
+        mid = self._seed(client)
+        client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        resp = client.post(
+            "/api/v1/tags/remove",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["action"] == "remove"
+        assert body["changed"] == 1
+        assert "severity:low" not in self._tags_of(client, mid)
+
+    def test_add_twin_default_is_dry_run(self, client):
+        """Boundary: the write twin is inert unless the caller says
+        ``dry_run=false`` explicitly (same default as the MCP tool)."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={"tags": ["severity:low"], "project": "twins-proj"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert "severity:low" not in self._tags_of(client, mid)
+
+    def test_add_twin_contract_refusal_rides_the_report(self, client):
+        """An invalid ``mnemos:`` subtype is refused per memory and
+        reported in ``errors`` at HTTP 200 — MCP parity: the report is
+        the error channel, the store is not corrupted."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["mnemos:bogus_subtype"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"], f"expected per-memory contract errors, got {body}"
+        assert "mnemos:bogus_subtype" not in self._tags_of(client, mid)
+        assert "mnemos:decision" in self._tags_of(client, mid)  # store intact
+
+    def test_remove_twin_last_project_tag_blocked(self, client):
+        """Removing the last ``project:`` tag breaks the tag contract —
+        refused per memory in the report, never written."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/remove",
+            json={
+                "tags": ["project:twins-proj"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"], f"expected contract refusals, got {body}"
+        assert "project:twins-proj" in self._tags_of(client, mid)  # not corrupted
+
+    def test_add_twin_escaping_contract_error_maps_to_422(self, client, monkeypatch):
+        """The #422/#432 defect class stays out of the new routes: a
+        ``TagContractError`` escaping the manager maps to 422 with the
+        same message, never a raw 500."""
+
+        def boom(*args: object, **kwargs: object) -> dict[str, object]:
+            raise TagContractError("tag must have a prefix (contain ':'): 'bogus'")
+
+        mgr = api_main._manager
+        assert mgr is not None
+        monkeypatch.setattr(mgr, "tags_add", boom)
+        resp = client.post("/api/v1/tags/add", json={"tags": ["severity:low"]})
+        assert resp.status_code == 422
+        assert "prefix" in resp.json()["detail"]
+
+    def test_remove_twin_escaping_contract_error_maps_to_422(self, client, monkeypatch):
+        def boom(*args: object, **kwargs: object) -> dict[str, object]:
+            raise ValueError("strict tag contract violated: no project: tag left")
+
+        mgr = api_main._manager
+        assert mgr is not None
+        monkeypatch.setattr(mgr, "tags_remove", boom)
+        resp = client.post("/api/v1/tags/remove", json={"tags": ["severity:low"]})
+        assert resp.status_code == 422
+        assert "contract" in resp.json()["detail"]
+
+    def test_agent_filter_scopes_the_operation(self, client):
+        """The ``agent`` filter passes through the route untouched: only
+        the scoped agent's memories change (the MCP surface semantics)."""
+        mid_a = self._seed(client, agent="agent-a")
+        mid_b = self._seed(client, agent="agent-b")
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={"tags": ["severity:low"], "agent": "agent-a", "dry_run": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["changed"] == 1
+        assert "severity:low" in self._tags_of(client, mid_a)
+        assert "severity:low" not in self._tags_of(client, mid_b)

@@ -930,6 +930,96 @@ async def rename_tags(req: TagsRenameRequest) -> dict[str, Any]:
     )
 
 
+class TagsAddRequest(BaseModel):
+    """Request body for POST /api/v1/tags/add — mirrors ``mnemos_tags`` action="add"."""
+
+    tags: list[str]
+    dry_run: bool = True
+    project: str | None = None
+    agent: str | None = None
+
+
+class TagsRemoveRequest(BaseModel):
+    """Request body for POST /api/v1/tags/remove — mirrors ``mnemos_tags`` action="remove"."""
+
+    tags: list[str]
+    wildcard: bool = False
+    dry_run: bool = True
+    project: str | None = None
+    agent: str | None = None
+
+
+def _tags_call(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Run one bulk-tags operation, mapping contract errors to HTTP 422.
+
+    The #407 twin discipline, applied up front to the NEW routes (#454
+    tail; the #422/#432 defect class — contract ``ValueError`` leaking as
+    a raw 500 — is NOT carried into new code): a ``TagContractError`` (a
+    ``ValueError``) or any contract ``ValueError`` from the manager
+    boundary maps to 422 with the SAME error string, matching the
+    existing in-file fix pattern (``/context/rewrite`` maps tag-contract
+    violations to 422). Per-memory contract refusals are NOT errors
+    here: the manager reports them per row in the report's ``errors``
+    list (the uniform ``mnemos_tags`` report shape, MCP parity) — this
+    wrapper is the fail-closed net for anything that escapes that path.
+    """
+    try:
+        return fn()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tags/add")
+async def add_tags(req: TagsAddRequest) -> dict[str, Any]:
+    """Append tags to every memory matching the project/agent filter.
+
+    REST twin of the ``mnemos_tags`` MCP tool with ``action="add"``
+    (#454 tail). Each tag must carry a prefix shape (contain ``":"``);
+    the resulting per-memory tag set is re-validated in strict mode by the
+    manager (the single enforcement path), so a contract-breaking tag is
+    rejected per memory in the report's ``errors`` list instead of
+    corrupting the store. ``dry_run=true`` by default — nothing is
+    written unless the caller explicitly sets ``dry_run=false``. When
+    neither ``project`` nor ``agent`` is set the operation spans ALL
+    memories — scope it deliberately.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    return _tags_call(
+        lambda: mgr.tags_add(
+            tags=req.tags,
+            dry_run=req.dry_run,
+            project=req.project,
+            agent=req.agent,
+        )
+    )
+
+
+@app.post("/api/v1/tags/remove")
+async def remove_tags(req: TagsRemoveRequest) -> dict[str, Any]:
+    """Remove tags from memories (exact match, or prefix match with ``wildcard``).
+
+    REST twin of the ``mnemos_tags`` MCP tool with ``action="remove"``.
+    With ``wildcard=true`` each entry is treated as a prefix (``["gcw:"]``
+    strips every ``gcw:*`` tag). The resulting per-memory tag set is
+    re-validated in strict mode by the manager: removing the last
+    ``project:`` / ``agent:`` / ``mnemos:`` tag is rejected per memory in
+    the report's ``errors`` list, never written. ``dry_run=true`` by
+    default. Idempotent: a second run reports ``changed=0``.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    return _tags_call(
+        lambda: mgr.tags_remove(
+            tags=req.tags,
+            wildcard=req.wildcard,
+            dry_run=req.dry_run,
+            project=req.project,
+            agent=req.agent,
+        )
+    )
+
+
 # ── Traces (M6) ────────────────────────────────────────────────────────────────
 
 
@@ -1987,6 +2077,71 @@ async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict
             reason=req.reason,
             confirm=req.confirm,
             confirm_name=req.confirm_name,
+        )
+    )
+
+
+class GraphRegisterRequest(BaseModel):
+    """Request body for POST /api/v1/graph/register — mirrors ``mnemos_register_project``."""
+
+    project_id: str
+    root: str
+    agent: str
+    session: str | None = None
+
+
+class GraphRepointRequest(BaseModel):
+    """Request body for POST /api/v1/graph/repoint — mirrors the ``vesma graph repoint`` CLI."""
+
+    project_id: str
+    new_root: str
+    agent: str
+    session: str | None = None
+    reason: str | None = None
+
+
+@app.post("/api/v1/graph/register")
+async def graph_register(req: GraphRegisterRequest) -> dict[str, Any]:
+    """Register a project root for the code graph — twin of
+    ``mnemos_register_project`` (#454; the agent-facing answer to
+    «graph tools answer not registered»).
+
+    Agent-scoped like the MCP tool: ``source="agent"``, so the operator
+    gate ``code_graph.agent_registration`` applies (refusal → 403 with
+    the actionable message). The operator path (never gated) remains the
+    ``vesma graph register`` CLI. Idempotent when the root is already
+    registered; confinement refusals (missing dir, no manifest marker,
+    ``$HOME``/fs-root, name collision on another root) → 403, audited.
+    """
+    return _graph_call(
+        lambda: _graph_service().register_project(
+            req.project_id,
+            req.root,
+            agent=req.agent,
+            session=req.session,
+        )
+    )
+
+
+@app.post("/api/v1/graph/repoint")
+async def graph_repoint(req: GraphRepointRequest) -> dict[str, Any]:
+    """Re-point a GHOST registration at its moved root — twin of the
+    ``vesma graph repoint`` CLI (#450).
+
+    Ghost recovery only: when the OLD root still exists on disk the
+    repoint is refused (403 — move-root is not repoint). The stale index
+    is purged (derived data) and rebuilt by the next
+    ``POST /graph/index``; the epoch bumps so consumers see the new
+    generation. One root = one graph: a new root already claimed by
+    another project is a loud 403.
+    """
+    return _graph_call(
+        lambda: _graph_service().repoint_project(
+            req.project_id,
+            req.new_root,
+            agent=req.agent,
+            session=req.session,
+            reason=req.reason,
         )
     )
 

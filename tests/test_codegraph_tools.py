@@ -1415,6 +1415,129 @@ class TestRestTwins:
         assert resp.status_code == 503
 
 
+class TestRestRegisterRepointTwins:
+    """REST twins for the #454 tail: ``POST /api/v1/graph/register``
+    (twin of ``mnemos_register_project``) and ``POST /api/v1/graph/repoint``
+    (twin of the ``vesma graph repoint`` CLI). Each twin gets the trio:
+    happy path, a confinement refusal mapped by ``_graph_call`` (403,
+    never a raw 500) and the attribution binding (400)."""
+
+    @staticmethod
+    def _make_repo(tmp_path: Path, name: str) -> Path:
+        """A minimal registerable root: packaging marker + one code file."""
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (repo / "mod.py").write_text("class Widget:\n    pass\n", encoding="utf-8")
+        return repo
+
+    def test_register_twin_happy_then_index(self, rest_client: TestClient, tmp_path: Path) -> None:
+        repo = self._make_repo(tmp_path, "reg-repo")
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restreg", "root": str(repo), "agent": "tester"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"project": "restreg", "status": "registered", "root": str(repo)}
+
+        # the registration is immediately usable by name — the whole point
+        # of the twin (the «graph tools answer not registered» hole)
+        idx = rest_client.post("/graph/index", json={"project_id": "restreg", "agent": "tester"})
+        assert idx.status_code == 200
+        assert idx.json()["status"] == "ok"
+
+    def test_register_twin_reuses_registered_root(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        """One root = one graph: a second name over the fixture's root
+        rides the existing registration instead of duplicating it."""
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "alias", "root": str(mini_repo), "agent": "tester"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "already-registered"
+        assert body["project"] == "restproj"
+
+    def test_register_twin_name_collision_is_403(
+        self, rest_client: TestClient, mini_repo: Path, tmp_path: Path
+    ) -> None:
+        """The existing registration wins: the same NAME at a DIFFERENT
+        root is a loud confinement refusal (repoint is the operator's
+        tool for moved roots), not a silent overwrite."""
+        other = self._make_repo(tmp_path, "collision-root")
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restproj", "root": str(other), "agent": "tester"},
+        )
+        assert resp.status_code == 403
+        assert "already registered at" in resp.json()["detail"]
+
+    def test_register_twin_missing_attribution_is_400(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        """PG7: an empty agent is an attribution-binding breach → 400
+        (the ``_graph_call`` family mapping), never a 500."""
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restreg", "root": str(mini_repo), "agent": ""},
+        )
+        assert resp.status_code == 400
+
+    def test_repoint_twin_ghost_happy_then_index(
+        self, rest_client: TestClient, tmp_path: Path
+    ) -> None:
+        repo = self._make_repo(tmp_path, "movable")
+        reg = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "movable", "root": str(repo), "agent": "tester"},
+        )
+        assert reg.status_code == 200
+        idx0 = rest_client.post("/graph/index", json={"project_id": "movable", "agent": "tester"})
+        assert idx0.status_code == 200
+
+        moved = repo.with_name("movable-moved")
+        repo.rename(moved)  # the ghost: old root gone on disk
+        rep = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "movable", "new_root": str(moved), "agent": "tester"},
+        )
+        assert rep.status_code == 200
+        body = rep.json()
+        assert body["status"] == "repointed"
+        assert body["root"] == str(moved)
+
+        # the stale sidecar was purged; the next index rebuilds fresh
+        rebuilt = rest_client.post(
+            "/graph/index", json={"project_id": "movable", "agent": "tester"}
+        )
+        assert rebuilt.status_code == 200
+        assert rebuilt.json()["status"] == "ok"
+
+    def test_repoint_twin_live_root_is_403(
+        self, rest_client: TestClient, mini_repo: Path, tmp_path: Path
+    ) -> None:
+        """Ghost recovery only: a LIVE registration is never re-pointed
+        (move-root is not repoint) — loud 403 with the actionable text."""
+        other = self._make_repo(tmp_path, "live-alt")
+        resp = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "restproj", "new_root": str(other), "agent": "tester"},
+        )
+        assert resp.status_code == 403
+        assert "old root still exists" in resp.json()["detail"]
+
+    def test_repoint_twin_missing_attribution_is_400(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        resp = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "restproj", "new_root": str(mini_repo), "agent": ""},
+        )
+        assert resp.status_code == 400
+
+
 # ── the audit trail is inspectable (slice-5 surface) ─────────────────────────
 
 
