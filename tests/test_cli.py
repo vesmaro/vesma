@@ -830,7 +830,8 @@ class TestWorkflowCli:
         assert "in-progress" in populated.output
 
 
-# ── edge-stats maintenance (ADR-0030 A0, review #338 N2) ─────────────────────
+# ── edge-stats maintenance (ADR-0030 A0, review #338 N2; sub-app since the
+#    CLI-architecture rework W1 — the positional verb spellings are unchanged) ─
 
 
 class TestEdgeStatsCommand:
@@ -860,10 +861,98 @@ class TestEdgeStatsCommand:
         assert "dry run" in result.output
         assert "would purge: 0" in result.output
 
-    def test_unknown_action_exits_1(self, isolated_config: Path) -> None:
+    def test_help_lists_subcommands(self, isolated_config: Path) -> None:
+        """The sub-app help names both verbs (W1: a real typer sub-app)."""
+        result = runner.invoke(app, ["edge-stats", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "stats" in result.output
+        assert "purge" in result.output
+
+    def test_bare_form_shows_help_not_stats(self, isolated_config: Path) -> None:
+        """CHANGELOG'd delta: bare `vesma edge-stats` no longer runs `stats` —
+        it is a usage error showing the subcommand help."""
+        result = runner.invoke(app, ["edge-stats"])
+        assert result.exit_code == 2, result.output
+        assert "rows total" not in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: an unknown verb moved to typer's usage error path
+        (exit 2; was a custom message + exit 1 before the sub-app)."""
         result = runner.invoke(app, ["edge-stats", "vacuum"])
-        assert result.exit_code == 1, result.output
-        assert "Unknown action" in result.output
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
+
+
+# ── fts / processor sub-apps (CLI-architecture rework W1) ────────────────────
+#
+# The former positional-action commands are real typer sub-apps now. The
+# rework is textually compatible: the old spellings ARE the new subcommand
+# spellings, so every invoke below is simultaneously the legacy positional
+# form and the canonical subcommand form (no alias cycle was needed).
+
+
+class TestFtsSubapp:
+    def test_rebuild(self, isolated_config: Path) -> None:
+        """`vesma fts rebuild` — the one verb, legacy and canonical form alike."""
+        result = runner.invoke(app, ["fts", "rebuild"])
+        assert result.exit_code == 0, result.output
+        assert "FTS5 index rebuilt" in result.output
+
+    def test_help_names_rebuild(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["fts", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "rebuild" in result.output
+
+    def test_bare_form_shows_help(self, isolated_config: Path) -> None:
+        """Bare `vesma fts` is a usage error with the subcommand help
+        (was: missing-argument ACTION error — same exit code)."""
+        result = runner.invoke(app, ["fts"])
+        assert result.exit_code == 2, result.output
+        assert "rebuild" in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: exit 2 via typer (was a custom message + exit 1)."""
+        result = runner.invoke(app, ["fts", "compact"])
+        assert result.exit_code == 2, result.output
+        assert "compact" in result.output
+
+
+class TestProcessorSubapp:
+    def test_status_on_empty_store(self, isolated_config: Path) -> None:
+        """`vesma processor status` — the compatibility surface: the legacy
+        positional spelling IS the subcommand spelling."""
+        result = runner.invoke(app, ["processor", "status"])
+        assert result.exit_code == 0, result.output
+        assert "queue_depth: 0" in result.output
+        assert "running: False" in result.output
+
+    def test_run_on_empty_store(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "run"])
+        assert result.exit_code == 0, result.output
+        assert "clusters: 0" in result.output
+        assert "published: 0" in result.output
+
+    def test_stop_is_a_noop_when_not_running(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "stop"])
+        assert result.exit_code == 0, result.output
+        assert "stopped" in result.output
+
+    def test_help_lists_all_four_verbs(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "--help"])
+        assert result.exit_code == 0, result.output
+        for verb in ("status", "run", "start", "stop"):
+            assert verb in result.output
+
+    def test_bare_form_shows_help(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor"])
+        assert result.exit_code == 2, result.output
+        assert "status" in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: exit 2 via typer (was a custom message + exit 1)."""
+        result = runner.invoke(app, ["processor", "vacuum"])
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
 
 
 class TestGraphLifecycleCli:
@@ -911,9 +1000,7 @@ class TestGraphLifecycleCli:
         assert "deleted" in result.output
         assert "ghost registration removed" in result.output
 
-    def test_delete_ghost_refused_without_gate(
-        self, isolated_config: Path, tmp_path: Path
-    ) -> None:
+    def test_delete_ghost_refused_without_gate(self, isolated_config: Path, tmp_path: Path) -> None:
         repo = self._repo(tmp_path, "cli-repo")
         runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
         repo.rename(repo.with_name("cli-repo-moved"))  # the ghost
