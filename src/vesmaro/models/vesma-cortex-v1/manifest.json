@@ -1,10 +1,10 @@
 {
   "name": "vesma-cortex-v1",
   "version": "1",
-  "sha256": "71f0572de76c0657c6dd33df81c1155ede4f3e05b4e44f1c75e0080ff367baa7",
+  "sha256": "beb0a65da14f9ed2554951aa8850f68db47fd1212af1577955239a34ab04a091",
   "embedder_pin": "nano:sha256:3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
-  "corpus_fingerprint": "ebd9b17ad4635d32959a751968689363a2d2e45178f3416b905006973a34ba21",
-  "trained_at": "2026-10-03T07:02:16+00:00",
+  "corpus_fingerprint": "edd940730a471e3d8c84461b7c3ca35dd86d691f354af0fcf4c498745d1aff61",
+  "trained_at": "2026-10-01T22:26:33+00:00",
   "candidate": "d-boost",
   "features": [
     "cos_target",
@@ -22,6 +22,6 @@
     "lang_match"
   ],
   "feature_set_sha256": "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af",
-  "size_bytes": 98404,
-  "weights_path": "data/stage2/artifact-b2/model.onnx"
+  "size_bytes": 98112,
+  "weights_path": "data/stage2/artifact-b1/model.onnx"
 }
