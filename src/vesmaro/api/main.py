@@ -252,6 +252,15 @@ app.add_middleware(DeprecationMiddleware)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Liveness probe — process upness, nothing else.
+
+    Always unauthenticated (AuthMiddleware bypass list): supervisors
+    and load balancers poll it without a session. Never deprecated and
+    never relocated — ``/health`` stays at the root by design.
+
+    Answers ``{"status": "ok"}`` with HTTP 200 whenever the process is
+    serving.
+    """
     return {"status": "ok"}
 
 
@@ -416,6 +425,18 @@ async def metrics() -> dict[str, Any]:
 
 @app.post("/memories", response_model=Memory, status_code=201)
 async def create_memory(data: MemoryCreate) -> Memory:
+    """Create a memory — a thin wrapper over ``MemoryManager.add``.
+
+    The body is a ``MemoryCreate`` (``content`` required); ``tags`` must
+    satisfy the M2 tag contract (``project:<slug>``, ``agent:<slug>``
+    and a ``mnemos:<subtype>`` scope — validated per the
+    ``strict_tag_contract`` setting). ``project`` / ``agent`` are derived
+    from the tags and stored as denormalised columns for fast filtering.
+
+    Returns the full ``Memory`` with HTTP 201. A malformed body (unknown
+    enum value, ADR-0027 doc-grouping triple violation) is rejected with
+    422 by the request-validation layer.
+    """
     mgr = get_manager()
     settings = mgr.settings
 
@@ -487,6 +508,21 @@ async def list_memories(
     limit: int = Query(default=20, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[Memory]:
+    """List recent memories, newest first (``GET /memories``).
+
+    Filters AND together: ``status`` (a ``MemoryStatus`` value),
+    ``project`` / ``agent`` slugs, ``tags`` (comma-separated, exact
+    membership), ``task`` (ADR-0027 Phase 2 task scope — a bare slug,
+    byte-identical to appending ``task:<slug>`` to ``tags``) and
+    ``since`` / ``until`` ISO-8601 bounds on ``created_at``. Paging via
+    ``limit`` (cap 500) / ``offset``. Quarantined rows never appear in
+    listings (ADR-0019 §5), so a page may under-fill.
+
+    Errors: 422 for an unknown ``status`` value (the valid set is
+    echoed in the detail), 400 for an unsalvageable ``task`` slug —
+    the manager boundary's ``ValueError`` string passes through
+    unmodified (the #407 twin discipline).
+    """
     mgr = get_manager()
     status_enum: MemoryStatus | None = None
     if status:
