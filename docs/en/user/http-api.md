@@ -57,11 +57,11 @@ No `Sunset` header is sent: RFC 8594 requires an absolute HTTP-date, and the rem
 | `400` | Bad request (e.g. trying to publish a non-`processed` memory; project-graph budget refusal) |
 | `404` | Not found (memory_id, cluster_id, dlq_id, session_id, turn_id) |
 | `401` | Unauthorised (missing or invalid session token; only when `api.auth_enabled=true`) |
-| `403` | Forbidden — policy refusal: project-graph confinement (path escapes the registered root, or unregistered project, PG2) on `/graph/*` and `/watch/start` |
+| `403` | Forbidden — policy refusal: project-graph confinement (path escapes the registered root, or unregistered project, PG2) on `/graph/*` and `/watch/start`, plus the register/repoint refusals (name collision, live-root repoint, root claimed by another project) on `/api/v1/graph/register` and `/api/v1/graph/repoint` |
 | `413` | Payload too large — project-graph index limit breach (fail-closed, PG7) on `/graph/index` |
-| `422` | Unprocessable entity (Pydantic validation failure on the request body) |
+| `422` | Unprocessable entity (Pydantic validation failure on the request body; a tag-contract violation escaping the manager on `/api/v1/tags/*`) |
 | `500` | Internal server error (see server logs) |
-| `503` | Service unavailable — auth not initialised (fail-closed AuthMiddleware), or the project-graph master flag `code_graph.enabled` is off (operator gate on `/graph/*` and `/watch/start`) |
+| `503` | Service unavailable — auth not initialised (fail-closed AuthMiddleware), or the project-graph master flag `code_graph.enabled` is off (operator gate on `/graph/*`, `/api/v1/graph/*`, and `/watch/start`) |
 
 ---
 
@@ -234,6 +234,51 @@ Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (th
 | `invalid_subtypes_to_legacy` | bool | `false` | Rename invalid subtypes to `<to_prefix>legacy` instead of skipping. |
 
 **Response 200** — the rename report (preview or applied), including the `changed` count.
+
+### `POST /api/v1/tags/add` — bulk-append tags
+
+REST twin of the `mnemos_tags` MCP tool with `action="add"` (#454 — with this route and `/api/v1/tags/remove` below, the REST surface covers every grouped-tags action). Appends each tag to every memory matching the `project` / `agent` filter; the resulting per-memory tag set is re-validated in **strict** mode by the manager (the single enforcement path), so a contract-breaking tag (a duplicate `project:`, an invalid `mnemos:` subtype) is refused per memory in the report's `errors` list instead of corrupting the store. `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`. When neither filter is set the operation spans ALL memories — scope it deliberately.
+
+**Request body**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tags` | string[] | — | Tags to append; each must carry a prefix shape (contain `:`). |
+| `dry_run` | bool | `true` | Preview without writing. |
+| `project` / `agent` | string \| null | `null` | Scope the append to one project / agent. |
+
+**Response 200** — `{action, scanned, changed, added_tags, errors, dry_run}`. Per-memory contract refusals ride the `errors` list at 200 (MCP parity); a contract `ValueError` escaping the manager maps to `422` with the same message — never a raw 500.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/tags/add \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["severity:low"], "project": "vesma", "dry_run": false}'
+```
+
+### `POST /api/v1/tags/remove` — bulk-remove tags
+
+REST twin of `mnemos_tags` with `action="remove"`. Exact match by default; with `wildcard: true` each entry is treated as a prefix (`["gcw:"]` strips every `gcw:*` tag). Removing the last `project:` / `agent:` / `mnemos:` tag from a memory is a contract breach — refused per memory in the report's `errors` list, never written. Idempotent: a second run reports `changed=0`. `dry_run` defaults to `true`.
+
+**Request body**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tags` | string[] | — | Tags to remove (exact match, or prefix when `wildcard`). |
+| `wildcard` | bool | `false` | Treat each entry as a prefix match. |
+| `dry_run` | bool | `true` | Preview without writing. |
+| `project` / `agent` | string \| null | `null` | Scope the removal to one project / agent. |
+
+**Response 200** — `{action, scanned, changed, removed_tags, wildcard, errors, dry_run}`; error mapping as for `/api/v1/tags/add`.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/tags/remove \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["severity:low"], "project": "vesma", "dry_run": false}'
+```
 
 ---
 
@@ -1370,6 +1415,55 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/vesma?agent=operator" \
   -H "Content-Type: application/json" \
   -d '{"reason": "reindex from scratch"}'
 ```
+
+### `POST /api/v1/graph/register` — register a project root
+
+Agent-facing registration — the answer to «graph tools answer not registered» (#454; the REST twin of `mnemos_register_project`). Confinement gates apply as on the auto path: the root must exist and carry a manifest marker (e.g. `pyproject.toml`) or `.git`, `$HOME`/fs-roots are refused, and the one-root-one-graph rule holds — a root already registered under another name is REUSED, never duplicated. A project name that already exists at a DIFFERENT root is a loud `403` (the existing registration wins; moved roots are the operator's `vesma graph repoint`). Mounted under `/api/v1` (canonical namespace for new routes).
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `project_id` | string | **yes** | Project name to register. |
+| `root` | string | **yes** | Absolute path to the project root on this machine. |
+| `agent` | string | **yes** | Caller identity (PG7 attribution binding). |
+| `session` | string | no | Session id for the audit trail. |
+
+**Response 200** — `{"project": "...", "status": "registered" | "already-registered", "root": "..."}` (reuse adds a `note`). Errors: `400` empty `agent` (attribution binding), `403` confinement refusal (missing dir, no marker, `$HOME`, name collision — audited), `503` graph flag off.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/graph/register \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "vesma", "root": "/home/you/projects/vesma", "agent": "ci-runner"}'
+```
+
+### `POST /api/v1/graph/repoint` — re-point a ghost registration at its moved root
+
+REST twin of the `vesma graph repoint` CLI (#450). Ghost recovery only: the OLD root must be missing on disk (a live registration is refused with `403` — move-root is not repoint). The stale index is purged (derived, rebuildable data) and the epoch bumps; the next `POST /graph/index` rebuilds fresh at the new root. A new root already claimed by another project is a loud `403`. Refusals are audited.
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `project_id` | string | **yes** | The ghosted project name. |
+| `new_root` | string | **yes** | Absolute path of the moved root. |
+| `agent` | string | **yes** | Caller identity (PG7 attribution binding). |
+| `session` | string | no | Session id for the audit trail. |
+| `reason` | string | no | Free-form reason recorded in the audit row (default `graph-repoint`). |
+
+**Response 200** — `{"project": "...", "status": "repointed" | "unchanged", "root": "...", "purged_nodes": N, ...}`. Errors as for register (`400` attribution, `403` confinement/live-root/claimed-root, `503` flag off).
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/graph/repoint \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "vesma", "new_root": "/home/you/projects/vesma-new", "agent": "ci-runner", "reason": "repo moved"}'
+```
+
+> **#454 REST-twin tail closed (2026-10-04).** Every agent-facing graph mutation (`register`, `repoint`) and every grouped-tags action (`add`, `remove`) now has a REST twin alongside the existing `/graph/*` and `/tags/rename` routes; new routes mount under `/api/v1`.
 
 ---
 
