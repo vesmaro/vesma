@@ -33,8 +33,8 @@ Nodes and edges:
 
 | Kind | Examples |
 |------|----------|
-| **Nodes** | `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type` |
-| **Edges** | `CONTAINS_FILE`, `DEFINES`, `IMPORTS`, `CALLS`, `INHERITS`, `TESTS`, `USES` |
+| **Nodes** | `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type` — plus `Command` / `Route` on a defining repo (schema v2, [below](#cli-commands-and-rest-routes-in-the-graph-schema-v2)) |
+| **Edges** | `CONTAINS_FILE`, `DEFINES`, `IMPORTS`, `CALLS`, `INHERITS`, `TESTS`, `USES` — plus `INVOKES` / `HANDLES` (schema v2) |
 
 The `USES` edge is the honesty marker of the family: a call is recorded as
 `CALLS` only when the parser can prove the target; everything else that looks
@@ -76,6 +76,59 @@ through to a wrong parser. What the graph sees in a Go tree:
   (`F[T](...)`), dot- and blank-imports. The import path string is the only
   string content ever read, and only to resolve imports — it never reaches
   the store (PG1 holds for Go sources the same way it holds for Python).
+
+---
+
+## CLI commands and REST routes in the graph (schema v2)
+
+The engine's own surface is first-class graph data. When the indexed root
+**is a vesma checkout** — detected by the presence of the engine's `cli` /
+`api` package markers inside the root, never by a hardcoded path — a surface
+node-source extension contributes two more node kinds on every full index:
+
+| Kind | One node is | Example |
+|------|-------------|---------|
+| `Command` | one CLI invocation path: full command name, one-line help, option count, up to 16 compact `param → help` entries | `vesma graph delete` |
+| `Route` | one HTTP method + path: one-line description and the implementing endpoint's name | `GET /api/v1/metrics` |
+
+The data comes from the LIVE engine registries — the same typer/click tree
+the shell-completion engine walks (`vesma __complete`) and FastAPI's
+`app.routes` (every included router: sessions, auth, federation) — so there
+is no second parser to drift. Each node binds to its implementing function
+with an **`INVOKES`** (Command → handler) or **`HANDLES`** (Route →
+endpoint) edge whenever that function resolves in the indexed tree
+(import-path match first, then a unique dotted-suffix match for src-layouts;
+an unresolved handler gets NO edge — the unresolved-import honesty rule).
+
+Token economics (the reason this exists): "how do I delete a graph index"
+is ONE bounded search instead of an ~18.7k-token `--help` discovery:
+
+```
+mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
+→ 1 row: "vesma graph delete" · help: "Delete a project's graph index…"
+  options: 5 · params: {project, --force, --confirm-name, --agent, --reason}
+```
+
+Guards:
+
+- help strings are ONE-LINE only — full help text never rides a node;
+- every issued string passes the secrets detector (a hit drops the string,
+  never the node);
+- a root without the markers — any foreign repo — grows ZERO surface nodes:
+  the extension is registered once by the host and decided per-root;
+- `mnemos_project_graph_status` reports the per-kind `node_kinds` breakdown
+  so the contribution is visible, not assumed.
+
+**Cross-project agents:** commands and routes are code of the DEFINING repo.
+An agent working in another project queries them with `project_id` of the
+vesma repo's own project (the one whose registered root carries the engine),
+not of the agent's current project — then follows the `INVOKES`/`HANDLES`
+edge into the handler's code.
+
+**Existing indexes:** surface nodes land on the next FULL (re)index — the
+incremental classifier rebuilds the whole project on any file change, so
+touching a tracked file is enough; or drop the index
+(`mnemos_delete_graph_project`) and index fresh.
 
 ---
 
@@ -307,9 +360,11 @@ resort. The working loop:
    ranges.
 
 **When grep wins.** The graph indexes symbols only (zero source bytes,
-PG1) — it does not see string literals. Tool names, route paths, env var
-names, log strings, comments and docs-sample prose stay grep territory.
-An unregistered repo has no graph at all — check
+PG1) — it does not see string literals. Tool names, env var names, log
+strings, comments and docs-sample prose stay grep territory. (The
+engine's CLI commands and REST routes are the exception — they are
+first-class `Command`/`Route` nodes on a defining repo, schema v2.) An
+unregistered repo has no graph at all — check
 `mnemos_list_graph_projects` first. And «unindexed» is not «missing»:
 `mnemos_check_graph_coverage` distinguishes `indexed` / `stale` /
 `unindexed` / `poisoned` before you conclude a symbol does not exist.
@@ -475,6 +530,9 @@ _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 `src/vesmaro/codegraph/` (auto path: `autoindex.py`,
 `tests/test_codegraph_autoindex.py`); landed in PG-0 wave (#438),
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
-150cdfe). Feature map: [features.md](../features.md)._
+150cdfe). Surface nodes (schema v2): card vesma-graph-command-route-nodes,
+`src/vesmaro/codegraph/node_sources.py` (the seam) +
+`src/vesmaro/graph_surface_ext.py` (the engine's CLI/REST surface).
+Feature map: [features.md](../features.md)._
 
-_Last updated: 2026-10-03_
+_Last updated: 2026-10-04_

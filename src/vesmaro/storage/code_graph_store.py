@@ -23,6 +23,7 @@ separate ADR per the ADR-0016 pattern.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import threading
@@ -31,7 +32,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-#: Allowed node kinds (ADR-0032 §3.1; CHECK-enforced).
+#: Allowed node kinds (ADR-0032 §3.1; CHECK-enforced). ``Command`` /
+#: ``Route`` (card vesma-graph-command-route-nodes, schema v2) are
+#: contributed ONLY by the optional surface node-source extension —
+#: a repo that does not define the CLI/API surface never grows them.
 NODE_KINDS = (
     "Project",
     "File",
@@ -40,10 +44,14 @@ NODE_KINDS = (
     "Function",
     "Method",
     "Type",
+    "Command",
+    "Route",
 )
 
 #: Allowed edge kinds (ADR-0032 §3.1; CHECK-enforced). ``USES`` is the
 #: provenance-honest fallback — an unproven call is NEVER ``CALLS``.
+#: ``INVOKES`` (Command→handler) and ``HANDLES`` (Route→endpoint) are
+#: written only by the surface node-source extension (schema v2).
 EDGE_KINDS = (
     "CONTAINS_FILE",
     "DEFINES",
@@ -52,6 +60,8 @@ EDGE_KINDS = (
     "INHERITS",
     "TESTS",
     "USES",
+    "INVOKES",
+    "HANDLES",
 )
 
 #: ``meta`` key prefix for the per-project epoch (main DB). The
@@ -75,6 +85,18 @@ _POISONED_PREFIX = "poisoned:"
 #: keys without the storage layer importing the codegraph package.
 _LAST_INDEXED_PREFIX = "last_indexed:"
 
+#: Current sidecar schema version (``graph_meta`` key
+#: ``schema_version``). v1 = the ADR-0032 PG-0 kinds; v2 (card
+#: vesma-graph-command-route-nodes) adds the ``Command``/``Route`` node
+#: kinds and the ``INVOKES``/``HANDLES`` edge kinds. A store opened on
+#: an older file migrates IN PLACE (the standard SQLite 12-step
+#: table-rebuild) — the graph is derived state, but a migration must
+#: not silently empty it: rows are copied losslessly (every v1 kind is
+#: a v2 kind), so no reindex is forced.
+SCHEMA_VERSION = 2
+
+_SCHEMA_VERSION_KEY = "schema_version"
+
 
 def poisoned_key(project: str) -> str:
     """Sidecar ``graph_meta`` key for the project's poisoned-path set
@@ -88,12 +110,16 @@ def last_indexed_key(project: str) -> str:
     return f"{_LAST_INDEXED_PREFIX}{len(project)}:{project}"
 
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS project_nodes (
+#: Single source of truth for the two CHECK-bearing table bodies —
+#: reused by the schema-version migration (which must create the NEW
+#: tables with byte-identical constraint shapes; a drifted copy would
+#: reintroduce the old CHECK through the back door).
+_PROJECT_NODES_DDL = """
     id          TEXT PRIMARY KEY,   -- <project>#<rel_path>#<symbol>#<line>
     project     TEXT NOT NULL,      -- logical FK to projects.id (main DB)
     kind        TEXT NOT NULL CHECK (kind IN
-                  ('Project','File','Module','Class','Function','Method','Type')),
+                  ('Project','File','Module','Class','Function','Method','Type',
+                   'Command','Route')),
     name        TEXT NOT NULL,
     qname       TEXT NOT NULL,
     path        TEXT,               -- ALWAYS repo-relative (PG1)
@@ -102,17 +128,28 @@ CREATE TABLE IF NOT EXISTS project_nodes (
     lang        TEXT,
     signature   TEXT,               -- NO defaults (PG1); NO docstrings/literals
     metadata    TEXT NOT NULL DEFAULT '{}'
-);
-CREATE TABLE IF NOT EXISTS project_edges (
+"""
+
+_PROJECT_EDGES_DDL = """
     from_id     TEXT NOT NULL REFERENCES project_nodes(id) ON DELETE CASCADE,
     to_id       TEXT NOT NULL REFERENCES project_nodes(id) ON DELETE CASCADE,
     kind        TEXT NOT NULL CHECK (kind IN
-                  ('CONTAINS_FILE','DEFINES','IMPORTS','CALLS','INHERITS','TESTS','USES')),
+                  ('CONTAINS_FILE','DEFINES','IMPORTS','CALLS','INHERITS','TESTS',
+                   'USES','INVOKES','HANDLES')),
     weight      REAL NOT NULL DEFAULT 1.0,
     provenance  TEXT NOT NULL DEFAULT 'tree-sitter',
     PRIMARY KEY (from_id, to_id, kind),
     CHECK (from_id <> to_id)
-);
+"""
+
+_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS project_nodes (\n"
+    + _PROJECT_NODES_DDL
+    + "\n);\n"
+    "CREATE TABLE IF NOT EXISTS project_edges (\n"
+    + _PROJECT_EDGES_DDL
+    + "\n);\n"
+    """
 CREATE TABLE IF NOT EXISTS graph_files (
     project     TEXT NOT NULL,
     path        TEXT NOT NULL,        -- repo-relative
@@ -144,6 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_path ON project_nodes(project, path);
 CREATE INDEX IF NOT EXISTS idx_edges_from ON project_edges(from_id, kind);
 CREATE INDEX IF NOT EXISTS idx_edges_to ON project_edges(to_id, kind);
 """
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,11 +326,80 @@ class CodeGraphStore:
     # ── schema / lifecycle ────────────────────────────────────────────────
 
     def create_schema(self) -> None:
-        """Create tables + indexes if absent (idempotent, thread-safe)."""
+        """Create tables + indexes if absent (idempotent, thread-safe).
+
+        A sidecar stamped with an OLDER schema version migrates in
+        place (:meth:`_migrate_schema`) — one table-rebuild per version
+        bump, never per open."""
         conn = self._conn()
         with self._bootstrap_lock:
             conn.executescript(_SCHEMA)
+            self._migrate_schema(conn)
         conn.commit()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Bring an older sidecar up to :data:`SCHEMA_VERSION`.
+
+        ``CREATE TABLE IF NOT EXISTS`` never upgrades an EXISTING
+        table's CHECK constraints — a v1 file would reject every
+        ``Command``/``Route`` insert with a bare ``IntegrityError``.
+        The standard SQLite table-rebuild (foreign_keys OFF, shadow
+        copies, drop, rename, indexes) copies the rows losslessly —
+        every v1 kind is a v2 kind — and stamps ``graph_meta`` in the
+        SAME transaction. A brand-new file (tables just created with
+        the current CHECKs, zero rows) rides the same copy for free.
+        Any failure rolls the whole migration back: the previous
+        schema and data survive untouched.
+        """
+        row = conn.execute(
+            "SELECT value FROM graph_meta WHERE key=?", (_SCHEMA_VERSION_KEY,)
+        ).fetchone()
+        if row is not None and str(row[0]) == str(SCHEMA_VERSION):
+            return
+        prev_isolation = conn.isolation_level
+        conn.isolation_level = None  # manual txn control (PRAGMA must sit outside a txn)
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DROP TABLE IF EXISTS project_nodes_v2tmp")
+            conn.execute("DROP TABLE IF EXISTS project_edges_v2tmp")
+            conn.execute(f"CREATE TABLE project_nodes_v2tmp ({_PROJECT_NODES_DDL})")
+            conn.execute(f"CREATE TABLE project_edges_v2tmp ({_PROJECT_EDGES_DDL})")
+            conn.execute(
+                "INSERT INTO project_nodes_v2tmp SELECT "
+                "id, project, kind, name, qname, path, start_line, end_line, "
+                "lang, signature, metadata FROM project_nodes"
+            )
+            conn.execute(
+                "INSERT INTO project_edges_v2tmp SELECT "
+                "from_id, to_id, kind, weight, provenance FROM project_edges"
+            )
+            conn.execute("DROP TABLE project_edges")
+            conn.execute("DROP TABLE project_nodes")
+            conn.execute("ALTER TABLE project_nodes_v2tmp RENAME TO project_nodes")
+            conn.execute("ALTER TABLE project_edges_v2tmp RENAME TO project_edges")
+            for index_sql in (
+                "CREATE INDEX IF NOT EXISTS idx_nodes_project "
+                "ON project_nodes(project, kind)",
+                "CREATE INDEX IF NOT EXISTS idx_nodes_qname ON project_nodes(qname)",
+                "CREATE INDEX IF NOT EXISTS idx_nodes_path ON project_nodes(project, path)",
+                "CREATE INDEX IF NOT EXISTS idx_edges_from ON project_edges(from_id, kind)",
+                "CREATE INDEX IF NOT EXISTS idx_edges_to ON project_edges(to_id, kind)",
+            ):
+                conn.execute(index_sql)
+            conn.execute(
+                "INSERT OR REPLACE INTO graph_meta (key, value) VALUES (?, ?)",
+                (_SCHEMA_VERSION_KEY, str(SCHEMA_VERSION)),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            with contextlib.suppress(sqlite3.Error):
+                # no active txn (BEGIN itself failed) — surface the ORIGINAL error
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = prev_isolation
 
     def close(self) -> None:
         """Close the thread-local connection if one was opened.
@@ -876,6 +983,17 @@ class CodeGraphStore:
         else:
             row = self._conn().execute("SELECT COUNT(*) FROM project_edges").fetchone()
         return int(row[0]) if row is not None else 0
+
+    def count_nodes_by_kind(self, project: str) -> dict[str, int]:
+        """Per-kind node breakdown for ONE project (status tool): the
+        total (:meth:`count_nodes`) stays the honest headline; the
+        breakdown makes extension-contributed kinds (``Command`` /
+        ``Route``) visible without a raw SQL probe."""
+        rows = self._conn().execute(
+            "SELECT kind, COUNT(*) FROM project_nodes WHERE project=? GROUP BY kind",
+            (project,),
+        ).fetchall()
+        return {str(r[0]): int(r[1]) for r in rows}
 
     def count_files(self, project: str | None = None) -> int:
         """Indexed-file count, optionally scoped to one project."""
