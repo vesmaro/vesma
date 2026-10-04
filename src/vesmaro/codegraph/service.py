@@ -81,8 +81,12 @@ TRACE_CANDIDATE_CAP = 10
 #: Search surface: hard row ceiling of ONE page regardless of budget.
 SEARCH_ROW_CAP = 200
 
-#: Sidecar schema version reported by ``get_graph_schema``.
-GRAPH_SCHEMA_VERSION = 1
+#: Sidecar schema version reported by ``get_graph_schema``. v2 (card
+#: vesma-graph-command-route-nodes): the ``Command``/``Route`` node
+#: kinds, the ``INVOKES``/``HANDLES`` edge kinds — must match
+#: ``vesmaro.storage.code_graph_store.SCHEMA_VERSION`` (the store
+#: CHECK-enforces the kinds; the tool layer reports them).
+GRAPH_SCHEMA_VERSION = 2
 
 #: Sidecar ``graph_meta`` key prefix for the auto-path suspension flag
 #: (PG-0.5 fix-slice, PR #443 review P2-2): set to ``1`` when a FIRST
@@ -959,6 +963,11 @@ class CodeGraphService:
             "nodes": self._store.count_nodes(key),
             "edges": self._store.count_edges(key),
             "files": self._store.count_files(key),
+            # Per-kind breakdown (card vesma-graph-command-route-nodes):
+            # the total stays the headline; the breakdown makes the
+            # extension-contributed Command/Route kinds visible without
+            # a raw probe. Additive key.
+            "node_kinds": self._store.count_nodes_by_kind(key),
             "parse_errors": failures,
             "parse_error_count": len(failures),
             "poisoned_count": len(poisoned_paths),
@@ -1877,9 +1886,26 @@ def _fit_beacon_line(project: str, tail: str) -> str:
 _SERVICE_REGISTRY: weakref.WeakKeyDictionary[Any, CodeGraphService] = weakref.WeakKeyDictionary()
 
 
+def _ensure_host_node_sources() -> None:
+    """Register the HOST's surface extension (card
+    vesma-graph-command-route-nodes): the engine's CLI commands and
+    REST routes as Command/Route nodes. The GENERIC service/indexer
+    never imports the concrete module from module scope — the wiring
+    does, lazily, and ANY failure degrades to a graph without surface
+    nodes (honest absence, the beacon degradation precedent). Idempotent
+    by source name."""
+    try:
+        from vesmaro.graph_surface_ext import register_surface_source
+
+        register_surface_source()
+    except Exception:
+        logger.debug("codegraph: vesma surface node-source unavailable", exc_info=True)
+
+
 def get_graph_service(manager: Any) -> CodeGraphService:
     """The service singleton for a manager (weak-keyed: a discarded
     manager takes its sidecar connections with it)."""
+    _ensure_host_node_sources()
     service = _SERVICE_REGISTRY.get(manager)
     if service is None:
         service = CodeGraphService(

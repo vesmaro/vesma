@@ -374,8 +374,15 @@ class TestToolHappyPaths:
 
     def test_schema_and_list_projects(self, indexed: CodeGraphService) -> None:
         schema = indexed.get_graph_schema(PROJECT, agent=AGENT)
-        assert schema["schema_version"] == 1
+        # Schema v2 (card vesma-graph-command-route-nodes): the
+        # Command/Route node kinds and the INVOKES/HANDLES edge kinds
+        # are part of the reported contract.
+        assert schema["schema_version"] == 2
         assert "Function" in schema["node_kinds"]
+        assert "Command" in schema["node_kinds"]
+        assert "Route" in schema["node_kinds"]
+        assert "INVOKES" in schema["edge_kinds"]
+        assert "HANDLES" in schema["edge_kinds"]
         assert schema["token_contract"]["bytes_per_token"] == 4
         assert schema["volumes"]["nodes"] > 0
         projects = indexed.list_graph_projects(agent=AGENT)["projects"]
@@ -1359,8 +1366,10 @@ class TestRestTwins:
         resp = rest_client.get("/graph/schema", params={"agent": "tester"})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["schema_version"] == 1
+        assert body["schema_version"] == 2
         assert "Function" in body["node_kinds"]
+        assert "Command" in body["node_kinds"]
+        assert "Route" in body["node_kinds"]
 
     def test_index_status_search_twins(self, rest_client: TestClient) -> None:
         resp = rest_client.post(

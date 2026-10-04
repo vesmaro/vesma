@@ -54,6 +54,25 @@ skip the tree with no disk walk until a successful manual
 `index_project` (or a watch reindex, which rides the same method) or a
 `delete_graph_project` lifts it; `auto-stale` over a valid index never
 suspends.
+**Update 2026-10-04 (owner-approved card vesma-graph-command-route-nodes,
+schema v2):** the graph learns two node kinds and two edge kinds beyond
+the parser's set — `Command` (one CLI invocation path: full name,
+one-line help, option count, ≤16 compact `param → help` entries) and
+`Route` (one HTTP method + path + one-line description), bound to their
+implementing functions by `INVOKES` / `HANDLES` edges. The extension
+rides a generic node-source seam (`codegraph/node_sources.py`): the
+generic indexer stays surface-blind; the HOST wiring registers the
+concrete source (`graph_surface_ext.py`), which applies per-root by
+MARKER FILES (the engine's own `cli`/`api` packages) — a foreign repo
+grows zero surface nodes. Data comes from the LIVE engine registries
+(the completion engine's typer/click tree, FastAPI `app.routes`) — no
+second parser. PG1 note: node help text is the engine's own user-facing
+`--help` strings (product text, not source bytes), each string passing
+the secrets detector at contribution time; contributions ride the same
+atomic publish, and the sidecar schema gains a version stamp with an
+in-place lossless v1→v2 migration (`graph_meta.schema_version`).
+`GRAPH_SCHEMA_VERSION` moves to 2 in the same change.
+
 **Deciders:** Tech Lead (chair), Product Architect, Senior System Engineer,
 Senior Security Engineer — all four entered conditional positions; the
 challenge phase converged every one (Python-only wave 1, beacon before
