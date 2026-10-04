@@ -163,7 +163,7 @@ Requires a valid session.
 
 ### `GET /health`
 
-Liveness probe.
+Liveness probe. Always unauthenticated — safe for load balancers and supervisors — and stays at the root when the API moves under `/api/v1` in 6.0.
 
 **Response 200**
 
@@ -338,7 +338,8 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) |
+| `422` | Malformed body — unknown enum value or ADR-0027 doc-grouping triple violation. |
+| `500` | Tag-contract violation (missing `project:`, `agent:`, or `vesma:` tag). Known defect (the "#422/#432" class): `TagContractError` currently escapes unhandled instead of mapping to `422` like the bulk-tags routes do. |
 | `500` | SQLite / vault write failure |
 
 ### `GET /memories/{memory_id}` — read one
@@ -371,12 +372,16 @@ curl -s http://127.0.0.1:8000/memories/550e8400-e29b-41d4-a716-446655440000
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `status` | string | — | Filter by `MemoryStatus` enum value. |
+| `status` | string | — | Filter by `MemoryStatus` enum value. Unknown values → `422`. |
 | `project` | string | — | Restrict to a project slug. |
+| `agent` | string | — | Restrict to an agent slug. |
+| `tags` | string | — | Comma-separated tag list; a row must carry **all** of them (exact membership, AND). |
 | `task` | string | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to appending `task:<slug>` to `tags`; composes with `tags` by intersection. Invalid slugs → `400`. |
+| `since` / `until` | string | — | ISO-8601 lower / upper bound on `created_at` (inclusive). |
 | `limit` | int | `20` | Max rows. Hard cap `500`. |
+| `offset` | int | `0` | Rows to skip (paging with `limit`). |
 
-**Response 200** — array of [`Memory`](#memory-schema) (without `raw_content`).
+**Response 200** — array of [`Memory`](#memory-schema) (without `raw_content`). Quarantined rows never appear in listings (ADR-0019 §5), so a page may under-fill.
 
 **Example**
 
