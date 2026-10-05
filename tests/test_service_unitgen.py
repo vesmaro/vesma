@@ -10,7 +10,9 @@ Negative: a downgrade attempt outside the filesystem allowlist raises.
 
 from __future__ import annotations
 
+import os
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -184,15 +186,74 @@ class TestHardening:
         }
 
 
+# ── Path quoting for systemd parsing (paths with spaces) ─────────────
+
+
+class TestPathQuoting:
+    """systemd splits directive values on whitespace: a path containing a
+    space is emitted double-quoted, with ``"`` and ``\\`` escaped; paths
+    without spaces stay bare so the common unit does not change."""
+
+    @pytest.mark.parametrize(
+        ("raw", "quoted"),
+        [
+            ("/srv/plain", "/srv/plain"),
+            ("/srv/my path", '"/srv/my path"'),
+            ('/srv/qu"ote path', '"/srv/qu\\"ote path"'),
+            ("/srv/back\\ slash", '"/srv/back\\\\ slash"'),
+        ],
+    )
+    def test_quote_unit_value(self, raw: str, quoted: str) -> None:
+        assert unitgen._quote_unit_value(raw) == quoted
+
+    def test_path_with_space_is_quoted_in_generated_unit(self) -> None:
+        text = unitgen.generate(
+            home=HOME,
+            engine_venv=ENGINE_VENV,
+            read_write_paths=(Path("/srv/my paths/state"),),
+            read_only_paths=(),
+        )
+        assert 'ReadWritePaths="/srv/my paths/state"' in text
+
+    def test_plain_paths_stay_bare_in_generated_unit(self) -> None:
+        active, _ = unitgen.parse_unit(_generate())
+        assert active["ReadWritePaths"] == (
+            "%h/.local/state/vesma %h/.cache/vesma %h/.local/share/vesma"
+        )
+
+    def test_quoted_list_roundtrips_through_shlex(self) -> None:
+        """The doctor's coverage comparison (shlex) reads back the raw paths."""
+        text = unitgen.generate(
+            home=HOME,
+            engine_venv=ENGINE_VENV,
+            read_write_paths=(Path("/srv/my paths/state"), Path("/srv/other")),
+            read_only_paths=(),
+        )
+        active, _ = unitgen.parse_unit(text)
+        assert shlex.split(active["ReadWritePaths"]) == ["/srv/my paths/state", "/srv/other"]
+
+
 # ── Structural comparison with the specs example ──────────────────────
+
+
+def _specs_parity_strict() -> bool:
+    """CI hook: ``VESMA_SPECS_PARITY_STRICT=1`` turns the specs-parity
+    skip into a loud failure when the specs repo is not checked out
+    next to vesma (default stays a silent skip for local checkouts)."""
+    return os.environ.get("VESMA_SPECS_PARITY_STRICT", "").strip() == "1"
 
 
 class TestSpecsExampleParity:
     @pytest.mark.skipif(
-        not SPECS_EXAMPLE.exists(), reason="specs repo not checked out next to vesma"
+        not SPECS_EXAMPLE.exists() and not _specs_parity_strict(),
+        reason="specs repo not checked out next to vesma",
     )
     def test_structurally_equal_to_specs_example(self) -> None:
-        """Same directive set and values; only paths and prose may differ."""
+        assert SPECS_EXAMPLE.exists(), (
+            "VESMA_SPECS_PARITY_STRICT=1: specs example missing at "
+            f"{SPECS_EXAMPLE} — parity cannot be verified, failing loud"
+        )
+        # Same directive set and values; only paths and prose may differ.
         example_text = SPECS_EXAMPLE.read_text(encoding="utf-8")
         example_active, example_commented = unitgen.parse_unit(example_text)
         ours_active, ours_commented = unitgen.parse_unit(_generate())
@@ -210,6 +271,15 @@ class TestSpecsExampleParity:
         # Section structure identical.
         for section in ("[Unit]", "[Service]", "[Install]"):
             assert section in example_text and section in _generate()
+
+    def test_strict_hook_pins_exact_env_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The fail-loud hook itself: only the exact value ``1`` arms it."""
+        monkeypatch.setenv("VESMA_SPECS_PARITY_STRICT", "1")
+        assert _specs_parity_strict() is True
+        monkeypatch.setenv("VESMA_SPECS_PARITY_STRICT", "0")
+        assert _specs_parity_strict() is False
+        monkeypatch.delenv("VESMA_SPECS_PARITY_STRICT", raising=False)
+        assert _specs_parity_strict() is False
 
 
 # ── Container downgrades ──────────────────────────────────────────────

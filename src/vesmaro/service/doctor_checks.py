@@ -19,6 +19,7 @@ import getpass
 import json
 import os
 import re
+import shlex
 import socket
 import stat
 import subprocess  # nosec B404 - fixed-argv read-only probes (pip freeze, python -c)
@@ -29,6 +30,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from vesmaro.service import layout, unitgen
+from vesmaro.service.install import engine_venv, parse_pin_line, read_lock
 from vesmaro.service.manifest import ComponentManifest, load_installation
 
 #: Free-space thresholds (DR-10; engine-owned numbers, documented).
@@ -142,25 +144,14 @@ def _dr01() -> Finding:
 
 
 # ── DR-02: venv integrity (rights, owner, freeze vs lock) ─────────────
-
-
-def _parse_pin_line(line: str) -> tuple[str, str] | None:
-    """``name==version`` from one freeze/lock line; None for non-pin lines.
-
-    Partition on ``==`` (not ``=``) — mirrors install._parse_pin_line so
-    doctor and installer parse locks identically.
-    """
-    line = line.strip()
-    if "==" not in line:
-        return None
-    dist, _, version = line.partition("==")
-    dist = dist.strip()
-    if not dist:
-        return None
-    return re.sub(r"[-_.]+", "-", dist).lower(), version.strip()
+# Lock/freeze lines are parsed by install.parse_pin_line / install.read_lock
+# (single shared parser — doctor and installer must parse locks identically).
 
 
 def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
+    # AWARENESS (DR-02 audit note): this probe EXECUTES <venv>/bin/python
+    # for ANY directory under venvs/ — same-uid code, trusted by design
+    # (the whole tree is install-owned, 0700, DR-01/DR-12 enforce it).
     python = venv_dir / "bin" / "python"
     if not python.exists():
         return None
@@ -178,23 +169,10 @@ def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
         return None
     frozen: dict[str, str] = {}
     for line in result.stdout.splitlines():
-        parsed = _parse_pin_line(line)
+        parsed = parse_pin_line(line)
         if parsed is not None:
             frozen[parsed[0]] = parsed[1]
     return frozen
-
-
-def _read_lock(path: Path) -> dict[str, str] | None:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return None
-    lock: dict[str, str] = {}
-    for line in lines:
-        parsed = _parse_pin_line(line)
-        if parsed is not None:
-            lock[parsed[0]] = parsed[1]
-    return lock
 
 
 def _dr02() -> Finding:
@@ -219,7 +197,7 @@ def _dr02() -> Finding:
                     "(supply-chain boundary, layout §3.8)"
                 )
                 fixes.append(f"chmod -R go-w {venv_dir}")
-        lock = _read_lock(layout.data_dir(venv_dir.name) / "requirements-lock.txt")
+        lock = read_lock(layout.data_dir(venv_dir.name) / "requirements-lock.txt")
         frozen = _pip_freeze(venv_dir)
         if lock is None:
             problems.append(f"{venv_dir}: lock file missing (requirements-lock.txt)")
@@ -485,8 +463,6 @@ def _installed_unit_path() -> Path:
 
 
 def _regenerate_unit(downgraded: list[str]) -> str:
-    from vesmaro.service.install import engine_venv  # local import: install pulls subprocess
-
     return unitgen.generate(
         home=layout.home(),
         engine_venv=engine_venv(),
@@ -515,7 +491,8 @@ def _dr07() -> Finding:
             "unit drift (installed vs regenerated)",
             Severity.FAIL,
             f"{unit_path} differs from the regenerated unit (hand edit or "
-            "generator upgrade)",
+            "generator upgrade) — note: run `vesma doctor` from the engine "
+            "venv, a dev-checkout interpreter venv will not match",
             "vesma service install",
         )
     return Finding(
@@ -563,12 +540,17 @@ def _dr08() -> Finding:
             "result" in payload or payload.get("error") is None
         )
     except (json.JSONDecodeError, IndexError):
+        # A foreign process owning the socket is NOT fine — it is a live
+        # warning (stale/absent stays a status per contract; a talkative
+        # foreign listener is something the operator must look at).
         return Finding(
             "DR-08",
             "control socket liveness",
-            Severity.OK,
+            Severity.WARN,
             f"socket at {sock_path} answered non-JSON — not a vesma "
             f"supervisor? reply: {reply[:120]!r}",
+            f"confirm what owns {sock_path}, then remove the foreign "
+            "socket and start the supervisor: vesma service run",
         )
     if version_ok:
         return Finding(
@@ -580,9 +562,11 @@ def _dr08() -> Finding:
     return Finding(
         "DR-08",
         "control socket liveness",
-        Severity.OK,
+        Severity.WARN,
         f"socket at {sock_path} answered an error — protocol mismatch "
         f"(payload: {str(payload)[:120]})",
+        "restart the supervisor so the socket speaks the installed "
+        "protocol: systemctl --user restart vesma.service",
     )
 
 
@@ -772,7 +756,10 @@ def _dr12() -> Finding:
         problems.append("ReadOnlyPaths is commented out WITHOUT a downgrade marker (tampering?)")
         fixes.append("vesma service install")
     else:
-        covered = set((active.get("ReadOnlyPaths") or "").split())
+        # shlex, not str.split: the generator double-quotes rendered paths
+        # that contain spaces (systemd parses the value with shell-like
+        # quoting) — the coverage comparison must undo exactly that.
+        covered = set(shlex.split(active.get("ReadOnlyPaths") or ""))
         missing = expected - covered
         if missing:
             hard = True

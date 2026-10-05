@@ -110,8 +110,23 @@ def render_path(path: Path, home: Path) -> str:
     return "%h/" + relative.as_posix()
 
 
+def _quote_unit_value(value: str) -> str:
+    """Quote one rendered path for a whitespace-separated unit value.
+
+    systemd splits directive values on whitespace, so a path containing a
+    space is emitted double-quoted, with ``"`` and ``\\`` escaped (the
+    shell-like quoting systemd applies to unit directive values). Paths
+    without spaces stay bare — the generated unit must not change for the
+    common case.
+    """
+    if " " not in value:
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def _render_path_list(paths: Collection[Path], home: Path) -> str:
-    return " ".join(render_path(p, home) for p in paths)
+    return " ".join(_quote_unit_value(render_path(p, home)) for p in paths)
 
 
 # ── Generator ─────────────────────────────────────────────────────────

@@ -199,11 +199,74 @@ class TestDR02:
     def test_matching_lock_is_ok(self, installed: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
         monkeypatch.setattr(
-            doctor_checks, "_pip_freeze", lambda v: doctor_checks._read_lock(lock_path)
+            doctor_checks, "_pip_freeze", lambda v: doctor_checks.read_lock(lock_path)
         )
         finding = _finding(run_service_checks(), "DR-02")
         assert finding.severity is Severity.OK
         assert finding.fix_command is None
+
+
+# ── Real pip freeze shapes (shared parser + freeze-vs-lock compare) ───
+
+
+class TestFreezeFormats:
+    """REAL freeze shapes through the SHARED pin parser and the
+    freeze-vs-lock compare. Pinned per LY-08: only exact ``==`` pins are
+    lock material — direct-url (``pkg @ file://…``) and editable lines are
+    SKIPPED by the parser (they can never enter a lock, and a freeze that
+    carries them still compares cleanly against the pin subset)."""
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("vesma==5.4.0", ("vesma", "5.4.0")),
+            ("name==1.0+local", ("name", "1.0+local")),  # PEP 440 local version
+            ("Weird_Name==2.0", ("weird-name", "2.0")),  # PEP 503 name normalization
+            ("Weird__Name--x==2.0", ("weird-name-x", "2.0")),
+            ("  spaced.name==3.0  ", ("spaced-name", "3.0")),
+        ],
+    )
+    def test_real_pin_shapes_parse(self, line: str, expected: tuple[str, str]) -> None:
+        assert install_mod.parse_pin_line(line) == expected
+        # The doctor uses the SAME function object — no duplicated parser.
+        assert doctor_checks.parse_pin_line is install_mod.parse_pin_line
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "pkg @ file:///tmp/x.whl",  # direct-url install — not an exact pin
+            "-e git+https://example.com/repo#egg=x",  # editable — not lock material
+            "pip",  # bare name, no version
+            "",
+            "   ",
+        ],
+    )
+    def test_non_pin_freeze_lines_are_skipped(self, line: str) -> None:
+        assert install_mod.parse_pin_line(line) is None
+
+    def test_freeze_vs_lock_compare_with_real_shapes(self, isolated_home: Path) -> None:
+        """A freeze carrying direct-url/editable noise compares cleanly
+        against a lock built from the pin subset — and a genuinely
+        hand-installed package still diverges (drift detected)."""
+        from vesmaro import __version__
+
+        pins = [f"vesma=={__version__}", "pip==99.0", "weird==1.0+local"]
+        lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("\n".join(pins) + "\n", encoding="utf-8")
+        freeze_lines = [
+            *pins,
+            "local-tool @ file:///tmp/tool.whl",
+            "-e git+https://example.com/repo#egg=ed",
+        ]
+        frozen: dict[str, str] = {}
+        for line in freeze_lines:
+            parsed = doctor_checks.parse_pin_line(line)
+            if parsed is not None:
+                frozen[parsed[0]] = parsed[1]
+        assert frozen == doctor_checks.read_lock(lock_path)
+        frozen["rogue"] = "9.9"  # a hand `pip install` is not canon
+        assert frozen != doctor_checks.read_lock(lock_path)
 
 
 # ── DR-03: user-site leak — REAL clean-env subprocess (no mock) ───────
@@ -437,13 +500,24 @@ class TestDR08:
         assert finding.severity is Severity.OK  # contract: stale is a status, not a failure
         assert "stale" in finding.detail or "probe failed" in finding.detail
 
-    def test_foreign_json_answerer_is_status(
+    def test_foreign_json_answerer_warns_with_fix(
         self, installed: Path, runtime_socket_dir: Path
     ) -> None:
         with _HelloServer(runtime_socket_dir / "control.sock", "DEFINITELY NOT JSON\n"):
             finding = _finding(run_service_checks(), "DR-08")
-        assert finding.severity is Severity.OK
+        assert finding.severity is Severity.WARN  # a foreign listener is a live warning
         assert "not a vesma supervisor" in finding.detail
+        assert finding.fix_command is not None  # LY-14
+
+    def test_protocol_mismatch_answerer_warns_with_fix(
+        self, installed: Path, runtime_socket_dir: Path
+    ) -> None:
+        reply = json.dumps({"id": 1, "error": {"code": 404, "message": "no such method"}})
+        with _HelloServer(runtime_socket_dir / "control.sock", reply + "\n"):
+            finding = _finding(run_service_checks(), "DR-08")
+        assert finding.severity is Severity.WARN  # stale/absent stays OK; a talkative mismatch warns
+        assert "protocol mismatch" in finding.detail
+        assert finding.fix_command is not None
 
 
 # ── DR-09: health port collisions ────────────────────────────────────
@@ -608,6 +682,20 @@ class TestDR12:
         assert finding.severity is Severity.FAIL
         assert finding.fix_command is not None
         assert "chmod 700" in finding.fix_command
+
+    def test_quoted_readonlypaths_with_spaces_is_still_covered(self, installed: Path) -> None:
+        """The generator double-quotes paths containing spaces; the coverage
+        comparison must undo exactly that quoting (shlex, not str.split)."""
+        unit = installed / ".config/systemd/user/vesma.service"
+        unit.write_text(
+            unit.read_text(encoding="utf-8").replace(
+                "ReadOnlyPaths=%h/.local/share/vesma/venv %h/.local/share/vesma/venvs",
+                'ReadOnlyPaths="%h/.local/share/vesma/venv" "%h/.local/share/vesma/venvs"',
+            ),
+            encoding="utf-8",
+        )
+        finding = _finding(run_service_checks(), "DR-12")
+        assert finding.severity is Severity.OK  # same coverage, spaces-ready form
 
 
 # ── DR-13: container downgrade allowlist ─────────────────────────────
