@@ -63,6 +63,27 @@ class _NullSink:
 
 
 @pytest.fixture
+def api_env_guard() -> Iterator[None]:
+    """Restore the process env after the core tests.
+
+    ``ServiceApp._start_core`` seeds ``VESMA_API__HOST``/``VESMA_API__PORT``
+    in-process (the documented ``serve`` contract — the CANONICAL ``VESMA_``
+    prefix outranks any ambient ``VESMARO_API__*``); without this guard a
+    leaked value reorders later env-override tests (order dependence).
+    Explicit save/restore: ``monkeypatch.delenv`` records nothing for an
+    ABSENT variable, so it cannot restore absence here."""
+    saved = {var: os.environ.get(var) for var in ("VESMA_API__HOST", "VESMA_API__PORT")}
+    try:
+        yield
+    finally:
+        for var, value in saved.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+
+
+@pytest.fixture
 def make_app(tmp_path: Path) -> Iterator[Callable[..., ServiceApp]]:
     """ServiceApp factory with guaranteed teardown (no sleeper leaks)."""
     apps: list[ServiceApp] = []
@@ -193,6 +214,14 @@ class TestLiveSystem:
             health = conn.rt({"id": 12, "method": "health"})["result"]
             assert health["health"] == "healthy"
             assert set(health["components"].values()) == {"healthy"}
+
+            # LY-04 live leg: the child's cwd is its component data dir
+            from vesmaro.service.layout import resolve_component_paths
+
+            expected_cwd = resolve_component_paths("alpha").data_dir.resolve()
+            alpha_pid = int(components["alpha"]["pid"])
+            actual_cwd = Path(f"/proc/{alpha_pid}/cwd").resolve()
+            assert actual_cwd == expected_cwd, (actual_cwd, expected_cwd)
         finally:
             conn.close()
 
@@ -482,7 +511,11 @@ class TestIsolation:
 
 class TestInProcessCore:
     def test_core_api_answers_while_supervisor_lives_then_death_fails_fast(
-        self, isolated_home: Path, tmp_path: Path, make_app: Callable[..., ServiceApp]
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        make_app: Callable[..., ServiceApp],
+        api_env_guard: None,
     ) -> None:
         manifests = write_manifests(tmp_path, {"worker": child_doc("worker", "sleeper.py")})
         app = make_app(manifests, with_core=True, core_bind=("127.0.0.1", 0))
@@ -532,7 +565,11 @@ class TestInProcessCore:
         assert app.socket_path is not None and not app.socket_path.exists()
 
     def test_core_startup_failure_refuses_the_start(
-        self, isolated_home: Path, tmp_path: Path, make_app: Callable[..., ServiceApp]
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        make_app: Callable[..., ServiceApp],
+        api_env_guard: None,
     ) -> None:
         manifests = write_manifests(tmp_path, {"worker": child_doc("worker", "sleeper.py")})
         # a deterministically impossible bind: the port is held by THIS
