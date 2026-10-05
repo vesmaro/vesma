@@ -165,8 +165,7 @@ class TestMechanics:
     def test_sequence_numbers_are_strictly_ordered(self) -> None:
         fsm = ChildFsm("seq")
         results = [
-            fsm.transition(event)
-            for event in (FsmEvent.SPAWN, FsmEvent.EXIT, FsmEvent.RESPAWN_DUE)
+            fsm.transition(event) for event in (FsmEvent.SPAWN, FsmEvent.EXIT, FsmEvent.RESPAWN_DUE)
         ]
         assert [r.seq for r in results] == [0, 1, 2]
 
@@ -183,9 +182,7 @@ class TestMechanics:
             except Exception as exc:  # pragma: no cover - failure reporting
                 errors.append(exc)
 
-        threads = [
-            threading.Thread(target=worker, args=(fsm,)) for fsm in fsms for _ in range(2)
-        ]
+        threads = [threading.Thread(target=worker, args=(fsm,)) for fsm in fsms for _ in range(2)]
         for thread in threads:
             thread.start()
         for thread in threads:
