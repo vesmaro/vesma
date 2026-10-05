@@ -68,6 +68,37 @@ class TestUmaskIndependentModes:
         layout.ensure_dir(target, 0o700)
         assert oct(target.stat().st_mode & 0o777) == oct(0o700)
 
+    def test_intermediate_segments_explicit_under_permissive_umask(
+        self, isolated_home: Path
+    ) -> None:
+        # Layout §3.1: rights are explicit for EVERY directory the flow
+        # creates — deep canonical paths must not leave umask-inherited
+        # (here: 0777) intermediate segments like ~/.local/state/vesma/.
+        deep = layout.data_dir("comp") / "deeper" / "leaf"
+        old_umask = os.umask(0o000)
+        try:
+            target = layout.ensure_dir(deep, layout.MODE_DIR_DEFAULT)
+        finally:
+            os.umask(old_umask)
+        assert layout.verify_dir(isolated_home / ".local" / "share" / "vesma", 0o700)
+        assert layout.verify_dir(isolated_home / ".local" / "share" / "vesma" / "comp", 0o700)
+        assert layout.verify_dir(
+            isolated_home / ".local" / "share" / "vesma" / "comp" / "deeper", 0o700
+        )
+        assert layout.verify_dir(target, 0o700)
+        # Segments ABOVE the vesma root are not vesma-owned: ensure_dir
+        # must not chmod them (created under umask 000 → 0777 here).
+        assert not layout.verify_dir(isolated_home / ".local" / "share", 0o700)
+
+    def test_intermediate_repair_on_preexisting_drifted_segment(self, isolated_home: Path) -> None:
+        # A manually loosened intermediate segment is re-tightened by the
+        # next ensure_dir underneath it (verify-style repair, LY-01).
+        deep = layout.state_root() / "logs" / "comp"
+        layout.ensure_dir(deep, layout.MODE_DIR_DEFAULT)
+        os.chmod(layout.state_root(), 0o777)
+        layout.ensure_dir(deep / "rotated", layout.MODE_DIR_DEFAULT)
+        assert layout.verify_dir(layout.state_root(), 0o700)
+
 
 class TestVerifyDir:
     def test_missing_path_is_false(self, tmp_path: Path) -> None:

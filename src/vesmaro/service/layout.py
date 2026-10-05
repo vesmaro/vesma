@@ -3,8 +3,9 @@
 Resolution helpers for the §3.2 MUST-table paths (XDG base dirs, empty
 var = default) plus the two file-mode primitives the whole wave builds on:
 
-- :func:`ensure_dir` — mkdir -p followed by an EXPLICIT chmod: resulting
-  modes are umask-independent (layout §3.1, LY-01);
+- :func:`ensure_dir` — mkdir -p followed by an EXPLICIT chmod on the leaf
+  AND on every intermediate vesma-owned segment: resulting modes are
+  umask-independent (layout §3.1, LY-01);
 - :func:`verify_dir` — mode check for doctor-style verification.
 
 ``resolve_component_paths`` produces the §3.4 placeholder expansion table
@@ -154,9 +155,14 @@ def resolve_runtime_dir() -> RuntimeResolution:
 # ── §3.9 cache ────────────────────────────────────────────────────────
 
 
+def cache_base() -> Path:
+    """``~/.cache/vesma/`` — parent of per-component cache dirs."""
+    return _xdg_root("XDG_CACHE_HOME", home() / ".cache") / "vesma"
+
+
 def cache_dir(name: str) -> Path:
     """``~/.cache/vesma/<name>/`` — regenerable only, never secrets (0750)."""
-    return _xdg_root("XDG_CACHE_HOME", home() / ".cache") / "vesma" / name
+    return cache_base() / name
 
 
 # ── §3.4 placeholder expansion table ──────────────────────────────────
@@ -191,13 +197,54 @@ def resolve_component_paths(name: str) -> ComponentPaths:
 # ── Mode primitives (explicit chmod — never umask-inherited) ──────────
 
 
-def ensure_dir(path: Path, mode: int) -> Path:
-    """mkdir -p + explicit chmod on the leaf; returns the path.
+def _canonical_roots() -> tuple[Path, ...]:
+    """Every vesma-owned root the flow creates directories under.
 
-    The chmod makes the resulting mode umask-independent (layout §3.1:
-    rights are set explicitly at creation, not inherited from umask).
+    Resolved at call time so XDG overrides and ``$XDG_RUNTIME_DIR`` are
+    honored (an import-time snapshot would go stale across monkeypatched
+    environments and per-session runtime dirs).
+    """
+    roots = [config_root(), data_root(), state_root(), cache_base(), run_fallback_dir()]
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if runtime.strip():
+        roots.append(Path(runtime) / "vesma")
+    return tuple(roots)
+
+
+def _chmod_intermediate_segments(target: Path) -> None:
+    """Explicitly chmod the vesma-owned span of ``target`` to 0700.
+
+    ``mkdir -p`` creates intermediate segments under the process umask;
+    layout §3.1 forbids umask-inherited rights for anything the flow
+    creates, so every segment from the canonical vesma root (inclusive)
+    down to ``target``'s parent is re-chmodded explicitly — the leaf gets
+    its own mode from :func:`ensure_dir`. Segments ABOVE the vesma root
+    (the XDG base dir itself, ``$HOME``) are not ours and are never
+    touched; paths outside the canonical roots are a no-op here.
+    """
+    for root in _canonical_roots():
+        try:
+            relative = target.relative_to(root)
+        except ValueError:
+            continue
+        os.chmod(root, MODE_DIR_DEFAULT)
+        segment = root
+        for part in relative.parts[:-1]:  # every created intermediate segment
+            segment = segment / part
+            os.chmod(segment, MODE_DIR_DEFAULT)
+        return
+
+
+def ensure_dir(path: Path, mode: int) -> Path:
+    """mkdir -p + explicit chmod: leaf gets ``mode``, intermediates get 0700.
+
+    Layout §3.1: rights of EVERY directory the flow creates are set
+    explicitly at creation, never inherited from umask — so intermediate
+    ``mkdir -p`` segments (e.g. ``~/.local/state/vesma/``) are chmod'ed
+    too, not just the leaf.
     """
     path.mkdir(parents=True, exist_ok=True)
+    _chmod_intermediate_segments(path)
     os.chmod(path, mode)
     return path
 
