@@ -27,7 +27,9 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -632,3 +634,446 @@ class TestSL08Grammar:
             code_part = line.split("code=")[1].split()[0]
             signal_part = line.split("signal=")[1].split()[0]
             assert (code_part == "none") != (signal_part == "none")
+
+
+# ── severity-capturing sink (the ERROR-line counter for SL-09/SL-10/SL-11) ─
+
+
+class _CapturingSink:
+    """Test Logsink: records every (identifier, severity, line) emission."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.records: list[tuple[str, str, str]] = []
+
+    def emit(self, identifier: str, line: str, *, severity: str = "INFO") -> None:
+        with self._lock:
+            self.records.append((identifier, severity, line))
+
+    def close(self) -> None:
+        return None
+
+    def error_lines(self) -> list[str]:
+        with self._lock:
+            return [line for _ident, severity, line in self.records if severity == "ERROR"]
+
+
+def _error_count(sink: _CapturingSink) -> int:
+    return len(sink.error_lines())
+
+
+# ── SL-09 optional budget exhaustion: exactly ONE exact ERROR line ────
+
+
+class TestSL09OptionalBudgetExhaustion:
+    def test_exactly_one_error_line_with_exact_fields(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        manifests = _write_manifests(
+            tmp_path, {"opt": _child_doc("opt", "exiter.py", ("--code", "1"))}
+        )
+        sink = _CapturingSink()
+        sup = _make_supervisor(tmp_path, manifests, logsink=sink)
+        _override_policy(
+            sup,
+            "opt",
+            backoff_base_s=0.05,
+            backoff_max_s=0.1,
+            window_attempts=3,
+            window_s=300.0,
+            lazy_retry_s=5.0,  # long dwell: nothing moves while we assert
+        )
+        sup.start()
+        try:
+            _wait_until(lambda: _error_count(sink) == 1, "the ONE ERROR line", timeout=15)
+            pid = _pid_of(sup, "opt")
+            assert sink.error_lines() == [
+                f"vesma.supervisor component=opt event=degraded pid={pid} "
+                "state=degraded reason=restart-budget-exhausted attempts=3 window=300s"
+            ]
+            assert sup.component_state("opt") == "degraded"  # T11 terminal state
+            degraded_rows = [ln for ln in _records(tmp_path) if "event=degraded" in ln]
+            assert len(degraded_rows) == 1  # the journal carries it exactly once too
+        finally:
+            sup.shutdown()
+
+
+# ── SL-10 lazy-retry silence + manual start resets the budget ─────────
+
+
+class TestSL10LazyRetry:
+    def test_lazy_retries_stay_silent_and_manual_start_resets(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        manifests = _write_manifests(
+            tmp_path, {"opt": _child_doc("opt", "exiter.py", ("--code", "1"))}
+        )
+        sink = _CapturingSink()
+        sup = _make_supervisor(tmp_path, manifests, logsink=sink)
+        _override_policy(
+            sup,
+            "opt",
+            backoff_base_s=0.05,
+            backoff_max_s=0.1,
+            window_attempts=2,
+            window_s=300.0,
+            lazy_retry_s=0.4,
+        )
+        sup.start()
+        try:
+            _wait_until(lambda: _error_count(sink) == 1, "exhaustion ERROR line", timeout=15)
+
+            def lazy_spawns() -> list[float]:
+                stamps = []
+                for record in _journal(tmp_path).read_records():
+                    stamp, _, line = record.partition(" ")
+                    if "component=opt event=spawn" in line:
+                        stamps.append(datetime.fromisoformat(stamp).timestamp())
+                return stamps
+
+            _wait_until(
+                lambda: len(lazy_spawns()) >= 4,  # initial burn (2) + ≥ 2 lazy retries
+                "two silent lazy-retry cycles",
+                timeout=30,
+            )
+            assert _error_count(sink) == 1  # SL-10: no alert spam in lazy mode
+            gaps = [b - a for a, b in zip(lazy_spawns()[2:], lazy_spawns()[3:], strict=False)]
+            assert gaps and all(0.2 < gap < 2.5 for gap in gaps), f"lazy cadence: {gaps}"
+
+            # Manual start resets the budget (§3.5): a fresh burn re-alerts.
+            sup.request_start("opt")
+            _wait_until(
+                lambda: _error_count(sink) == 2,
+                "post-reset exhaustion produces a SECOND alert",
+                timeout=15,
+            )
+        finally:
+            sup.shutdown()
+
+
+# ── SL-11 core crash-loop at 10 → global degraded + alert, no stall ───
+
+
+class TestSL11CoreCrashLoop:
+    def test_crash_loop_alerts_once_and_restarts_continue(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        manifests = _write_manifests(
+            tmp_path, {"core": _child_doc("core", "exiter.py", ("--code", "1"), tier="core")}
+        )
+        sink = _CapturingSink()
+        sup = _make_supervisor(tmp_path, manifests, logsink=sink, jitter=lambda value: value)
+        _override_policy(sup, "core", backoff_base_s=0.05, backoff_max_s=0.1)
+        sup.start()
+        try:
+            # Wait on the ALERT LINE, not the health flag: the flag also
+            # degrades on the first `dead:core` backoff, long before the
+            # 10th attempt that makes the alert mandatory.
+            _wait_until(lambda: _error_count(sink) == 1, "crash-loop alert", timeout=20)
+            assert sup.global_health == "degraded"
+            # Reasons: the crash-loop reason PLUS the dead-in-backoff reason
+            # (core is in backoff at alert time).
+            assert sup.global_reasons == frozenset({"dead:core", "crash-loop:core"})
+            # The alert line: exact tail per §3.5 (`window=none`), ERROR level.
+            errors = sink.error_lines()
+            assert len(errors) == 1
+            assert errors[0].endswith("state=degraded reason=crash-loop attempts=10 window=none")
+            assert errors[0].startswith("vesma.supervisor component=core event=degraded pid=")
+
+            # Restarts CONTINUE after the alert — the supervisor never stalls.
+            def spawn_count() -> int:
+                return sum(1 for ln in _records(tmp_path) if "component=core event=spawn" in ln)
+
+            baseline = spawn_count()
+            _wait_until(lambda: spawn_count() >= baseline + 3, "restarts continue", timeout=15)
+            assert _error_count(sink) == 1  # exactly ONE crash-loop alert, ever
+            assert sup.snapshot()["supervisor"]["pid"] == os.getpid()
+        finally:
+            sup.shutdown()
+
+
+# ── SL-12 core backoff intervals (injected clock) + uptime reset ──────
+
+
+class TestSL12CoreBackoffTiming:
+    def test_interval_ladder_is_exponential_capped_and_resets(self, tmp_path: Path) -> None:
+        """The ladder drives `_schedule_backoff` directly on the fake clock:
+        a process-level fake-clock loop would race the dwell-entry (an
+        advance landing between the deadline computation and the sleep is
+        consumed invisibly), so the timing math is tested as the pure
+        policy it is; the dwell → respawn mechanics run end-to-end with
+        real clocks in SL-09/10/11."""
+        manifests = _write_manifests(
+            tmp_path, {"core": _child_doc("core", "sleeper.py", tier="core")}
+        )
+        clock = Clock(fake=True)
+        sup = _make_supervisor(tmp_path, manifests, clock=clock, jitter=lambda value: value)
+        component = sup._components["core"]
+
+        # The ladder: base 1s, x2 per attempt, capped at 30s (§3.5 — the
+        # dataclass defaults themselves are pinned by TestContractConstants).
+        seen: list[float] = []
+        for _ in range(7):
+            sup._schedule_backoff(component)
+            seen.append(float(component.next_backoff_s))
+        assert seen == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+
+        # The reset rule reads continuous uptime off the injected clock.
+        component.last_spawn_at = clock.now() - 301.0
+        sup._schedule_backoff(component)
+        assert component.next_backoff_s == 1.0
+        assert component.backoff_attempts == 1
+
+    def test_uptime_reset_end_to_end_with_injected_threshold(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """Real-clock end-to-end: the reset fires on a real death after the
+        (injected, shortened) continuous-uptime threshold — without the
+        reset the second death would show attempts=2 and a doubled interval."""
+        manifests = _write_manifests(
+            tmp_path, {"core": _child_doc("core", "sleeper.py", tier="core")}
+        )
+        sup = _make_supervisor(tmp_path, manifests, jitter=lambda value: value)
+        _override_policy(
+            sup,
+            "core",
+            backoff_base_s=0.5,
+            backoff_max_s=1.0,
+            backoff_reset_after_s=2.0,
+        )
+        sup.start()
+        try:
+            _wait_until(
+                lambda: sup.component_state("core") == "healthy", "core healthy", timeout=15
+            )
+            os.kill(_pid_of(sup, "core"), signal.SIGKILL)
+            _wait_until(
+                lambda: sup.component_state("core") == "backoff",
+                "first death → backoff",
+            )
+            component = sup._components["core"]
+            assert component.next_backoff_s == 0.5
+
+            _wait_until(
+                lambda: sup.component_state("core") == "healthy",
+                "core healthy again",
+                timeout=15,
+            )
+            time.sleep(2.5)  # continuous uptime crosses the injected 2s threshold
+            os.kill(_pid_of(sup, "core"), signal.SIGKILL)
+            _wait_until(
+                lambda: (
+                    sup.component_state("core") == "backoff"
+                    and sup._components["core"].backoff_attempts == 1
+                ),
+                "reset after continuous uptime: fresh attempt count",
+            )
+            assert sup._components["core"].next_backoff_s == 0.5  # no reset → 1.0
+        finally:
+            sup.shutdown()
+
+
+# ── SL-13 env semantics: the constructed set, nothing else ────────────
+
+
+class TestSL13ChildEnv:
+    def test_env_is_exactly_the_constructed_set(
+        self, isolated_xdg: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VESMA_HOST_LEAK_PROBE", "sentinel-401")  # the 401-storm probe
+        out = tmp_path / "env.json"
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                "envy": _child_doc(
+                    "envy",
+                    "env_printer.py",
+                    ("--out", str(out)),
+                    env_vars={"VESMA_TEST_VAR": "w2-value"},
+                )
+            },
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(lambda: out.exists(), "env payload written", timeout=10)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            # No venv exists for this component → PATH is the fixed tail only.
+            expected = {
+                "PATH": FIXED_PATH_TAIL,
+                "VESMA_TEST_VAR": "w2-value",
+                "PYTHONNOUSERSITE": "1",  # forced last (layout §3.8)
+            }
+            child_env = dict(payload["env"])
+            # PEP 538: CPython coerces the C locale at startup and sets
+            # LC_CTYPE in its OWN environment — a self-inflicted artifact of
+            # the child runtime, not a host leak (the constructed env carries
+            # no LC_* at all).
+            coerced = child_env.pop("LC_CTYPE", None)
+            assert coerced in (None, "C.UTF-8")
+            assert child_env == expected  # env -i: EXACT set, no host leaks
+        finally:
+            sup.shutdown()
+
+
+# ── SL-14 fd/socket isolation across the spawn boundary ───────────────
+
+
+class TestSL14SocketIsolation:
+    def test_children_inherit_no_sockets_and_no_socket_path(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "fds.json"
+        manifests = _write_manifests(
+            tmp_path, {"watched": _child_doc("watched", "env_printer.py", ("--out", str(out)))}
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(lambda: out.exists(), "fd payload written", timeout=10)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            sockets = [fd for fd, target in payload["fds"].items() if target.startswith("socket:")]
+            assert sockets == []  # close_fds: no socket crosses the boundary
+            leaked = [
+                key
+                for key, value in payload["env"].items()
+                if ".sock" in value or "socket" in key.lower()
+            ]
+            assert leaked == []  # the future control socket never reaches a child
+        finally:
+            sup.shutdown()
+
+
+# ── SL-15 start ordering: cycles refused, blocked until core is up ────
+
+
+class TestSL15StartOrdering:
+    def test_depends_on_cycle_is_refused(self, isolated_xdg: Path, tmp_path: Path) -> None:
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                "alpha": _child_doc("alpha", "sleeper.py", depends_on=("beta",)),
+                "beta": _child_doc("beta", "sleeper.py", depends_on=("alpha",)),
+            },
+        )
+        with pytest.raises(ValueError, match="cycle"):
+            _make_supervisor(tmp_path, manifests)
+
+    def test_dependent_blocked_until_core_dependency_healthy(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        flag = tmp_path / "flag"
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                "coredep": _child_doc(
+                    "coredep", "sleeper.py", tier="core", health=_flag_probe(flag)
+                ),
+                "dependent": _child_doc("dependent", "sleeper.py", depends_on=("coredep",)),
+            },
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(
+                lambda: sup.component_state("dependent") == "blocked", "T2 blocked", timeout=15
+            )
+            # The journal row: T2 with pid=none (never spawned). The row is
+            # appended a few statements AFTER the state flips visible, so a
+            # plain read can outrun the writer — poll for it.
+            _wait_until(
+                lambda: (
+                    "vesma.supervisor component=dependent event=health pid=none "
+                    "from=stopped to=blocked" in _records(tmp_path)
+                ),
+                "T2 journal row",
+            )
+            time.sleep(0.5)  # no timeout on core deps (SL-15) — it must STAY blocked
+            assert sup.component_state("dependent") == "blocked"
+            assert sup.component_state("dependent") is not None  # and no spawn happened
+            assert sup.snapshot()["components"]["dependent"]["pid"] is None
+
+            flag.write_text("on", encoding="utf-8")
+            _wait_until(lambda: sup.component_state("coredep") == "healthy", "coredep up")
+            _wait_until(
+                lambda: sup.component_state("dependent") == "healthy",
+                "T3 unblocked → dependent up",
+                timeout=15,
+            )
+            assert any(
+                "component=dependent" in ln and "from=blocked to=starting" in ln
+                for ln in _records(tmp_path)
+            )
+        finally:
+            sup.shutdown()
+
+
+# ── SL-16 graceful stop: reverse-topological, zero leftovers ──────────
+
+
+class TestSL16GracefulStop:
+    def test_reverse_topological_stop_order_and_no_leftover_children(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                "base": _child_doc("base", "sleeper.py", tier="core"),
+                "mid": _child_doc("mid", "sleeper.py", depends_on=("base",)),
+                "top": _child_doc("top", "sleeper.py", depends_on=("mid",)),
+            },
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            for name in ("base", "mid", "top"):
+                _wait_until(lambda n=name: sup.component_state(n) == "healthy", f"{name} healthy")
+            pids = {name: _pid_of(sup, name) for name in ("base", "mid", "top")}
+        finally:
+            code = sup.shutdown()
+        assert code == 0
+
+        # Stop rows appear in the journal in EMISSION order — the reverse
+        # topological order: dependents before dependencies.
+        stop_rows = [ln for ln in _records(tmp_path) if "to=stopped" in ln and "event=health" in ln]
+        stopped_names = [ln.split()[1].removeprefix("component=") for ln in stop_rows]
+        assert stopped_names == ["top", "mid", "base"]
+
+        # No child survives and none lingers as a zombie.
+        for name, pid in pids.items():
+            assert not _pid_exists(pid), f"{name}'s process {pid} survived the stop"
+            assert not _zombie(pid), f"{name}'s process {pid} is an unreaped zombie"
+        leftover: list[int] = []
+        try:
+            while True:
+                pid, _status = os.waitpid(-1, os.WNOHANG)
+                if pid == 0:
+                    break
+                leftover.append(pid)
+        except ChildProcessError:
+            pass  # ECHILD — nothing of this installation was ever unreaped
+        assert leftover == []
+
+
+# ── the two signal-name conventions (§3.4 vs CM §3.8) are pinned ──────
+
+
+class TestSignalConventions:
+    def test_manifest_names_prefixed_exit_names_unprefixed(self) -> None:
+        from vesmaro.service.supervisor import _signal_name, _signal_number
+
+        assert _signal_number("SIGTERM") == int(signal.SIGTERM)
+        assert _signal_number("SIGINT") == int(signal.SIGINT)
+        with pytest.raises(ValueError, match="unsupported stop signal"):
+            _signal_number("TERM")  # unprefixed is NOT a manifest name
+        with pytest.raises(ValueError, match="unsupported stop signal"):
+            _signal_number("NOTASIGNAL")
+        assert _signal_name(int(signal.SIGKILL)) == "KILL"
+        assert _signal_name(int(signal.SIGTERM)) == "TERM"
+
+    def test_exit_name_round_trips_through_the_reaper_convention(self) -> None:
+        from vesmaro.service.supervisor import _signal_name
+
+        # The reaper re-prefixes the §3.4 name for Popen's -signum form.
+        name = _signal_name(int(signal.SIGKILL))
+        assert -int(signal.Signals[f"SIG{name}"].value) == -9
