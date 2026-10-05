@@ -124,9 +124,7 @@ class TestSurfaceDefaults:
         (root / "builds" / "debug").mkdir(parents=True)
         (root / "builds" / "debug" / "o.py").write_text("def o():\n    pass\n", encoding="utf-8")
         (root / "builds" / "release").mkdir()
-        (root / "builds" / "release" / "r.py").write_text(
-            "def r():\n    pass\n", encoding="utf-8"
-        )
+        (root / "builds" / "release" / "r.py").write_text("def r():\n    pass\n", encoding="utf-8")
         rels = {sf.rel_path for sf in FileSurface(root, ["builds/debug"]).collect()}
         assert rels == {"builds/release/r.py"}
 
@@ -178,9 +176,9 @@ class TestWorktreeIndexRegression:
 
         # The duplicated symbol exists exactly once — from the
         # first-party tree, never from the worktree copy.
-        do_work = store._conn().execute(
-            "SELECT path FROM project_nodes WHERE name='do_work'"
-        ).fetchall()
+        do_work = (
+            store._conn().execute("SELECT path FROM project_nodes WHERE name='do_work'").fetchall()
+        )
         assert [row[0] for row in do_work] == ["pkg/helper.py"]
 
     def test_worktree_fixtures_are_never_poisoned(
@@ -189,18 +187,14 @@ class TestWorktreeIndexRegression:
         index_project("proj", wt_repo, store, _FakeMainStore())
         assert store.get_poisoned_paths("proj") == set()
 
-    def test_staleness_ignores_late_worktree(
-        self, store: CodeGraphStore, wt_repo: Path
-    ) -> None:
+    def test_staleness_ignores_late_worktree(self, store: CodeGraphStore, wt_repo: Path) -> None:
         """After indexing, a worktree wave lands in the root — the
         beacon/auto-stale path must NOT classify it as changed files
         (the live «376→746» trigger was an auto reindex)."""
         index_project("proj", wt_repo, store, _FakeMainStore())
         late_wt = wt_repo / "wt" / "wave2"
         (late_wt / "pkg").mkdir(parents=True)
-        (late_wt / "pkg" / "newmod.py").write_text(
-            "def brand_new():\n    pass\n", encoding="utf-8"
-        )
+        (late_wt / "pkg" / "newmod.py").write_text("def brand_new():\n    pass\n", encoding="utf-8")
         report = staleness_check("proj", wt_repo, store, CodeGraphConfig())
         assert report.changed_files == []
         assert report.fresh_percent == 100.0
