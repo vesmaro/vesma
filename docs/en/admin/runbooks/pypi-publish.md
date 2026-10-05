@@ -8,7 +8,7 @@ routine update pipeline as well. GitHub Actions is
 billing-locked (#117), so the whole pipeline runs locally via
 `scripts/pypi-publish.sh` (which since 2026-10-05 also orders the
 MANDATORY container image phase around the upload — implemented once in
-`scripts/image-publish.sh`; see [Container image](#container-image---mandatory-half-of-the-train)).
+`scripts/image-publish.sh`; see [Container image](#container-image--mandatory-half-of-the-train)).
 
 **Uploads are owner-executed steps.** PyPI names and versions are
 immutable: a published version can never be re-uploaded or replaced, and

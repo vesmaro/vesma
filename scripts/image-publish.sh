@@ -23,10 +23,15 @@
 #   push                  login (fresh authfile, shredded after) ->
 #                         skopeo explicit-transport push of :VERSION and
 #                         :latest (podman/docker fallback) -> anonymous
-#                         pull-flow verification (tags/list + digest
-#                         equality). Any failure after a successful PyPI
-#                         upload prints the RELEASE INCOMPLETE banner
-#                         with the exact catch-up command and exits 1.
+#                         pull-flow verification (tags/list + REMOTE
+#                         digest equality :VERSION == :latest as the
+#                         BINDING check; a local skopeo --digestfile,
+#                         when present, must match too — on the fallback
+#                         legs there is no local digestfile and equality
+#                         is verified remote-only with a loud WARN).
+#                         Any failure after a successful PyPI upload
+#                         prints the RELEASE INCOMPLETE banner with the
+#                         exact catch-up command and exits 1.
 #   catch-up              alias of push — the recovery entry printed in
 #                         the banner; pushes the already-built image and
 #                         re-verifies, touching nothing else.
@@ -57,6 +62,14 @@
 #   VESMA_IMAGE_SKOPEO  (default: skopeo — must share storage with the
 #   builder, so override it together with VESMA_IMAGE_BUILDER)
 #
+# Transport/auth coupling: the skopeo source transport follows the
+# builder (containers-storage: for podman/buildah, docker-daemon: for
+# docker — containers-storage cannot see docker-daemon images). docker
+# has no --authfile: its credentials are redirected into the ephemeral
+# auth dir via DOCKER_CONFIG, which stays exported for every docker
+# call in this script (an unexported DOCKER_CONFIG makes `docker push`
+# read ~/.docker/config.json and die unauthenticated).
+#
 # Field note (2026-10-05, v5.5.0 push): `podman push` to ghcr.io failed
 # with "Requesting bearer token: 403 Forbidden" on the first blob-reuse
 # check while the SAME authfile worked through
@@ -77,15 +90,23 @@ die() { echo "ERROR: $*" >&2; exit 2; }
 
 MODE="${1:-help}"
 STRICT=false
-if [[ "${2:-}" == "--strict" ]]; then STRICT=true; fi
-
 case "$MODE" in
-  preflight|build|push|catch-up) ;;
+  preflight)
+    case "${2:-}" in
+      "") ;;
+      --strict) STRICT=true ;;
+      *) die "preflight takes at most one argument: --strict (got: ${2:-})" ;;
+    esac
+    [[ $# -le 2 ]] || die "preflight takes at most one argument: --strict (got extra: ${*:3})"
+    ;;
+  build|push|catch-up)
+    [[ $# -eq 1 ]] || die "subcommand $MODE takes no arguments (got: ${*:2})"
+    ;;
   help|-h)
     awk 'NR>1 && /^set -/{exit} NR>1 {sub(/^#( |$)/,""); print}' "$0"
     exit 0
     ;;
-  *) echo "ERROR: unknown subcommand: $MODE (use: preflight|build|push|catch-up|help)" >&2; exit 2 ;;
+  *) die "unknown subcommand: $MODE (use: preflight|build|push|catch-up|help)" ;;
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -182,8 +203,16 @@ registry_login() {
   local user="${GHCR_USER:-vesmaro}"
   case "$BUILDER_KIND" in
     docker)
+      # docker has no --authfile: point DOCKER_CONFIG at AUTH_DIR so the
+      # login writes config.json there. The file is duplicated to auth.json
+      # (same format) so the skopeo --dest-authfile leg is authenticated
+      # too, and DOCKER_CONFIG stays set for every docker call below —
+      # without it `docker push` reads ~/.docker/config.json and 401s.
       printf '%s' "$GHCR_TOKEN" | DOCKER_CONFIG="$AUTH_DIR" "${BUILDER_CMD[@]}" login ghcr.io -u "$user" --password-stdin >/dev/null
-      AUTHFILE="$AUTH_DIR/config.json"
+      cp "$AUTH_DIR/config.json" "$AUTH_DIR/auth.json"
+      chmod 600 "$AUTH_DIR/config.json" "$AUTH_DIR/auth.json"
+      AUTHFILE="$AUTH_DIR/auth.json"
+      export DOCKER_CONFIG="$AUTH_DIR"
       ;;
     *)  # podman / buildah: --authfile (pre-seed lesson: {} not empty)
       printf '%s' "$GHCR_TOKEN" | "${BUILDER_CMD[@]}" login --authfile "$AUTHFILE" --password-stdin -u "$user" ghcr.io >/dev/null
@@ -192,14 +221,21 @@ registry_login() {
   echo "→ ghcr.io login ok (authfile: $AUTHFILE, shredded on exit)"
 }
 
-# push one tag; on success write the manifest digest into $2
+# push one tag; on success write the manifest digest into $2 (skopeo only —
+# the podman/docker fallback legs have no digestfile equivalent, so the
+# verify step below treats the remote as the source of truth)
 push_tag() {
   local src="$1" digfile="$2" rc
+  # the skopeo source transport must match where the builder put the image:
+  # podman/buildah build into containers-storage, docker into its daemon —
+  # containers-storage: cannot see docker-daemon images
+  local src_transport="containers-storage"
+  if [[ "$BUILDER_KIND" == "docker" ]]; then src_transport="docker-daemon"; fi
   if [[ "${#SKOPEO_CMD[@]}" -gt 0 ]]; then
     set +e
     "${SKOPEO_CMD[@]}" copy --all --dest-authfile "$AUTH_DIR/auth.json" \
       --digestfile "$digfile" \
-      "containers-storage:$src" "docker://$src"
+      "$src_transport:$src" "docker://$src"
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then
@@ -210,8 +246,12 @@ push_tag() {
   fi
   if [[ $rc -ne 0 ]]; then
     case "$BUILDER_KIND" in
+      # DOCKER_CONFIG is exported by registry_login (docker branch) — the
+      # push must read the ephemeral config.json, not ~/.docker/config.json
       docker) set +e; "${BUILDER_CMD[@]}" push "$src"; rc=$?; set -e ;;
-      *)      set +e; "${BUILDER_CMD[@]}" push --authfile "$AUTH_DIR/auth.json" "docker://$src"; rc=$?; set -e ;;
+      *)      # podman/buildah push: source is the bare image name (a
+              # docker:// SOURCE here names a nonexistent local image)
+              set +e; "${BUILDER_CMD[@]}" push --authfile "$AUTH_DIR/auth.json" "$src"; rc=$?; set -e ;;
     esac
   fi
   return $rc
@@ -231,7 +271,8 @@ release_incomplete() {
    GHCR_TOKEN=<token> scripts/image-publish.sh catch-up
 
  (catch-up pushes :$VERSION + :latest and re-runs the anonymous
-  pull-flow verification; it touches nothing else)
+  pull-flow verification; it touches nothing else. Run it from the
+  release-tag checkout — the version gates hard-refuse a moved HEAD)
 ══════════════════════════════════════════════════════════════════
 BANNER
   exit 1
@@ -314,23 +355,39 @@ fi
 if [[ "${#FAILED_STEPS[@]}" -gt 0 ]]; then
   release_incomplete "$WHERE"
 fi
-D1="$(cat "$AUTH_DIR/digest-version.txt" 2>/dev/null || true)"
-D2="$(cat "$AUTH_DIR/digest-latest.txt" 2>/dev/null || true)"
-if [[ -z "$D1" || -z "$D2" || "$D1" != "$D2" ]]; then
-  release_incomplete "local digest equality (:VERSION=$D1 vs :latest=$D2)"
-fi
-echo "✓ pushed both tags, digest $D1"
-
-# anonymous pull-flow verification (no credentials — a user's-eye check)
+# anonymous pull-flow verification (no credentials — a user's-eye check).
+# The remote is the source of truth: both tags are HEADed anonymously and
+# their digests must be EQUAL — that is the binding equality check. A
+# local skopeo --digestfile, when present, must ALSO match (strict); on
+# the podman/docker fallback legs no digestfile is written and equality
+# is verified remote-only (loud WARN below). Every registry request is
+# wrapped: a transport failure must produce the RELEASE INCOMPLETE
+# banner, not a silent set -e death after a successful PyPI upload.
 echo "→ anonymous pull verification of $REPO_PATH"
-ANON="$(curl -s -m 20 "https://ghcr.io/token?scope=repository:$REPO_PATH:pull" | sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')"
-[[ -n "$ANON" ]] || release_incomplete "anonymous ghcr token request"
-TAGS="$(curl -s -m 20 -H "Authorization: Bearer $ANON" "https://ghcr.io/v2/$REPO_PATH/tags/list")"
+ANON="$(curl -sf -m 20 "https://ghcr.io/token?scope=repository:$REPO_PATH:pull" | sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')" \
+  || release_incomplete "anonymous ghcr token request failed (curl rc=$?)"
+[[ -n "$ANON" ]] || release_incomplete "anonymous ghcr token request: empty token"
+TAGS="$(curl -sf -m 20 -H "Authorization: Bearer $ANON" "https://ghcr.io/v2/$REPO_PATH/tags/list")" \
+  || release_incomplete "tags/list fetch failed (curl rc=$?)"
 echo "$TAGS" | grep -q "\"$VERSION\"" || release_incomplete "tags/list lacks \"$VERSION\" (got: $TAGS)"
 ACCEPT='application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json'
-REMOTE_VERSION="$(curl -sI -m 20 -H "Authorization: Bearer $ANON" -H "Accept: $ACCEPT" "https://ghcr.io/v2/$REPO_PATH/manifests/$VERSION" | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')"
-REMOTE_LATEST="$(curl -sI -m 20 -H "Authorization: Bearer $ANON" -H "Accept: $ACCEPT" "https://ghcr.io/v2/$REPO_PATH/manifests/latest" | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')"
-[[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" == "$D1" ]] || release_incomplete "remote digest :$VERSION=$REMOTE_VERSION != pushed $D1"
-[[ -n "$REMOTE_LATEST" && "$REMOTE_LATEST" == "$D1" ]] || release_incomplete "remote digest :latest=$REMOTE_LATEST != pushed $D1"
-echo "✓ anonymous verify: tags/list has $VERSION; digest(:$VERSION) == digest(:latest) == $D1"
+REMOTE_VERSION="$(curl -sfI -m 20 -H "Authorization: Bearer $ANON" -H "Accept: $ACCEPT" "https://ghcr.io/v2/$REPO_PATH/manifests/$VERSION" | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')" \
+  || release_incomplete "manifest HEAD :$VERSION failed (curl rc=$?)"
+REMOTE_LATEST="$(curl -sfI -m 20 -H "Authorization: Bearer $ANON" -H "Accept: $ACCEPT" "https://ghcr.io/v2/$REPO_PATH/manifests/latest" | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')" \
+  || release_incomplete "manifest HEAD :latest failed (curl rc=$?)"
+[[ -n "$REMOTE_VERSION" ]] || release_incomplete "remote digest :$VERSION is empty (no docker-content-digest header)"
+[[ -n "$REMOTE_LATEST" ]] || release_incomplete "remote digest :latest is empty (no docker-content-digest header)"
+[[ "$REMOTE_VERSION" == "$REMOTE_LATEST" ]] || release_incomplete "remote digest equality (:VERSION=$REMOTE_VERSION != :latest=$REMOTE_LATEST)"
+D1="$(cat "$AUTH_DIR/digest-version.txt" 2>/dev/null || true)"
+D2="$(cat "$AUTH_DIR/digest-latest.txt" 2>/dev/null || true)"
+if [[ -n "$D1" && "$D1" != "$REMOTE_VERSION" ]]; then
+  release_incomplete "local skopeo digest :$VERSION=$D1 != remote $REMOTE_VERSION"
+fi
+if [[ -n "$D2" && "$D2" != "$REMOTE_LATEST" ]]; then
+  release_incomplete "local skopeo digest :latest=$D2 != remote $REMOTE_LATEST"
+fi
+if [[ -z "$D1" || -z "$D2" ]]; then
+  echo "WARN: local skopeo digestfile absent (non-skopeo push leg) — digest equality was verified REMOTE-ONLY"
+fi
+echo "✓ anonymous verify: tags/list has $VERSION; digest(:$VERSION) == digest(:latest) == $REMOTE_VERSION${D1:+ (matches local skopeo digestfile)}"
 exit 0

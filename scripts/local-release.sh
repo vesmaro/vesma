@@ -30,7 +30,8 @@
 # The canonical train entry remains scripts/pypi-publish.sh --publish.
 #
 # Prereqs: on release tag, clean tree, venv with dev extras, gh CLI auth,
-# docker or buildah for image, python -m build available.
+# GHCR_TOKEN (classic PAT with write:packages) for the container image
+# push, podman/buildah/docker for the image, python -m build available.
 #
 # See: memory ef56d3b5 (CI billing), b9f022f8 (vesma local-CI workaround)
 
@@ -42,7 +43,7 @@ for arg in "$@"; do
   case "$arg" in
     --skip-verify) SKIP_VERIFY=true ;;
     --dry-run)     DRY_RUN=true ;;
-    --no-image)    echo "ERROR: --no-image is removed — the container image is a MANDATORY release artifact (owner directive 2026-10-05, card vesma-ghcr-5x-parity)."; echo "  Wheels/sdist-only preparation run (publishes nothing): scripts/pypi-publish.sh" >&2; exit 2 ;;
+    --no-image)    echo "ERROR: --no-image is removed — the container image is a MANDATORY release artifact (owner directive 2026-10-05, card vesma-ghcr-5x-parity)." >&2; echo "  Wheels/sdist-only preparation run (publishes nothing): scripts/pypi-publish.sh" >&2; exit 2 ;;
     --no-release)  NO_RELEASE=true ;;
     --help|-h) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
