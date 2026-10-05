@@ -414,9 +414,7 @@ class TestPinPolicy:
 # ── Reinstall must not launder freeze-drift (P1) ──────────────────────
 
 
-def _stub_pip(
-    monkeypatch: pytest.MonkeyPatch, freeze_outputs: list[str] | str
-) -> list[list[str]]:
+def _stub_pip(monkeypatch: pytest.MonkeyPatch, freeze_outputs: list[str] | str) -> list[list[str]]:
     """Replace the pip leg: ``install`` is a no-op, ``freeze`` emits the
     given output(s) — a single string repeats on every call (a matching
     venv freezes twice: drift probe + verify), a list is consumed in

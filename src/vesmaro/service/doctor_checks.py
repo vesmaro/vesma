@@ -111,9 +111,7 @@ def _dr01() -> Finding:
         if _weakened(mode, expected) or _owner(path) != os.geteuid():
             hard = True
             problems.append(f"{path}: mode {mode:04o} owner {_owner(path)}")
-            fixes.append(
-                f"chmod {expected:04o} {path} && chown {getpass.getuser()} {path}"
-            )
+            fixes.append(f"chmod {expected:04o} {path} && chown {getpass.getuser()} {path}")
         elif mode != expected:
             problems.append(f"{path}: mode {mode:04o} (stricter than {expected:04o} — review)")
             fixes.append(f"chmod {expected:04o} {path}")
@@ -479,8 +477,7 @@ def _dr07() -> Finding:
             "DR-07",
             "unit drift (installed vs regenerated)",
             Severity.OK,
-            f"no unit installed at {_installed_unit_path()} (n/a — run "
-            "`vesma service install`)",
+            f"no unit installed at {_installed_unit_path()} (n/a — run `vesma service install`)",
         )
     unit_path, text = unit
     downgraded = unitgen.parse_downgrade_marker(text)
@@ -531,8 +528,7 @@ def _dr08() -> Finding:
             Severity.OK,
             f"socket present at {sock_path} but the probe failed ({exc}) — "
             "stale socket or stopped supervisor (status, not an error)",
-            f"stale socket: remove {sock_path} after confirming the "
-            "supervisor is stopped",
+            f"stale socket: remove {sock_path} after confirming the supervisor is stopped",
         )
     try:
         payload = json.loads(reply.splitlines()[0])
@@ -575,9 +571,7 @@ def _dr08() -> Finding:
 
 def _dr09(installation: dict[str, ComponentManifest] | None) -> Finding:
     if not installation:
-        return Finding(
-            "DR-09", "health port collisions", Severity.OK, "n/a — no installation"
-        )
+        return Finding("DR-09", "health port collisions", Severity.OK, "n/a — no installation")
     claims: dict[int, set[str]] = {}
     for manifest in installation.values():
         health = manifest.health
@@ -602,8 +596,7 @@ def _dr09(installation: dict[str, ComponentManifest] | None) -> Finding:
             "health port collisions",
             Severity.FAIL,
             detail,
-            "change the health port of one of the components (manifest "
-            "health.http/health.tcp)",
+            "change the health port of one of the components (manifest health.http/health.tcp)",
         )
     return Finding(
         "DR-09",
@@ -701,8 +694,7 @@ def _dr11() -> Finding:
         "DR-11",
         "journald Storage=persistent",
         Severity.WARN,
-        f"journald is volatile (Storage={storage}) — service logs are lost "
-        "on reboot",
+        f"journald is volatile (Storage={storage}) — service logs are lost on reboot",
         "set Storage=persistent in /etc/systemd/journald.conf (or create "
         "/var/log/journal) and restart systemd-journald",
     )
@@ -725,9 +717,7 @@ def _dr12() -> Finding:
             problems.append(f"{path}: group/world-writable on disk ({mode:04o})")
             fixes.append(f"chmod 700 {path}")
     if unit is None:
-        detail = "no unit installed (n/a)" + (
-            "; " + "; ".join(problems) if problems else ""
-        )
+        detail = "no unit installed (n/a)" + ("; " + "; ".join(problems) if problems else "")
         if problems:
             return Finding(
                 "DR-12", "venv read-only at runtime", Severity.FAIL, detail, " ; ".join(fixes)
@@ -763,9 +753,7 @@ def _dr12() -> Finding:
         missing = expected - covered
         if missing:
             hard = True
-            problems.append(
-                "unit ReadOnlyPaths does not cover: " + ", ".join(sorted(missing))
-            )
+            problems.append("unit ReadOnlyPaths does not cover: " + ", ".join(sorted(missing)))
             fixes.append("vesma service install")
     if problems:
         return Finding(
@@ -825,9 +813,7 @@ def _dr13() -> Finding:
     ]
     problems: list[str] = []
     if illegal:
-        problems.append(
-            f"downgrade marker names outside the filesystem allowlist: {illegal}"
-        )
+        problems.append(f"downgrade marker names outside the filesystem allowlist: {illegal}")
     if silent:
         problems.append(
             f"hardening directive(s) commented out without a downgrade marker: {silent}"
@@ -872,8 +858,7 @@ def run_service_checks() -> list[Finding]:
                 "installation load",
                 Severity.FAIL,
                 f"components.d failed to load (fail-closed): {exc}",
-                "fix or remove the offending file in "
-                f"{layout.components_dir()}",
+                f"fix or remove the offending file in {layout.components_dir()}",
             )
         ]
 

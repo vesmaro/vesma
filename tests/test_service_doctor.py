@@ -515,7 +515,8 @@ class TestDR08:
         reply = json.dumps({"id": 1, "error": {"code": 404, "message": "no such method"}})
         with _HelloServer(runtime_socket_dir / "control.sock", reply + "\n"):
             finding = _finding(run_service_checks(), "DR-08")
-        assert finding.severity is Severity.WARN  # stale/absent stays OK; a talkative mismatch warns
+        # stale/absent stays OK per contract; a talkative mismatch warns.
+        assert finding.severity is Severity.WARN
         assert "protocol mismatch" in finding.detail
         assert finding.fix_command is not None
 
