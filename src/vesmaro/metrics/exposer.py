@@ -212,4 +212,83 @@ def render_exposition(
         return ""
 
 
-__all__ = ["render_exposition"]
+__all__ = ["main", "render_exposition"]
+
+
+# ── Runnable child-process entry (pack component `metrics`) ──────────
+# Minimal HTTP exposition server so the bundled child-process manifest
+# (src/vesmaro/service/components/metrics.yaml) points at a surface that
+# actually runs: `python -m vesmaro.metrics.exposer --db <path>` serves
+# render_exposition() on 127.0.0.1:<port>/metrics until SIGTERM/SIGINT.
+# Deliberately minimal: no auth surface (loopback-only by default), no
+# threads beyond ThreadingHTTPServer's per-request pool.
+
+import argparse  # noqa: E402
+import logging  # noqa: E402
+import signal  # noqa: E402
+import threading  # noqa: E402
+from collections.abc import Sequence  # noqa: E402
+from http import HTTPStatus  # noqa: E402
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
+
+_logger = logging.getLogger("vesmaro.metrics.exposer")
+
+
+def _make_handler(store: MetricsStore) -> type[BaseHTTPRequestHandler]:
+    class ExpositionHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path != "/metrics":
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            body = render_exposition(store).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            _logger.debug("metrics exposition http: " + format, *args)
+
+    return ExpositionHandler
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Serve the Prometheus exposition until SIGTERM/SIGINT (exit 0)."""
+    parser = argparse.ArgumentParser(
+        prog="python -m vesmaro.metrics.exposer",
+        description="Serve the vitals Prometheus exposition over loopback HTTP.",
+    )
+    parser.add_argument("--db", type=Path, required=True, help="metrics sidecar path")
+    parser.add_argument("--host", default="127.0.0.1", help="bind address (loopback default)")
+    parser.add_argument("--port", type=int, default=9110, help="TCP port (default 9110)")
+    args = parser.parse_args(argv)
+
+    store = MetricsStore(args.db)
+    server = ThreadingHTTPServer((args.host, args.port), _make_handler(store))
+
+    def _shutdown(signum: int, _frame: Any) -> None:
+        _logger.info("metrics exposition: signal %s — shutting down", signum)
+        # shutdown() must not run on the serve_forever thread — park it.
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+    _logger.info(
+        "metrics exposition serving on http://%s:%d/metrics (db=%s)",
+        args.host,
+        args.port,
+        args.db,
+    )
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        store.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
