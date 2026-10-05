@@ -200,7 +200,7 @@ Mirrors MCP tools (`POST /memories`, `GET /recall/agent/{name}`, `POST /search`,
 
 ### CLI
 
-`vesma add`, `vesma search`, `vesma recall --agent <x>`, `vesma tags validate`, `vesma migrate from-ai-brain`. Pipeline and DLQ operations (cluster, synthesize, publish, dlq retry/discard) are exposed over HTTP (`POST /process`, `POST /synthesize`, `POST /publish/{id}`, `/dlq/*`) and via `vesma processor run`, not as dedicated CLI verbs.
+`vesma add`, `vesma search`, `vesma recall agent <x>`, `vesma tags validate`, `vesma migrate from-ai-brain`. Pipeline and DLQ operations (cluster, synthesize, publish, dlq retry/discard) are exposed over HTTP (`POST /process`, `POST /synthesize`, `POST /publish/{id}`, `/dlq/*`) and via `vesma processor run`, not as dedicated CLI verbs.
 
 ## 4. Knowledge pipeline (M4) — the core architectural addition
 

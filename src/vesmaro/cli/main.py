@@ -18,7 +18,7 @@ from rich.table import Table
 from vesmaro.cli._manager import get_manager
 from vesmaro.config import find_config_file, load_settings
 from vesmaro.logging_setup import setup_logging
-from vesmaro.models import MemoryCreate, MemorySource, MemoryType
+from vesmaro.models import AgentRecallQuery, Memory, MemoryCreate, MemorySource, MemoryType
 from vesmaro.storage.sqlite_store import (
     EDGE_STATS_LAST_PURGE_META_KEY,
     EDGE_STATS_TOTAL_ROWS_CAP,
@@ -281,25 +281,27 @@ def search(
 
 
 # ── recall ─────────────────────────────────────────────────────────────────────
+# CLI-architecture rework W2 (docs/project/cli-architecture-rework.md §2.4):
+# standing design rule — a subcommand names the function (WHAT), a flag only
+# configures it (HOW). `recall` is a group whose callback keeps the bare
+# `vesma recall` behavior byte-identical; per-agent recall moved to the
+# canonical subcommand `vesma recall agent SLUG [QUERY]`; the legacy `--agent`
+# flag stays as a hidden deprecated alias with a stderr hint (identical
+# behavior; removal not before 6.0, design doc §3).
 
 
-@app.command()
-def recall(
-    project: str = typer.Option(None, "--project", "-p"),
-    agent: str = typer.Option(None, "--agent", "-a", help="Filter by agent slug (M3)"),
-    limit: int = typer.Option(10, "--limit", "-l"),
-    config: str = ConfigOption,
-) -> None:
-    """Recall recent memories, optionally filtered by project or agent."""
-    from vesmaro.models import AgentRecallQuery
+def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
+    """One-line deprecation hint for a hidden legacy flag form (stderr).
 
-    mgr = get_manager(config)
-    if agent:
-        results = mgr.agent_recall(AgentRecallQuery(agent=agent, project=project, limit=limit))
-        memories = [r.memory for r in results]
-    else:
-        memories = mgr.recall_context(project=project or "", limit=limit)
+    Per-module copy of the W-C precedent (update_cmd.py, doctor.py):
+    each CLI module that retracts a flag form owns its hint helper.
+    stdout stays clean for pipes and JSON consumers.
+    """
+    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
 
+
+def _print_recall_memories(memories: list[Memory]) -> None:
+    """Shared printer for the recall group (bare form and agent form alike)."""
     if not memories:
         console.print("[yellow]No memories found.[/yellow]")
         return
@@ -307,6 +309,79 @@ def recall(
         console.print(f"[cyan]{m.auto_title()}[/cyan]  ({m.id[:8]}…)")
         console.print(f"  tags: {', '.join(m.tags)}")
         console.print()
+
+
+_recall_app = typer.Typer(
+    name="recall",
+    help="Recall recent memories, optionally scoped to an agent or a project.",
+    invoke_without_command=True,
+)
+app.add_typer(_recall_app, name="recall")
+
+
+@_recall_app.callback(invoke_without_command=True)
+def recall(
+    ctx: typer.Context,
+    project: str = typer.Option(None, "--project", "-p"),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Deprecated flag form — use: `vesma recall agent SLUG`.",
+        hidden=True,
+    ),
+    limit: int = typer.Option(10, "--limit", "-l"),
+    config: str = ConfigOption,
+) -> None:
+    """Recall recent memories, optionally filtered by project.
+
+    Per-agent recall (M3) is a subcommand now: `vesma recall agent SLUG
+    [QUERY]`. The old flag form (--agent) still works — a hidden
+    deprecated alias with identical behavior and a stderr hint; removal
+    is not before 6.0.
+    """
+    if ctx.invoked_subcommand is not None:
+        # The subcommand (`agent`) runs its own logic; options placed
+        # BEFORE the subcommand word would be silently dropped otherwise.
+        if project is not None or agent is not None or limit != 10 or config is not None:
+            typer.echo(
+                "note: options placed before the subcommand are ignored — "
+                "pass them after it (e.g. `vesma recall agent SLUG --project x`)",
+                err=True,
+            )
+        return
+    mgr = get_manager(config)
+    if agent:
+        _deprecated_flag_hint("vesma recall --agent SLUG", "vesma recall agent SLUG")
+        results = mgr.agent_recall(AgentRecallQuery(agent=agent, project=project, limit=limit))
+        _print_recall_memories([r.memory for r in results])
+        return
+    _print_recall_memories(mgr.recall_context(project=project or "", limit=limit))
+
+
+@_recall_app.command(name="agent")
+def recall_agent(
+    agent: str = typer.Argument(..., help="Agent slug to recall for."),
+    query: str | None = typer.Argument(
+        None,
+        help="Optional query — hybrid search scoped to the agent's entries "
+        "(without it: the N most recent entries for the agent).",
+    ),
+    project: str = typer.Option(None, "--project", "-p"),
+    limit: int = typer.Option(10, "--limit", "-l"),
+    config: str = ConfigOption,
+) -> None:
+    """Per-agent recall (M3): one agent's entries, optionally query-matched.
+
+    Without QUERY: the N most recent entries for the agent (created_at
+    desc). With QUERY: hybrid search scoped to the agent's entries
+    (raw included). Same data the MCP tool mnemos_agent_recall returns.
+    """
+    mgr = get_manager(config)
+    results = mgr.agent_recall(
+        AgentRecallQuery(agent=agent, project=project, query=query, limit=limit)
+    )
+    _print_recall_memories([r.memory for r in results])
 
 
 # ── tags (M2) ─────────────────────────────────────────────────────────────────
