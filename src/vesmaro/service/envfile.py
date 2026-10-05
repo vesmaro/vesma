@@ -10,6 +10,15 @@ files are tamper vectors).
 Parsing is dotenv-lite: ``KEY=VALUE`` lines, ``#`` comments, blank lines
 skipped; a malformed line is a violation (a secrets file with unparseable
 content must not be silently truncated).
+
+Secret taint (layout §3.9, LY-12): every parsed value is returned as a
+:class:`TaintedValue` inside a :class:`TaintedValues` mapping — both are
+transparent ``str`` / ``dict`` subclasses (env construction, comparisons
+and JSON dumps behave exactly as before), and the subclass marker is what
+the engine cache-write API (:func:`vesmaro.service.cache.put_under_cache`)
+refuses: a value from an env file never lands in the component cache.
+The taint is a per-value TYPE marker applied at the load boundary — it
+survives passing the value around, not string transformation.
 """
 
 from __future__ import annotations
@@ -27,6 +36,24 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Reserved keys — never settable through an env file (see the parse loop).
 _RESERVED_KEYS = frozenset({"PATH"})
+
+
+class TaintedValue(str):
+    """A string that originates from an env file (layout §3.9 secret taint).
+
+    Behaves exactly like ``str`` everywhere (child env construction,
+    comparisons, JSON dumps); the subclass identity is the marker the
+    cache-write API refuses (LY-12). Never carries the VALUE in its
+    repr beyond what ``str`` already shows — it IS the value.
+    """
+
+    __slots__ = ()
+
+
+class TaintedValues(dict[str, str]):
+    """Parsed env-file mapping; every value is a :class:`TaintedValue`."""
+
+    __slots__ = ()
 
 
 def _fix_chmod(path: Path) -> str:
@@ -125,7 +152,7 @@ def load_env_file(
     check_dir = Path(manifests_dir) if manifests_dir is not None else None
     _check_safety(env_path, check_dir)
 
-    values: dict[str, str] = {}
+    values: dict[str, str] = TaintedValues()
     for line_no, raw_line in enumerate(env_path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -165,5 +192,5 @@ def load_env_file(
                     "venv or a launcher wrapper)"
                 ),
             )
-        values[key] = value.strip()
+        values[key] = TaintedValue(value.strip())
     return values
