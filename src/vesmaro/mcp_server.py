@@ -3193,8 +3193,10 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 wrong_tool_flag=ur_wrong_tool,
             )
         except ValueError as exc:
-            # The sink's hostile-input refusals travel as ValueError
-            # through the wrapper — a clean error dict, never a raise.
+            # belt-and-suspenders: the wrapper contract currently guarantees
+            # ValueError never escapes (it catches everything down to the
+            # sink); this surfaces a clean error dict if a future wrapper
+            # change re-raises. The live refusal path is usage_id is None.
             return {"error": str(exc)}
         if usage_id is None:
             # The sink refused the whole write (unknown metrics_id,
