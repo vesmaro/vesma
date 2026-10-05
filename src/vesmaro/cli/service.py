@@ -12,6 +12,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.text import Text
 
 from vesmaro.service.errors import ManifestError
 from vesmaro.service.install import InstallError, install, uninstall
@@ -26,7 +27,9 @@ console = Console()
 
 
 def _fail(exc: Exception) -> None:
-    console.print(f"[red]✗[/red] {exc}")
+    # Text(exc): report DATA must never pass through rich markup — an
+    # exception message containing '[' is operator text, not formatting.
+    console.print("[red]✗[/red]", Text(str(exc)))
     raise typer.Exit(1) from exc
 
 
@@ -46,7 +49,9 @@ def service_install() -> None:
     for line in result.lines:
         downgraded_line = line.startswith("CONTAINER DOWNGRADE")
         style = "[yellow]⚠[/yellow]" if downgraded_line else "[green]✓[/green]"
-        console.print(f"{style} {line}")
+        # Text(line): report lines carry operator data (paths, names) —
+        # rendered without markup, only the prefix is styling.
+        console.print(style, Text(line))
     console.print(f"[green]Service installed ({result.unit_path}).[/green]")
 
 
@@ -74,7 +79,9 @@ def service_uninstall(
     except (InstallError, ManifestError) as exc:
         _fail(exc)
     for line in result.lines:
-        console.print(f"[green]✓[/green] {line}")
+        warn_line = line.startswith("WARN:")
+        style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
+        console.print(style, Text(line))
     console.print("[green]Uninstall complete.[/green]")
 
 
