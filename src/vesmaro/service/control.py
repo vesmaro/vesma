@@ -74,6 +74,20 @@ FOLLOW_IDLE_TIMEOUT_S = 60.0
 FOLLOW_MAX_DURATION_S = 3600.0
 BIND_ATTEMPTS = 3
 
+# W6 hardening (PR #494 backlog a/b — DoS bounds the spec leaves to the
+# implementation; documented here, not invented silently):
+# - a connection that does not complete `hello` within HELLO_TIMEOUT_S is
+#   closed (bounds half-open socket pile-ups on the bounded thread pool);
+# - at most MAX_CONNECTIONS concurrent connection threads; beyond that the
+#   accept loop closes the newcomer UNREAD (the §4.7 line/flood defence
+#   extended to connection-count flooding);
+# - a follow-pump frame send must complete within SEND_DEADLINE_S — a peer
+#   that stops reading cannot block the pump forever (socket send timeout,
+#   not a forever-blocking sendall).
+MAX_CONNECTIONS = 64
+HELLO_TIMEOUT_S = 10.0
+SEND_DEADLINE_S = RESPONSE_TIMEOUT_S
+
 # Full manifest-name template (spec §4.7); regex fail → error 3, unknown
 # in the registry → error 100 (name-injection defence, CS-13).
 COMPONENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -665,6 +679,9 @@ class ControlServer:
         max_follows_per_peer: int = MAX_FOLLOWS_PER_PEER,
         max_follows_total: int = MAX_FOLLOWS_TOTAL,
         max_line_bytes: int = MAX_LINE_BYTES,
+        max_connections: int = MAX_CONNECTIONS,
+        hello_timeout_s: float = HELLO_TIMEOUT_S,
+        send_deadline_s: float = SEND_DEADLINE_S,
         log: logging.Logger | None = None,
     ) -> None:
         self._backend = backend
@@ -675,6 +692,9 @@ class ControlServer:
         self._max_follows_peer = max_follows_per_peer
         self._max_follows_total = max_follows_total
         self._max_line = max_line_bytes
+        self._max_connections = max_connections
+        self._hello_timeout_s = hello_timeout_s
+        self._send_deadline_s = send_deadline_s
         self._follows = _FollowCounters()
         self._listener: socket.socket | None = None
         self._sock_path: Path | None = None
@@ -733,6 +753,21 @@ class ControlServer:
                 self._log.warning("control: peer uid check failed (cred=%s) — closing unread", cred)
                 conn.close()
                 continue
+            with self._conns_lock:
+                # Prune finished connection threads on every accept — the
+                # accept loop is the list's only writer. Without this the
+                # list grows without bound under steady polling (~100 MB
+                # /day at 1 Hz; cascade 2026-10-05, P2-1).
+                self._conns[:] = [t for t in self._conns if t.is_alive()]
+                at_capacity = len(self._conns) >= self._max_connections
+            if at_capacity:
+                # W6 hardening: connection-count flood defence — the peer is
+                # closed UNREAD (same posture as the peer-uid rejection).
+                self._log.warning(
+                    "control: connection cap (%d) reached — closing unread", self._max_connections
+                )
+                conn.close()
+                continue
             thread = threading.Thread(
                 target=self._serve_connection,
                 args=(conn, cred[0]),
@@ -740,11 +775,6 @@ class ControlServer:
                 daemon=True,
             )
             with self._conns_lock:
-                # Prune finished connection threads on every accept — the
-                # accept loop is the list's only writer. Without this the
-                # list grows without bound under steady polling (~100 MB
-                # /day at 1 Hz; cascade 2026-10-05, P2-1).
-                self._conns[:] = [t for t in self._conns if t.is_alive()]
                 self._conns.append(thread)
             thread.start()
         self._cleanup()
@@ -800,6 +830,11 @@ class ControlServer:
             peer_key = f"uid:{os.geteuid()} pid:{peer_pid}"
             reader = _LineReader(conn, self._max_line)
             hello_done = False
+            # W6 hardening: `hello` is mandatory on EVERY connection (§4.4) —
+            # a peer that never sends it cannot hold a connection slot beyond
+            # HELLO_TIMEOUT_S. After the negotiation the socket goes back to
+            # blocking (the response timeout is the client's §4.7 concern).
+            conn.settimeout(self._hello_timeout_s)
             while not self._stop.is_set():
                 try:
                     line = reader.read_line()
@@ -810,6 +845,14 @@ class ControlServer:
                     }
                     send_frame(conn, reply)
                     break  # framing trust lost → close (spec §4.7 allows close)
+                except TimeoutError:
+                    if not hello_done:
+                        self._log.warning(
+                            "control: no hello within %.0fs from %s — closing",
+                            self._hello_timeout_s,
+                            peer_key,
+                        )
+                    break
                 except OSError:
                     break  # client went away
                 if line is None:
@@ -823,6 +866,9 @@ class ControlServer:
                 if request.method == "hello":
                     outcome = self._handle_hello(request.params)
                     hello_done = not isinstance(outcome, _ProtoErrorReply)
+                    if hello_done:
+                        with contextlib.suppress(OSError):
+                            conn.settimeout(None)
                     self._log.debug("control: hello peer=%s ok=%s", peer_key, hello_done)
                     if not self._reply(conn, request.id, outcome):
                         break
@@ -914,9 +960,12 @@ class ControlServer:
                 ERR_INVALID_STATE, str(exc), {"component": exc.component, "state": exc.state}
             )
         except StartFailedError as exc:
+            # §4.6 hygiene (W6 backlog e): the MESSAGE channel stays a short
+            # fixed text — backend free text never enters it; the sanitized
+            # reason token travels in `data`.
             return _ProtoErrorReply(
                 ERR_START_FAILED,
-                str(exc),
+                f"start failed for component {exc.component!r}",
                 {"component": exc.component, "reason": client_safe_start_reason(exc.reason)},
             )
         except StopTimeoutError as exc:
@@ -988,33 +1037,46 @@ class ControlServer:
     def _pump_follow(
         self, conn: socket.socket, frame_id: int, component: str, stream: LogStream
     ) -> bool:
-        """Frame pump: stream lines, enforce idle/hard-cap, final answer."""
+        """Frame pump: stream lines, enforce idle/hard-cap, final answer.
+
+        W6 hardening: every stream send carries the send deadline — a peer
+        that stops reading cannot block the pump forever (the send raises
+        past the deadline, ``send_frame`` turns that into «peer gone» and
+        the subscription is freed by the caller)."""
         started = time.monotonic()
         idle_deadline = started + self._follow_idle_s
         hard_deadline = started + self._follow_max_s
-        while not self._stop.is_set():
-            now = time.monotonic()
-            if now >= hard_deadline:
-                return self._finish_follow(conn, frame_id, stream.current_state())
-            idle_left = idle_deadline - now
-            if idle_left <= 0:
-                return self._finish_follow(conn, frame_id, stream.current_state())
-            try:
-                lines = stream.poll(min(idle_left, _FOLLOW_POLL_S))
-            except Exception:
-                self._log.exception("control: follow source failed for %s", component)
-                return self._reply(conn, frame_id, _ProtoErrorReply(ERR_INTERNAL, "internal error"))
-            if lines:
-                idle_deadline = time.monotonic() + self._follow_idle_s
-                for text in lines:
-                    frame = {"id": frame_id, "stream": {"component": component, "line": text}}
-                    if not send_frame(conn, frame):
-                        return False  # client gone → subscription freed by caller
-            if stream.final_state is not None:
-                return self._finish_follow(conn, frame_id, stream.final_state)
-            if self._client_gone(conn):
-                return False  # client disconnected → free the subscription (CS-14)
-        return self._finish_follow(conn, frame_id, stream.current_state())
+        with contextlib.suppress(OSError):
+            conn.settimeout(self._send_deadline_s)
+        try:
+            while not self._stop.is_set():
+                now = time.monotonic()
+                if now >= hard_deadline:
+                    return self._finish_follow(conn, frame_id, stream.current_state())
+                idle_left = idle_deadline - now
+                if idle_left <= 0:
+                    return self._finish_follow(conn, frame_id, stream.current_state())
+                try:
+                    lines = stream.poll(min(idle_left, _FOLLOW_POLL_S))
+                except Exception:
+                    self._log.exception("control: follow source failed for %s", component)
+                    return self._reply(
+                        conn, frame_id, _ProtoErrorReply(ERR_INTERNAL, "internal error")
+                    )
+                if lines:
+                    idle_deadline = time.monotonic() + self._follow_idle_s
+                    for text in lines:
+                        frame = {"id": frame_id, "stream": {"component": component, "line": text}}
+                        if not send_frame(conn, frame):
+                            return False  # client gone (or send stalled) → freed by caller
+                if stream.final_state is not None:
+                    return self._finish_follow(conn, frame_id, stream.final_state)
+                if self._client_gone(conn):
+                    return False  # client disconnected → free the subscription (CS-14)
+            return self._finish_follow(conn, frame_id, stream.current_state())
+        finally:
+            with contextlib.suppress(OSError):
+                conn.settimeout(None)  # the connection may outlive the follow
 
     def _finish_follow(self, conn: socket.socket, frame_id: int, state: str) -> bool:
         return send_frame(conn, {"id": frame_id, "result": {"state": state}})
@@ -1109,6 +1171,8 @@ __all__ = [
     "ERR_VERSION_UNSUPPORTED",
     "FOLLOW_IDLE_TIMEOUT_S",
     "FOLLOW_MAX_DURATION_S",
+    "HELLO_TIMEOUT_S",
+    "MAX_CONNECTIONS",
     "MAX_FOLLOWS_PER_PEER",
     "MAX_FOLLOWS_TOTAL",
     "MAX_LINE_BYTES",
@@ -1117,6 +1181,7 @@ __all__ = [
     "MODE_SOCKET",
     "PROTOCOL_VERSION",
     "RESPONSE_TIMEOUT_S",
+    "SEND_DEADLINE_S",
     "SOCKET_DIR_MODE",
     "SOCKET_NAME",
     "SUPPORTED_MAJORS",

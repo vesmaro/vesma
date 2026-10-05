@@ -32,6 +32,7 @@ from vesmaro.service.control import (
     ERR_UNKNOWN_METHOD,
     ERR_VERSION_UNSUPPORTED,
     MODE_SOCKET,
+    RESPONSE_TIMEOUT_S,
     SOCKET_DIR_MODE,
     SUPPORTED_MAJORS,
     BindRefusedError,
@@ -1013,3 +1014,164 @@ def test_p3_client_safe_start_reason_unit() -> None:
     assert client_safe_start_reason("/etc/passwd") == "start-failed"
     assert client_safe_start_reason("x" * 65) == "start-failed"
     assert client_safe_start_reason("UPPER") == "start-failed"
+
+
+# ── W6 hardening (PR #494 backlog a-e) ────────────────────────────────
+
+
+def test_cs12_response_time_measured_within_limit(running: RunningServer) -> None:
+    """CS-12, measured leg: a full command burst answers within the §4.7
+    response timeout — timed on the wire (the DeadServer injection leg in
+    tests/test_service_client.py covers the client-side timeout itself)."""
+    conn = JsonlConn(running.path)
+    try:
+        started = time.monotonic()
+        assert "result" in conn.hello()
+        conn.rt({"id": 2, "method": "status"})
+        conn.rt({"id": 3, "method": "logs", "params": {"component": "board", "tail": 10000}})
+        conn.rt({"id": 4, "method": "health"})
+        elapsed = time.monotonic() - started
+        assert elapsed < RESPONSE_TIMEOUT_S, elapsed
+    finally:
+        conn.close()
+
+
+def test_w6_connection_cap_closes_newcomer_unread(tmp_path: Path) -> None:
+    """W6 backlog (a), cap leg: at the connection cap the newcomer is
+    closed UNREAD; a freed slot admits the next peer again."""
+    backend = FakeBackend()
+    server = ControlServer(backend, max_connections=2, hello_timeout_s=5.0)
+    path = tmp_path / "capped.sock"
+    assert server.bind_at(path).status == "bound"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    held: list[JsonlConn] = []
+    try:
+        for index in range(2):
+            conn = JsonlConn(path)
+            assert "result" in conn.hello(frame_id=index + 1)
+            held.append(conn)
+        newcomer = JsonlConn(path)
+        try:
+            newcomer.send({"id": 9, "method": "hello", "params": {"protocol_version": 1}})
+            # close-with-unread-data arrives as a clean EOF or as RST —
+            # both prove «closed unread, never answered»; any PAYLOAD would
+            # mean the peer was answered and fails the assert below
+            received: bytes
+            try:
+                received = newcomer.sock.recv(1024)
+            except ConnectionResetError:
+                received = b""
+            assert received == b"", received
+        finally:
+            newcomer.close()
+        # a freed slot admits the next peer again (the accept loop prunes)
+        held[0].close()
+        held = held[1:]
+        deadline = time.monotonic() + 5.0
+        replacement: JsonlConn | None = None
+        while time.monotonic() < deadline and replacement is None:
+            try:
+                candidate = JsonlConn(path)
+                candidate.hello(frame_id=20)
+                replacement = candidate
+            except (OSError, AssertionError):
+                time.sleep(0.05)
+        assert replacement is not None, "a freed slot never admitted a new peer"
+        replacement.close()
+    finally:
+        for conn in held:
+            conn.close()
+        server.stop()
+        thread.join(timeout=5.0)
+
+
+def test_w6_hello_timeout_closes_silent_connection(tmp_path: Path) -> None:
+    """W6 backlog (a), hello leg: a connection that never sends the
+    mandatory hello (§4.4) is closed within the hello window; the server
+    keeps serving other peers."""
+    backend = FakeBackend()
+    server = ControlServer(backend, hello_timeout_s=0.5)
+    path = tmp_path / "silent.sock"
+    assert server.bind_at(path).status == "bound"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        silent = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        silent.connect(str(path))
+        try:
+            started = time.monotonic()
+            assert silent.recv(1024) == b""  # closed, nothing ever sent to us
+            assert time.monotonic() - started < 5.0
+        finally:
+            silent.close()
+        check = JsonlConn(path)
+        try:
+            assert "result" in check.hello()
+        finally:
+            check.close()
+    finally:
+        server.stop()
+        thread.join(timeout=5.0)
+
+
+def test_w6_follow_send_deadline_frees_subscription(tmp_path: Path) -> None:
+    """W6 backlog (b): a follow peer that never reads cannot block the
+    pump forever — past the send deadline the subscription is freed
+    (observable: active_follows() returns to 0) and the server stays
+    responsive. Without the deadline this test hangs in sendall."""
+    backend = FakeBackend()
+    server = ControlServer(
+        backend, send_deadline_s=0.5, follow_idle_timeout_s=30.0, hello_timeout_s=5.0
+    )
+    path = tmp_path / "flood.sock"
+    assert server.bind_at(path).status == "bound"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    conn = JsonlConn(path)
+    try:
+        assert "result" in conn.hello()
+        conn.send(
+            {
+                "id": 2,
+                "method": "logs",
+                "params": {"component": "board", "tail": 1, "follow": True},
+            }
+        )
+        # ~1 MB burst: far beyond kernel socket buffers, so the pump's
+        # sendall genuinely blocks (the client never reads)
+        for index in range(5000):
+            backend.push_line("board", f"flood-{index:05d}-" + "x" * 180)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and server.active_follows() > 0:
+            time.sleep(0.05)
+        assert server.active_follows() == 0, "the stuck peer held its follow slot"
+        after = JsonlConn(path)
+        try:
+            assert "result" in after.hello()
+        finally:
+            after.close()
+    finally:
+        conn.close()
+        server.stop()
+        thread.join(timeout=5.0)
+
+
+def test_w6_start_failed_message_is_fixed_text(running: RunningServer) -> None:
+    """W6 backlog (e): the 102 MESSAGE channel is a short fixed text —
+    backend free text (paths, env, secrets) never enters it; `data` carries
+    the sanitized reason token (§4.6 hygiene)."""
+    running.backend.fail_start["board"] = (
+        "venv /home/u/.local/share/vesma/venvs/board missing SECRET_TOKEN=abc123"
+    )
+    conn = JsonlConn(running.path)
+    try:
+        assert "result" in conn.hello()
+        error = error_of(conn.rt({"id": 2, "method": "start", "params": {"component": "board"}}))
+        assert error["code"] == ERR_START_FAILED
+        assert error["message"] == "start failed for component 'board'"
+        assert "/home/u" not in error["message"]
+        assert "SECRET_TOKEN" not in error["message"]
+        assert error["data"] == {"component": "board", "reason": "start-failed"}
+    finally:
+        conn.close()

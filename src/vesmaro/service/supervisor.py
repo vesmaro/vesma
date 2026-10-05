@@ -138,6 +138,7 @@ __all__ = [
     "CORE_CRASH_LOOP_ATTEMPTS",
     "DEFAULT_STOP_GRACE_S",
     "FIXED_PATH_TAIL",
+    "FORCE_KILL_DELAY_S",
     "OPTIONAL_LAZY_RETRY_S",
     "OPTIONAL_WINDOW_ATTEMPTS",
     "OPTIONAL_WINDOW_S",
@@ -170,6 +171,11 @@ JITTER_SPAN = 0.2  # ±20%
 # default — W4 wires the derivation; until then 60.0 stands.
 STOP_BUDGET_S = 60.0
 DEFAULT_STOP_GRACE_S = 10.0
+# Control-socket stop(force=true) (CS v1 §4.5): the graceful phase is
+# SKIPPED — SIGKILL lands after this short delay, not immediately, so a
+# child that would have exited on its own in the next instant still gets
+# the chance (and the exit is a code, not a signal, in the §3.4 line).
+FORCE_KILL_DELAY_S = 0.5
 
 # ── Child env canon (SL §3.2 + layout §3.8) ───────────────────────────
 
@@ -486,6 +492,9 @@ class _Component:
     exit_record: ExitRecord | None = None
     last_probe_detail: str = ""
     checker: Checker | None = None
+    # §3.4 start-refusal token of the LAST refusal (control-socket 102 data;
+    # cleared by a manual start and by a budget reset — never stale).
+    last_refusal_reason: str | None = None
 
     # restart bookkeeping (SL §3.5)
     backoff_attempts: int = 0
@@ -593,6 +602,17 @@ class Supervisor:
             return frozenset(self._global_reasons)
 
     @property
+    def shutdown_requested(self) -> bool:
+        """True once a shutdown was requested (signal handler or control
+        plane) — the service-runtime watcher polls this to start teardown."""
+        return self._shutdown_requested
+
+    def refusal_reason(self, name: str) -> str | None:
+        """The last start-refusal token for ``name`` (§3.4 refusal line
+        ``reason=``; control-socket 102 ``data.reason`` source), or ``None``."""
+        return self._components[name].last_refusal_reason
+
+    @property
     def pid1(self) -> bool:
         return self._pid1
 
@@ -691,10 +711,16 @@ class Supervisor:
 
     def request_start(self, name: str) -> None:
         """Manual start (CM/SL §3.5): resets the optional restart budget and
-        revives refused/parked/terminal components."""
+        revives refused/parked/terminal components.
+
+        Clears a previous manual-stop intent (T6/T13 leave ``stop_requested``
+        set; a manual start is a fresh T1 spawn by the transition table) and
+        the last refusal token — the new attempt is judged on its own."""
         component = self._components[name]
         component.manual_start_pending = True
         component.spawn_refused = False
+        component.stop_requested = False
+        component.last_refusal_reason = None
         self._clock.wake()
         thread = component.thread
         if thread is None or not thread.is_alive():
@@ -707,9 +733,13 @@ class Supervisor:
             component.thread = thread
             thread.start()
 
-    def request_stop(self, name: str) -> None:
-        """Manual stop of one component (T6/T13/T14 family)."""
-        self._stop_component(self._components[name], None)
+    def request_stop(self, name: str, *, force: bool = False) -> None:
+        """Manual stop of one component (T6/T13/T14 family).
+
+        ``force`` (control-socket §4.5) skips the graceful phase: SIGKILL
+        after :data:`FORCE_KILL_DELAY_S` instead of the manifest signal and
+        grace period."""
+        self._stop_component(self._components[name], None, force=force)
 
     # ── signals (SL-06: PID1 mandatory handlers) ──
 
@@ -767,10 +797,19 @@ class Supervisor:
         if self._signal_pipe is None:
             return
         reader, writer = self._signal_pipe
-        signal.set_wakeup_fd(self._previous_wakeup_fd)
-        for signum, handler in self._previous_handlers.items():
-            with contextlib.suppress(ValueError, OSError):
-                signal.signal(signum, handler)
+        if threading.current_thread() is not threading.main_thread():
+            # shutdown() is documented to run on the thread that called
+            # start() (the CLI's main thread); an off-main caller must not
+            # ABORT the teardown here — degrade loudly and keep stopping.
+            logger.warning(
+                "supervisor shutdown off the main thread: signal wakeup-fd "
+                "and handlers cannot be restored (process is exiting)"
+            )
+        else:
+            signal.set_wakeup_fd(self._previous_wakeup_fd)
+            for signum, handler in self._previous_handlers.items():
+                with contextlib.suppress(ValueError, OSError):
+                    signal.signal(signum, handler)
         self._signal_pipe = None
         for fd in (reader, writer):
             with contextlib.suppress(OSError):
@@ -1030,6 +1069,7 @@ class Supervisor:
         component.spawn_refused = True
         code = exc.code if isinstance(exc, ManifestError) else "SPAWN_REFUSED"
         reason = str(code).lower().replace("_", "-")
+        component.last_refusal_reason = reason
         logger.error("component %s: start refused: %s", component.name, exc)
         # Truthful state (cascade 2026-10-05 P2-G): a refusal parks the
         # component in stopped/blocked — the FSM never entered degraded — so
@@ -1417,11 +1457,14 @@ class Supervisor:
         component.attempts_without_healthy = 0
         component.crash_loop_alerted = False
         component.spawn_refused = False
+        component.last_refusal_reason = None
         self._global_health_recompute()
 
     # ── stopping ──
 
-    def _stop_component(self, component: _Component, budget_end: float | None) -> None:
+    def _stop_component(
+        self, component: _Component, budget_end: float | None, *, force: bool = False
+    ) -> None:
         """Stop one component: FSM → stopped, then the group-signal sequence."""
         component.stop_requested = True
         self._clock.wake()
@@ -1430,7 +1473,7 @@ class Supervisor:
                 self._transition(component, FsmEvent.STOP)
             except TransitionError:
                 logger.exception("component %s: stop transition refused", component.name)
-        self._stop_child(component, budget_end)
+        self._stop_child(component, budget_end, force=force)
         instance = component.in_process
         if instance is not None:
             shutdown = getattr(instance, "shutdown", None)
@@ -1441,12 +1484,19 @@ class Supervisor:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=5.0)
 
-    def _stop_child(self, component: _Component, budget_end: float | None) -> None:
+    def _stop_child(
+        self, component: _Component, budget_end: float | None, *, force: bool = False
+    ) -> None:
         """SIGTERM(group) → grace → SIGKILL(group) with the pgid-reuse
         boundary (§3.1): the reaper pause is acquired BEFORE the reaped
         check, so the check and the group signals are ATOMIC against the
         reaper — killpg is issued only while the direct child is provably
-        unreaped (its zombie pins the pgid against reuse)."""
+        unreaped (its zombie pins the pgid against reuse).
+
+        ``force`` (control-socket §4.5) skips the graceful phase: the stop
+        signal is not sent at all; after :data:`FORCE_KILL_DELAY_S` (or as
+        soon as the process is observed dead) SIGKILL lands — same pause,
+        same boundary, only the TERM window is gone."""
         pid = component.last_pid
         if pid is None or component.exit_record is not None:
             return  # nothing alive; a reaped pgid is NEVER signalled again
@@ -1455,11 +1505,14 @@ class Supervisor:
         if stop_section is not None:
             stop_signal = stop_section.signal
         signum = _signal_number(stop_signal)
-        grace_s = (
-            duration_to_ms(stop_section.grace_period) / 1000.0
-            if stop_section is not None
-            else self._default_stop_grace_s
-        )
+        if force:
+            grace_s = FORCE_KILL_DELAY_S
+        else:
+            grace_s = (
+                duration_to_ms(stop_section.grace_period) / 1000.0
+                if stop_section is not None
+                else self._default_stop_grace_s
+            )
         if budget_end is not None:
             grace_s = max(0.0, min(grace_s, budget_end - self._clock.now()))
         with self._reaper.pause():
@@ -1471,7 +1524,8 @@ class Supervisor:
             if reaped is not None:
                 component.exit_record = reaped
                 return
-            self._signal_group(pgid=pid, signum=signum)
+            if not force:
+                self._signal_group(pgid=pid, signum=signum)
             deadline = self._clock.now() + grace_s
             while not self._proc_is_dead(pid):
                 if not self._clock.sleep_until(
