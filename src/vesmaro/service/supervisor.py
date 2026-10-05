@@ -56,6 +56,18 @@ logsink stream carries spawn/exit/degraded always and ``event=health``
 only for the T4/T7/T9 transitions (the §3.4 semantics of that event);
 the journal additionally carries one health-form record per FSM
 transition so the journal alone is a complete transition record.
+
+§3.4 extensions (implementation beyond the normative grammar table; each
+is a candidate clarification for specs draft.3 — flagged in PR #491):
+
+- ``event=degraded`` start-refusal record: a refused start parks the
+  component in stopped/blocked (fail-closed), so the line reports the
+  ACTUAL FSM state (``state=<stopped|blocked>``) instead of the literal
+  ``state=degraded`` the normative degraded table pins;
+  :func:`vesmaro.service.logsink.build_refusal_line`;
+- the reserved-key ban extended to env FILE keys (``PATH``): the SL-13
+  canonical-PATH invariant applied to the env-file leg — the spec letter
+  names ``launch.env.vars`` only.
 """
 
 from __future__ import annotations
@@ -110,6 +122,7 @@ from vesmaro.service.logsink import (
     build_degraded_line,
     build_exit_line,
     build_health_line,
+    build_refusal_line,
     build_spawn_line,
     emit_child_forward,
 )
@@ -416,10 +429,17 @@ class _Reaper:
     def drain(self) -> bool:
         """waitpid(-1, WNOHANG) until ECHILD — no zombie ever survives (SL-05).
 
-        Returns True when at least one process was reaped.
+        Returns True when at least one process was reaped. The stop-grace
+        pause is honored PER ITERATION: a drain already in flight bails out
+        before its next ``waitpid`` once a pause is requested — that is what
+        makes the reaped-check + killpg sequence in ``_stop_child`` atomic
+        against the reaper (§3.1 group-signal boundary).
         """
         drained = False
         while True:
+            with self._cond:
+                if self._pause_depth > 0:
+                    break  # stop-grace pause: fence even an in-flight drain
             try:
                 pid, status = os.waitpid(-1, os.WNOHANG)
             except ChildProcessError:
@@ -984,6 +1004,9 @@ class Supervisor:
             env.update(launch.env.vars)
             if env_file is not None:
                 # Fail-closed W1 loader: ANY violation refuses the start.
+                # The loader also bans a PATH key INSIDE the file (cascade
+                # 2026-10-05 P2-D): otherwise the file would silently
+                # override the canonical constructed PATH below.
                 env.update(load_env_file(env_file, manifests_dir=component.manifest.path.parent))
         env["PYTHONNOUSERSITE"] = PYTHONNO_USERSITE
         return env
@@ -1005,12 +1028,16 @@ class Supervisor:
         code = exc.code if isinstance(exc, ManifestError) else "SPAWN_REFUSED"
         reason = str(code).lower().replace("_", "-")
         logger.error("component %s: start refused: %s", component.name, exc)
-        line = build_degraded_line(
+        # Truthful state (cascade 2026-10-05 P2-G): a refusal parks the
+        # component in stopped/blocked — the FSM never entered degraded — so
+        # the line reports the ACTUAL FSM state (§3.4 extension, see the
+        # module docstring; build_refusal_line).
+        line = build_refusal_line(
             component.name,
             component.last_pid,
+            state=component.fsm.state.value,
             reason=reason,
             attempts=component.backoff_attempts,
-            window_s=None,
         )
         self._publish(line)
         self._clock.wake()
@@ -1058,7 +1085,11 @@ class Supervisor:
                             name=f"vesma-forward-{component.name}",
                             daemon=True,
                         ).start()
-        except Exception as exc:  # per-child failure is a child failure (SL-02)
+        except BaseException as exc:  # SL-02 (cascade P2-F): even SystemExit
+            # or KeyboardInterrupt raised by in-process factory/callback code
+            # is a CHILD failure (record + transition below) — never the
+            # death of a supervision thread. The supervisor itself is only
+            # ever stopped via its own control plane.
             logger.warning(
                 "component %s: spawn failed: %s: %s",
                 component.name,
@@ -1144,6 +1175,8 @@ class Supervisor:
                             component.budget_exhausted = False
                             component.window.clear()
                             component.lazy_retry_at = None
+                            # the SL-09 health flag recovers with the budget
+                            self._global_health_recompute()
                         if component.crash_loop_alerted:
                             component.crash_loop_alerted = False
                             self._global_health_recompute()
@@ -1241,6 +1274,10 @@ class Supervisor:
                     window_s=policy.window_s,
                 )
             )
+            # SL §3.5: exhaustion = state degraded + health-флаг + ONE ERROR
+            # line — the flag is the supervisor-level reason below, not just
+            # the published line (cascade 2026-10-05 P1-B).
+            self._global_health_recompute()
             return True
         component.window.append(now)
         return False
@@ -1327,23 +1364,47 @@ class Supervisor:
         """SL-02 guard: after a per-child exception steer the FSM to backoff
         AND actually dwell there — without the wait the next loop pass would
         respawn immediately and a persistently failing per-child path would
-        become a hot spin (backoff exists to space retries out)."""
+        become a hot spin (backoff exists to space retries out).
+
+        The recovery is itself inside the SL-02 boundary (cascade
+        2026-10-05 P2-F): a journal/sink I/O error while recording the
+        recovery transition must not kill the supervision thread — it is
+        logged and the child is parked in backoff best-effort (the journal
+        may then miss the transition row; the in-memory FSM state stays the
+        source of truth for the next pass, and counters may double-count
+        once on this degraded path)."""
         try:
             state = component.fsm.state
             if state in (ChildState.STARTING, ChildState.HEALTHY, ChildState.DEGRADED):
                 self._transition(component, FsmEvent.EXIT)
                 self._schedule_backoff(component)
-                component.next_spawn_at = self._clock.now() + (component.next_backoff_s or 0.0)
-                self._clock.sleep_until(
-                    component.next_spawn_at,
-                    lambda: (
-                        self._shutdown_requested
-                        or component.stop_requested
-                        or component.manual_start_pending
-                    ),
-                )
         except TransitionError:
             logger.exception("component %s: recovery transition refused", component.name)
+        except Exception:
+            logger.exception(
+                "component %s: recovery transition failed (journal/sink I/O, "
+                "SL-02); parking in backoff best-effort",
+                component.name,
+            )
+            with contextlib.suppress(Exception):
+                self._schedule_backoff(component)
+        # Dwell on EVERY recovery path, best-effort included — the park is
+        # the point: a persistently failing per-child path must space its
+        # retries out even when the journalled transition failed.
+        try:
+            if component.next_backoff_s is None:
+                self._schedule_backoff(component)
+            component.next_spawn_at = self._clock.now() + (component.next_backoff_s or 0.0)
+            self._clock.sleep_until(
+                component.next_spawn_at,
+                lambda: (
+                    self._shutdown_requested
+                    or component.stop_requested
+                    or component.manual_start_pending
+                ),
+            )
+        except Exception:
+            logger.exception("component %s: recovery park failed (SL-02)", component.name)
 
     def _reset_budget(self, component: _Component) -> None:
         """Manual start (SL-10): fresh budget, terminal state cleared."""
@@ -1379,15 +1440,13 @@ class Supervisor:
 
     def _stop_child(self, component: _Component, budget_end: float | None) -> None:
         """SIGTERM(group) → grace → SIGKILL(group) with the pgid-reuse
-        boundary (§3.1): group signals ONLY while the direct child is
-        unreaped — the reaper is paused for the whole sequence."""
+        boundary (§3.1): the reaper pause is acquired BEFORE the reaped
+        check, so the check and the group signals are ATOMIC against the
+        reaper — killpg is issued only while the direct child is provably
+        unreaped (its zombie pins the pgid against reuse)."""
         pid = component.last_pid
         if pid is None or component.exit_record is not None:
             return  # nothing alive; a reaped pgid is NEVER signalled again
-        reaped = self._reaper.record_of(pid)
-        if reaped is not None:
-            component.exit_record = reaped
-            return
         stop_signal = "SIGTERM"
         stop_section = component.manifest.stop
         if stop_section is not None:
@@ -1401,6 +1460,14 @@ class Supervisor:
         if budget_end is not None:
             grace_s = max(0.0, min(grace_s, budget_end - self._clock.now()))
         with self._reaper.pause():
+            # §3.1 MUST: the reaped-check lives INSIDE the pause. A reap
+            # landing between an outside pre-check and the pause acquisition
+            # would leave us killpg-ing a pgid the kernel may already have
+            # handed to a new process (the cascade 2026-10-05 P1-A finding).
+            reaped = self._reaper.record_of(pid)
+            if reaped is not None:
+                component.exit_record = reaped
+                return
             self._signal_group(pgid=pid, signum=signum)
             deadline = self._clock.now() + grace_s
             while not self._proc_is_dead(pid):
@@ -1412,7 +1479,15 @@ class Supervisor:
                 if self._clock.now() >= deadline:
                     break
             if not self._proc_is_dead(pid):
-                self._signal_group(pid, signal.SIGKILL)
+                # killpg boundary re-check — the pause holds (and the
+                # per-iteration drain fence keeps it honest), so this cannot
+                # change under us; the branch keeps the §3.1 invariant
+                # verifiable at the exact signal site.
+                reaped = self._reaper.record_of(pid)
+                if reaped is None:
+                    self._signal_group(pid, signal.SIGKILL)
+                else:
+                    component.exit_record = reaped
         # reaper resumed: the exit will be recorded; wait for it (bounded)
         waited_until = time.monotonic() + 10.0
         while self._reaper.record_of(pid) is None and time.monotonic() < waited_until:

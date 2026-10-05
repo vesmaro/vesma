@@ -20,6 +20,7 @@ a seam exists.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -48,6 +49,7 @@ from vesmaro.service.supervisor import (
     OPTIONAL_WINDOW_ATTEMPTS,
     OPTIONAL_WINDOW_S,
     Clock,
+    ExitRecord,
     RestartPolicy,
     Supervisor,
 )
@@ -692,6 +694,12 @@ class TestSL09OptionalBudgetExhaustion:
                 "state=degraded reason=restart-budget-exhausted attempts=3 window=300s"
             ]
             assert sup.component_state("opt") == "degraded"  # T11 terminal state
+            # P1-B (cascade 2026-10-05): SL §3.5 exhaustion = state degraded
+            # + health-флаг + ONE ERROR line — the FLAG is asserted here; its
+            # absence (only the line was checked) is how the original gap
+            # survived review.
+            assert sup.global_health == "degraded"
+            assert sup.global_reasons == frozenset({"budget-exhausted:opt"})
             degraded_rows = [ln for ln in _records(tmp_path) if "event=degraded" in ln]
             assert len(degraded_rows) == 1  # the journal carries it exactly once too
         finally:
@@ -1077,3 +1085,283 @@ class TestSignalConventions:
         # The reaper re-prefixes the §3.4 name for Popen's -signum form.
         name = _signal_name(int(signal.SIGKILL))
         assert -int(signal.Signals[f"SIG{name}"].value) == -9
+
+
+# ── cascade 2026-10-05 fixes (PR #491) ────────────────────────────────
+
+
+class TestP1APgidReuseBoundary:
+    """§3.1 group-signal boundary made atomic against the reaper."""
+
+    def test_reaped_between_check_and_pause_never_gets_killpg(
+        self, isolated_xdg: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P1-A: the child is reaped EXACTLY between `_stop_child`'s
+        reaped-check and its `pause()` acquisition.
+
+        Seam (documented): `pause()` is hooked to seed the reaper's exit
+        record BEFORE delegating to the real pause — with the old
+        check-before-pause order the seed landed too late and the killpg
+        fired on a possibly-already-reused pgid."""
+        manifests = _write_manifests(tmp_path, {"solo": _child_doc("solo", "sleeper.py")})
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(lambda: sup.component_state("solo") == "healthy", "solo healthy")
+            pid = _pid_of(sup, "solo")
+            component = sup._components["solo"]
+            original_pause = sup._reaper.pause
+            original_signal_group = sup._signal_group
+
+            @contextlib.contextmanager
+            def hostile_pause() -> Any:
+                # the reaper collects the child right before the pause lands
+                sup._reaper.records[pid] = ExitRecord(pid=pid, code=0, signal_name=None)
+                with original_pause():
+                    yield
+
+            kills: list[tuple[int, int]] = []
+
+            def spy_signal_group(pgid: int, signum: int) -> None:
+                kills.append((pgid, signum))
+                original_signal_group(pgid, signum)
+
+            monkeypatch.setattr(sup._reaper, "pause", hostile_pause)
+            monkeypatch.setattr(sup, "_signal_group", spy_signal_group)
+            sup._stop_child(component, None)
+            assert kills == [], "killpg after a reap is the pgid-reuse bug (§3.1)"
+            assert component.exit_record == ExitRecord(pid=pid, code=0, signal_name=None)
+        finally:
+            # undo the hostile seam: the REAL child is still running and the
+            # shutdown below must be able to stop it for real
+            monkeypatch.undo()
+            sup._reaper.records.pop(pid, None)
+            component.exit_record = None
+            sup.shutdown()
+
+    def test_drain_is_fenced_per_iteration_while_paused(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """P1-A: the reaper honors the stop-grace pause PER DRAIN ITERATION
+        — a drain already in flight stops before its next waitpid batch.
+
+        Seam (documented): a direct `drain()` call under an explicitly held
+        `pause()` stands in for the in-flight batch."""
+        manifests = _write_manifests(tmp_path, {"solo": _child_doc("solo", "sleeper.py")})
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(lambda: sup.component_state("solo") == "healthy", "solo healthy")
+            pid = _pid_of(sup, "solo")
+            with sup._reaper.pause():
+                os.kill(pid, signal.SIGKILL)
+                _wait_until(lambda: _zombie(pid), "child died to an unreaped zombie")
+                sup._reaper.drain()  # the "in-flight batch": must stop at the fence
+                assert sup._reaper.record_of(pid) is None, "pause must fence the drain"
+                assert _zombie(pid), "the unreaped zombie pins the pgid (§3.1)"
+            _wait_until(lambda: sup._reaper.record_of(pid) is not None, "reaped once resumed")
+        finally:
+            sup.shutdown()
+
+
+class TestP1BBudgetExhaustedHealthFlag:
+    def test_flag_recovers_when_component_returns_healthy(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """P1-B: the `budget-exhausted:<component>` reason is not terminal —
+        a manual start that reaches healthy clears it (SL-10 reset / lazy
+        -retry success share the same `_reset_budget`/T4 paths)."""
+        flag = tmp_path / "flag"
+        flag.write_text("on", encoding="utf-8")
+        manifests = _write_manifests(
+            tmp_path, {"opt": _child_doc("opt", "sleeper.py", health=_flag_probe(flag))}
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        _override_policy(
+            sup,
+            "opt",
+            backoff_base_s=0.05,
+            backoff_max_s=0.1,
+            window_attempts=2,
+            window_s=300.0,
+            lazy_retry_s=60.0,
+        )
+        sup.start()
+        try:
+            _wait_until(lambda: sup.component_state("opt") == "healthy", "opt healthy #1")
+            # Two deaths FILL the window (window.append runs on live-budget
+            # exits only); exhaustion fires on the NEXT death (the same
+            # counting the SL-09 test pins with window_attempts=3).
+            for attempt in (1, 2, 3):
+                pid = _pid_of(sup, "opt")
+                os.kill(pid, signal.SIGKILL)
+                if attempt < 3:
+                    # Death observation is asynchronous — wait for the
+                    # RESPAWN (a new pid) AND the probe pass, never just the
+                    # state string.
+                    _wait_until(
+                        lambda: (
+                            sup.component_state("opt") == "healthy"
+                            and _pid_of(sup, "opt") != pid
+                        ),
+                        f"opt respawned healthy after kill #{attempt}",
+                    )
+            _wait_until(
+                lambda: (
+                    sup.global_health == "degraded"
+                    and sup.global_reasons == frozenset({"budget-exhausted:opt"})
+                ),
+                "exhaustion flag set",
+                timeout=15,
+            )
+            sup.request_start("opt")  # manual start resets the budget (SL-10)
+            _wait_until(
+                lambda: (
+                    sup.component_state("opt") == "healthy"
+                    and sup.global_health == "healthy"
+                    and not sup.global_reasons
+                ),
+                "flag cleared once the component is healthy again",
+                timeout=15,
+            )
+        finally:
+            sup.shutdown()
+
+
+class TestP2DEnvFileReservedKeys:
+    def test_env_file_path_key_refuses_start(self, isolated_xdg: Path, tmp_path: Path) -> None:
+        """P2-D: a PATH key inside an env file refuses the start (same
+        fail-closed family as the env.vars ban) — the canonical constructed
+        PATH is contractual (SL-13). Tightens beyond the spec letter; flagged
+        for specs draft.3."""
+        env_file = tmp_path / "comp.env"
+        env_file.write_text("PATH=/host/overridden\n", encoding="utf-8")
+        os.chmod(env_file, 0o600)
+        doc = _child_doc("envy", "sleeper.py")
+        doc["launch"]["env"] = {"env_file": str(env_file)}
+        manifests = _write_manifests(tmp_path, {"envy": doc})
+        sup = _make_supervisor(tmp_path, manifests)
+        sup.start()
+        try:
+            _wait_until(lambda: sup._components["envy"].spawn_refused, "start refused")
+        finally:
+            sup.shutdown()
+        assert sup.component_state("envy") == "stopped"  # fail-closed park
+        refusal = [ln for ln in _records(tmp_path) if "event=degraded" in ln]
+        assert refusal == [
+            "vesma.supervisor component=envy event=degraded pid=none "
+            "state=stopped reason=env-file-unsafe attempts=0 window=none"
+        ]
+
+
+class TestP2FBoundaryHardening:
+    def test_recovery_survives_journal_io_error(
+        self, isolated_xdg: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P2-F(a): an OSError from journal I/O DURING the SL-02 recovery
+        must not kill the supervision thread — the child is parked in
+        backoff best-effort and the loop keeps cycling."""
+        flag = tmp_path / "flag"
+        flag.write_text("on", encoding="utf-8")
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                # the flag probe keeps the poison hit rate fast (100 ms) —
+                # a liveness-only child would probe on the 5 s module default
+                "sick": _child_doc("sick", "sleeper.py", health=_flag_probe(flag)),
+                "well": _child_doc("well", "sleeper.py"),
+            },
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        _fast_backoff(sup, "sick")
+        journal = sup._journal
+        assert journal is not None
+        original_append = journal.append
+
+        def flaky_append(line: str) -> None:
+            if "component=sick" in line and "to=backoff" in line:
+                raise OSError("injected journal I/O failure (SL-02 recovery leg)")
+            original_append(line)
+
+        monkeypatch.setattr(journal, "append", flaky_append)
+        original_probe = sup._probe
+
+        def poisoned_probe(component: Any) -> Any:
+            if component.name == "sick":
+                raise RuntimeError("injected per-child failure (SL-02)")
+            return original_probe(component)
+
+        monkeypatch.setattr(sup, "_probe", poisoned_probe)
+        sup.start()
+        try:
+            _wait_until(lambda: sup.component_state("well") == "healthy", "well healthy")
+
+            def spawn_count() -> int:
+                return sum(1 for ln in _records(tmp_path) if "component=sick event=spawn" in ln)
+
+            _wait_until(
+                lambda: spawn_count() >= 3,
+                "sick keeps cycling: the recovery survived the journal I/O error",
+            )
+            assert sup._components["sick"].thread.is_alive()
+        finally:
+            sup.shutdown()
+
+    def test_factory_sysexit_is_child_failure_not_thread_death(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """P2-F(b): a BaseException (SystemExit) from the in-process factory
+        is a CHILD failure (record + transition into backoff), never the
+        death of the supervision thread."""
+        manifests = _write_manifests(
+            tmp_path,
+            {
+                "sys": _in_process_doc("sys", "tests.service_children.inproc_sysexit"),
+                "well": _child_doc("well", "sleeper.py"),
+            },
+        )
+        sup = _make_supervisor(tmp_path, manifests)
+        _override_policy(sup, "sys", backoff_base_s=0.05, backoff_max_s=0.1)
+        sup.start()
+        try:
+            _wait_until(lambda: sup.component_state("well") == "healthy", "well healthy")
+
+            def backoff_cycles() -> int:
+                # A FAILED spawn publishes no spawn line — the per-cycle
+                # journal artifact is the EXIT transition into backoff.
+                return sum(
+                    1
+                    for ln in _records(tmp_path)
+                    if "component=sys " in ln and "to=backoff" in ln
+                )
+
+            _wait_until(
+                lambda: backoff_cycles() >= 3,
+                "factory failures retried: the thread did not die",
+            )
+            assert sup._components["sys"].thread.is_alive()
+            assert sup.component_state("sys") in ("backoff", "degraded")
+        finally:
+            assert sup.shutdown() == 0
+
+
+class TestP2GTruthfulRefusalLine:
+    def test_refusal_line_reports_the_actual_fsm_state(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """P2-G: the refusal line used to emit a false `state=degraded`
+        while the FSM actually stays stopped (fail-closed park). §3.4
+        extension — flagged for specs draft.3."""
+        manifests = _write_manifests(tmp_path, {"x": _child_doc("x", "sleeper.py")})
+        sup = _make_supervisor(tmp_path, manifests, component_configs={"x": {"undeclared": True}})
+        sup.start()
+        try:
+            _wait_until(lambda: sup._components["x"].spawn_refused, "start refused")
+        finally:
+            sup.shutdown()
+        assert sup.component_state("x") == "stopped"  # the honest FSM state
+        refusal = [ln for ln in _records(tmp_path) if "event=degraded" in ln]
+        assert refusal == [
+            "vesma.supervisor component=x event=degraded pid=none "
+            "state=stopped reason=config-invalid attempts=0 window=none"
+        ]

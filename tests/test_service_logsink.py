@@ -26,6 +26,7 @@ from vesmaro.service.logsink import (
     build_degraded_line,
     build_exit_line,
     build_health_line,
+    build_refusal_line,
     build_spawn_line,
     journal_socket_available,
     make_logsink,
@@ -95,6 +96,17 @@ class TestBuilderShapes:
             "vesma.supervisor component=server event=degraded pid=4310 "
             "state=degraded reason=crash-loop attempts=10 window=none"
         )
+
+    def test_refusal_line_reports_the_actual_state(self) -> None:
+        """P2-G (cascade 2026-10-05): a start refusal never puts the FSM
+        into degraded — the line carries the ACTUAL FSM state (§3.4
+        extension, draft.3 candidate)."""
+        line = build_refusal_line("x", None, state="stopped", reason="config-invalid", attempts=0)
+        assert line.render() == (
+            "vesma.supervisor component=x event=degraded pid=none "
+            "state=stopped reason=config-invalid attempts=0 window=none"
+        )
+        assert line.severity == "ERROR"
 
     def test_token_charset_enforced_on_component(self) -> None:
         with pytest.raises(ValueError, match="token charset"):

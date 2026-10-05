@@ -44,6 +44,7 @@ __all__ = [
     "build_degraded_line",
     "build_exit_line",
     "build_health_line",
+    "build_refusal_line",
     "build_spawn_line",
     "journal_socket_available",
     "make_logsink",
@@ -204,6 +205,38 @@ def build_degraded_line(
             ("reason", _token(reason, "reason")),
             ("attempts", str(attempts)),
             ("window", window),
+        ),
+        "ERROR",
+    )
+
+
+def build_refusal_line(
+    component: str,
+    pid: int | None,
+    *,
+    state: str,
+    reason: str,
+    attempts: int,
+) -> SupervisorLine:
+    """``event=degraded`` start-refusal record — §3.4 grammar, honest state.
+
+    A refused start NEVER parks the component in ``degraded``: fail-closed
+    means the FSM stays ``stopped``/``blocked`` — so the ``state`` field
+    carries the ACTUAL FSM state instead of the literal ``degraded`` (the
+    cascade 2026-10-05 P2-G finding). §3.4 extension — a candidate
+    clarification for specs draft.3, which pins ``state=degraded`` as the
+    literal value of the degraded line. ``window=none``: no rolling window
+    is involved in a start refusal.
+    """
+    return SupervisorLine(
+        component,
+        "degraded",
+        pid,
+        (
+            ("state", _token(state, "state")),
+            ("reason", _token(reason, "reason")),
+            ("attempts", str(attempts)),
+            ("window", "none"),
         ),
         "ERROR",
     )
