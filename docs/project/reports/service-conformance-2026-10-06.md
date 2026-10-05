@@ -1,8 +1,11 @@
-# Service-layer conformance — W6 (svc-w6-integration-conformance)
+# Service-layer conformance — W6 (svc-w6-integration-conformance) + W7 closers
 
-- Дата: 2026-10-06
-- Волна: W6, карта `svc-w6-integration-conformance` (заключительная волна
-  service-трека; W1–W5 слиты в main, head `c793b98`)
+- Дата: 2026-10-06 (W7-дополнение: 2026-10-05/06)
+- Волна: W6, карта `svc-w6-integration-conformance`; W7-дополнение —
+  карта закрытия двух последних пунктов перед ратификацией
+  (`feat/svc-w7-ratification-closers`, от `origin/main` @ `1ff47b9`):
+  SL-06 true-container лега + LY-12 API-лега отказа записи кэша.
+  W1–W5 слиты в main, head `c793b98`; W6 слит в main, head `1ff47b9`.
 - Контракты: `specs/service-lifecycle/v1` (1.0.0-draft.2),
   `specs/control-socket/v1` (1.0.0-draft.2), `specs/layout/v1`
   (1.0.0-draft.2), `specs/component-manifest/v1` (1.0.0-draft.2)
@@ -30,9 +33,9 @@ exit 1; отдельного механизма рестарта ядра нет
 
 | Чеклист | pass | gap | n/a | fail |
 |---|---|---|---|---|
-| SL-01…SL-18 (service-lifecycle) | 17 | 1 (SL-06, контейнерная лега) | 0 | 0 |
+| SL-01…SL-18 (service-lifecycle) | 18 (W7: SL-06 контейнерная лега закрыта реальным прогоном) | 0 | 0 | 0 |
 | CS-1…CS-16 (control-socket) | 16 | 0 (2 live-леги cross-uid — честные skip вне root, решение unit-протестировано) | 0 | 0 |
-| LY-01…LY-12, LY-14 (layout, user-профиль) | 12 | 1 частичная (LY-12: API-лега отказа записи кэша — вне service-слоя) | 1 (LY-13, system-профиль v2) | 0 |
+| LY-01…LY-12, LY-14 (layout, user-профиль) | 13 (W7: LY-12 API-лега закрыта — taint + write-API) | 0 | 1 (LY-13, system-профиль v2) | 0 |
 | CM-01…CM-17 (component-manifest) | 17 | 0 | 0 | 0 |
 
 Раннер спеков (`tools/conformance/run.py --all specs` от
@@ -55,7 +58,7 @@ env_file_outside_manifests_dir / checker_block_consistency / no_secret_in_vars,
 | SL-03 | **pass** | `TestSL03Sessions::test_child_pgid_equals_pid` — `/proc/<pid>/stat` field 5 после spawn; спавн с `start_new_session=True` (`supervisor.py::_spawn`), несовпадение pgid==pid — RuntimeError |
 | SL-04 | **pass** (авт+ручн) | авт: `TestSL04GroupStop` — потомок-«упрямец» переживает SIGTERM, умирает с группой по SIGKILL; ручн: `grep -rn pkill src/vesmaro/` — ноль вхождений (проверено 2026-10-06); pkill в сгенерированном юните отсутствует — ExecStop не генерируется вовсе (`tests/test_service_unitgen.py::test_no_execstop_generated`) |
 | SL-05 | **pass** | `TestSL05Subreaper::test_orphaned_grandchild_reaped_by_supervisor` — внук репарентится в subreaper и reap'ится (нет зомби); закалка.flак W6: payload ребенка polled до PARSE-COMPLETION (`_read_payload`), дедлайны 20–30 s — детерминированно зелёный под нагрузкой полного сюита |
-| SL-06 | **pass** / **gap** (контейнерная лега) | pass: `TestSL06Pid1::test_pid1_unit_legs_sigterm_graceful_stop_exit_zero` (SIGTERM/SIGINT обработаны, graceful-порядок, exit 0, дети остановлены и reap'лены до exit). gap: истинно-контейнерная лега `test_pid1_container_leg_via_unshare` — sandbox отказывает `unshare --pid` (skip с именованной причиной в тесте); обработчики/reap/graceful-леги покрыты; true-container лега выполняется на целевом окружении (bare/podman smoke-матрица Tier B) |
+| SL-06 | **pass** (юнит + контейнер) | юнит: `TestSL06Pid1::test_pid1_unit_legs_sigterm_graceful_stop_exit_zero` (SIGTERM/SIGINT обработаны, graceful-порядок, exit 0, дети остановлены и reap'лены до exit). контейнер (W7): `tests/test_service_pid1_container.py` → `scripts/pid1_conformance.sh` — реальный Supervisor как PID 1 контейнера (rootless podman на хосте владельца через `distrobox-host-exec`; in-box podman отказан — `newuidmap: write to uid_map failed: EPERM`, ровно как в gap-заметке W6; образ `ghcr.io/vesmaro/vesma:latest`, репозиторий смонтирован read-only, работа только в собственном контейнере `vesma-pid1-conformance`, убран после прогона). SIGTERM контейнеру → обработчик PID1 → graceful stop → **exit code 0**. Хвост прогона (2026-10-05 22:50 MSK, `src/vesmaro/service/pid1_probe.py`):<br>`VESMA_PID1_PROBE_READY orphan_pid=9 orphan_reaped=True`<br>`VESMA_PID1_SUMMARY {"ok": true, "pid1": true, "exit_code": 0, "child_pid": 5, "child_gone": true, "child_final_state": "stopped", "zombies": [], "orphan_pid": 9, "orphan_reaped_before_stop": true, "journal": ["…event=health … from=stopped to=starting", "…event=spawn pid=5", "…from=starting to=healthy", "…from=healthy to=stopped"]}`<br>Внук-сирота (двойной fork, pid=9) репарентился в subreaper и reap'нут ДО стопа — ни одного зомби в /proc; ребёнок (pid=5) остановлен и reap'нут до exit'а probe (журнал §3.4 — доказательство порядка); exit 0. Вне podman-хостов лега честно skip с точной причиной отказа пробы; `unshare`-лега повторно пробуется с таймаутом 30 s (в sandbox отказ — named skip) |
 | SL-07 | **pass** | `tests/test_service_fsm.py::TestNormativeRows` — T1…T14 построчно; `TestExhaustiveFuzz::test_every_triple_is_table_row_or_raises` — фаззер всех троек (состояние×событие×бюджет): каждая — строка таблицы или `TransitionError` (запрещённые переходы невозможны) |
 | SL-08 | **pass** | `TestSL08Grammar` — regex-парсер §3.4 грамматики над всеми строками журнала прогона (префикс, порядок полей, code/signal взаимоисключающи, severity); валидация по построению в `logsink.py` (builders отказываются рендерить линию вне грамматики); живой прогон поверх адаптера — линии буфера суть `line.render()` |
 | SL-09 | **pass** | `TestSL09OptionalBudgetExhaustion` — исчерпание бюджета: состояние degraded + health-флаг + РОВНО ОДНА ERROR-строка `reason=restart-budget-exhausted attempts=5 window=300s`; флаг supervisor-level — `TestP1BBudgetExhaustedHealthFlag` |
@@ -123,7 +126,7 @@ send-deadline follow-насоса (`test_w6_follow_send_deadline_frees_subscript
 | LY-09 | **pass** | `tests/test_service_logsink.py` — РОВНО ОДИН режим (journald при наличии сокета, иначе files-under-state; никогда оба): `test_journald_primary_when_socket_present`, `test_file_mode_when_socket_absent`; ротация 10 MB × 5 — `test_rotates_with_injected_small_budget`, `test_contract_rotation_numbers`; маркировка `SYSLOG_IDENTIFIER` супервайзером — `test_journald_sink_payload_marks_identifier_and_priority`; «третьих мест» нет (запись только в state/logs) |
 | LY-10 | **pass** | `tests/test_service_logsink.py::test_appends_with_iso8601_prefix_and_modes` (0700/0600), `test_append_only_across_instances` (существующие записи не переписываются) |
 | LY-11 | **pass** | `tests/test_service_layout.py::test_xdg_runtime_dir_set`, `test_empty_runtime_dir_falls_back_with_warning`; права сокета — CS-1; pid-файлов нет by construction (single-instance = probe, CS-4) |
-| LY-12 | **pass** (режим) / **partial** (API-лега) | Режим 0750 и канонический путь — `tests/test_service_layout.py::test_canonical_dir_modes_after_ensure` / `test_table_matches_layout_3_4`; удаление кэша не влияет на инсталляцию (кэш не входит ни в один инвариант инсталл-флоу). API-лега отказа записи значения из env-файла — поверхность API записи движка, вне service-слоя этой волны (именованная частичная; движковый трек) |
+| LY-12 | **pass** (режим + API-лега, W7) | Режим 0750 и канонический путь — `tests/test_service_layout.py::test_canonical_dir_modes_after_ensure` / `test_table_matches_layout_3_4`. API-лега (W7): taint при загрузке — `load_env_file` возвращает `TaintedValues`/`TaintedValue` (прозрачные str/dict-подклассы, не ломающие существующих потребителей — env-конструкция, сравнения, JSON); API записи — `src/vesmaro/service/cache.py::put_under_cache(name, key, value, *, tainted=False)`: отказ на taint-значении (объявленном флагом или несущем тип `TaintedValue`) с типизированной `CacheWriteRefusedError`, в сообщении только компонент/ключ — значение НИКОГДА не эхо; валидация имени (грамматика CM §3.1) и ключа (безопасный сегмент пути), атомарная запись (tmp+rename) в `~/.cache/vesma/<name>/` c явными 0750 (не от umask); удаление каталога безопасно — следующая запись пересоздаёт. Тесты `tests/test_ly12_cache_taint.py`: taint-at-load, probe-запись env-значения → отказ, отказ по флагу/типу/каждому значению, untainted → принят (0750 при плохом umask), rm -rf → операция не меняется. Честный скоуп: сегодня в движке НЕТ фичи, пишущей env-значения в кэши, — пункт закрыт самим API + тестами отказа («щит до первого писателя»); taint — типовая метка на границе загрузки, стрижётся строковыми преобразованиями (документировано в докстринге API; обход API same-uid в ФС — вне контрактного радиуса, ловит doctor §3.10) |
 | LY-13 | **n/a (v2)** | System-профиль исполняется и чеклится на горизонте v2 вместе с реализацией (спека §3.3; отложено за миграцией легаси) |
 | LY-14 | **pass** | `tests/test_service_doctor.py::TestEveryFindingHasFixCommand` (каждая находка DR-01…DR-13 несёт severity + готовую команду), `TestDoctorDoesNotMutate` (doctor не исполняет команды и не мутирует инсталляцию), `TestFailClosedLoad` (FAIL DR-01 на env-файле согласован с fail-closed стартом); инжекция находок — классы TestDR01…TestDR13 |
 
@@ -164,38 +167,45 @@ Doctor-матрица DR-01…DR-13: реализована полностью
 
 ---
 
-## Полный сюит и гейты (прогон W6)
+## Полный сюит и гейты (прогон W6; W7-дополнение)
 
 - `ruff check .` — чисто; `ruff format --check` по затронутым файлам — чисто
-- `mypy --strict src/vesmaro` — 0 ошибок (143 файла)
+  (W7-прогон 2026-10-05: то же)
+- `mypy --strict src/vesmaro` — 0 ошибок (W6: 143 файла; W7: 145 файлов)
 - `bandit -r src/vesmaro/service` — 0 High; 1 Medium B310 (pre-existing W2,
   `health.py` HttpChecker: URL приходит из schema-валидированной
   health-секции манифеста; вне скоупа W6), 3 Low (B404 subprocess —
   конструируемый argv из валидированного манифеста, no shell; B105
   «supervisor» — идентификатор структурных строк, не пароль; B311 random —
   джиттер backoff, не криптография)
-- `pytest tests/ -q`: **5917 passed / 8 skipped / 0 failed** (9:11 мин).
-  Базлайн main — 5904 passed / 9 skipped; дельта W6: +13 passed
+- `pytest tests/ -q` (W6): **5917 passed / 8 skipped / 0 failed** (9:11 мин);
+  базлайн main — 5904 passed / 9 skipped; дельта W6: +13 passed
   (8 e2e + 5 hardening-тестов), −1 skipped (удалён мёртвый pre-W2
   skip-страж `test_cli_run_without_w2_supervisor_fails_cleanly` вместе с
   его seam). SL-05 флак не воспроизвёлся (закалка 4d в деле)
+- `pytest tests/ -q` (W7, 2026-10-05): **5940 passed / 8 skipped /
+  0 failed** (9:29 мин); дельта к W6-бейлайну: **+23 passed, skips без
+  изменений** (22 теста LY-12 `tests/test_ly12_cache_taint.py` + 1
+  контейнерная лега SL-06 `tests/test_service_pid1_container.py` — на
+  хосте владельца лега исполняется РЕАЛЬНО, в CI без podman — named
+  skip; unshare-лега — тот же честный skip с расширенным до 30 s
+  таймаутом повторной пробы)
 
 ## Известные честные пробелы
 
-1. **SL-06, true-container лега**: sandbox отказывает `unshare --pid`;
-   юнит-леги PID1 (сигналы, reap, graceful-порядок, exit 0) покрыты,
-   контейнерная лега — smoke-матрица bare/podman (Tier B).
-2. **CS-3/CS-5 live cross-uid**: нет второго uid вне root; решение
+1. **CS-3/CS-5 live cross-uid**: нет второго uid вне root; решение
    unit-протестировано, live-леги — честные skip с именованной причиной.
-3. **LY-12 API-лега**: отказ записи значения из env-файла через API записи
-   кэша — поверхность API движка, не service-слоя (режим 0750 и канон
-   пути покрыты).
+
+(W7 закрыл прежние пункты 1 и 3: SL-06 true-container лега — реальный
+прогон на rootless podman хоста владельца, см. строку SL-06; LY-12
+API-лега — taint при загрузке + write-API с отказом, см. строку LY-12.)
 
 ## Вердикт
 
 Все исполняемые пункты четырёх чеклистов — pass с приведёнными
-доказательствами; три пробела выше — средовые/вне-волновые, именованные
-и не блокируют ратификацию контрактов по описанной в спеках процедуре
-(«первое зелёное прохождение чеклиста реализацией»; средовые леги —
-smoke-матрица целевых профилей). Статус draft→stable — решение
-держателей спек, не этой волны.
+доказательствами; единственный оставшийся пробел (CS-3/CS-5 live
+cross-uid) — средовый, именованный и не блокирует ратификацию контрактов
+по описанной в спеках процедуре («первое зелёное прохождение чеклиста
+реализацией»; средовые леги — smoke-матрица целевых профилей). W7 снял
+последние два блокера (SL-06 контейнерная лега, LY-12 API-лега) —
+решение draft→stable за держателями спек, не этой волны.
