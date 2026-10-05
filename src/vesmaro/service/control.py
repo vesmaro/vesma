@@ -495,6 +495,7 @@ def bind_control_socket(
     *,
     euid: int | None = None,
     probe_timeout_s: float = RESPONSE_TIMEOUT_S,
+    stale_settle_s: float = 0.1,
     attempts: int = BIND_ATTEMPTS,
     log: logging.Logger | None = None,
 ) -> socket.socket | None:
@@ -507,6 +508,13 @@ def bind_control_socket(
     occupant / fstat mismatch / attempts exhausted). A blind unlink of a
     live socket is impossible by construction: unlink happens only after
     a positive stale probe AND an own-uid socket ``lstat``.
+
+    Race strengthening (still inside the §4.2 loop): a stale verdict is
+    re-probed once after ``stale_settle_s`` — a concurrent winner that is
+    inside its bind→serve window starts answering within the settle time,
+    which turns the verdict into «already running» instead of unlinking
+    its fresh socket (CS-7). Genuinely dead sockets stay stale across the
+    settle re-probe.
     """
     log = log or logger
     euid = os.geteuid() if euid is None else euid
@@ -531,6 +539,11 @@ def bind_control_socket(
                 bound.close()
                 raise BindRefusedError(f"bind {path} failed: {exc}") from exc
             verdict = _probe_live_instance(path, probe_timeout_s)
+            if verdict == "stale" and stale_settle_s > 0:
+                # settle: a concurrent winner inside its bind→serve window
+                # starts answering here; a truly dead socket stays stale
+                time.sleep(stale_settle_s)
+                verdict = _probe_live_instance(path, probe_timeout_s)
             if verdict == "live":
                 bound.close()
                 return None  # single-instance guard: caller exits «already running»
@@ -568,9 +581,11 @@ def bind_control_socket(
             raise BindRefusedError(
                 f"{path} exists and is not a socket — refusing to delete it"
             ) from exc
-        # bind succeeded → explicit mode, listen, fstat verify (steps 4-5)
-        _apply_socket_mode(path, MODE_SOCKET)
+        # bind succeeded → listen FIRST (any EADDRINUSE racer now gets a
+        # connectable socket instead of a false-stale one), then explicit
+        # mode, then the rights verification (§4.2 steps 4-5)
         bound.listen(LISTEN_BACKLOG)
+        _apply_socket_mode(path, MODE_SOCKET)
         _verify_bound_rights(bound, path, euid)
         log.info(
             "control: listening on %s (dir %0o, socket %0o)", path, SOCKET_DIR_MODE, MODE_SOCKET
@@ -580,6 +595,13 @@ def bind_control_socket(
 
 
 # ── Server ────────────────────────────────────────────────────────────
+
+
+def _peer_allowed(cred: tuple[int, int, int] | None, euid: int) -> bool:
+    """§3 SO_PEERCRED defense-in-depth verdict (CS-3): the peer uid MUST
+    equal the socket owner (the supervisor's effective uid). ``None``
+    credentials (getsockopt failure) fail CLOSED."""
+    return cred is not None and cred[1] == euid
 
 
 @dataclass(frozen=True)
@@ -694,7 +716,7 @@ class ControlServer:
                     break
                 continue
             cred = self._peer_cred(conn)
-            if cred is None or cred[1] != os.geteuid():
+            if not _peer_allowed(cred, os.geteuid()):
                 self._log.warning("control: peer uid check failed (cred=%s) — closing unread", cred)
                 conn.close()
                 continue

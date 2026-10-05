@@ -83,6 +83,8 @@ class ProtocolError(ControlClientError):
 
     @property
     def code_range(self) -> str:
+        if self.code <= 0:
+            return "unknown"  # codes are 1-based; non-positive = malformed
         if self.code < 100:
             return "protocol"
         if self.code < 200:
