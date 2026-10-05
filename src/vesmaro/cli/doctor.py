@@ -1224,5 +1224,87 @@ def doctor_paths(
     _run_paths_overview(json_output=json_output)
 
 
+# ── service installation checks (layout v1 §3.10, DR-01…DR-13) ───────────────
+
+
+def _render_service_findings(results: list[Any]) -> None:
+    """Render DR findings as a rich table (status / id / check / detail+fix)."""
+    table = Table(title="Service Installation Check (DR-01…DR-13)", show_header=True, header_style="bold")
+    table.add_column("Status", style="bold", width=4)
+    table.add_column("ID", style="bold cyan", width=6)
+    table.add_column("Check")
+    table.add_column("Detail")
+
+    for f in results:
+        if f.severity.value == "OK":
+            icon = "[green]✓[/green]"
+        elif f.severity.value == "WARN":
+            icon = "[yellow]⚠[/yellow]"
+        else:
+            icon = "[red]✗[/red]"
+        detail = f.detail if not f.fix_command else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
+        table.add_row(icon, f.check_id, f.title, detail)
+    console.print(table)
+
+
+@doctor_app.command(name="service")
+def doctor_service(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit findings as JSON (for scripting / CI).",
+        ),
+    ] = False,
+) -> None:
+    """Check the service installation (layout v1 §3.10, DR-01…DR-13).
+
+    READ-ONLY by contract: findings carry severity OK/WARN/FAIL and a
+    ready fix command, but the doctor never executes fixes itself.
+    Exit codes: 0 = all OK, 1 = one or more FAIL, 2 = warnings only.
+    """
+    from vesmaro.service import doctor_checks
+    from vesmaro.service.errors import ManifestError
+
+    try:
+        findings = doctor_checks.run_service_checks()
+    except ManifestError as exc:  # fail-closed installation load
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    if json_output:
+        code = doctor_checks.exit_code(findings)
+        console.print_json(
+            json.dumps(
+                {
+                    "version": __version__,
+                    "checks": [
+                        {
+                            "check_id": f.check_id,
+                            "title": f.title,
+                            "severity": f.severity.value,
+                            "detail": f.detail,
+                            "fix_command": f.fix_command,
+                        }
+                        for f in findings
+                    ],
+                    "exit_code": code,
+                }
+            )
+        )
+        raise typer.Exit(code)
+
+    _render_service_findings(findings)
+    code = doctor_checks.exit_code(findings)
+    console.print()
+    if code == 0:
+        console.print("[green]Service installation is healthy.[/green]")
+    elif code == 2:
+        console.print("[yellow]⚠ Some checks warn — see above.[/yellow]")
+    else:
+        console.print("[red]✗ One or more checks failed — see above.[/red]")
+    raise typer.Exit(code)
+
+
 if __name__ == "__main__":  # pragma: no cover — manual invocation
     doctor_app()
