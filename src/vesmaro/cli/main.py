@@ -1966,6 +1966,14 @@ from vesmaro.cli.graph_cmd import graph_app  # noqa: E402
 
 app.add_typer(graph_app, name="graph")
 
+# ── service (supervisor control plane, control-socket v1; wave W3) ────────────
+# NOTE: wave W4 (install/uninstall) extends vesmaro/cli/service.py in place —
+# this registration stays as-is across that merge.
+
+from vesmaro.cli.service import service_app  # noqa: E402
+
+app.add_typer(service_app, name="service")
+
 # update family: a sub-app (board card vesma-update-family-components) —
 # plain `vesma update` keeps the 5.2.0 report+prompt behavior via the
 # group callback; check/apply/timer/components are subcommands and the
