@@ -382,4 +382,3 @@ def test_cli_service_preflight_failure_prints_fix_command(tmp_path: Path) -> Non
     flat = " ".join(result.output.split())  # rich may wrap long lines
     assert "pre-flight" in flat
     assert "chmod 0700" in flat
-

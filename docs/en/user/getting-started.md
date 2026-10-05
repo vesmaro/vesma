@@ -54,12 +54,13 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 
 <!-- version:pip -->
 ```bash
-pip install https://github.com/vesmaro/vesma/releases/download/v4.3.0/mnemos_memory_server-4.3.0-py3-none-any.whl
+pip install https://github.com/vesmaro/vesma/releases/download/v5.6.0/vesma-5.6.0-py3-none-any.whl
 ```
 <!-- /version:pip -->
 
-<!-- deprecated-note: 5.x releases ship as the `vesma` wheel (bare PyPI slot); the legacy
-mnemos_memory_server-*.whl artifact name covers the 4.x line until deprecation. -->
+<!-- deprecated-note: 4.x shipped as the legacy mnemos_memory_server-*.whl; since 5.0.0 the
+release artifact is vesma-<version>-py3-none-any.whl (attached to the GitHub release and
+published on PyPI — `pip install vesma` installs the same wheel). -->
 
 **Pre-built image** (published at `ghcr.io/vesmaro/vesma`; `docker` works too — swap `podman` for `docker`):
 
@@ -72,14 +73,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:5.1.2
+  ghcr.io/vesmaro/vesma:5.6.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:4.3.0` (pinned) · `:latest` (rolling).
+Tags: `:5.6.0` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).

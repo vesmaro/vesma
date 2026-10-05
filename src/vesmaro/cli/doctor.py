@@ -1246,11 +1246,7 @@ def _render_service_findings(results: list[Any]) -> None:
             icon = "[yellow]⚠[/yellow]"
         else:
             icon = "[red]✗[/red]"
-        detail = (
-            f.detail
-            if not f.fix_command
-            else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
-        )
+        detail = f.detail if not f.fix_command else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
         table.add_row(icon, f.check_id, f.title, detail)
     console.print(table)
 
