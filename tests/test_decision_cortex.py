@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import math
+from dataclasses import asdict
 from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any, Final
@@ -551,6 +552,42 @@ def test_invalid_similarity_degrades_with_a_schema_warn(
     assert any("CORTEX-E-SCHEMA" in record.message for record in caplog.records)
 
 
+def test_degradation_warns_carry_the_contract_action_class(
+    provider: VesmaProvider, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DP-08 (spec §3.8, review-2): a per-verdict degradation warn carries
+    the implementation-namespace code AND the contractual action class —
+    the parse check from the checklist's «Способ проверки» column."""
+    state = CanonState(
+        record=CanonRecordView(title="t", body="b"),
+        candidate=CanonRecordView(title="t", body="b"),
+        similarity=0.93,
+    )
+    restore = _swap_session(provider, _BoomSession())
+    try:
+        with caplog.at_level(logging.WARNING, logger="vesmaro.decision_provider"):
+            provider.evaluate(IsDuplicateRequest(), state)
+    finally:
+        restore()
+    degraded = [r.message for r in caplog.records if "CORTEX-E-INFER" in r.message]
+    assert degraded
+    assert all("code=" in line and "class=verdict-class" in line for line in degraded)
+
+
+def test_provider_call_leaves_record_bytes_identical(provider: VesmaProvider) -> None:
+    """DP-03 (checklist check): the prepared state's bytes survive the
+    provider call — the artifact answers a verdict, records stay as-is."""
+    record = CanonRecordView(title="t", body="body " * 100, tags=("project:p",))
+    candidate = CanonRecordView(title="c", body="prior " * 100)
+    before_record = asdict(record)
+    before_candidate = asdict(candidate)
+    provider.evaluate(
+        IsDuplicateRequest(), CanonState(record=record, candidate=candidate, similarity=0.5)
+    )
+    assert asdict(record) == before_record
+    assert asdict(candidate) == before_candidate
+
+
 # ── Wiring: the flag, the factory, the load-time fail-open ────────────────────
 
 
@@ -581,7 +618,9 @@ def test_resolver_fail_open_on_broken_artifact(
             embedder_fingerprint=EMBEDDER_PIN,
         )
     assert isinstance(wired, DeterministicProvider)
-    assert any("CORTEX-E-LOAD" in record.message for record in caplog.records)
+    degraded = [r.message for r in caplog.records if "CORTEX-E" in r.message]
+    assert degraded
+    assert all("class=provider-class" in line for line in degraded)  # DP-08: whole-provider class
 
 
 def test_resolver_pin_mismatch_telegraphs_recalibration(
@@ -597,10 +636,13 @@ def test_resolver_pin_mismatch_telegraphs_recalibration(
     assert "CORTEX-E-PIN" in messages
     assert "recalibration" in messages
     # The recalibration line itself carries the machine-parseable token
-    # (#459): a strict code=-prefix parser must catch exactly this line.
+    # (#459): a strict code=-prefix parser must catch exactly this line,
+    # and the §3.8 action class marks the whole-provider degradation.
     recalibration = [r for r in caplog.records if "recalibration" in r.message]
     assert recalibration, "expected the recalibration telegraph warn"
-    assert all(r.message.startswith("code=") for r in recalibration)
+    assert all(
+        r.message.startswith("code=") and "class=provider-class" in r.message for r in recalibration
+    )
 
 
 def test_resolver_without_fingerprint_refuses_the_pin(
@@ -609,7 +651,9 @@ def test_resolver_without_fingerprint_refuses_the_pin(
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
         wired = resolve_decision_provider(VesmaConfig(decision_provider="vesma"))
     assert isinstance(wired, DeterministicProvider)
-    assert any("CORTEX-E-PIN" in record.message for record in caplog.records)
+    refused = [r.message for r in caplog.records if "CORTEX-E-PIN" in r.message]
+    assert refused
+    assert all("class=provider-class" in line for line in refused)
 
 
 # ── Integration: smoke verdict on REAL records, measured similarity ───────────
