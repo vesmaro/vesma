@@ -6,8 +6,9 @@ Publish pipeline for the `vesma` package on PyPI — built in issue #122,
 ADR-0017 Phase 0 (Distribution) for the first publish and now the
 routine update pipeline as well. GitHub Actions is
 billing-locked (#117), so the whole pipeline runs locally via
-`scripts/pypi-publish.sh` (sibling of `scripts/local-release.sh`, which
-owns the container image + GitHub Release half).
+`scripts/pypi-publish.sh` (which since 2026-10-05 also orders the
+MANDATORY container image phase around the upload — implemented once in
+`scripts/image-publish.sh`; see [Container image](#container-image--mandatory-half-of-the-train)).
 
 **Uploads are owner-executed steps.** PyPI names and versions are
 immutable: a published version can never be re-uploaded or replaced, and
@@ -93,7 +94,7 @@ name would mean a new, parallel project.
 | default (check) | CL changelog preflight + G0–G4 gates, wheel/sdist build, `twine check`, offline metadata smoke — for EVERY candidate dist |
 | `--dists "a b"` | restrict the candidate dist list (default: `vesma vesma-memory-server`; env override `CANDIDATE_DISTS`) |
 | `--full-smoke` | additionally installs each wheel WITH deps into a throwaway venv, runs `vesma --version` (needs pypi.org) |
-| `--publish` | all checks, then `twine upload` per dist (release tag + credentials required) |
+| `--publish` | image preflight + build + smoke, then `twine upload` per dist, then image push + anonymous verify (release tag, PyPI credentials AND `GHCR_TOKEN` required; NO image skip path) |
 | `--publish --full-smoke` | recommended pre-upload combination |
 | `--i-own-name` | required to upload when the PyPI project already exists (updates of our own project only) |
 | `--reuse-dist` | skip the build when `dist/<name>/` already holds matching artifacts |
@@ -132,6 +133,73 @@ an already-published version fails cleanly BEFORE any upload attempt
 (versions are immutable — bump and rebuild instead), and `--publish`
 against a name/version state that does not match our project is refused
 without `--i-own-name`.
+
+## Container image — mandatory half of the train
+
+Owner directive 2026-10-05 (card `vesma-ghcr-5x-parity`, after the 5.3.0 /
+5.4.0 / 5.5.0 images turned out to be missing from ghcr.io): **the image
+must appear synchronously with every release.** In `--publish` mode the
+train therefore runs the image phase with NO skip path — there is no
+`--no-image` flag anymore, and a missing builder or missing credentials is
+a hard failure of the train, never a silent step-down.
+
+Ordering (deliberate):
+
+1. **Image preflight** (before anything is uploaded) — builder present,
+   `GHCR_TOKEN` present, version three-way gate.
+2. **Image build + smoke** (before any upload) — an unusable image
+   environment blocks the whole train BEFORE anything is published
+   anywhere. Smoke runs `vesma --version` inside the built container and
+   demands exactly `vesma $VERSION` on the first line.
+3. **PyPI uploads** (unchanged multi-dist loop).
+4. **Image push + anonymous verify** (after all uploads succeeded). Push
+   goes through `skopeo copy` with explicit transports
+   (`containers-storage:` → `docker://`; field-proven on the 5.5.0 push,
+   where `podman push` to ghcr.io 403'd on the first blob check while the
+   same authfile worked through skopeo), with a direct `podman/docker
+   push` fallback. The anonymous pull-flow verification then checks
+   `tags/list` contains the version and that the `:VERSION` and `:latest`
+   manifest digests equal the pushed digest.
+5. If the push/verify fails AFTER PyPI succeeded, the run ends with a
+   loud `RELEASE INCOMPLETE` banner naming the exact catch-up command —
+
+   ```bash
+   GHCR_TOKEN=<token> scripts/image-publish.sh catch-up
+   ```
+
+   — and exits non-zero. A published PyPI version without its image is
+   never reported as a green release; the built image waits locally and
+   the catch-up re-pushes it (touching nothing else).
+
+Version gates (VG1–VG3, hard): HEAD exactly on tag `vX.Y.Z`; tag version
+== `pyproject.toml` version; `CHANGELOG.md` carries a `## [X.Y.Z]`
+section (the changelog freeze is part of the release — an image may not
+exist for a version the changelog does not vouch for). The build also
+regenerates the gitignored gRPC stubs (`scripts/gen-proto.sh`) that the
+Containerfile COPYs.
+
+Credentials and toolchain:
+
+- `GHCR_TOKEN` — classic PAT with `repo` + `write:packages`, exported in
+  the moment (never written to disk or history). `GHCR_USER` defaults to
+  `vesmaro`.
+- Builder: `podman` → `buildah` → `docker` (override with
+  `VESMA_IMAGE_BUILDER`). Smoke runner: `podman` → `docker`
+  (`VESMA_IMAGE_RUNNER`). Pusher: `skopeo`
+  (`VESMA_IMAGE_SKOPEO`). In a distrobox where podman lives on the HOST,
+  override all three to the same prefix, e.g.
+  `VESMA_IMAGE_BUILDER="distrobox-host-exec podman"
+  VESMA_IMAGE_RUNNER="distrobox-host-exec podman"
+  VESMA_IMAGE_SKOPEO="distrobox-host-exec skopeo"` — the skopeo override
+  is required because it must share storage with the builder.
+- Login uses a fresh temporary authfile, shredded on exit; the token
+  never appears in process arguments or logs.
+
+`--no-image` and the `make local-release-no-image` target are ABOLISHED
+(the Makefile target now fails loudly with a pointer to the canonical
+command). `scripts/local-release.sh` (deprecated GitHub-Release fallback)
+delegates both of its image steps to `scripts/image-publish.sh` — there
+is exactly one image-phase implementation.
 
 ## Environment canon — bootstrap the release worktree
 
@@ -190,10 +258,12 @@ Once the name is decided and a release is cut (`release/X.Y.Z` →
 
    ```bash
    export PYPI_TOKEN=pypi-...   # from the PyPI UI, stays in this shell only
+   export GHCR_TOKEN=github_pat-...   # classic PAT, repo + write:packages — the image phase refuses to run without it
    ```
 
 2. **Checkout the tag and run the full pipeline** (one run publishes both
-   live channels — `vesma` + the `vesma-memory-server` mirror):
+   live channels — `vesma` + the `vesma-memory-server` mirror — and the
+   container image):
 
    ```bash
    git checkout vX.Y.Z
@@ -232,7 +302,8 @@ Once the name is decided and a release is cut (`release/X.Y.Z` →
 
 - `scripts/pypi-publish.sh --help` — pipeline modes and gates
 - `packaging/npm/publish.sh --help` — npm twin pipeline (`@vesmaro/vesma`)
-- `scripts/local-release.sh` — container image + GitHub Release half
+- `scripts/image-publish.sh help` — the mandatory container image phase (preflight / build / push / catch-up)
+- `scripts/local-release.sh` — deprecated GitHub-Release fallback (delegates its image steps to `image-publish.sh`)
 - [Install runbook](install.md) — first-run operational checklist
 - [CI/CD runbook](ci-cd.md) — why builds run locally (billing lock)
 - Issue #122, ADR-0017 (docs/project/adr/0017-memory-system-evolution-roadmap.md)

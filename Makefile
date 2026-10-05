@@ -235,5 +235,14 @@ local-release:
 local-release-dry:
 	@bash scripts/run-release-local.sh --dry-run
 
+# Abolished (owner directive 2026-10-05, card vesma-ghcr-5x-parity):
+# every release train builds, smoke-tests and pushes the container image
+# (scripts/image-publish.sh, ordered by scripts/pypi-publish.sh --publish).
+# Kept as a loud error so old muscle memory fails visibly, never silently.
 local-release-no-image:
-	@bash scripts/local-release.sh --no-image
+	@echo "ERROR: image-less releases are abolished (owner directive 2026-10-05, card vesma-ghcr-5x-parity)."; \
+	echo "  Every release train now builds and pushes the container image:"; \
+	echo "    scripts/pypi-publish.sh --publish --full-smoke"; \
+	echo "  Wheels/sdist-only PREPARATION run (publishes nothing):"; \
+	echo "    scripts/pypi-publish.sh"; \
+	exit 2

@@ -6,8 +6,10 @@
 ADR-0017 Фаза 0 (Distribution) для первой публикации и теперь служит
 также штатным пайплайном обновлений. GitHub Actions заблокирован
 по billing (#117), поэтому весь пайплайн выполняется локально через
-`scripts/pypi-publish.sh` (сиблинг `scripts/local-release.sh`, который
-отвечает за container-образ + GitHub Release).
+`scripts/pypi-publish.sh` (который с 2026-10-05 отвечает и за container-образ:
+в `--publish` он выстраивает ОБЯЗАТЕЛЬНУЮ image-фазу вокруг загрузки —
+реализована в одном месте, `scripts/image-publish.sh`; см.
+[Container image](#container-image--обязательная-половина-поезда)).
 
 **Загрузки — выполняемые владельцем шаги.** Имена и версии на
 PyPI неизменяемы: опубликованную версию невозможно перезалить или
@@ -93,7 +95,7 @@ curl -s https://pypi.org/pypi/<name>/json | python3 -c \
 | по умолчанию (check) | CL changelog-префлайт + гейты G0–G4, сборка wheel/sdist, `twine check`, офлайн metadata-smoke — для КАЖДОГО диста-кандидата |
 | `--dists "a b"` | ограничить список дистов (по умолчанию: `vesma vesma-memory-server`; env-оверрайд `CANDIDATE_DISTS`) |
 | `--full-smoke` | дополнительно ставит каждый wheel С зависимостями в одноразовый venv, запускает `vesma --version` (нужен pypi.org) |
-| `--publish` | все проверки, затем `twine upload` на каждый дист (нужны release-тег и учётные данные) |
+| `--publish` | image-префлайт + сборка + smoke, затем `twine upload` на каждый дист, затем image push + анонимная проверка (нужны release-тег, учётные данные PyPI И `GHCR_TOKEN`; пути пропуска image-фазы НЕТ) |
 | `--publish --full-smoke` | рекомендуемая комбинация перед загрузкой |
 | `--i-own-name` | обязателен для загрузки, когда проект на PyPI уже существует (обновления ТОЛЬКО нашего проекта) |
 | `--reuse-dist` | пропустить сборку, если в `dist/<имя>/` уже лежат подходящие артефакты |
@@ -133,6 +135,72 @@ G0 остаётся жёстким предохранителем теперь, 
 неизменяемы — поднимайте версию и пересобирайте), а `--publish` при
 несовпадении имени/версии с нашим проектом отклоняется без
 `--i-own-name`.
+
+## Container image — обязательная половина поезда
+
+Директива владельца 2026-10-05 (карта `vesma-ghcr-5x-parity`; повод —
+образы 5.3.0 / 5.4.0 / 5.5.0, которых на ghcr.io не оказалось):
+**образ появляется синхронно с каждым релизом.** В `--publish` поезд
+прогоняет image-фазу БЕЗ пути пропуска — флага `--no-image` больше нет,
+а отсутствие билдера или учётных данных — жёсткий отказ поезда, а не
+тихий шаг в сторону.
+
+Порядок (осознанный):
+
+1. **Image-префлайт** (до первой загрузки) — билдер на месте,
+   `GHCR_TOKEN` на месте, трёхсторонний гейт версий.
+2. **Сборка + smoke образа** (до любой загрузки) — нерабочее окружение
+   образа блокирует весь поезд ДО того, как что-либо опубликовано где-либо.
+   Smoke запускает `vesma --version` внутри собранного контейнера и требует
+   ровно `vesma $VERSION` в первой строке.
+3. **Загрузки PyPI** (без изменений, мульти-дист цикл).
+4. **Push образа + анонимная проверка** (после всех успешных загрузок).
+   Push идёт через `skopeo copy` с явными транспортами
+   (`containers-storage:` → `docker://`; проверено на поезде 5.5.0, где
+   `podman push` на ghcr.io падал 403 на первой же blob-проверке, а тот же
+   authfile через skopeo работал), с фолбэком на прямой `podman/docker
+   push`. Затем анонимная pull-проверка: `tags/list` содержит версию, а
+   дайджесты манифестов `:VERSION` и `:latest` равны запушенному.
+5. Если push/проверка упали ПОСЛЕ успешной публикации на PyPI, прогон
+   заканчивается громким баннером `RELEASE INCOMPLETE` с точной
+   командой догоняющего запуска —
+
+   ```bash
+   GHCR_TOKEN=<token> scripts/image-publish.sh catch-up
+   ```
+
+   — и ненулевым кодом выхода. Опубликованная PyPI-версия без её образа
+   никогда не отчитывается зелёным релизом; собранный образ ждёт локально,
+   catch-up дозаливает его (ничего больше не трогая).
+
+Гейты версий (VG1–VG3, жёсткие): HEAD ровно на теге `vX.Y.Z`; версия тега
+== версия в `pyproject.toml`; в `CHANGELOG.md` есть секция `## [X.Y.Z]`
+(changelog-freeze — часть релиза: образа не может существовать для версии,
+за которую changelog не ручается). Сборка также перегенерирует
+гитигнорированные gRPC-стабы (`scripts/gen-proto.sh`), которые COPY-ит
+Containerfile.
+
+Учётные данные и тулчейн:
+
+- `GHCR_TOKEN` — классический PAT со скоупами `repo` + `write:packages`,
+  экспортируется в моменте (никогда не пишется на диск или в историю).
+  `GHCR_USER` по умолчанию `vesmaro`.
+- Билдер: `podman` → `buildah` → `docker` (оверрайд `VESMA_IMAGE_BUILDER`).
+  Раннер smoke: `podman` → `docker` (`VESMA_IMAGE_RUNNER`). Пушер:
+  `skopeo` (`VESMA_IMAGE_SKOPEO`). В distrobox, где podman живёт на ХОСТЕ,
+  переопределите все три одним префиксом, например
+  `VESMA_IMAGE_BUILDER="distrobox-host-exec podman"
+  VESMA_IMAGE_RUNNER="distrobox-host-exec podman"
+  VESMA_IMAGE_SKOPEO="distrobox-host-exec skopeo"` — оверрайд skopeo
+  обязателен: он должен разделять хранилище с билдером.
+- Логин идёт через свежий временный authfile, shred-ится на выходе; токен
+  не появляется ни в аргументах процессов, ни в логах.
+
+`--no-image` и цель `make local-release-no-image` упразднены (цель Makefile
+теперь громко падает с указанием на каноническую команду).
+`scripts/local-release.sh` (устаревший GitHub-Release fallback) делегирует
+оба своих image-шага в `scripts/image-publish.sh` — реализация image-фазы
+ровно одна.
 
 ## Канон окружения — бутстрап релизного worktree
 
@@ -191,10 +259,12 @@ packaging/npm/publish.sh --publish          # шаг владельца: гей�
 
    ```bash
    export PYPI_TOKEN=pypi-...   # из UI PyPI, живёт только в этом shell
+   export GHCR_TOKEN=github_pat-...   # классический PAT, repo + write:packages — без него image-фаза откажется работать
    ```
 
 2. **Переключиться на тег и запустить пайплайн целиком** (один прогон
-   публикует оба живых канала — `vesma` + зеркало `vesma-memory-server`):
+   публикует оба живых канала — `vesma` + зеркало `vesma-memory-server` —
+   и container-образ):
 
    ```bash
    git checkout vX.Y.Z
@@ -233,7 +303,8 @@ packaging/npm/publish.sh --publish          # шаг владельца: гей�
 
 - `scripts/pypi-publish.sh --help` — режимы пайплайна и гейты
 - `packaging/npm/publish.sh --help` — npm-близнец пайплайна (`@vesmaro/vesma`)
-- `scripts/local-release.sh` — container-образ + GitHub Release
+- `scripts/image-publish.sh help` — обязательная image-фаза (preflight / build / push / catch-up)
+- `scripts/local-release.sh` — устаревший GitHub-Release fallback (image-шаги делегирует в `image-publish.sh`)
 - [Runbook установки](install.md) — first-run операционный чеклист
 - [Runbook CI/CD](ci-cd.md) — почему сборки идут локально (billing lock)
 - Issue #122, ADR-0017 (docs/project/adr/0017-memory-system-evolution-roadmap.md)

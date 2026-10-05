@@ -251,7 +251,12 @@ before merging.
 - **CD / deploy** — the release pipeline lives in
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
   a `v*.*.*` tag builds the wheel/sdist and attaches them to the GitHub
-  Release, and pushes `ghcr.io/korrnals/vesma:$VERSION` + `:latest`.
+  Release, and pushes `ghcr.io/vesmaro/vesma:$VERSION` + `:latest`
+  (registry corrected from the pre-rebrand `korrnals` name). The
+  workflow is billing-locked (#117) and does not fire — the operative
+  release train is the local one: `scripts/pypi-publish.sh --publish`
+  with its mandatory image phase (see
+  [`pypi-publish.md`](pypi-publish.md), "Container image").
   PyPI upload is run separately per [`pypi-publish.md`](pypi-publish.md);
   container use is covered by [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — not needed at this scale. GitHub-hosted
