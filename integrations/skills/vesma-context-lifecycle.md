@@ -79,9 +79,11 @@ rewrite lifecycle.
    # → usage recorded server-side; the assemble call being reported closes
    ```
 
-   - `block_ids_touched` entries are **opaque ordinals** copied verbatim
-     from the assemble result's `blocks` (the shape "<metrics_id>:<i>") —
-     do not parse or reorder them.
+   - `block_ids_touched` entries are **opaque ordinals** "<metrics_id>:<i>":
+     the metrics_id comes from the assemble result's
+     `usage_report.metrics_id`; derive `<i>` as the 0-based index of a used
+     block in the result's `blocks` list — the ordinals are composed, never
+     guessed, and not parsed or reordered.
    - **An empty list is legitimate**: the model used nothing from the
      injected block — still report it (an honest empty touches nothing and
      keeps the closure metric truthful).

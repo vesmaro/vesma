@@ -2377,7 +2377,7 @@ class TestInstructionPack:
         assert "G0a" in text and "G0b" in text, (
             "always-on block must name both usage-loop gates"
         )
-        assert "usage_report.metrics_id" in text or "usage_report" in text, (
+        assert "usage_report.metrics_id" in text, (
             "always-on G0a must point at the metrics_id handoff"
         )
 
