@@ -241,7 +241,12 @@ python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 - **CD / deploy** — release-pipeline живёт в
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
   тег `v*.*.*` собирает wheel/sdist и прикрепляет их к GitHub Release, а также
-  пушит `ghcr.io/korrnals/vesma:$VERSION` + `:latest`. Заливка на PyPI —
+  пушит `ghcr.io/vesmaro/vesma:$VERSION` + `:latest` (реестр исправлен с
+  доребрендингового имени `korrnals`). Workflow заблокирован по billing
+  (#117) и не срабатывает — рабочий поезд релиза локальный:
+  `scripts/pypi-publish.sh --publish` с обязательной image-фазой (см.
+  [`pypi-publish.md`](pypi-publish.md), «Container image»).
+  Заливка на PyPI —
   отдельный шаг по [`pypi-publish.md`](pypi-publish.md); использование
   контейнера — в [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — не нужен в текущем масштабе. GitHub-hosted

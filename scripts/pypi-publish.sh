@@ -22,12 +22,22 @@
 #   scripts/pypi-publish.sh                 # check mode (default): gates + build + twine check + metadata smoke for EVERY candidate dist
 #   scripts/pypi-publish.sh --dists "vesma" # restrict candidates (default: primary + mirror, see CANDIDATE_DISTS below)
 #   scripts/pypi-publish.sh --full-smoke    # + install each wheel into a throwaway venv WITH deps, run `vesma --version`
-#   scripts/pypi-publish.sh --publish       # run all checks, then twine upload per dist (requires release tag + creds)
+#   scripts/pypi-publish.sh --publish       # run all checks + MANDATORY image build/smoke, then twine upload per dist, then image push+anon-verify (requires release tag, PyPI creds, GHCR_TOKEN)
 #   scripts/pypi-publish.sh --publish --full-smoke    # recommended pre-upload combination
 #   scripts/pypi-publish.sh --i-own-name    # allow upload when a PyPI project already exists (updates only)
 #   scripts/pypi-publish.sh --reuse-dist    # skip build when dist/<name>/ already holds matching artifacts
 #   scripts/pypi-publish.sh --dry-run       # print steps, no mutations, no upload (works without .venv)
 #   scripts/pypi-publish.sh --help
+#
+# Container image (owner directive 2026-10-05, card vesma-ghcr-5x-parity):
+# in --publish mode the image phase is MANDATORY and has NO skip flag.
+# Ordering: image build + smoke BEFORE the first upload (an unusable
+# image environment blocks the whole train before anything is published
+# anywhere); image push + anonymous-pull verification AFTER all uploads
+# succeeded. If the push fails after PyPI succeeded, the run ends with
+# a loud RELEASE INCOMPLETE banner naming the exact catch-up command
+# and exits non-zero. The implementation lives in ONE place —
+# scripts/image-publish.sh (preflight|build|push|catch-up).
 #
 # Candidate dists (CANDIDATE_DISTS): default is the pyproject.toml name
 # FIRST (canonical channel) then the `vesma-memory-server` mirror — the
@@ -59,7 +69,10 @@
 # environment-canon section for why `uv pip install -e ".[dev]"` is
 # forbidden here), git tag cut from a release branch merged to main,
 # network access to pypi.org for G0 (--publish only), twine check and
-# --full-smoke.
+# --full-smoke. For --publish also: a container builder (podman preferred;
+# buildah/docker work — see scripts/image-publish.sh) and GHCR_TOKEN
+# (classic PAT, repo+write:packages) — both are checked by the image
+# preflight BEFORE any upload happens.
 #
 # First publish is an OWNER-executed step (irreversible on PyPI; the
 # PyPI projects are live: vesma + vesma-memory-server — update uploads
@@ -67,8 +80,9 @@
 # this pipeline (@vesmaro/vesma, packaging/npm/publish.sh):
 #   docs/en/admin/runbooks/pypi-publish.md
 #
-# See: issue #122 (ADR-0017 Phase 0), scripts/local-release.sh (sibling
-# pipeline: container + GitHub Release)
+# See: issue #122 (ADR-0017 Phase 0), scripts/image-publish.sh (the
+# mandatory container image phase this script orders around the upload),
+# scripts/local-release.sh (deprecated fallback: GitHub Release half)
 #
 
 set -euo pipefail
@@ -224,13 +238,56 @@ if $ON_TAG && [[ "$TAGV" != "$PYV" ]]; then
   else echo "⚠ [G2 warning]: tag $TAG != pyproject $PYV"; fi
 fi
 
-# steps: changelog preflight -> per dist [G0 -> build -> G3 -> twine check ->
-#        G4 metadata smoke -> [full smoke] -> [upload]]
+# steps: changelog preflight -> image [preflight (+ build+smoke in --publish)]
+#        -> per dist [G0 -> build -> G3 -> twine check -> G4 metadata smoke ->
+#        [full smoke] -> [upload]] -> [image push+verify in --publish]
 ND="${#CANDIDATE_DISTS[@]}"
 TOTAL=$(( 1 + ND*5 ))
 if $FULL_SMOKE; then TOTAL=$((TOTAL+ND)); fi
 if $PUBLISH; then TOTAL=$((TOTAL+ND)); fi
+# image phase rows: check mode = 1 (preflight); --publish = 3 (preflight,
+# build+smoke, push+verify — the phase is unconditional, there is no skip)
+if $PUBLISH; then TOTAL=$((TOTAL+3)); else TOTAL=$((TOTAL+1)); fi
 IDX=0
+
+# --- image phase (MANDATORY in --publish — owner directive 2026-10-05,
+#     card vesma-ghcr-5x-parity). Build + smoke run BEFORE any upload so
+#     an unusable image environment blocks the whole train before anything
+#     is published anywhere. There is NO skip path here: a missing builder,
+#     missing GHCR_TOKEN (--publish), or a failed build/smoke is a HARD
+#     failure of the train. In check mode the cheap preflight runs as a
+#     WARN-capable row (consistent with G0/G1 check-mode semantics).
+
+if $PUBLISH; then
+  IDX=$((IDX+1))
+  echo ""
+  echo "=== [$IDX/$TOTAL] Image preflight (builder, GHCR_TOKEN, version gates) ==="
+  if $DRY_RUN; then
+    echo "→ DRY-RUN: scripts/image-publish.sh preflight --strict"; record "Image preflight" "SKIP"
+  else
+    set +e; bash "$SCRIPT_DIR/image-publish.sh" preflight --strict; rc=$?; set -e
+    if [[ $rc -ne 0 ]]; then record "Image preflight" "FAIL"; print_summary; fi
+    record "Image preflight" "PASS"
+  fi
+  IDX=$((IDX+1))
+  echo ""
+  echo "=== [$IDX/$TOTAL] Image build + smoke (mandatory, before any upload) ==="
+  if $DRY_RUN; then
+    echo "→ DRY-RUN: scripts/image-publish.sh build"; record "Image build+smoke" "SKIP"
+  else
+    set +e; bash "$SCRIPT_DIR/image-publish.sh" build; rc=$?; set -e
+    if [[ $rc -ne 0 ]]; then record "Image build+smoke" "FAIL"; print_summary; fi
+    record "Image build+smoke" "PASS"
+  fi
+else
+  IDX=$((IDX+1))
+  echo ""
+  echo "=== [$IDX/$TOTAL] Image preflight (check mode — warn-capable) ==="
+  set +e; bash "$SCRIPT_DIR/image-publish.sh" preflight; rc=$?; set -e
+  if [[ $rc -eq 0 ]]; then record "Image preflight" "PASS"
+  elif [[ $rc -eq 3 ]]; then record "Image preflight" "WARN"
+  else record "Image preflight" "FAIL"; print_summary; fi
+fi
 
 # --- CL: changelog preflight (WARN only — never blocks) ----------------------
 
@@ -490,6 +547,28 @@ for d in "${CANDIDATE_DISTS[@]}"; do
   pipeline_for_dist "$d"
 done
 
+# --- image push + verify (MANDATORY in --publish, AFTER all uploads succeeded).
+# If this fails after PyPI succeeded, image-publish.sh prints the loud
+# RELEASE INCOMPLETE banner with the exact catch-up command, and this run
+# exits non-zero — a published PyPI version without its container image is
+# never reported as a green release.
+
+if $PUBLISH; then
+  IDX=$((IDX+1))
+  echo ""
+  echo "=== [$IDX/$TOTAL] Image push + anonymous verify (ghcr.io) ==="
+  if $DRY_RUN; then
+    echo "→ DRY-RUN: scripts/image-publish.sh push"; record "Image push+verify" "SKIP"
+  else
+    set +e; bash "$SCRIPT_DIR/image-publish.sh" push; rc=$?; set -e
+    if [[ $rc -ne 0 ]]; then
+      record "Image push+verify" "FAIL"
+      print_summary   # exits 1 — the RELEASE INCOMPLETE banner is above
+    fi
+    record "Image push+verify" "PASS"
+  fi
+fi
+
 # --- default exit: prepared, not published --------------------------------------
 
 if ! $PUBLISH; then
@@ -503,6 +582,7 @@ if ! $PUBLISH; then
   echo "════════════════════════════════════════════════════════════════"
   echo " Ready-to-run publish command (version must NOT already be on PyPI):"
   echo "   export PYPI_TOKEN=<api-token>"
+  echo "   export GHCR_TOKEN=<classic PAT, repo+write:packages>   # mandatory: image phase"
   echo "   git checkout vX.Y.Z && scripts/pypi-publish.sh --publish --full-smoke"
   echo " (default candidates = vesma + vesma-memory-server, both in one run;"
   echo "  restrict via --dists \"vesma\" or CANDIDATE_DISTS)"
