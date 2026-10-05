@@ -35,6 +35,7 @@ Stdlib only — the supervisor imports this module in-process.
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,7 +50,8 @@ __all__ = [
     "register_state_provider",
 ]
 
-_DEFAULT_BIND = "127.0.0.1:8080"
+_DEFAULT_HOST = "127.0.0.1"
+_DEFAULT_PORT = 8080
 
 StateProvider = Callable[[], dict[str, Any]]
 
@@ -128,16 +130,43 @@ def create_component() -> BoardComponent:
     return BoardComponent()
 
 
+class _BoardServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that picks the address family from the host."""
+
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]) -> None:
+        if ":" in address[0]:  # IPv6 literal (schema allows loopback ::1 only)
+            self.address_family = socket.AF_INET6
+        super().__init__(address, handler)
+
+
+def _parse_bind(bind: str) -> tuple[str, int]:
+    """``bind`` config → (host, port).
+
+    Schema-validated forms (board.yaml pattern — loopback-only v1 posture):
+    ``host``, ``host:port``, ``::1``, ``[::1]:port``. A port-less bind uses
+    the default port; a bare IPv6 literal is never split mid-address.
+    """
+    if bind.startswith("["):  # bracketed IPv6 literal
+        host_part, _, rest = bind.partition("]")
+        host = host_part.removeprefix("[")
+        port_s = rest[1:] if rest.startswith(":") else ""
+    else:
+        host, sep, port_s = bind.rpartition(":")
+        # A bare IPv6 literal ("::1") is never split mid-address; a port-less
+        # host uses the default port.
+        if bind.count(":") > 1 or not sep or not port_s.isdigit():
+            host, port_s = bind, ""
+    return (host or _DEFAULT_HOST, int(port_s) if port_s else _DEFAULT_PORT)
+
+
 class _Panel:
     """ThreadingHTTPServer wrapper serving the read-only surface."""
 
     def __init__(self, config: dict[str, Any]) -> None:
-        bind = str(config.get("bind", _DEFAULT_BIND))
-        host, _, port_s = bind.rpartition(":")
-        self._server = ThreadingHTTPServer(
-            (host or "127.0.0.1", int(port_s or 8080)), _BoardHandler
-        )
-        self._server.daemon_threads = True
+        bind = str(config.get("bind", f"{_DEFAULT_HOST}:{_DEFAULT_PORT}"))
+        self._server = _BoardServer(_parse_bind(bind), _BoardHandler)
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
