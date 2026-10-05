@@ -26,12 +26,14 @@ the module defaults.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import importlib
 import logging
 import socket
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -57,6 +59,7 @@ __all__ = [
     "LivenessChecker",
     "ProbeParams",
     "ProbeResult",
+    "ReapRecord",
     "TcpChecker",
     "build_checker",
     "parse_module_attr",
@@ -149,25 +152,79 @@ class TcpChecker:
             return ProbeResult(False, f"tcp connect failed: {exc.__class__.__name__}")
 
 
-class ExecChecker:
-    """argv probe (no shell — the manifest loader already rejects metacharacters)."""
+class ReapRecord(Protocol):
+    """What the supervisor's reaper knows about one reaped process.
 
-    def __init__(self, argv: list[str], timeout_s: float) -> None:
+    Structural subset of :class:`vesmaro.service.supervisor.ExitRecord`
+    (kept local: health must not import the supervisor).
+    """
+
+    code: int | None  # None when the process died by signal
+    signal_name: str | None
+
+
+class ExecChecker:
+    """argv probe (no shell — the manifest loader already rejects metacharacters).
+
+    Wait ownership (SL §3.1): the supervisor's reaper is the SINGLE owner of
+    ``waitpid`` — it drains ``waitpid(-1)`` and must reap every orphan
+    (SL-05). A probe that waited its own child with ``subprocess.run`` would
+    race that drain, and CPython's Popen answers a stolen child (ECHILD)
+    with a fabricated ``sts = 0`` — a FAILING probe reported healthy (a
+    spurious T4 «up»). When a ``reap`` lookup is injected (production), the
+    checker NEVER waits the child itself: it spawns it and polls the
+    reaper's records, killing the probe on timeout. Standalone callers
+    (unit tests without a reaper) get the legacy self-waiting behavior.
+    """
+
+    def __init__(
+        self,
+        argv: list[str],
+        timeout_s: float,
+        *,
+        reap: Callable[[int], ReapRecord | None] | None = None,
+    ) -> None:
         self.name = "exec"
         self._argv = argv
         self._timeout_s = timeout_s
+        self._reap = reap
 
     def check(self) -> ProbeResult:
         try:
-            completed = subprocess.run(  # nosec B603 - argv from validated manifest, no shell
+            process = subprocess.Popen(  # nosec B603 - argv from validated manifest, no shell
                 self._argv,
-                capture_output=True,
-                timeout=self._timeout_s,
-                check=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
-        except (subprocess.TimeoutExpired, OSError) as exc:
+        except OSError as exc:
             return ProbeResult(False, f"exec probe error: {exc.__class__.__name__}")
-        return ProbeResult(completed.returncode == 0, f"exec rc={completed.returncode}")
+        if self._reap is None:
+            return self._self_wait(process)
+        return self._reaper_wait(process)
+
+    def _self_wait(self, process: subprocess.Popen[bytes]) -> ProbeResult:
+        try:
+            code = process.wait(timeout=self._timeout_s)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            return ProbeResult(False, "exec probe timeout")
+        return ProbeResult(code == 0, f"exec rc={code}")
+
+    def _reaper_wait(self, process: subprocess.Popen[bytes]) -> ProbeResult:
+        deadline = time.monotonic() + self._timeout_s
+        while True:
+            record = self._reap(process.pid)
+            if record is not None:
+                if record.code is not None:
+                    return ProbeResult(record.code == 0, f"exec rc={record.code}")
+                return ProbeResult(False, f"exec signal={record.signal_name or 'UNKNOWN'}")
+            if time.monotonic() >= deadline:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()  # the reaper collects the kill
+                return ProbeResult(False, "exec probe timeout")
+            time.sleep(0.005)
 
 
 class LivenessChecker:
@@ -330,9 +387,13 @@ def build_checker(
     *,
     expansion: Mapping[str, str],
     alive: Callable[[], bool],
+    reap: Callable[[int], ReapRecord | None] | None = None,
 ) -> Checker:
     """Build the checker the manifest declares (CM §3.7 if/then consistency
-    is enforced by the manifest loader; this builder mirrors it defensively)."""
+    is enforced by the manifest loader; this builder mirrors it defensively).
+
+    ``reap`` hands the exec checker the reaper's record lookup — wait
+    ownership stays with the reaper (see :class:`ExecChecker`)."""
     health = manifest.health
     if health is None:
         kind = "child process" if manifest.kind == "child-process" else "in-process module"
@@ -343,7 +404,7 @@ def build_checker(
         return TcpChecker(health.tcp.host, health.tcp.port, _duration_s(health.tcp.timeout))
     if health.exec is not None:
         argv = expand(health.exec.argv, expansion)
-        return ExecChecker(argv, _duration_s(health.exec.timeout))
+        return ExecChecker(argv, _duration_s(health.exec.timeout), reap=reap)
     if health.callback is not None:
         startup = health.startup
         timeout = _duration_s(startup.timeout) if startup else CALLBACK_TIMEOUT_S

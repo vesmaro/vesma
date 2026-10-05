@@ -885,6 +885,7 @@ class Supervisor:
                 manifest,
                 expansion=expansion,
                 alive=lambda: self._component_alive(component),
+                reap=self._reaper.record_of,  # wait ownership: §3.1 single reaper
             )
             if manifest.in_process is not None:
                 return ([], {}, Path("."))

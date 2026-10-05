@@ -9,6 +9,7 @@ supervisor (CM §3.7/D).
 from __future__ import annotations
 
 import http.server
+import os
 import socket
 import threading
 import time
@@ -59,9 +60,7 @@ class TestCallbackIsolationBoundary:
         assert result.ok is False
         assert "CALLBACK_FAILED" in result.detail
 
-    def test_raising_callback_is_a_failed_probe(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raising_callback_is_a_failed_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def boom() -> dict[str, str]:
             raise RuntimeError("callback exploded")
 
@@ -80,15 +79,11 @@ class TestCallbackIsolationBoundary:
         assert result.ok is False
         assert "timeout" in result.detail
 
-    def test_malformed_result_is_a_failed_probe(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_malformed_result_is_a_failed_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _install_cb(monkeypatch, lambda: "not a dict")
         assert CallbackChecker(_CB_SPEC, 1.0).check().ok is False
 
-    def test_bad_state_value_is_a_failed_probe(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_bad_state_value_is_a_failed_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _install_cb(monkeypatch, lambda: {"state": "excellent"})
         result = CallbackChecker(_CB_SPEC, 1.0).check()
         assert result.ok is False
@@ -123,6 +118,54 @@ class TestExecAndLiveness:
 
     def test_exec_missing_binary_fails(self) -> None:
         assert ExecChecker(["/nonexistent/binary/xyz"], 2.0).check().ok is False
+
+    def test_reaper_owned_exec_reports_the_honest_code(self) -> None:
+        """The reaper owns waitpid (SL §3.1) — the checker must NOT wait the
+        probe child itself. A subprocess.run wait would race the reaper's
+        waitpid(-1) drain, Popen would answer the stolen child (ECHILD) with
+        a fabricated sts=0, and a FAILING probe would be reported healthy
+        (a spurious T4 «up»). With the reap lookup injected, the checker
+        reads the reaper's record instead."""
+        from types import SimpleNamespace
+
+        def reap(pid: int) -> SimpleNamespace | None:
+            try:
+                done_pid, status = os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                done_pid, status = pid, 0  # already collected — nothing left to say
+            if done_pid == 0:
+                return None  # still running — keep polling
+            code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else None
+            return SimpleNamespace(code=code, signal_name=None)
+
+        checker = ExecChecker(["/usr/bin/test", "-f", "/nonexistent/probe-path"], 2.0, reap=reap)
+        result = checker.check()
+        assert result.ok is False
+        assert result.detail == "exec rc=1"
+
+    def test_reaper_owned_exec_timeout_kills_and_fails(self) -> None:
+        from types import SimpleNamespace
+
+        def reap(pid: int) -> SimpleNamespace | None:
+            try:
+                done_pid, status = os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                done_pid, status = pid, 0
+            if done_pid == 0:
+                return None
+            code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else None
+            return SimpleNamespace(code=code, signal_name=None)
+
+        checker = ExecChecker(["/bin/sleep", "5"], 0.2, reap=reap)
+        result = checker.check()
+        assert result.ok is False
+        assert result.detail == "exec probe timeout"
+        # Collect the killed probe child — the production reaper would have.
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0] != 0:
+                pass
+        except ChildProcessError:
+            pass
 
     def test_liveness_predicate(self) -> None:
         assert LivenessChecker(lambda: True, "alive").check().ok is True
