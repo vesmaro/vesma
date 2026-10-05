@@ -545,15 +545,17 @@ class TestSL06Pid1:
             probe = subprocess.run(
                 ["unshare", "--pid", "--fork", "true"],
                 capture_output=True,
-                timeout=15,
+                timeout=30,  # generous: W7 re-probe; a denial is instant anyway
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             probe = None
         if probe is None or probe.returncode != 0:
             pytest.skip(
-                "unshare refused in this sandbox (SL-06 container leg: honest gap); "
-                "handler/reap unit legs covered by test_pid1_unit_legs"
+                "unshare refused in this sandbox (SL-06 unshare leg: honest gap; "
+                "the true-container leg runs via podman in "
+                "tests/test_service_pid1_container.py when a podman is "
+                "available); handler/reap unit legs covered by test_pid1_unit_legs"
             )
         driver = subprocess.run(
             [
