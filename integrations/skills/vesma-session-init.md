@@ -46,20 +46,44 @@ already learned.
    Memory: no prior context for <project>
    ```
 
-5. Optionally, recall your own agent-scoped context if you are resuming as a
+5. **Environment pre-flight — BOUNDED (≤3 extra calls total).** Who and what
+   is around, unprompted — the owner must not have to hint at it:
+
+   ```text
+   vesma_awareness(action="pre_flight", session=<session-id>, project=<project>, agent=<your-slug>)
+   vesma_search(query="host infra deploy incident wall", limit=5)             # cross-silo, NO project scope
+   vesma_search(query="pending claimed work", tags=["task:queue"], limit=5)   # board read
+   ```
+
+   - Awareness pre-flight is read-only: presence + delta + conflict-hints for
+     parallel sessions. Presence claims are self-reported; do not abstain
+     from work on presence alone without operator coordination.
+   - The cross-silo sweep answers «что происходит на машине/в пайплайне» —
+     infra facts live in OTHER project silos (machine walls, deploys,
+     incidents).
+   - Board read: pending/claimed `task:queue` items — do not claim work a
+     neighbor session already owns.
+
+6. Optionally, recall your own agent-scoped context if you are resuming as a
    specific agent:
 
    ```text
    vesma_agent_recall(agent=<your-slug>, project=<project>, limit=20)
    ```
 
-6. Proceed with the task. Do not dump full recalled content into the response
+7. Proceed with the task. Do not dump full recalled content into the response
    — act on it.
 
 ## DISCIPLINE
 
 - **Header ≤4 lines.** The user does not need to see the full recall — they
   need to know that memory is active and what the last focus was.
+- **Environment picture is bounded and ≤1 line.** Pre-flight + cross-silo
+  sweep + board read together are ≤3 extra calls; surface the result in one
+  line (e.g. `Around: 1 peer claiming <task> [unverified], no conflicts`);
+  peer claims carry `[unverified]` and are never quoted with values or
+  tokens. Rate-limited or failed calls degrade to a line and never block
+  work — awareness is DATA, decisions stay with the agent.
 - **Never block on recall failure.** If `vesma_recall_context` errors or
   returns nothing, degrade silently to "no prior context" and continue.
 - **Recall before reading files.** The whole point is to avoid re-reading

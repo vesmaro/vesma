@@ -12,9 +12,10 @@ Covers:
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -183,6 +184,89 @@ class TestMemories:
         resp = client.get("/memories?status=raw")
         assert resp.status_code == 200
         assert all(m["status"] == "raw" for m in resp.json())
+
+
+# ---------------------------------------------------------------------------
+# Ingest tag-contract 422 mapping (#422/#432 defect class)
+# ---------------------------------------------------------------------------
+
+
+class TestIngestTagContract:
+    """The ingest routes must map a tag-contract ``ValueError`` to 422 —
+    same client-error discipline as ``create_memory`` — never a raw 500."""
+
+    def test_ingest_url_missing_required_tag_maps_to_422(self, client):
+        # A tag-contract violation (missing the required mnemos: scope) is
+        # a CLIENT error — 422 carrying the contract error string verbatim.
+        resp = client.post(
+            "/ingest-url",
+            json={
+                "url": "https://example.com/page",
+                "tags": ["project:test", "agent:test"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
+    def test_ingest_url_valid_tags_still_ingest(self, client):
+        # Happy path: contract-valid tags ingest normally (201, mocked
+        # fetch — no network).
+        trafilatura_stub = MagicMock()
+        trafilatura_stub.extract.return_value = "extracted page content"
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch.dict(sys.modules, {"trafilatura": trafilatura_stub}),
+        ):
+            mock_client = MagicMock()
+            mock_resp = MagicMock()
+            mock_resp.text = "page body"
+            mock_resp.status_code = 200
+            mock_resp.headers = {}
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+
+            resp = client.post(
+                "/ingest-url",
+                json={
+                    "url": "https://example.com/docs",
+                    "tags": ["project:test", "agent:test", "mnemos:learning"],
+                },
+            )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["id"]
+        assert "example.com" in data["url"]
+
+    def test_ingest_document_missing_required_tag_maps_to_422(self, client):
+        # Same discipline for the ADR-0027 document-ingest twin: the
+        # contract ValueError must surface as 422, not 500.
+        resp = client.post(
+            "/ingest-document",
+            json={
+                "text": "# A\n\nBody text.",
+                "doc_id": "tagcontract-doc",
+                "tags": ["project:test", "agent:test"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
+    def test_ingest_document_valid_tags_still_ingest(self, client):
+        # Happy path: contract-valid tags ingest normally (201, Ф3 shape).
+        resp = client.post(
+            "/ingest-document",
+            json={
+                "text": "# A\n\nBody text.",
+                "doc_id": "tagcontract-doc",
+                "tags": ["project:test", "agent:test", "mnemos:learning"],
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["doc_id"] == "tagcontract-doc"
+        assert data["chunks_total"] >= 1
 
 
 # ---------------------------------------------------------------------------

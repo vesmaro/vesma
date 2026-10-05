@@ -312,3 +312,6 @@ canon; the committee-local artifacts are not part of this repository.
   as the Next delivery channel for harnesses under our control.
 - Issue #453 — the awareness-delivery tracker, updated with the committee
   verdict.
+- [ADR-0036](0036-native-situational-awareness-canon.md) — the canon / roster /
+  cortex layers (E/C/R/X/S) built on top of this delivery contour; this ADR
+  remains the delivery decision and is not superseded.

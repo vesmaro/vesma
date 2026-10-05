@@ -19,6 +19,12 @@ decisions, before web searches, and when resuming work on a topic.
 - **Before an architectural decision** — choosing a pattern, library, or
   approach. Check if a prior decision exists.
 - **Before a web search** — the answer may already be in memory.
+- **Before asking the user for ANY findable fact, or before saying
+  "I don't know" / "no data" / "nobody did X"** — the G4 mechanical trigger:
+  search first, state the outcome, only then ask.
+- **Infra/ops questions about the MACHINE or pipeline** (machine walls,
+  deploys, incidents, services) — these live in OTHER project silos:
+  search cross-silo (step 3), not just the current project.
 - **When resuming a topic** — recall what was learned last time.
 - **When debugging** — check if this bug-pattern was seen before.
 
@@ -45,14 +51,18 @@ decisions, before web searches, and when resuming work on a topic.
    )
    ```
 
-3. **Broaden further if still no hits** — drop project scope:
+3. **Broaden further if still no hits — cross-silo** — drop project scope
+   (ops/infra facts live in OTHER project silos):
 
    ```text
    vesma_search(
-     query=<query>,
-     limit=10
+     query="distrobox memory wall cgroup timer",   # topic keywords + known slugs
+     limit=5
    )
    ```
+
+   Query recipe: topic-project slug (if known) + topical keywords — the
+   exact path, service name, timestamp, «deploy», «incident», «wall».
 
 4. **For agent-scoped recall** — when you need your own prior context:
 
@@ -84,6 +94,9 @@ decisions, before web searches, and when resuming work on a topic.
   full entry only if the caller needs it.
 - **Never fabricate.** If search returns nothing, say "no prior context
   found for <query>". Do not infer what "probably" was in memory.
+- **Cross-silo sweeps are bounded.** ≤2 cross-silo queries per gap, limit ≤5;
+  a zero-result sweep is a valid finding — state it, then (and only then)
+  ask the user, naming the searches performed.
 - **Search before web.** A web search that re-discovers what memory already
   has is wasted tokens and time.
 
