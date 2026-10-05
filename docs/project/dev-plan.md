@@ -186,7 +186,16 @@ flowchart TD
   `/api/v1/metrics` завезены в вендоренный `vesmaro.metrics`;
   калибровка каппы ожидает протокол абляции — touched_share остаётся
   informational (`corridor_eligible: False`), коридорный статус без
-  изменений**; D-behavioral — главный поведенческий эксперимент
+  изменений**; **vitals волна 9 (ветка `feat/usage-report-mcp-tool` от
+  main `8367a24`): MCP-инструмент `mnemos_usage_report` — замыкание
+  петли использования как harness-authored репорт (вызывает ХАРНЕСС
+  после ответа модели; сервер сам usage не репортит); в результате
+  `mnemos_assemble_context` (sync) добавочно surfaced
+  `usage_report.metrics_id` — аддитивный ключ runtime-данных,
+  born-final схема не тронута; чтение аналитики остаётся на
+  `/api/v1/metrics` (read-инструмент не добавлен — scope); пин счётчика
+  манифеста подвинут 39 → 40 вместе с инструментом)**;
+  D-behavioral — главный поведенческий эксперимент
   нейро-трека, за NM-3a/3b (см. §4a; recall-пул готов к замеру).
 - **Граф проектов (ADR-0032, узел PG)** — линия ОТДЕЛЬНАЯ от 4.4.0
   (граф воспоминаний ADR-0030): sidecar `code_graph.db`, memory-first,

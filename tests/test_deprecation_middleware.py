@@ -75,10 +75,7 @@ class TestLegacyAliasHeaders:
         resp = client.get(f"/memories/{uuid.uuid4()}")
         assert resp.status_code == 404
         assert resp.headers["Deprecation"] == "true"
-        assert (
-            resp.headers["Link"]
-            == '</api/v1/memories/{memory_id}>; rel="suggested-version"'
-        )
+        assert resp.headers["Link"] == '</api/v1/memories/{memory_id}>; rel="suggested-version"'
 
 
 class TestCleanPaths:

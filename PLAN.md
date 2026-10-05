@@ -51,7 +51,7 @@
 
 1. Новый MCP tool `mnemos_agent_recall(agent: str, project: str | None, query: str | None, limit: int = 20)` — фильтрует по тегу `agent:<name>` опционально с проектным scope, опционально с FTS/vector query. Если query пустой — возвращает свежие N записей агента.
 2. API endpoint `GET /recall/agent/{name}?project=&q=&limit=` в FastAPI.
-3. CLI: `vesma recall --agent cr-security-reviewer --project gcw --limit 10`.
+3. CLI: `vesma recall agent cr-security-reviewer --project gcw --limit 10`.
 4. Индекс: убедиться что SQLite индекс на тег-таблицу покрывает `(tag_value, project_value)` для быстрого фильтра.
 5. Тесты: `tests/test_agent_recall.py` — multi-agent vault, фильтр по агенту, фильтр + project, hybrid search в scope агента.
 

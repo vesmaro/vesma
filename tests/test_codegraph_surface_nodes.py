@@ -121,9 +121,7 @@ def vesma_repo(tmp_path: Path) -> Path:
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "mod.py").write_text("def handler():\n    return 1\n", encoding="utf-8")
-    (root / "pyproject.toml").write_text(
-        "[project]\nname = 'marker-repo'\n", encoding="utf-8"
-    )
+    (root / "pyproject.toml").write_text("[project]\nname = 'marker-repo'\n", encoding="utf-8")
     return root
 
 
@@ -133,17 +131,16 @@ def foreign_repo(tmp_path: Path) -> Path:
     root = tmp_path / "foreign"
     root.mkdir()
     (root / "main.py").write_text("def run():\n    return 1\n", encoding="utf-8")
-    (root / "pyproject.toml").write_text(
-        "[project]\nname = 'foreign'\n", encoding="utf-8"
-    )
+    (root / "pyproject.toml").write_text("[project]\nname = 'foreign'\n", encoding="utf-8")
     return root
 
 
 @pytest.fixture
 def vesma_store(vesma_repo: Path, tmp_path: Path) -> CodeGraphStore:
     s = CodeGraphStore(tmp_path / "vesma-data")
-    index_project("vesmarepo", vesma_repo, s, _FakeMainStore(), CodeGraphConfig(),
-                  incremental=False)
+    index_project(
+        "vesmarepo", vesma_repo, s, _FakeMainStore(), CodeGraphConfig(), incremental=False
+    )
     return s
 
 
@@ -165,15 +162,11 @@ class TestSeam:
         assert len(node_sources()) == before  # replaced, not duplicated
         assert any(s.name == "vesma-surface" for s in node_sources())
 
-    def test_non_applying_root_is_skipped_silently(
-        self, foreign_repo: Path
-    ) -> None:
+    def test_non_applying_root_is_skipped_silently(self, foreign_repo: Path) -> None:
         result = run_node_sources("proj", foreign_repo, {})
         assert result.nodes == [] and result.edges == []
 
-    def test_failing_source_degrades_to_no_contribution(
-        self, tmp_path: Path
-    ) -> None:
+    def test_failing_source_degrades_to_no_contribution(self, tmp_path: Path) -> None:
         class _Boom:
             name = "boom"
 
@@ -236,9 +229,7 @@ class TestStoreSchemaV2:
         kinds = store.count_nodes_by_kind("p")
         assert kinds["Command"] == 1 and kinds["Route"] == 1
 
-    def test_edge_kinds_invokes_and_handles_pass_check(
-        self, store: CodeGraphStore
-    ) -> None:
+    def test_edge_kinds_invokes_and_handles_pass_check(self, store: CodeGraphStore) -> None:
         cmd = aux_node_id("p", "c.py", "cli:vesma x")
         route = aux_node_id("p", "a.py", "GET /h")
         fn = aux_node_id("p", "h.py", "handler")
@@ -374,14 +365,16 @@ class TestCommandNodes:
             params = (node.metadata or {}).get("params", {})
             assert len(params) <= 17  # 16 listed + the "... +N" overflow marker
 
-    def test_foreign_repo_gets_no_surface_nodes(
-        self, foreign_repo: Path, tmp_path: Path
-    ) -> None:
+    def test_foreign_repo_gets_no_surface_nodes(self, foreign_repo: Path, tmp_path: Path) -> None:
         store = CodeGraphStore(tmp_path / "foreign-data")
         try:
             index_project(
-                "foreign", foreign_repo, store, _FakeMainStore(),
-                CodeGraphConfig(), incremental=False,
+                "foreign",
+                foreign_repo,
+                store,
+                _FakeMainStore(),
+                CodeGraphConfig(),
+                incremental=False,
             )
             kinds = store.count_nodes_by_kind("foreign")
             assert "Command" not in kinds and "Route" not in kinds
@@ -468,9 +461,7 @@ class TestCompactionGuards:
         assert _safe("safe text") == "safe text"
         assert _safe("") == ""
 
-    def test_indexed_help_is_first_line_of_live_help(
-        self, vesma_store: CodeGraphStore
-    ) -> None:
+    def test_indexed_help_is_first_line_of_live_help(self, vesma_store: CodeGraphStore) -> None:
         import typer.main
 
         from vesmaro.cli.main import app
@@ -486,9 +477,7 @@ class TestCompactionGuards:
 
 
 class TestServiceSurface:
-    def test_status_reports_kind_breakdown(
-        self, vesma_repo: Path, tmp_path: Path
-    ) -> None:
+    def test_status_reports_kind_breakdown(self, vesma_repo: Path, tmp_path: Path) -> None:
         service = _make_service(tmp_path, vesma_repo)
         try:
             result = service.index_project("vesmarepo", agent=AGENT, session="s1")
@@ -554,9 +543,9 @@ class _ServiceMainStore:
 def _make_service(tmp_path: Path, repo: Path) -> CodeGraphService:
     """A CodeGraphService over a registered fake project pointing at
     the marker repo."""
-    main = _ServiceMainStore(
-        _FakeProject(id="p-1", name="vesmarepo", paths=[str(repo)])
-    )
+    main = _ServiceMainStore(_FakeProject(id="p-1", name="vesmarepo", paths=[str(repo)]))
     return CodeGraphService(
-        main, tmp_path / "data", CodeGraphConfig(enabled=True)  # type: ignore[arg-type]
+        main,
+        tmp_path / "data",
+        CodeGraphConfig(enabled=True),  # type: ignore[arg-type]
     )

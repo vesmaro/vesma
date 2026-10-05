@@ -71,7 +71,6 @@ def test_all_expected_commands_are_registered() -> None:
     expected = {
         "add",
         "search",
-        "recall",
         "stats",
         "serve",
         "mcp-server",
@@ -94,6 +93,7 @@ def test_all_expected_groups_are_registered() -> None:
     """Every public subcommand group must be registered on the Typer app."""
     expected_groups = {
         "tags",
+        "recall",
         "migrate",
         "auth",
         "integration",
@@ -953,6 +953,113 @@ class TestProcessorSubapp:
         result = runner.invoke(app, ["processor", "vacuum"])
         assert result.exit_code == 2, result.output
         assert "vacuum" in result.output
+
+
+# ── recall group (CLI-architecture rework W2) ────────────────────────────────
+#
+# Bare `vesma recall` keeps its pre-W2 behavior (default command on a group
+# with invoke_without_command); per-agent recall moved to the canonical
+# subcommand `vesma recall agent SLUG [QUERY]`; the legacy `--agent` flag
+# stays as a hidden deprecated alias (identical behavior + stderr hint,
+# removal not before 6.0).
+
+
+def _seed_agent_memory(isolated_config: Path, content: str, agent: str) -> None:
+    """Save one RAW memory tagged to `agent` through the manager directly.
+
+    The denormalised ``project``/``agent`` columns are set the same way
+    the production ``MemoryManager.add`` path sets them — the recency
+    predicate is ``WHERE agent=?`` on the column, not on the tags.
+    """
+    from vesmaro.cli._manager import get_manager
+    from vesmaro.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+    mgr = get_manager(str(isolated_config))
+    mgr.sqlite.save(
+        Memory(
+            content=content,
+            title=content,
+            tags=["project:cli-smoke", f"agent:{agent}", "mnemos:test"],
+            source=MemorySource.CLI,
+            memory_type=MemoryType.NOTE,
+            # RAW is fine: the agent-recall paths apply no status filter.
+            status=MemoryStatus.RAW,
+            project="cli-smoke",
+            agent=agent,
+        )
+    )
+
+
+class TestRecallGroup:
+    def test_bare_form_unchanged(self, isolated_config: Path) -> None:
+        """Bare `vesma recall` still runs the context recall (exit 0, no hint)."""
+        result = runner.invoke(app, ["recall", "--limit", "5"])
+        assert result.exit_code == 0, result.output
+        assert "deprecated" not in result.output
+
+    def test_help_advertises_agent_subcommand_and_hides_flag(self, isolated_config: Path) -> None:
+        """`recall --help` names `agent`; the legacy --agent flag is hidden."""
+        result = runner.invoke(app, ["recall", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "agent" in result.output
+        assert "--agent" not in result.output, "the deprecated flag must be hidden"
+
+    def test_agent_subcommand_recency_path(self, isolated_config: Path) -> None:
+        """`vesma recall agent SLUG` lists the agent's entries (no query)."""
+        _seed_agent_memory(isolated_config, "w2 recall alpha entry", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "w2 recall alpha entry" in result.output
+
+    def test_agent_subcommand_query_path(self, isolated_config: Path) -> None:
+        """`vesma recall agent SLUG QUERY` narrows to query-matched entries."""
+        _seed_agent_memory(isolated_config, "w2 unique zebra marker query hit", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli", "w2 unique zebra marker"])
+        assert result.exit_code == 0, result.output
+        assert "w2 unique zebra marker query hit" in result.output
+
+    def test_agent_subcommand_empty_vault(self, isolated_config: Path) -> None:
+        """No entries for the agent → graceful 'No memories found.' (exit 0)."""
+        result = runner.invoke(app, ["recall", "agent", "nobody"])
+        assert result.exit_code == 0, result.output
+        assert "No memories found." in result.output
+
+    def test_agent_subcommand_scoped_by_project(self, isolated_config: Path) -> None:
+        """--project narrows the agent recall to that project."""
+        _seed_agent_memory(isolated_config, "w2 project scoped entry", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli", "--project", "other-project"])
+        assert result.exit_code == 0, result.output
+        assert "No memories found." in result.output
+
+    def test_agent_subcommand_requires_slug(self, isolated_config: Path) -> None:
+        """`vesma recall agent` without a slug is a usage error (exit 2)."""
+        result = runner.invoke(app, ["recall", "agent"])
+        assert result.exit_code == 2, result.output
+
+    def test_unknown_subcommand_is_a_usage_error(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["recall", "vacuum"])
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
+
+    def test_deprecated_agent_alias_hints_on_stderr_stdout_clean(
+        self, isolated_config: Path
+    ) -> None:
+        """`recall --agent` still works identically and prints the stderr hint."""
+        _seed_agent_memory(isolated_config, "w2 alias form entry", "cli")
+        result = runner.invoke(app, ["recall", "--agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "w2 alias form entry" in result.output, "the alias must keep working"
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma recall agent SLUG" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_options_before_subcommand_are_not_silently_dropped(
+        self, isolated_config: Path
+    ) -> None:
+        """`recall --project x agent SLUG` warns on stderr instead of dropping."""
+        result = runner.invoke(app, ["recall", "--project", "x", "agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "options placed before the subcommand are ignored" in result.stderr
 
 
 class TestGraphLifecycleCli:

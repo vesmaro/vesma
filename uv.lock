@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -4502,7 +4502,7 @@ wheels = [
 
 [[package]]
 name = "vesma"
-version = "5.4.0"
+version = "5.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -4515,6 +4515,7 @@ dependencies = [
     { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "idna" },
+    { name = "jsonschema" },
     { name = "mcp" },
     { name = "onnxruntime" },
     { name = "pydantic" },
@@ -4611,6 +4612,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "idna", specifier = ">=3.15" },
+    { name = "jsonschema", specifier = ">=4.21" },
     { name = "mcp", specifier = ">=2.0,<3.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.3" },

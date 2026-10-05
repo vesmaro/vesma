@@ -5946,7 +5946,7 @@ class MemoryManager:
 
     # ── Vitals (ADR-0026 phase A) ─────────────────────────────────────────
 
-    def record_assemble_vitals(self, result: dict[str, Any]) -> None:
+    def record_assemble_vitals(self, result: dict[str, Any]) -> int | None:
         """Record one assemble call into the vitals sidecar (non-fatal).
 
         Called by the two collection boundaries AFTER the result exists
@@ -5954,20 +5954,70 @@ class MemoryManager:
         ``pre_llm_call`` hook) — never from the assemble pipeline
         itself: S2 measures that verb directly and the wrapper must stay
         out of its path. All failure modes are swallowed by the sink.
+
+        Returns the assemble row id (the harness addresses it as
+        ``metrics_id`` when later reporting usage via
+        :meth:`record_usage_vitals` / the MCP ``mnemos_usage_report``
+        tool), or ``None`` on refusal/failure/disabled plane.
         """
         store = self._vitals_store
         if store is None:
-            return
+            return None
         if "stats" not in result:
             # mode="async" returns a handle envelope, not an assembly —
             # recording it would poison the corpus with empty rows. The
             # real assembly lands (and is recorded) when the handle is
             # redeemed and returns the full result.
-            return
+            return None
         try:
-            store.record_assemble(result)
+            return store.record_assemble(result)
         except Exception:  # the plane must never surface
             logger.warning("vitals: boundary record failed (non-fatal)", exc_info=True)
+            return None
+
+    def record_usage_vitals(
+        self,
+        metrics_id: int,
+        *,
+        block_ids_touched: list[str],
+        tokens_out: int | None = None,
+        wrong_tool_flag: bool = False,
+    ) -> int | None:
+        """Record one harness usage report into the vitals sidecar (non-fatal).
+
+        Phase C loop closure (ADR-0026 §C): the caller is the harness —
+        after its model answered — reporting via the MCP
+        ``mnemos_usage_report`` tool which injected blocks it used. The
+        server never self-reports usage. Hostile-input validation lives
+        ENTIRELY in the sink (``MetricsStore.record_usage``: opaque
+        single-line block ids <= 128 chars, <= 256 entries, tokens_out
+        int >= 0 or None, wrong_tool_flag strictly bool, range-bound
+        metrics_id, atomic FK refusal of unknown parents) — this wrapper
+        adds nothing and loosens nothing, it only keeps the guest
+        contract: everything the sink did not swallow is swallowed here
+        with a warning. Rollback on a partial write is the sink's job.
+
+        Returns the usage row id, or ``None`` when the plane is disabled
+        or the sink refused/failed the write (loud warning in the log).
+
+        NOTE: unlike :meth:`record_assemble_vitals` there is no
+        "stats"-envelope pre-check — a usage report carries no envelope
+        shape to filter on; a non-conforming payload simply never gets
+        past the sink's guards.
+        """
+        store = self._vitals_store
+        if store is None:
+            return None
+        try:
+            return store.record_usage(
+                metrics_id,
+                block_ids_touched=block_ids_touched,
+                tokens_out=tokens_out,
+                wrong_tool_flag=wrong_tool_flag,
+            )
+        except Exception:  # the plane must never surface
+            logger.warning("vitals: usage record failed (non-fatal)", exc_info=True)
+            return None
 
     def record_verb_vitals(
         self,

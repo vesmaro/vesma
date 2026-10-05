@@ -1190,9 +1190,7 @@ class CodeGraphConfig(BaseModel):
     # build output, dependency trees) are never first-party sources.
     # Defaults to DEFAULT_EXCLUDE_DIR_GLOBS; replacing the list does
     # NOT lift the built-in file_surface.DENY_DIRS (defense in depth).
-    exclude_globs: list[str] = Field(
-        default_factory=lambda: list(DEFAULT_EXCLUDE_DIR_GLOBS)
-    )
+    exclude_globs: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDE_DIR_GLOBS))
     beacon: bool = True
     # W-H hybrid search: literal-content fallback on an EMPTY symbol
     # result (read-only bounded scan of the registered root; PG4-redacted
