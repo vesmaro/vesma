@@ -33,6 +33,7 @@ from vesmaro.service.errors import (
 )
 from vesmaro.service.manifest import (
     SCHEMA_CONTRACT_VERSION,
+    SCHEMA_VENDORED_PROVENANCE,
     SUPPORTED_API_VERSIONS,
     bundled_manifest_path,
     duration_to_ms,
@@ -169,6 +170,20 @@ class TestBundledPackManifests:
         assert SCHEMA_CONTRACT_VERSION == "1.0.0-draft.2"
         assert SUPPORTED_API_VERSIONS == ("vesma.component/v1",)
 
+    def test_vendored_schema_is_byte_identical_vendor(self) -> None:
+        # NO local edits — provenance lives in SCHEMA_VENDORED_PROVENANCE,
+        # not in an inline $comment key, so a re-vendor diff against the
+        # specs file stays empty (the specs file is not a runtime dep, so
+        # byte-identity itself is asserted by the re-vendor procedure).
+        schema = json.loads(
+            resource_files("vesmaro")
+            .joinpath("service/schemas/component-manifest.schema.json")
+            .read_text(encoding="utf-8")
+        )
+        assert "$comment" not in schema
+        assert "1.0.0-draft.2" in SCHEMA_VENDORED_PROVENANCE
+        assert "d30e668a9ebdfe32274fc08b30d3be18862ec602" in SCHEMA_VENDORED_PROVENANCE
+
 
 # ── Positive: well-formed documents load with full structure ─────────
 
@@ -284,6 +299,29 @@ class TestNegativeByCode:
             load_manifest(_write(tmp_path, doc, name="worker.yaml"))
         assert exc.value.code == CLAMP_VIOLATION
         assert exc.value.field_path == "$.restart.window.attempts"
+
+    def test_partial_backoff_section_reaches_schema_pass(self, tmp_path: Path) -> None:
+        # Pre-schema clamp checks must not crash on a partial section
+        # (missing required leaves are the schema pass's domain).
+        doc = _child_doc()
+        doc["restart"] = {"backoff": {"max": "1m"}}
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(_write(tmp_path, doc, name="worker.yaml"))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+
+    def test_non_integer_attempts_is_schema_domain(self, tmp_path: Path) -> None:
+        doc = _child_doc()
+        doc["restart"] = {"window": {"attempts": "abc", "per": "1h"}}
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(_write(tmp_path, doc, name="worker.yaml"))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+
+    def test_boolean_attempts_is_schema_domain_not_clamp(self, tmp_path: Path) -> None:
+        doc = _child_doc()
+        doc["restart"] = {"window": {"attempts": True, "per": "1h"}}
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(_write(tmp_path, doc, name="worker.yaml"))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
 
     def test_reserved_name(self, tmp_path: Path) -> None:
         doc = _in_process_doc()
@@ -429,6 +467,17 @@ class TestInstallation:
         (tmp_path / "broken.yaml").write_text("kind: in-process", encoding="utf-8")
         with pytest.raises(ManifestError):
             load_installation(tmp_path)
+
+    def test_stray_non_manifest_file_fails_closed(self, tmp_path: Path) -> None:
+        # Layout §3.5: EVERY file in the manifests directory must be a
+        # valid manifest — a stray file is a load error, never a silent skip.
+        doc = _in_process_doc()
+        _write(tmp_path, doc, name="sample.yaml")
+        (tmp_path / "notes.txt").write_text("operator notes", encoding="utf-8")
+        with pytest.raises(ManifestError) as exc:
+            load_installation(tmp_path)
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+        assert "notes.txt" in exc.value.message
 
     def test_valid_pair_with_dependency_loads(self, tmp_path: Path) -> None:
         doc_a = _in_process_doc()

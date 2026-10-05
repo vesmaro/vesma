@@ -1,16 +1,11 @@
 {
-  "$comment": "VENDORED (do not edit in place): source of truth is the specs repo vesma-specs, file specs/component-manifest/v1/schema/component-manifest.schema.json, contract component-manifest version 1.0.0-draft.2, specs commit d30e668a9ebdfe32274fc08b30d3be18862ec602. Re-vendor (copy + update SCHEMA_CONTRACT_VERSION in vesmaro.service.manifest) when the contract moves; the only local addition is this $comment key.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vesmaro.org/schemas/component-manifest/v1/manifest.schema.json",
   "title": "VESMA Component Manifest v1",
   "description": "Машинная схема манифеста компонента VESMA. Нормативный источник — specs/component-manifest/v1/spec.md (контракт component-manifest v1). Strict validation: additionalProperties: false на каждом объекте; неизвестное поле = reject. Эволюция — через apiVersion (аддитивные поля = минор контракта).",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "apiVersion",
-    "kind",
-    "metadata"
-  ],
+  "required": ["apiVersion", "kind", "metadata"],
   "properties": {
     "apiVersion": {
       "type": "string",
@@ -19,32 +14,18 @@
     },
     "kind": {
       "type": "string",
-      "enum": [
-        "in-process",
-        "child-process"
-      ],
+      "enum": ["in-process", "child-process"],
       "description": "Способ исполнения. Определяет, какая секция обязательна: launch (child-process) или in_process (in-process); вторая запрещена. stop: обязательна при child-process, запрещена при in-process (spec.md §3.8)."
     },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "version",
-        "tier",
-        "description",
-        "provenance"
-      ],
+      "required": ["name", "version", "tier", "description", "provenance"],
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,62}$",
-          "not": {
-            "enum": [
-              "venv",
-              "venvs"
-            ]
-          },
+          "not": { "enum": ["venv", "venvs"] },
           "description": "Имя компонента; уникально в установке (проверка name_kebab_unique). Зарезервированные имена venv/venvs запрещены — коллизия с venv-каталогами лэйаута (specs/layout/v1 §3.8; проверка name_not_reserved)."
         },
         "version": {
@@ -54,10 +35,7 @@
         },
         "tier": {
           "type": "string",
-          "enum": [
-            "core",
-            "optional"
-          ],
+          "enum": ["core", "optional"],
           "description": "Тир критичности. Рестарт-политику по тиру применяет супервайзер (specs/service-lifecycle/v1 §3.5); манифест поведение не описывает."
         },
         "description": {
@@ -68,10 +46,7 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "repo",
-            "license"
-          ],
+          "required": ["repo", "license"],
           "properties": {
             "repo": {
               "type": "string",
@@ -95,9 +70,7 @@
     "launch": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "argv"
-      ],
+      "required": ["argv"],
       "description": "Обязательна при kind: child-process, запрещена при kind: in-process.",
       "properties": {
         "argv": {
@@ -116,12 +89,8 @@
           "properties": {
             "vars": {
               "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              },
-              "propertyNames": {
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-              },
+              "additionalProperties": { "type": "string" },
+              "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
               "description": "Только не-секреты; секретное имя ключа = reject (no_secret_in_vars)."
             },
             "env_file": {
@@ -136,10 +105,7 @@
     "in_process": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "module",
-        "entrypoint"
-      ],
+      "required": ["module", "entrypoint"],
       "description": "Обязательна при kind: in-process, запрещена при kind: child-process.",
       "properties": {
         "module": {
@@ -155,9 +121,7 @@
         "python": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "version"
-          ],
+          "required": ["version"],
           "properties": {
             "version": {
               "type": "string",
@@ -171,102 +135,45 @@
     "health": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "checker"
-      ],
+      "required": ["checker"],
       "description": "Секция опциональна: без неё checker = liveness. Блок, соответствующий checker, обязателен; остальные пробные блоки запрещены.",
       "properties": {
         "checker": {
           "type": "string",
-          "enum": [
-            "http",
-            "tcp",
-            "exec",
-            "liveness",
-            "callback"
-          ]
+          "enum": ["http", "tcp", "exec", "liveness", "callback"]
         },
         "http": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "url",
-            "interval",
-            "timeout",
-            "unhealthy_threshold"
-          ],
+          "required": ["url", "interval", "timeout", "unhealthy_threshold"],
           "properties": {
-            "url": {
-              "type": "string",
-              "pattern": "^https?://\\S+$"
-            },
-            "interval": {
-              "$ref": "#/$defs/duration"
-            },
-            "timeout": {
-              "$ref": "#/$defs/duration"
-            },
-            "unhealthy_threshold": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "url": { "type": "string", "pattern": "^https?://\\S+$" },
+            "interval": { "$ref": "#/$defs/duration" },
+            "timeout": { "$ref": "#/$defs/duration" },
+            "unhealthy_threshold": { "type": "integer", "minimum": 1 }
           }
         },
         "tcp": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "host",
-            "port",
-            "interval",
-            "timeout",
-            "unhealthy_threshold"
-          ],
+          "required": ["host", "port", "interval", "timeout", "unhealthy_threshold"],
           "properties": {
-            "host": {
-              "type": "string",
-              "minLength": 1
-            },
-            "port": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 65535
-            },
-            "interval": {
-              "$ref": "#/$defs/duration"
-            },
-            "timeout": {
-              "$ref": "#/$defs/duration"
-            },
-            "unhealthy_threshold": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "host": { "type": "string", "minLength": 1 },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "interval": { "$ref": "#/$defs/duration" },
+            "timeout": { "$ref": "#/$defs/duration" },
+            "unhealthy_threshold": { "type": "integer", "minimum": 1 }
           }
         },
         "exec": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "argv",
-            "interval",
-            "timeout",
-            "unhealthy_threshold"
-          ],
+          "required": ["argv", "interval", "timeout", "unhealthy_threshold"],
           "properties": {
-            "argv": {
-              "$ref": "#/$defs/argv"
-            },
-            "interval": {
-              "$ref": "#/$defs/duration"
-            },
-            "timeout": {
-              "$ref": "#/$defs/duration"
-            },
-            "unhealthy_threshold": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "argv": { "$ref": "#/$defs/argv" },
+            "interval": { "$ref": "#/$defs/duration" },
+            "timeout": { "$ref": "#/$defs/duration" },
+            "unhealthy_threshold": { "type": "integer", "minimum": 1 }
           }
         },
         "callback": {
@@ -277,133 +184,35 @@
         "startup": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "grace",
-            "interval",
-            "timeout"
-          ],
+          "required": ["grace", "interval", "timeout"],
           "description": "Параметры стартового окна: сколько ждать первого успешного health-прохода и с какими пробами.",
           "properties": {
-            "grace": {
-              "$ref": "#/$defs/duration"
-            },
-            "interval": {
-              "$ref": "#/$defs/duration"
-            },
-            "timeout": {
-              "$ref": "#/$defs/duration"
-            }
+            "grace": { "$ref": "#/$defs/duration" },
+            "interval": { "$ref": "#/$defs/duration" },
+            "timeout": { "$ref": "#/$defs/duration" }
           }
         }
       },
       "allOf": [
         {
-          "if": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "http"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "http"
-            ],
-            "properties": {
-              "tcp": false,
-              "exec": false,
-              "callback": false
-            }
-          }
+          "if": { "required": ["checker"], "properties": { "checker": { "const": "http" } } },
+          "then": { "required": ["http"], "properties": { "tcp": false, "exec": false, "callback": false } }
         },
         {
-          "if": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "tcp"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "tcp"
-            ],
-            "properties": {
-              "http": false,
-              "exec": false,
-              "callback": false
-            }
-          }
+          "if": { "required": ["checker"], "properties": { "checker": { "const": "tcp" } } },
+          "then": { "required": ["tcp"], "properties": { "http": false, "exec": false, "callback": false } }
         },
         {
-          "if": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "exec"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "exec"
-            ],
-            "properties": {
-              "http": false,
-              "tcp": false,
-              "callback": false
-            }
-          }
+          "if": { "required": ["checker"], "properties": { "checker": { "const": "exec" } } },
+          "then": { "required": ["exec"], "properties": { "http": false, "tcp": false, "callback": false } }
         },
         {
-          "if": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "liveness"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "http": false,
-              "tcp": false,
-              "exec": false,
-              "callback": false
-            }
-          }
+          "if": { "required": ["checker"], "properties": { "checker": { "const": "liveness" } } },
+          "then": { "properties": { "http": false, "tcp": false, "exec": false, "callback": false } }
         },
         {
-          "if": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "callback"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "callback"
-            ],
-            "properties": {
-              "http": false,
-              "tcp": false,
-              "exec": false
-            }
-          }
+          "if": { "required": ["checker"], "properties": { "checker": { "const": "callback" } } },
+          "then": { "required": ["callback"], "properties": { "http": false, "tcp": false, "exec": false } }
         }
       ]
     },
@@ -411,17 +220,11 @@
       "type": "object",
       "additionalProperties": false,
       "description": "Обязательна при kind: child-process; запрещена при kind: in-process — мёртвая конфигурация, остановка in-process = остановка супервайзера (spec.md §3.6, §3.8).",
-      "required": [
-        "signal",
-        "grace_period"
-      ],
+      "required": ["signal", "grace_period"],
       "properties": {
         "signal": {
           "type": "string",
-          "enum": [
-            "SIGTERM",
-            "SIGINT"
-          ],
+          "enum": ["SIGTERM", "SIGINT"],
           "description": "Graceful-сигнал остановки."
         },
         "grace_period": {
@@ -434,16 +237,8 @@
       "type": "object",
       "additionalProperties": false,
       "oneOf": [
-        {
-          "required": [
-            "schema_file"
-          ]
-        },
-        {
-          "required": [
-            "schema_inline"
-          ]
-        }
+        { "required": ["schema_file"] },
+        { "required": ["schema_inline"] }
       ],
       "description": "Опциональна. Ровно один способ объявления схемы (XOR); схема — JSON-Schema 2020-12. Инвалидная конфигурация = отказ старта (fail-fast).",
       "properties": {
@@ -467,18 +262,10 @@
         "backoff": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "base",
-            "max",
-            "reset_after"
-          ],
+          "required": ["base", "max", "reset_after"],
           "properties": {
-            "base": {
-              "$ref": "#/$defs/duration"
-            },
-            "max": {
-              "$ref": "#/$defs/duration"
-            },
+            "base": { "$ref": "#/$defs/duration" },
+            "max": { "$ref": "#/$defs/duration" },
             "reset_after": {
               "$ref": "#/$defs/duration",
               "description": "Счётчик backoff сбрасывается после этого непрерывного uptime."
@@ -488,19 +275,14 @@
         "window": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "attempts",
-            "per"
-          ],
+          "required": ["attempts", "per"],
           "properties": {
             "attempts": {
               "type": "integer",
               "minimum": 3,
               "description": "Кламп install-валидации: attempts >= 3 (spec.md §3.10, SL-18); значение ниже = reject."
             },
-            "per": {
-              "$ref": "#/$defs/duration"
-            }
+            "per": { "$ref": "#/$defs/duration" }
           }
         }
       }
@@ -508,133 +290,34 @@
     "depends_on": {
       "type": "array",
       "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9-]{0,62}$"
-      },
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
       "description": "Имена других манифестов установки; граф ацикличен (цикл = ошибка install-валидации). up = первый успешный health-проход."
     }
   },
   "allOf": [
     {
-      "if": {
-        "required": [
-          "kind"
-        ],
-        "properties": {
-          "kind": {
-            "const": "child-process"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "launch",
-          "stop"
-        ],
-        "not": {
-          "required": [
-            "in_process"
-          ]
-        }
-      }
+      "if": { "required": ["kind"], "properties": { "kind": { "const": "child-process" } } },
+      "then": { "required": ["launch", "stop"], "not": { "required": ["in_process"] } }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "const": "in-process" } } },
+      "then": { "required": ["in_process"], "not": { "anyOf": [ { "required": ["launch"] }, { "required": ["stop"] } ] } }
     },
     {
       "if": {
-        "required": [
-          "kind"
-        ],
-        "properties": {
-          "kind": {
-            "const": "in-process"
-          }
-        }
+        "required": ["health"],
+        "properties": { "health": { "required": ["checker"], "properties": { "checker": { "const": "callback" } } } }
       },
-      "then": {
-        "required": [
-          "in_process"
-        ],
-        "not": {
-          "anyOf": [
-            {
-              "required": [
-                "launch"
-              ]
-            },
-            {
-              "required": [
-                "stop"
-              ]
-            }
-          ]
-        }
-      }
+      "then": { "required": ["kind"], "properties": { "kind": { "const": "in-process" } } }
     },
     {
       "if": {
-        "required": [
-          "health"
-        ],
-        "properties": {
-          "health": {
-            "required": [
-              "checker"
-            ],
-            "properties": {
-              "checker": {
-                "const": "callback"
-              }
-            }
-          }
-        }
+        "required": ["metadata"],
+        "properties": { "metadata": { "required": ["tier"], "properties": { "tier": { "const": "core" } } } }
       },
       "then": {
-        "required": [
-          "kind"
-        ],
-        "properties": {
-          "kind": {
-            "const": "in-process"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "metadata"
-        ],
-        "properties": {
-          "metadata": {
-            "required": [
-              "tier"
-            ],
-            "properties": {
-              "tier": {
-                "const": "core"
-              }
-            }
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "metadata"
-        ],
-        "properties": {
-          "metadata": {
-            "required": [
-              "provenance"
-            ],
-            "properties": {
-              "provenance": {
-                "required": [
-                  "artifact_sha256"
-                ]
-              }
-            }
-          }
-        }
+        "required": ["metadata"],
+        "properties": { "metadata": { "required": ["provenance"], "properties": { "provenance": { "required": ["artifact_sha256"] } } } }
       }
     }
   ],
@@ -647,10 +330,7 @@
     "argv": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "items": { "type": "string", "minLength": 1 }
     }
   }
 }

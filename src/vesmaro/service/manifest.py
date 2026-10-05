@@ -11,12 +11,14 @@ codes. Design points:
   code is the contract code (DURATION_INVALID, SHELL_IN_ARGV, ...), not a
   generic schema failure; precise-JSON-path diagnostics that the schema
   cannot express (core-tier artifact hash, restart clamps) also run early;
-- ``load_installation`` is fail-closed per layout §3.5: EVERY ``*.yaml`` /
-  ``*.yml`` file in the manifests directory must be a valid manifest, name
-  uniqueness and depends_on acyclicity are checked across the directory.
+- ``load_installation`` is fail-closed per layout §3.5: EVERY file in the
+  manifests directory must be a valid manifest (stray non-YAML files are
+  rejected, never silently skipped), name uniqueness and depends_on
+  acyclicity are checked across the directory.
 
-The JSON-Schema file is VENDORED from the specs repo (see its ``$comment``
-); the normative source for both schema and rules stays the specs repo.
+The JSON-Schema file is VENDORED byte-identical from the specs repo (see
+``SCHEMA_VENDORED_PROVENANCE``); the normative source for both schema and
+rules stays the specs repo.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from typing import Any
 import jsonschema
 import yaml
 
+from vesmaro.service import layout
 from vesmaro.service.errors import (
     APIVERSION_UNSUPPORTED,
     CLAMP_VIOLATION,
@@ -53,6 +56,21 @@ logger = logging.getLogger("vesmaro.service.manifest")
 
 #: Contract version of the vendored schema (specs repo, draft.2).
 SCHEMA_CONTRACT_VERSION = "1.0.0-draft.2"
+
+#: Provenance of the vendored schema file
+#: (``vesmaro/service/schemas/component-manifest.schema.json``): a
+#: byte-identical copy of the specs repo file
+#: ``specs/component-manifest/v1/schema/component-manifest.schema.json``.
+#: NO local edits (provenance lives here, not in a ``$comment`` key) so a
+#: re-vendor diff against the specs file stays empty: copy verbatim, bump
+#: ``SCHEMA_CONTRACT_VERSION``, update this constant.
+SCHEMA_VENDORED_PROVENANCE = (
+    "specs repo vesma-specs @ d30e668a9ebdfe32274fc08b30d3be18862ec602, "
+    "file specs/component-manifest/v1/schema/component-manifest.schema.json "
+    "(last touched by 7419679e5c44242bdb5b4e66aad23946191dad8a), contract "
+    "component-manifest 1.0.0-draft.2; byte-identical copy — re-vendor by "
+    "verbatim copy + SCHEMA_CONTRACT_VERSION bump"
+)
 
 #: apiVersion values this loader accepts (CM §3.2: rejections MUST name
 #: the supported set).
@@ -598,30 +616,43 @@ def _check_restart_clamps(doc: dict[str, Any]) -> None:
         return
     backoff = _opt_dict(restart, "backoff")
     if backoff is not None:
-        base_path = "$.restart.backoff.base"
-        base_ms = duration_to_ms(str(backoff["base"]), field_path=base_path)
-        if base_ms < _RESTART_BASE_MIN_MS:
-            raise ManifestError(
-                CLAMP_VIOLATION,
-                base_path,
-                f"backoff.base {backoff['base']!r} is below the 500ms clamp",
-            )
-        max_path = "$.restart.backoff.max"
-        max_ms = duration_to_ms(str(backoff["max"]), field_path=max_path)
-        if max_ms > _RESTART_MAX_MAX_MS:
-            raise ManifestError(
-                CLAMP_VIOLATION,
-                max_path,
-                f"backoff.max {backoff['max']!r} is above the 5min clamp",
-            )
+        # Only clamp leaves that are PRESENT: a missing/ill-typed one is a
+        # shape problem — the schema pass (required/type) reports it; these
+        # pre-schema checks must not crash on partial sections.
+        if "base" in backoff:
+            base_path = "$.restart.backoff.base"
+            base_ms = duration_to_ms(str(backoff["base"]), field_path=base_path)
+            if base_ms < _RESTART_BASE_MIN_MS:
+                raise ManifestError(
+                    CLAMP_VIOLATION,
+                    base_path,
+                    f"backoff.base {backoff['base']!r} is below the 500ms clamp",
+                )
+        if "max" in backoff:
+            max_path = "$.restart.backoff.max"
+            max_ms = duration_to_ms(str(backoff["max"]), field_path=max_path)
+            if max_ms > _RESTART_MAX_MAX_MS:
+                raise ManifestError(
+                    CLAMP_VIOLATION,
+                    max_path,
+                    f"backoff.max {backoff['max']!r} is above the 5min clamp",
+                )
     window = _opt_dict(restart, "window")
-    if window is not None and int(window.get("attempts", 0)) < _RESTART_ATTEMPTS_MIN:
-        raise ManifestError(
-            CLAMP_VIOLATION,
-            "$.restart.window.attempts",
-            f"window.attempts {window.get('attempts')!r} is below the minimum of "
-            f"{_RESTART_ATTEMPTS_MIN}",
-        )
+    if window is not None:
+        attempts = window.get("attempts")
+        # bool is an int subclass — a YAML `true` is a schema type error,
+        # not a clamp violation; absent/non-int attempts is the schema's
+        # domain as well.
+        if (
+            isinstance(attempts, int)
+            and not isinstance(attempts, bool)
+            and attempts < _RESTART_ATTEMPTS_MIN
+        ):
+            raise ManifestError(
+                CLAMP_VIOLATION,
+                "$.restart.window.attempts",
+                f"window.attempts {attempts!r} is below the minimum of {_RESTART_ATTEMPTS_MIN}",
+            )
 
 
 def _manifests_dir_of(path: Path) -> Path:
@@ -650,7 +681,9 @@ def _check_env_file_placement(doc: dict[str, Any], manifest_path: Path) -> None:
         if os.path.isabs(expanded)
         else os.path.join(_manifests_dir_of(manifest_path), expanded)
     )
-    canonical_components_dir = Path(os.path.expanduser("~/.config/vesma/components.d"))
+    # XDG-aware at call time (parity with the fail-closed envfile loader);
+    # never a cached import-time path.
+    canonical_components_dir = layout.components_dir()
     inside = []
     if _is_inside(resolved, _manifests_dir_of(manifest_path)):
         inside.append(f"the manifests directory ({_manifests_dir_of(manifest_path)})")
@@ -723,7 +756,9 @@ def load_manifest(
     installation, when known: enables NAME_DUPLICATED and DEPENDS_MISSING
     checks. ``None`` (default) skips installation-context checks.
     """
-    manifest_path = Path(path)
+    # expanduser for parity with the envfile loader — manifest paths may
+    # legitimately arrive as `~/...` from operator config in later waves.
+    manifest_path = Path(path).expanduser()
     try:
         text = manifest_path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -819,13 +854,14 @@ def _find_cycle(graph: dict[str, tuple[str, ...]], start: str) -> list[str] | No
 def load_installation(dir_path: str | os.PathLike[str]) -> dict[str, ComponentManifest]:
     """Load every manifest of an installation; fail closed on ANY invalid file.
 
-    Layout §3.5: every ``*.yaml`` / ``*.yml`` file in the manifests
-    directory MUST be a valid manifest — an invalid file is a load error,
+    Layout §3.5: every file in the manifests directory MUST be a valid
+    manifest (``*.yaml`` / ``*.yml``; any stray file is a load error) —
+    an invalid file is a load error,
     never a silent skip. Also enforces name uniqueness (NAME_DUPLICATED),
     depends_on resolvability (DEPENDS_MISSING) and acyclicity
     (DEPENDS_CYCLE, the cycle is reported in the message).
     """
-    manifests_dir = Path(dir_path)
+    manifests_dir = Path(dir_path).expanduser()
     if not manifests_dir.is_dir():
         raise ManifestError(
             MANIFEST_SCHEMA_INVALID,
@@ -837,6 +873,21 @@ def load_installation(dir_path: str | os.PathLike[str]) -> dict[str, ComponentMa
         [*manifests_dir.glob("*.yaml"), *manifests_dir.glob("*.yml")],
         key=lambda p: p.name,
     )
+    # Layout §3.5: EVERY file in the manifests directory must be a valid
+    # manifest — a stray non-YAML file is a load error, never a silent skip.
+    stray = sorted(
+        p for p in manifests_dir.iterdir() if p.is_file() and p.suffix not in {".yaml", ".yml"}
+    )
+    if stray:
+        raise ManifestError(
+            MANIFEST_SCHEMA_INVALID,
+            "$",
+            "unexpected file(s) in the manifests directory: "
+            + ", ".join(p.name for p in stray)
+            + " — every file in the manifests directory must be a valid "
+            "manifest (fail-closed, specs/layout/v1 §3.5)",
+            fix_hint="remove the file(s) or rename valid manifests to *.yaml / *.yml",
+        )
     # First pass WITHOUT installation-context checks (the name set is only
     # complete after the whole directory is read — a depends_on entry may
     # reference a manifest that sorts later).
