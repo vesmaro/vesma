@@ -1200,9 +1200,8 @@ class TestP1BBudgetExhaustedHealthFlag:
                     # RESPAWN (a new pid) AND the probe pass, never just the
                     # state string.
                     _wait_until(
-                        lambda: (
-                            sup.component_state("opt") == "healthy"
-                            and _pid_of(sup, "opt") != pid
+                        lambda pid=pid: (
+                            sup.component_state("opt") == "healthy" and _pid_of(sup, "opt") != pid
                         ),
                         f"opt respawned healthy after kill #{attempt}",
                     )
@@ -1330,9 +1329,7 @@ class TestP2FBoundaryHardening:
                 # A FAILED spawn publishes no spawn line — the per-cycle
                 # journal artifact is the EXIT transition into backoff.
                 return sum(
-                    1
-                    for ln in _records(tmp_path)
-                    if "component=sys " in ln and "to=backoff" in ln
+                    1 for ln in _records(tmp_path) if "component=sys " in ln and "to=backoff" in ln
                 )
 
             _wait_until(
