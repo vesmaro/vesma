@@ -119,6 +119,27 @@ class TestExecAndLiveness:
     def test_exec_missing_binary_fails(self) -> None:
         assert ExecChecker(["/nonexistent/binary/xyz"], 2.0).check().ok is False
 
+    def test_probe_child_env_is_empty_and_fds_closed(self, tmp_path: Path) -> None:
+        """P2-E (cascade 2026-10-05): probe children inherit NOTHING of the
+        supervisor's environment (env={}, explicit close_fds=True); the argv
+        carries absolute paths, so no PATH lookup is needed."""
+        import json
+        import sys
+
+        out = tmp_path / "probe_env.json"
+        printer = Path(__file__).parent / "service_children" / "env_printer.py"
+        checker = ExecChecker([sys.executable, str(printer), "--out", str(out)], 10.0)
+        assert checker.check().ok is True
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        child_env = dict(payload["env"])
+        # PEP 538: CPython coerces the C locale at startup and sets LC_CTYPE
+        # in its OWN environment — a self-inflicted artifact of the child
+        # runtime (see the SL-13 supervisor test), not an inherited variable.
+        child_env.pop("LC_CTYPE", None)
+        assert child_env == {}  # env={}: the probe sees nothing
+        sockets = [fd for fd, target in payload["fds"].items() if target.startswith("socket:")]
+        assert sockets == []  # close_fds=True: no fd crosses the probe boundary
+
     def test_reaper_owned_exec_reports_the_honest_code(self) -> None:
         """The reaper owns waitpid (SL §3.1) — the checker must NOT wait the
         probe child itself. A subprocess.run wait would race the reaper's

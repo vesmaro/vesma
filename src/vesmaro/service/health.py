@@ -201,6 +201,13 @@ class ExecChecker:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                # Probe hygiene (cascade 2026-10-05 P2-E, isolation §3.2):
+                # a probe child inherits NOTHING of the supervisor's
+                # environment — argv carries absolute paths (the manifests
+                # ship absolute argv; a bare name now fails loudly instead
+                # of silently resolving through the supervisor's PATH).
+                env={},
+                close_fds=True,  # explicit (SL-14): no fd crosses the probe boundary
             )
         except OSError as exc:
             return ProbeResult(False, f"exec probe error: {exc.__class__.__name__}")
