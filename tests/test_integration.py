@@ -2347,6 +2347,8 @@ class TestInstructionPack:
         assert "usage_report.metrics_id" in text, (
             "the assemble step must point at usage_report.metrics_id"
         )
+
+    def test_always_on_agents_md_awareness_canon(self) -> None:
         """The always-loaded block carries the tightened G1/G4 rows and the report block."""
         path = (
             Path(__file__)
