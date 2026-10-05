@@ -46,11 +46,17 @@ from vesmaro.metrics.usage import (
 #: in this vendored copy — the pin asserts reachability there.
 def _find_vitals_master() -> Path | None:
     # (#436 precedent - worktree-independent): probe plausible roots instead
-    # of a hardcoded absolute path that post-rebrand moves break
-    candidates = (
-        Path("/var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals"),
-        Path(__file__).resolve().parents[4] / "vesma-vitals",
-    )
+    # of a hardcoded absolute path that post-rebrand moves break.
+    # parents[4] is evaluated lazily: in ring clones the checkout is shallow
+    # (/work/repo) and Path.parents[4] raises IndexError at LIST BUILD time,
+    # which interrupted the WHOLE suite at collection (ring convoy
+    # 2026-10-05, 0 tests ran, rc=2 — #499). Guard the index access: the pin
+    # stays reachable on full layouts and degrades to a graceful skip in
+    # short-depth containers (worktree → container independence).
+    candidates = Path("/var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals"),
+    p = Path(__file__).resolve()
+    if len(p.parents) > 4:
+        candidates = (*candidates, p.parents[4] / "vesma-vitals")
     return next((c for c in candidates if (c / "pyproject.toml").exists()), None)
 
 
