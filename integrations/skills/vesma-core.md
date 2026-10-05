@@ -25,19 +25,25 @@ context should survive compaction, hand-off, or session restart.
 
 1. **Session start** — invoke `vesma-session-init` once. Restore prior context
    for the current project + agent.
-2. **Before a non-trivial task** — invoke `vesma-recall` with a narrow tag
+2. **Before the first substantive answer** — assemble the memory part of the
+   prompt (`vesma_assemble_context`, mode="sync") and remember
+   `usage_report.metrics_id` from the result.
+3. **After the model answered** (when the assemble step yielded a
+   metrics_id) — invoke `vesma_usage_report` with the opaque
+   `block_ids_touched` ordinals; an empty list is legitimate — report it.
+4. **Before a non-trivial task** — invoke `vesma-recall` with a narrow tag
    query, then broaden if no hits.
-3. **On a learning, decision, bug-pattern, refactor, or gotcha** — invoke
+5. **On a learning, decision, bug-pattern, refactor, or gotcha** — invoke
    `vesma-write`. Use the tag contract from `vesma-tag-contract`.
-4. **After a phase, before a long step, on direction change, or when the
+6. **After a phase, before a long step, on direction change, or when the
    summary marker appears** — invoke `vesma-checkpoint`.
-5. **On compaction signals** (sudden loss of references to earlier turns,
+7. **On compaction signals** (sudden loss of references to earlier turns,
    summary banner, sharp shrinkage of toolset history) — invoke
    `compaction-resilience` and re-run `vesma-recall`.
-6. **Before reading a large file or forwarding a large tool output** —
+8. **Before reading a large file or forwarding a large tool output** —
    invoke `context-compression` to extract only the relevant lines and
    keep the context window lean.
-7. **Before delegating to a subagent** — compress the prompt
+9. **Before delegating to a subagent** — compress the prompt
    (`context-compression` pattern 5: structured-summary) and checkpoint
    (`vesma-checkpoint` trigger 5) so the subagent's work survives a
    parent crash.

@@ -1017,7 +1017,7 @@ fixtures, not a waiver of the issuance scan (PG4).
 
 Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
 
-**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
+**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. `total_matches` counts the WHOLE answer set — when the fallback answers, it counts the literal rows returned (a non-empty fallback is never reported as `total_matches: 0`). Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
 
 ### Input
 
@@ -1075,7 +1075,7 @@ Literal-fallback response (W-H — the symbol graph had zero hits):
       "snippet": "name=\"mnemos_search_graph\","
     }
   ],
-  "total_matches": 0,
+  "total_matches": 1,
   "cursor": 0,
   "has_more": false,
   "fallback_used": true,
@@ -1092,7 +1092,7 @@ Literal-fallback response (W-H — the symbol graph had zero hits):
 
 ## `mnemos_trace_path`
 
-BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; an IDENTICAL-qname collision (the same qname defined in several files) answers the same candidate payload with a path/line disambiguation hint — never a silent first-pick; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 

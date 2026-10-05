@@ -133,3 +133,25 @@ class TestFailClosed:
             assert exc.value.fix_hint.startswith("chown ")
         finally:
             os.chown(env_file, os.geteuid(), os.getgid())
+
+
+class TestReservedKeys:
+    def test_path_key_refused_with_move_hint(self, tmp_path: Path) -> None:
+        """P2-D (cascade 2026-10-05): PATH is reserved — the supervisor
+        constructs the child PATH canonically (SL-13); a file-supplied PATH
+        would silently override it. Tightens beyond the spec letter (the
+        spec bans PATH only in launch.env.vars) — flagged for specs draft.3.
+        """
+        env_file = _write_env(tmp_path / "comp.env", body="PATH=/host/hidden\nALPHA=one\n")
+        with pytest.raises(ManifestError) as exc:
+            load_env_file(env_file)
+        assert exc.value.code == ENV_FILE_UNSAFE
+        assert "PATH" in exc.value.message
+        assert exc.value.fix_hint is not None
+        assert "move PATH out" in exc.value.fix_hint
+
+    def test_path_key_ban_is_exact_case(self, tmp_path: Path) -> None:
+        # env vars are case-sensitive; the canonical constructed key is
+        # exactly "PATH" — a lowercase "path" is an ordinary variable.
+        env_file = _write_env(tmp_path / "comp.env", body="path=ok\n")
+        assert load_env_file(env_file) == {"path": "ok"}

@@ -334,20 +334,29 @@ class TestAutoCollect:
 
 
 class TestIngestUrl:
+    # Hermeticity (card vesma-hermetic-ingest-url-tests): the SSRF guard
+    # resolves DNS for hostname URLs (socket.getaddrinfo) BEFORE the
+    # mocked httpx client is used — an offline run would turn these
+    # tests into failures. A PUBLIC literal IP passes the guard's
+    # literal branch (private/TEST-NET literals are refused) with NO
+    # DNS at all; the fetch itself is mocked, so nothing connects.
+    INGEST_HOST = "93.184.216.34"
+
     def test_ingest_url_missing_tags_returns_422(self, client):
         """Missing required ``tags`` → 422 validation error."""
         resp = client.post(
             "/ingest-url",
-            json={"url": "https://example.com/"},
+            json={"url": f"https://{self.INGEST_HOST}/"},
         )
         assert resp.status_code == 422
 
     def test_ingest_url_strips_credentials(self, client):
         """Credentials embedded in the URL (user:pass@) are stripped.
 
-        We mock httpx + trafilatura so no real network call is made. The
-        endpoint stores the *cleaned* URL (no credentials) on the memory
-        and echoes it back in the response.
+        We mock httpx + trafilatura so no real network call is made (and
+        no DNS: public literal-IP host). The endpoint stores the
+        *cleaned* URL (no credentials) on the memory and echoes it back
+        in the response.
         """
         trafilatura_stub = MagicMock()
         trafilatura_stub.extract.return_value = "extracted page content"
@@ -366,7 +375,7 @@ class TestIngestUrl:
             resp = client.post(
                 "/ingest-url",
                 json={
-                    "url": "https://user:secret@example.com/page",
+                    "url": f"https://user:secret@{self.INGEST_HOST}/page",
                     "tags": ["project:test", "agent:test", "mnemos:learning"],
                 },
             )
@@ -374,14 +383,15 @@ class TestIngestUrl:
         data = resp.json()
         # The returned URL must NOT contain the user:pass credentials.
         assert "user:secret@" not in data["url"]
-        assert "example.com" in data["url"]
+        assert self.INGEST_HOST in data["url"]
         assert "id" in data
 
     def test_ingest_url_valid_with_tags(self, client):
         """A valid URL + tags returns 201 with id/title/url.
 
         Mocked to avoid real network calls (and to remain robust when
-        trafilatura is not installed in the test environment).
+        trafilatura is not installed in the test environment; public
+        literal-IP host — no DNS on the suite path).
         """
         trafilatura_stub = MagicMock()
         trafilatura_stub.extract.return_value = "extracted content"
@@ -400,7 +410,7 @@ class TestIngestUrl:
             resp = client.post(
                 "/ingest-url",
                 json={
-                    "url": "https://example.com/docs",
+                    "url": f"https://{self.INGEST_HOST}/docs",
                     "tags": ["project:test", "agent:test", "mnemos:learning"],
                 },
             )

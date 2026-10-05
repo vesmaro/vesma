@@ -1006,9 +1006,13 @@ class CodeGraphService:
         token contract (exact name/qname hits outrank prefix hits,
         prefix outranks substring — ranking BEFORE the budget cut).
 
-        ``total_matches`` is the HONEST count of the predicate over the
-        whole graph (``CodeGraphStore.count_search_nodes``); the cursor
-        pages the top-``limit`` ranked slice (review 10173a2a-5).
+        ``total_matches`` is the HONEST count of the whole answer set:
+        on symbol hits it is the predicate count over the whole graph
+        (``CodeGraphStore.count_search_nodes``), the cursor paging the
+        top-``limit`` ranked slice (review 10173a2a-5); when the W-H
+        literal leg answers, it counts the literal rows instead — a
+        non-empty fallback is never reported as ``total_matches: 0``
+        (card vesma-graph-roughness-repeat1).
 
         W-H hybrid leg: on an EMPTY symbol result (and when
         ``code_graph.literal_fallback`` is on, default) a bounded
@@ -1040,6 +1044,12 @@ class CodeGraphService:
         fallback_used = False
         if total == 0 and not rows and self._config.literal_fallback:
             rows, fallback_used = self._literal_fallback_rows(registered, query)
+            if fallback_used:
+                # Card vesma-graph-roughness-repeat1: the count reflects
+                # ALL returned rows — a non-empty literal leg is never
+                # reported as total_matches: 0 (the count tracked only
+                # the symbol-node predicate before).
+                total = len(rows)
         for row in rows:
             row.setdefault("match_kind", "symbol")
         # Detail flags are OPT-IN (§3.4): signatures ride only when asked.
@@ -1047,18 +1057,28 @@ class CodeGraphService:
             for row in rows:
                 row.pop("signature", None)
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
+        # Card vesma-graph-audit-firstcall-marking: the FIRST search of a
+        # task (actor+session scoped) is marked on its own audit row so
+        # the graph-first share stays computable from graph_audit rows
+        # alone (the computing query lives in GraphAudit.has_search).
+        # Shape policy: the marker rides ONLY the first row (absent on
+        # the rest — never null/empty).
+        first_search = not self._audit.has_search(actor, sess)
+        details: dict[str, Any] = {
+            "matches": len(rows),
+            "returned": len(page),
+            "total": total,
+            "literal_fallback": fallback_used,
+        }
+        if first_search:
+            details["first_search"] = True
         self._audit.record(
             key,
             "graph-read",
             actor,
             session=sess,
             reason="search",
-            details={
-                "matches": len(rows),
-                "returned": len(page),
-                "total": total,
-                "literal_fallback": fallback_used,
-            },
+            details=details,
         )
         payload: dict[str, Any] = {
             "project": key,
@@ -1165,10 +1185,11 @@ class CodeGraphService:
 
         W-H resolution: an exact qname behaves byte-identically to the
         pre-W-H tool; a bare tail that resolves UNIQUELY traces
-        directly; an AMBIGUOUS tail answers with a ranked candidate
-        list (``candidates: true`` — a helpful payload, not an error)
-        and the hint to re-run with the qualified name; a missing
-        symbol stays a clear not-found refusal."""
+        directly; an AMBIGUOUS tail — and an identical-qname collision
+        (same qname, several files; card vesma-graph-roughness-repeat1)
+        — answers with a ranked candidate list (``candidates: true`` —
+        a helpful payload, not an error) and a disambiguation hint; a
+        missing symbol stays a clear not-found refusal."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -1189,6 +1210,17 @@ class CodeGraphService:
                     f"symbol {query!r} not found in the project graph — "
                     "use search_graph to locate the exact qname"
                 )
+            # Card vesma-graph-roughness-repeat1: when every candidate
+            # shares ONE qname, the default re-run hint is a dead end —
+            # the collision hint points at the path/line disambiguator.
+            qnames = {c["qname"] for c in candidates}
+            hint = None
+            if len(candidates) > 1 and len(qnames) == 1:
+                hint = (
+                    "identical-qname collision — the candidates share one "
+                    "qualified name and differ by path/line; disambiguate via "
+                    "search_graph (path, start_line) before tracing"
+                )
             return self._trace_candidates_payload(
                 key,
                 query,
@@ -1196,6 +1228,7 @@ class CodeGraphService:
                 agent=actor,
                 session=sess,
                 max_output_tokens=max_output_tokens,
+                hint=hint,
             )
         visited: dict[str, dict[str, Any]] = {
             start.id: self._trace_node(start, 0),
@@ -1278,20 +1311,57 @@ class CodeGraphService:
     ) -> tuple[Any | None, list[dict[str, Any]]]:
         """W-H trace resolution: exact/unique → ``(node, [])`` (the
         pre-W-H behavior, byte-identical for exact qnames); otherwise
-        ``(None, ranked tail candidates)`` — a UNIQUE tail candidate is
-        traced directly, an ambiguous set is answered with the
-        candidate list. A tail candidate matches on NAME (or dotted
-        qname tail) exactly — a tail resolution, never a substring
-        guess."""
+        ``(None, ranked candidates)`` — a UNIQUE tail candidate is
+        traced directly, an ambiguous tail set AND an identical-qname
+        collision (card vesma-graph-roughness-repeat1) are answered
+        with the candidate list. A tail candidate matches on NAME (or
+        dotted qname tail) exactly — a tail resolution, never a
+        substring guess."""
+        # Card vesma-graph-roughness-repeat1: an IDENTICAL-qname
+        # collision (several definitions sharing one qname — top-level
+        # functions of the same name in different files) follows the
+        # SAME ambiguity contract as a bare tail — a ranked candidate
+        # list, never a silent first-pick.
+        exact = self._store.get_nodes(project, qname=query, limit=2)
+        if len(exact) == 1:
+            return exact[0], []
+        if len(exact) > 1:
+            return None, self._qname_collision_candidates(exact)
         try:
             return self._resolve_symbol(project, query), []
         except GraphToolError:
             candidates = self._tail_candidates(project, query)
             if len(candidates) == 1:
-                exact = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=1)
-                if exact:
-                    return exact[0], []
+                # The resolved qname may itself be a collision (same
+                # dotted qname, several files) — same contract, no
+                # silent first-pick.
+                resolved = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=2)
+                if len(resolved) == 1:
+                    return resolved[0], []
+                if len(resolved) > 1:
+                    return None, self._qname_collision_candidates(resolved)
             return None, candidates
+
+    @staticmethod
+    def _qname_collision_candidates(nodes: list[Any]) -> list[dict[str, Any]]:
+        """ALL candidates for an IDENTICAL-qname collision (one qname,
+        several definitions differing by path/line). Same row shape as
+        :meth:`_tail_candidates`; every row is an exact qname hit
+        (score 3) and the order is deterministic (path, then line) —
+        the payload caps the ISSUED list; the count stays honest."""
+        rows = [
+            {
+                "qname": n.qname,
+                "kind": n.kind,
+                "path": n.path,
+                "start_line": n.start_line,
+                "end_line": n.end_line,
+                "score": 3,  # exact qname hit, same scale as search_graph
+            }
+            for n in nodes
+        ]
+        rows.sort(key=lambda r: (-r.pop("score"), str(r["qname"]), str(r["path"]), r["start_line"]))
+        return rows
 
     def _tail_candidates(self, project: str, query: str) -> list[dict[str, Any]]:
         """ALL ranked exact-tail candidates for a failed trace
@@ -1327,10 +1397,12 @@ class CodeGraphService:
         agent: str,
         session: str | None,
         max_output_tokens: Any,
+        hint: str | None = None,
     ) -> dict[str, Any]:
-        """The AMBIGUOUS-tail answer: a helpful, NOT error-shaped
-        payload with the ranked candidate list (capped, count honest)
-        and the re-run hint."""
+        """The AMBIGUOUS answer (bare tail or identical-qname
+        collision): a helpful, NOT error-shaped payload with the ranked
+        candidate list (capped, count honest) and the re-run hint (the
+        default tail hint, or a caller-supplied collision hint)."""
         page, has_more, next_cursor = window_rows(
             candidates[:TRACE_CANDIDATE_CAP], max_output_tokens, 0
         )
@@ -1351,7 +1423,9 @@ class CodeGraphService:
             "has_more": has_more,
             "cursor": next_cursor,
             "hint": (
-                "ambiguous symbol tail — re-run trace_path with the "
+                hint
+                if hint is not None
+                else "ambiguous symbol tail — re-run trace_path with the "
                 "qualified name (qname) of the intended candidate"
             ),
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),

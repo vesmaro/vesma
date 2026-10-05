@@ -195,13 +195,21 @@ class TestIngestTagContract:
     """The ingest routes must map a tag-contract ``ValueError`` to 422 —
     same client-error discipline as ``create_memory`` — never a raw 500."""
 
+    # Hermeticity (card vesma-hermetic-ingest-url-tests): the SSRF guard
+    # resolves DNS for hostname URLs (socket.getaddrinfo) BEFORE the
+    # mocked httpx client is used — an offline run would turn these
+    # tests into failures. A PUBLIC literal IP passes the guard's
+    # literal branch (private/TEST-NET literals are refused) with NO
+    # DNS at all; the fetch itself is mocked, so nothing connects.
+    INGEST_HOST = "93.184.216.34"
+
     def test_ingest_url_missing_required_tag_maps_to_422(self, client):
         # A tag-contract violation (missing the required mnemos: scope) is
         # a CLIENT error — 422 carrying the contract error string verbatim.
         resp = client.post(
             "/ingest-url",
             json={
-                "url": "https://example.com/page",
+                "url": f"https://{self.INGEST_HOST}/page",
                 "tags": ["project:test", "agent:test"],
             },
         )
@@ -211,7 +219,7 @@ class TestIngestTagContract:
 
     def test_ingest_url_valid_tags_still_ingest(self, client):
         # Happy path: contract-valid tags ingest normally (201, mocked
-        # fetch — no network).
+        # fetch — no network, no DNS: public literal-IP host).
         trafilatura_stub = MagicMock()
         trafilatura_stub.extract.return_value = "extracted page content"
         with (
@@ -229,14 +237,14 @@ class TestIngestTagContract:
             resp = client.post(
                 "/ingest-url",
                 json={
-                    "url": "https://example.com/docs",
+                    "url": f"https://{self.INGEST_HOST}/docs",
                     "tags": ["project:test", "agent:test", "mnemos:learning"],
                 },
             )
         assert resp.status_code == 201
         data = resp.json()
         assert data["id"]
-        assert "example.com" in data["url"]
+        assert self.INGEST_HOST in data["url"]
 
     def test_ingest_document_missing_required_tag_maps_to_422(self, client):
         # Same discipline for the ADR-0027 document-ingest twin: the

@@ -598,6 +598,18 @@ def _check_secret_in_vars(doc: dict[str, Any]) -> None:
     vars_map = env.get("vars")
     if not isinstance(vars_map, dict):
         return
+    # SL §3.2: the PATH variable in launch.env.vars is FORBIDDEN — the
+    # supervisor constructs the child PATH canonically; a manifest-supplied
+    # PATH would conflict with the constructed one (rejected by validation).
+    if "PATH" in vars_map:
+        raise ManifestError(
+            MANIFEST_SCHEMA_INVALID,
+            "$.launch.env.vars.PATH",
+            "env.vars must not declare PATH — the supervisor constructs the "
+            "child PATH from the component venv bin dir + the fixed system "
+            "string (specs/service-lifecycle/v1 §3.2); move path entries "
+            "into the component venv or a launcher wrapper",
+        )
     for key in vars_map:
         lowered = str(key).lower()
         if any(token in lowered for token in _SECRET_KEY_TOKENS):

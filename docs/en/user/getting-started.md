@@ -61,7 +61,7 @@ pip install https://github.com/vesmaro/vesma/releases/download/v4.3.0/mnemos_mem
 <!-- deprecated-note: 5.x releases ship as the `vesma` wheel (bare PyPI slot); the legacy
 mnemos_memory_server-*.whl artifact name covers the 4.x line until deprecation. -->
 
-**Pre-built image** (published at `ghcr.io/vesmaro/vesmaro`; `docker` works too — swap `podman` for `docker`):
+**Pre-built image** (published at `ghcr.io/vesmaro/vesma`; `docker` works too — swap `podman` for `docker`):
 
 ```bash
 export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
