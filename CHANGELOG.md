@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.1] — 2026-10-05
+
+### Added
+
+- **G0a/G0b usage-loop gates in the canon pack (wave 10, PR #493)** (`integrations/instructions/vesma-memory-ops.instructions.md`, `integrations/skills/vesma-core.md`, `integrations/skills/vesma-context-lifecycle.md`, `integrations/agents_md/vesma-always-on.md`; drift-guard pins in `tests/test_integration.py`) — usage-loop closure becomes canon for EVERY agent: **G0a** (assemble memory context before the first substantive answer; runs after the G1 recall, before the first model call; remember `usage_report.metrics_id`) and **G0b** (report usage after the model answered via `mnemos_usage_report` with the `<metrics_id>:<i>` composite ordinals derived from the assemble result's `blocks` list; an empty `block_ids_touched` is legitimate) join the gate table before G1; the post-model report leg is a new step 3 in the context lifecycle, subsequent steps renumbered; the always-on block mirrors the compressed pair. The `vesma integration setup` deployment reads the canon from the installed package, so this release is what carries the gates to live surfaces (`~/.copilot`, `~/.hermes`).
+
 ## [Unreleased]
 
 ### Added
