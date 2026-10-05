@@ -1,0 +1,38 @@
+# Pack manifest (engine-shipped): in-process board component.
+# Contract: specs/component-manifest/v1 (1.0.0-draft.2). Written as if by
+# the install flow — hands-off for components (CM §3.1).
+apiVersion: vesma.component/v1
+kind: in-process
+metadata:
+  name: board
+  version: 5.4.0-dev
+  tier: optional
+  description: "Веб-панель супервайзера: статус компонентов, логи и ручное управление (in-process python-модуль)."
+  provenance:
+    repo: https://github.com/vesmaro/vesma
+    license: Apache-2.0
+in_process:
+  module: vesmaro.service.board
+  entrypoint: create_component
+  python:
+    version: ">=3.11"
+health:
+  checker: callback
+  callback: "vesmaro.service.board:health"
+  startup:
+    grace: 30s
+    interval: 5s
+    timeout: 2s
+config:
+  schema_inline:
+    type: object
+    additionalProperties: false
+    properties:
+      bind:
+        type: string
+        default: "127.0.0.1:8080"
+        description: "Адрес, который слушает board."
+      log_level:
+        type: string
+        enum: [debug, info, warn, error]
+        default: info

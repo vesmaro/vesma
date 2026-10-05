@@ -1,0 +1,39 @@
+# Pack manifest (engine-shipped): metrics child process.
+# Contract: specs/component-manifest/v1 (1.0.0-draft.2). The argv runs the
+# engine's own exposition module (vesmaro.metrics.exposer.__main__) from
+# the component venv; the HTTP surface it opens is probed by health.http.
+apiVersion: vesma.component/v1
+kind: child-process
+metadata:
+  name: metrics
+  version: 5.4.0-dev
+  tier: optional
+  description: "Prometheus-экспозиция vitals движка (child-process, HTTP /metrics на 127.0.0.1:9110)."
+  provenance:
+    repo: https://github.com/vesmaro/vesma
+    license: Apache-2.0
+launch:
+  argv:
+    - "{venv_bin}/python"
+    - "-m"
+    - "vesmaro.metrics.exposer"
+    - "--db"
+    - "{data_dir}/metrics.sqlite"
+    - "--host"
+    - "127.0.0.1"
+    - "--port"
+    - "9110"
+health:
+  checker: http
+  http:
+    url: "http://127.0.0.1:9110/metrics"
+    interval: 5s
+    timeout: 2s
+    unhealthy_threshold: 3
+  startup:
+    grace: 15s
+    interval: 2s
+    timeout: 2s
+stop:
+  signal: SIGTERM
+  grace_period: 10s
