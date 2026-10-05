@@ -178,13 +178,13 @@ vesma ingest file PATH [OPTIONS]
 
 ```bash
 # Из URL (загружает, извлекает, сохраняет)
-vesma ingest url https://example.com/article --tags project:research agent:user mnemos:learning
+vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
 
 # Из файла
-vesma ingest file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
 
 # Превью статистики фильтра для файла без сохранения
-vesma ingest file ~/notes/architecture.md --dry-run --tags project:vesma agent:tech-lead mnemos:decision
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
 ```
 
 ---

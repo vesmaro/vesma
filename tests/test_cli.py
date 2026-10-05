@@ -1143,6 +1143,23 @@ class TestIngestSubApp:
         assert "Cannot read" in result.output
         assert "Traceback" not in result.output
 
+    def test_ingest_file_binary_file_clean_error(
+        self, isolated_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A binary (non-UTF-8) file is a clean exit-1 error, not a traceback.
+
+        UnicodeDecodeError is a ValueError, not an OSError — it must be
+        caught explicitly. The preferred encoding is pinned so the decode
+        failure is hermetic regardless of the ambient locale.
+        """
+        monkeypatch.setattr("locale.getpreferredencoding", lambda do_setlocale: "utf-8")
+        blob = isolated_config.parent / "w3-blob.bin"
+        blob.write_bytes(b"\xff\xfe\x00\x01not-utf8")
+        result = runner.invoke(app, ["ingest", "file", str(blob)])
+        assert result.exit_code == 1, result.output
+        assert "Cannot read" in result.output
+        assert "Traceback" not in result.output
+
     def test_ingest_file_requires_path(self, isolated_config: Path) -> None:
         """`vesma ingest file` without a path is a usage error (exit 2)."""
         result = runner.invoke(app, ["ingest", "file"])

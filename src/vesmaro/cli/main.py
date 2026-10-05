@@ -334,8 +334,11 @@ def ingest_file(
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     try:
         text = path.read_text()
-    except OSError as exc:
-        console.print(f"[red]Cannot read {path}: {exc.strerror or exc}[/red]")
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError is a ValueError, not an OSError: without it a
+        # binary file would traceback on the canonical surface.
+        detail = exc.strerror if isinstance(exc, OSError) else str(exc)
+        console.print(f"[red]Cannot read {path}: {detail}[/red]")
         raise typer.Exit(1) from exc
     if dry_run:
         _dry_run_filter_preview(text, tag_list, config)

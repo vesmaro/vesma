@@ -178,13 +178,13 @@ vesma ingest file PATH [OPTIONS]
 
 ```bash
 # From a URL (fetches, extracts, saves)
-vesma ingest url https://example.com/article --tags project:research agent:user mnemos:learning
+vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
 
 # From a file
-vesma ingest file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
 
 # Preview the filter stats for a file without saving
-vesma ingest file ~/notes/architecture.md --dry-run --tags project:vesma agent:tech-lead mnemos:decision
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
 ```
 
 ---
