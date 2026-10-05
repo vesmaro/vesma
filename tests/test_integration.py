@@ -2244,6 +2244,48 @@ class TestInstructionPack:
         ).is_file(), "the sibling memory-ops instruction deploys alongside"
         assert mgr.verify("copilot").all_current, "deployed instructions verify current"
 
+    def test_memory_ops_instruction_awareness_canon(self) -> None:
+        """MNA slice mna-a-gate-canon: the awareness canon is pinned, not advice.
+
+        The G1 environment pre-flight, the G4 mechanical trigger + cross-silo
+        recipe, the «Обстановка вокруг» report block and the forensics
+        neighbor-sweep are CANON (owner directive 2026-10-05) — a silent edit
+        that drops any of them is an adoption regression, same guard shape
+        as the codegraph pin above.
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath(
+                "integrations", "instructions", "vesma-memory-ops.instructions.md"
+            )
+        )
+        text = path.read_text(encoding="utf-8")
+        # (a) G4 mechanical trigger + cross-silo recipe.
+        assert "MECHANICAL TRIGGER" in text, "G4 row must carry the mechanical trigger"
+        assert "Cross-silo sweep" in text, "the cross-silo sweep recipe must be canon"
+        # (b) G1 extension: awareness pre-flight + board read.
+        assert 'vesma_awareness(action="pre_flight"' in text, (
+            "session-start pre-flight must teach the awareness call"
+        )
+        assert "task:queue" in text, "the board read must be part of the pre-flight"
+        # (c) report block, (d) forensics gate.
+        assert "Обстановка вокруг" in text, "the report block must be canon"
+        assert "unknown actor" in text, "forensics sweep must gate the unknown-actor claim"
+
+    def test_always_on_agents_md_awareness_canon(self) -> None:
+        """The always-loaded block carries the tightened G1/G4 rows and the report block."""
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "agents_md", "vesma-always-on.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "MECHANICAL TRIGGER" in text, "always-on G4 row must carry the trigger"
+        assert "vesma_awareness" in text, "always-on G1 row must name the pre-flight"
+        assert "Обстановка вокруг" in text, "always-on must pin the report block"
+        assert "unknown actor" in text, "always-on must pin the forensics gate"
+
 
 class TestCanonPack:
     """W3a canon pack (vesmaro-canon v1.0.0) ships and deploys round-trip.
