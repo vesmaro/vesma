@@ -150,12 +150,16 @@ class GraphAudit:
         GROUP BY actor;
         ```
         """
-        row = self._conn().execute(
-            "SELECT 1 FROM graph_audit "
-            "WHERE action='graph-read' AND reason='search' "
-            "AND actor=? AND session IS ? LIMIT 1",
-            (actor, session),
-        ).fetchone()
+        row = (
+            self._conn()
+            .execute(
+                "SELECT 1 FROM graph_audit "
+                "WHERE action='graph-read' AND reason='search' "
+                "AND actor=? AND session IS ? LIMIT 1",
+                (actor, session),
+            )
+            .fetchone()
+        )
         return row is not None
 
     def recent(self, project: str | None = None, limit: int = 50) -> list[dict[str, Any]]:

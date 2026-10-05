@@ -417,9 +417,7 @@ class TestTraceTailResolution:
         finally:
             svc.close()
 
-    def test_unique_exact_qname_still_traces_despite_collision_check(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unique_exact_qname_still_traces_despite_collision_check(self, tmp_path: Path) -> None:
         # The collision pre-check must not disturb the pre-W-H exact
         # path: a unique qname traces byte-identically (same pin as
         # test_exact_qname_output_byte_identical_to_unique_tail, on the

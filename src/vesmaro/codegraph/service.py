@@ -1335,9 +1335,7 @@ class CodeGraphService:
                 # The resolved qname may itself be a collision (same
                 # dotted qname, several files) — same contract, no
                 # silent first-pick.
-                resolved = self._store.get_nodes(
-                    project, qname=candidates[0]["qname"], limit=2
-                )
+                resolved = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=2)
                 if len(resolved) == 1:
                     return resolved[0], []
                 if len(resolved) > 1:
@@ -1362,9 +1360,7 @@ class CodeGraphService:
             }
             for n in nodes
         ]
-        rows.sort(
-            key=lambda r: (-r.pop("score"), str(r["qname"]), str(r["path"]), r["start_line"])
-        )
+        rows.sort(key=lambda r: (-r.pop("score"), str(r["qname"]), str(r["path"]), r["start_line"]))
         return rows
 
     def _tail_candidates(self, project: str, query: str) -> list[dict[str, Any]]:
