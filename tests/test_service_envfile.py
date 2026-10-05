@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from vesmaro.service.envfile import env_mapping_is_secret_free, load_env_file
+from vesmaro.service.envfile import load_env_file
 from vesmaro.service.errors import ENV_FILE_UNSAFE, ManifestError
 
 
@@ -39,10 +39,6 @@ class TestHappyPath:
     def test_empty_file_is_valid(self, tmp_path: Path) -> None:
         env_file = _write_env(tmp_path / "comp.env", body="# only a comment\n\n")
         assert load_env_file(env_file) == {}
-
-    def test_secret_free_helper(self) -> None:
-        assert env_mapping_is_secret_free({"ALPHA": "x"})
-        assert not env_mapping_is_secret_free({"API_TOKEN": "x"})
 
 
 class TestFailClosed:

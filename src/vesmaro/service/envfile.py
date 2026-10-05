@@ -18,7 +18,6 @@ import getpass
 import os
 import re
 import stat
-from collections.abc import Mapping
 from pathlib import Path
 
 from vesmaro.service.errors import ENV_FILE_UNSAFE, ManifestError
@@ -137,13 +136,3 @@ def load_env_file(
             )
         values[key] = value.strip()
     return values
-
-
-def env_mapping_is_secret_free(values: Mapping[str, str]) -> bool:
-    """True when no parsed key looks secret-like (defense-in-depth helper).
-
-    The manifest-level check (SECRET_IN_VARS) guards declared vars; this
-    mirrors the same rule for env-file content keys, so callers that
-    re-inject file values into logs/exports can reuse it.
-    """
-    return not any(_SECRET_KEY_RE.search(str(key)) for key in values)
