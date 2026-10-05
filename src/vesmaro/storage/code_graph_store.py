@@ -179,6 +179,9 @@ CREATE INDEX IF NOT EXISTS idx_nodes_qname ON project_nodes(qname);
 CREATE INDEX IF NOT EXISTS idx_nodes_path ON project_nodes(project, path);
 CREATE INDEX IF NOT EXISTS idx_edges_from ON project_edges(from_id, kind);
 CREATE INDEX IF NOT EXISTS idx_edges_to ON project_edges(to_id, kind);
+-- has_search lookup (card vesma-graph-audit-search-index)
+CREATE INDEX IF NOT EXISTS idx_graph_audit_search
+    ON graph_audit(action, reason, actor, session);
 """
 )
 

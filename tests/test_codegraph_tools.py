@@ -666,6 +666,49 @@ class TestPGMechanics:
         assert rows[0]["actor"] == "other-agent"
         assert rows[0]["details"]["first_search"] is True
 
+    def test_has_search_index_survives_reopen_and_serves_planner(
+        self, indexed: CodeGraphService
+    ) -> None:
+        # Card vesma-graph-audit-search-index: has_search ran a full
+        # graph_audit scan on EVERY search_graph call. The
+        # (action, reason, actor, session) index rides the idempotent
+        # schema init — create_schema() replays _SCHEMA on EVERY open,
+        # so existing stores pick it up without a version bump — and
+        # the planner serves the exact has_search SELECT from it.
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        # a SECOND open of the SAME sidecar file (the existing-store path)
+        store2 = CodeGraphStore(Path(indexed.store.db_path).parent)
+        try:
+            audit_idx = {
+                str(r["name"])
+                for r in store2._conn().execute("PRAGMA index_list(graph_audit)").fetchall()
+            }
+            assert "idx_graph_audit_search" in audit_idx
+            plan = " | ".join(
+                str(r["detail"])
+                for r in store2._conn()
+                .execute(
+                    "EXPLAIN QUERY PLAN SELECT 1 FROM graph_audit "
+                    "WHERE action='graph-read' AND reason='search' "
+                    "AND actor=? AND session IS ? LIMIT 1",
+                    (AGENT, "s1"),
+                )
+                .fetchall()
+            )
+            # planner must name the index (often as a COVERING index);
+            # a bare "SCAN graph_audit" would mean the full-scan regression
+            assert "idx_graph_audit_search" in plan
+            assert "SCAN graph_audit" not in plan
+        finally:
+            store2.close()
+        # has_search semantics are unchanged with the index in place
+        audit = GraphAudit(indexed.store.db_path)
+        try:
+            assert audit.has_search(AGENT, "s1") is True
+            assert audit.has_search(AGENT, "s2") is False
+        finally:
+            audit.close()
+
     def test_attribution_is_a_binding(self, service: CodeGraphService) -> None:
         for bad in ("", "   ", None):
             with pytest.raises(GraphAttributionError):

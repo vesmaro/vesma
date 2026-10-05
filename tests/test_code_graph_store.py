@@ -98,7 +98,7 @@ class TestSchema:
         assert {"project_nodes", "project_edges", "graph_files", "graph_meta"} <= tables
 
     def test_indexes_exist(self, store: CodeGraphStore) -> None:
-        """All five contract indexes are present (PRAGMA index_list)."""
+        """All six contract indexes are present (PRAGMA index_list)."""
         conn = store._conn()
         node_idx = {
             str(r["name"]) for r in conn.execute("PRAGMA index_list(project_nodes)").fetchall()
@@ -106,8 +106,12 @@ class TestSchema:
         edge_idx = {
             str(r["name"]) for r in conn.execute("PRAGMA index_list(project_edges)").fetchall()
         }
+        audit_idx = {
+            str(r["name"]) for r in conn.execute("PRAGMA index_list(graph_audit)").fetchall()
+        }
         assert {"idx_nodes_project", "idx_nodes_qname", "idx_nodes_path"} <= node_idx
         assert {"idx_edges_from", "idx_edges_to"} <= edge_idx
+        assert "idx_graph_audit_search" in audit_idx
 
     def test_wal_mode(self, store: CodeGraphStore) -> None:
         """The sidecar runs in WAL (journal_mode pragma)."""
