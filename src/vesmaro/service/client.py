@@ -23,6 +23,7 @@ from typing import Any
 
 from vesmaro.service.control import (
     DEFAULT_TAIL,
+    FOLLOW_IDLE_TIMEOUT_S,
     PROTOCOL_VERSION,
     RESPONSE_TIMEOUT_S,
     SocketDirUnsafeError,
@@ -35,8 +36,10 @@ from vesmaro.service.control import (
 logger = logging.getLogger("vesmaro.service.client")
 
 # Follow streams are exempt from the 10 s response timeout (§4.7); the
-# read budget must exceed the server's 60 s idle window with margin.
-FOLLOW_READ_TIMEOUT_S = 75.0
+# read budget must exceed the server's idle window with a 1.25x margin
+# (currently 60 s -> 75 s) — derived, so retuning the server constant
+# retunes the client with it.
+FOLLOW_READ_TIMEOUT_S = FOLLOW_IDLE_TIMEOUT_S * 1.25
 
 
 # ── Client-side errors ────────────────────────────────────────────────
@@ -288,8 +291,13 @@ class ControlClient:
             if not isinstance(error, dict):
                 raise ProtocolViolationError("error envelope is not an object")
             data = error.get("data")
+            raw_code = error.get("code", -1)
+            if isinstance(raw_code, bool) or not isinstance(raw_code, int):
+                # a broken/rogue server: ``int(<junk>)`` would leak a raw
+                # ValueError — a contract violation is the typed answer
+                raise ProtocolViolationError(f"error code is not an integer: {raw_code!r}")
             raise ProtocolError(
-                int(error.get("code", -1)),
+                raw_code,
                 str(error.get("message", "")),
                 data if isinstance(data, dict) else None,
             )
