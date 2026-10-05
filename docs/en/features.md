@@ -29,7 +29,7 @@ Connect — and it is there. No extra wiring required for anything in this table
 | **Self-protection** | Injection and secret detectors on input and publication; every output is scanned; a full audit trail tied to each entry |
 | **Auto-pipeline** | A background processor: clustering, deduplication, quality gate, publication |
 | **Bundled embedding model** | `vesma-embed-v1` (~30 MB int8 ONNX) ships inside the wheel — hybrid vector search works fully offline, on CPU, with no downloads and no API keys |
-| **Packaging & delivery** | PyPI [`vesma`](https://pypi.org/project/vesma/) — pre-rebrand wheel `mnemos-memory-server` stays live until deprecation; (wheel bundles the integration pack and the model), npm `pi-vesma` + aliases, GHCR image `ghcr.io/vesmaro/vesmaro`, one-line installer script, benchmark framework S1–S4 in-repo |
+| **Packaging & delivery** | PyPI [`vesma`](https://pypi.org/project/vesma/) — pre-rebrand wheel `mnemos-memory-server` stays live until deprecation; (wheel bundles the integration pack and the model), npm `pi-vesma` + aliases, GHCR image `ghcr.io/vesmaro/vesma`, one-line installer script, benchmark framework S1–S4 in-repo |
 
 ### Project graph — the codebase becomes memory (5.1.0)
 

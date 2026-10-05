@@ -12,7 +12,7 @@
 
 ## Обзор
 
-Один опубликованный образ — `ghcr.io/vesmaro/vesmaro` — покрывает все пути. Выбирайте по среде:
+Один опубликованный образ — `ghcr.io/vesmaro/vesma` — покрывает все пути. Выбирайте по среде:
 
 | Путь | Инструмент | Когда использовать |
 |------|-----------|-------------------|
@@ -43,12 +43,12 @@
 Скачайте опубликованный образ и запустите сразу — собирать ничего не нужно:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest указывает на свежий релиз
+podman pull ghcr.io/vesmaro/vesma:4.3.0      # :latest указывает на свежий релиз
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesmaro:4.3.0
+  ghcr.io/vesmaro/vesma:4.3.0
 ```
 
 `docker` работает идентично — замените `podman` на `docker`. В образ встроен
@@ -156,7 +156,7 @@ Shortcut:
 ## Запуск — systemd (quadlet)
 
 Путь через quadlet устанавливает systemd **user**-юнит и управляет контейнером как постоянным
-сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesmaro:4.3.0`, образ скачивается
+сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:4.3.0`, образ скачивается
 автоматически; для локальной сборки соберите образ заранее (см.
 [Сборка из исходников](#сборка-из-исходников-фолбэк)) и укажите
 `Image=localhost/mnemos:latest` в юните.
@@ -224,16 +224,15 @@ make build-image
 
 **Залитие в ghcr.io (мейнтейнеры):** релизный конвейер (`scripts/local-release.sh`)
 при каждом релизе пушит версионный тег и `:latest` — GitHub Actions отключены, и этот
-скрипт является каноническим путём (см. [ci-cd.md](ci-cd.md)). Конвейер пока таргетит
-легаси-имя `ghcr.io/korrnals/vesma` (переезд — часть 5.0.0 phase-g, GWS card #331);
-новые релизы в это время дотягиваются в org-неймспейс `ghcr.io/vesmaro/vesmaro` вручную.
+скрипт является каноническим путём (см. [ci-cd.md](ci-cd.md)). Конвейер таргетит
+публичное имя `ghcr.io/vesmaro/vesma` напрямую.
 Ручное залитие, если когда-нибудь понадобится (PAT с правом `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:latest
+podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesma:4.3.0
+podman push ghcr.io/vesmaro/vesma:4.3.0
+podman push ghcr.io/vesmaro/vesma:latest
 ```
 
 ---

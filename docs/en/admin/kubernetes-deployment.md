@@ -134,15 +134,14 @@ consistent procedure).
 
 ## Image registry status
 
-Published images live at **`ghcr.io/vesmaro/vesmaro`** (org namespace,
-backfilled from the legacy user namespace in the 4.3.0 wave) and are
+Published images live at **`ghcr.io/vesmaro/vesma`** (org namespace) and are
 **public** — plain pulls work with no credentials. `image.pullSecrets`
 remains available for private-registry setups or rate limits, but is not
 needed for this image.
 
-The release pipeline still targets the legacy `ghcr.io/korrnals/vesma` name
-until the 5.0.0 registry migration (ADR-0031 / GWS card #331, phase g); new
-releases are backfilled to the org namespace manually in the meantime.
+The release pipeline (`scripts/local-release.sh`) pushes the versioned tag
+and `:latest` on every release; the registry history (legacy namespaces,
+backfills) lives in ADR-0031.
 
 ## Upgrades & uninstall
 
