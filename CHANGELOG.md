@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- fix(api): tag-contract violations on `/ingest-url` and `/ingest-document` now return `422` with the contract error message instead of a raw `500` (#422/#432 class — same mapping discipline as `POST /memories`).
+
 ## [5.5.0] — 2026-10-05
 
 ### Added
