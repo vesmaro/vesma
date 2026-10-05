@@ -272,18 +272,24 @@ def _install_component_venv(manifest: ComponentManifest, report: list[str]) -> P
     return venv_dir
 
 
+def _systemctl_path() -> str | None:
+    """Resolved ``systemctl`` executable, or None when absent (no systemd)."""
+    return shutil.which("systemctl")
+
+
 def _daemon_reload() -> str:
     """Best-effort ``systemctl --user daemon-reload`` (never fatal)."""
+    systemctl = _systemctl_path()
+    if systemctl is None:
+        return "skipped: systemctl not found (no systemd on this machine)"
     try:
         result = subprocess.run(  # nosec B603 - fixed argv, no shell
-            ["systemctl", "--user", "daemon-reload"],
+            [systemctl, "--user", "daemon-reload"],
             capture_output=True,
             text=True,
             timeout=15,
             check=False,
         )
-    except FileNotFoundError:
-        return "skipped: systemctl not found (no systemd on this machine)"
     except subprocess.TimeoutExpired:
         return "skipped: systemctl timed out"
     if result.returncode != 0:
@@ -382,16 +388,17 @@ def engine_venv() -> Path:
 
 def _systemctl_user(args: list[str]) -> str:
     """Best-effort ``systemctl --user <args>``; returns a status note."""
+    systemctl = _systemctl_path()
+    if systemctl is None:
+        return "skipped: systemctl not found"
     try:
         result = subprocess.run(  # nosec B603 - fixed argv, no shell
-            ["systemctl", "--user", *args],
+            [systemctl, "--user", *args],
             capture_output=True,
             text=True,
             timeout=15,
             check=False,
         )
-    except FileNotFoundError:
-        return "skipped: systemctl not found"
     except subprocess.TimeoutExpired:
         return "skipped: systemctl timed out"
     if result.returncode != 0:
