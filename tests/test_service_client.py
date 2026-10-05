@@ -22,7 +22,6 @@ from typer.testing import CliRunner
 
 from tests.control_fakes import FakeBackend
 from tests.test_service_control import RunningServer
-from vesmaro.cli.service import _load_supervisor
 from vesmaro.service.client import (
     FOLLOW_READ_TIMEOUT_S,
     ControlClient,
@@ -384,12 +383,3 @@ def test_cli_service_preflight_failure_prints_fix_command(tmp_path: Path) -> Non
     assert "pre-flight" in flat
     assert "chmod 0700" in flat
 
-
-def test_cli_run_without_w2_supervisor_fails_cleanly() -> None:
-    if _load_supervisor() is not None:  # pragma: no cover - post-W2-merge world
-        pytest.skip("W2 merged: the run failure path below is not applicable")
-    from vesmaro.cli.main import app
-
-    result = CliRunner().invoke(app, ["service", "run"])
-    assert result.exit_code == 1
-    assert "supervisor module is not part of this build" in " ".join(result.output.split())

@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, NoReturn, TypeVar
@@ -38,12 +37,7 @@ from vesmaro.service.client import (
     SocketUnavailableError,
     control_socket_path,
 )
-from vesmaro.service.control import (
-    MAX_TAIL,
-    ControlBackend,
-    ControlServer,
-    UnknownComponentError,
-)
+from vesmaro.service.control import MAX_TAIL
 from vesmaro.service.errors import ManifestError
 from vesmaro.service.install import InstallError, install, uninstall
 
@@ -268,58 +262,6 @@ def logs(
 # ── verb: run — the supervisor entrypoint (server side) ───────────────
 
 
-class _SupervisorRunBackend:
-    """W3 seam backend over the W2 Supervisor (replaced by the W6 adapter).
-
-    Today's Supervisor exposes the whole-installation surface
-    (``snapshot()``/``global_health``) plus installation-wide start; the
-    per-component verbs and log streaming need the W6 adapter. Missing
-    mappings raise, which the server maps to error 500 with the reason in
-    the supervisor log (never in client-visible data — §4.6 hygiene).
-    """
-
-    def __init__(self, supervisor: Any) -> None:
-        self._supervisor = supervisor
-
-    def component_status(self, component: str | None) -> dict[str, Any]:
-        snapshot: dict[str, Any] = dict(self._supervisor.snapshot())
-        if component is None:
-            return snapshot
-        components = snapshot.get("components", {})
-        if component not in components:
-            raise UnknownComponentError(component)
-        return {"components": {component: components[component]}}
-
-    def health(self, component: str | None) -> dict[str, Any]:
-        raise RuntimeError("health aggregation requires the W6 supervisor adapter")
-
-    def start_component(self, component: str) -> str:
-        raise RuntimeError("per-component start requires the W6 supervisor adapter")
-
-    def stop_component(self, component: str, *, force: bool) -> str:
-        raise RuntimeError("per-component stop requires the W6 supervisor adapter")
-
-    def restart_component(self, component: str) -> str:
-        raise RuntimeError("per-component restart requires the W6 supervisor adapter")
-
-    def component_logs(self, component: str, *, tail: int) -> list[str]:
-        raise RuntimeError("log serving requires the W6 supervisor adapter")
-
-    def stream_logs(self, component: str, *, tail: int) -> Any:
-        raise RuntimeError("log streaming requires the W6 supervisor adapter")
-
-
-def _load_supervisor() -> type[Any] | None:
-    """The documented ``vesmaro.service.Supervisor`` export (W2 branch).
-
-    Dynamic lookup on purpose: this branch predates the W2 merge, and the
-    import surface stays stable across the merge.
-    """
-    import vesmaro.service as service_pkg
-
-    return getattr(service_pkg, "Supervisor", None)
-
-
 def _load_manifests() -> dict[str, Any]:
     """Installation manifests; the bundled pack when nothing is installed."""
     from vesmaro.service import load_bundled_manifest, load_installation
@@ -336,18 +278,26 @@ def run(
     socket: Annotated[
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
+    config: Annotated[
+        str | None,
+        typer.Option("--config", "-c", help="Path to config.yaml (bind/port of the core API)."),
+    ] = None,
 ) -> None:
-    """Run the supervisor: own the control socket and the component tree.
+    """Run the vesma service: supervisor + control socket + in-process core.
+
+    The memory-server core (the same app ``vesma serve`` runs) is embedded
+    IN THIS PROCESS as the supervisor's own heart (service-lifecycle v1
+    §3.1): death of the core = death of the supervisor (fail-fast, exit 1,
+    the systemd unit restarts — there is deliberately no core-restart
+    mechanism). Board and children come from their manifests.
 
     Single-instance: when a live supervisor already answers on the socket,
     exits 0 with a message (control-socket v1 §4.2 step 2).
     """
-    supervisor_cls = _load_supervisor()
-    if supervisor_cls is None:
-        _fail(
-            "the supervisor module is not part of this build yet (wave W2 not merged); "
-            "`vesma service run` becomes available once vesmaro.service exports Supervisor"
-        )
+    from vesmaro.config import load_settings
+    from vesmaro.logging_setup import setup_logging
+    from vesmaro.service.backend import CoreStartupError, ServiceApp
+
     try:
         manifests = _load_manifests()
     except Exception as exc:
@@ -355,26 +305,37 @@ def run(
     if not manifests:
         _fail("no component manifests found — install components first (wave W4)")
 
-    supervisor = supervisor_cls(manifests)
-    backend: ControlBackend = _SupervisorRunBackend(supervisor)
-    server = ControlServer(backend, log=logger)
+    settings = load_settings(config)
+    setup_logging(settings)
+    host, port = settings.api.host, settings.api.port
+    if settings.runtime.uvicorn_workers != 1:
+        # The in-process core is ONE process by contract (SL §3.1); the
+        # multiprocess serve profile does not apply here — say so loudly.
+        console.print(
+            "[yellow]warning[/yellow] runtime.uvicorn_workers="
+            f"{settings.runtime.uvicorn_workers} ignored by `service run`: "
+            "the in-process core is always single-process (workers=1)"
+        )
+
+    app = ServiceApp(manifests, socket_path=socket, core_bind=(host, port), log=logger)
     try:
-        outcome = server.bind() if socket is None else server.bind_at(socket)
+        outcome = app.bind()
     except Exception as exc:
         _fail(f"control socket bind failed: {exc}")
     if outcome.status == "already-running":
         console.print(f"vesma service is already running (socket: {outcome.path})")
         raise typer.Exit(code=0)
-    supervisor.start()
-    console.print(f"vesma service running (socket: {outcome.path}, pid: {os.getpid()})")
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        console.print("shutdown requested (SIGINT)")
-    finally:
-        server.stop()
-        supervisor.request_shutdown()
-        time.sleep(0.2)  # grace for the reaper thread; W6 refines the join
+        app.start()
+    except CoreStartupError as exc:
+        _fail(str(exc))
+    core_part = f", core: http://{host}:{port}"
+    if app.core_port is not None:  # port 0 resolved to the ephemeral port
+        core_part = f", core: http://{host}:{app.core_port}"
+    console.print(f"vesma service running (socket: {outcome.path}, pid: {os.getpid()}{core_part})")
+    code = app.wait()
+    console.print(f"vesma service stopped (exit code: {code})")
+    raise typer.Exit(code=code)
 
 
 if __name__ == "__main__":  # pragma: no cover — manual invocation
