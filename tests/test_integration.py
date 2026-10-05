@@ -2272,6 +2272,12 @@ class TestInstructionPack:
         # (c) report block, (d) forensics gate.
         assert "Обстановка вокруг" in text, "the report block must be canon"
         assert "unknown actor" in text, "forensics sweep must gate the unknown-actor claim"
+        # SEC clauses (ArchCom 2026-10-05 amendment, mandatory).
+        assert "BY REFERENCE only" in text, "foreign-session content quoted by reference"
+        assert "CWE-74" in text, "the injection surface must be named"
+        assert "[unverified]" in text, "peer claims carry unverified markers"
+        assert "in MEMORY only" in text, "0-traces scoped to memory-only"
+        assert "mnemos:no-federate" in text, "awareness-derived records born no-federate"
 
     def test_always_on_agents_md_awareness_canon(self) -> None:
         """The always-loaded block carries the tightened G1/G4 rows and the report block."""
@@ -2285,6 +2291,11 @@ class TestInstructionPack:
         assert "vesma_awareness" in text, "always-on G1 row must name the pre-flight"
         assert "Обстановка вокруг" in text, "always-on must pin the report block"
         assert "unknown actor" in text, "always-on must pin the forensics gate"
+        # SEC clauses survive the compression (ArchCom 2026-10-05 amendment).
+        assert "BY REFERENCE" in text, "always-on must pin by-reference quoting"
+        assert "[unverified]" in text, "always-on must pin unverified markers"
+        assert "in MEMORY only" in text, "always-on must pin the 0-traces scope"
+        assert "mnemos:no-federate" in text, "always-on must pin the no-federate tag"
 
 
 class TestCanonPack:
