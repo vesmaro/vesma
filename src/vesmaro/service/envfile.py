@@ -25,6 +25,9 @@ from vesmaro.service.layout import components_dir
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Reserved keys — never settable through an env file (see the parse loop).
+_RESERVED_KEYS = frozenset({"PATH"})
+
 
 def _fix_chmod(path: Path) -> str:
     return f"chmod 600 {path}"
@@ -142,6 +145,25 @@ def load_env_file(
                 f"$.launch.env.env_file[{line_no}]",
                 f"env_file {env_path} line {line_no}: invalid variable name {key!r}",
                 fix_hint=f"fix or remove line {line_no} in {env_path}",
+            )
+        # Reserved keys (cascade 2026-10-05 P2-D): PATH is constructed
+        # canonically by the supervisor (SL-13 / SL §3.2) — a file-supplied
+        # PATH would silently override it. This TIGHTENS beyond the spec
+        # letter (the spec bans PATH only in launch.env.vars); flagged as a
+        # candidate clarification for specs draft.3.
+        if key in _RESERVED_KEYS:
+            raise ManifestError(
+                ENV_FILE_UNSAFE,
+                f"$.launch.env.env_file[{line_no}].{key}",
+                f"env_file {env_path} line {line_no}: {key} is reserved — the "
+                "supervisor constructs the child PATH from the component venv "
+                "bin dir + the fixed system string (SL-13); a file-supplied "
+                "PATH would override the canonical constructed one",
+                fix_hint=(
+                    f"move PATH out of {env_path} (the canonical constructed "
+                    "PATH is contractual; add path entries to the component "
+                    "venv or a launcher wrapper)"
+                ),
             )
         values[key] = value.strip()
     return values

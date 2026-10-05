@@ -30,8 +30,15 @@ config:
     properties:
       bind:
         type: string
+        # Loopback-only is the v1 security posture (public-bind edge):
+        # anything else fails config validation and REFUSES the start
+        # (CONFIG_INVALID, fail-closed). Widening the bind is an explicit
+        # config change for a future wave — never a schema afterthought.
+        # IPv6 loopback: bare "::1" (default port) or the bracketed
+        # "[::1]:<port>" form; a colon-separated port is optional otherwise.
+        pattern: "^((localhost|127\\.0\\.0\\.1)(:[0-9]{1,5})?|::1|\\[::1\\](:[0-9]{1,5})?)$"
         default: "127.0.0.1:8080"
-        description: "Адрес, который слушает board."
+        description: "Адрес, который слушает board (только loopback, v1)."
       log_level:
         type: string
         enum: [debug, info, warn, error]
