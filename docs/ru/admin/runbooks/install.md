@@ -116,5 +116,5 @@ pip install --upgrade vesma
 ```bash
 vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
 vesma search "Hello"
-vesma recall --agent manual --project test
+vesma recall agent manual --project test
 ```

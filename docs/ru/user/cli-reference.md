@@ -22,7 +22,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 |------------|------------ |
 | [`add`](#add) | Создать новую запись в памяти |
 | [`search`](#search) | Гибридный поиск FTS5 + вектор |
-| [`recall`](#recall) | Список последних записей, опционально по агенту / проекту |
+| [`recall`](#recall) | Список последних записей; `recall agent` сужает до одного агента |
 | [`tags validate`](#tags-validate) | Проверить контракт тегов по всему vault |
 | [`tags audit`](#tags-audit) | Найти нарушения контракта тегов; `--apply` лечит (только добавление) |
 | [`workflow`](#workflow) | Жизненный цикл записи: `get` / `set` / `history` |
@@ -183,7 +183,7 @@ vesma search "decision" --limit 50
 
 ## `recall`
 
-Список последних записей, опционально ограниченный агентом (M3) и/или проектом.
+Список последних записей, опционально ограниченный проектом. Per-agent recall — сабкоманда `recall agent` (реструктуризация CLI W2: сабкоманда называет функцию, флаг только конфигурирует).
 
 ```text
 vesma recall [OPTIONS]
@@ -192,11 +192,26 @@ vesma recall [OPTIONS]
 | Опция | По умолчанию | Описание |
 |-------|-------------|---------- |
 | `--project / -p` | — | Slug проекта для фильтрации. |
-| `--agent / -a` | — | Slug агента для фильтрации. Активирует per-agent recall M3. |
 | `--limit / -l` | `10` | Максимум результатов. |
 | `--config / -c` | — | Путь к `config.yaml`. |
 
-Когда `--agent` передан **без** запроса, результат — N последних записей этого агента, упорядоченных по `created_at desc`. Это те же данные, которые возвращает MCP-инструмент [`mnemos_agent_recall`](mcp-tools.md#mnemos_agent_recall).
+Легаси-флаг `--agent / -a` продолжает работать как hidden deprecated-алиас — поведение то же, плюс однострочный хинт `[deprecated]` в stderr. Используйте `vesma recall agent`; удаление флага — не раньше 6.0.
+
+### `recall agent`
+
+Per-agent recall (M3): записи одного агента, опционально с запросом. Это те же данные, которые возвращает MCP-инструмент [`mnemos_agent_recall`](mcp-tools.md#mnemos_agent_recall).
+
+```text
+vesma recall agent SLUG [QUERY] [OPTIONS]
+```
+
+| Аргумент / Опция | По умолчанию | Описание |
+|------------------|-------------|---------- |
+| `SLUG` | — | Slug агента для выборки. |
+| `QUERY` | — | Опциональный запрос — гибридный поиск по записям агента (raw включительно). Без него: N последних записей агента, упорядоченных по `created_at desc`. |
+| `--project / -p` | — | Slug проекта для фильтрации. |
+| `--limit / -l` | `10` | Максимум результатов. |
+| `--config / -c` | — | Путь к `config.yaml`. |
 
 ### Примеры
 
@@ -205,10 +220,13 @@ vesma recall [OPTIONS]
 vesma recall
 
 # Per-agent recall (M3)
-vesma recall --agent tech-writer
+vesma recall agent tech-writer
+
+# Per-agent recall с запросом
+vesma recall agent sre "deploy checklist"
 
 # Комбинированный
-vesma recall --agent sre --project vesma --limit 25
+vesma recall agent sre --project vesma --limit 25
 ```
 
 ---

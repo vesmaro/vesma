@@ -106,5 +106,5 @@ The store schema is migrated automatically on first start of the new version. Ba
 ```bash
 vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
 vesma search "Hello"
-vesma recall --agent manual --project test
+vesma recall agent manual --project test
 ```
