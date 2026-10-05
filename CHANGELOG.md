@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- fix(codegraph): `search_graph` `total_matches` now counts the WHOLE answer set — when the hybrid literal fallback (W-H) answers, it reports the number of literal rows returned instead of a false `total_matches: 0` on a non-empty result (card `vesma-graph-roughness-repeat1`, vitals repeat #1).
+- fix(codegraph): `trace_path` on an identical-qname collision (the same top-level symbol name in several files) now answers the ambiguity contract — a ranked candidate list with a path/line disambiguation hint — instead of silently tracing the first node (card `vesma-graph-roughness-repeat1`, vitals repeat #1).
 - fix(api): tag-contract violations on `/ingest-url` and `/ingest-document` now return `422` with the contract error message instead of a raw `500` (#422/#432 class — same mapping discipline as `POST /memories`).
 
 ## [5.5.0] — 2026-10-05

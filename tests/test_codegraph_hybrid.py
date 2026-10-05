@@ -6,7 +6,9 @@ Contract pins:
 * search_graph stays symbol-first and backward compatible — symbol rows
   carry ``match_kind: "symbol"`` and the ``fallback_used`` marker is
   PRESENT ONLY when the literal leg ran (shape policy: absent, never
-  null/empty);
+  null/empty); ``total_matches`` counts the WHOLE answer set — a
+  non-empty literal leg is never reported as ``total_matches: 0``
+  (card vesma-graph-roughness-repeat1);
 * the literal leg is confinement-bound (the REGISTERED root only,
   denied trees/names never opened), bounded (file/time/match caps), and
   PG4-redacted: a secret-detected literal row is DROPPED — raw secret
@@ -15,9 +17,11 @@ Contract pins:
 * the ``code_graph.literal_fallback`` knob (default ON) disables the
   leg;
 * trace_path: exact qname byte-identical to the pre-W-H tool, a UNIQUE
-  bare tail traces directly, an AMBIGUOUS tail answers a ranked
-  candidate list (helpful payload, NOT an error), a missing symbol
-  stays a clear not-found refusal.
+  bare tail traces directly, an AMBIGUOUS tail — and an IDENTICAL-qname
+  collision (same qname, several files; card
+  vesma-graph-roughness-repeat1) — answers a ranked candidate list
+  (helpful payload, NOT an error), a missing symbol stays a clear
+  not-found refusal.
 """
 
 from __future__ import annotations
@@ -118,6 +122,18 @@ def _dup_repo(tmp_path: Path, *, ambiguous: bool) -> Path:
     return root
 
 
+def _collision_repo(tmp_path: Path) -> Path:
+    """A repo with an IDENTICAL-qname collision: the same top-level
+    function name defined in two files — both nodes carry the same
+    bare qname (the vitals repeat #1 case, ``get_manager`` x4)."""
+    root = tmp_path / "collisionrepo"
+    root.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'collisionrepo'\n", encoding="utf-8")
+    (root / "a.py").write_text("def reload():\n    return 1\n", encoding="utf-8")
+    (root / "b.py").write_text("def reload():\n    return 2\n", encoding="utf-8")
+    return root
+
+
 @pytest.fixture
 def lit_service(tmp_path: Path) -> Iterator[CodeGraphService]:
     svc, _ = make_service(tmp_path, _hybrid_repo(tmp_path))
@@ -142,10 +158,12 @@ class TestLiteralFallbackSearch:
         try:
             svc.index_project(PROJECT, agent=AGENT)
             result = svc.search_graph(PROJECT, LITERAL_TOOL_NAME, agent=AGENT)
-            # The symbol graph has ZERO hits — the fallback answers.
-            assert result["total_matches"] == 0
+            # The symbol graph has ZERO hits — the fallback answers, and
+            # total_matches counts the literal rows it returned (card
+            # vesma-graph-roughness-repeat1: a non-empty fallback is
+            # never reported as total_matches: 0).
             assert result["fallback_used"] is True
-            assert len(result["results"]) == 1
+            assert result["total_matches"] == len(result["results"]) == 1
             row = result["results"][0]
             assert row["match_kind"] == "literal"
             assert row["path"] == "server.py"
@@ -153,6 +171,21 @@ class TestLiteralFallbackSearch:
             assert LITERAL_TOOL_NAME in row["snippet"]
             # Literal rows carry no fake node identity.
             assert "id" not in row and "qname" not in row
+        finally:
+            svc.close()
+
+    def test_literal_multi_row_count_covers_all_rows(self, tmp_path: Path) -> None:
+        # Regression pin (card vesma-graph-roughness-repeat1): with
+        # several literal rows, total_matches reflects ALL of them.
+        repo = _literal_repo(tmp_path)
+        (repo / "extra.py").write_text(f'X = "{LITERAL_TOOL_NAME}"\n', encoding="utf-8")
+        svc, _ = make_service(tmp_path, repo)
+        try:
+            svc.index_project(PROJECT, agent=AGENT)
+            result = svc.search_graph(PROJECT, LITERAL_TOOL_NAME, agent=AGENT)
+            assert result["fallback_used"] is True
+            assert result["total_matches"] == len(result["results"]) == 2
+            assert all(r["match_kind"] == "literal" for r in result["results"])
         finally:
             svc.close()
 
@@ -255,7 +288,7 @@ class TestLiteralFallbackSearch:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["total_matches"] == 0
+        assert body["total_matches"] == 1
         assert body["fallback_used"] is True
         row = body["results"][0]
         assert row["match_kind"] == "literal"
@@ -354,6 +387,52 @@ class TestTraceTailResolution:
             assert result["candidates"] is True
             assert result["candidate_count"] == 12
             assert len(result["candidate_list"]) == 10
+        finally:
+            svc.close()
+
+    def test_identical_qname_collision_returns_candidates_not_first_pick(
+        self, tmp_path: Path
+    ) -> None:
+        # Card vesma-graph-roughness-repeat1: the same top-level function
+        # name in two files shares ONE qname — trace_path must answer the
+        # ambiguity contract (candidates), never silently trace the first.
+        repo = _collision_repo(tmp_path)
+        svc, _ = make_service(tmp_path, repo)
+        try:
+            svc.index_project(PROJECT, agent=AGENT)
+            result = svc.trace_path(PROJECT, "reload", agent=AGENT)
+            assert result["candidates"] is True
+            assert result["candidate_count"] == 2
+            qnames = {row["qname"] for row in result["candidate_list"]}
+            assert qnames == {"reload"}  # ONE qname, several files
+            paths = [row["path"] for row in result["candidate_list"]]
+            assert paths == ["a.py", "b.py"]  # deterministic (path, line) order
+            for row in result["candidate_list"]:
+                assert {"qname", "kind", "path", "start_line", "end_line"} <= set(row)
+            # The default tail hint is a dead end here — the collision
+            # hint points at the path/line disambiguator.
+            assert "identical-qname collision" in result["hint"]
+            # A helpful payload, NOT an error-shaped trace: no trace keys.
+            assert "start" not in result and "nodes" not in result and "edges" not in result
+        finally:
+            svc.close()
+
+    def test_unique_exact_qname_still_traces_despite_collision_check(
+        self, tmp_path: Path
+    ) -> None:
+        # The collision pre-check must not disturb the pre-W-H exact
+        # path: a unique qname traces byte-identically (same pin as
+        # test_exact_qname_output_byte_identical_to_unique_tail, on the
+        # collision fixture's sibling).
+        repo = _collision_repo(tmp_path)
+        (repo / "c.py").write_text("def unique_name():\n    return 3\n", encoding="utf-8")
+        svc, _ = make_service(tmp_path, repo)
+        try:
+            svc.index_project(PROJECT, agent=AGENT)
+            result = svc.trace_path(PROJECT, "unique_name", agent=AGENT)
+            assert "candidates" not in result
+            assert result["start"] == "unique_name"
+            assert result["nodes"][0]["depth"] == 0
         finally:
             svc.close()
 

@@ -209,6 +209,9 @@ Behavior:
   node ids — they are file content, not graph nodes. A top-level
   `fallback_used: true` marker appears ONLY when the fallback ran (absent
   otherwise — the shape never carries null placeholders).
+  `total_matches` counts the whole answer: when the fallback answers, it
+  equals the number of literal rows returned (a non-empty fallback is
+  never reported as 0).
 - **Bounded.** The scan reuses the indexer's surface denylists
   (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles,
   secret-bearing file names are never opened), never follows symlinks,
@@ -326,7 +329,7 @@ purges only the derived index.
 | `mnemos_index_project` | Full or incremental index of a registered root; serialized per project |
 | `mnemos_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
 | `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H) |
-| `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails answer a candidate list (W-H) |
+| `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails and identical-qname collisions answer a candidate list (W-H) |
 | `mnemos_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
 | `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
 | `mnemos_check_graph_coverage` | Per-path verdict: `indexed` / `stale` / `parse-error` / `unindexed` / `poisoned` |
