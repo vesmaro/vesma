@@ -637,6 +637,21 @@ class _FollowCounters:
             self.total = max(0, self.total - 1)
 
 
+# §4.6 error-data hygiene for ``StartFailedError.reason``: backend code
+# may attach arbitrary text; only a short lowercase token may reach
+# client-visible data (names/tokens only — never paths/env/argv).
+START_REASON_RE = re.compile(r"[a-z0-9_.-]{0,64}")
+
+
+def client_safe_start_reason(reason: str) -> str:
+    """Collapse an adversarial ``StartFailedError.reason`` to a safe token.
+
+    Anything outside ``[a-z0-9_.-]{0,64}`` (uppercase, spaces, control
+    chars, free text) is replaced by the neutral ``"start-failed"``.
+    """
+    return reason if START_REASON_RE.fullmatch(reason) else "start-failed"
+
+
 class ControlServer:
     """JSONL request server over one bound AF_UNIX control socket."""
 
@@ -725,6 +740,11 @@ class ControlServer:
                 daemon=True,
             )
             with self._conns_lock:
+                # Prune finished connection threads on every accept — the
+                # accept loop is the list's only writer. Without this the
+                # list grows without bound under steady polling (~100 MB
+                # /day at 1 Hz; cascade 2026-10-05, P2-1).
+                self._conns[:] = [t for t in self._conns if t.is_alive()]
                 self._conns.append(thread)
             thread.start()
         self._cleanup()
@@ -895,7 +915,9 @@ class ControlServer:
             )
         except StartFailedError as exc:
             return _ProtoErrorReply(
-                ERR_START_FAILED, str(exc), {"component": exc.component, "reason": exc.reason}
+                ERR_START_FAILED,
+                str(exc),
+                {"component": exc.component, "reason": client_safe_start_reason(exc.reason)},
             )
         except StopTimeoutError as exc:
             return _ProtoErrorReply(ERR_STOP_TIMEOUT, str(exc), {"component": exc.component})
@@ -936,24 +958,32 @@ class ControlServer:
                     f"{self._max_follows_total} per installation)",
                 ),
             )
+        # One try/finally from acquire onward: a failed stream OPEN
+        # (unknown component, backend crash) must release the slot too —
+        # otherwise ghost follows accumulate and a legitimate follow hits
+        # the per-peer limit (cascade 2026-10-05, P1).
+        stream: LogStream | None = None
         try:
-            stream = self._backend.stream_logs(component, tail=tail)
-        except UnknownComponentError as exc:
-            return self._reply(
-                conn,
-                request.id,
-                _ProtoErrorReply(ERR_UNKNOWN_COMPONENT, str(exc), {"component": component}),
-            )
-        except Exception:
-            self._log.exception("control: internal error opening follow for %s", component)
-            return self._reply(conn, request.id, _ProtoErrorReply(ERR_INTERNAL, "internal error"))
-        self._log.info("control: follow open component=%s peer=%s", component, peer_key)
-        try:
+            try:
+                stream = self._backend.stream_logs(component, tail=tail)
+            except UnknownComponentError as exc:
+                return self._reply(
+                    conn,
+                    request.id,
+                    _ProtoErrorReply(ERR_UNKNOWN_COMPONENT, str(exc), {"component": component}),
+                )
+            except Exception:
+                self._log.exception("control: internal error opening follow for %s", component)
+                return self._reply(
+                    conn, request.id, _ProtoErrorReply(ERR_INTERNAL, "internal error")
+                )
+            self._log.info("control: follow open component=%s peer=%s", component, peer_key)
             return self._pump_follow(conn, request.id, component, stream)
         finally:
-            stream.close()
+            if stream is not None:
+                stream.close()
+                self._log.info("control: follow closed component=%s peer=%s", component, peer_key)
             self._follows.release(peer_key)
-            self._log.info("control: follow closed component=%s peer=%s", component, peer_key)
 
     def _pump_follow(
         self, conn: socket.socket, frame_id: int, component: str, stream: LogStream
@@ -991,7 +1021,13 @@ class ControlServer:
 
     @staticmethod
     def _client_gone(conn: socket.socket) -> bool:
-        """True when the peer closed (EOF) or sent rogue data during follow."""
+        """True when the peer closed (EOF) or the socket is broken.
+
+        Readable PENDING bytes are deliberately NOT treated as «gone»:
+        ``MSG_PEEK`` answering non-empty keeps the pump running — the
+        follow still ends via its idle/hard-cap deadlines. Active
+        mid-follow rogue-frame rejection is a W6 hardening item.
+        """
         try:
             readable, _, _ = select.select([conn], [], [], 0)
         except (OSError, ValueError):
