@@ -299,20 +299,21 @@ async def test_auto_collect_status_touches_no_manager_data_method() -> None:
 
 
 async def test_no_brand_env_canonical_manifest_only() -> None:
-    """Without VESMARO_MCP_BRAND the manifest stays 38 canonical mnemos_ tools.
+    """Without VESMARO_MCP_BRAND the manifest is canonical mnemos_ tools only.
 
-    Ф3 (epic #308): mnemos_ingest_document joined the canonical set —
-    the count pin moved 27 → 28 with it. ADR-0032 PG-0 slice 4: the 10
-    project-graph tools joined — 28 → 38."""
+    Ф3 (epic #308): mnemos_ingest_document joined — 27 → 28. ADR-0032
+    PG-0 slice 4: the 10 project-graph tools joined — 28 → 38. Vitals
+    wave 9: mnemos_usage_report joined (the harness-authored usage-loop
+    closure tool, ADR-0026 §C) — 38 → 40 with #454's register tool."""
     with patch("vesmaro.mcp_server._MCP_BRAND", ""):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 39
+    assert len(names) == 40
     assert all(n.startswith("mnemos_") for n in names)
 
 
 async def test_brand_env_brand_primary_manifest() -> None:
-    """VESMARO_MCP_BRAND=vesmaro: manifest is brand-primary — 38 vesmaro_* names ONLY.
+    """VESMARO_MCP_BRAND=vesmaro: manifest is brand-primary — vesmaro_* names ONLY.
 
     Owner ruling 2026-10-01: a doubled mnemos_*/brand_* manifest confuses
     clients. Legacy mnemos_* spellings leave the manifest but stay accepted
@@ -323,7 +324,7 @@ async def test_brand_env_brand_primary_manifest() -> None:
     with patch("vesmaro.mcp_server._MCP_BRAND", "vesmaro"):
         tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 39
+    assert len(names) == 40
     assert all(n.startswith("vesmaro_") for n in names)
     assert not any(n.startswith("mnemos_") for n in names)
     assert "vesmaro_search" in names
@@ -365,11 +366,11 @@ async def test_brand_self_alias_and_invalid_brand_rejected() -> None:
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "mnemos"):
         tools = await list_tools()
-    assert len(tools) == 39  # no doubling
+    assert len(tools) == 40  # no doubling
 
     with patch("vesmaro.mcp_server._MCP_BRAND", "Bad Brand!"):
         tools = await _canonical_tools()
-    assert len(tools) == 39  # malformed brand is a no-op
+    assert len(tools) == 40  # malformed brand is a no-op
 
 
 async def test_vesma_mcp_brand_canonical_env_read() -> None:
@@ -385,7 +386,7 @@ async def test_vesma_mcp_brand_canonical_env_read() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 39
+    assert len(names) == 40
     assert all(n.startswith("vesma_") for n in names)
 
 
@@ -404,7 +405,7 @@ async def test_vesma_brand_wins_over_deprecated_vesmaro() -> None:
     names = [t.name for t in tools]
     ves_aliases = [n for n in names if n.startswith("vesma_")]
     vesmaro_aliases = [n for n in names if n.startswith("vesmaro_")]
-    assert len(ves_aliases) == 39
+    assert len(ves_aliases) == 40
     assert not vesmaro_aliases
     assert not any(n.startswith("mnemos_") for n in names)
     # restore
@@ -421,7 +422,7 @@ async def test_vesmaro_brand_env_deprecated_alias_still_works() -> None:
         importlib.reload(mcp)
         tools = await mcp.list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 39
+    assert len(names) == 40
     assert all(n.startswith("vesmaro_") for n in names)
     importlib.reload(mcp)
 
