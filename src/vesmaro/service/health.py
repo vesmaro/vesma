@@ -156,11 +156,16 @@ class ReapRecord(Protocol):
     """What the supervisor's reaper knows about one reaped process.
 
     Structural subset of :class:`vesmaro.service.supervisor.ExitRecord`
-    (kept local: health must not import the supervisor).
+    (kept local: health must not import the supervisor). Read-only
+    properties: protocol attributes must be covariant for ExitRecord to
+    satisfy the shape.
     """
 
-    code: int | None  # None when the process died by signal
-    signal_name: str | None
+    @property
+    def code(self) -> int | None: ...  # None when the process died by signal
+
+    @property
+    def signal_name(self) -> str | None: ...
 
 
 class ExecChecker:
@@ -201,7 +206,7 @@ class ExecChecker:
             return ProbeResult(False, f"exec probe error: {exc.__class__.__name__}")
         if self._reap is None:
             return self._self_wait(process)
-        return self._reaper_wait(process)
+        return self._reaper_wait(process, self._reap)
 
     def _self_wait(self, process: subprocess.Popen[bytes]) -> ProbeResult:
         try:
@@ -212,10 +217,14 @@ class ExecChecker:
             return ProbeResult(False, "exec probe timeout")
         return ProbeResult(code == 0, f"exec rc={code}")
 
-    def _reaper_wait(self, process: subprocess.Popen[bytes]) -> ProbeResult:
+    def _reaper_wait(
+        self,
+        process: subprocess.Popen[bytes],
+        reap: Callable[[int], ReapRecord | None],
+    ) -> ProbeResult:
         deadline = time.monotonic() + self._timeout_s
         while True:
-            record = self._reap(process.pid)
+            record = reap(process.pid)
             if record is not None:
                 if record.code is not None:
                     return ProbeResult(record.code == 0, f"exec rc={record.code}")
