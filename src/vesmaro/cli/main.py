@@ -1973,8 +1973,9 @@ app.add_typer(graph_app, name="graph")
 # ExecStart depends on them).
 app.add_typer(update_app, name="update")
 
-# ── service (engine waves W3/W4 — install/uninstall now; the supervisor
-#    surface status/logs/start/stop/restart/run lands in W3) ─────────────
+# ── service (engine waves W3/W4, one sub-app) — install/uninstall (W4)
+#    plus the supervisor control plane status/health/start/stop/restart/
+#    logs/run (W3, control-socket v1) ──────────────────────────────────
 
 from vesmaro.cli.service import service_app  # noqa: E402
 
