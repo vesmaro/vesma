@@ -20,6 +20,7 @@ from vesmaro.service import install as install_mod
 from vesmaro.service import layout, unitgen
 from vesmaro.service.errors import CLAMP_VIOLATION, MANIFEST_SCHEMA_INVALID, ManifestError
 from vesmaro.service.install import InstallError, install, uninstall
+from vesmaro.service.manifest import load_bundled_manifest
 
 
 @pytest.fixture
@@ -408,3 +409,189 @@ class TestPinPolicy:
         monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
         with pytest.raises(InstallError, match="no requirement set"):
             install()
+
+
+# ── Reinstall must not launder freeze-drift (P1) ──────────────────────
+
+
+def _stub_pip(
+    monkeypatch: pytest.MonkeyPatch, freeze_outputs: list[str] | str
+) -> list[list[str]]:
+    """Replace the pip leg: ``install`` is a no-op, ``freeze`` emits the
+    given output(s) — a single string repeats on every call (a matching
+    venv freezes twice: drift probe + verify), a list is consumed in
+    order. Offline — no PyPI, no network, ever."""
+    calls: list[list[str]] = []
+    repeat = isinstance(freeze_outputs, str)
+    ordered = [] if repeat else list(freeze_outputs)
+
+    def fake_run_pip(venv_dir: Path, args: list[str]) -> str:
+        calls.append(list(args))
+        if args[0] == "install":
+            return ""
+        if repeat:
+            return freeze_outputs
+        return ordered.pop(0)
+
+    monkeypatch.setattr(install_mod, "_run_pip", fake_run_pip)
+    return calls
+
+
+def _fake_venv_tree(name: str) -> Path:
+    """Minimal venv shape (bin/python present) — nothing executes it."""
+    venv_dir = layout.component_venv_dir(name)
+    bin_dir = venv_dir / "bin"
+    bin_dir.mkdir(parents=True)
+    python = bin_dir / "python"
+    python.write_text("#!/bin/true\n", encoding="utf-8")
+    python.chmod(0o755)
+    return venv_dir
+
+
+class TestReinstallDriftRebuild:
+    """P1: reinstall compares the EXISTING venv's freeze against the
+    EXISTING lock FIRST; on drift the venv is rebuilt from scratch — an
+    operator's hand `pip install` never becomes canon via the fix command."""
+
+    def test_drifted_venv_is_rebuilt_not_kept(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
+        from vesmaro import __version__
+
+        drifted = f"pip==99.0\nvesma=={__version__}\nforeign-pkg==1.0\n"
+        clean = f"pip==99.0\nvesma=={__version__}\n"
+        calls = _stub_pip(monkeypatch, [drifted, clean])
+
+        # A REAL venv (offline `python -m venv`) carrying a foreign marker,
+        # with a stale lock from before the hand install.
+        layout.ensure_dir(layout.data_root() / "venvs", layout.MODE_DIR_DEFAULT)
+        venv_dir = install_mod._create_component_venv("metrics")
+        marker = venv_dir / "foreign-marker.txt"
+        marker.write_text("hand installed", encoding="utf-8")
+        lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(clean, encoding="utf-8")  # pre-hand-install lock
+
+        result = install_mod.install()
+
+        # The venv was rmtree'd and rebuilt from scratch: foreign gone.
+        assert not marker.exists()
+        assert (venv_dir / "bin" / "python").exists()  # real fresh venv
+        # The lock is the freeze of the REBUILT venv — the hand package is
+        # not canon and did not enter the new lock.
+        assert lock_path.read_text(encoding="utf-8") == clean
+        assert any("rebuilding" in line for line in result.lines)
+        # freeze (drift probe) -> install -> freeze (verify) — exactly once each.
+        assert calls == [
+            ["freeze", "--disable-pip-version-check"],
+            ["install", "--disable-pip-version-check", "--no-input", f"vesma=={__version__}"],
+            ["freeze", "--disable-pip-version-check"],
+        ]
+
+    def test_matching_venv_is_kept(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
+        from vesmaro import __version__
+
+        clean = f"pip==99.0\nvesma=={__version__}\n"
+        _stub_pip(monkeypatch, clean)
+
+        layout.ensure_dir(layout.data_root() / "venvs", layout.MODE_DIR_DEFAULT)
+        venv_dir = install_mod._create_component_venv("metrics")
+        marker = venv_dir / "first-run-marker.txt"
+        marker.write_text("survives", encoding="utf-8")
+        lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(clean, encoding="utf-8")
+
+        result = install_mod.install()
+
+        assert marker.exists()  # freeze matched the lock — the venv was kept
+        assert not any("rebuilding" in line for line in result.lines)
+        assert lock_path.read_text(encoding="utf-8") == clean
+
+
+# ── Verify-after-install leg runs against a stubbed pip (P2-b) ────────
+
+
+class TestVerifyAfterInstall:
+    """The REAL `_install_component_venv` (pip stubbed, fully offline):
+    a freeze matching the required pins passes and writes the lock; a
+    mismatching freeze fails LOUDLY with the ready fix command."""
+
+    def test_matching_freeze_passes_and_writes_lock(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
+        from vesmaro import __version__
+
+        good = f"pip==99.0\nvesma=={__version__}\n"
+        _stub_pip(monkeypatch, good)
+        _fake_venv_tree("metrics")
+        lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(good, encoding="utf-8")  # freeze == lock: venv kept
+
+        report: list[str] = []
+        venv_dir = install_mod._install_component_venv(load_bundled_manifest("metrics"), report)
+
+        assert venv_dir == layout.component_venv_dir("metrics")
+        assert lock_path.read_text(encoding="utf-8") == good  # full freeze as the lock
+        assert any(line.startswith("venv: metrics") for line in report)
+
+    def test_mismatching_freeze_fails_with_fix_command(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
+        from vesmaro import __version__
+
+        bad = "pip==99.0\nvesma==0.0.0\n"  # wrong vesma version vs the required pin
+        _stub_pip(monkeypatch, bad)
+        _fake_venv_tree("metrics")
+        lock_path = layout.data_dir("metrics") / "requirements-lock.txt"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(bad, encoding="utf-8")  # freeze == lock: venv kept
+
+        report: list[str] = []
+        with pytest.raises(InstallError) as excinfo:
+            install_mod._install_component_venv(load_bundled_manifest("metrics"), report)
+        message = str(excinfo.value)
+        assert "drift right after install" in message
+        assert f"vesma=={__version__} expected" in message
+        assert "freeze reports '0.0.0'" in message
+        assert "vesma service install" in message  # LY-14: the fix travels with the failure
+        assert lock_path.read_text(encoding="utf-8") == bad  # no lock laundering on failure
+
+
+# ── Uninstall --all is the operator's self-clean escape hatch (P3) ────
+
+
+class TestUninstallAllSelfClean:
+    def test_broken_components_d_warns_and_continues(self, installed: Path) -> None:
+        (layout.components_dir() / "broken.yaml").write_text(
+            "not: a: manifest:\n", encoding="utf-8"
+        )
+        env_file = layout.env_file_path("metrics")
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        env_file.write_text("METRICS_TOKEN=x\n", encoding="utf-8")
+
+        result = uninstall(remove_all=True)
+
+        assert any(line.startswith("WARN:") for line in result.lines)
+        assert list(layout.components_dir().iterdir()) == []  # broken.yaml swept too
+        assert not env_file.exists()
+        assert not layout.component_venv_dir("metrics").exists()
+        assert not (installed / ".config/systemd/user/vesma.service").exists()
+        assert layout.data_dir("board").is_dir()  # operator data preserved
+        assert layout.data_dir("metrics").is_dir()
+
+    def test_single_component_uninstall_still_fails_closed(self, installed: Path) -> None:
+        (layout.components_dir() / "broken.yaml").write_text(
+            "not: a: manifest:\n", encoding="utf-8"
+        )
+        with pytest.raises(ManifestError):
+            uninstall("board")
+        # Nothing was removed: the dependency map could not be loaded.
+        assert (layout.components_dir() / "board.yaml").exists()

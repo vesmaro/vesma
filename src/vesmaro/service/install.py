@@ -7,7 +7,10 @@ generated systemd user unit. Idempotent: re-running install regenerates
 every artifact (the threat model's answer to hand-edited units).
 
 venv discipline (layout §3.8): EXACT ``==`` pins against an
-install-generated lock, PyPI-only sources, drift check after install.
+install-generated lock, PyPI-only sources, drift check after install —
+and BEFORE reuse: an existing venv whose freeze no longer matches its
+lock is rebuilt from scratch (a hand ``pip install`` into the venv is
+never laundered into the lock by a reinstall).
 For the bundled ``metrics`` component the requirement is the engine
 package itself (``vesma==<engine version>``) — its argv runs
 ``vesmaro.metrics.exposer`` from the component venv. ``board`` is
@@ -28,9 +31,11 @@ import re
 import shutil
 import subprocess  # nosec B404 - subprocess needed for venv/pip/systemctl with fixed argv
 import sys
+import tempfile
 from pathlib import Path
 
 from vesmaro.service import layout, unitgen
+from vesmaro.service.errors import ManifestError
 from vesmaro.service.manifest import ComponentManifest, bundled_manifest_path, load_installation
 
 logger = logging.getLogger("vesmaro.service.install")
@@ -80,10 +85,18 @@ class UninstallResult:
 
 
 def _atomic_write(path: Path, data: str, mode: int) -> None:
-    """Write via a same-directory tmp file + ``os.replace`` (atomic)."""
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    """Write via a same-directory tmp file + ``os.replace`` (atomic).
+
+    The tmp file is created with ``tempfile.mkstemp`` in the TARGET
+    directory: ``O_CREAT|O_EXCL`` semantics mean a pre-placed symlink
+    can never be followed (same-uid hardening), and same-directory
+    creation keeps the rename atomic on one filesystem.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp-")
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(data, encoding="utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
         os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
@@ -167,9 +180,17 @@ def _validate_pin(line: str) -> None:
         )
 
 
-def _create_component_venv(name: str) -> Path:
-    """``python -m venv`` for one python child (0700)."""
+def _create_component_venv(name: str, *, force: bool = False) -> Path:
+    """``python -m venv`` for one python child (0700).
+
+    ``force=True`` removes an existing venv first — the reinstall answer
+    to freeze drift: a venv that no longer matches its lock is rebuilt
+    from scratch instead of being silently kept (a hand ``pip install``
+    into the venv must never become canon).
+    """
     venv_dir = layout.component_venv_dir(name)
+    if force and venv_dir.exists():
+        shutil.rmtree(venv_dir)
     if (venv_dir / "bin" / "python").exists():
         return venv_dir  # idempotent re-install: keep the existing venv
     result = subprocess.run(  # nosec B603 - fixed argv, no shell
@@ -203,11 +224,17 @@ def _run_pip(venv_dir: Path, args: list[str]) -> str:
     return result.stdout
 
 
-def _parse_pin_line(line: str) -> tuple[str, str] | None:
+def parse_pin_line(line: str) -> tuple[str, str] | None:
     """``name==version`` from one freeze/lock line; None for non-pin lines.
 
     Partition on ``==`` (not ``=``): PEP 503 names cannot contain ``=``,
     so the FIRST ``==`` separator splits name and version exactly.
+    Non-pin freeze shapes (direct-url ``pkg @ file://…``, editable
+    ``-e …``, bare names) return None — they are not exact pins and are
+    never lock material (LY-08). The dist name is PEP 503-normalized so
+    freeze and lock compare identically regardless of spelling.
+
+    Shared by the doctor (DR-02) — import this, do not duplicate.
     """
     line = line.strip()
     if "==" not in line:
@@ -219,15 +246,46 @@ def _parse_pin_line(line: str) -> tuple[str, str] | None:
     return re.sub(r"[-_.]+", "-", dist).lower(), version.strip()
 
 
+def read_lock(path: Path) -> dict[str, str] | None:
+    """Normalized ``name -> version`` map of one lock file; None if unreadable."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    lock: dict[str, str] = {}
+    for line in lines:
+        parsed = parse_pin_line(line)
+        if parsed is not None:
+            lock[parsed[0]] = parsed[1]
+    return lock
+
+
 def _pip_freeze(venv_dir: Path) -> dict[str, str]:
     """Normalized ``name -> version`` map of one venv."""
     out = _run_pip(venv_dir, ["freeze", "--disable-pip-version-check"])
     frozen: dict[str, str] = {}
     for line in out.splitlines():
-        parsed = _parse_pin_line(line)
+        parsed = parse_pin_line(line)
         if parsed is not None:
             frozen[parsed[0]] = parsed[1]
     return frozen
+
+
+def _venv_matches_lock(venv_dir: Path, lock_path: Path) -> bool:
+    """True when the EXISTING venv's freeze equals its EXISTING lock.
+
+    Any inability to verify — venv python missing, lock absent, pip
+    failing, freeze drifting — answers False: the caller rebuilds the
+    venv from scratch (fail-closed against laundering hand edits).
+    """
+    if not (venv_dir / "bin" / "python").exists() or not lock_path.exists():
+        return False
+    try:
+        frozen = _pip_freeze(venv_dir)
+    except InstallError:
+        return False  # broken venv / pip failure == drift: rebuild
+    lock = read_lock(lock_path)
+    return lock is not None and frozen == lock
 
 
 def _install_component_venv(manifest: ComponentManifest, report: list[str]) -> Path:
@@ -247,7 +305,26 @@ def _install_component_venv(manifest: ComponentManifest, report: list[str]) -> P
         )
     for line in requirements:
         _validate_pin(line)
-    venv_dir = _create_component_venv(name)
+    venv_dir = layout.component_venv_dir(name)
+    lock_path = layout.data_dir(name) / "requirements-lock.txt"
+    if (venv_dir / "bin" / "python").exists():
+        # Reuse only a venv that still matches its OWN lock: the freeze is
+        # taken first and compared against the EXISTING lock. Anything else
+        # (drift, missing lock, broken pip) rebuilds from scratch — the fix
+        # command doctor prescribes must not launder a hand-installed
+        # package into the new lock.
+        if _venv_matches_lock(venv_dir, lock_path):
+            venv_dir = _create_component_venv(name)  # keep, idempotent
+        else:
+            report.append(
+                f"venv: {name} — freeze drift vs lock; rebuilding "
+                f"{venv_dir} from scratch (a hand-installed package is "
+                "not canon)"
+            )
+            logger.info("venv %s drifted from its lock — rebuilding from scratch", name)
+            venv_dir = _create_component_venv(name, force=True)
+    else:
+        venv_dir = _create_component_venv(name)
     if requirements:
         _run_pip(
             venv_dir,
@@ -263,7 +340,9 @@ def _install_component_venv(manifest: ComponentManifest, report: list[str]) -> P
         if actual != expected:
             raise InstallError(
                 f"venv drift right after install for {name!r}: "
-                f"{dist}=={expected} expected, freeze reports {actual!r}"
+                f"{dist}=={expected} expected, freeze reports {actual!r} — "
+                "fix: re-run 'vesma service install' (rebuilds the venv "
+                "from scratch)"
             )
     lock_text = "".join(f"{dist}=={version}\n" for dist, version in sorted(frozen.items()))
     lock_path = layout.data_dir(name) / "requirements-lock.txt"
@@ -406,8 +485,7 @@ def _systemctl_user(args: list[str]) -> str:
     return "ok"
 
 
-def _remove_venv(name: str) -> str:
-    venv_dir = layout.component_venv_dir(name)
+def _remove_venv_dir(venv_dir: Path) -> str:
     if venv_dir.is_symlink():
         venv_dir.unlink()
         return f"venv symlink removed: {venv_dir}"
@@ -415,6 +493,10 @@ def _remove_venv(name: str) -> str:
         shutil.rmtree(venv_dir)
         return f"venv removed: {venv_dir}"
     return f"venv absent (nothing to remove): {venv_dir}"
+
+
+def _remove_venv(name: str) -> str:
+    return _remove_venv_dir(layout.component_venv_dir(name))
 
 
 def uninstall(name: str | None = None, *, remove_all: bool = False) -> UninstallResult:
@@ -432,7 +514,19 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
         raise InstallError(
             f"no installation found ({components_dir} does not exist) — nothing to uninstall"
         )
-    installation = load_installation(components_dir)  # fail-closed on a broken dir
+    try:
+        installation = load_installation(components_dir)  # fail-closed on a broken dir
+        load_error: str | None = None
+    except ManifestError as exc:
+        if name is not None:
+            # Single-component uninstall needs the dependency map — keep
+            # failing closed here.
+            raise
+        # --all is the operator's self-clean escape hatch: a broken
+        # components.d must not make the installation unremovable.
+        # Warn loudly and sweep the install-owned files without validation.
+        installation = {}
+        load_error = str(exc)
 
     lines: list[str] = []
 
@@ -469,6 +563,12 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
         else:
             lines.append(f"unit absent (nothing to remove): {unit_path}")
         lines.append(f"systemctl --user daemon-reload: {_daemon_reload()}")
+        if load_error is not None:
+            lines.append(
+                "WARN: components.d failed to load fail-closed "
+                f"({load_error}) — removing the install-owned files anyway "
+                "(--all must let an operator self-clean a broken installation)"
+            )
         for comp in sorted(installation):
             manifest_path = components_dir / f"{comp}.yaml"
             if manifest_path.exists():
@@ -480,6 +580,22 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
                 lines.append(f"env file removed: {env_path}")
             lines.append(_remove_venv(comp))
             lines.append(f"data dir preserved (operator data): {layout.data_dir(comp)}")
+        if load_error is not None:
+            # Sweep the install-owned files whose names the broken dir no
+            # longer declares: every manifest candidate, every env file,
+            # every venv dir under the install-owned venvs/ root.
+            for manifest_path in sorted(components_dir.glob("*.yaml")):
+                manifest_path.unlink()
+                lines.append(f"manifest removed: {manifest_path}")
+            env_dir = layout.env_dir()
+            if env_dir.is_dir():
+                for env_path in sorted(env_dir.glob("*.env")):
+                    env_path.unlink()
+                    lines.append(f"env file removed: {env_path}")
+            venvs_root = layout.data_root() / "venvs"
+            if venvs_root.is_dir():
+                for venv_dir in sorted(venvs_root.iterdir()):
+                    lines.append(_remove_venv_dir(venv_dir))
 
     logger.info("service uninstalled: name=%s all=%s", name, remove_all)
     return UninstallResult(lines=tuple(lines))
@@ -491,5 +607,7 @@ __all__ = [
     "InstallResult",
     "UninstallResult",
     "install",
+    "parse_pin_line",
+    "read_lock",
     "uninstall",
 ]
