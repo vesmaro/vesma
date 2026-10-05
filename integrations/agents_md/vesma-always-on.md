@@ -1,4 +1,4 @@
-# Vesma memory — always-on gates (G1–G4)
+# Vesma memory — always-on gates (G0 + G1–G4)
 
 You have persistent shared memory through the `vesma_*` MCP tools (server
 builds before 6.0 still accept the legacy `mnemos_*` input names). Follow
@@ -14,6 +14,8 @@ instruction and the `vesma-*` skills.
 
 | Gate | When | Action |
 |------|------|--------|
+| **G0a — Assemble** | Before the first substantive answer of the session (+ re-assembly after memory changed materially) | `vesma_assemble_context(session=..., project=..., agent=..., budget≤2048, mode=sync)` → use the assembled block as the memory part of the prompt; REMEMBER `usage_report.metrics_id` from the result |
+| **G0b — Usage report** | After the model answered, when G0a yielded a metrics_id | `vesma_usage_report(metrics_id=N, block_ids_touched=["N:0", …], tokens_out=…)` — opaque ordinals "<metrics_id>:<i>" from the assemble result's blocks; **empty list is legitimate** (used nothing — still report it) |
 | **G1 — Recall** | First action of session, BEFORE reading any project file | `vesma_recall_context(project=<current-project>)`, then surface a ≤4-line header: `Memory: project=<name> \| recalled=<N> entries` plus last focus and open questions. If empty, say so in one line. Never block on recall failure. Then the BOUNDED environment pre-flight (≤3 extra calls): `vesma_awareness(action="pre_flight", …)` + one cross-silo infra sweep + `task:queue` board read — see «Environment awareness» below. |
 | **G2 — Search** | BEFORE an architectural decision AND before a web search | `vesma_search(query=…)` — the answer may already be in memory; recall beats re-deriving |
 | **G3 — Checkpoint** | Before context compaction, after any significant state change, every ~5 turns, and always at session end / project handoff | `vesma_save_context(project=…, goals=…, completed=…, in_progress=…, decisions=…)` — unsaved context is lost work |

@@ -2279,7 +2279,74 @@ class TestInstructionPack:
         assert "in MEMORY only" in text, "0-traces scoped to memory-only"
         assert "mnemos:no-federate" in text, "awareness-derived records born no-federate"
 
-    def test_always_on_agents_md_awareness_canon(self) -> None:
+    def test_memory_ops_instruction_usage_loop_gates(self) -> None:
+        """Vitals wave 10: the G0a/G0b usage-loop gates are pinned as canon.
+
+        The usage loop (G0a assemble → model call → G0b usage report) is
+        canon for EVERY agent; a silent edit that reorders the rows or drops
+        either gate is an adoption regression, same guard shape as the
+        awareness-canon pin above. Order matters: G0a/G0b must sit BEFORE
+        the G1 row (session lifecycle order — memory enters the context
+        before it is recalled).
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath(
+                "integrations", "instructions", "vesma-memory-ops.instructions.md"
+            )
+        )
+        text = path.read_text(encoding="utf-8")
+        # Row order: G0a precedes G1 in the gate table.
+        g0a_pos = text.find("**G0a — Assemble**")
+        g0b_pos = text.find("**G0b — Usage report**")
+        g1_pos = text.find("**G1 — Recall**")
+        assert g0a_pos != -1, "the G0a Assemble gate row must exist"
+        assert g0b_pos != -1, "the G0b Usage-report gate row must exist"
+        assert g1_pos != -1, "the G1 row must still exist (untouched canon)"
+        assert g0a_pos < g1_pos, "G0a must come BEFORE the G1 row"
+        assert g0a_pos < g0b_pos, "G0a must precede G0b (assemble before report)"
+        assert g0b_pos < g1_pos, "G0b must come BEFORE the G1 row"
+        # The loop mechanics are taught: metrics_id remembered at G0a, the
+        # report call + empty-list legitimacy at G0b.
+        assert "usage_report.metrics_id" in text, (
+            "G0a must teach remembering usage_report.metrics_id"
+        )
+        assert "vesma_usage_report(metrics_id=" in text, (
+            "G0b must teach the vesma_usage_report call shape"
+        )
+        assert "empty list is legitimate" in text, (
+            "G0b must state the empty-list legitimacy"
+        )
+        assert "budget<=2048" in text, "G0a must teach the <=2048 token budget"
+        assert 'mode="sync"' in text, "G0a must teach mode=sync"
+
+    def test_context_lifecycle_skill_pins_usage_report(self) -> None:
+        """Vitals wave 10: the report leg of the usage loop lives in the skill.
+
+        The assemble leg was already documented (step 2); the post-model
+        report leg (mnemos_usage_report) must be pinned too — the loop is
+        only canon when BOTH legs are named in the skill that teaches the
+        context lifecycle.
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "skills", "vesma-context-lifecycle.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert text.count("mnemos_usage_report") >= 1, (
+            "the post-model usage-report leg must be documented (>=1 mention)"
+        )
+        assert "block_ids_touched" in text, "the report call shape must be shown"
+        assert "empty list is legitimate" in text, (
+            "empty-list legitimacy must be stated in the skill"
+        )
+        assert "opaque ordinals" in text, "opaque-ids note must survive edits"
+        # The assemble step must hand off the metrics_id to the report step.
+        assert "usage_report.metrics_id" in text, (
+            "the assemble step must point at usage_report.metrics_id"
+        )
         """The always-loaded block carries the tightened G1/G4 rows and the report block."""
         path = (
             Path(__file__)
@@ -2296,6 +2363,21 @@ class TestInstructionPack:
         assert "[unverified]" in text, "always-on must pin unverified markers"
         assert "in MEMORY only" in text, "always-on must pin the 0-traces scope"
         assert "mnemos:no-federate" in text, "always-on must pin the no-federate tag"
+
+    def test_always_on_agents_md_usage_loop(self) -> None:
+        """Vitals wave 10: the always-loaded block carries the G0 pair compressed."""
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "agents_md", "vesma-always-on.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "G0a" in text and "G0b" in text, (
+            "always-on block must name both usage-loop gates"
+        )
+        assert "usage_report.metrics_id" in text or "usage_report" in text, (
+            "always-on G0a must point at the metrics_id handoff"
+        )
 
 
 class TestCanonPack:

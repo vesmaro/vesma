@@ -68,7 +68,7 @@ connected": that claim is false until the suffix scan says otherwise.
 
 ## 1. Session lifecycle — four hard gates
 
-**Every session MUST pass four hard gates. These are not "should" — they are MUST.**
+**Every session MUST pass four hard gates plus the G0 usage-loop pair. These are not "should" — they are MUST.**
 Skipping any gate is an operational failure, not a style violation.
 
 **Synergy goal.** The goal is synergy — every agent, project, and session
@@ -80,6 +80,8 @@ missing state.
 
 | Gate | When | Action | Failure consequence |
 |------|------|--------|---------------------|
+| **G0a — Assemble** | Before the first substantive answer of the session + re-assembly after memory changed materially | `vesma_assemble_context(session=..., project=..., agent=..., budget<=2048, mode="sync")` → use the assembled block as the memory part of the prompt; REMEMBER `usage_report.metrics_id` from the result | Model works without memory; usage loop stays empty |
+| **G0b — Usage report** | After the model answered, when G0a yielded a metrics_id | `vesma_usage_report(metrics_id=N, block_ids_touched=["N:0", ...], tokens_out=...)` — ids are opaque ordinals "<metrics_id>:<i>" from the assemble result's blocks; empty list is legitimate (used nothing — still report it) | Loop stays open; closure metric measures nothing |
 | **G1 — Recall** | First action of session | `vesma_recall_context(project=...)`, then the BOUNDED environment pre-flight (awareness + cross-silo sweep + board read; see HOW — session start) | Operating blind; re-learns what was learned; burns ~15K tokens reconstructing state |
 | **G2 — Search** | Before architectural decision | `vesma_search(query="...")` | Re-decides settled questions; inconsistent architecture |
 | **G3 — Checkpoint** | (a) Every ~5 turns OR after any significant state change (b) At session closure (explicit or detected) | `vesma_save_context(...)` | Work invisible to future sessions = lost work |
