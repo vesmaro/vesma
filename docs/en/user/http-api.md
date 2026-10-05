@@ -339,7 +339,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 | Code | Cause |
 |------|-------|
 | `422` | Malformed body — unknown enum value or ADR-0027 doc-grouping triple violation. |
-| `500` | Tag-contract violation (missing `project:`, `agent:`, or `vesma:` tag). Known defect (the "#422/#432" class): `TagContractError` currently escapes unhandled instead of mapping to `422` like the bulk-tags routes do. |
+| `422` | Tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ### `GET /memories/{memory_id}` — read one

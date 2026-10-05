@@ -150,9 +150,7 @@ def staleness_check(
     ``CodeGraphConfig.exclude_globs``; without it the built-in defaults
     apply (same surface as a default-config index).
     """
-    surface = FileSurface(
-        root, (config or CodeGraphConfig()).exclude_globs
-    ).collect()
+    surface = FileSurface(root, (config or CodeGraphConfig()).exclude_globs).collect()
     surface_paths = {sf.rel_path: sf.abs_path for sf in surface}
     unchanged, stale, removed = classify_files(surface_paths, store.get_file_records(project))
     total = len(unchanged) + len(stale)

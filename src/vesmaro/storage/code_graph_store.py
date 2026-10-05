@@ -146,12 +146,8 @@ _PROJECT_EDGES_DDL = """
 """
 
 _SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS project_nodes (\n"
-    + _PROJECT_NODES_DDL
-    + "\n);\n"
-    "CREATE TABLE IF NOT EXISTS project_edges (\n"
-    + _PROJECT_EDGES_DDL
-    + "\n);\n"
+    "CREATE TABLE IF NOT EXISTS project_nodes (\n" + _PROJECT_NODES_DDL + "\n);\n"
+    "CREATE TABLE IF NOT EXISTS project_edges (\n" + _PROJECT_EDGES_DDL + "\n);\n"
     """
 CREATE TABLE IF NOT EXISTS graph_files (
     project     TEXT NOT NULL,
@@ -390,8 +386,7 @@ class CodeGraphStore:
             conn.execute("ALTER TABLE project_nodes_v2tmp RENAME TO project_nodes")
             conn.execute("ALTER TABLE project_edges_v2tmp RENAME TO project_edges")
             for index_sql in (
-                "CREATE INDEX IF NOT EXISTS idx_nodes_project "
-                "ON project_nodes(project, kind)",
+                "CREATE INDEX IF NOT EXISTS idx_nodes_project ON project_nodes(project, kind)",
                 "CREATE INDEX IF NOT EXISTS idx_nodes_qname ON project_nodes(qname)",
                 "CREATE INDEX IF NOT EXISTS idx_nodes_path ON project_nodes(project, path)",
                 "CREATE INDEX IF NOT EXISTS idx_edges_from ON project_edges(from_id, kind)",
@@ -1000,10 +995,14 @@ class CodeGraphStore:
         total (:meth:`count_nodes`) stays the honest headline; the
         breakdown makes extension-contributed kinds (``Command`` /
         ``Route``) visible without a raw SQL probe."""
-        rows = self._conn().execute(
-            "SELECT kind, COUNT(*) FROM project_nodes WHERE project=? GROUP BY kind",
-            (project,),
-        ).fetchall()
+        rows = (
+            self._conn()
+            .execute(
+                "SELECT kind, COUNT(*) FROM project_nodes WHERE project=? GROUP BY kind",
+                (project,),
+            )
+            .fetchall()
+        )
         return {str(r[0]): int(r[1]) for r in rows}
 
     def count_files(self, project: str | None = None) -> int:

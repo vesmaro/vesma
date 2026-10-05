@@ -22,7 +22,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 |------------|---------|
 | [`add`](#add) | Create a new memory entry |
 | [`search`](#search) | Hybrid FTS5 + vector search |
-| [`recall`](#recall) | List recent memories, optionally per agent / per project |
+| [`recall`](#recall) | List recent memories; `recall agent` scopes to one agent |
 | [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
 | [`tags audit`](#tags-audit) | Scan for tag-contract non-conformance; `--apply` heals additively |
 | [`workflow`](#workflow) | Memory workflow lifecycle: `get` / `set` / `history` |
@@ -183,7 +183,7 @@ For richer query power over HTTP, use the API `POST /search` (see [http-api.md#s
 
 ## `recall`
 
-List recent memories, optionally scoped to an agent (M3) and / or a project.
+List recent memories, optionally scoped to a project. Per-agent recall is the `recall agent` subcommand (CLI-architecture rework W2: a subcommand names the function, a flag only configures it).
 
 ```text
 vesma recall [OPTIONS]
@@ -192,11 +192,26 @@ vesma recall [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--project / -p` | — | Project slug to filter on. |
-| `--agent / -a` | — | Agent slug to filter on. Enables M3 per-agent recall. |
 | `--limit / -l` | `10` | Maximum results. |
 | `--config / -c` | — | Path to `config.yaml`. |
 
-When `--agent` is passed **without** a query, the result is the N most recent entries for that agent, ordered by `created_at desc`. This is the same data the MCP tool [`mnemos_agent_recall`](mcp-tools.md#mnemos_agent_recall) returns.
+The legacy `--agent / -a` flag still works as a hidden deprecated alias — identical behavior, plus a one-line `[deprecated]` hint on stderr. Use `vesma recall agent` instead; the flag is not removed before 6.0.
+
+### `recall agent`
+
+Per-agent recall (M3): one agent's entries, optionally query-matched. This is the same data the MCP tool [`mnemos_agent_recall`](mcp-tools.md#mnemos_agent_recall) returns.
+
+```text
+vesma recall agent SLUG [QUERY] [OPTIONS]
+```
+
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `SLUG` | — | Agent slug to recall for. |
+| `QUERY` | — | Optional query — hybrid search scoped to the agent's entries (raw included). Without it: the N most recent entries for the agent, ordered by `created_at desc`. |
+| `--project / -p` | — | Project slug to filter on. |
+| `--limit / -l` | `10` | Maximum results. |
+| `--config / -c` | — | Path to `config.yaml`. |
 
 ### Examples
 
@@ -205,10 +220,13 @@ When `--agent` is passed **without** a query, the result is the N most recent en
 vesma recall
 
 # Per-agent recall (M3)
-vesma recall --agent tech-writer
+vesma recall agent tech-writer
+
+# Query-scoped per-agent recall
+vesma recall agent sre "deploy checklist"
 
 # Combined
-vesma recall --agent sre --project vesma --limit 25
+vesma recall agent sre --project vesma --limit 25
 ```
 
 ---

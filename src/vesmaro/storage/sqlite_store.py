@@ -3014,9 +3014,7 @@ class SQLiteStore:
         when a row was removed. The projects table carries no foreign
         keys, so the delete cannot orphan referencing rows."""
         conn = self._get_conn()
-        cur = conn.execute(
-            "DELETE FROM projects WHERE id=? OR name=?", (project_id, project_id)
-        )
+        cur = conn.execute("DELETE FROM projects WHERE id=? OR name=?", (project_id, project_id))
         conn.commit()
         self._invalidate_caches()
         return cur.rowcount > 0

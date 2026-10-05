@@ -132,8 +132,7 @@ def run_node_sources(
             contribution = source.contribute(project, root, symbols)
         except Exception:
             logger.warning(
-                "codegraph: node source %r failed for project %s — "
-                "contributing nothing",
+                "codegraph: node source %r failed for project %s — contributing nothing",
                 source.name,
                 project,
                 exc_info=True,
@@ -143,8 +142,7 @@ def run_node_sources(
         merged.edges.extend(contribution.edges)
         if contribution.nodes:
             logger.info(
-                "codegraph: node source %r contributed %d node(s), %d edge(s) "
-                "to %s",
+                "codegraph: node source %r contributed %d node(s), %d edge(s) to %s",
                 source.name,
                 len(contribution.nodes),
                 len(contribution.edges),
