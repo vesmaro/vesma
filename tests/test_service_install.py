@@ -383,7 +383,12 @@ class TestPinPolicy:
         self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A venv-referencing manifest outside the v1 pack fails closed
-        (no silent empty venv) — exercised against the REAL installer."""
+        (no silent empty venv) — exercised against the REAL installer
+        with the bundled pack's pip leg stubbed (the refusal under test
+        must not depend on the engine version being live on PyPI)."""
+        from vesmaro import __version__
+
+        _stub_pip(monkeypatch, f"pip==99.0\nvesma=={__version__}\n")
         components = layout.ensure_dir(layout.components_dir(), 0o700)
         (components / "worker.yaml").write_text(
             "apiVersion: vesma.component/v1\n"
