@@ -117,6 +117,21 @@ class TestMemories:
         assert data["content"] == "Test memory"
         assert "project:mnemos" in data["tags"]
 
+    def test_create_memory_missing_required_tag_maps_to_422(self, client):
+        # #422/#432 defect class: a tag-contract violation (missing the
+        # required mnemos: scope) is a CLIENT error — 422 carrying the
+        # contract error string, never a raw 500.
+        resp = client.post(
+            "/memories",
+            json={
+                "content": "Broken tags",
+                "tags": ["project:mnemos", "agent:reviewer"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
     def test_get_memory(self, client):
         # Create first
         create_resp = client.post(

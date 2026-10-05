@@ -435,12 +435,20 @@ async def create_memory(data: MemoryCreate) -> Memory:
 
     Returns the full ``Memory`` with HTTP 201. A malformed body (unknown
     enum value, ADR-0027 doc-grouping triple violation) is rejected with
-    422 by the request-validation layer.
+    422 by the request-validation layer; a tag-contract violation (a
+    missing required scope) maps to 422 with the SAME error string —
+    the in-file fix pattern (#422/#432 defect class: the contract
+    ``ValueError`` must not leak as a raw 500).
     """
     mgr = get_manager()
     settings = mgr.settings
 
-    tags = validate_tag_contract(data.tags, strict=settings.mnemos.strict_tag_contract)
+    try:
+        tags = validate_tag_contract(data.tags, strict=settings.mnemos.strict_tag_contract)
+    except ValueError as exc:
+        # ``TagContractError`` (a ``ValueError``) is a client error, not a
+        # server fault — same mapping discipline as ``_tags_call`` below.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     data.tags = tags
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
