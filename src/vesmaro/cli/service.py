@@ -1,13 +1,17 @@
-"""``vesma service`` CLI — supervisor control plane (control-socket v1 §4.8).
+"""``vesma service`` CLI — install/uninstall (W4) + supervisor control plane (W3).
 
-Thin client over the control socket: status / start / stop / restart /
-logs (+ additive health), plus ``run`` — the supervisor entrypoint that
-owns the socket and the component tree in one process.
+Two command groups share this sub-app:
 
-MERGE NOTE (W3/W4 collision): this file is intentionally group-structured,
-one command function per verb with no shared mutable state. Wave W4 owns
-``install``/``uninstall`` — whoever merges second keeps both function sets
-and resolves the one-file conflict by concatenation of the two groups.
+* ``install`` / ``uninstall`` — the install flow (pack manifests, data
+  dirs, venvs, the generated systemd user unit; wave W4).
+* ``status`` / ``health`` / ``start`` / ``stop`` / ``restart`` / ``logs``
+  — the thin client over the control socket (control-socket v1 §4.8),
+  plus ``run`` — the supervisor entrypoint that owns the socket and the
+  component tree in one process (wave W3).
+
+MERGE NOTE (W3/W4 collision): both waves created this file; the resolved
+shape is the concatenation of the two groups — one command function per
+verb, no shared mutable state.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from typing import Annotated, Any, NoReturn, TypeVar
 
 import typer
 from rich.console import Console
+from rich.text import Text
 
 from vesmaro.service import layout
 from vesmaro.service.client import (
@@ -39,10 +44,15 @@ from vesmaro.service.control import (
     ControlServer,
     UnknownComponentError,
 )
+from vesmaro.service.errors import ManifestError
+from vesmaro.service.install import InstallError, install, uninstall
 
 service_app = typer.Typer(
     name="service",
-    help="Supervisor control plane: status, start/stop/restart, logs, run.",
+    help=(
+        "Install/uninstall the vesma service and drive the supervisor "
+        "control plane: status, start/stop/restart, logs, run."
+    ),
     no_args_is_help=True,
 )
 
@@ -52,7 +62,74 @@ logger = logging.getLogger("vesmaro.cli.service")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-# ── shared plumbing ───────────────────────────────────────────────────
+# ── install/uninstall (wave W4) ───────────────────────────────────────
+
+
+def _fail_install(exc: Exception) -> NoReturn:
+    # Text(exc): report DATA must never pass through rich markup — an
+    # exception message containing '[' is operator text, not formatting.
+    console.print("[red]✗[/red]", Text(str(exc)))
+    raise typer.Exit(1) from exc
+
+
+@service_app.command(name="install")
+def service_install() -> None:
+    """Install the service: pack manifests, data dirs, venvs, the unit.
+
+    Idempotent — re-running regenerates every artifact (hand edits to the
+    unit are overwritten by design, threat model "ручная правка юнита").
+    Inside a container the filesystem hardening directives are loudly
+    downgraded (marker in the unit + report lines).
+    """
+    try:
+        result = install()
+    except (InstallError, ManifestError) as exc:
+        _fail_install(exc)
+    for line in result.lines:
+        downgraded_line = line.startswith("CONTAINER DOWNGRADE")
+        style = "[yellow]⚠[/yellow]" if downgraded_line else "[green]✓[/green]"
+        # Text(line): report lines carry operator data (paths, names) —
+        # rendered without markup, only the prefix is styling.
+        console.print(style, Text(line))
+    console.print(f"[green]Service installed ({result.unit_path}).[/green]")
+
+
+@service_app.command(name="uninstall")
+def service_uninstall(
+    name: Annotated[
+        str | None,
+        typer.Argument(help="Component name (e.g. board, metrics).", show_default=False),
+    ] = None,
+    remove_all: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Uninstall everything: stop/disable + remove the unit and all components.",
+        ),
+    ] = False,
+) -> None:
+    """Uninstall one component, or the whole installation with --all.
+
+    Only files the install flow owns are removed (manifest, env file,
+    venv). Component data dirs are operator data and are preserved.
+    """
+    try:
+        result = uninstall(name, remove_all=remove_all)
+    except (InstallError, ManifestError) as exc:
+        _fail_install(exc)
+    for line in result.lines:
+        warn_line = line.startswith("WARN:")
+        style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
+        console.print(style, Text(line))
+    console.print("[green]Uninstall complete.[/green]")
+
+
+# ── control plane: shared plumbing (wave W3) ──────────────────────────
+
+
+def _fail(message: str) -> NoReturn:
+    console.print(f"[red]error:[/red] {message}")
+    raise typer.Exit(code=1) from None
 
 
 def _open_client(socket: Path | None) -> ControlClient:
@@ -60,11 +137,6 @@ def _open_client(socket: Path | None) -> ControlClient:
     client = ControlClient(socket or control_socket_path()[0])
     client.connect()
     return client
-
-
-def _fail(message: str) -> NoReturn:
-    console.print(f"[red]error:[/red] {message}")
-    raise typer.Exit(code=1) from None
 
 
 def _with_client(socket: Path | None, action: Callable[[ControlClient], Any]) -> Any:
@@ -303,3 +375,7 @@ def run(
         server.stop()
         supervisor.request_shutdown()
         time.sleep(0.2)  # grace for the reaper thread; W6 refines the join
+
+
+if __name__ == "__main__":  # pragma: no cover — manual invocation
+    service_app()

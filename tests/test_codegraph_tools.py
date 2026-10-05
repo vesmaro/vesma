@@ -636,6 +636,36 @@ class TestPGMechanics:
         assert graph_reads and all(r["actor"] == AGENT for r in graph_reads)
         assert all(r["session"] == "s1" for r in rows)
 
+    def test_first_search_marked_per_task_session(self, indexed: CodeGraphService) -> None:
+        # Card vesma-graph-audit-firstcall-marking: the FIRST search call
+        # of each task (actor+session scoped) carries details.first_search
+        # on its own audit row; later calls of the same task carry none
+        # (shape policy: absent, never null/empty). The marker makes the
+        # graph-first share computable from graph_audit rows alone
+        # (computing query: GraphAudit.has_search docstring).
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s2")
+        rows = [
+            r
+            for r in indexed._audit.recent(PROJECT)
+            if r["action"] == "graph-read" and r["reason"] == "search"
+        ]
+        assert [r["session"] for r in rows] == ["s2", "s1", "s1"]  # newest first
+        assert rows[0]["details"]["first_search"] is True  # s2's FIRST call
+        assert "first_search" not in rows[1]["details"]  # s1's SECOND call
+        assert rows[2]["details"]["first_search"] is True  # s1's FIRST call
+        # Scope is (actor, session): a second agent in the SAME session
+        # gets its own first-call marker.
+        indexed.search_graph(PROJECT, "Base", agent="other-agent", session="s1")
+        rows = [
+            r
+            for r in indexed._audit.recent(PROJECT)
+            if r["action"] == "graph-read" and r["reason"] == "search"
+        ]
+        assert rows[0]["actor"] == "other-agent"
+        assert rows[0]["details"]["first_search"] is True
+
     def test_attribution_is_a_binding(self, service: CodeGraphService) -> None:
         for bad in ("", "   ", None):
             with pytest.raises(GraphAttributionError):

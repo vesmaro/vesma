@@ -92,7 +92,7 @@ vesma serve  # uvicorn на 127.0.0.1:8787
 
 ```bash
 podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0
+  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:4.3.0
 ```
 
 Или через compose из корня репозитория:

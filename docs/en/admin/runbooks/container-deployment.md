@@ -12,7 +12,7 @@
 
 ## Overview
 
-One published image — `ghcr.io/vesmaro/vesmaro` — covers every path. Pick by target:
+One published image — `ghcr.io/vesmaro/vesma` — covers every path. Pick by target:
 
 | Path | Tool | When to use |
 |------|------|-------------|
@@ -43,12 +43,12 @@ and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesma
 Pull the released image and start it directly — nothing to build:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest tracks the newest release
+podman pull ghcr.io/vesmaro/vesma:4.3.0      # :latest tracks the newest release
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesmaro:4.3.0
+  ghcr.io/vesmaro/vesma:4.3.0
 ```
 
 `docker` works identically — swap `podman` for `docker`. The image includes
@@ -156,7 +156,7 @@ Shortcut:
 ## Run — systemd (quadlet)
 
 The quadlet path installs a systemd **user** unit and manages the container as a persistent
-service. The unit references the published `ghcr.io/vesmaro/vesmaro:4.3.0`, pulled
+service. The unit references the published `ghcr.io/vesmaro/vesma:4.3.0`, pulled
 automatically; to run a local build instead, build the image first (see
 [Build from source](#build-from-source-fallback)) and set `Image=localhost/mnemos:latest` in the unit.
 
@@ -223,16 +223,15 @@ The deploy helper does the same:
 
 **Pushing to ghcr.io (maintainers):** the release pipeline (`scripts/local-release.sh`)
 pushes the versioned tag and `:latest` on every release — GitHub Actions are disabled, and
-this script is the canonical path (see [ci-cd.md](ci-cd.md)). The pipeline currently targets
-the legacy `ghcr.io/korrnals/vesma` name (the flip is part of the 5.0.0 phase-g, GWS card
-#331); new releases are backfilled to the org namespace `ghcr.io/vesmaro/vesmaro` manually.
+this script is the canonical path (see [ci-cd.md](ci-cd.md)). The pipeline targets the
+public `ghcr.io/vesmaro/vesma` name directly.
 Manual push, if ever needed (PAT with `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:latest
+podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesma:4.3.0
+podman push ghcr.io/vesmaro/vesma:4.3.0
+podman push ghcr.io/vesmaro/vesma:latest
 ```
 
 ---

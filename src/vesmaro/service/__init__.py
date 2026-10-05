@@ -1,22 +1,27 @@
-"""VESMA service foundations + supervisor (waves W1-W2).
+"""VESMA service package (waves W1/W2/W4; board cards svc-w1-foundations,
+svc-w2-supervisor, svc-w4-install-unitgen-doctor).
 
 Contract reader side, implemented against:
 
 - ``specs/component-manifest/v1`` (1.0.0-draft.2) — manifest form, strict
   validation, §4 error-code registry: :mod:`.manifest`, :mod:`.errors`;
 - ``specs/layout/v1`` (1.0.0-draft.2) — canonical user-profile paths and
-  explicit-mode primitives: :mod:`.layout`;
+  explicit-mode primitives: :mod:`.layout`; doctor checks DR-01…DR-13:
+  :mod:`.doctor_checks`;
 - fail-closed env files: :mod:`.envfile`; argv placeholder expansion:
   :mod:`.placeholders`;
-- ``specs/service-lifecycle/v1`` (1.0.0-draft.2, wave W2) — the component
-  supervisor: child FSM (:mod:`.fsm`), health checkers (:mod:`.health`),
-  structural lines + history journal + logsink (:mod:`.logsink`), and the
-  :class:`.supervisor.Supervisor` orchestration (process model, restart
-  policies, env canon, stop order).
+- ``specs/service-lifecycle/v1`` (1.0.0-draft.2, waves W2/W4) — the
+  component supervisor: child FSM (:mod:`.fsm`), health checkers
+  (:mod:`.health`), structural lines + history journal + logsink
+  (:mod:`.logsink`), and the :class:`.supervisor.Supervisor` orchestration
+  (process model, restart policies, env canon, stop order); systemd
+  user-unit generation (SL-17/SL-18, container downgrades):
+  :mod:`.unitgen`; install/uninstall flow: :mod:`.install` (CLI:
+  ``vesma service install|uninstall``; doctor: ``vesma doctor service``).
 
-Still out of scope (W3/W4): CLI, control socket, unit generation. The
-bundled pack manifests live in ``vesmaro.service.components``
-(``board``, ``metrics``); the in-process panel is :mod:`.board`.
+Still out of scope (W3): the control socket and its CLI verbs. The bundled
+pack manifests live in ``vesmaro.service.components`` (``board``,
+``metrics``); the in-process panel is :mod:`.board`.
 """
 
 from __future__ import annotations
