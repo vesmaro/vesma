@@ -15,7 +15,7 @@ import socket
 import stat
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,9 @@ from tests.control_fakes import DEFAULT_COMPONENTS, FakeBackend
 from vesmaro.service import control
 from vesmaro.service.control import (
     ERR_BAD_REQUEST,
+    ERR_INTERNAL,
     ERR_INVALID_PARAMS,
+    ERR_START_FAILED,
     ERR_UNKNOWN_COMPONENT,
     ERR_UNKNOWN_METHOD,
     ERR_VERSION_UNSUPPORTED,
@@ -36,6 +38,7 @@ from vesmaro.service.control import (
     ControlServer,
     _classify_path_target,
     _peer_allowed,
+    client_safe_start_reason,
 )
 
 # ── helpers ───────────────────────────────────────────────────────────
@@ -819,3 +822,194 @@ def test_registry_members_serve_normally(running: RunningServer) -> None:
             assert frame["result"] == {"state": "starting"}
     finally:
         conn.close()
+
+
+# ── cascade fixes (2026-10-05): P1 slot leak, P2 conn-list + settle ──
+
+
+class _StreamCrashBackend(FakeBackend):
+    """``stream_logs`` always crashes — the 500 leg of the follow-open path."""
+
+    def stream_logs(self, component: str, *, tail: int) -> Any:
+        raise RuntimeError("simulated stream-open crash")
+
+
+def test_p1_unknown_component_follow_releases_slot(running: RunningServer) -> None:
+    """follow=true + unknown component → error 100 AND the slot is freed."""
+    conn = JsonlConn(running.path)
+    try:
+        assert "result" in conn.hello()
+        error = error_of(
+            conn.rt({"id": 2, "method": "logs", "params": {"component": "ghost", "follow": True}})
+        )
+        assert error["code"] == ERR_UNKNOWN_COMPONENT
+    finally:
+        conn.close()
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and running.server.active_follows() > 0:
+        time.sleep(0.02)
+    assert running.server.active_follows() == 0, "follow slot leaked on failed stream open"
+    # the freed slot is usable: a legitimate follow succeeds end-to-end
+    conn = JsonlConn(running.path)
+    try:
+        assert "result" in conn.hello()
+        conn.send({"id": 3, "method": "logs", "params": {"component": "board", "follow": True}})
+        wait_follows(running, 1)
+        assert running.server.active_follows() == 1
+        running.backend.set_state("board", "stopped")
+        running.backend.streams[-1].source_stopped()
+        while True:  # skip stream frames (replay/pushed) until the final
+            frame = conn.recv_json()
+            if "result" in frame:
+                assert frame == {"id": 3, "result": {"state": "stopped"}}
+                break
+    finally:
+        conn.close()
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and running.server.active_follows() > 0:
+        time.sleep(0.02)
+    assert running.server.active_follows() == 0
+
+
+def test_p1_internal_error_follow_releases_slot(sock_path: Path) -> None:
+    """stream_logs crashing (error 500) must not consume a follow slot."""
+    server = RunningServer(_StreamCrashBackend(), sock_path)
+    try:
+        conn = JsonlConn(sock_path)
+        try:
+            assert "result" in conn.hello()
+            error = error_of(
+                conn.rt(
+                    {"id": 2, "method": "logs", "params": {"component": "board", "follow": True}}
+                )
+            )
+            assert error["code"] == ERR_INTERNAL
+        finally:
+            conn.close()
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and server.server.active_follows() > 0:
+            time.sleep(0.02)
+        assert server.server.active_follows() == 0, "follow slot leaked on backend crash"
+    finally:
+        server.stop()
+
+
+def test_p2_conn_list_pruned_after_client_cycles(sock_path: Path) -> None:
+    """12 connect/serve/disconnect cycles leave a bounded thread list."""
+    server = RunningServer(FakeBackend(), sock_path)
+    try:
+        for _cycle_id in range(12):
+            conn = JsonlConn(sock_path)
+            try:
+                assert "result" in conn.hello()
+                assert "result" in conn.rt({"id": 5, "method": "status"})
+            finally:
+                conn.close()
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and len(server.server._conns) > 2:
+            time.sleep(0.05)
+        assert len(server.server._conns) <= 2, "finished connection threads are not pruned"
+    finally:
+        server.stop()
+
+
+class _FlipOnSleepTime:
+    """``time`` stand-in for control.py: the settle sleep deterministically
+    flips a dead-looking occupant into an answering winner (the CS-7
+    bind→serve window, no statistical barrier race involved)."""
+
+    def __init__(self, flip: Callable[[], None]) -> None:
+        self._flip = flip
+
+    def sleep(self, _seconds: float) -> None:
+        self._flip()
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+def test_p2_settle_reprobe_detects_concurrent_winner(
+    sock_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stale at first probe → answering within the settle window → the
+    second binder reports already-running and never touches the winner."""
+    ghost = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    ghost.bind(str(sock_path))  # bound but NOT listening → EADDRINUSE + ECONNREFUSED
+    winner_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    winner_served = threading.Event()
+    stop_winner = threading.Event()
+
+    def serve_winner() -> None:
+        winner_listener.settimeout(0.2)
+        while not stop_winner.is_set():
+            try:
+                conn, _ = winner_listener.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                return
+            with conn:
+                line = conn.makefile("rb").readline()
+                doc = json.loads(line.decode("utf-8"))
+                conn.sendall(
+                    control.encode_frame({"id": doc["id"], "result": {"protocol_version": 1}})
+                )
+                winner_served.set()
+
+    def flip_to_winner() -> None:
+        ghost.close()
+        os.unlink(str(sock_path))  # the dying occupant removes its own node
+        winner_listener.bind(str(sock_path))
+        winner_listener.listen(1)
+        threading.Thread(target=serve_winner, daemon=True).start()
+
+    monkeypatch.setattr(control, "time", _FlipOnSleepTime(flip_to_winner))
+    try:
+        outcome = control.bind_control_socket(
+            sock_path, probe_timeout_s=2.0, stale_settle_s=0.1, log=control.logger
+        )
+    finally:
+        stop_winner.set()
+        winner_listener.close()
+        ghost.close()
+    assert outcome is None, "binder must report already-running instead of taking the path"
+    assert winner_served.is_set(), "the settle re-probe never reached the winner"
+    assert sock_path.exists(), "the winner's socket node was disturbed by the loser"
+
+
+def test_p3_start_failed_reason_hygiene(running: RunningServer) -> None:
+    """An adversarial StartFailedError.reason never reaches client data."""
+    adversarial = "exit 1; cat /etc/shadow PATH=/evil"
+    running.backend.fail_start["board"] = adversarial
+    conn = JsonlConn(running.path)
+    try:
+        assert "result" in conn.hello()
+        error = error_of(conn.rt({"id": 2, "method": "start", "params": {"component": "board"}}))
+        assert error["code"] == ERR_START_FAILED
+        data = error.get("data")
+        assert isinstance(data, dict)
+        assert data.get("reason") == "start-failed"
+    finally:
+        conn.close()
+    # a well-formed token passes through verbatim (no over-scrubbing)
+    running.backend.fail_start["metrics"] = "lock-timeout"
+    conn = JsonlConn(running.path)
+    try:
+        assert "result" in conn.hello()
+        error = error_of(conn.rt({"id": 3, "method": "start", "params": {"component": "metrics"}}))
+        assert error["code"] == ERR_START_FAILED
+        data = error.get("data")
+        assert isinstance(data, dict)
+        assert data.get("reason") == "lock-timeout"
+    finally:
+        conn.close()
+
+
+def test_p3_client_safe_start_reason_unit() -> None:
+    assert client_safe_start_reason("lock-timeout") == "lock-timeout"
+    assert client_safe_start_reason("v1.2_3") == "v1.2_3"
+    assert client_safe_start_reason("") == ""
+    assert client_safe_start_reason("exit 1; cat /etc/shadow") == "start-failed"
+    assert client_safe_start_reason("/etc/passwd") == "start-failed"
+    assert client_safe_start_reason("x" * 65) == "start-failed"
+    assert client_safe_start_reason("UPPER") == "start-failed"

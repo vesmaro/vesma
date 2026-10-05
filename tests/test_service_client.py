@@ -24,6 +24,7 @@ from tests.control_fakes import FakeBackend
 from tests.test_service_control import RunningServer
 from vesmaro.cli.service import _load_supervisor
 from vesmaro.service.client import (
+    FOLLOW_READ_TIMEOUT_S,
     ControlClient,
     PreflightError,
     ProtocolError,
@@ -32,6 +33,7 @@ from vesmaro.service.client import (
     SocketUnavailableError,
     preflight,
 )
+from vesmaro.service.control import FOLLOW_IDLE_TIMEOUT_S
 
 # ── helpers ───────────────────────────────────────────────────────────
 
@@ -227,6 +229,32 @@ def test_client_malformed_server_frame_raises_violation(sock_path: Path) -> None
             client.connect()
     finally:
         scripted.stop()
+
+
+def test_client_non_int_error_code_raises_violation(sock_path: Path) -> None:
+    """A rogue server sending a non-integer error code → typed violation,
+    never a raw ValueError from ``int()`` (cascade 2026-10-05, P3a)."""
+    scripted = ScriptedServer(
+        sock_path,
+        b'{"id": 2, "error": {"code": "boom", "message": "broken server"}}\n',
+    )
+    try:
+        client = ControlClient(sock_path, skip_preflight=True)
+        client.connect()
+        try:
+            with pytest.raises(ProtocolViolationError, match="not an integer"):
+                client.request("status", {})
+        finally:
+            client.close()
+    finally:
+        scripted.stop()
+
+
+def test_follow_read_timeout_derives_from_server_idle_window() -> None:
+    """The client's follow read budget is DERIVED from the server's idle
+    window (1.25x margin), not an independent literal (P3b)."""
+    assert FOLLOW_READ_TIMEOUT_S == FOLLOW_IDLE_TIMEOUT_S * 1.25
+    assert FOLLOW_READ_TIMEOUT_S == 75.0  # the documented budget stays pinned
 
 
 def test_client_follow_streams_lines_and_final(server: RunningServer) -> None:
