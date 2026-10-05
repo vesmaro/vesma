@@ -59,4 +59,4 @@ print(json.dumps([dict(r) for r in rows], indent=2, default=str))
 
 ### Импорт из JSON
 
-Используйте `vesma add --file` или API `POST /memories` для массового импорта.
+Используйте `vesma ingest file` или API `POST /memories` для массового импорта.

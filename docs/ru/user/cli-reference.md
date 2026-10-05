@@ -21,6 +21,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | Субкоманда | Назначение |
 |------------|------------ |
 | [`add`](#add) | Создать новую запись в памяти |
+| [`ingest`](#ingest) | Ингест внешнего контента: `ingest url URL` / `ingest file PATH` |
 | [`search`](#search) | Гибридный поиск FTS5 + вектор |
 | [`recall`](#recall) | Список последних записей; `recall agent` сужает до одного агента |
 | [`tags validate`](#tags-validate) | Проверить контракт тегов по всему vault |
@@ -100,7 +101,7 @@ VESMA_LOGGING__LEVEL=DEBUG vesma serve      # канон (5.3+)
 
 ## `add`
 
-Создать новую запись в памяти.
+Создать новую запись в памяти (quick-capture). Ингест файлов и URL вынесен в сабкоманды — см. [`ingest`](#ingest) (реструктуризация CLI, волна W3: сабкоманда называет функцию, флаг только конфигурирует).
 
 ```text
 vesma add [CONTENT] [OPTIONS]
@@ -111,12 +112,12 @@ vesma add [CONTENT] [OPTIONS]
 | `CONTENT` (позиционный) | — | Текст для сохранения. Если не указан, читается из stdin. |
 | `--title / -t` | авто | Краткий заголовок. Автогенерируется из контента, если не указан. |
 | `--tags / -T` | `""` | Теги через запятую (напр. `project:test,agent:me,mnemos:learning`). |
-| `--file / -f` | — | Импортировать содержимое файла. Взаимоисключающее с `CONTENT` и `--url`. |
-| `--url / -u` | — | Получить и сохранить URL. Требует тегов. |
 | `--source / -s` | `cli` | Источник записи: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `--type` | `note` | Тип записи: `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
-| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. |
+| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. С `--file` (устаревшим) — превью текста файла. |
 | `--config / -c` | — | Путь к `config.yaml`. |
+
+> **Устаревшие формы флагов: `--file / -f`, `--url / -u`.** Старые формы продолжают работать как скрытые депрекейтед-алиасы — поведение идентичное, плюс однострочный `[deprecated]`-хинт в stderr. Используйте `vesma ingest file PATH` / `vesma ingest url URL`; флаги не удаляются до 6.0.
 
 > **Контракт тегов.** Каждая запись должна иметь `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. CLI соблюдает это в strict-режиме (по умолчанию). Полная схема — в [tag-contract.md](tag-contract.md).
 
@@ -131,15 +132,59 @@ vesma add "Always validate SQL with parameterized queries" \
   --title "SQL safety rule" \
   --tags "project:vesma,agent:security,mnemos:rule,severity:high"
 
-# Из файла
-vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
-
-# Из URL (загружает, извлекает, сохраняет)
-vesma add --url https://example.com/article --tags project:research agent:user mnemos:learning
-
 # Из stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
   | vesma add --tags project:vesma agent:sre mnemos:bug-pattern,severity:medium
+```
+
+---
+
+## `ingest`
+
+Ингест внешнего контента в хранилище памяти: веб-страница или текст локального файла. Сабкоманды несут поведение бывших `add --url` / `add --file` (реструктуризация CLI, волна W3).
+
+### `ingest url`
+
+Загрузить веб-страницу, извлечь основной текст и сохранить как запись памяти.
+
+```text
+vesma ingest url URL [OPTIONS]
+```
+
+| Аргумент / Опция | По умолчанию | Описание |
+|------------------|-------------|---------- |
+| `URL` (позиционный) | — | URL для загрузки, извлечения и сохранения. |
+| `--tags / -T` | `""` | Теги через запятую. Обязательны (контракт тегов). |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### `ingest file`
+
+Сохранить текст локального файла как запись памяти.
+
+```text
+vesma ingest file PATH [OPTIONS]
+```
+
+| Аргумент / Опция | По умолчанию | Описание |
+|------------------|-------------|---------- |
+| `PATH` (позиционный) | — | Файл, чей текст сохраняется. |
+| `--title / -t` | авто | Краткий заголовок. Автогенерируется из контента, если не указан. |
+| `--tags / -T` | `""` | Теги через запятую. |
+| `--source / -s` | `cli` | Источник записи (те же значения, что у `add`). |
+| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### Примеры
+
+```bash
+# Из URL (загружает, извлекает, сохраняет)
+vesma ingest url https://example.com/article --tags project:research agent:user mnemos:learning
+
+# Из файла
+vesma ingest file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
+
+# Превью статистики фильтра для файла без сохранения
+vesma ingest file ~/notes/architecture.md --dry-run --tags project:vesma agent:tech-lead mnemos:decision
 ```
 
 ---

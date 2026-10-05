@@ -253,7 +253,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
 ### Related
 
 - HTTP equivalent: [`GET /recall/agent/{name}`](http-api.md#get-recallagentname--agent-recall)
-- CLI equivalent: [`vesma recall --agent <slug>`](cli-reference.md#recall)
+- CLI equivalent: [`vesma recall agent <slug>`](cli-reference.md#recall-agent)
 
 ---
 
@@ -644,7 +644,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 
 ### Related
 
-- CLI equivalent: [`vesma add --url <URL>`](cli-reference.md#add)
+- CLI equivalent: [`vesma ingest url <URL>`](cli-reference.md#ingest-url)
 - HTTP equivalent: [`POST /memories` with manual content](http-api.md#post-memories--create-memory)
 - HTTP equivalent: [`POST /ingest-url`](http-api.md#post-ingest-url--fetch-and-save-a-web-page)
 - Security: [security.md](../admin/security.md#2-ssrf-prevention-memorymanager_validate_url)

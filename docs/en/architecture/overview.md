@@ -263,11 +263,11 @@ See [mcp-tools.md#output-token-reduction-p1-7](../user/mcp-tools.md#output-token
 #### CLI (Typer)
 ```bash
 vesma add "Note about something important" --tags project:vesma agent:user mnemos:learning   # quick add
-vesma add --file ./document.pdf --tags project:vesma agent:user mnemos:learning              # from a file
-vesma add --url https://example.com --tags project:research agent:user mnemos:learning        # ingest a URL
+vesma ingest file ./document.pdf --tags project:vesma agent:user mnemos:learning             # from a file
+vesma ingest url https://example.com --tags project:research agent:user mnemos:learning      # ingest a URL
 vesma search "how to configure nginx"             # hybrid search (FTS5 + vector + RRF)
 vesma search "CVE" --project vesma --limit 20    # project-scoped search
-vesma recall --agent tech-writer --limit 20       # recent entries for an agent (M3)
+vesma recall agent tech-writer --limit 20         # recent entries for an agent (M3)
 vesma stats                                       # store statistics
 vesma serve                                       # start the HTTP API
 vesma mcp-server                                  # start the MCP server (stdio)
