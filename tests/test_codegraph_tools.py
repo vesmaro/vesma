@@ -100,9 +100,7 @@ class FakeMainStore:
     def delete_project(self, project_id: str) -> bool:
         """Remove by id OR name (the ghost-delete surface)."""
         before = len(self.projects)
-        self.projects = [
-            p for p in self.projects if project_id not in (p.id, p.name)
-        ]
+        self.projects = [p for p in self.projects if project_id not in (p.id, p.name)]
         return len(self.projects) < before
 
     def get_meta(self, key: str) -> str | None:
@@ -831,9 +829,7 @@ class TestGhostDelete:
     registration row — behind the evidence gate (``confirm=true`` plus
     the ``confirm_name`` echo of the project name)."""
 
-    def test_delete_ghost_removes_registration(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_delete_ghost_removes_registration(self, tmp_path: Path, mini_repo: Path) -> None:
         service, main = make_service(tmp_path, mini_repo)
         try:
             service.index_project(PROJECT, agent=AGENT)
@@ -851,9 +847,7 @@ class TestGhostDelete:
             assert service.store.count_nodes(PROJECT) == 0
             # ...and so is the registration row (the ghost left the list)
             assert main.get_project_by_name(PROJECT) is None
-            names = [
-                p["project"] for p in service.list_graph_projects(agent=AGENT)["projects"]
-            ]
+            names = [p["project"] for p in service.list_graph_projects(agent=AGENT)["projects"]]
             assert PROJECT not in names
             rows = [r for r in service._audit.recent(PROJECT) if r["action"] == "delete"]
             assert rows and rows[0]["details"]["ghost"] is True
@@ -876,16 +870,12 @@ class TestGhostDelete:
                 if p["project"] == PROJECT
             )
             assert row["root_missing"] is True
-            refused = [
-                r for r in service._audit.recent(PROJECT) if r["action"] == "delete-refused"
-            ]
+            refused = [r for r in service._audit.recent(PROJECT) if r["action"] == "delete-refused"]
             assert refused, "expected the delete-refused audit row"
         finally:
             service.close()
 
-    def test_delete_ghost_refused_on_name_mismatch(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_delete_ghost_refused_on_name_mismatch(self, tmp_path: Path, mini_repo: Path) -> None:
         """``confirm=true`` alone is not the gate — the name echo is
         the second factor."""
         service, main = make_service(tmp_path, mini_repo)
@@ -1272,9 +1262,7 @@ class TestMcpLayer:
         )
         assert refused["code"] == "confinement-refused"
 
-    def test_delete_ghost_dispatch_passes_the_gate(
-        self, tmp_path: Path, mini_repo: Path
-    ) -> None:
+    def test_delete_ghost_dispatch_passes_the_gate(self, tmp_path: Path, mini_repo: Path) -> None:
         from vesmaro.mcp_server import _handle_graph
 
         mgr = _fake_manager(tmp_path, mini_repo, enabled=True)

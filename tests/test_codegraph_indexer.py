@@ -174,9 +174,7 @@ class TestFileSurface:
 
 
 class TestFullIndex:
-    def test_decorated_definitions_are_indexed(
-        self, store: CodeGraphStore, tmp_path: Path
-    ) -> None:
+    def test_decorated_definitions_are_indexed(self, store: CodeGraphStore, tmp_path: Path) -> None:
         """A ``decorated_definition`` (any ``@decorator``-carrying
         def/class — FastAPI endpoints, typer commands, dataclasses,
         properties) must reach the graph. Regression for the surface
@@ -206,18 +204,15 @@ class TestFullIndex:
         assert result.status == "ok"
         names = {
             (kind, qname)
-            for kind, qname in store._conn().execute(
-                "SELECT kind, qname FROM project_nodes WHERE kind IN "
-                "('Function','Method')"
-            ).fetchall()
+            for kind, qname in store._conn()
+            .execute("SELECT kind, qname FROM project_nodes WHERE kind IN ('Function','Method')")
+            .fetchall()
         }
         assert ("Function", "deco") in names
         assert ("Function", "endpoint") in names  # decorated top-level def
         assert ("Method", "Box.size") in names  # decorated method (qname is class-scoped)
         # PG1: the decorator's string argument never entered the store
-        for (table,) in store._conn().execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ):
+        for (table,) in store._conn().execute("SELECT name FROM sqlite_master WHERE type='table'"):
             for row in store._conn().execute(f"SELECT * FROM {table}"):
                 assert "AKIAIOSFODNN7EXAMPLE" not in str(row)
 

@@ -192,8 +192,7 @@ class VesmaSurfaceSource:
             from vesmaro.cli.main import app
         except Exception:
             logger.warning(
-                "codegraph: vesma surface — cli tree unavailable, "
-                "no Command nodes for %s",
+                "codegraph: vesma surface — cli tree unavailable, no Command nodes for %s",
                 project,
                 exc_info=True,
             )
@@ -202,8 +201,7 @@ class VesmaSurfaceSource:
             click_root = typer.main.get_command(app)
         except Exception:
             logger.warning(
-                "codegraph: vesma surface — cli tree build failed, "
-                "no Command nodes for %s",
+                "codegraph: vesma surface — cli tree build failed, no Command nodes for %s",
                 project,
                 exc_info=True,
             )
@@ -279,8 +277,7 @@ class VesmaSurfaceSource:
             from vesmaro.api.main import app
         except Exception:
             logger.warning(
-                "codegraph: vesma surface — api app unavailable, "
-                "no Route nodes for %s",
+                "codegraph: vesma surface — api app unavailable, no Route nodes for %s",
                 project,
                 exc_info=True,
             )
@@ -344,9 +341,7 @@ def _params_meta(cmd: Any) -> tuple[dict[str, str], int]:
     params: dict[str, str] = {}
     options = 0
     for param in getattr(cmd, "params", None) or []:
-        long_opts = [
-            opt for opt in getattr(param, "opts", None) or [] if opt.startswith("--")
-        ]
+        long_opts = [opt for opt in getattr(param, "opts", None) or [] if opt.startswith("--")]
         if long_opts:
             options += len(long_opts)
             key = long_opts[0]

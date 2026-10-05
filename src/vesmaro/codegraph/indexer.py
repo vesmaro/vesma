@@ -1197,8 +1197,7 @@ class ProjectIndexer:
         # contract: store qnames are file-scoped, so (path, qname) is
         # the exact address of a symbol.
         symbols = {
-            rel: {q: n.id for q, n in ex.qname_to_node.items()}
-            for rel, ex in extractions.items()
+            rel: {q: n.id for q, n in ex.qname_to_node.items()} for rel, ex in extractions.items()
         }
         extra = run_node_sources(project, root, symbols)
         nodes.extend(extra.nodes)
