@@ -32,7 +32,9 @@ from vesmaro.cli.doctor import CheckStatus, _check_mcp_transport
 # docs-as-memory document ingest (born-quarantined chunks, swept at
 # completion; mnemos_ingest_url keeps its single-row semantics).
 # 38 → 39 (#454): mnemos_register_project added (agent-side PG2 registration).
-EXPECTED_TOOL_COUNT = 39
+# 39 → 40 (vitals wave 9): mnemos_usage_report added — the phase C usage-loop
+# closure as a harness-authored report tool (ADR-0026 §C).
+EXPECTED_TOOL_COUNT = 40
 
 
 # The conftest installs MagicMock stubs into sys.modules BEFORE any test
