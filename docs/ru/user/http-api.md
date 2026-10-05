@@ -294,7 +294,7 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/tags/remove \
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Основной текст. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
 | `source` | string | нет | `manual` | Одно из `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | нет | — | URL происхождения. |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -988,7 +988,7 @@ curl -s http://127.0.0.1:8000/auto-collect
 | Поле | Тип | Обязательное | Описание |
 |------|-----|--------------|---------- |
 | `url` | string | **да** | HTTP/HTTPS URL для загрузки. |
-| `tags` | string[] | **да** | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
+| `tags` | string[] | **да** | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
 
 **Ответ 201**
 
@@ -1015,7 +1015,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Код | Причина |
 |-----|-------- |
-| `422` | Отсутствует обязательный тег (`project:`, `agent:` или `vesma:`) или отсутствует `url` |
+| `422` | Некорректное тело (нет `url`), или нарушение контракта тегов (нет `project:`, `agent:` или `mnemos:`) — текст ошибки контракта возвращается в `detail` как есть. |
 | `500` | Сбой загрузки, сбой извлечения или сбой записи SQLite / vault |
 
 ---
@@ -1057,7 +1057,7 @@ danger-детектор прогоняется по всем чанкам (чи�
 |-------|-----|-----------|----------|
 | `text` | string | **да** | Полный текст документа. |
 | `doc_id` | string | **да** | Логическая идентичность документа; стабильна при повторном ингесте. |
-| `tags` | string[] | **да** | Обязательны `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. |
+| `tags` | string[] | **да** | Обязательны `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>`. |
 | `title` | string | нет | Необязательный заголовок. |
 | `source_url` | string | нет | Необязательный URL-источник. |
 
@@ -1093,7 +1093,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document \
 
 | Код | Причина |
 |------|---------|
-| `422` | Нет обязательного тега, нет `text`/`doc_id`, или пустой `doc_id` |
+| `422` | Некорректное тело (нет `text`/`doc_id` или пустой `doc_id`), или нарушение контракта тегов (нет `project:`, `agent:` или `mnemos:`) — текст ошибки контракта возвращается в `detail` как есть. |
 | `500` | Ошибка записи SQLite / vault |
 
 ---

@@ -294,7 +294,7 @@ M2 tag contract is enforced server-side. The endpoint derives `project` and `age
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Primary text. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 | `source` | string | no | `manual` | One of `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | no | — | Origin URL. |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -985,7 +985,7 @@ Mirrors the `mnemos_ingest_url` plugin tool.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | **yes** | HTTP/HTTPS URL to fetch. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 
 **Response 201**
 
@@ -1012,7 +1012,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) or missing `url` |
+| `422` | Malformed body (missing `url`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | Fetch failure, extraction failure, or SQLite / vault write failure |
 
 ---
@@ -1053,7 +1053,7 @@ keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Full document text to chunk and ingest. |
 | `doc_id` | string | **yes** | Logical document identity; stable across re-ingest. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 | `title` | string | no | Optional document title. |
 | `source_url` | string | no | Optional provenance URL. |
 
@@ -1087,7 +1087,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag, missing `text`/`doc_id`, or an empty `doc_id` |
+| `422` | Malformed body (missing `text`/`doc_id` or an empty `doc_id`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ---
