@@ -53,7 +53,7 @@ def _find_vitals_master() -> Path | None:
     # 2026-10-05, 0 tests ran, rc=2 — #499). Guard the index access: the pin
     # stays reachable on full layouts and degrades to a graceful skip in
     # short-depth containers (worktree → container independence).
-    candidates = Path("/var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals"),
+    candidates = (Path("/var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals"),)
     p = Path(__file__).resolve()
     if len(p.parents) > 4:
         candidates = (*candidates, p.parents[4] / "vesma-vitals")
