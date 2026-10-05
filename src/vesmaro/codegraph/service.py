@@ -1057,18 +1057,28 @@ class CodeGraphService:
             for row in rows:
                 row.pop("signature", None)
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
+        # Card vesma-graph-audit-firstcall-marking: the FIRST search of a
+        # task (actor+session scoped) is marked on its own audit row so
+        # the graph-first share stays computable from graph_audit rows
+        # alone (the computing query lives in GraphAudit.has_search).
+        # Shape policy: the marker rides ONLY the first row (absent on
+        # the rest — never null/empty).
+        first_search = not self._audit.has_search(actor, sess)
+        details: dict[str, Any] = {
+            "matches": len(rows),
+            "returned": len(page),
+            "total": total,
+            "literal_fallback": fallback_used,
+        }
+        if first_search:
+            details["first_search"] = True
         self._audit.record(
             key,
             "graph-read",
             actor,
             session=sess,
             reason="search",
-            details={
-                "matches": len(rows),
-                "returned": len(page),
-                "total": total,
-                "literal_fallback": fallback_used,
-            },
+            details=details,
         )
         payload: dict[str, Any] = {
             "project": key,
