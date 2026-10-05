@@ -42,11 +42,25 @@ the set alongside the metrics.
 
 Default-off, enforced twice: the config default is
 ``mnemos.decision_provider="deterministic"`` (zero I/O), and even with
-``"jev"`` the factory refuses BEFORE any network attempt when the key
-env var is missing. The key travels by env-NAME indirection
+``"jev"`` the factory refuses the activation BEFORE any network attempt
+when the key env var is missing — with a machine-parseable
+``code=JEV-E-CONFIG class=provider-class`` warn (§4 -CONFIG: the config
+is rejected, the active implementation stays ``deterministic``). The key
+travels by env-NAME indirection
 (``decision_jev_api_key_env``, default ``VESMA_OPENROUTER_API_KEY``; the
 deprecated ``VESMARO_OPENROUTER_API_KEY`` stays honoured until 6.0)
 — the secret itself never enters config files, git or logs.
+
+W5 conformance additions (contract 1.0.0-draft.2, review-2): every
+privacy refusal and scanner failure warns with ``class=call-class``
+BEFORE any network I/O (§3.5, §4 GATE row); the gate is scanner
+fail-closed — an exception or wall-clock timeout inside
+``detect_secrets``/``danger_detect`` aborts the whole call
+(:class:`JevScannerError`); and the wiring hands out
+:class:`JevFailOpenProvider`, so a probe failure degrades THAT verdict
+to the deterministic rule (``class=verdict-class``) instead of blocking
+the product path (§3.8). Every answered request carries a §3.9
+telemetry line (primitive / implementation / confidence).
 """
 
 from __future__ import annotations
@@ -54,11 +68,17 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from typing import Any, Final
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as ScanTimeout
+from functools import partial
+from typing import Any, Final, TypeVar
 
 from vesmaro.config import VesmaConfig
 from vesmaro.danger_detectors import detect as danger_detect
 from vesmaro.decision_provider import (
+    ACTION_CLASS_CALL,
+    ACTION_CLASS_PROVIDER,
+    ACTION_CLASS_VERDICT,
     QUESTION_IS_DUPLICATE,
     SPECTRUM_RECORD_QUALITY,
     CanonRecordView,
@@ -77,11 +97,14 @@ from vesmaro.decision_provider import (
     Score,
     UnsupportedPrimitiveError,
     VesmaProvider,
+    log_decision_telemetry,
 )
 from vesmaro.http_guard import validate_url_ssrf
 from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
 
 logger = logging.getLogger(__name__)
+
+_ScanResult = TypeVar("_ScanResult")
 
 #: The only model id OpenRouter accepts for the Jev router (TL live
 #: probe 2026-09-29; the native ids are rejected as invalid).
@@ -108,6 +131,52 @@ _DEPRECATED_JEV_KEY_ENV: Final[str] = "VESMARO_OPENROUTER_API_KEY"
 
 #: Outbound HTTP timeout for one probe (matches the ingest leg's 30s).
 JEV_HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
+
+#: Wall-clock guard for ONE privacy-gate detector pass (spec §3.5
+#: fail-closed, review-2: a scanner TIMEOUT aborts the call exactly like
+#: any scanner failure). The detectors are synchronous pure-python
+#: scanners — a catastrophic-backtracking hang is the realistic timeout
+#: case. Read at call time (monkeypatchable in tests).
+JEV_SCAN_TIMEOUT_SECONDS: Final[float] = 10.0
+
+
+def _scan_fail_closed(description: str, scan: Callable[[], _ScanResult]) -> _ScanResult:
+    """Run one detector pass under the §3.5 fail-closed contract.
+
+    A scanner EXCEPTION or a wall-clock TIMEOUT is a scanner failure:
+    the pass cannot prove the state safe, so the whole external call is
+    aborted — typed :class:`JevScannerError` plus a
+    ``code=JEV-E-SCANNER class=call-class`` warn; continuing an outbound
+    call with an unscanned state is forbidden. The pass runs on a worker
+    thread so a hung detector cannot hang the gate; CPython cannot kill
+    the abandoned worker (it is joined at interpreter exit), but the
+    CALL still aborts deterministically — that is the guaranteed part.
+    """
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jev-privacy-scan")
+    try:
+        future = executor.submit(scan)
+        return future.result(timeout=JEV_SCAN_TIMEOUT_SECONDS)
+    except ScanTimeout as exc:
+        logger.warning(
+            "code=JEV-E-SCANNER class=%s privacy-gate scanner timed out after %.1fs (%s) — "
+            "aborting the external call",
+            ACTION_CLASS_CALL,
+            JEV_SCAN_TIMEOUT_SECONDS,
+            description,
+        )
+        raise JevScannerError(f"{description} timed out after {JEV_SCAN_TIMEOUT_SECONDS}s") from exc
+    except Exception as exc:
+        logger.warning(
+            "code=JEV-E-SCANNER class=%s privacy-gate scanner failed (%s): %s — aborting "
+            "the external call",
+            ACTION_CLASS_CALL,
+            description,
+            type(exc).__name__,
+        )
+        raise JevScannerError(f"{description} failed: {type(exc).__name__}") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
 
 #: Honest confidence for the adapter's Score answers: the maximum-entropy
 #: level. The adapter's calibration exists for the is-duplicate Brier
@@ -163,6 +232,20 @@ class JevTransportError(RuntimeError):
     No decision is fabricated on a transport failure — the caller gets
     the typed error and retries are its policy.
     """
+
+
+class JevScannerError(RuntimeError):
+    """The privacy-gate scanner itself failed (exception or timeout).
+
+    Fail-closed (spec §3.5, review-2): a broken or hanging scanner
+    cannot prove the state safe — the WHOLE call is aborted before any
+    network I/O, never resumed with an unscanned payload. The
+    accompanying warn carries ``class=call-class``.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(f"jev privacy-gate scanner failed: {detail}")
+        self.detail = detail
 
 
 class JevResponseError(ValueError):
@@ -296,24 +379,25 @@ class JevRouterProvider:
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive:
         """Answer one product-fixed question over the prepared state."""
         self._privacy_gate(state)
+        answer: DecisionPrimitive
         if isinstance(request, RecordQualityRequest):
-            answer = self._ask(
+            quality = self._ask(
                 "record-quality",
                 "Record:\n"
                 f"{self._render(state.record)}\n\n"
                 "Question: is this a high-quality canon record?",
             )
-            return Score(
+            answer = Score(
                 spectrum=SPECTRUM_RECORD_QUALITY,
-                value=1.0 if answer else 0.0,
+                value=1.0 if quality else 0.0,
                 confidence=JEV_SCORE_CONFIDENCE,
             )
-        if isinstance(request, IsDuplicateRequest):
+        elif isinstance(request, IsDuplicateRequest):
             if state.candidate is None:
                 raise MissingEvidenceError(
                     "is-duplicate is pairwise: state.candidate (the prior record) is required"
                 )
-            answer = self._ask(
+            duplicate = self._ask(
                 "is-duplicate",
                 "Record A:\n"
                 f"{self._render(state.record)}\n\n"
@@ -321,13 +405,16 @@ class JevRouterProvider:
                 f"{self._render(state.candidate)}\n\n"
                 "Question: is Record B a near-duplicate of Record A?",
             )
-            return Noul(question=QUESTION_IS_DUPLICATE, probability=1.0 if answer else 0.0)
-        if isinstance(request, GoalOverlapRequest):
+            answer = Noul(question=QUESTION_IS_DUPLICATE, probability=1.0 if duplicate else 0.0)
+        elif isinstance(request, GoalOverlapRequest):
             raise UnsupportedPrimitiveError(
                 "goal-overlap has no pre-registered acceptance criterion yet "
                 "(canon preregistration rule 5) — the jev adapter declines it"
             )
-        raise UnsupportedPrimitiveError(f"no jev heuristic for {type(request).__name__}")
+        else:
+            raise UnsupportedPrimitiveError(f"no jev heuristic for {type(request).__name__}")
+        log_decision_telemetry(self.name, answer)
+        return answer
 
     # ── Internals ────────────────────────────────────────────────────────
 
@@ -350,10 +437,14 @@ class JevRouterProvider:
         try:
             response = self._transport(self._endpoint, payload, self._api_key)
         except (JevTransportError, JevResponseError):
-            logger.warning("jev decision failed: question=%s", kind)
+            # Failure-context line only (code=, no class=): the verdict's
+            # DEGRADATION is recorded by the wiring wrapper
+            # (:class:`JevFailOpenProvider`) — one degradation, one
+            # class-carrying line (spec §3.8).
+            logger.warning("code=JEV-E-INFER jev decision failed: question=%s", kind)
             raise
         except Exception as exc:
-            logger.warning("jev decision failed: question=%s", kind)
+            logger.warning("code=JEV-E-INFER jev decision failed: question=%s", kind)
             raise JevTransportError(f"jev transport raised {type(exc).__name__}") from exc
         verdict, routed = _parse_probe_response(response)
         self.routed_models.append(routed)
@@ -364,7 +455,9 @@ class JevRouterProvider:
             logger.info("jev decision ok: question=%s routed_model=%s", kind, routed)
             return False
         logger.warning(
-            "jev decision failed: question=%s routed_model=%s reason=strict-parse", kind, routed
+            "code=JEV-E-INFER jev decision failed: question=%s routed_model=%s reason=strict-parse",
+            kind,
+            routed,
         )
         raise JevResponseError(
             f"jev verdict violated the strictly-formatted probe contract: "
@@ -375,35 +468,133 @@ class JevRouterProvider:
     def _privacy_gate(state: CanonState) -> None:
         """Scan the prepared state BEFORE any network I/O (ADR-0004 rule 3).
 
-        Fail-closed over BOTH records (subject and candidate): a
-        ``mnemos:no-federate`` tag, a secret finding or a danger-detector
-        positive aborts the WHOLE call with a typed refusal — and since
-        the gate runs first, a refused call performs ZERO network
-        attempts. Secret/danger findings are reported by pattern names
-        and counts only; matched values never leave the process.
+        Draft.2 review-2 order: the ``no-federate`` tag check runs FIRST
+        on every view, before any scan (assembly-side exclusion is the
+        first line of the gate — :meth:`CanonRecordView.from_memory`
+        refuses tagged rows; this per-view check is the second), and the
+        request message is assembled only after the gate passed. The
+        gate is fail-closed over BOTH records (subject and candidate):
+        a ``mnemos:no-federate`` tag, a secret finding, a danger-detector
+        positive or a SCANNER FAILURE (exception or timeout — a broken
+        scanner cannot prove the state safe, and the danger detector
+        reports its internal errors in the result, never as exceptions)
+        aborts the WHOLE call with a typed refusal and a
+        ``code=JEV-E-GATE``/``code=JEV-E-SCANNER`` warn carrying
+        ``class=call-class`` — zero network attempts. Findings are
+        reported by pattern names and counts only; matched values never
+        leave the process.
         """
         views: list[tuple[str, CanonRecordView]] = [("record", state.record)]
         if state.candidate is not None:
             views.append(("candidate", state.candidate))
         for label, view in views:
             if NO_FEDERATE_TAG in view.tags:
+                logger.warning(
+                    "code=JEV-E-GATE class=%s privacy refusal before any network I/O (%s "
+                    "carries %s)",
+                    ACTION_CLASS_CALL,
+                    label,
+                    NO_FEDERATE_TAG,
+                )
                 raise JevPrivacyRefusalError(
                     "no-federate-tag", f"{label} carries {NO_FEDERATE_TAG}"
                 )
             text = view.embedding_text()
-            secret_findings = detect_secrets(text)
+            secret_findings = _scan_fail_closed(f"{label}:secrets", partial(detect_secrets, text))
             if secret_findings:
-                raise JevPrivacyRefusalError(
-                    "secret-detected", f"{label}: {findings_by_pattern(secret_findings)}"
+                summary = findings_by_pattern(secret_findings)
+                logger.warning(
+                    "code=JEV-E-GATE class=%s privacy refusal before any network I/O (%s: %s)",
+                    ACTION_CLASS_CALL,
+                    label,
+                    summary,
                 )
-            danger = danger_detect(view.body, title=view.title)
+                raise JevPrivacyRefusalError("secret-detected", f"{label}: {summary}")
+            danger = _scan_fail_closed(
+                f"{label}:danger",
+                partial(danger_detect, view.body, title=view.title),
+            )
+            if danger.error is not None:
+                # The danger detector converts its own internal failures
+                # into ``error`` (never exceptions) — that IS the
+                # scanner-failure signal; refuse fail-closed (§3.5).
+                logger.warning(
+                    "code=JEV-E-SCANNER class=%s privacy-gate danger scanner failed (%s: %s) "
+                    "— aborting the external call",
+                    ACTION_CLASS_CALL,
+                    label,
+                    danger.error,
+                )
+                raise JevScannerError(f"{label}:danger failed: {danger.error}")
             if not danger.clean:
-                raise JevPrivacyRefusalError(
-                    "danger-detected", f"{label}: {danger.patterns_by_class()}"
+                by_class = danger.patterns_by_class()
+                logger.warning(
+                    "code=JEV-E-GATE class=%s privacy refusal before any network I/O (%s: %s)",
+                    ACTION_CLASS_CALL,
+                    label,
+                    by_class,
                 )
+                raise JevPrivacyRefusalError("danger-detected", f"{label}: {by_class}")
 
 
 # ── The seam factory (the single wiring point for future call sites) ─────────
+
+
+class JevFailOpenProvider:
+    """The §3.8 fail-open wiring layer around the wired external adapter.
+
+    The adapter answers honestly and raises typed errors — the
+    DEGRADATION decision belongs to the wiring (spec §3.8: ANY provider
+    error degrades to baseline; the product path is never blocked).
+    Per verdict: a transport/inference failure degrades THIS answer to
+    the deterministic rule with a machine-parseable
+    ``code=JEV-E-INFER class=verdict-class`` warn. A privacy refusal
+    (``JEV-E-GATE``) or scanner failure (``JEV-E-SCANNER``) has already
+    been warned ``class=call-class`` by the gate — the verdict degrades
+    to the deterministic rule WITHOUT a second warn (one event, one
+    line; §4 GATE row). Engine-wide typed refusals
+    (:class:`MissingEvidenceError`, :class:`UnsupportedPrimitiveError`)
+    pass through: they are unanswerable for EVERY provider, including
+    the baseline (documented reconciliation, spec §10 style).
+
+    Calibration honesty: the calibration runner drives the RAW
+    :class:`JevRouterProvider` (never this wrapper), so a measured
+    failure stays a loud measurement event; the wrapper guards only the
+    product wiring handed out by :func:`resolve_decision_provider`.
+    """
+
+    name: Final[str] = "jev-router"
+
+    def __init__(self, inner: JevRouterProvider) -> None:
+        self._inner = inner
+        self._baseline = DeterministicProvider()
+
+    @property
+    def routed_models(self) -> list[str]:
+        """Transparency pass-through (the routed-model re-calibration trigger)."""
+        return self._inner.routed_models
+
+    def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive:
+        """One probe with per-verdict fail-open to the deterministic rule.
+
+        The degraded answer's §3.9 telemetry is emitted by the baseline
+        provider itself — attributed to ``deterministic``, the
+        implementation that ACTUALLY answered (§4 INFER row).
+        """
+        try:
+            return self._inner.evaluate(request, state)
+        except (MissingEvidenceError, UnsupportedPrimitiveError):
+            raise
+        except (JevPrivacyRefusalError, JevScannerError):
+            # The gate already warned ``class=call-class`` — degrade quietly.
+            return self._baseline.evaluate(request, state)
+        except Exception as exc:  # fail-open boundary (§3.8): degrade, never block
+            logger.warning(
+                "code=JEV-E-INFER class=%s jev verdict degraded to the deterministic rule: %s",
+                ACTION_CLASS_VERDICT,
+                exc,
+            )
+            return self._baseline.evaluate(request, state)
 
 
 def resolve_decision_provider(
@@ -430,10 +621,16 @@ def resolve_decision_provider(
       additionally telegraphed as a RECALIBRATION EVENT (not routine
       degradation): the artifact cannot silently run on another
       embedding geometry.
-    * ``jev`` → :class:`JevRouterProvider`; the key is read at wiring
-      time from the env variable NAMED by ``decision_jev_api_key_env``.
-      Missing/empty env → :class:`JevConfigError` BEFORE any network
-      attempt. The secret never enters config files, git or logs.
+    * ``jev`` → :class:`JevFailOpenProvider` around
+      :class:`JevRouterProvider`; the key is read at wiring time from the
+      env variable NAMED by ``decision_jev_api_key_env``. Missing/empty
+      env → a ``code=JEV-E-CONFIG class=provider-class`` warn and the
+      deterministic provider (§4 -CONFIG: config rejected, active
+      implementation stays deterministic, zero network attempts). The
+      secret never enters config files, git or logs.
+
+    Every non-deterministic answer travels with §3.9 telemetry; the Jev
+    wiring is fail-open per verdict (§3.8) via :class:`JevFailOpenProvider`.
     """
     mode = settings.decision_provider
     if mode == "off":
@@ -443,25 +640,29 @@ def resolve_decision_provider(
     if mode == "vesma":
         if not embedder_fingerprint:
             logger.warning(
-                "code=CORTEX-E-PIN decision_provider=vesma without a live embedder "
+                "code=CORTEX-E-PIN class=%s decision_provider=vesma without a live embedder "
                 "fingerprint — pin unassertable (recalibration-class refusal), "
-                "degrading to deterministic"
+                "degrading to deterministic",
+                ACTION_CLASS_PROVIDER,
             )
             return DeterministicProvider()
         try:
             return VesmaProvider(embedder_fingerprint=embedder_fingerprint)
         except CortexPinError as exc:
             logger.warning(
-                "code=%s cortex recalibration event: %s — degrading to deterministic "
+                "code=%s class=%s cortex recalibration event: %s — degrading to deterministic "
                 "(re-calibrate before re-enabling decision_provider=vesma)",
                 exc.code,
+                ACTION_CLASS_PROVIDER,
                 exc,
             )
             return DeterministicProvider()
         except CortexError as exc:
             logger.warning(
-                "code=%s decision_provider=vesma failed to load, degrading to deterministic: %s",
+                "code=%s class=%s decision_provider=vesma failed to load, degrading to "
+                "deterministic: %s",
                 exc.code,
+                ACTION_CLASS_PROVIDER,
                 exc,
             )
             return DeterministicProvider()
@@ -484,9 +685,17 @@ def resolve_decision_provider(
             if key_env == DEFAULT_JEV_KEY_ENV
             else ""
         )
-        raise JevConfigError(
-            f"decision_provider=jev requires a non-empty ${key_env}{hint} "
-            "(env-NAME indirection — the key itself never enters config)"
+        # §4 -CONFIG row: the activation is refused (flag WITHOUT a key),
+        # the ACTIVE implementation stays deterministic, and the refusal
+        # is logged machine-parseably with the contractual action class.
+        logger.warning(
+            "code=JEV-E-CONFIG class=%s decision_provider=jev refused: requires a non-empty "
+            "$%s%s (env-NAME indirection — the key itself never enters config); the active "
+            "implementation stays deterministic",
+            ACTION_CLASS_PROVIDER,
+            key_env,
+            hint,
         )
+        return DeterministicProvider()
     logger.info("jev adapter wired: key_env=%s", key_env)
-    return JevRouterProvider(api_key=key)
+    return JevFailOpenProvider(JevRouterProvider(api_key=key))

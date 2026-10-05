@@ -22,6 +22,8 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import time
+from dataclasses import asdict
 from typing import Any, cast
 
 import pytest
@@ -36,9 +38,11 @@ from vesmaro.decision_jev import (
     OPENROUTER_CHAT_COMPLETIONS_URL,
     YES_NO_SYSTEM_PROMPT,
     JevConfigError,
+    JevFailOpenProvider,
     JevPrivacyRefusalError,
     JevResponseError,
     JevRouterProvider,
+    JevScannerError,
     JevTransportError,
     _http_post_json,
     resolve_decision_provider,
@@ -298,6 +302,104 @@ def test_no_federate_tag_refuses_whole_call(side: str) -> None:
     assert provider.routed_models == []
 
 
+def test_privacy_refusal_warns_with_call_class(caplog: pytest.LogCaptureFixture) -> None:
+    """DP-05/DP-08 (§4 GATE row): a privacy-gate finding warns
+    machine-parseably — implementation-namespace code AND the contractual
+    action class ``call-class`` — and the refusal detail stays log-safe."""
+    token = "AKIA" + "T" * 16
+    provider = _provider([])
+    with (
+        caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"),
+        pytest.raises(JevPrivacyRefusalError),
+    ):
+        provider.evaluate(RecordQualityRequest(), _state(body=f"rotate the key {token}"))
+    gate_lines = [r.message for r in caplog.records if "JEV-E-GATE" in r.message]
+    assert gate_lines
+    assert all("class=call-class" in line for line in gate_lines)
+    assert all(token not in line for line in gate_lines)  # matched VALUE never surfaces
+
+
+def test_scanner_exception_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DP-05 (§3.5 fail-closed, review-2): a scanner EXCEPTION aborts the
+    WHOLE call with ``class=call-class`` — continuing an outbound call
+    with an unscanned state is forbidden (zero transport calls pinned)."""
+    transport = ScriptedTransport([])
+    provider = JevRouterProvider(api_key=FAKE_KEY, transport=transport)
+
+    def _boom(content: str) -> list[Any]:
+        raise RuntimeError("detector exploded")
+
+    monkeypatch.setattr("vesmaro.decision_jev.detect_secrets", _boom)
+    with (
+        caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"),
+        pytest.raises(JevScannerError),
+    ):
+        provider.evaluate(RecordQualityRequest(), _state())
+    assert transport.calls == []
+    scanner_lines = [r.message for r in caplog.records if "JEV-E-SCANNER" in r.message]
+    assert scanner_lines
+    assert all("class=call-class" in line for line in scanner_lines)
+
+
+def test_scanner_timeout_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DP-05 (§3.5 fail-closed, review-2): a scanner TIMEOUT aborts the
+    call exactly like a scanner exception — typed refusal, zero network."""
+    transport = ScriptedTransport([])
+    provider = JevRouterProvider(api_key=FAKE_KEY, transport=transport)
+
+    def _hang(content: str) -> list[Any]:
+        time.sleep(0.5)
+        return []
+
+    monkeypatch.setattr("vesmaro.decision_jev.JEV_SCAN_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("vesmaro.decision_jev.detect_secrets", _hang)
+    with (
+        caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"),
+        pytest.raises(JevScannerError, match="timed out"),
+    ):
+        provider.evaluate(RecordQualityRequest(), _state())
+    assert transport.calls == []
+    assert any("JEV-E-SCANNER" in r.message for r in caplog.records)
+
+
+def test_provider_call_leaves_record_bodies_byte_identical() -> None:
+    """DP-03 (checklist check): the prepared state's bytes — title, body,
+    tags — are identical before and after the provider call: the adapter
+    answers verdicts, it never rewrites records."""
+    record = CanonRecordView(title="checkpoint", body="body " * 50, tags=("project:p",))
+    candidate = CanonRecordView(title="prior", body="earlier " * 50, tags=("project:p",))
+    before_record = asdict(record)
+    before_candidate = asdict(candidate)
+    provider = _provider(["no"])
+    provider.evaluate(
+        IsDuplicateRequest(),
+        CanonState(record=record, candidate=candidate, similarity=0.4),
+    )
+    assert asdict(record) == before_record
+    assert asdict(candidate) == before_candidate
+
+
+def test_same_request_same_question_across_implementations() -> None:
+    """DP-14 (§3.3): policy is provider-invariant — the SAME request
+    object gets the same question id from every implementation."""
+    request = IsDuplicateRequest()
+    state = CanonState(
+        record=CanonRecordView(title="t", body="deploy the release gate"),
+        candidate=CanonRecordView(title="t", body="deploy the release gate"),
+        similarity=0.5,
+    )
+    det = DeterministicProvider().evaluate(request, state)
+    jev = JevRouterProvider(api_key=FAKE_KEY, transport=ScriptedTransport(["no"])).evaluate(
+        request, state
+    )
+    assert isinstance(det, Noul) and isinstance(jev, Noul)
+    assert det.question == jev.question == QUESTION_IS_DUPLICATE
+
+
 # ── Default-off / config pins (zero-network guarantees) ─────────────────────
 
 
@@ -325,21 +427,28 @@ def test_resolve_off_returns_none() -> None:
     assert resolve_decision_provider(VesmaConfig(decision_provider="off")) is None
 
 
-def test_resolve_jev_without_key_fails_closed_before_network(
+def test_resolve_jev_flag_without_key_refuses_with_config_class(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """No flag + no key → ZERO network attempts, pinned mechanically: any
-    socket construction (the precondition of every outbound leg) fails
-    the test — and the factory must raise the typed config error first."""
+    """DP-11 (§4 -CONFIG): the owner flag WITHOUT a key does not activate
+    the adapter — the factory warns machine-parseably with the
+    contractual action class and the ACTIVE implementation stays
+    ``deterministic``. Zero sockets are ever constructed (the mechanical
+    no-network tripwire)."""
     monkeypatch.delenv(DEFAULT_JEV_KEY_ENV, raising=False)
+    monkeypatch.delenv("VESMARO_OPENROUTER_API_KEY", raising=False)
 
     def _no_sockets(*args: object, **kwargs: object) -> None:
         raise AssertionError("network attempt: socket constructed")
 
     monkeypatch.setattr(socket, "socket", _no_sockets)
-    monkeypatch.delenv("VESMARO_OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(JevConfigError, match="VESMA_OPENROUTER_API_KEY"):
-        resolve_decision_provider(VesmaConfig(decision_provider="jev"))
+    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+        provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
+    assert isinstance(provider, DeterministicProvider)  # §4: active = deterministic
+    config_lines = [r.message for r in caplog.records if "JEV-E-CONFIG" in r.message]
+    assert config_lines
+    assert all("class=provider-class" in line for line in config_lines)
 
 
 # ── Dual-prefix key resolution (rebrand train 5.3.0) ────────────────────────
@@ -355,7 +464,8 @@ def test_resolve_jev_deprecated_key_name_fallback(
     monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", FAKE_KEY)
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
         provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
-    assert isinstance(provider, JevRouterProvider)
+    assert isinstance(provider, JevFailOpenProvider)
+    assert provider.routed_models == []  # transparency pass-through is wired
     assert any("DEPRECATED-ENV" in rec.message for rec in caplog.records)
 
 
@@ -367,7 +477,7 @@ def test_resolve_jev_canonical_key_name_wins(
     monkeypatch.setenv("VESMARO_OPENROUTER_API_KEY", "vesmaro-legacy-key")
     with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
         provider = resolve_decision_provider(VesmaConfig(decision_provider="jev"))
-    assert isinstance(provider, JevRouterProvider)
+    assert isinstance(provider, JevFailOpenProvider)
     assert not caplog.records
 
 
@@ -378,9 +488,29 @@ def test_resolve_jev_reads_key_from_env_name_indirection(
     monkeypatch.setenv(env_name, FAKE_KEY)
     config = VesmaConfig(decision_provider="jev", decision_jev_api_key_env=env_name)
     provider = resolve_decision_provider(config)
-    assert isinstance(provider, JevRouterProvider)
+    assert isinstance(provider, JevFailOpenProvider)
     assert isinstance(provider, DecisionProvider)
     assert FAKE_KEY not in repr(provider)  # the key never surfaces via repr
+
+
+def test_resolve_jev_key_without_flag_stays_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DP-11 third combination: a key WITHOUT the owner flag does not
+    activate the adapter — the key is read only on the ``mode=jev``
+    branch, so the activation is structurally impossible; deterministic
+    stays active (zero network)."""
+    monkeypatch.setenv(DEFAULT_JEV_KEY_ENV, FAKE_KEY)
+    provider = resolve_decision_provider(VesmaConfig())  # default: deterministic
+    assert isinstance(provider, DeterministicProvider)
+
+
+def test_provider_construction_refuses_empty_key() -> None:
+    """The provider-level typed refusal stays: a directly-constructed
+    adapter without a key never wires (the factory-level refusal carries
+    the ``-CONFIG`` class; this one is the constructor's own guard)."""
+    with pytest.raises(JevConfigError):
+        JevRouterProvider(api_key="")
 
 
 def test_key_value_never_enters_config_dump(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -392,6 +522,80 @@ def test_key_value_never_enters_config_dump(monkeypatch: pytest.MonkeyPatch) -> 
     dump = json.dumps(json.loads(config.model_dump_json()))
     assert FAKE_KEY not in dump
     assert "VESMARO_TEST_JEV_KEY" in dump
+
+
+# ── Fail-open wiring layer (§3.8): the wrapper degrades, never blocks ────────
+
+
+def test_wrapped_transport_failure_degrades_verdict_to_deterministic(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """DP-07 (§3.8): a probe failure on the WIRED adapter degrades THIS
+    verdict to the deterministic rule with
+    ``code=JEV-E-INFER class=verdict-class`` — the product path is never
+    blocked (the RAW provider still raises; the wiring degrades)."""
+    inner = _provider([ConnectionError("network gone")])
+    wrapped = JevFailOpenProvider(inner)
+    state = CanonState(
+        record=CanonRecordView(title="t", body="deploy the release gate"),
+        candidate=CanonRecordView(title="t", body="deploy the release gate"),
+        similarity=0.99,
+    )
+    with caplog.at_level(logging.WARNING, logger="vesmaro.decision_jev"):
+        decision = wrapped.evaluate(IsDuplicateRequest(), state)
+    assert isinstance(decision, Noul)
+    assert decision.probability == 1.0  # 0.99 >= 0.92 deterministic step
+    # The DEGRADATION record (the wrapper's line) carries the action
+    # class; the raw provider's failure-context line stays code-only.
+    degraded = [
+        r.message for r in caplog.records if "JEV-E-INFER" in r.message and "degraded" in r.message
+    ]
+    assert degraded
+    assert all("class=verdict-class" in line for line in degraded)
+    context_only = [
+        r.message
+        for r in caplog.records
+        if "JEV-E-INFER" in r.message and "degraded" not in r.message
+    ]
+    assert context_only  # the raw failure context fired too
+    assert all("class=" not in line for line in context_only)
+    assert inner.routed_models == []  # zero completed responses
+
+
+def test_wrapped_privacy_refusal_degrades_after_the_gate_warn() -> None:
+    """A gate refusal was already warned ``class=call-class`` by the gate
+    (one event, one line); the verdict degrades to the baseline rule.
+    Without measured similarity the baseline rule refuses typed —
+    unanswerable for every provider, pass-through intact."""
+    wrapped = JevFailOpenProvider(_provider([]))
+    token = "AKIA" + "T" * 16
+    state = CanonState(
+        record=CanonRecordView(title="t", body=f"rotate the key {token}"),
+        candidate=CanonRecordView(title="c", body="prior"),
+    )
+    with pytest.raises(MissingEvidenceError):
+        wrapped.evaluate(IsDuplicateRequest(), state)
+
+
+def test_wrapped_telemetry_attributes_the_baseline_answer(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """§3.9/§4 INFER row: after a degraded verdict the telemetry line
+    attributes the ANSWER to the baseline implementation — «who took the
+    decision» stays true in the data."""
+    wrapped = JevFailOpenProvider(_provider([JevResponseError("strict-parse")]))
+    state = CanonState(
+        record=CanonRecordView(title="t", body="deploy the release gate"),
+        candidate=CanonRecordView(title="t", body="deploy the release gate"),
+        similarity=0.5,
+    )
+    with caplog.at_level(logging.INFO, logger="vesmaro.decision_provider"):
+        decision = wrapped.evaluate(IsDuplicateRequest(), state)
+    assert isinstance(decision, Noul)
+    assert decision.probability == 0.0  # 0.5 < 0.92 deterministic step
+    telemetry = [r.message for r in caplog.records if r.message.startswith("decision ")]
+    assert any("provider=deterministic" in line for line in telemetry)
+    assert not any("provider=jev-router" in line for line in telemetry)
 
 
 # ── Default transport: pinned at its SSRF-guard boundary (offline) ──────────

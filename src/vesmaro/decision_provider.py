@@ -83,7 +83,7 @@ import numpy as np
 
 from vesmaro.awareness import conflict_hints
 from vesmaro.graph_minting import AUTO_DEDUPE_SIMILARITY_THRESHOLD
-from vesmaro.models import Memory
+from vesmaro.models import NO_FEDERATE_TAG, Memory
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,35 @@ class MissingEvidenceError(ValueError):
     """
 
 
+class NoFederateRecordError(ValueError):
+    """A ``no-federate`` record was offered to the provider seam.
+
+    The privacy gate's FIRST line (spec §3.5, review-2): a record
+    carrying the ``mnemos:no-federate`` marker must be EXCLUDED from the
+    prepared state before the request is assembled — never projected
+    into a :class:`CanonRecordView`, never scanned, never answered. The
+    tag binds regardless of provider locality (local is not an
+    exemption); selection-time exclusion is the caller's duty, this
+    refusal is the seam-side backstop that keeps a tagged row from ever
+    entering a view.
+    """
+
+
+# ── §3.8 action classes (the fixed contractual set) ──────────────────────────
+
+#: The provider as a WHOLE was switched to the deterministic baseline
+#: (load/pin/config defect). Contractual class for degradation warns.
+ACTION_CLASS_PROVIDER: Final[str] = "provider-class"
+
+#: A SINGLE verdict was degraded to the deterministic rule (per-request
+#: inference/schema failure). Contractual class for degradation warns.
+ACTION_CLASS_VERDICT: Final[str] = "verdict-class"
+
+#: An external call was aborted BEFORE execution (privacy-gate finding
+#: or scanner failure). Contractual class for degradation warns.
+ACTION_CLASS_CALL: Final[str] = "call-class"
+
+
 # ── Prepared canon state (ADR-0004 rule 2 — never raw dumps) ─────────────────
 
 
@@ -190,13 +219,23 @@ class CanonRecordView:
         The envelope is read from ``metadata.canon`` when present; a
         pre-canon row yields ``language=None`` / ``record_type=None``
         — the view stays honest about what the envelope does not say.
+
+        A ``no-federate`` row is REFUSED (spec §3.5, review-2: assembly
+        is the first line of the privacy gate) — exclude tagged records
+        at selection time; they never reach a view.
         """
+        tags = tuple(memory.tags)
+        if NO_FEDERATE_TAG in tags:
+            raise NoFederateRecordError(
+                "no-federate records never enter prepared canon state "
+                "(spec §3.5, first line) — exclude them at selection time"
+            )
         canon = memory.metadata.get("canon")
         envelope = canon if isinstance(canon, dict) else None
         return cls(
             title=memory.title or "",
             body=memory.effective_content(),
-            tags=tuple(memory.tags),
+            tags=tags,
             language=envelope.get("language") if envelope else None,
             record_type=envelope.get("type") if envelope else None,
         )
@@ -272,6 +311,46 @@ class DecisionProvider(Protocol):
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive: ...
 
 
+# ── Per-answer telemetry (§3.9 — «кто принял решение», machine-parseable) ────
+
+
+def log_decision_telemetry(provider_name: str, answer: DecisionPrimitive) -> None:
+    """Emit the §3.9 attribution line for one answered request.
+
+    One INFO line per answer in the engine's structural key=value log
+    discipline (the same shape the ``code=``/``class=`` degradation
+    warns use): ``decision primitive=<kind> provider=<implementation>
+    question=<id> value|probability=<x> [confidence=<x>]``. The line
+    answers «who took this decision» from the log alone — primitive,
+    implementation and confidence are always present (a Noul's
+    calibrated ``probability`` IS its confidence expression, the
+    module-docstring honesty contract). It carries question ids and
+    numbers only — never record content.
+    """
+    if isinstance(answer, Score):
+        logger.info(
+            "decision primitive=score provider=%s question=%s value=%s confidence=%s",
+            provider_name,
+            answer.spectrum,
+            answer.value,
+            answer.confidence,
+        )
+    elif isinstance(answer, Noul):
+        logger.info(
+            "decision primitive=noul provider=%s question=%s probability=%s",
+            provider_name,
+            answer.question,
+            answer.probability,
+        )
+    else:
+        logger.info(
+            "decision primitive=choice provider=%s verdict=%s confidence=%s",
+            provider_name,
+            answer.verdict,
+            answer.confidence,
+        )
+
+
 # ── Deterministic provider (ADR-0004 implementation (a) — now) ───────────────
 
 
@@ -316,20 +395,26 @@ class DeterministicProvider:
 
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive:
         """Answer one product-fixed question over the prepared state."""
+        answer: DecisionPrimitive
         if isinstance(request, RecordQualityRequest):
-            return Score(
+            answer = Score(
                 spectrum=SPECTRUM_RECORD_QUALITY,
                 value=RECORD_QUALITY_PLACEHOLDER,
                 confidence=RECORD_QUALITY_CONFIDENCE,
             )
-        if isinstance(request, IsDuplicateRequest):
-            return Noul(
+        elif isinstance(request, IsDuplicateRequest):
+            answer = Noul(
                 question=QUESTION_IS_DUPLICATE,
                 probability=self._is_duplicate_probability(state, request.threshold),
             )
-        if isinstance(request, GoalOverlapRequest):
-            return self._goal_overlap_score(state)
-        raise UnsupportedPrimitiveError(f"no deterministic heuristic for {type(request).__name__}")
+        elif isinstance(request, GoalOverlapRequest):
+            answer = self._goal_overlap_score(state)
+        else:
+            raise UnsupportedPrimitiveError(
+                f"no deterministic heuristic for {type(request).__name__}"
+            )
+        log_decision_telemetry(self.name, answer)
+        return answer
 
     @staticmethod
     def _is_duplicate_probability(state: CanonState, threshold: float) -> float:
@@ -801,13 +886,14 @@ class VesmaProvider:
 
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive:
         """Answer one product-fixed question over the prepared state."""
+        answer: DecisionPrimitive
         if isinstance(request, RecordQualityRequest):
-            return Score(
+            answer = Score(
                 spectrum=SPECTRUM_RECORD_QUALITY,
                 value=RECORD_QUALITY_PLACEHOLDER,
                 confidence=RECORD_QUALITY_CONFIDENCE,
             )
-        if isinstance(request, IsDuplicateRequest):
+        elif isinstance(request, IsDuplicateRequest):
             if state.candidate is None or state.similarity is None:
                 raise MissingEvidenceError(
                     "is-duplicate requires measured evidence: state.candidate and "
@@ -817,23 +903,30 @@ class VesmaProvider:
                 values = cortex_pair_features(state.record, state.candidate, state.similarity)
                 probability = self._run_graph(np.array(values, dtype=np.float32))
             except (CortexInferError, CortexSchemaError) as exc:
-                # Fail-open per verdict (spec §7): machine-parseable warn +
-                # the deterministic step rule for THIS request.
+                # Fail-open per verdict (spec §3.8): machine-parseable warn
+                # (implementation-namespace code + contractual action class)
+                # + the deterministic step rule for THIS request.
                 logger.warning(
-                    "code=%s vesma-cortex verdict degraded to the deterministic step: %s",
+                    "code=%s class=%s vesma-cortex verdict degraded to the deterministic step: %s",
                     exc.code,
+                    ACTION_CLASS_VERDICT,
                     exc,
                 )
                 probability = DeterministicProvider._is_duplicate_probability(
                     state, request.threshold
                 )
-            return Noul(question=QUESTION_IS_DUPLICATE, probability=probability)
-        if isinstance(request, GoalOverlapRequest):
+            answer = Noul(question=QUESTION_IS_DUPLICATE, probability=probability)
+        elif isinstance(request, GoalOverlapRequest):
             raise UnsupportedPrimitiveError(
                 "goal-overlap has no cortex head — the vesma-cortex-v1 artifact answers "
                 "is-duplicate only (inference-v1.md §1)"
             )
-        raise UnsupportedPrimitiveError(f"no vesma-cortex heuristic for {type(request).__name__}")
+        else:
+            raise UnsupportedPrimitiveError(
+                f"no vesma-cortex heuristic for {type(request).__name__}"
+            )
+        log_decision_telemetry(self.name, answer)
+        return answer
 
 
 # ── Baseline runner (calibration instrument — ADR-0004 rule 4) ───────────────

@@ -13,12 +13,21 @@
 ```bash
 git clone https://github.com/vesmaro/vesma.git
 cd vesma
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+uv sync --extra dev
+source .venv/bin/activate
 vesma --help        # проверка, что всё живо
 ```
 
 - Python **3.11+** (рекомендуется `uv`; обычный `python -m venv` тоже работает).
+- **`uv sync --extra dev` — канонический бутстрап**: он собирает окружение
+  строго по `uv.lock`. Для релизных worktree это ОБЯЗАТЕЛЬНО. Не
+  используйте `uv pip install -e ".[dev]"`: он разрешает зависимости
+  заново и игнорирует локфайл — на релизном поезде 5.5.0 это молча
+  утянуло onnxruntime 1.30 (latest) вместо залоченного 1.27.0, сломало
+  бенч-пин (B1) и увело cosine-инвариант на 5.4e-4. Осознанные изменения
+  зависимостей идут через
+  [ранбук dependency-updates](docs/ru/admin/runbooks/dependency-updates.md)
+  и пере-лочат `uv.lock` в review-аемом PR.
 - `[dev]` приносит инструментарий quality gate. MCP SDK — основная зависимость (ADR-0023); экстра `[mcp]` осталась пустым алиасом совместимости.
 - Внешние LLM-провайдеры — отдельные экстры (`ollama`, `openai`, `anthropic`, `gemini`) —
   ставьте только то, что реально проверяете.
