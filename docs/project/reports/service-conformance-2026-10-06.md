@@ -174,8 +174,11 @@ Doctor-матрица DR-01…DR-13: реализована полностью
   конструируемый argv из валидированного манифеста, no shell; B105
   «supervisor» — идентификатор структурных строк, не пароль; B311 random —
   джиттер backoff, не криптография)
-- `pytest tests/ -q`: см. финальные числа в описании PR (базлайн main —
-  5904 passed / 9 skipped; дельта W6 — новые e2e- и hardening-тесты)
+- `pytest tests/ -q`: **5917 passed / 8 skipped / 0 failed** (9:11 мин).
+  Базлайн main — 5904 passed / 9 skipped; дельта W6: +13 passed
+  (8 e2e + 5 hardening-тестов), −1 skipped (удалён мёртвый pre-W2
+  skip-страж `test_cli_run_without_w2_supervisor_fails_cleanly` вместе с
+  его seam). SL-05 флак не воспроизвёлся (закалка 4d в деле)
 
 ## Известные честные пробелы
 
