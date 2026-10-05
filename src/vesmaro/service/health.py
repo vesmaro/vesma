@@ -96,13 +96,16 @@ class Checker(Protocol):
 
 @dataclasses.dataclass(frozen=True)
 class ProbeParams:
-    """Timing knobs the supervisor's probe loops read (injectable in tests)."""
+    """Timing knobs the supervisor's probe loops read (injectable in tests).
+
+    Per-probe timeouts are NOT here on purpose (cascade 2026-10-05 P3-H:
+    they were never read): each checker receives its timeout at build time
+    straight from the manifest section.
+    """
 
     startup_grace_s: float
     startup_interval_s: float
-    startup_timeout_s: float
     steady_interval_s: float
-    steady_timeout_s: float
     unhealthy_threshold: int
 
 
@@ -360,40 +363,28 @@ def probe_params(manifest: ComponentManifest) -> ProbeParams:
         return ProbeParams(
             startup_grace_s=STARTUP_DEFAULT_GRACE_S,
             startup_interval_s=STARTUP_DEFAULT_INTERVAL_S,
-            startup_timeout_s=LIVENESS_TIMEOUT_S,
             steady_interval_s=LIVENESS_INTERVAL_S,
-            steady_timeout_s=LIVENESS_TIMEOUT_S,
             unhealthy_threshold=LIVENESS_THRESHOLD,
         )
     startup = health.startup
     if health.http is not None:
         steady_interval = _duration_s(health.http.interval)
-        steady_timeout = _duration_s(health.http.timeout)
         threshold = health.http.unhealthy_threshold
     elif health.tcp is not None:
         steady_interval = _duration_s(health.tcp.interval)
-        steady_timeout = _duration_s(health.tcp.timeout)
         threshold = health.tcp.unhealthy_threshold
     elif health.exec is not None:
         steady_interval = _duration_s(health.exec.interval)
-        steady_timeout = _duration_s(health.exec.timeout)
         threshold = health.exec.unhealthy_threshold
     else:  # liveness / callback — no probe block of their own
         steady_interval = LIVENESS_INTERVAL_S
-        steady_timeout = CALLBACK_TIMEOUT_S if health.callback else LIVENESS_TIMEOUT_S
         threshold = LIVENESS_THRESHOLD
     return ProbeParams(
         startup_grace_s=_duration_s(startup.grace) if startup else STARTUP_DEFAULT_GRACE_S,
         startup_interval_s=(
             _duration_s(startup.interval) if startup else STARTUP_DEFAULT_INTERVAL_S
         ),
-        startup_timeout_s=(
-            _duration_s(startup.timeout)
-            if startup
-            else (steady_timeout if health.callback is None else CALLBACK_TIMEOUT_S)
-        ),
         steady_interval_s=steady_interval,
-        steady_timeout_s=steady_timeout,
         unhealthy_threshold=threshold,
     )
 

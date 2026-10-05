@@ -329,6 +329,9 @@ class RotatingFileSink:
             self._rotate_if_needed()
             with open(self._path, "a", encoding="utf-8") as fh:
                 fh.write(f"{_timestamp()} {line}\n")
+            # Owner-only parity with the history journal (layout §3.7): the
+            # file carries component output — never umask- or fs-dependent.
+            os.chmod(self._path, 0o600)
 
     def _rotate_if_needed(self) -> None:
         try:
@@ -439,19 +442,6 @@ class HistoryJournal:
             return self.path.read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
-
-
-def emit_record(
-    journal: HistoryJournal,
-    sink: Logsink,
-    line: SupervisorLine,
-    *,
-    supervisor_identifier: str = "vesma-supervisor",
-) -> None:
-    """One structural line → history journal (always) + logsink (own id)."""
-    rendered = line.render()
-    journal.append(rendered)
-    sink.emit(supervisor_identifier, rendered, severity=line.severity)
 
 
 def emit_child_forward(

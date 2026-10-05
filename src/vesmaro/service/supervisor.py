@@ -165,6 +165,9 @@ JITTER_SPAN = 0.2  # ±20%
 # ── Stop numbers (SL §3.5: internal budget strictly < TimeoutStopSec=90,
 #    margin ≥ 25%) ─────────────────────────────────────────────────────
 
+# TODO(W4): derive the stop budget from the generated unit template's
+# TimeoutStopSec=90 (SL §3.5, ≥ 25% margin) instead of the fixed contract
+# default — W4 wires the derivation; until then 60.0 stands.
 STOP_BUDGET_S = 60.0
 DEFAULT_STOP_GRACE_S = 10.0
 
@@ -1571,12 +1574,15 @@ class Supervisor:
     def _global_health_recompute(self) -> None:
         reasons: set[str] = set()
         for component in self._components.values():
-            if component.tier != "core":
-                continue
-            if component.fsm.state is ChildState.BACKOFF:
+            if component.tier == "core" and component.fsm.state is ChildState.BACKOFF:
                 reasons.add(f"dead:{component.name}")
             if component.crash_loop_alerted:
                 reasons.add(f"crash-loop:{component.name}")
+            # SL §3.5 optional exhaustion: the terminal degraded park IS a
+            # supervisor-level health degradation (any tier could carry the
+            # flag; only optional ever sets it today).
+            if component.budget_exhausted:
+                reasons.add(f"budget-exhausted:{component.name}")
         new_health = "degraded" if reasons else "healthy"
         with self._state_lock:
             changed = new_health != self._global_health

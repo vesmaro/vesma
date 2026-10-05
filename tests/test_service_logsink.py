@@ -226,6 +226,17 @@ class TestRotation:
         assert MAX_LOG_BYTES == 10 * 1024 * 1024
         assert ROTATED_FILES == 5
 
+    def test_log_file_mode_is_owner_only(self, tmp_path: Path) -> None:
+        """P3-H (cascade 2026-10-05): the file-mode log carries component
+        output — owner-only 0600 regardless of umask, parity with the
+        history journal (layout §3.7)."""
+        sink = RotatingFileSink(tmp_path, "comp")
+        try:
+            sink.emit("vesma-comp", "hello")
+        finally:
+            sink.close()
+        assert stat.S_IMODE((tmp_path / "comp" / "comp.log").stat().st_mode) == 0o600
+
 
 # ── The sink protocol is structural ───────────────────────────────────
 
