@@ -84,9 +84,9 @@ env_file_outside_manifests_dir / checker_block_consistency / no_secret_in_vars,
 |---|---|---|
 | 1 | **pass** | `test_cs1_rights_are_umask_independent` — 0700/0600 явно (chmod после bind) при разных umask |
 | 2 | **pass** | `test_cs2_fallback_path_and_warn` — пустой `XDG_RUNTIME_DIR` → `~/.local/state/vesma/run/` + WARN; симметрично `tests/test_service_layout.py::test_empty_runtime_dir_falls_back_with_warning` |
-| 3 | **pass** | `test_cs3_peercred_own_uid_allowed` / `test_cs3_peercred_mismatch_denied` (решение, fail-closed на getsockopt); live cross-uid лега `test_cs3_live_cross_uid_connection_closed` — **честный skip вне root** (в sandbox нет второго uid); проверка на КАЖДОМ accept до первого байта (`serve_forever`) |
+| 3 | **pass** | `test_cs3_peercred_own_uid_allowed` / `test_cs3_peercred_mismatch_denied` (решение, fail-closed на getsockopt); live cross-uid лега `test_cs3_live_cross_uid_connection_closed` — **честный skip вне root** (в sandbox нет второго uid); проверка на КАЖДОМ accept до первого байта (`serve_forever`); **live-лега закрыта реальным прогоном 2026-10-05 в боксе владельца** (sudo+setpriv uid 65534, production `ControlServer`, оба слоя защиты — см. «Live cross-uid прогон» ниже) |
 | 4 | **pass** | `test_cs4_second_instance_exits_already_running` — probe живого отвечает на hello → exit «already running», без unlink/bind |
-| 5 | **pass** | `test_cs5_stale_own_uid_socket_is_cleaned`, `test_cs5_symlink_refused_never_followed`, `test_cs5_regular_file_refused_not_deleted`, `test_cs5_target_classification_unit`, `test_cs5_foreign_uid_socket_refused` (skip вне root, классификация unit-протестирована) |
+| 5 | **pass** | `test_cs5_stale_own_uid_socket_is_cleaned`, `test_cs5_symlink_refused_never_followed`, `test_cs5_regular_file_refused_not_deleted`, `test_cs5_target_classification_unit`, `test_cs5_foreign_uid_socket_refused` (skip вне root, классификация unit-протестирована); connect-сторона «чужой uid на наш сокет» закрыта live-прогоном 2026-10-05 (см. CS-3 и «Live cross-uid прогон» ниже) |
 | 6 | **pass** | `test_cs6_rights_verification_fatal_on_mismatch` — fstat fd + stat ноды + getsockname-связка; расхождение — fatal при старте |
 | 7 | **pass** | `test_cs7_concurrent_starts_exactly_one_binds` — гонка одновременных стартов: ровно один bind'ится; settle re-probe исключает unlink свежего сокета победителя |
 | 8 | **pass** | `test_cs8_status_before_hello_rejected_then_hello_recovers` — error 4 + `data.reason="hello_required"` + `data.supported`; W6: соединение, не приславшее hello, закрывается по таймауту (см. CS-12/W6) |
@@ -191,10 +191,53 @@ Doctor-матрица DR-01…DR-13: реализована полностью
   skip; unshare-лега — тот же честный skip с расширенным до 30 s
   таймаутом повторной пробы)
 
+## Live cross-uid прогон (2026-10-05, бокс владельца, bulletproofing к ратификации)
+
+Production `ControlServer` (src/vesmaro/service/control.py) на временном
+сокете; клиент — `sudo -n setpriv --reuid=65534 --regid=65534 --clear-groups
+python3` (настоящий второй uid, nobody). Четыре ноги в одном окне сервера:
+
+- **A** own-uid hello → нормальный result-ответ (сервер жив);
+- **B** nobody при shipped-правах (dir 0700 / sock 0600) → `PermissionError`
+  на `connect` — FS-слой (§3 права) не пускает ещё до accept;
+- права намеренно ослаблены до dir 0755 / sock 0666 — ровно тот lax-сценарий,
+  от которого страхует SO_PEERCRED (layer 2, CS-3);
+- **C** nobody при ослабленных правах → соединение ПРИНЯТО, hello отправлен,
+  ответа — НОЛЬ байт (клиент: `ConnectionResetError` = закрыто без ответного
+  кадра); серверный журнал: `control: peer uid check failed
+  (cred=(1306198, 65534, 65534)) — closing unread`;
+- **D** own-uid hello повторно → нормальный result-ответ (отказ — по uid,
+  не по здоровью сервера).
+
+Транскрипт (хвост):
+
+```text
+SERVER-LOG INFO vesmaro.service.control control: listening on /tmp/cs_probe/run/probe/control.sock (dir 700, socket 600)
+BIND: status=bound path=/tmp/cs_probe/run/probe/control.sock
+PERMS as shipped: dir=0o40700 sock=0o140600
+[leg A] own-uid: CONNECT+HELLO -> RESULT RESPONSE ({"id": 1, "result": {"protocol_version": 1, ...
+--- leg B: nobody, perms AS SHIPPED ---
+[leg B] nobody: CONNECT_ERR: PermissionError(13, 'Permission denied')
+--- loosening perms to dir 0755 / sock 0666 (lax scenario SO_PEERCRED defends) ---
+PERMS loosened: dir=0o40755 sock=0o140666
+--- leg C: nobody, perms LOOSENED ---
+SERVER-LOG WARNING vesmaro.service.control control: peer uid check failed (cred=(1306198, 65534, 65534)) — closing unread
+[leg C] nobody: CONNECTED
+[leg C] nobody: PEER_EUID=65534
+[leg C] nobody: SENT_HELLO
+[leg C] nobody: rc=1 stderr tail: 'Traceback (most recent call last):
+  File "<string>", line 20, in <module>
+ConnectionResetError: [Errno 104] Connection reset by peer'
+[leg D] own-uid: CONNECT+HELLO -> RESULT RESPONSE ({"id": 1, "result": {"protocol_version": 1, ...
+DONE
+```
+
 ## Известные честные пробелы
 
-1. **CS-3/CS-5 live cross-uid**: нет второго uid вне root; решение
-   unit-протестировано, live-леги — честные skip с именованной причиной.
+1. **CS-3/CS-5 live cross-uid** — ЗАКРЫТО 2026-10-05: live-прогон с
+   настоящим вторым uid (см. «Live cross-uid прогон» выше). Осталось
+   только превратить прогон в постоянный CI-тест — невозможно, пока CI-раннеры
+   не дают второго uid; unit-ноги с честным skip остаются в наборе.
 
 (W7 закрыл прежние пункты 1 и 3: SL-06 true-container лега — реальный
 прогон на rootless podman хоста владельца, см. строку SL-06; LY-12
