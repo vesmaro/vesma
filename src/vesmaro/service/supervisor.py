@@ -797,10 +797,19 @@ class Supervisor:
         if self._signal_pipe is None:
             return
         reader, writer = self._signal_pipe
-        signal.set_wakeup_fd(self._previous_wakeup_fd)
-        for signum, handler in self._previous_handlers.items():
-            with contextlib.suppress(ValueError, OSError):
-                signal.signal(signum, handler)
+        if threading.current_thread() is not threading.main_thread():
+            # shutdown() is documented to run on the thread that called
+            # start() (the CLI's main thread); an off-main caller must not
+            # ABORT the teardown here — degrade loudly and keep stopping.
+            logger.warning(
+                "supervisor shutdown off the main thread: signal wakeup-fd "
+                "and handlers cannot be restored (process is exiting)"
+            )
+        else:
+            signal.set_wakeup_fd(self._previous_wakeup_fd)
+            for signum, handler in self._previous_handlers.items():
+                with contextlib.suppress(ValueError, OSError):
+                    signal.signal(signum, handler)
         self._signal_pipe = None
         for fd in (reader, writer):
             with contextlib.suppress(OSError):

@@ -384,6 +384,8 @@ class ServiceApp:
         socket_path: str | os.PathLike[str] | None = None,
         core_bind: tuple[str, int] | None = None,
         with_core: bool = True,
+        sink: Logsink | None = None,
+        journal: Any | None = None,  # HistoryJournal — typed lazily (import cycle)
         log: logging.Logger | None = None,
     ) -> None:
         self._log = log or logger
@@ -399,8 +401,15 @@ class ServiceApp:
         self.buffer = ComponentLogBuffer(names)
         from vesmaro.service.logsink import HistoryJournal, make_logsink
 
-        self._sink: Logsink = CompositeLogsink(self.buffer, make_logsink())
-        self.supervisor = Supervisor(manifests, logsink=self._sink, journal=HistoryJournal())
+        # sink/journal overrides are the test DI seam; production uses the
+        # canonical §3.7 mode decision (journald primary, files fallback).
+        downstream = sink if sink is not None else make_logsink()
+        self._sink: Logsink = CompositeLogsink(self.buffer, downstream)
+        self.supervisor = Supervisor(
+            manifests,
+            logsink=self._sink,
+            journal=journal if journal is not None else HistoryJournal(),
+        )
         self.backend = SupervisorBackend(self.supervisor, self.buffer)
         self.server = ControlServer(self.backend, log=self._log)
         self._socket_override = str(socket_path) if socket_path is not None else None
@@ -451,6 +460,11 @@ class ServiceApp:
         self.supervisor.request_shutdown()
 
     @property
+    def socket_path(self) -> Path | None:
+        """The bound control-socket path (None before bind)."""
+        return self.server.path
+
+    @property
     def core_port(self) -> int | None:
         """The resolved API port when the core serves on port 0, else None."""
         server = self._core_server
@@ -483,7 +497,9 @@ class ServiceApp:
         config = uvicorn.Config("vesmaro.api.main:app", host=host, port=port, workers=1)
         server = uvicorn.Server(config)
         self._core_server = server
-        self._core_thread = threading.Thread(target=server.run, name="vesma-core-api", daemon=True)
+        self._core_thread = threading.Thread(
+            target=self._core_main, args=(server,), name="vesma-core-api", daemon=True
+        )
         self._core_thread.start()
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
@@ -498,6 +514,20 @@ class ServiceApp:
             time.sleep(0.05)
         self._exit_code = 1
         raise CoreStartupError(f"in-process core did not start within 30s on {host}:{port}")
+
+    @staticmethod
+    def _core_main(server: Any) -> None:
+        """The core thread body: uvicorn's run plus the ONE tolerated exit —
+        ``sys.exit(STARTUP_FAILURE)`` on a bind/config failure (uvicorn's
+        controlled abort). Swallowing it here (with the watcher + startup
+        probe handling the death) keeps the thread exit orderly; everything
+        else propagates and is loud."""
+        try:
+            server.run()
+        except SystemExit as exc:
+            logging.getLogger("vesmaro.service.backend").error(
+                "in-process core aborted startup (SystemExit %s)", exc.code
+            )
 
     def _watch_core(self) -> None:
         thread = self._core_thread
