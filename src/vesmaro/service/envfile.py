@@ -21,13 +21,9 @@ import stat
 from pathlib import Path
 
 from vesmaro.service.errors import ENV_FILE_UNSAFE, ManifestError
+from vesmaro.service.layout import components_dir
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_SECRET_KEY_RE = re.compile(
-    r"token|secret|password|passwd|api_key|apikey|private_key|credential", re.I
-)
-
-_CANONICAL_MANIFESTS_DIR = Path("~/.config/vesma/components.d").expanduser()
 
 
 def _fix_chmod(path: Path) -> str:
@@ -52,6 +48,18 @@ def _is_inside(child: Path, parent: Path) -> bool:
 
 
 def _check_safety(path: Path, manifests_dir: Path | None) -> None:
+    # Symlink refusal BEFORE any following stat (layout §8, LY-02: a
+    # symlinked "env file" can be re-pointed at an unrelated user-owned
+    # 0600 file — the lstat check below never follows the link, so the
+    # target's benign mode/owner cannot launder the path through).
+    if path.is_symlink():
+        raise ManifestError(
+            ENV_FILE_UNSAFE,
+            "$.launch.env.env_file",
+            f"env_file {path} is a symlink — a symlinked secrets file is a "
+            "tamper vector (specs/layout/v1 §8)",
+            fix_hint=f"remove the symlink and place a regular 0600 file at {path}",
+        )
     if not path.exists():
         raise ManifestError(
             ENV_FILE_UNSAFE,
@@ -84,10 +92,11 @@ def _check_safety(path: Path, manifests_dir: Path | None) -> None:
         )
     # Placement: outside the manifests directory (CM §3.5) — both the
     # directory of the declaring manifest and the canonical components.d
-    # are refused.
+    # are refused. The canonical dir resolves at call time (XDG-aware,
+    # never cached at import).
     for label, base in (
         ("the declaring manifest's directory", manifests_dir),
-        ("the canonical manifests directory", _CANONICAL_MANIFESTS_DIR),
+        ("the canonical manifests directory", components_dir()),
     ):
         if base is not None and _is_inside(path, base):
             raise ManifestError(

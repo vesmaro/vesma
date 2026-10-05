@@ -65,6 +65,30 @@ class TestFailClosed:
         assert exc.value.code == ENV_FILE_UNSAFE
         assert "missing" in exc.value.message
 
+    def test_symlink_to_valid_0600_file_refused(self, tmp_path: Path) -> None:
+        # The target passes every check (regular, 0600, own uid, outside
+        # manifests dir) — the symlink itself must still be refused
+        # (specs/layout/v1 §8: подмена env-файла симлинком, LY-02).
+        target = _write_env(tmp_path / "real.env")
+        link = tmp_path / "declared.env"
+        link.symlink_to(target)
+        with pytest.raises(ManifestError) as exc:
+            load_env_file(link)
+        assert exc.value.code == ENV_FILE_UNSAFE
+        assert "symlink" in exc.value.message
+        assert exc.value.fix_hint is not None
+        assert "symlink" in exc.value.fix_hint
+
+    def test_dangling_symlink_refused_as_symlink(self, tmp_path: Path) -> None:
+        # is_symlink() is checked BEFORE existence so the diagnosis names
+        # the actual defect, not a misleading "missing".
+        link = tmp_path / "dangling.env"
+        link.symlink_to(tmp_path / "absent-target.env")
+        with pytest.raises(ManifestError) as exc:
+            load_env_file(link)
+        assert exc.value.code == ENV_FILE_UNSAFE
+        assert "symlink" in exc.value.message
+
     def test_env_file_inside_manifests_dir_refused(self, tmp_path: Path) -> None:
         env_file = _write_env(tmp_path / "comp.env")
         with pytest.raises(ManifestError) as exc:
