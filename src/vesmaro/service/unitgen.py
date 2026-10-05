@@ -33,6 +33,26 @@ from pathlib import Path
 #: specs repo (service-lifecycle ``1.0.0-draft.2``).
 GENERATOR_VERSION = "service-lifecycle v1 (1.0.0-draft.2)"
 
+# ── SL-17 contract constants (single source of truth) ─────────────────
+# The supervisor wave (W3) imports THESE values — the unit template and
+# the supervisor's internal stop/restart budgets must never drift apart.
+#: ``TimeoutStopSec=`` — inner child-stop budget + headroom (SL §3.5).
+TIMEOUT_STOP_SEC = 90
+#: ``RestartSec=`` — pause between unit restarts.
+RESTART_SEC = "5s"
+#: ``StartLimitIntervalSec=`` — the unit crash-loop detection window.
+START_LIMIT_INTERVAL_SEC = 300
+#: ``StartLimitBurst=`` — failures within the window before the unit stops.
+START_LIMIT_BURST = 5
+#: ``KillSignal=`` — the contract stop signal (SL §3.5).
+KILL_SIGNAL = "SIGTERM"
+#: ``KillMode=`` — SIGTERM to the main, cgroup SIGKILL as the backstop.
+KILL_MODE = "mixed"
+#: ``Restart=`` — supervisor death (incl. in-process core) restarts the unit.
+RESTART_POLICY = "on-failure"
+#: ``Type=`` — start succeeded only after a successful exec().
+UNIT_TYPE = "exec"
+
 #: SL §3.6 — the EXACT set of hardening directives a container
 #: environment may downgrade. Anything else raises.
 DOWNGRADE_ALLOWED: frozenset[str] = frozenset(
@@ -43,12 +63,9 @@ DOWNGRADE_ALLOWED: frozenset[str] = frozenset(
 DOWNGRADE_MARKER = "# vesma:downgraded="
 
 _DESCRIPTION = (
-    "VESMA supervisor (single unit over the vesma process; "
-    "systemd never knows about children)"
+    "VESMA supervisor (single unit over the vesma process; systemd never knows about children)"
 )
-_DOCUMENTATION_URL = (
-    "https://github.com/vesmaro/vesma-specs/tree/main/specs/service-lifecycle/v1"
-)
+_DOCUMENTATION_URL = "https://github.com/vesmaro/vesma-specs/tree/main/specs/service-lifecycle/v1"
 
 
 class UnitGenerationError(Exception):
@@ -173,21 +190,21 @@ def generate(
     lines = [*header, "", "[Unit]"]
     lines.append(f"Description={_DESCRIPTION}")
     lines.append(f"Documentation={_DOCUMENTATION_URL}")
-    lines.append("StartLimitIntervalSec=300")
-    lines.append("StartLimitBurst=5")
+    lines.append(f"StartLimitIntervalSec={START_LIMIT_INTERVAL_SEC}")
+    lines.append(f"StartLimitBurst={START_LIMIT_BURST}")
     lines += ["", "[Service]"]
-    lines.append("Type=exec")
+    lines.append(f"Type={UNIT_TYPE}")
     lines.append(f"ExecStart={exec_start}")
     lines += [
         "# ExecStop is intentionally NOT generated: the default SIGTERM to the main",
         "# process IS the contract stop (reverse-topological graceful stop of children",
         "# performed inside the supervisor; children are invisible to systemd).",
     ]
-    lines.append("KillSignal=SIGTERM")
-    lines.append("KillMode=mixed")
-    lines.append("TimeoutStopSec=90")
-    lines.append("Restart=on-failure")
-    lines.append("RestartSec=5s")
+    lines.append(f"KillSignal={KILL_SIGNAL}")
+    lines.append(f"KillMode={KILL_MODE}")
+    lines.append(f"TimeoutStopSec={TIMEOUT_STOP_SEC}")
+    lines.append(f"Restart={RESTART_POLICY}")
+    lines.append(f"RestartSec={RESTART_SEC}")
     lines.append("StandardOutput=journal")
     lines.append("StandardError=journal")
     lines += ["", "# --- hardening block (service-lifecycle v1, MUST) ---"]
@@ -195,7 +212,7 @@ def generate(
         lines.append(_directive_line(name, value, names))
     lines += [
         "# MemoryDenyWriteExecute is deliberately ABSENT: it breaks CPython native",
-        "# extensions (see spec section 3.6, \"MemoryDenyWriteExecute\"); the spec",
+        '# extensions (see spec section 3.6, "MemoryDenyWriteExecute"); the spec',
         "# forbids re-adding it silently.",
         "# SystemCallFilter=@system-service",
         "# ^ Tier B: uncommented by the generator only after the smoke matrix",

@@ -102,7 +102,9 @@ class TestInstall:
         assert layout.verify_dir(layout.run_fallback_dir(), 0o700)
         assert layout.verify_dir(layout.cache_base(), 0o750)
 
-    def test_exactly_one_component_venv_ly05(self, installed: Path, fake_venv_installer: list[str]) -> None:
+    def test_exactly_one_component_venv_ly05(
+        self, installed: Path, fake_venv_installer: list[str]
+    ) -> None:
         # board is in-process (engine venv, no component venv by design);
         # metrics is the python child — exactly one venv dir.
         assert fake_venv_installer == ["metrics"]
@@ -151,9 +153,7 @@ class TestInstallContainer:
     def test_container_downgrade_is_loud_and_marked(
         self, isolated_home: Path, fake_venv_installer: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            install_mod.unitgen, "container_detect", lambda *a, **k: True
-        )
+        monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: True)
         result = install()
         assert any(line.startswith("CONTAINER DOWNGRADE") for line in result.lines)
         assert set(result.downgraded) == set(unitgen.DOWNGRADE_ALLOWED)
@@ -215,7 +215,7 @@ class TestInstallValidation:
             "    license: MIT\n"
             "launch:\n"
             "  argv:\n"
-            "    - \"{venv_bin}/python\"\n"
+            '    - "{venv_bin}/python"\n'
             "    - -m\n"
             "    - worker\n"
             "stop:\n"
@@ -248,18 +248,14 @@ class TestInstallValidation:
 
 class TestIdempotency:
     def test_reinstall_is_idempotent(self, installed: Path) -> None:
-        first_unit = (installed / ".config/systemd/user/vesma.service").read_text(
-            encoding="utf-8"
-        )
+        first_unit = (installed / ".config/systemd/user/vesma.service").read_text(encoding="utf-8")
         second = install()
         assert second.unit_path == installed / ".config/systemd/user/vesma.service"
         assert (
             second.unit_path.read_text(encoding="utf-8") == first_unit
         )  # deterministic regeneration
 
-    def test_hand_edited_unit_is_overwritten_on_reinstall(
-        self, installed: Path
-    ) -> None:
+    def test_hand_edited_unit_is_overwritten_on_reinstall(self, installed: Path) -> None:
         unit_path = installed / ".config/systemd/user/vesma.service"
         unit_path.write_text(
             unit_path.read_text(encoding="utf-8").replace("KillMode=mixed", "KillMode=none"),
@@ -269,7 +265,9 @@ class TestIdempotency:
         active, _ = unitgen.parse_unit(unit_path.read_text(encoding="utf-8"))
         assert active["KillMode"] == "mixed"  # regenerated
 
-    def test_sibling_manifest_untouched(self, isolated_home: Path, fake_venv_installer: list[str]) -> None:
+    def test_sibling_manifest_untouched(
+        self, isolated_home: Path, fake_venv_installer: list[str]
+    ) -> None:
         components = layout.ensure_dir(layout.components_dir(), 0o700)
         custom = components / "custom.yaml"
         custom.write_text("custom: operator file\n", encoding="utf-8")
@@ -303,9 +301,7 @@ class TestUninstall:
         with pytest.raises(InstallError, match="not installed"):
             uninstall("ghost")
 
-    def test_uninstall_refuses_when_dependent_exists(
-        self, installed: Path
-    ) -> None:
+    def test_uninstall_refuses_when_dependent_exists(self, installed: Path) -> None:
         # hand-add a valid dependent manifest (schema-valid, depends on board)
         components = layout.components_dir()
         (components / "panel.yaml").write_text(
@@ -401,7 +397,7 @@ class TestPinPolicy:
             "    license: MIT\n"
             "launch:\n"
             "  argv:\n"
-            "    - \"{venv_bin}/python\"\n"
+            '    - "{venv_bin}/python"\n'
             "    - -m\n"
             "    - worker\n"
             "stop:\n"

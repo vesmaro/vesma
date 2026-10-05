@@ -50,8 +50,9 @@ def _bundled_requirements(name: str) -> tuple[str, ...]:
 
 
 #: LY-08: a lock/input line MUST be an exact ``name==version`` pin; URL /
-#: ``file:`` / range specs are rejected.
-_PIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9._*+!-]*$")
+#: ``file:`` / range / wildcard specs are rejected (a wildcard pin is NOT
+#: an exact pin).
+_PIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9.+!-]*$")
 
 
 class InstallError(Exception):
@@ -154,9 +155,7 @@ def _write_component_schemas(manifest: ComponentManifest) -> Path | None:
 
 def _has_venv(manifest: ComponentManifest) -> bool:
     """A python child: its launch argv references ``{venv_bin}``."""
-    return manifest.launch is not None and any(
-        "{venv_bin}" in arg for arg in manifest.launch.argv
-    )
+    return manifest.launch is not None and any("{venv_bin}" in arg for arg in manifest.launch.argv)
 
 
 def _validate_pin(line: str) -> None:
@@ -204,17 +203,30 @@ def _run_pip(venv_dir: Path, args: list[str]) -> str:
     return result.stdout
 
 
+def _parse_pin_line(line: str) -> tuple[str, str] | None:
+    """``name==version`` from one freeze/lock line; None for non-pin lines.
+
+    Partition on ``==`` (not ``=``): PEP 503 names cannot contain ``=``,
+    so the FIRST ``==`` separator splits name and version exactly.
+    """
+    line = line.strip()
+    if "==" not in line:
+        return None
+    dist, _, version = line.partition("==")
+    dist = dist.strip()
+    if not dist:
+        return None
+    return re.sub(r"[-_.]+", "-", dist).lower(), version.strip()
+
+
 def _pip_freeze(venv_dir: Path) -> dict[str, str]:
     """Normalized ``name -> version`` map of one venv."""
     out = _run_pip(venv_dir, ["freeze", "--disable-pip-version-check"])
     frozen: dict[str, str] = {}
     for line in out.splitlines():
-        line = line.strip()
-        if not line or "==" not in line:
-            continue
-        dist, _, version = line.partition("=")
-        # PEP-503 normalize the distribution name for comparison.
-        frozen[re.sub(r"[-_.]+", "-", dist).lower()] = version.strip()
+        parsed = _parse_pin_line(line)
+        if parsed is not None:
+            frozen[parsed[0]] = parsed[1]
     return frozen
 
 
@@ -331,7 +343,7 @@ def install() -> InstallResult:
     # 6. Generate + write the unit (SL-17/SL-18), then daemon-reload.
     unit_text = unitgen.generate(
         home=layout.home(),
-        engine_venv=_engine_venv(),
+        engine_venv=engine_venv(),
         read_write_paths=(layout.state_root(), layout.cache_base(), layout.data_root()),
         read_only_paths=(layout.engine_venv_dir(), layout.data_root() / "venvs"),
         downgraded=downgraded,
@@ -360,7 +372,7 @@ def install() -> InstallResult:
     )
 
 
-def _engine_venv() -> Path:
+def engine_venv() -> Path:
     """The venv the running engine lives in (``ExecStart`` target)."""
     return Path(sys.executable).absolute().parent.parent
 
@@ -411,8 +423,7 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
     components_dir = layout.components_dir()
     if not components_dir.is_dir():
         raise InstallError(
-            f"no installation found ({components_dir} does not exist) — "
-            "nothing to uninstall"
+            f"no installation found ({components_dir} does not exist) — nothing to uninstall"
         )
     installation = load_installation(components_dir)  # fail-closed on a broken dir
 

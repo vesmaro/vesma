@@ -15,6 +15,7 @@ W3 — replace the inline probe when that lands.
 from __future__ import annotations
 
 import dataclasses
+import getpass
 import json
 import os
 import re
@@ -28,7 +29,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from vesmaro.service import layout, unitgen
-from vesmaro.service.manifest import load_installation
+from vesmaro.service.manifest import ComponentManifest, load_installation
 
 #: Free-space thresholds (DR-10; engine-owned numbers, documented).
 FREE_SPACE_WARN_BYTES = 500 * 1024 * 1024
@@ -75,6 +76,12 @@ def _weakened(mode: int, expected: int) -> bool:
     return (mode & 0o077) & ~expected != 0
 
 
+def _group_or_world_writable(mode: int) -> bool:
+    """Group/world WRITE bits present (the layout §3.8 site-packages bar:
+    «не миро- и не группо-записываемы» — readability is not a violation)."""
+    return mode & 0o022 != 0
+
+
 # ── DR-01: canonical dir/env-file rights ──────────────────────────────
 
 
@@ -93,26 +100,32 @@ def _dr01() -> Finding:
     problems: list[str] = []
     fixes: list[str] = []
     checked = 0
+    hard = False  # weakened rights / wrong owner / non-0600 env file = FAIL
     for path, expected in dir_specs:
         mode = _mode(path)
         if mode is None:
             continue  # not created yet — install has not run; not a finding
         checked += 1
         if _weakened(mode, expected) or _owner(path) != os.geteuid():
+            hard = True
             problems.append(f"{path}: mode {mode:04o} owner {_owner(path)}")
-            fixes.append(f"chmod {expected:04o} {path} && chown {os.getuser()} {path}")
+            fixes.append(
+                f"chmod {expected:04o} {path} && chown {getpass.getuser()} {path}"
+            )
         elif mode != expected:
             problems.append(f"{path}: mode {mode:04o} (stricter than {expected:04o} — review)")
+            fixes.append(f"chmod {expected:04o} {path}")
     env_dir = layout.env_dir()
     if env_dir.is_dir():
         for env_file in sorted(env_dir.glob("*.env")):
             mode = _mode(env_file)
             checked += 1
             if mode != 0o600 or _owner(env_file) != os.geteuid():
+                hard = True  # fail-closed loader refuses to start on this (layout §3.5)
                 problems.append(f"{env_file}: mode {mode:04o} (env files MUST be 0600)")
                 fixes.append(f"chmod 600 {env_file}")
     if problems:
-        severity = Severity.FAIL if fixes else Severity.WARN
+        severity = Severity.FAIL if hard else Severity.WARN
         return Finding(
             "DR-01",
             "rights/ownership of config/state/env roots",
@@ -129,6 +142,22 @@ def _dr01() -> Finding:
 
 
 # ── DR-02: venv integrity (rights, owner, freeze vs lock) ─────────────
+
+
+def _parse_pin_line(line: str) -> tuple[str, str] | None:
+    """``name==version`` from one freeze/lock line; None for non-pin lines.
+
+    Partition on ``==`` (not ``=``) — mirrors install._parse_pin_line so
+    doctor and installer parse locks identically.
+    """
+    line = line.strip()
+    if "==" not in line:
+        return None
+    dist, _, version = line.partition("==")
+    dist = dist.strip()
+    if not dist:
+        return None
+    return re.sub(r"[-_.]+", "-", dist).lower(), version.strip()
 
 
 def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
@@ -149,9 +178,9 @@ def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
         return None
     frozen: dict[str, str] = {}
     for line in result.stdout.splitlines():
-        if "==" in line:
-            dist, _, version = line.strip().partition("=")
-            frozen[re.sub(r"[-_.]+", "-", dist).lower()] = version.strip()
+        parsed = _parse_pin_line(line)
+        if parsed is not None:
+            frozen[parsed[0]] = parsed[1]
     return frozen
 
 
@@ -162,9 +191,9 @@ def _read_lock(path: Path) -> dict[str, str] | None:
         return None
     lock: dict[str, str] = {}
     for line in lines:
-        if "==" in line:
-            dist, _, version = line.strip().partition("=")
-            lock[re.sub(r"[-_.]+", "-", dist).lower()] = version.strip()
+        parsed = _parse_pin_line(line)
+        if parsed is not None:
+            lock[parsed[0]] = parsed[1]
     return lock
 
 
@@ -184,9 +213,9 @@ def _dr02() -> Finding:
         site_packages = _site_packages(venv_dir)
         if site_packages is not None:
             sp_mode = _mode(site_packages)
-            if sp_mode is not None and _weakened(sp_mode, 0o700):
+            if sp_mode is not None and _group_or_world_writable(sp_mode):
                 problems.append(
-                    f"{site_packages}: group/world-writable site-packages "
+                    f"{site_packages}: group/world-WRITABLE site-packages "
                     "(supply-chain boundary, layout §3.8)"
                 )
                 fixes.append(f"chmod -R go-w {venv_dir}")
@@ -286,9 +315,11 @@ def _dr03() -> Finding:
 # ── DR-04: two manifests on one venv ──────────────────────────────────
 
 
-def _dr04(installation: dict | None) -> Finding:
+def _dr04(installation: dict[str, ComponentManifest] | None) -> Finding:
     if not installation:
-        return Finding("DR-04", "venv uniqueness across manifests", Severity.OK, "n/a — no installation")
+        return Finding(
+            "DR-04", "venv uniqueness across manifests", Severity.OK, "n/a — no installation"
+        )
     problems: list[str] = []
     for manifest in installation.values():
         if manifest.launch is None:
@@ -348,7 +379,7 @@ def _constraint_ok(constraint: str, actual: tuple[int, int, int]) -> bool:
     }[op]
 
 
-def _dr05(installation: dict | None) -> Finding:
+def _dr05(installation: dict[str, ComponentManifest] | None) -> Finding:
     if not installation:
         return Finding("DR-05", "python version constraints", Severity.OK, "n/a — no installation")
     problems: list[str] = []
@@ -385,7 +416,7 @@ def _dr05(installation: dict | None) -> Finding:
 # ── DR-06: venv ≠ engine interpreter; reserved names ──────────────────
 
 
-def _dr06(installation: dict | None) -> Finding:
+def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
     engine_venv = layout.engine_venv_dir()
     engine_real = Path(os.path.realpath(engine_venv))
     venvs_root = layout.data_root() / "venvs"
@@ -454,11 +485,11 @@ def _installed_unit_path() -> Path:
 
 
 def _regenerate_unit(downgraded: list[str]) -> str:
-    from vesmaro.service.install import _engine_venv  # local import: install pulls subprocess
+    from vesmaro.service.install import engine_venv  # local import: install pulls subprocess
 
     return unitgen.generate(
         home=layout.home(),
-        engine_venv=_engine_venv(),
+        engine_venv=engine_venv(),
         read_write_paths=(layout.state_root(), layout.cache_base(), layout.data_root()),
         read_only_paths=(layout.engine_venv_dir(), layout.data_root() / "venvs"),
         downgraded=downgraded,
@@ -558,9 +589,11 @@ def _dr08() -> Finding:
 # ── DR-09: health port collisions across the installation ────────────
 
 
-def _dr09(installation: dict | None) -> Finding:
+def _dr09(installation: dict[str, ComponentManifest] | None) -> Finding:
     if not installation:
-        return Finding("DR-09", "health port collisions", Severity.OK, "n/a — no installation")
+        return Finding(
+            "DR-09", "health port collisions", Severity.OK, "n/a — no installation"
+        )
     claims: dict[int, set[str]] = {}
     for manifest in installation.values():
         health = manifest.health
@@ -577,7 +610,9 @@ def _dr09(installation: dict | None) -> Finding:
             claims.setdefault(port, set()).add(manifest.name)
     collisions = {port: names for port, names in claims.items() if len(names) > 1}
     if collisions:
-        detail = "; ".join(f"port {port}: {sorted(names)}" for port, names in sorted(collisions.items()))
+        detail = "; ".join(
+            f"port {port}: {sorted(names)}" for port, names in sorted(collisions.items())
+        )
         return Finding(
             "DR-09",
             "health port collisions",
@@ -698,9 +733,11 @@ def _dr12() -> Finding:
     venvs = layout.data_root() / "venvs"
     problems: list[str] = []
     fixes: list[str] = []
-    for label, path in (("venv", venv), ("venvs", venvs)):
+    hard = False  # undocumented loss of coverage / fs-level weakening = FAIL
+    for path in (venv, venvs):
         mode = _mode(path)
         if mode is not None and _weakened(mode, 0o700):
+            hard = True  # writable-by-others venv trees = the DR-12 tamper vector
             problems.append(f"{path}: group/world-writable on disk ({mode:04o})")
             fixes.append(f"chmod 700 {path}")
     if unit is None:
@@ -708,24 +745,37 @@ def _dr12() -> Finding:
             "; " + "; ".join(problems) if problems else ""
         )
         if problems:
-            return Finding("DR-12", "venv read-only at runtime", Severity.FAIL, detail, " ; ".join(fixes))
+            return Finding(
+                "DR-12", "venv read-only at runtime", Severity.FAIL, detail, " ; ".join(fixes)
+            )
         return Finding("DR-12", "venv read-only at runtime", Severity.OK, detail)
     _, text = unit
     downgraded = unitgen.parse_downgrade_marker(text)
     active, commented = unitgen.parse_unit(text)
     expected = {unitgen.render_path(venv, layout.home()), unitgen.render_path(venvs, layout.home())}
     if "ReadOnlyPaths" in downgraded:
+        # The sanctioned loud container downgrade (SL §3.6): the protection
+        # is REALLY absent here — WARN (documented downgrade), not FAIL, so
+        # a legitimate container install is not permanently red. Any OTHER
+        # loss of coverage stays FAIL.
         problems.append(
             "ReadOnlyPaths is container-downgraded — venvs are NOT runtime-"
-            "protected in this environment (loud documented downgrade)"
+            "protected in this environment (loud documented downgrade, "
+            "specs/service-lifecycle/v1 §3.6)"
+        )
+        fixes.append(
+            "vesma service install (on a systemd host this restores "
+            "ReadOnlyPaths; inside a container the downgrade is documented)"
         )
     elif "ReadOnlyPaths" in commented:
+        hard = True
         problems.append("ReadOnlyPaths is commented out WITHOUT a downgrade marker (tampering?)")
         fixes.append("vesma service install")
     else:
         covered = set((active.get("ReadOnlyPaths") or "").split())
         missing = expected - covered
         if missing:
+            hard = True
             problems.append(
                 "unit ReadOnlyPaths does not cover: " + ", ".join(sorted(missing))
             )
@@ -734,7 +784,7 @@ def _dr12() -> Finding:
         return Finding(
             "DR-12",
             "venv read-only at runtime",
-            Severity.FAIL,
+            Severity.FAIL if hard else Severity.WARN,
             "; ".join(problems),
             " ; ".join(dict.fromkeys(fixes)) if fixes else None,
         )
@@ -772,7 +822,9 @@ _HARDENING_DIRECTIVES = (
 def _dr13() -> Finding:
     unit = _read_unit()
     if unit is None:
-        return Finding("DR-13", "container downgrade allowlist", Severity.OK, "no unit installed (n/a)")
+        return Finding(
+            "DR-13", "container downgrade allowlist", Severity.OK, "no unit installed (n/a)"
+        )
     _, text = unit
     downgraded = unitgen.parse_downgrade_marker(text)
     illegal = [n for n in downgraded if n not in unitgen.DOWNGRADE_ALLOWED]
@@ -821,7 +873,7 @@ def _dr13() -> Finding:
 
 def run_service_checks() -> list[Finding]:
     """Run DR-01…DR-13 against the local installation. READ-ONLY."""
-    installation: dict | None = None
+    installation: dict[str, ComponentManifest] | None = None
     try:
         components_dir = layout.components_dir()
         if components_dir.is_dir():

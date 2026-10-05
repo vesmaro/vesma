@@ -1229,7 +1229,11 @@ def doctor_paths(
 
 def _render_service_findings(results: list[Any]) -> None:
     """Render DR findings as a rich table (status / id / check / detail+fix)."""
-    table = Table(title="Service Installation Check (DR-01…DR-13)", show_header=True, header_style="bold")
+    table = Table(
+        title="Service Installation Check (DR-01…DR-13)",
+        show_header=True,
+        header_style="bold",
+    )
     table.add_column("Status", style="bold", width=4)
     table.add_column("ID", style="bold cyan", width=6)
     table.add_column("Check")
@@ -1242,7 +1246,11 @@ def _render_service_findings(results: list[Any]) -> None:
             icon = "[yellow]⚠[/yellow]"
         else:
             icon = "[red]✗[/red]"
-        detail = f.detail if not f.fix_command else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
+        detail = (
+            f.detail
+            if not f.fix_command
+            else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
+        )
         table.add_row(icon, f.check_id, f.title, detail)
     console.print(table)
 

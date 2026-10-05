@@ -64,6 +64,31 @@ _MUST_ACTIVE = {
 }
 
 
+class TestContractConstants:
+    def test_contract_constants_are_exported(self) -> None:
+        """The supervisor wave imports THESE — they must exist with the
+        contract values and the generator must render from them."""
+        assert unitgen.TIMEOUT_STOP_SEC == 90
+        assert unitgen.RESTART_SEC == "5s"
+        assert unitgen.START_LIMIT_INTERVAL_SEC == 300
+        assert unitgen.START_LIMIT_BURST == 5
+        assert unitgen.KILL_SIGNAL == "SIGTERM"
+        assert unitgen.KILL_MODE == "mixed"
+        assert unitgen.RESTART_POLICY == "on-failure"
+        assert unitgen.UNIT_TYPE == "exec"
+
+    def test_generator_renders_from_constants(self) -> None:
+        text = _generate()
+        assert f"TimeoutStopSec={unitgen.TIMEOUT_STOP_SEC}" in text
+        assert f"RestartSec={unitgen.RESTART_SEC}" in text
+        assert f"StartLimitIntervalSec={unitgen.START_LIMIT_INTERVAL_SEC}" in text
+        assert f"StartLimitBurst={unitgen.START_LIMIT_BURST}" in text
+        assert f"KillSignal={unitgen.KILL_SIGNAL}" in text
+        assert f"KillMode={unitgen.KILL_MODE}" in text
+        assert f"Restart={unitgen.RESTART_POLICY}" in text
+        assert f"Type={unitgen.UNIT_TYPE}" in text
+
+
 class TestMustTable:
     def test_every_must_directive_exact(self) -> None:
         active, _ = unitgen.parse_unit(_generate())
@@ -163,7 +188,9 @@ class TestHardening:
 
 
 class TestSpecsExampleParity:
-    @pytest.mark.skipif(not SPECS_EXAMPLE.exists(), reason="specs repo not checked out next to vesma")
+    @pytest.mark.skipif(
+        not SPECS_EXAMPLE.exists(), reason="specs repo not checked out next to vesma"
+    )
     def test_structurally_equal_to_specs_example(self) -> None:
         """Same directive set and values; only paths and prose may differ."""
         example_text = SPECS_EXAMPLE.read_text(encoding="utf-8")
@@ -219,8 +246,11 @@ class TestContainerDowngrades:
             _generate(frozenset({directive}))
 
     def test_downgrade_allowed_set_matches_contract(self) -> None:
-        assert unitgen.DOWNGRADE_ALLOWED == frozenset(
-            {"ProtectSystem", "ProtectHome", "ReadOnlyPaths", "ReadWritePaths", "PrivateTmp"}
+        assert (
+            frozenset(
+                {"ProtectSystem", "ProtectHome", "ReadOnlyPaths", "ReadWritePaths", "PrivateTmp"}
+            )
+            == unitgen.DOWNGRADE_ALLOWED
         )
 
 

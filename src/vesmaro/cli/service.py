@@ -8,13 +8,13 @@ function (WHAT), flag = configuration (HOW).
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 
-from vesmaro.service.install import InstallError, install, uninstall
 from vesmaro.service.errors import ManifestError
+from vesmaro.service.install import InstallError, install, uninstall
 
 service_app = typer.Typer(
     name="service",
@@ -44,7 +44,8 @@ def service_install() -> None:
     except (InstallError, ManifestError) as exc:
         _fail(exc)
     for line in result.lines:
-        style = "[yellow]⚠[/yellow]" if line.startswith("CONTAINER DOWNGRADE") else "[green]✓[/green]"
+        downgraded_line = line.startswith("CONTAINER DOWNGRADE")
+        style = "[yellow]⚠[/yellow]" if downgraded_line else "[green]✓[/green]"
         console.print(f"{style} {line}")
     console.print(f"[green]Service installed ({result.unit_path}).[/green]")
 
@@ -52,12 +53,15 @@ def service_install() -> None:
 @service_app.command(name="uninstall")
 def service_uninstall(
     name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Component name (e.g. board, metrics).", show_default=False),
     ] = None,
     remove_all: Annotated[
         bool,
-        typer.Option("--all", help="Uninstall everything: stop/disable + remove the unit and all components."),
+        typer.Option(
+            "--all",
+            help="Uninstall everything: stop/disable + remove the unit and all components.",
+        ),
     ] = False,
 ) -> None:
     """Uninstall one component, or the whole installation with --all.
