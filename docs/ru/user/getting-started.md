@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 |-------|---------|
 | Зафиксировать версию | `pip install vesma==4.3.0` (*пин до ребрендинга: `mnemos-memory-server==4.1.0` ставится до deprecation*) |
 | Контейнер одной командой | `… install.sh \| bash -s -- --container` — см. [container-deployment.md](../admin/runbooks/container-deployment.md) |
-| Из исходников (контрибьюторам) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — см. [CONTRIBUTING.ru.md](../../../CONTRIBUTING.ru.md) |
+| Из исходников (контрибьюторам) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv sync --extra dev` — см. [CONTRIBUTING.ru.md](../../../CONTRIBUTING.ru.md) |
 
 <details>
 <summary><strong>Готовый wheel и готовый контейнерный образ</strong> — каналы с фиксированной версией</summary>
@@ -325,7 +325,7 @@ vesma doctor
 файлы интеграции, неподключённые агенты, отсутствующая регистрация MCP).
 
 Полный девелоперский гейт (только для контрибьюторов): клонируйте репозиторий,
-`uv pip install -e ".[dev,mcp]"`, затем `make verify` — ruff + mypy `--strict` +
+`uv sync --extra dev`, затем `make verify` — ruff + mypy `--strict` +
 bandit + pip-audit + набор тестов. Если `pip-audit` жалуется на закреплённую CVE,
 см. [ранбук по обновлению зависимостей](../admin/runbooks/dependency-updates.md).
 

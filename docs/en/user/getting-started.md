@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/instal
 |--------|---------|
 | Pin a version | `pip install vesma==4.3.0` (*pre-rebrand pin: `mnemos-memory-server==4.1.0` stays installable until deprecation*) |
 | Container one-liner | `… install.sh \| bash -s -- --container` — see [container-deployment.md](../admin/runbooks/container-deployment.md) |
-| From source (contributors) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — see [CONTRIBUTING.md](../../../CONTRIBUTING.md) |
+| From source (contributors) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv sync --extra dev` — see [CONTRIBUTING.md](../../../CONTRIBUTING.md) |
 
 <details>
 <summary><strong>Released wheel and pre-built container image</strong> — version-pinned channels</summary>
@@ -288,7 +288,7 @@ vesma doctor
 
 runs health checks over the store, config, MCP transport, and known harness registrations — and prints one PASS/WARN/FAIL line per check. `vesma doctor --fix` auto-resolves the common warnings (stale integration files, unwired agents, missing MCP registration).
 
-To run the full development gate (contributors only): clone the repo, `uv pip install -e ".[dev,mcp]"`, then `make verify` — ruff + mypy `--strict` + bandit + pip-audit + the test suite. If `pip-audit` complains about a pinned CVE, see the [dependency-updates runbook](../admin/runbooks/dependency-updates.md).
+To run the full development gate (contributors only): clone the repo, `uv sync --extra dev`, then `make verify` — ruff + mypy `--strict` + bandit + pip-audit + the test suite. If `pip-audit` complains about a pinned CVE, see the [dependency-updates runbook](../admin/runbooks/dependency-updates.md).
 
 ---
 
