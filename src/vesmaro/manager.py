@@ -182,15 +182,23 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # paths together with the forged stamps — a client must neither forge
 # warnings onto a clean record nor delete honest ones from a violating
 # record; only an actual content/metadata fix may clear them.
-INTERNAL_METADATA_KEYS: frozenset[str] = (
-    frozenset(
-        {
-            "pipeline_retry_count",  # lane-(a) attempt counter (refine)
-            "pipeline_retry_at",  # lane-(a) backoff gate (refine)
-        }
-    )
-    | CHECKPOINT_STAMP_KEYS
+# vesma #432 (P3, mint leg of the #251 strip class): the refine lane's
+# retry bookkeeping is SERVER-MINTED — its single writer is the store's
+# ``record_refine_failure`` / ``clear_refine_retry`` (SQL ``json_set``,
+# server-internal); no client surface and no ``add()``/``update()`` caller
+# legitimately mints these keys. ``INTERNAL_METADATA_KEYS`` merge-back only
+# protects EXISTING values, so the create/update call sites additionally
+# STRIP client-supplied copies (below) — a client must not mint retry
+# state on a row that never had it (CWE-346 spoofed source, same class as
+# the forged checkpoint stamps).
+PIPELINE_RETRY_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "pipeline_retry_count",  # lane-(a) attempt counter (refine)
+        "pipeline_retry_at",  # lane-(a) backoff gate (refine)
+    }
 )
+
+INTERNAL_METADATA_KEYS: frozenset[str] = PIPELINE_RETRY_METADATA_KEYS | CHECKPOINT_STAMP_KEYS
 
 # Cascade review SEC P2-2 (TL ruling: engine returns to ratified canon §2).
 # ADR-0003 obligation 3 was read over-broad in W2-S1: canon §2 defines
@@ -1139,7 +1147,10 @@ class MemoryManager:
         (warn/strict apply to them). Cascade review SEC P2-1: a
         client-supplied ``canon_warnings`` is stripped on the same
         non-trusted paths — ``_canon_gate`` is the single writer of that
-        key (see INTERNAL_METADATA_KEYS above).
+        key (see INTERNAL_METADATA_KEYS above). vesma #432: the refine
+        lane's retry bookkeeping (``PIPELINE_RETRY_METADATA_KEYS``) is
+        stripped unconditionally — its only writer is the store's
+        server-internal ``json_set``, never a create path.
 
         ``mint_relates_to`` (#322 review M2, TL decision) — minting
         fuel is ORGANIC USER WRITES only. Internal machine-driven
@@ -1216,6 +1227,25 @@ class MemoryManager:
             )
             data.metadata = {
                 k: v for k, v in data.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+            }
+
+        # ── vesma #432 (mint leg): the refine retry bookkeeping is ──────
+        # server-minted too — its single writer is the STORE's
+        # ``record_refine_failure``/``clear_refine_retry`` (SQL
+        # ``json_set``, server-internal), never add(). Strip a
+        # client-supplied copy unconditionally: no trusted-caller flag
+        # exists because no add() caller is a legitimate minter of
+        # these keys (the same #251 strip class, CWE-346 — a forged
+        # counter on a fresh row would fabricate pipeline history).
+        retry_forged = sorted(k for k in PIPELINE_RETRY_METADATA_KEYS if k in data.metadata)
+        if retry_forged:
+            logger.warning(
+                "generic create: stripped client-supplied pipeline retry metadata "
+                "(server-minted only, vesma #432): keys=%s",
+                retry_forged,
+            )
+            data.metadata = {
+                k: v for k, v in data.metadata.items() if k not in PIPELINE_RETRY_METADATA_KEYS
             }
 
         # ── Layer 1: write-path secrets scanner ───────────────────────────
@@ -1441,7 +1471,9 @@ class MemoryManager:
         # An external ``metadata=`` replaces the dict wholesale; the
         # server-owned pipeline bookkeeping (retry counter / backoff gate,
         # see INTERNAL_METADATA_KEYS) is merged back on top so a caller
-        # can neither reset a retry budget nor forge backoff state.
+        # can neither reset a retry budget nor forge backoff state —
+        # nor mint either key on a row that never had it (vesma #432:
+        # the client-supplied copies are stripped before the merge-back).
         if "metadata" in update_kwargs:
             # vesma #251 review P1: checkpoint stamps are server-minted —
             # drop any client-supplied copies BEFORE the merge-back so
@@ -1489,6 +1521,25 @@ class MemoryManager:
                 )
                 memory.metadata = {
                     k: v for k, v in memory.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
+                }
+            # vesma #432 (mint leg): the refine retry bookkeeping joins
+            # the server-minted class — strip client-supplied copies
+            # BEFORE the merge-back so they cannot land on a row that
+            # never had them either (the merge-back below then restores
+            # the row's own values: overwrite/mint are covered on both
+            # row states, the same #251 strip class, CWE-346).
+            retry_forged = sorted(k for k in PIPELINE_RETRY_METADATA_KEYS if k in memory.metadata)
+            if retry_forged:
+                logger.warning(
+                    "update: stripped client-supplied pipeline retry metadata "
+                    "(server-minted only, vesma #432): id=%s keys=%s",
+                    memory_id[:8],
+                    retry_forged,
+                )
+                memory.metadata = {
+                    k: v
+                    for k, v in memory.metadata.items()
+                    if k not in PIPELINE_RETRY_METADATA_KEYS
                 }
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
