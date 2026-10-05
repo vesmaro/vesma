@@ -2315,9 +2315,7 @@ class TestInstructionPack:
         assert "vesma_usage_report(metrics_id=" in text, (
             "G0b must teach the vesma_usage_report call shape"
         )
-        assert "empty list is legitimate" in text, (
-            "G0b must state the empty-list legitimacy"
-        )
+        assert "empty list is legitimate" in text, "G0b must state the empty-list legitimacy"
         assert "budget<=2048" in text, "G0a must teach the <=2048 token budget"
         assert 'mode="sync"' in text, "G0a must teach mode=sync"
 
@@ -2374,9 +2372,7 @@ class TestInstructionPack:
             .parent.parent.joinpath("integrations", "agents_md", "vesma-always-on.md")
         )
         text = path.read_text(encoding="utf-8")
-        assert "G0a" in text and "G0b" in text, (
-            "always-on block must name both usage-loop gates"
-        )
+        assert "G0a" in text and "G0b" in text, "always-on block must name both usage-loop gates"
         assert "usage_report.metrics_id" in text, (
             "always-on G0a must point at the metrics_id handoff"
         )
