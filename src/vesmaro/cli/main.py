@@ -1973,6 +1973,13 @@ app.add_typer(graph_app, name="graph")
 # ExecStart depends on them).
 app.add_typer(update_app, name="update")
 
+# ── service (engine waves W3/W4 — install/uninstall now; the supervisor
+#    surface status/logs/start/stop/restart/run lands in W3) ─────────────
+
+from vesmaro.cli.service import service_app  # noqa: E402
+
+app.add_typer(service_app, name="service")
+
 
 def cli_main() -> None:
     """Console-script entry: time the whole CLI invocation as one verb.
