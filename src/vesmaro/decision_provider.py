@@ -73,6 +73,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import files as resource_files
@@ -314,7 +315,13 @@ class DecisionProvider(Protocol):
 # ── Per-answer telemetry (§3.9 — «кто принял решение», machine-parseable) ────
 
 
-def log_decision_telemetry(provider_name: str, answer: DecisionPrimitive) -> None:
+def log_decision_telemetry(
+    provider_name: str,
+    answer: DecisionPrimitive,
+    *,
+    override: str | None = None,
+    override_detail: str | None = None,
+) -> None:
     """Emit the §3.9 attribution line for one answered request.
 
     One INFO line per answer in the engine's structural key=value log
@@ -326,6 +333,14 @@ def log_decision_telemetry(provider_name: str, answer: DecisionPrimitive) -> Non
     calibrated ``probability`` IS its confidence expression, the
     module-docstring honesty contract). It carries question ids and
     numbers only — never record content.
+
+    Guard exception to that content rule (deliberate, documented): when
+    ``override`` is given, the line gains
+    ``override=<marker> diff=<tokens>`` — the CHANGED-token evidence the
+    guard fired on (policy v1.1 audit trail, B0 ``CORTEX-DECISION``
+    join), truncated to :data:`KEY_TOKEN_DIFF_LOG_MAX_CHARS`. The tokens
+    are the minimal sufficient evidence for the override; nothing else
+    about the records ever rides the line.
     """
     if isinstance(answer, Score):
         logger.info(
@@ -336,11 +351,15 @@ def log_decision_telemetry(provider_name: str, answer: DecisionPrimitive) -> Non
             answer.confidence,
         )
     elif isinstance(answer, Noul):
+        suffix = ""
+        if override is not None:
+            suffix = f" override={override} diff={override_detail or ''}"
         logger.info(
-            "decision primitive=noul provider=%s question=%s probability=%s",
+            "decision primitive=noul provider=%s question=%s probability=%s%s",
             provider_name,
             answer.question,
             answer.probability,
+            suffix,
         )
     else:
         logger.info(
@@ -506,6 +525,99 @@ CORTEX_FEATURE_NAMES: Final[tuple[str, ...]] = (
 #: ``Noul.probability`` exactly the way the deterministic leg applies
 #: :data:`AUTO_DEDUPE_SIMILARITY_THRESHOLD` to the measured cosine.
 CORTEX_DUPLICATE_PROBABILITY_THRESHOLD: Final[float] = 0.5
+
+
+# ── Key-token guard v0 (policy v1.1 — labeling-policy-b2.md §8) ──────────────
+
+#: The high-cosine unreliability band of the frozen v1 feature contract:
+#: a pair this close grades ≈0.99 on the target cosine whatever the body
+#: digits say, so the semantic leg alone cannot tell a fact edit from a
+#: true twin (razor zone cos 0.95-1.0, labeling-policy-b2.md §8;
+#: p0-export-desync investigation, vesma-cortex docs/experiments). The
+#: guard fires only inside the band — below it the calibrated model is
+#: trusted as measured.
+KEY_TOKEN_GUARD_COS: Final[float] = 0.95
+
+#: The machine-parseable override marker carried on the DECISION line.
+KEY_TOKEN_OVERRIDE_MARKER: Final[str] = "key-token"
+
+#: The diff-token list on the override DECISION line is truncated to this
+#: many characters — the line stays a log line, not a record dump.
+KEY_TOKEN_DIFF_LOG_MAX_CHARS: Final[int] = 120
+
+#: v0 KEY-class detector: a token carrying any ASCII digit. Deliberately
+#: minimal — see :func:`key_token_guard_override` for the documented v0
+#: gaps (numbers as words, alphabetic-only names/versions are NOT caught).
+_HAS_DIGIT: Final = re.compile(r"[0-9]")
+
+
+def _key_token_guard_tokens(view: CanonRecordView) -> frozenset[str]:
+    """Whitespace tokens of the cortex-normalized title+body text.
+
+    The normalization is the FEATURES' normalization
+    (:func:`_cortex_normalized_text`): lowercase, whitespace-collapsed,
+    punctuation KEPT (the cortex contract keeps punctuation-only edits
+    visible to the n-grams). The guard therefore diffs exactly the text
+    the features see — zero second normalization to drift.
+    """
+    return frozenset(_cortex_normalized_text(view).split())
+
+
+def key_token_diff(record: CanonRecordView, candidate: CanonRecordView) -> frozenset[str]:
+    """Symmetric whitespace-token difference of the two normalized texts.
+
+    Tokens present on exactly one side — an addition and a removal both
+    count as «changed». Only title+body text is consulted: tags and the
+    envelope have their own (metadata-class) policy legs, and the frozen
+    feature contract the model runs on does not see them here either.
+    """
+    return _key_token_guard_tokens(record) ^ _key_token_guard_tokens(candidate)
+
+
+def key_token_guard_override(
+    record: CanonRecordView, candidate: CanonRecordView, probability: float
+) -> tuple[float, str] | None:
+    """Key-token guard v0 — the pure core of the VesmaProvider override.
+
+    Policy v1.1 (vesma-cortex ``docs/specs/labeling-policy-b2.md`` §8,
+    ratified 2026-10-05): a difference touching the KEY-CONTENT class
+    (calculation figures, sums, names, versions) means NOT-duplicate —
+    always; an envelope/cosmetic difference is a duplicate; a disputed
+    case resolves to NOT-duplicate. The hybrid split: the model answers
+    semantics, this guard adds the key-token check on high closeness
+    where the feature contract is blind.
+
+    v0 conservative mechanics over :func:`key_token_diff`:
+
+    * KEY token = a token carrying any ASCII digit (``[0-9]``). This is
+      a deliberate SUBSET of the policy's key-content class: numbers
+      written as words, alphabetic-only names and versions are NOT
+      caught in v0 — the gap is closed by a later policy-aware
+      classifier, not by heuristics smuggled in here.
+    * Any KEY token in the diff → the verdict flips to not-duplicate,
+      ``probability = 1 - p`` (a mixed KEY+other diff included —
+      «спорное → не дубликат»).
+    * An empty or all-non-digit (cosmetic) diff → ``None``: the model
+      verdict stands. Case/whitespace edits are eaten by the
+      normalization and punctuation edits survive only as non-digit
+      tokens — the asymmetric «any non-digit diff is unmarked» rule
+      makes the v0 classifier cosmetic-safe by construction (a
+      punctuation mark glued to a digit token DOES classify KEY; that
+      false-positive side is accepted in v0 under the same
+      «спорное → не дубликат» policy leg, and the guard is advisory).
+
+    Returns ``(overridden_probability, diff_log_detail)`` or ``None``
+    when the guard does not fire. ADVISORY today: the provider answers
+    verdicts, it never suppresses records — the override reshapes the
+    answered probability and the DECISION line only (the merge-arbiter
+    wave owns making the verdict actionable, not this guard).
+    """
+    diff = key_token_diff(record, candidate)
+    if not any(_HAS_DIGIT.search(token) for token in diff):
+        return None
+    detail = " ".join(sorted(diff))[:KEY_TOKEN_DIFF_LOG_MAX_CHARS]
+    return 1.0 - probability, detail
+
 
 #: Dtype-agnostic ndarray alias for ORT graph edges — numpy stubs are
 #: import-skipped (pyproject mypy overrides), same rationale as
@@ -762,6 +874,25 @@ class VesmaProvider:
     stricter-typed engine refusal (documented reconciliation, spec §10
     style).
 
+    Key-token guard v0 (policy v1.1, labeling-policy-b2.md §8): when the
+    MODEL verdict says duplicate (probability ≥
+    :data:`CORTEX_DUPLICATE_PROBABILITY_THRESHOLD`) INSIDE the
+    high-cosine unreliability band (measured cosine ≥
+    :data:`KEY_TOKEN_GUARD_COS`, 0.95 — the razor zone the frozen
+    13-feature contract cannot see through, p0-export-desync), a token
+    diff of the two normalized texts is consulted
+    (:func:`key_token_guard_override`); a digit-bearing (KEY-class)
+    difference flips the verdict to not-duplicate (``probability =
+    1 - p``) and the DECISION line carries ``override=key-token`` with
+    the truncated diff tokens. The guard is fail-open (any guard
+    exception → the model verdict stands, ``code=CORTEX-E-GUARD`` warn)
+    and ADVISORY — the provider answers verdicts, it never suppresses
+    records; the merge-arbiter wave owns making the verdict actionable,
+    not this guard. The DEGRADED deterministic verdict is deliberately
+    NOT guarded: the guard corrects the semantic leg's documented
+    blindness; extending the step rule's contract is a minting
+    call-site policy decision, not a wrapper's silent move.
+
     Network isolation (spec §9): this module carries ZERO network
     imports — the provider is local-only by construction, pinned by the
     AST tripwire ``tests/test_cortex_network_isolation.py``.
@@ -887,6 +1018,8 @@ class VesmaProvider:
     def evaluate(self, request: DecisionRequest, state: CanonState) -> DecisionPrimitive:
         """Answer one product-fixed question over the prepared state."""
         answer: DecisionPrimitive
+        override_name: str | None = None
+        override_detail: str | None = None
         if isinstance(request, RecordQualityRequest):
             answer = Score(
                 spectrum=SPECTRUM_RECORD_QUALITY,
@@ -905,7 +1038,11 @@ class VesmaProvider:
             except (CortexInferError, CortexSchemaError) as exc:
                 # Fail-open per verdict (spec §3.8): machine-parseable warn
                 # (implementation-namespace code + contractual action class)
-                # + the deterministic step rule for THIS request.
+                # + the deterministic step rule for THIS request. The
+                # degraded step verdict is NOT key-token-guarded — the
+                # guard corrects the MODEL leg's blindness (class
+                # docstring), it does not silently extend the
+                # deterministic rule's contract.
                 logger.warning(
                     "code=%s class=%s vesma-cortex verdict degraded to the deterministic step: %s",
                     exc.code,
@@ -915,7 +1052,19 @@ class VesmaProvider:
                 probability = DeterministicProvider._is_duplicate_probability(
                     state, request.threshold
                 )
-            answer = Noul(question=QUESTION_IS_DUPLICATE, probability=probability)
+                answer = Noul(question=QUESTION_IS_DUPLICATE, probability=probability)
+            else:
+                # The graph answered — the model verdict. The key-token
+                # guard may override it ONLY when the verdict is duplicate
+                # AND the pair sits in the high-cosine unreliability band.
+                answer = Noul(question=QUESTION_IS_DUPLICATE, probability=probability)
+                if (
+                    probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+                    and state.similarity >= KEY_TOKEN_GUARD_COS
+                ):
+                    guarded = self._key_token_guard(answer, state)
+                    if guarded is not None:
+                        answer, override_name, override_detail = guarded
         elif isinstance(request, GoalOverlapRequest):
             raise UnsupportedPrimitiveError(
                 "goal-overlap has no cortex head — the vesma-cortex-v1 artifact answers "
@@ -925,8 +1074,42 @@ class VesmaProvider:
             raise UnsupportedPrimitiveError(
                 f"no vesma-cortex heuristic for {type(request).__name__}"
             )
-        log_decision_telemetry(self.name, answer)
+        log_decision_telemetry(
+            self.name, answer, override=override_name, override_detail=override_detail
+        )
         return answer
+
+    def _key_token_guard(self, answer: Noul, state: CanonState) -> tuple[Noul, str, str] | None:
+        """Fail-open wrapper over :func:`key_token_guard_override`.
+
+        Returns ``(overridden_answer, marker, diff_detail)`` when the
+        guard fires, ``None`` otherwise. ANY guard exception (malformed
+        view text, a pathological token, anything) → the MODEL verdict
+        stands with a machine-parseable ``code=CORTEX-E-GUARD`` warn —
+        the guard is a correctness patch on the semantic leg, never a
+        new way to block the prod path (spec §7 discipline).
+        """
+        candidate = state.candidate
+        if candidate is None:  # unreachable: evaluate refuses candidate-less states
+            return None
+        try:
+            override = key_token_guard_override(state.record, candidate, answer.probability)
+        except Exception as exc:  # fail-open: the guard never blocks ingest
+            logger.warning(
+                "code=%s class=%s key-token guard failed, the model verdict stands: %s",
+                "CORTEX-E-GUARD",
+                ACTION_CLASS_VERDICT,
+                exc,
+            )
+            return None
+        if override is None:
+            return None
+        probability, detail = override
+        return (
+            Noul(question=answer.question, probability=probability),
+            KEY_TOKEN_OVERRIDE_MARKER,
+            detail,
+        )
 
 
 # ── Baseline runner (calibration instrument — ADR-0004 rule 4) ───────────────
