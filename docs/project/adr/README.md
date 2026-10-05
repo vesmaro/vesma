@@ -64,7 +64,7 @@ documented elsewhere, or anything that fits in a code comment.
 | [0033](0033-vesma-harness-layer.md) | Harness memory layer — owned by vesma, delivered via `vesma integration` | Accepted (conditional — two security-major merge gates) | 2026-10-01 |
 | [0034](0034-memory-engine-switch-protocol.md) | Memory-engine switch protocol — open vendor-neutral spec, reference implementation in vesma | Accepted (conditional — spec extraction gated by adoption; B1–B4 blocking controls) | 2026-10-01 |
 | [0035](0035-native-awareness-delivery.md) | Native awareness delivery — doorbell-heartbeat on every MCP response | Accepted (conditional) | 2026-10-01 |
-| [0036](0036-native-situational-awareness-canon.md) | Нативная ситуационная осведомлённость — канон, реестр и cortex-интеграция (рамка E/C/R/X/S; расширяет ADR-0035, не заменяет) | Accepted (conditional — 4 security clauses in PR #489; canary after a 1–2-week shadow soak) | 2026-10-05 |
+| [0036](0036-native-situational-awareness-canon.md) | Native situational awareness — canon, roster, and cortex integration (the E/C/R/X/S frame; extends ADR-0035, does not supersede it) | Accepted (conditional — 4 security clauses in PR #489; canary after a 1–2-week shadow soak) | 2026-10-05 |
 
 ## Themes
 

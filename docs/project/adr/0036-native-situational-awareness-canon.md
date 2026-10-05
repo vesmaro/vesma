@@ -1,220 +1,249 @@
-# ADR 0036: Нативная ситуационная осведомлённость — канон, реестр и cortex-интеграция (рамка E/C/R/X/S)
+# ADR 0036: Native situational awareness — canon, roster, and cortex integration (the E/C/R/X/S frame)
 
-**Status:** Accepted (conditional) — ArchCom 2026-10-05. Решение в силе; приёмка связана
-четырьмя условиями: (1) четыре клаузы Security в PR #489 до мержа; (2) always-on канон
-≤ ~10 строк, и каждая строка называет свой триггер; (3) canary только после 1–2 недель
-shadow-soak по метрикам гейтов; (4) security-события никогда не подлежат модельной
-супрессии или дедупу без provenance. Записи комитета: mnemos-пропозал `b090fbea` и
-сцепленное с ним decision-решение — цитируются по mnemos id; локальные артефакты
-комитета (протокол и контракт) частью этого репозитория не являются.
+**Status:** Accepted (conditional) — ArchCom 2026-10-05. The decision is in
+force; acceptance is bound by four conditions: (1) the four security clauses
+in PR #489 before merge; (2) the always-on canon ≤ ~10 lines, every line
+naming its trigger; (3) canary only after a 1–2-week shadow soak against the
+gate metrics; (4) security events are never subject to model suppression or
+dedup without provenance. Committee records: mnemos proposal `b090fbea` and
+the decision record chained from it — cited by mnemos id; the committee-local
+artifacts (the protocol and the contract) are not part of this repository.
 
-**Deciders:** Tech Lead (chair), Product Architect, Analytics Lead, Senior Security
-Engineer, Senior System Engineer — все пять вошли в условные позиции. Челлендж-фаза
-шла как перекрёстная рецензия (Analytics судил позицию Product Architect, Security —
-черновик PR #489, System Engineer — позиции Product Architect и Analytics); второй
-формальный раунд признан избыточным — расхождения сошлись к двум спорам, разрешённым
-вердиктами председателя (см. [Споры и вердикты председателя](#споры-и-вердикты-председателя)).
+**Deciders:** Tech Lead (chair), Product Architect, Analytics Lead, Senior
+Security Engineer, Senior System Engineer — all five entered conditional
+positions. The challenge phase ran as cross-review (Analytics judged the
+Product Architect's position, Security reviewed the PR #489 draft, the System
+Engineer judged the Product Architect and Analytics positions); a second
+formal round was recognized as redundant — the divergences converged to two
+disputes resolved by chair verdicts (see
+[Disputes and chair verdicts](#disputes-and-chair-verdicts)).
 
-**Scope:** канон-слой C — поведенческие гейты, одинаковые для любого харнеса; реестровый
-слой R — cortex-operator, отложенный по явным триггерам; cortex-слой X — rank/dedup в
-границах реестра; слой S — критерий эскалации в specs. Не в scope: механизм доставки
-(слой E — [ADR-0035](0035-native-awareness-delivery.md), этот ADR его **не supersede'ит**,
-а пристраивает сверху) и содержание depth-поверхностей
+**Scope:** the canon layer C — behavioral gates identical for every harness;
+the roster layer R — the cortex-operator, deferred behind explicit triggers;
+the cortex layer X — rank/dedup within the registry's bounds; the layer S —
+the specs escalation criterion. Out of scope: the delivery mechanism (layer
+E — [ADR-0035](0035-native-awareness-delivery.md); this ADR does **not**
+supersede it, it builds on top) and the content of the depth surfaces
 ([ADR-0027](0027-multi-context-memory.md)).
 
 ## Context
 
-Дыру «данные есть, потребления нет» закрыл на уровне доставки
-[ADR-0035](0035-native-awareness-delivery.md), но инциденты 2026-10-05 показали:
-доставка без канона не работает.
-Три дыры канона доказаны одним днём (директива владельца 2026-10-05: «важно и срочно»):
+[ADR-0035](0035-native-awareness-delivery.md) closed the «data exists, nothing
+consumes it» hole at the delivery level, but the 2026-10-05 incidents showed:
+delivery without canon does not work. Three canon holes were proven by a
+single day (the owner directive of 2026-10-05: «important and urgent»):
 
-1. **G1 был силосо-скоуплен.** Инфраструктурные факты живут в чужих project silos:
-   причина OOM дистробокса (`wall-distrobox-mem.timer`, 18 G / swap 0) лежала в silo
-   `vesmaro-agent`, а Tech Lead в это время задал вопрос о ней **владельцу**. G4 был
-   каноном, но не имел механического триггера — «поискать в памяти» оставался
-   доброй волей сессии.
-2. **Neighbor-session sweep не был канонизирован.** Причина prod-инцидента (запись в
-   prod-venv в 02:39) нашлась в handoff соседней сессии `sess_16eb642b` только после
-   того, как владелец на неё указал. Свип по соседним сессиям перед вердиктом
-   «неизвестный актор / никто не делал» каноном не был.
-3. **Движковый механизм осведомлённости существовал без включения и без канона.**
-   Контур doorbell-heartbeat слит в wave 0 (PR #465, байт-пин `59e05bd`, canary-слайс
-   #473), но флаг `awareness.native_heartbeat_mode` стоит в `off`, и ни один гейт
-   канона не говорит агенту, что окружение вообще наблюдает его сессии.
+1. **G1 was silo-scoped.** Infrastructure facts live in foreign project
+   silos: the root cause of the distrobox OOM (`wall-distrobox-mem.timer`,
+   18 G / swap 0) sat in the `vesmaro-agent` silo while the Tech Lead was
+   asking the **owner** about it. G4 was canon but had no mechanical trigger —
+   «search memory first» remained discretionary.
+2. **The neighbor-session sweep was not canonized.** The root cause of the
+   prod incident (a write into the prod-venv at 02:39) was found in the
+   handoff of the neighboring session `sess_16eb642b` only after the owner
+   pointed at it. A sweep across neighboring sessions before an «unknown
+   actor / nobody did it» verdict was not canon.
+3. **The engine awareness mechanism existed neither enabled nor canon-covered.**
+   The doorbell-heartbeat contour landed in wave 0 (PR #465, the byte-identity
+   pin `59e05bd`, the canary slice #473), but the
+   `awareness.native_heartbeat_mode` flag stays `off`, and no canon gate tells
+   the agent that the environment observes its sessions at all.
 
-Параллельно комитет ревьюил PR #489 — канон-дополнения пака. Security нашёл в черновике
-два класса угроз (ничем не ограниченный cross-silo fishing и prompt injection из чужих
-handoff'ов в форензике) и выставил четыре обязательные клаузы до мержа. Комитет свёл
-всё в одну слоистую рамку.
+Meanwhile the committee was reviewing PR #489 — the pack's canon additions.
+Security found two threat classes in the draft (unbounded cross-silo fishing
+and prompt injection from foreign handoffs in forensics) and set four
+mandatory clauses before merge. The committee folded everything into one
+layered frame.
 
 ## Decision
 
-**Слоистая рамка E/C/R/X/S** — единая рамка нативной ситуационной осведомлённости.
-Слои пристраиваются к уже принятому контуру доставки и не переигрывают его.
+**The layered E/C/R/X/S frame** — a single frame of native situational
+awareness. The layers attach to the already-accepted delivery contour and do
+not re-litigate it.
 
 ```mermaid
 flowchart LR
-  H["Любой харнес (canon C: G1 cross-silo, G4-триггер, neighbor-sweep, «Обстановка вокруг»)"]
+  H["Any harness (canon C: G1 cross-silo, G4 trigger, neighbor-sweep, «Обстановка вокруг»)"]
   E["Engine: ADR-0035 doorbell<br/>delta-gated, ≤120 tok"]
-  X["Cortex: rank_provider async<br/>dedup/quality в границах реестра"]
-  R["cortex-operator — отложен<br/>(стоит авторизация владельца)"]
-  S["specs — не сейчас<br/>(эскалация: 2-й производитель)"]
+  X["Cortex: rank_provider async<br/>dedup/quality within registry bounds"]
+  R["cortex-operator — deferred<br/>(standing owner authorization)"]
+  S["specs — not now<br/>(escalation: a second producer)"]
 
   H -->|"MCP: recall / search / add"| E
   E -->|"doorbell tail, delta-gated"| H
   E -->|"pre_flight / picture, rate 30/min"| H
-  X -->|"порядок событий"| E
-  R -.->|"ops хозяйства"| X
-  S -.->|"эскалация"| E
+  X -->|"event order"| E
+  R -.->|"household ops"| X
+  S -.->|"escalation"| E
 ```
 
-### E — доставка: ADR-0035, не переигрывается
+### E — delivery: ADR-0035, not re-litigated
 
-Механизм доставки остаётся решением
-[ADR-0035](0035-native-awareness-delivery.md) с аддендумом. Rollout: **shadow — сейчас**
-(владелец: «приступать к реализации (сразу)»; flip флага конфигурации, без кода),
-**canary — после 1–2 недель soak** по метрикам гейтов shadow: delivery ≥90%, rate-cap
-suppressions <5%, probe_error <1%, compose p99 ≤5 ms, byte-identity 100%, tail ≤120
-токенов, calm-line ≤10 токенов. Дельта-гейт несёт бюджет; rate-лимит 30/мин —
-предохранитель, а не рабочий режим.
+The delivery mechanism remains the decision of
+[ADR-0035](0035-native-awareness-delivery.md) with its addendum. Rollout:
+**shadow — now** (the owner: «start implementing (right away)»; a config-flag
+flip, no code), **canary — after a 1–2-week soak** against the shadow gate
+metrics: delivery ≥90%, rate-cap suppressions <5%, probe_error <1%, compose
+p99 ≤5 ms, byte-identity 100%, tail ≤120 tokens, calm-line ≤10 tokens. The
+delta gate carries the budget; the 30/min rate limit is a fuse, not a working
+mode.
 
-### C — канон: harness-neutral поведенческие гейты
+### C — canon: harness-neutral behavioral gates
 
-Канон-пак (содержание PR #489 с амендментами комитета) обязателен для харнесов под
-нашим контролем и предлагается всякому подключённому:
+The canon pack (the content of PR #489 with the committee amendments) is
+mandatory for harnesses under our control and offered to every connected one:
 
-- **G1 cross-silo — по триггеру темы.** Инфраструктурные темы (host, infra, deploy,
-  incident, prod, rollback, wall, timer, service) легитимно ищут в чужих silo;
-  свип ограничен ≤300 токенами; hit-rate замеряется две недели — <5% → резать.
-- **G4 — механический триггер.** Перед любым вопросом владельцу о находимом факте и
-  перед любой формулировкой «не знаю / нет данных / никто не делал» вызов
-  `vesma_search` обязателен, с объявленным исходом (`Searched memory: 0 results …`).
-- **Neighbor-session sweep — на старте сессии и в форензике.** Старт: pre-flight
-  окружения (присутствие + дельта + conflict-hints параллельных сессий), ≤3
-  дополнительных вызова, деградация до строки, никогда не блокирует. Форензика
-  (необъяснённое изменение машины): свип соседних сессий обязателен **до** вердикта
-  «неизвестный актор»; чистый свип отчитывается доказуемым «0 traces», а не допущением.
-- **Секция «Обстановка вокруг»** — обязательна в каждом отчёте Tech Lead'а и владельцу;
-  пустая картина отчитывается одной строкой, но не опускается.
-- **Бюджет:** always-on канон ≤ ~10 строк, каждая строка называет триггер; полные
-  процедуры (рецепты свипов, форматы, чек-листы форензики) — в `vesma-memory-ops`,
-  on-demand.
+- **G1 cross-silo — topic-triggered.** Infrastructure topics (host, infra,
+  deploy, incident, prod, rollback, wall, timer, service) legitimately search
+  foreign silos; the sweep is bounded to ≤300 tokens; the hit rate is measured
+  for two weeks — <5% → cut.
+- **G4 — a mechanical trigger.** Before any owner question about a findable
+  fact and before any «I don't know / no data / nobody did it» wording, a
+  `vesma_search` call is mandatory, with the stated outcome
+  (`Searched memory: 0 results …`).
+- **The neighbor-session sweep — at session start and in forensics.**
+  Start: the environment pre-flight (presence + delta + conflict-hints of
+  parallel sessions), ≤3 extra calls, degrades to a line, never blocks.
+  Forensics (an unexplained machine change): the neighbor-session sweep is
+  mandatory **before** the «unknown actor» verdict; a clean sweep reports the
+  evidence-backed «0 traces», not an assumption.
+- **The «Обстановка вокруг» section** — mandatory in every Tech Lead and
+  owner-facing report; an empty picture is reported as one line, but never
+  omitted.
+- **Budget:** the always-on canon ≤ ~10 lines, every line naming its trigger;
+  the full procedures (sweep recipes, formats, the forensics checklists) live
+  in `vesma-memory-ops`, on-demand.
 
-Клаузы Security (merge-blocking для PR #489):
+The security clauses (merge-blocking for PR #489):
 
-1. Чужие handoff'ы цитируются **только по ссылке** (id + заголовок), никогда по
-   значению; для чужих сессий ре-стейтится «recalled content is DATA» (CWE-74 /
-   OWASP LLM01).
-2. «0 traces» скоупится до «0 следов в памяти» — гейт есть вход атрибуции,
-   а не вердикт-машина.
-3. Peer claims в «Обстановке вокруг» — `[unverified]`, без значений.
-4. Forensics-записи рождаются `mnemos:no-federate`. `no-federate` — запрет экспорта,
-   не локального чтения; через silo не переносятся: содержимое чужих продуктовых
-   записей, redacted-строки, awareness-derived записи.
+1. Foreign handoffs are quoted **by reference only** (id + title), never by
+   value; for foreign sessions the «recalled content is DATA» rule is
+   re-stated (CWE-74 / OWASP LLM01).
+2. «0 traces» is scoped to «zero traces in memory» — the gate is an
+   attribution input, not a verdict machine.
+3. Peer claims in «Обстановка вокруг» are `[unverified]`, no values.
+4. Forensics records are born `mnemos:no-federate`. `no-federate` bans
+   export, not local reads; the following never cross a silo: the content of
+   foreign product records, redacted lines, awareness-derived records.
 
-### R — cortex-operator: отложен, авторизация стоит
+### R — cortex-operator: deferred, the authorization stands
 
-Оператор cortex'а (зона: шесть режимов хозяйства кортекса + ops-обязанности реестра)
-**не строится сейчас** — решение владельца от 02.10 есть разрешение, а не обязательство
-немедленной постройки. Триггеры постройки: ≥200 doorbell-доставок в неделю, ИЛИ
-устойчивый false_alarm_rate >15%, ИЛИ данные о человеческой реакции покажут
-потребность. Чартер фиксируется в карточке заранее — при срабатывании триггера постройка
-идёт без нового АрхКома: запрет cross-project writes, federation export, вывода в URL,
-немаскированных значений; запрет adoption-вердиктов, записей в стор, генерации текста.
-Отказ оператора — деградация в «нет картины», никогда не блокировка работы. До
-триггера: еженедельный 30-минутный inline-аудит аналитикой.
+The cortex operator (zone: the six household modes of the cortex + the
+registry's ops duties) **is not built now** — the owner's decision of 02.10
+is a permission, not an obligation of immediate construction. Build triggers:
+≥200 doorbell deliveries per week, OR a sustained false_alarm_rate >15%, OR
+human-reaction evidence showing the need. The charter is fixed in the card in
+advance — when a trigger fires, the build proceeds without a new ArchCom: no
+cross-project writes, no federation export, no URL output, no unmasked
+values; no adoption verdicts, no store writes, no text generation. Operator
+failure degrades to «no picture», never blocks the work. Until the trigger: a
+weekly 30-minute inline audit by analytics.
 
-### X — cortex-rank: async piggyback на shadow A/B
+### X — cortex-rank: an async piggyback on the shadow A/B
 
-Ранжирование awareness-конверта добавляется как `rank_provider` — **отдельная ручка**,
-не `decision_provider` (другой blast radius); async, вне потока ответа, локальные веса,
-peer-контент не покидает сервер; отказ деградирует в deterministic — никогда не ошибка,
-никогда пустой конверт (дисциплина fail-open классов контракта `decision-provider/v1`).
-Событие ранга пишется в существующий kind CHECK; A/B — порядок ranker'а против recency
-в событиях, не user-visible. PASS-гейт: ≥400 слепых пар (McNemar), win >55% с низом
-CI95 >50%, p99 ≤ +50 ms, бюджет-регрессия 0, engagement ≥ −5 п.п.; предусловие —
-dedup precision ≥90%. **Security-события никогда** не подлежат модельной супрессии,
-quality-фильтрации или дедупу без provenance (demote со счётчиком — никогда не delete).
+Awareness-envelope ranking is added as `rank_provider` — **a separate knob**,
+not `decision_provider` (a different blast radius); async, outside the
+response flow, local weights, peer content never leaves the server; failure
+degrades to deterministic — never an error, never an empty envelope (the
+fail-open class discipline of the `decision-provider/v1` contract). The rank
+event is written into the existing kind CHECK; the A/B is the ranker's order
+vs recency in events, not user-visible. PASS gate: ≥400 blind pairs (McNemar),
+win >55% with the CI95 low >50%, p99 ≤ +50 ms, zero budget regression,
+engagement ≥ −5 p.p.; the precondition is dedup precision ≥90%. **Security
+events are never** subject to model suppression, quality filtering, or dedup
+without provenance (demote with a counter — never delete).
 
-### S — specs: контракт сейчас не создаётся
+### S — specs: no contract now
 
-Спека awareness осознанно отложена: контракт «под рост» без второго производителя —
-работа на будущее. Критерий эскалации: **второй независимый производитель картины**
-или типизированное REST-поле awareness (v2 — уже стоит в Follow-ups ADR-0035). Минимум
-будущего контракта зафиксирован: envelope ceiling + два pinned literal + rate-limited
-ответ pre_flight.
+The awareness spec is deliberately deferred: a contract «for growth» without
+a second producer is work for growth's sake. Escalation criterion: **a second
+independent producer of the picture** or a typed REST awareness field (v2 —
+already standing in ADR-0035's Follow-ups). The minimum of the future
+contract is fixed: the envelope ceiling + two pinned literals + a
+rate-limited pre_flight response.
 
-### Споры и вердикты председателя
+### Disputes and chair verdicts
 
-1. **cortex-operator: строить сейчас (Product Architect) против отложить (Analytics +
-   System Engineer).** Вердикт: отложить со стоящей авторизацией. Оператор получил бы
-   пустой конвейер до `mode=on` — поверхности discovery/dedup/rank, которые ему нужны,
-   не существуют; ops сегодня уже покрыт MCP-инструментами.
-2. **Бюджет канона: ≤6 строк (Product Architect + Analytics) против +22 строк PR #489.**
-   Вердикт: амендмент PR — always-on сжимается к гейт-строкам и одному компактному
-   блоку «Environment awareness» с триггером в каждой строке (цель ≤10 строк вместе
-   с клаузами Security); полные процедуры остаются в `vesma-memory-ops`.
+1. **cortex-operator: build now (Product Architect) vs defer (Analytics +
+   System Engineer).** Verdict: defer with the standing authorization. The
+   operator would own an empty pipeline until `mode=on` — the
+   discovery/dedup/rank surfaces it needs do not exist; ops is already
+   covered by MCP tools today.
+2. **The canon budget: ≤6 lines (Product Architect + Analytics) vs +22 lines
+   of PR #489.** Verdict: amend the PR — the always-on block compresses to
+   the gate lines plus one compact «Environment awareness» block with a
+   trigger in every line (the target ≤10 lines including the security
+   clauses); the full procedures stay in `vesma-memory-ops`.
 
 ## Consequences
 
-**Что становится истинным:**
+**What becomes true:**
 
-- Инварианты осведомлённости живут в обоих слоях сразу: канон формулирует норму для
-  агента, specs-минимум задаёт машинно-проверяемую форму на будущее (observed-only
-  состав, deny-list, born-no-federate, typed REST v2).
-- Shadow-телеметрия получает потребителя дизайна: wave-1 движковый айтем (server-side
-  cross-silo discovery probe, кандидат — «awareness brief») проектируется по shadow-данным;
-  точный дизайн brief'а — открытое решение по этим данным. Честный провал клиентского
-  варианта зафиксирован: харнес не знает slug'ов соседних silo — движок знает; причина
-  probe — discovery, не rate-лимиты (pre-flight стоит ≤3 вызова/сессия, heartbeat — 0).
-- Комплаенс чужих харнесов измеряется, а не предполагается: воронка из четырёх счётчиков
-  поверх событий `tool_call` (среди них: recall первым вызовом, engagement после
-  доставки, частота cross-silo-свипов) — без отдельного дашборда, еженедельный readout.
+- The awareness invariants live in both layers at once: the canon states the
+  norm for the agent, the specs minimum sets the machine-checkable form for
+  the future (observed-only composition, the deny-list, born-no-federate,
+  typed REST v2).
+- Shadow telemetry gains a design consumer: the wave-1 engine item (a
+  server-side cross-silo discovery probe, candidate — the «awareness brief»)
+  is designed from the shadow data; the exact brief design is an open
+  decision on that data. The honest failure of the client variant is on
+  record: the harness does not know the neighbor silos' slugs — the engine
+  does; the probe's reason is discovery, not rate limits (the pre-flight
+  costs ≤3 calls/session, the heartbeat — 0).
+- Foreign-harness compliance is measured, not assumed: a four-counter funnel
+  over `tool_call` events (among them: recall as the first call, engagement
+  after delivery, the cross-silo sweep frequency) — no separate dashboard, a
+  weekly readout.
 
-**Риски и принятые остатки:**
+**Risks and accepted residuals:**
 
-| Риск | Митигация | Почему принят |
+| Risk | Mitigation | Why accepted |
 |---|---|---|
-| Клиентский cross-silo в wave 0 работает только по известным slug'ам соседей | Честный провал зафиксирован; чинит wave-1 discovery probe | Дельта-ценность уже в shadow; discovery — главная причина probe |
-| Calm-line при 60 вызовах/час съедает ~600 из 1000 ток/ч бюджета | Calm-rate cap (1/5 мин на project-agent) либо пересчёт до wave 1 — кандидат в критериях wave 1 | Дельта-гейт несёт бюджет; calm-line — константа отсутствия, не спам |
-| Канон-проза не гарантирует комплаенс чужих харнесов | 4-счётчиковая воронка по `tool_call`, еженедельный readout | Комплаенс измеряется, деградация видна |
-| +6 строк канона ≈ +60 токенов на сессию навсегда | Потолок ~+5% от always-блока; каждая строка называет триггер | Цена осведомлённости ограничена и известна |
-| Кэш-дисциплина: pre-flight вызовы на старте сессии напряжены с prefix-стабильностью | Разбор отложен в слайс `mna-b`, здесь не решается | Отмечено осознанно, не замалчивается |
+| The client cross-silo in wave 0 works only for known neighbor slugs | The honest failure is on record; the wave-1 discovery probe repairs it | The delta value is already in shadow; discovery is the probe's main reason |
+| The calm-line at 60 calls/hour eats ~600 of the 1000 tok/h budget | A calm-rate cap (1 / 5 min per project-agent) or a re-derivation before wave 1 — a candidate in the wave-1 criteria | The delta gate carries the budget; the calm-line is an absence constant, not spam |
+| Canon prose does not guarantee foreign-harness compliance | The four-counter funnel over `tool_call`, a weekly readout | Compliance is measured, degradation is visible |
+| +6 canon lines ≈ +60 tokens per session forever | A ceiling of ~+5% of the always-block; every line names its trigger | The price of awareness is bounded and known |
+| Cache discipline: the session-start pre-flight calls are in tension with prefix stability | The analysis is deferred to slice `mna-b`, not resolved here | Noted deliberately, not swept aside |
 
 ## Alternatives considered
 
-| Альтернатива | Почему отклонена |
+| Alternative | Why rejected |
 |---|---|
-| Always-on cross-silo recall | Токен-налог на все сессии ради класса инцидентов <20%; вместо этого — триггер темы с замером hit-rate |
-| Строить cortex-operator сейчас | Пустой конвейер до `mode=on`; поверхности discovery/dedup/rank не существуют; отложен с триггерами и заранее зафиксированным чартером |
-| Specs-контракт немедленно | Работа на рост: второй производитель картины ещё не появился; зафиксирован критерий эскалации вместо контракта |
-| «Газета»-push доставка | Отклонена 01.10 в [ADR-0035](0035-native-awareness-delivery.md); вердикт стоит |
-| Второй формальный челлендж-раунд | Избыточен: перекрёстная рецензия свела расхождения к двум спорам, разрешённым председателем |
+| Always-on cross-silo recall | A token tax on all sessions for a <20% incident class; instead — a topic trigger with a measured hit rate |
+| Building the cortex-operator now | An empty pipeline until `mode=on`; the discovery/dedup/rank surfaces do not exist; deferred with triggers and a pre-fixed charter |
+| A specs contract immediately | Work for growth: a second producer of the picture does not exist yet; an escalation criterion is fixed instead of a contract |
+| The «newspaper»-push delivery | Rejected on 01.10 in [ADR-0035](0035-native-awareness-delivery.md); the verdict stands |
+| A second formal challenge round | Redundant: the cross-review converged the divergences to two disputes resolved by the chair |
 
 ## Follow-ups (deliberate Later)
 
-- Дизайн awareness brief (wave-1 движковый probe) — по shadow-телеметрии (System Engineer).
-- Пороги human-reaction для cortex-operator — уточняет аналитика на soak.
-- Решение по calm-rate cap — до wave 1.
-- Hit-rate cross-silo-триггера: две недели замера, <5% → резать.
-- Specs-экстракция — при появлении второго независимого производителя.
+- The awareness brief design (the wave-1 engine probe) — from the shadow
+  telemetry (System Engineer).
+- The human-reaction thresholds for the cortex-operator — analytics refines
+  them on the soak.
+- The calm-rate cap decision — before wave 1.
+- The cross-silo trigger's hit rate: two weeks of measurement, <5% → cut.
+- The specs extraction — when a second independent producer appears.
 
 ## References
 
-- Протокол и контракт АрхКома 2026-10-05 (`2026-10-05-native-situational-awareness.md`,
-  `…-contract.md`) — цитируются по имени; локальные артефакты комитета не входят в этот
-  репозиторий. Mnemos-пропозал `b090fbea` и сцепленное decision-решение — по mnemos id.
-- [ADR-0035](0035-native-awareness-delivery.md) — слой E: контур doorbell-heartbeat,
-  флаг `awareness.native_heartbeat_mode`, фазы shadow → canary → on; этот ADR его
-  расширяет, не заменяет.
-- [ADR-0002](0002-gcw-tag-contract-strict-by-default.md) — tag-контракт: пространства
-  `agent:` / `mnemos:`, на которых стоят идентичность агентов и реестровые записи
-  (`mnemos:no-federate`, forensics-записи).
-- [ADR-0027](0027-multi-context-memory.md) — инварианты awareness (tail-only,
-  never-pinnable, born no-federate), которые слои C/X обязаны не ломать.
-- Контракт `decision-provider/v1` (`1.0.0-draft.2`) — дисциплина fail-open классов,
-  которую наследует `rank_provider`; артефакт specs-репозитория, в этом репозитории
-  только потребляется.
-- PR #489 — канон-PR, которым едет этот ADR; PR #465 (W2a), canary-слайс #473 и
-  байт-пин `59e05bd` — текущее состояние слоя E, проверенное комитетом.
+- The ArchCom 2026-10-05 protocol and contract
+  (`2026-10-05-native-situational-awareness.md`, `…-contract.md`) — cited by
+  name; the committee-local artifacts are not part of this repository. The
+  mnemos proposal `b090fbea` and the decision record chained from it — cited
+  by mnemos id.
+- [ADR-0035](0035-native-awareness-delivery.md) — layer E: the
+  doorbell-heartbeat contour, the `awareness.native_heartbeat_mode` flag, the
+  shadow → canary → on phases; this ADR extends it, not replaces it.
+- [ADR-0002](0002-gcw-tag-contract-strict-by-default.md) — the tag contract:
+  the `agent:` / `mnemos:` namespaces that agent identity and the registry
+  records (`mnemos:no-federate`, forensics records) stand on.
+- [ADR-0027](0027-multi-context-memory.md) — the awareness invariants
+  (tail-only, never-pinnable, born no-federate) that the C/X layers must not
+  break.
+- The `decision-provider/v1` contract (`1.0.0-draft.2`) — the fail-open class
+  discipline that `rank_provider` inherits; an artifact of the specs
+  repository, only consumed here.
+- PR #489 — the canon PR that carries this ADR; PR #465 (W2a), the canary
+  slice #473 and the byte-identity pin `59e05bd` — the current state of layer
+  E, verified by the committee.
