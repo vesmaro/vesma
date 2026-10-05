@@ -227,6 +227,21 @@ def _wait_until(predicate: Any, message: str, timeout: float = 10.0) -> None:
     raise AssertionError(f"timed out waiting for {message}")
 
 
+def _read_payload(path: Path, keys: tuple[str, ...]) -> dict[str, Any] | None:
+    """Parse-complete read of a helper child's JSON payload (SL-05 flake
+    fix): the child creates the file at open() and writes at close(), so a
+    bare ``exists()`` poll can observe a HALF-WRITTEN file under full-suite
+    load. Parse-complete is the observable state — poll this, never
+    existence."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(doc, dict) or any(key not in doc for key in keys):
+        return None
+    return doc
+
+
 def _pid_of(supervisor: Supervisor, name: str) -> int:
     pid = supervisor.snapshot()["components"][name]["pid"]
     assert pid is not None
@@ -468,17 +483,25 @@ class TestSL05Subreaper:
         sup = _make_supervisor(tmp_path, manifests)
         sup.start()
         try:
-            _wait_until(lambda: out.exists(), "orphan maker wrote its payload")
-            grandchild = int(json.loads(out.read_text(encoding="utf-8"))["grandchild"])
+            # flake hardening: poll until the payload PARSES COMPLETE (not
+            # until the path exists — see _read_payload), generous deadline
+            payload: dict[str, Any] | None = None
+            deadline = time.monotonic() + 20.0
+            while time.monotonic() < deadline and payload is None:
+                payload = _read_payload(out, ("pid", "grandchild"))
+                time.sleep(0.02)
+            assert payload is not None, "orphan maker payload never completed"
+            grandchild = int(payload["grandchild"])
             _wait_until(
                 lambda: not os.path.exists(f"/proc/{grandchild}"),
                 "orphaned grandchild fully reaped (not even a zombie)",
-                timeout=15,
+                timeout=30,
             )
             assert not _zombie(grandchild)
             _wait_until(
                 lambda: sup.component_state("maker") == "backoff",
                 "maker exited and went to backoff",
+                timeout=30,
             )
         finally:
             sup.shutdown()
