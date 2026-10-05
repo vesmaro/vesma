@@ -485,9 +485,7 @@ def _verify_bound_rights(bound: socket.socket, path: Path, euid: int) -> None:
         )
     mode = stat.S_IMODE(node_info.st_mode)
     if mode != MODE_SOCKET:
-        raise BindRefusedError(
-            f"socket mode is {oct(mode)}, expected {oct(MODE_SOCKET)}: {path}"
-        )
+        raise BindRefusedError(f"socket mode is {oct(mode)}, expected {oct(MODE_SOCKET)}: {path}")
 
 
 def bind_control_socket(
@@ -716,7 +714,7 @@ class ControlServer:
                     break
                 continue
             cred = self._peer_cred(conn)
-            if not _peer_allowed(cred, os.geteuid()):
+            if cred is None or not _peer_allowed(cred, os.geteuid()):
                 self._log.warning("control: peer uid check failed (cred=%s) — closing unread", cred)
                 conn.close()
                 continue
