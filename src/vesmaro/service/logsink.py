@@ -28,7 +28,7 @@ import stat
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from vesmaro.service.layout import ensure_dir
 
@@ -217,6 +217,7 @@ def _format_seconds(value: float) -> str:
 # ── Sinks (layout §3.7 — EXACTLY ONE mode per run) ────────────────────
 
 
+@runtime_checkable
 class Logsink(Protocol):
     """One mode: journald OR files-under-state, chosen once per run."""
 

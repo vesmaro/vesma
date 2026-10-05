@@ -165,16 +165,21 @@ _SIGNAL_PREFIX = "SIG"
 
 
 def _signal_number(name: str) -> int:
-    """``SIGTERM`` → signal number (manifest stop.signal, CM §3.8)."""
+    """``SIGTERM`` → signal number (manifest stop.signal, CM §3.8).
+
+    The manifest carries the SIG-prefixed enum name (CM §3.8 restricts it
+    to ``SIGTERM`` | ``SIGINT``); the exit-line name (§3.4) is the OTHER
+    convention — uppercase WITHOUT the prefix (see :func:`_signal_name`).
+    """
     try:
-        return int(signal.Signals[name.removeprefix(_SIGNAL_PREFIX)])
+        return int(signal.Signals[name])
     except KeyError as exc:
         raise ValueError(f"unsupported stop signal: {name!r}") from exc
 
 
 def _signal_name(signum: int) -> str:
     """Signal number → name WITHOUT the SIG prefix (exit line §3.4)."""
-    return signal.Signals(signum).name
+    return signal.Signals(signum).name.removeprefix(_SIGNAL_PREFIX)
 
 
 def set_child_subreaper(enable: bool = True) -> None:
@@ -751,14 +756,22 @@ class Supervisor:
     # ── reaper callbacks ──
 
     def _on_process_reaped(self, record: ExitRecord) -> None:
-        """Reaper context: keep the owning Popen's returncode honest."""
+        """Reaper context: keep the owning Popen's returncode honest.
+
+        Popen's convention: a signal death is a negative ``-signum``. The
+        record carries the §3.4 unprefixed name (``KILL``), so the enum
+        lookup re-prefixes it (the enum has no ``KILL`` member).
+        """
         for component in self._components.values():
             if component.last_pid == record.pid and component.process is not None:
-                component.process.returncode = (
-                    -signal.Signals[record.signal_name].value
-                    if record.signal_name is not None
-                    else record.code
-                )
+                if record.signal_name is not None:
+                    # Name indexing (Signals["SIGKILL"]) — the enum's VALUES
+                    # are ints, so a () call would be a value lookup.
+                    component.process.returncode = -int(
+                        signal.Signals[f"SIG{record.signal_name}"].value
+                    )
+                else:
+                    component.process.returncode = record.code
 
     # ── component supervision thread ──
 
@@ -1310,13 +1323,24 @@ class Supervisor:
                 self._global_health_recompute()
 
     def _recover_to_backoff(self, component: _Component) -> None:
-        """SL-02 guard: after a per-child exception steer the FSM to backoff."""
+        """SL-02 guard: after a per-child exception steer the FSM to backoff
+        AND actually dwell there — without the wait the next loop pass would
+        respawn immediately and a persistently failing per-child path would
+        become a hot spin (backoff exists to space retries out)."""
         try:
             state = component.fsm.state
             if state in (ChildState.STARTING, ChildState.HEALTHY, ChildState.DEGRADED):
                 self._transition(component, FsmEvent.EXIT)
                 self._schedule_backoff(component)
                 component.next_spawn_at = self._clock.now() + (component.next_backoff_s or 0.0)
+                self._clock.sleep_until(
+                    component.next_spawn_at,
+                    lambda: (
+                        self._shutdown_requested
+                        or component.stop_requested
+                        or component.manual_start_pending
+                    ),
+                )
         except TransitionError:
             logger.exception("component %s: recovery transition refused", component.name)
 
