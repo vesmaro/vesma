@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`vesma doctor service`: DR-06 no longer false-FAILs healthy installations (#501)** — the check compared each component venv's `bin/python` resolution against the doctor's own interpreter (`sys.executable`); every venv of the same base CPython resolves to the same base binary, so any component venv "was" the running interpreter and DR-06 FAILED on a healthy install (live-tested on 5.6.0), while the prescribed `vesma service install` changed nothing. Identity is now judged against the LAYOUT engine venv (`~/.local/share/vesma/venv`, layout §3.2) by venv ROOTS and resolved site-packages; a symlinked `venvs/<name>` still FAILs (the actual supply-chain guard); when the engine venv is absent (dev/self-hosted) the identity leg is n/a and reserved-names enforcement stays. Fix commands are truthful per case; check retitled `venv != engine venv; reserved names`. Regression tests in `tests/test_service_doctor.py::TestDR06` (same-base-CPython repro, distinct engine venv, shared engine site-packages, DR-04 enforcer intact).
+
 ## [5.6.0] — 2026-10-06
 
 ### Added

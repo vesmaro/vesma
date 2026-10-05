@@ -134,6 +134,13 @@ Doctor-матрица DR-01…DR-13: реализована полностью
 (`src/vesmaro/service/doctor_checks.py`, `vesma doctor service` —
 `tests/test_service_doctor.py`, 52 теста + `tests/test_doctor_paths.py`),
 каждая находка с severity `OK/WARN/FAIL` и командой исправления.
+DR-06: живое тестирование на машине владельца (issue #501, vesma 5.6.0)
+выявило ложный FAIL — сравнение `venvs/<name>/bin/python` с интерпретатором
+самого докера бьёт по здоровым инсталляциям (все venv'ы одного базового
+CPython резолвятся в один бинарник); семантика проверки исправлена
+2026-10-06 — идентичность компонентного venv против LAYOUT-движкового venv
+(`~/.local/share/vesma/venv`, корень + site-packages), symlink-лега без
+изменений; см. `tests/test_service_doctor.py::TestDR06`.
 
 ---
 
