@@ -389,12 +389,28 @@ def _dr05(installation: dict[str, ComponentManifest] | None) -> Finding:
     )
 
 
-# ── DR-06: venv ≠ engine interpreter; reserved names ──────────────────
+# ── DR-06: venv ≠ engine venv; reserved names ─────────────────────────
 
 
 def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
+    """A component venv must never BE (nor symlink to, nor share
+    site-packages with) the installation's ENGINE venv (layout §3.2
+    ``~/.local/share/vesma/venv``; §3.8 supply-chain boundary).
+
+    Identity is judged by venv ROOTS and resolved site-packages — NOT by
+    interpreter binary resolution (#501): every venv of the same base
+    CPython resolves ``bin/python`` to the same base binary, so comparing
+    against the doctor's own interpreter false-FAILed healthy installs.
+    When the engine venv is absent from the machine (dev/self-hosted
+    reality) the identity leg is n/a; the reserved-names part stays
+    enforced regardless. A symlinked ``venvs/<name>`` is a FAIL on its
+    own, engine present or not.
+    """
     engine_venv = layout.engine_venv_dir()
+    engine_present = engine_venv.exists()
     engine_real = Path(os.path.realpath(engine_venv))
+    engine_site = _site_packages(engine_venv) if engine_present else None
+    engine_site_real = Path(os.path.realpath(engine_site)) if engine_site is not None else None
     venvs_root = layout.data_root() / "venvs"
     problems: list[str] = []
     fixes: list[str] = []
@@ -406,21 +422,24 @@ def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
             if venv_dir.is_symlink():
                 problems.append(f"{venv_dir} is a symlink -> {real}")
                 fixes.append("remove the symlink and reinstall: vesma service install")
-            elif real == engine_real or engine_real in real.parents or real in engine_real.parents:
+            elif engine_present and (
+                real == engine_real or engine_real in real.parents or real in engine_real.parents
+            ):
                 problems.append(
                     f"{venv_dir} resolves inside the engine venv {engine_venv} "
                     "(DR-06: a component venv must never be the engine venv)"
                 )
-                fixes.append("vesma service install")
-            venv_python = venv_dir / "bin" / "python"
-            if venv_python.exists() and Path(os.path.realpath(venv_python)) == Path(
-                os.path.realpath(sys.executable)
-            ):
-                problems.append(
-                    f"{venv_dir}/bin/python IS the engine interpreter "
-                    f"({sys.executable}) — layout §3.8"
+                fixes.append(
+                    f"remove the colliding tree {venv_dir} and reinstall: vesma service install"
                 )
-                fixes.append("vesma service install")
+            elif engine_site_real is not None:
+                site = _site_packages(venv_dir)
+                if site is not None and Path(os.path.realpath(site)) == engine_site_real:
+                    problems.append(
+                        f"{venv_dir} shares the engine venv site-packages ({site}) — "
+                        "supply-chain boundary (layout §3.8)"
+                    )
+                    fixes.append("rebuild the component venv from scratch: vesma service install")
     components_dir = layout.components_dir()
     if components_dir.is_dir():
         for reserved in ("venv", "venvs"):
@@ -430,17 +449,18 @@ def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
     if problems:
         return Finding(
             "DR-06",
-            "venv != engine interpreter; reserved names",
+            "venv != engine venv; reserved names",
             Severity.FAIL,
             "; ".join(problems),
             " ; ".join(dict.fromkeys(fixes)),
         )
-    return Finding(
-        "DR-06",
-        "venv != engine interpreter; reserved names",
-        Severity.OK,
-        f"{checked} venv(s) disjoint from the engine venv; no reserved names",
+    detail = (
+        f"{checked} venv(s) disjoint from the engine venv; no reserved names"
+        if engine_present
+        else f"{checked} venv(s) checked — engine venv not present (identity leg n/a); "
+        "no reserved names"
     )
+    return Finding("DR-06", "venv != engine venv; reserved names", Severity.OK, detail)
 
 
 # ── DR-07: installed unit vs regeneration ─────────────────────────────
@@ -868,7 +888,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-03", "user-site leak", _dr03),
         ("DR-04", "venv uniqueness across manifests", lambda: _dr04(installation)),
         ("DR-05", "python version constraints", lambda: _dr05(installation)),
-        ("DR-06", "venv != engine interpreter; reserved names", lambda: _dr06(installation)),
+        ("DR-06", "venv != engine venv; reserved names", lambda: _dr06(installation)),
         ("DR-07", "unit drift (installed vs regenerated)", _dr07),
         ("DR-08", "control socket liveness", _dr08),
         ("DR-09", "health port collisions", lambda: _dr09(installation)),

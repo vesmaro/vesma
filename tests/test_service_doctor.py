@@ -18,6 +18,7 @@ import json
 import os
 import socket
 import stat
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -358,7 +359,7 @@ class TestDR05:
         assert finding.severity is Severity.OK
 
 
-# ── DR-06: venv != engine interpreter; reserved names ────────────────
+# ── DR-06: venv != engine venv; reserved names ────────────────────────
 
 
 class TestDR06:
@@ -401,6 +402,69 @@ class TestDR06:
     def test_clean_install_is_ok(self, installed: Path) -> None:
         finding = _finding(run_service_checks(), "DR-06")
         assert finding.severity is Severity.OK
+
+    def test_same_base_cpython_without_engine_venv_is_ok(self, isolated_home: Path) -> None:
+        """#501 live repro: the doctor and the component venv run from
+        DIFFERENT venvs of the SAME base CPython — ``bin/python`` resolves
+        to the same base binary in both — and the layout engine venv is
+        absent. Identity must be n/a-OK: sharing the base interpreter
+        binary is how every venv works (the old bin/python-vs-sys.executable
+        comparison false-FAILed exactly this)."""
+        venv_dir = layout.component_venv_dir("repro")
+        bin_dir = venv_dir / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "python").symlink_to(Path(os.path.realpath(sys.executable)))
+        finding = doctor_checks._dr06(None)
+        assert finding.severity is Severity.OK
+        assert "engine venv not present" in finding.detail
+
+    def test_distinct_engine_venv_present_is_ok(self, isolated_home: Path) -> None:
+        """Engine venv on disk and distinct — own root, own site-packages —
+        while the component venv still resolves bin/python to the same base
+        CPython binary: identity is judged by roots/site-packages, NOT by
+        interpreter binary resolution (#501)."""
+        engine_site = layout.engine_venv_dir() / "lib" / "python9.9" / "site-packages"
+        engine_site.mkdir(parents=True)
+        venv_dir = layout.component_venv_dir("app")
+        bin_dir = venv_dir / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "python").symlink_to(Path(os.path.realpath(sys.executable)))
+        (venv_dir / "lib" / "python9.9" / "site-packages").mkdir(parents=True)
+        finding = doctor_checks._dr06(None)
+        assert finding.severity is Severity.OK
+        assert "disjoint from the engine venv" in finding.detail
+
+    def test_shared_engine_site_packages_fails(self, isolated_home: Path) -> None:
+        """A component venv whose site-packages resolves into the ENGINE
+        venv's site-packages is the supply-chain collision DR-06 exists
+        for (#501: judged by resolved site-packages, not by bin/python)."""
+        engine_site = layout.engine_venv_dir() / "lib" / "python9.9" / "site-packages"
+        engine_site.mkdir(parents=True)
+        venv_dir = layout.component_venv_dir("leech")
+        (venv_dir / "lib" / "python9.9").mkdir(parents=True)
+        (venv_dir / "lib" / "python9.9" / "site-packages").symlink_to(engine_site)
+        finding = doctor_checks._dr06(None)
+        assert finding.severity is Severity.FAIL
+        assert "site-packages" in finding.detail
+        assert finding.fix_command is not None
+
+    def test_two_manifests_same_venv_root_still_fail_via_dr04(self, installed: Path) -> None:
+        """Two manifests pointing at one venv root stay FAIL — DR-04 is the
+        enforcer; the DR-06 re-scope (#501: identity vs the ENGINE venv)
+        must not absorb or weaken it (DR-06 stays OK on distinct roots)."""
+        components = layout.components_dir()
+        _write_manifest(
+            components,
+            "parasite",
+            _child_manifest(
+                "parasite", extra_argv="    - --borrow\n    - venvs/metrics/bin/python\n"
+            ),
+        )
+        dr04 = _finding(run_service_checks(), "DR-04")
+        assert dr04.severity is Severity.FAIL
+        assert "venvs/metrics/" in dr04.detail
+        dr06 = _finding(run_service_checks(), "DR-06")
+        assert dr06.severity is Severity.OK
 
 
 # ── DR-07: installed unit vs regeneration ────────────────────────────
