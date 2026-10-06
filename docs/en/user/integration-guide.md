@@ -472,23 +472,24 @@ Output:
 
 ---
 
-## `vesma doctor --fix` — auto-fix warnings
+## `vesma doctor fix` — auto-fix warnings
 
-`vesma doctor` runs health checks and reports status. With `--fix`, it
-**auto-fixes WARN-level checks** — no manual intervention needed for the
-common cases.
+`vesma doctor` runs health checks and reports status. The `doctor fix`
+subcommand **auto-fixes WARN-level checks** — no manual intervention needed
+for the common cases. (The old flag spelling `vesma doctor --fix` still works
+with a deprecation hint; new scripts should use the subcommand.)
 
 ```bash
 vesma doctor          # report only
-vesma doctor --fix    # fix warnings, then re-check
-vesma doctor --fix --dry-run   # preview what would be fixed
+vesma doctor fix      # fix warnings, then re-check
+vesma doctor fix --dry-run   # preview what would be fixed
 ```
 
 | Warning | Auto-fix action |
 |---------|-----------------|
 | Integration stale | `vesma integration update` — redeploy stale files to current version |
-| Agent wiring — unwired agents | `vesma integration setup --wire-agents --all` |
-| MCP server not registered | MCP registration via `mcp-setup.sh` |
+| Agent wiring — unwired agents | `vesma integration setup` |
+| MCP server not registered | `vesma integration setup` — registers MCP as part of the deploy pass |
 
 **FAIL-level checks are not auto-fixable** — they require manual
 diagnosis (missing config, broken SQLite DB, missing vault). After
@@ -558,22 +559,23 @@ attribution PG7 requires, which well-behaved harnesses already pass).
 
 ## One-line MCP presets
 
-For harnesses without a native deploy target, Vesma ships ready-made
-one-line MCP presets — the whole connection is a single line (or paste
-block) per harness, always the same stdio wire (ADR-0017 D1):
-`command "vesma", args ["mcp-server"]`.
+**Manual MCP registration is cancelled — the utility is the only path for
+harnesses with a native deploy target.** One command per harness, always the
+same stdio wire underneath (ADR-0017 D1): `command "vesma", args
+["mcp-server"]`.
 
-| Harness | Config location | Preset |
-|---------|-----------------|--------|
-| Cursor | `~/.cursor/mcp.json` | `"vesma": { "type": "stdio", "command": "vesma", "args": ["mcp-server"] }` |
-| Claude Code | `claude mcp add` | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Codex | `~/.codex/config.toml` | `[mcp_servers.vesma]` TOML block |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | same JSON line as Cursor |
-| OpenCode | `~/.config/opencode/opencode.json` | `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` inside `mcp` |
-| VS Code Copilot | user/workspace `mcp.json` | `mcp-setup.sh` or the `servers` JSON block |
-| ZCode / `~/.agents` tools | `vesma integration setup --target zcode` / `--target agents` | scripted, additive merge |
+| Harness | Fastest path |
+|---------|--------------|
+| Cursor | `vesma integration setup --target cursor` |
+| Claude Code | `vesma integration setup --target claude-code` |
+| Codex | `vesma integration setup --target codex` |
+| Windsurf | `vesma integration setup --target windsurf` |
+| VS Code Copilot | `vesma integration setup --target copilot` |
+| ZCode / `~/.agents` tools | `vesma integration setup --target zcode` / `--target agents` (scripted, additive merge) |
+| OpenCode | no native target — one paste block into `~/.config/opencode/opencode.json`: `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` inside `mcp` (see [mcp-presets.md](../../../integrations/mcp-presets.md#opencode)) |
 
-Full copy-paste lines (plus fresh-setup shell one-liners and env tuning):
+Full copy-paste lines for the fallback paths (plus fresh-setup shell one-liners
+and env tuning):
 [`integrations/mcp-presets.md`](../../../integrations/mcp-presets.md).
 No environment variables are required — the server defaults to
 `~/.mnemos/{data,vault}` and creates both on first run.

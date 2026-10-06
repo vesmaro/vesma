@@ -483,23 +483,25 @@ vesma add "long log output..." --tags "project:vesma,agent:tech-lead,mnemos:trac
 
 ---
 
-## `vesma doctor --fix` — автоисправление предупреждений
+## `vesma doctor fix` — автоисправление предупреждений
 
-`vesma doctor` запускает проверки здоровья и сообщает статус. С `--fix`
-он **автоматически исправляет WARN-уровневые проверки** — ручное
-вмешательство не нужно для типовых случаев.
+`vesma doctor` запускает проверки здоровья и сообщает статус. Подкоманда
+`doctor fix` **автоматически исправляет WARN-уровневые проверки** — ручное
+вмешательство не нужно для типовых случаев. (Старая флаговая форма
+`vesma doctor --fix` ещё принимается с подсказкой deprecation; в новых
+скриптах используйте подкоманду.)
 
 ```bash
 vesma doctor          # только отчёт
-vesma doctor --fix    # исправить предупреждения, затем перепроверить
-vesma doctor --fix --dry-run   # предпросмотр исправлений
+vesma doctor fix      # исправить предупреждения, затем перепроверить
+vesma doctor fix --dry-run   # предпросмотр исправлений
 ```
 
 | Предупреждение | Действие автоисправления |
 |----------------|--------------------------|
 | Integration stale | `vesma integration update` — обновить устаревшие файлы до текущей версии |
-| Agent wiring — неподключённые агенты | `vesma integration setup --wire-agents --all` |
-| MCP server не зарегистрирован | Регистрация MCP через `mcp-setup.sh` |
+| Agent wiring — неподключённые агенты | `vesma integration setup` |
+| MCP server не зарегистрирован | `vesma integration setup` — регистрирует MCP в составе прохода развёртывания |
 
 **FAIL-уровневые проверки не автоисправимы** — они требуют ручной
 диагностики (отсутствует конфиг, сломана SQLite-БД, отсутствует vault).
@@ -571,20 +573,19 @@ MCP-сервера в конфигурации клиента. Подключе�
 
 ## Однострочные MCP-пресеты
 
-Для харнессов без нативной цели развёртывания Vesma поставляет готовые
-однострочные MCP-пресеты — всё подключение это одна строка (или один блок)
-на харнесс, всегда один и тот же stdio-провод (ADR-0017 D1):
-`command "vesma", args ["mcp-server"]`.
+**Ручная регистрация MCP отменена — для харнессов с нативной целью
+развёртывания путь один: утилита.** Одна команда на харнесс, под ней всегда
+тот же stdio-провод (ADR-0017 D1): `command "vesma", args ["mcp-server"]`.
 
-| Харнесс | Конфиг | Пресет |
-|---------|--------|--------|
-| Cursor | `~/.cursor/mcp.json` | `"vesma": { "type": "stdio", "command": "vesma", "args": ["mcp-server"] }` |
-| Claude Code | `claude mcp add` | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Codex | `~/.codex/config.toml` | TOML-блок `[mcp_servers.vesma]` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | та же JSON-строка, что для Cursor |
-| OpenCode | `~/.config/opencode/opencode.json` | `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` внутри `mcp` |
-| VS Code Copilot | `mcp.json` уровня user/workspace | `mcp-setup.sh` или JSON-блок `servers` |
-| ZCode / инструменты `~/.agents` | `vesma integration setup --target zcode` / `--target agents` | скриптово, аддитивное слияние |
+| Харнесс | Самый быстрый путь |
+|---------|--------------------|
+| Cursor | `vesma integration setup --target cursor` |
+| Claude Code | `vesma integration setup --target claude-code` |
+| Codex | `vesma integration setup --target codex` |
+| Windsurf | `vesma integration setup --target windsurf` |
+| VS Code Copilot | `vesma integration setup --target copilot` |
+| ZCode / инструменты `~/.agents` | `vesma integration setup --target zcode` / `--target agents` (скриптово, аддитивное слияние) |
+| OpenCode | нативной цели нет — один блок в `~/.config/opencode/opencode.json`: `"vesma": { "type": "local", "command": ["vesma", "mcp-server"] }` внутри `mcp` (см. [mcp-presets.md](../../../integrations/mcp-presets.md#opencode)) |
 
 Для OpenCode файл можно создать целиком одной shell-строкой (перезапишет существующий
 конфиг; иначе вставьте строку из таблицы в объект `mcp` — обратите внимание на тип

@@ -28,9 +28,9 @@ pip install vesma
 поиск работает полностью офлайн, на CPU, без API-ключей и без скачиваний.
 Изолированный вариант: `uv tool install vesma` или `pipx install vesma`.
 
-> ⚠️ **Имена.** Пакет на PyPI — **`vesma`**. Доребрендинговый пакет
-> `mnemos-memory-server` остаётся живым до deprecation (`pip install mnemos-memory-server`
-> ставит тот же сервер). Голый `pip install vesma` — посторонний сторонний проект.
+> ⚠️ **Имена.** Пакет на PyPI — **`vesma`** (голый слот наш со времён ребрендинга —
+> основной канал). Доребрендинговый пакет `mnemos-memory-server` остаётся живым
+> до deprecation (`pip install mnemos-memory-server` ставит тот же сервер).
 
 npm (расширение pi): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` ·
 `@korrlabs/vesma-pi`. Контейнер: `ghcr.io/vesmaro/vesma`.
@@ -40,23 +40,25 @@ npm (расширение pi): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` �
 ## Подключите ваш харнес
 
 **MCP — основная поверхность интеграции.** Любой харнесс с поддержкой MCP
-говорит с Vesma по одному и тому же stdio-проводу. Полные инструкции для
-копирования для каждого харнесса собраны на одной странице:
+говорит с Vesma по одному и тому же stdio-проводу. **Ручная регистрация MCP
+отменена — единственный путь: утилита.** Копипаст-fallback для нестандартных
+харнесов собран на одной странице:
 **[Подключите Vesma к любому харнесу](../../integrations/mcp-presets.md)**.
 
 | Харнесс | Самый быстрый путь |
 |---------|--------------------|
-| VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash` — или блок `mcp.json` в одно действие со страницы пресетов |
-| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Cursor | одна строка в `~/.cursor/mcp.json` |
-| OpenCode | один блок в `~/.config/opencode/opencode.json` |
-| Codex | один TOML-блок в `~/.codex/config.toml` |
-| Windsurf | та же JSON-строка, что для Cursor, в `~/.codeium/windsurf/mcp_config.json` |
+| VS Code Copilot | `vesma integration setup --target copilot` |
+| Claude Code | `vesma integration setup --target claude-code` |
+| Cursor | `vesma integration setup --target cursor` |
+| Codex | `vesma integration setup --target codex` |
+| Windsurf | `vesma integration setup --target windsurf` |
 | ZCode / pi | `vesma integration setup --target zcode` / `--target pi` |
 | Hermes Agent | нативный in-process плагин — `vesma integration setup --target hermes` |
+| OpenCode | один блок в `~/.config/opencode/opencode.json` (нативной цели нет — [пресет](../../integrations/mcp-presets.md#opencode)) |
 | Всё остальное | [adapter-template.md](../../integrations/adapter-template.md) — Connect / Expose / Configure |
 
-Чтобы заодно развернуть **поведенческий слой** (инструкции памяти, 14+ скиллов,
+`vesma integration setup` без флагов разворачивает всё сразу — и заодно
+разворачивает **поведенческий слой** (инструкции памяти, 14+ скиллов,
 режим промпта, wiring агентов), чтобы агенты *знали когда и как* пользоваться памятью:
 
 ```bash

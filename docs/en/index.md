@@ -18,7 +18,7 @@ pip install vesma
 
 The default embedding model (`vesma-embed-v1`, ~30 MB) is bundled in the wheel — search works fully offline, on CPU, no API keys, nothing downloaded. Isolated variant: `uv tool install vesma` or `pipx install vesma`.
 
-> ⚠️ **Names.** The PyPI package is **`vesma`**. The pre-rebrand package `mnemos-memory-server` stays live until deprecation (`pip install mnemos-memory-server` installs the same server). The bare `pip install vesma` is an unrelated third-party project.
+> ⚠️ **Names.** The PyPI package is **`vesma`** (the bare slot has been ours since the rebrand — the primary channel). The pre-rebrand package `mnemos-memory-server` stays live until deprecation (`pip install mnemos-memory-server` installs the same server).
 
 npm (pi extension): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` · `@korrlabs/vesma-pi`. Container: `ghcr.io/vesmaro/vesma`.
 
@@ -26,21 +26,21 @@ npm (pi extension): `pi-vesma` · `vesma-pi` · `@korrlabs/vesmapi` · `@korrlab
 
 ## Connect your harness
 
-**MCP is the primary integration surface.** Any MCP-capable harness talks to Vesma over the same stdio wire. The full copy-paste instructions for every harness live on one page: **[Connect Vesma to any harness](../../integrations/mcp-presets.md)**.
+**MCP is the primary integration surface.** Any MCP-capable harness talks to Vesma over the same stdio wire. **Manual MCP registration is cancelled — the utility is the only path.** Copy-paste fallbacks for non-standard harnesses live on one page: **[Connect Vesma to any harness](../../integrations/mcp-presets.md)**.
 
 | Harness | Fastest path |
 |---------|--------------|
-| VS Code Copilot | `curl -fsSL …/scripts/mcp-setup.sh \| bash` — or the one-paste `mcp.json` block on the presets page |
-| Claude Code | `claude mcp add --scope user vesma -- vesma mcp-server` |
-| Cursor | one line into `~/.cursor/mcp.json` |
-| OpenCode | one block into `~/.config/opencode/opencode.json` |
-| Codex | one TOML block into `~/.codex/config.toml` |
-| Windsurf | same JSON line as Cursor, in `~/.codeium/windsurf/mcp_config.json` |
+| VS Code Copilot | `vesma integration setup --target copilot` |
+| Claude Code | `vesma integration setup --target claude-code` |
+| Cursor | `vesma integration setup --target cursor` |
+| Codex | `vesma integration setup --target codex` |
+| Windsurf | `vesma integration setup --target windsurf` |
 | ZCode / pi | `vesma integration setup --target zcode` / `--target pi` |
 | Hermes Agent | native in-process plugin — `vesma integration setup --target hermes` |
+| OpenCode | one block into `~/.config/opencode/opencode.json` (no native target — [preset](../../integrations/mcp-presets.md#opencode)) |
 | Anything else | [adapter-template.md](../../integrations/adapter-template.md) — Connect / Expose / Configure |
 
-To also deploy the **behavioral layer** (memory instructions, 14+ skills, prompt mode, agent wiring) so agents *know when and how* to use memory:
+`vesma integration setup` without flags deploys everything at once — and also deploys the **behavioral layer** (memory instructions, 14+ skills, prompt mode, agent wiring) so agents *know when and how* to use memory:
 
 ```bash
 vesma integration setup
