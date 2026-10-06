@@ -216,6 +216,39 @@ CHECKPOINT_STAMP_KEYS: frozenset[str] = frozenset(
     {"checkpoint_agent", "checkpoint_session", "checkpoint_dedup_key", "canon"}
 )
 
+# vesma #432 (P3) — server-minted refine-lane retry bookkeeping. Its
+# single writer is the store's ``record_refine_failure`` /
+# ``clear_refine_retry`` (SQL ``json_set``, server-internal): no client
+# surface legitimately mints these keys. A merge-back over the manager's
+# ``INTERNAL_METADATA_KEYS`` only protects EXISTING values, so every
+# write surface that accepts client metadata (manager add/update, JSON
+# import, federation sync) must STRIP client-supplied copies first — a
+# forged counter on a fresh row would fabricate pipeline history or
+# exhaust the local refine lane's backoff (CWE-346 spoofed source, the
+# same strip class as the checkpoint stamps above).
+PIPELINE_RETRY_METADATA_KEYS: frozenset[str] = frozenset(
+    {"pipeline_retry_count", "pipeline_retry_at"}
+)
+
+
+def strip_pipeline_retry_keys(
+    metadata: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Split client-supplied retry bookkeeping out of ``metadata``.
+
+    vesma #432 (mint leg): the keys in ``PIPELINE_RETRY_METADATA_KEYS``
+    are server-minted per store (see above). Returns
+    ``(metadata, [])`` when nothing is to be dropped — the input dict is
+    passed through, not copied — else a fresh dict without the keys plus
+    their sorted names (call sites log the NAMES only, never the values).
+    """
+    forged = sorted(k for k in PIPELINE_RETRY_METADATA_KEYS if k in metadata)
+    if not forged:
+        return metadata, []
+    clean = {k: v for k, v in metadata.items() if k not in PIPELINE_RETRY_METADATA_KEYS}
+    return clean, forged
+
+
 # ── vesma-canon v1.0.0 — server-minted checkpoint envelope (metadata.canon) ────
 #
 # Canon v1.0.0 (ratified 2026-09-26, tag canon-v1.0.0; verdicts in

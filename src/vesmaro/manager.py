@@ -68,6 +68,7 @@ from vesmaro.models import (
     CHECKPOINT_STAMP_KEYS,
     CONTEXT_ADMISSIBLE_STATUSES,
     NO_FEDERATE_TAG,
+    PIPELINE_RETRY_METADATA_KEYS,
     AgentRecallQuery,
     Memory,
     MemoryCreate,
@@ -82,6 +83,7 @@ from vesmaro.models import (
     is_context_admissible,
     is_quarantined,
     render_retraction,
+    strip_pipeline_retry_keys,
 )
 from vesmaro.pipeline import (
     ClusterResult,
@@ -183,21 +185,16 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # warnings onto a clean record nor delete honest ones from a violating
 # record; only an actual content/metadata fix may clear them.
 # vesma #432 (P3, mint leg of the #251 strip class): the refine lane's
-# retry bookkeeping is SERVER-MINTED — its single writer is the store's
-# ``record_refine_failure`` / ``clear_refine_retry`` (SQL ``json_set``,
-# server-internal); no client surface and no ``add()``/``update()`` caller
-# legitimately mints these keys. ``INTERNAL_METADATA_KEYS`` merge-back only
-# protects EXISTING values, so the create/update call sites additionally
-# STRIP client-supplied copies (below) — a client must not mint retry
-# state on a row that never had it (CWE-346 spoofed source, same class as
-# the forged checkpoint stamps).
-PIPELINE_RETRY_METADATA_KEYS: frozenset[str] = frozenset(
-    {
-        "pipeline_retry_count",  # lane-(a) attempt counter (refine)
-        "pipeline_retry_at",  # lane-(a) backoff gate (refine)
-    }
-)
-
+# retry bookkeeping (``PIPELINE_RETRY_METADATA_KEYS``, vocabulary in
+# ``vesmaro.models`` beside the checkpoint stamps) is SERVER-MINTED —
+# its single writer is the store's ``record_refine_failure`` /
+# ``clear_refine_retry`` (SQL ``json_set``, server-internal); no client
+# surface and no ``add()``/``update()`` caller legitimately mints these
+# keys. ``INTERNAL_METADATA_KEYS`` merge-back only protects EXISTING
+# values, so the create/update call sites additionally STRIP
+# client-supplied copies (below, via ``models.strip_pipeline_retry_keys``)
+# — a client must not mint retry state on a row that never had it
+# (CWE-346 spoofed source, same class as the forged checkpoint stamps).
 INTERNAL_METADATA_KEYS: frozenset[str] = PIPELINE_RETRY_METADATA_KEYS | CHECKPOINT_STAMP_KEYS
 
 # Cascade review SEC P2-2 (TL ruling: engine returns to ratified canon §2).
@@ -1237,16 +1234,14 @@ class MemoryManager:
         # exists because no add() caller is a legitimate minter of
         # these keys (the same #251 strip class, CWE-346 — a forged
         # counter on a fresh row would fabricate pipeline history).
-        retry_forged = sorted(k for k in PIPELINE_RETRY_METADATA_KEYS if k in data.metadata)
+        cleaned_metadata, retry_forged = strip_pipeline_retry_keys(data.metadata)
         if retry_forged:
             logger.warning(
                 "generic create: stripped client-supplied pipeline retry metadata "
                 "(server-minted only, vesma #432): keys=%s",
                 retry_forged,
             )
-            data.metadata = {
-                k: v for k, v in data.metadata.items() if k not in PIPELINE_RETRY_METADATA_KEYS
-            }
+            data.metadata = cleaned_metadata
 
         # ── Layer 1: write-path secrets scanner ───────────────────────────
         # Run before Memory construction so the tag is part of the persisted
@@ -1528,7 +1523,7 @@ class MemoryManager:
             # never had them either (the merge-back below then restores
             # the row's own values: overwrite/mint are covered on both
             # row states, the same #251 strip class, CWE-346).
-            retry_forged = sorted(k for k in PIPELINE_RETRY_METADATA_KEYS if k in memory.metadata)
+            cleaned_metadata, retry_forged = strip_pipeline_retry_keys(memory.metadata)
             if retry_forged:
                 logger.warning(
                     "update: stripped client-supplied pipeline retry metadata "
@@ -1536,11 +1531,7 @@ class MemoryManager:
                     memory_id[:8],
                     retry_forged,
                 )
-                memory.metadata = {
-                    k: v
-                    for k, v in memory.metadata.items()
-                    if k not in PIPELINE_RETRY_METADATA_KEYS
-                }
+                memory.metadata = cleaned_metadata
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
             }
