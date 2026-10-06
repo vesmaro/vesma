@@ -125,6 +125,7 @@ stay warn-only — a pre-canon record is never rejected retroactively):
 | `CANON-E-TITLE` | empty, too-long (> 80 chars) or multi-line title |
 | `CANON-E-LANGUAGE` | language outside `ru`/`en` |
 | `CANON-E-DATE` | non-ISO-8601 date in body (relative or truncated form) |
+| `CANON-E-LINEAGE` | schema-invalid `lineage_marks` array: wrong type, empty array, unknown `kind`, non-ISO `at`, bad `ref`, unknown key inside a mark (ADR-0037 Д2) |
 
 ---
 

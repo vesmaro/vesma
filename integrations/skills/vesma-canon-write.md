@@ -108,7 +108,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 
 - **Never hand-write a checkpoint envelope.** `save_checkpoint` mints it; a
   client copy is stripped and the record still gets the server's envelope.
-- **Warn codes are the contract** — six, stable:
+- **Warn codes are the contract** — seven, stable:
 
   | Code | Meaning |
   |------|---------|
@@ -118,6 +118,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
   | `CANON-E-TITLE` | empty, too-long (> 80) or multi-line title |
   | `CANON-E-LANGUAGE` | language outside `ru`/`en` |
   | `CANON-E-DATE` | non-ISO date in body (relative or truncated form) |
+  | `CANON-E-LINEAGE` | schema-invalid `lineage_marks` array (wrong type, empty, unknown `kind`, non-ISO `at`, bad `ref`, unknown mark key — ADR-0037 Д2) |
 
 - **Do not retrofit** envelopes onto existing/legacy records — canon §9 makes
   envelope-less records out of scope, not violations.

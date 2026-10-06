@@ -37,6 +37,7 @@ from vesmaro import __version__
 from vesmaro.canon_validate import (
     CanonViolationError,
     canon_envelope_is_client_authored,
+    strip_client_lineage_marks,
     validate_canon_record,
 )
 from vesmaro.config import Settings
@@ -1207,6 +1208,22 @@ class MemoryManager:
                     forged,
                 )
                 data.metadata = {k: v for k, v in data.metadata.items() if k not in strip_keys}
+            # ── ADR-0037 Д5 (a separate pass AFTER the stamp strip): ────
+            # a client-supplied ``canon["lineage_marks"]`` array is forged
+            # evidence in the SAME server-minted trust class — only W1-W3
+            # (arbiter fold / split / other-envelope sighting) mint marks,
+            # so a forged array must never become an input to the
+            # merge-arbiter's destructive fold (CWE-346, the same strip
+            # class). Strips INSIDE both the client-authored envelope
+            # (which persisted above) and a checkpoint-type/malformed one
+            # is moot: the whole ``canon`` value is already gone.
+            cleaned_canon, marks_stripped = strip_client_lineage_marks(data.metadata.get("canon"))
+            if marks_stripped:
+                logger.warning(
+                    "generic create: stripped client-supplied lineage_marks "
+                    "(server-minted only, ADR-0037 Д5): keys=['canon.lineage_marks']"
+                )
+                data.metadata = {**data.metadata, "canon": cleaned_canon}
 
         # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
         # server-minted too — only sweep_document_chunks may write
@@ -1499,6 +1516,21 @@ class MemoryManager:
                     forged,
                 )
                 memory.metadata = {k: v for k, v in memory.metadata.items() if k not in strip_keys}
+            # ── ADR-0037 Д5 (a separate pass AFTER the stamp strip): ────
+            # a client-supplied ``canon["lineage_marks"]`` array is forged
+            # evidence (server-minted / arbitration-minted, W1-W3 only) —
+            # stripped inside the client-authored envelope that persisted
+            # above; for checkpoint-type/malformed ``canon`` the whole
+            # value is already gone (and the checkpoint merge-back below
+            # restores the minted envelope, whose marks stay intact).
+            cleaned_canon, marks_stripped = strip_client_lineage_marks(memory.metadata.get("canon"))
+            if marks_stripped:
+                logger.warning(
+                    "update: stripped client-supplied lineage_marks "
+                    "(server-minted only, ADR-0037 Д5): id=%s keys=['canon.lineage_marks']",
+                    memory_id[:8],
+                )
+                memory.metadata = {**memory.metadata, "canon": cleaned_canon}
             # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
             # the server-minted class — strip a client-supplied
             # ``doc_swept_at`` (a forged release audit entry); the merge
