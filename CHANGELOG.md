@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-0037 Wave A — `metadata.canon.lineage_marks` engine alignment: envelope allowlist, per-item validator, client strip** (`src/vesmaro/canon_validate.py` — `"lineage_marks"` joins all four per-type `ENVELOPE_ALLOWED_KEYS` sets (Д1: a canon-valid record carrying the marks array no longer fails the engine's own envelope gate with `CANON-E-ENVELOPE`) + `_lineage_violations` per-item pass enforcing the frozen lineage_marks.schema.json shape — non-empty array, `kind` ∈ {`same-message-other-envelope`, `merged-by-arbiter`, `split-from`} (`LINEAGE_MARK_KINDS` literal), `at` the ISO-8601 date-time pattern's shape, `ref` a non-empty string when present, `additionalProperties: false` per mark — failures surface as the new `CANON-E-LINEAGE` warn code through the EXISTING warn/strict gate, no new enforcement machinery (Д2) + `strip_client_lineage_marks` shared helper; `src/vesmaro/manager.py` — a client-supplied `lineage_marks` array strips on generic create/update (a separate pass AFTER the stamp strip; the minted checkpoint envelope stays merge-protected with its own marks); `src/vesmaro/cli/import_.py` — the untrusted JSON import strips marks inside a KEPT client-authored envelope (`--trusted-restore` keeps them — the migrate/backfill legit path). Rationale: marks are server-minted/arbitration-minted (W1–W3 only, ADR-0037 Д5) — a forged mark is input-forgery onto the future merge-arbiter's destructive fold; the same strip class as the checkpoint stamps. Integration pack warn-code tables updated (`integrations/instructions/vesma-canon-records.instructions.md`, `integrations/skills/vesma-canon-write.md`); tests `tests/test_lineage_marks_canon.py` (new — Д1/Д2/Д5 pins + regressions), `tests/test_canon_warn_validator.py` (code-catalog pin now seven codes). Wave B (the merge-arbiter itself: R1/R2 read sites, W1–W3 mint sites) stays out of scope.
+
 ## [5.6.2] — 2026-10-06
 
 ### Added

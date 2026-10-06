@@ -52,7 +52,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from vesmaro.canon_validate import canon_envelope_is_client_authored
+from vesmaro.canon_validate import canon_envelope_is_client_authored, strip_client_lineage_marks
 from vesmaro.cli.export import (
     CompressMode,
     ExportFormat,
@@ -416,6 +416,12 @@ def _strip_imported_canon_line_keys(memory: Memory) -> list[str]:
     (canon §2, cascade review SEC P2-2 — same type rule as the manager
     create/update strips) — that is peer/client data, not a stamp.
 
+    ADR-0037 Д5 (same strip class): inside a KEPT client-authored
+    envelope a client-supplied ``lineage_marks`` array strips too —
+    marks are server-minted / arbitration-minted (W1-W3 only), so a
+    forged mark must never ride an import into the arbitration input;
+    the stripped key is reported as ``canon.lineage_marks``.
+
     Bypassed only by ``--trusted-restore`` (operator asserts the export
     is a trusted self-backup — the rows' own server-minted retry state
     then survives verbatim, like the checkpoint stamps).
@@ -429,6 +435,12 @@ def _strip_imported_canon_line_keys(memory: Memory) -> list[str]:
     drop |= PIPELINE_RETRY_METADATA_KEYS & meta.keys()
     if drop:
         memory.metadata = {k: v for k, v in meta.items() if k not in drop}
+    # ADR-0037 Д5: marks never survive an untrusted import inside a kept
+    # envelope (a trusted re-import mints them through the server paths).
+    cleaned_canon, marks_stripped = strip_client_lineage_marks(memory.metadata.get("canon"))
+    if marks_stripped:
+        memory.metadata = {**memory.metadata, "canon": cleaned_canon}
+        return [*sorted(drop), "canon.lineage_marks"]
     return sorted(drop)
 
 

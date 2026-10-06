@@ -41,6 +41,9 @@ CANON-E-STATUS       invalid status enum or status x type conflict —
 CANON-E-TITLE        empty / too-long (> 80) / multi-line title (canon §3)
 CANON-E-LANGUAGE     language outside ru/en (canon §2/§6)
 CANON-E-DATE         non-ISO date in body (canon §5)
+CANON-E-LINEAGE      schema-invalid ``lineage_marks`` array (wrong type,
+                     empty array, unknown ``kind``, non-ISO ``at``, bad
+                     ``ref``, unknown key inside a mark) — ADR-0037 Д2
 ===================  =====================================================
 """
 
@@ -78,14 +81,52 @@ ENVELOPE_REQUIRED_EXTRAS: Final[Mapping[str, tuple[str, ...]]] = {
 
 #: Allowed keys per type — required extras plus nothing else inside the
 #: envelope (``unevaluatedProperties: false``: a typo must fail loudly).
+#: ``lineage_marks`` (canon schema v1.2 lineage_marks.schema.json, connected
+#: to envelope.schema.json by ``$ref``) is allowed in EVERY type — ADR-0037
+#: Д1: the canon-valid marks array must not fail the engine's own envelope
+#: gate (its per-item shape is validated separately by
+#: :func:`_lineage_violations`).
 ENVELOPE_ALLOWED_KEYS: Final[Mapping[str, frozenset[str]]] = {
-    "checkpoint": frozenset({"schema_version", "type", "status", "language", "session_ref"}),
-    "task": frozenset(
-        {"schema_version", "type", "status", "language", "owner_slug", "priority", "size"}
+    "checkpoint": frozenset(
+        {"schema_version", "type", "status", "language", "session_ref", "lineage_marks"}
     ),
-    "decision": frozenset({"schema_version", "type", "status", "language", "reversible"}),
-    "report": frozenset({"schema_version", "type", "status", "language", "period"}),
+    "task": frozenset(
+        {
+            "schema_version",
+            "type",
+            "status",
+            "language",
+            "owner_slug",
+            "priority",
+            "size",
+            "lineage_marks",
+        }
+    ),
+    "decision": frozenset(
+        {"schema_version", "type", "status", "language", "reversible", "lineage_marks"}
+    ),
+    "report": frozenset(
+        {"schema_version", "type", "status", "language", "period", "lineage_marks"}
+    ),
 }
+
+#: Mark kinds (lineage_marks.schema.json ``items.properties.kind.enum``) —
+#: the three ratified kinds (labeling-policy v1.1 §8.3; ADR-0037 Д2):
+#: ``same-message-other-envelope`` (W3 sighting), ``merged-by-arbiter``
+#: (W1 fold), ``split-from`` (W2 split). Extension is a canon-schema PR
+#: with owner ratification first (the enum stays a pinned literal here).
+LINEAGE_MARK_KINDS: Final[frozenset[str]] = frozenset(
+    {"same-message-other-envelope", "merged-by-arbiter", "split-from"}
+)
+
+#: The ``at`` ISO-8601 date-time shape (lineage_marks.schema.json
+#: ``items.properties.at.pattern``): full stamp with mandatory time part —
+#: date-only and truncated forms never match. Kept as a literal (the
+#: self-contained validator discipline); drift-pinned by tests against the
+#: vendored sibling copy when available.
+_LINEAGE_AT_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$"
+)
 
 #: Task extra enums (canon §2): priority P0-P3, size XS/S/M/L.
 TASK_PRIORITIES: Final[frozenset[str]] = frozenset({"P0", "P1", "P2", "P3"})
@@ -112,6 +153,29 @@ def canon_envelope_is_client_authored(canon: object) -> bool:
     strips and the JSON import strip so the type rule lives once.
     """
     return isinstance(canon, dict) and canon.get("type") in CLIENT_ENVELOPE_TYPES
+
+
+def strip_client_lineage_marks(canon: object) -> tuple[object, bool]:
+    """Remove a client-supplied ``lineage_marks`` array from an envelope.
+
+    ADR-0037 Д5: marks are server-minted or arbitration-minted (W1-W3,
+    the SAME trust class as the checkpoint stamps) — a client-supplied
+    array on a generic create/update is forged evidence for the future
+    merge-arbiter (input-forgery onto a destructive consolidation), so
+    the client-facing paths strip it in the ``CHECKPOINT_STAMP_KEYS``
+    discipline. Shared by the manager ``add``/``update`` strips so the
+    rule lives once (the same module-locality as
+    :func:`canon_envelope_is_client_authored`).
+
+    Returns ``(canon, stripped)``: the envelope WITHOUT the key when one
+    was present (a fresh dict, the input never mutated), else the input
+    unchanged with ``False``. Non-dict ``canon`` passes through
+    unchanged (its caller strips it whole).
+    """
+    if not (isinstance(canon, dict) and "lineage_marks" in canon):
+        return canon, False
+    clean = {k: v for k, v in canon.items() if k != "lineage_marks"}
+    return clean, True
 
 
 #: Required body sections per canon type (canon §3). The checkpoint tuple
@@ -141,6 +205,9 @@ CANON_WARN_CODES: Final[Mapping[str, str]] = {
     "CANON-E-LANGUAGE": "canon §2/§6 — language outside ru/en",
     "CANON-E-DATE": "canon §5 — non-ISO-8601 date in body (relative or "
     "truncated form, e.g. '27.09', 'вчера')",
+    "CANON-E-LINEAGE": "lineage_marks.schema.json / ADR-0037 Д2 — "
+    "schema-invalid lineage_marks array (wrong type, empty, bad mark kind, "
+    "bad 'at' stamp, bad 'ref', unknown extra key in a mark)",
 }
 
 
@@ -483,6 +550,82 @@ def _is_version_literal(fragment: str, content: str, start: int, end: int) -> bo
     return not (13 <= first <= 31 and 1 <= second <= 12)
 
 
+def _lineage_violations(canon: Mapping[str, Any]) -> _CanonReport:
+    """Per-item lineage_marks pass — schemas/lineage_marks.schema.json as
+    connected by ``$ref`` into envelope.schema.json (ADR-0037 Д2).
+
+    Shape (the frozen canon schema, no semantic edits here):
+    non-empty array; per mark ``kind`` ∈ :data:`LINEAGE_MARK_KINDS`,
+    ``at`` the ISO-8601 date-time pattern's shape, ``ref`` a non-empty
+    string WHEN PRESENT, and ``additionalProperties: false`` — no other
+    keys. Failures surface as ``CANON-E-LINEAGE`` through the existing
+    warn/strict gate (no new enforcement machinery); records without the
+    key pass unchanged (zero-diff, canon §9 zero-loss discipline).
+    """
+    report = _CanonReport()
+    marks = canon.get("lineage_marks")
+    if marks is None:
+        return report  # absent — zero-diff, never validated
+    index_path = "metadata.canon.lineage_marks"
+    if not isinstance(marks, list):
+        report.add(
+            "CANON-E-LINEAGE",
+            "lineage_marks.schema.json",
+            f"{index_path} must be an array, got {type(marks).__name__}",
+        )
+        return report
+    if not marks:
+        report.add(
+            "CANON-E-LINEAGE",
+            "lineage_marks.schema.json",
+            f"{index_path} must carry at least one mark (minItems 1)",
+        )
+        return report
+    for i, mark in enumerate(marks):
+        at_path = f"{index_path}[{i}]"
+        if not isinstance(mark, dict):
+            report.add(
+                "CANON-E-LINEAGE",
+                "lineage_marks.schema.json",
+                f"{at_path} must be an object, got {type(mark).__name__}",
+            )
+            continue
+        kind = mark.get("kind")
+        if not isinstance(kind, str) or not kind:  # defensive: enum check below
+            kind = None
+        if kind not in LINEAGE_MARK_KINDS:
+            report.add(
+                "CANON-E-LINEAGE",
+                "lineage_marks.schema.json",
+                f"{at_path}.kind must be one of {sorted(LINEAGE_MARK_KINDS)}, "
+                f"got {mark.get('kind')!r}",
+            )
+        at = mark.get("at")
+        if not isinstance(at, str) or not _LINEAGE_AT_RE.match(at):
+            report.add(
+                "CANON-E-LINEAGE",
+                "lineage_marks.schema.json",
+                f"{at_path}.at must be a full ISO-8601 date-time stamp "
+                f"(YYYY-MM-DDThh:mm:ss..., e.g. '2026-10-05T09:30:00Z'), got {at!r}",
+            )
+        if "ref" in mark:
+            ref = mark["ref"]
+            if not isinstance(ref, str) or not ref:
+                report.add(
+                    "CANON-E-LINEAGE",
+                    "lineage_marks.schema.json",
+                    f"{at_path}.ref must be a non-empty string when present, got {ref!r}",
+                )
+        extras = sorted(set(mark) - {"kind", "at", "ref"})
+        if extras:
+            report.add(
+                "CANON-E-LINEAGE",
+                "lineage_marks.schema.json",
+                f"{at_path} forbids unknown field(s) {extras} (additionalProperties: false)",
+            )
+    return report
+
+
 def validate_canon_record(
     *,
     content: str,
@@ -493,8 +636,10 @@ def validate_canon_record(
 
     Scope rule FIRST (canon §9 transitional): no ``metadata.canon`` →
     ``[]`` (out of canon scope, legacy is not a violation). A record WITH
-    the envelope is checked for: envelope shape (§2), required body
-    sections (§3), title rules (§3) and ISO dates in the body (§5).
+    the envelope is checked for: envelope shape (§2), the per-item
+    ``lineage_marks`` shape (lineage_marks.schema.json, ADR-0037 Д2),
+    required body sections (§3), title rules (§3) and ISO dates in the
+    body (§5).
     """
     canon = metadata.get("canon") if isinstance(metadata, Mapping) else None
     if not isinstance(canon, dict):
@@ -503,6 +648,7 @@ def validate_canon_record(
     violations: list[CanonViolation] = []
     report = _envelope_violations(canon)
     violations.extend(report.violations)
+    violations.extend(_lineage_violations(canon).violations)
 
     ctype = canon.get("type")
     if isinstance(ctype, str) and ctype in ENVELOPE_TYPES:
