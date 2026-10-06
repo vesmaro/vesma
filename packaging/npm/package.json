@@ -1,6 +1,6 @@
 {
   "name": "@vesmaro/vesma",
-  "version": "5.6.2",
+  "version": "5.6.3",
   "description": "Vesma — memory & knowledge server for AI agents (Vesmaro Project). VESMA = Vector-Environment Storage for Memory-Agents.",
   "license": "Apache-2.0",
   "repository": {
