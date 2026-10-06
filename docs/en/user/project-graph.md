@@ -174,8 +174,7 @@ Explicit registration does **not** count against `auto_register_max_projects`
 — that cap bounds the auto path only.
 
 Then the flow is three tool calls (every one needs an `agent` — see
-[Boundaries & FAQ](#boundaries--faq)):
-
+[Boundaries & FAQ](#boundaries-faq)):
 1. **Index** — `mnemos_index_project` with `project_id` and `agent`. The first
    run is a full index; later runs are incremental by default (skip when
    nothing changed, per mtime+size classification).
@@ -368,12 +367,12 @@ strings, comments and docs-sample prose stay grep territory. (The
 engine's CLI commands and REST routes are the exception — they are
 first-class `Command`/`Route` nodes on a defining repo, schema v2.) An
 unregistered repo has no graph at all — check
-`mnemos_list_graph_projects` first. And «unindexed» is not «missing»:
+`mnemos_list_graph_projects` first. And "unindexed" is not "missing":
 `mnemos_check_graph_coverage` distinguishes `indexed` / `stale` /
 `unindexed` / `poisoned` before you conclude a symbol does not exist.
 
 **Hygiene.** `mnemos_project_graph_status` / `mnemos_check_graph_coverage`
-are the honesty gates: parse failures stay visible («clean ≠ proof»), and
+are the honesty gates: parse failures stay visible ("clean ≠ proof"), and
 a poisoned count made entirely of test fixtures is an allowlist question,
 not a fear question — the status answer says so (`hints`) and
 `secret_allowlist` below is the escape hatch.
@@ -443,7 +442,7 @@ Environment override: `VESMA_CODE_GRAPH__EXCLUDE_GLOBS` (JSON array, e.g.
 
 The same exclusion drives the literal-fallback scan and the freshness
 beacon — a worktree that lands in the root after indexing never reads as
-«stale files» and never auto-triggers a reindex.
+"stale files" and never auto-triggers a reindex.
 
 ---
 
@@ -456,7 +455,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 |---------------------|---------|---------|
 | `enabled` | `true` | Master flag for the 10 tools + the `/graph/` REST namespace; `false` hides the whole surface (every call answers `code: "disabled"`). |
 | `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
-| `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call mnemos_search_graph»). Only when `enabled`. |
+| `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness ("indexed …, N/M files fresh — call mnemos_search_graph"). Only when `enabled`. |
 | `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
@@ -465,7 +464,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
 | `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
-| `exclude_globs` | `["wt", ".venv", "venv", "node_modules", "dist", "build", ".tox", ".git"]` | Directory globs excluded from the index surface ON TOP of the built-in denylist (see «Excluded directories» above). A bare name matches a directory at any nesting depth; a `/`-bearing entry matches the repo-relative directory path (`fnmatch`). Setting the field replaces the default list but never lifts the built-in denylist (`wt`, `node_modules`, `.git` & co. are never indexed). Env: `VESMA_CODE_GRAPH__EXCLUDE_GLOBS` (JSON array). |
+| `exclude_globs` | `["wt", ".venv", "venv", "node_modules", "dist", "build", ".tox", ".git"]` | Directory globs excluded from the index surface ON TOP of the built-in denylist (see "Excluded directories" above). A bare name matches a directory at any nesting depth; a `/`-bearing entry matches the repo-relative directory path (`fnmatch`). Setting the field replaces the default list but never lifts the built-in denylist (`wt`, `node_modules`, `.git` & co. are never indexed). Env: `VESMA_CODE_GRAPH__EXCLUDE_GLOBS` (JSON array). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
 

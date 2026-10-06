@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Федерация — пакетная синхронизация (Phase 0)
 
 **🌐 Language / Язык:** English · [Русский](./sync.md)
@@ -15,7 +15,7 @@
 Пакетная синхронизация позволяет двум инстансам vesma обмениваться
 записями проектов из курируемого списка **shared_projects**. Поток:
 
-1. **Экспорт** — `vesma sync export` собирает `mnemos.federation.v1`
+1. **Экспорт** — `vesma sync export` собирает `vesmaro.federation.v1`
    compact-payload из записей проектов в `shared_projects`, пропускает
    каждую через moderation-pipeline и записывает результат в файл
    (опционально AES-256-GCM шифрование).
@@ -70,7 +70,7 @@ vesma sync export \
 | Опция | По умолчанию | Назначение |
 |-------|--------------|------------|
 | `--output` / `-o` | `vesma-sync.json` | Путь выходного файла (рекомендуется абсолютный). Родительские директории создаются. |
-| `--encrypt` | выкл | Шифровать payload через AES-256-GCM. Пароль читается из `MNEMOS_EXPORT_PASSPHRASE`. |
+| `--encrypt` | выкл | Шифровать payload через AES-256-GCM. Пароль читается из `VESMARO_EXPORT_PASSPHRASE` (легаси-алиас `MNEMOS_EXPORT_PASSPHRASE` принимается до 6.0). |
 | `--shared-projects` | config `federation.shared_projects` | Список slug'ов через пробел/запятую (переопределяет конфиг). |
 | `--dry-run` | выкл | Собрать payload и вывести сводку; файл НЕ записывать. |
 | `--config` / `-c` | discovery | Путь к `config.yaml`. |
@@ -85,7 +85,7 @@ vesma sync export \
    `redact` → sanitized-контент, `refuse` → запись исключается и
    учитывается в счётчике.
 4. Записывает compact-payload
-   (`{"schema": "mnemos.federation.v1", "records": [...], "stats": {...}}`)
+   (`{"schema": "vesmaro.federation.v1", "records": [...], "stats": {...}}`)
    в `--output`, опционально зашифрованным.
 
 Сводка вывода:
@@ -103,17 +103,19 @@ vesma sync export \
 ### Шифрование
 
 `--encrypt` читает пароль из переменной окружения
-`MNEMOS_EXPORT_PASSPHRASE` — никогда из CLI-аргумента (аргументы попадают
+`VESMARO_EXPORT_PASSPHRASE` (легаси-алиас `MNEMOS_EXPORT_PASSPHRASE`
+принимается до 6.0) — никогда из CLI-аргумента (аргументы попадают
 в список процессов и историю shell). Если переменная не задана, файл не
 записывается, команда завершается с ошибкой.
 
 ```bash
-export MNEMOS_EXPORT_PASSPHRASE="your-passphrase-here"
+export VESMARO_EXPORT_PASSPHRASE="your-passphrase-here"
 vesma sync export --output sync.enc --encrypt
 ```
 
-Зашифрованный файл несёт magic-заголовок `VESMA1`, чтобы сторона
-импорта могла его автоматически определить.
+Зашифрованный файл несёт magic-заголовок `MNEMOS1` (историческая строка —
+формат-стабильная, не бренд), чтобы сторона импорта могла его
+автоматически определить.
 
 ---
 
@@ -127,7 +129,7 @@ vesma sync import /var/tmp/vesma-sync.json
 
 | Опция | По умолчанию | Назначение |
 |-------|--------------|------------|
-| `--passphrase-env` | `MNEMOS_EXPORT_PASSPHRASE` | Имя переменной окружения с паролем для расшифровки (**имя**, не значение). |
+| `--passphrase-env` | `VESMARO_EXPORT_PASSPHRASE` | Имя переменной окружения с паролем для расшифровки (**имя**, не значение). `MNEMOS_EXPORT_PASSPHRASE` — легаси-алиас (до 6.0). |
 | `--dry-run` | выкл | Провалидировать payload и вывести отчёт; НЕ записывать. |
 | `--config` / `-c` | discovery | Путь к `config.yaml`. |
 
@@ -135,8 +137,8 @@ vesma sync import /var/tmp/vesma-sync.json
 
 1. Читает файл. Если зашифрован (magic-заголовок или расширение `.enc`)
    — читает пароль из переменной, названной `--passphrase-env` (fallback
-   на `MNEMOS_EXPORT_PASSPHRASE`).
-2. Парсит JSON, проверяет `schema == "mnemos.federation.v1"`, парсит
+   на `VESMARO_EXPORT_PASSPHRASE`).
+2. Парсит JSON, проверяет `schema == "vesmaro.federation.v1"`, парсит
    каждую запись в `CompactRecord`.
 3. Валидирует каждую запись (переиспользует #86 import validation —
    длина контента, tag contract, длина title, schema drift,
@@ -151,7 +153,7 @@ vesma sync import /var/tmp/vesma-sync.json
 ```
 ✓ Imported: 11 records
   skipped: 1
-  format_version: mnemos.federation.v1
+  format_version: vesmaro.federation.v1
 ```
 
 ### Идемпотентность
@@ -172,41 +174,46 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
 
 | Переменная | Назначение |
 |------------|------------|
-| `MNEMOS_SYNC_PEER_HOST` | Host peer-узла B (цель). |
-| `MNEMOS_SYNC_PEER_SSH_KEY` | Приватный ключ ed25519 на A для rsync-отправки. |
-| `MNEMOS_SYNC_PEER_IMPORT_SSH_KEY` | Приватный ключ ed25519 на A для запуска импорта. |
-| `MNEMOS_SYNC_LOCAL_EXPORT_DIR` | Локальная директория, куда пишется экспорт. |
-| `MNEMOS_SYNC_REMOTE_IMPORT_DIR` | Директория на B, куда rsync доставляет payload. |
-| `MNEMOS_SYNC_SHARED_PROJECTS` | Slug'и проектов для синхронизации, через запятую. |
-| `MNEMOS_SYNC_ENCRYPT` | `true` / `false`. |
-| `MNEMOS_SYNC_PASSPHRASE_ENV` | ИМЯ переменной окружения с парольной фразой. |
+| `VESMARO_SYNC_PEER_HOST` | Host peer-узла B (цель). |
+| `VESMARO_SYNC_PEER_SSH_KEY` | Приватный ключ ed25519 на A для rsync-отправки. |
+| `VESMARO_SYNC_PEER_IMPORT_SSH_KEY` | Приватный ключ ed25519 на A для запуска импорта. |
+| `VESMARO_SYNC_LOCAL_EXPORT_DIR` | Локальная директория, куда пишется экспорт. |
+| `VESMARO_SYNC_REMOTE_IMPORT_DIR` | Директория на B, куда rsync доставляет payload. |
+| `VESMARO_SYNC_SHARED_PROJECTS` | Slug'и проектов для синхронизации, через запятую. |
+| `VESMARO_SYNC_ENCRYPT` | `true` / `false`. |
+| `VESMARO_SYNC_PASSPHRASE_ENV` | ИМЯ переменной окружения с парольной фразой. |
 
 Опциональные переменные:
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `MNEMOS_SYNC_PEER_USER` | `mnemos-sync` | ssh-пользователь на B. |
-| `MNEMOS_SYNC_DRY_RUN` | — | `1` — только логировать команды, без записей и ssh. |
-| `MNEMOS_SYNC_SOURCE_CONFIG` | discovery | Путь к `config.yaml` на A. |
-| `MNEMOS_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Имя файла payload на B. |
-| `MNEMOS_SYNC_MNEMOS_BIN` | auto-discover | Путь к CLI `vesma` на A. |
+| `VESMARO_SYNC_PEER_USER` | `mnemos-sync` (легаси-дефолт) | ssh-пользователь на B. |
+| `VESMARO_SYNC_DRY_RUN` | — | `1` — только логировать команды, без записей и ssh. |
+| `VESMARO_SYNC_SOURCE_CONFIG` | discovery | Путь к `config.yaml` на A. |
+| `VESMARO_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` (легаси-дефолт) | Имя файла payload на B. |
+| `VESMARO_SYNC_MNEMOS_BIN` | auto-discover | Путь к CLI `vesma` на A (наследованное имя переменной, задаёт именно CLI `vesma`). |
 
-Путь к CLI `vesma` на B (`MNEMOS_SYNC_REMOTE_MNEMOS_BIN`) задаётся на B в
+Деплойменты до 5.0 (и старые `/etc/mnemos/sync.env`) задавали префикс
+`MNEMOS_SYNC_*`; скрипт мапит каждый незаданный `VESMARO_SYNC_*` из его
+`MNEMOS_SYNC_*`-парника — старые env-файлы работают до 6.0 без правки.
+
+Путь к CLI `vesma` на B (`VESMARO_SYNC_REMOTE_MNEMOS_BIN` — тоже
+наследованное имя переменной) задаётся на B в
 `/etc/vesma/sync.env` — на A он не нужен, обёртка `vesma-import-wrapper` на B
 находит бинарник сама. Парольная фраза никогда не передаётся в командной строке:
-на A она читается из переменной, имя которой задано в `MNEMOS_SYNC_PASSPHRASE_ENV`,
+на A она читается из переменной, имя которой задано в `VESMARO_SYNC_PASSPHRASE_ENV`,
 на B независимо прописывается в окружении systemd.
 
 Пример crontab (почасовая зашифрованная синхронизация на peer-хост):
 
 ```cron
-0 * * * * MNEMOS_SYNC_PEER_HOST=peer.example.com \
-          MNEMOS_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
-          MNEMOS_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
-          MNEMOS_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
-          MNEMOS_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
-          MNEMOS_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
-          MNEMOS_SYNC_ENCRYPT=true MNEMOS_SYNC_PASSPHRASE_ENV=MNEMOS_EXPORT_PASSPHRASE \
+0 * * * * VESMARO_SYNC_PEER_HOST=peer.example.com \
+          VESMARO_SYNC_PEER_SSH_KEY=/etc/vesma/sync_ed25519 \
+          VESMARO_SYNC_PEER_IMPORT_SSH_KEY=/etc/vesma/sync_import_ed25519 \
+          VESMARO_SYNC_LOCAL_EXPORT_DIR=/var/lib/vesma/sync \
+          VESMARO_SYNC_REMOTE_IMPORT_DIR=/var/lib/vesma/incoming \
+          VESMARO_SYNC_SHARED_PROJECTS="project-umbra,project-vesma" \
+          VESMARO_SYNC_ENCRYPT=true VESMARO_SYNC_PASSPHRASE_ENV=VESMARO_EXPORT_PASSPHRASE \
           /opt/vesma/scripts/sync-peers.sh >> /var/log/vesma-sync.log 2>&1
 ```
 
@@ -227,7 +234,7 @@ JSONL-запись в `~/.mnemos/logs/sync-audit.jsonl`. Лог append-only —
 
 ```json
 {"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/vesma-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
-{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
+{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "vesmaro.federation.v1"}
 ```
 
 Audit-лог — операционный след: какие проекты синхронизировались, сколько
@@ -243,19 +250,18 @@ Audit-лог — операционный след: какие проекты с
 синхронизации. Тег автоматически добавляется при записи сканером Layer 1
 (#86), когда детектируется секретный паттерн; владелец может снять его
 с явным подтверждением через `MemoryManager.remove_no_federate()`. См.
-[Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--маркер-исключения-из-федерации)
+[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации)
 для полного lifecycle.
 
 Даже без тега moderation-pipeline (Layer 3) прогоняет каждую запись при
 экспорте и отказывает записям, чей контент почти полностью
 secrets/PII — defence-in-depth, чтобы один пропущенный слой не утёк
 секрет. См. [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth).
-
 ---
 
 ## См. также
 
 - [Export & Import](./export-import.md) — полные бэкапы (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — трёхслойная модель.
-- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--маркер-исключения-из-федерации) — маркер исключения.
+- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации) — маркер исключения.
 - [MCP Tools](./mcp-tools.md) — `mnemos_export` / `mnemos_import` MCP-инструменты (MCP-поверхность для полного export/import).
