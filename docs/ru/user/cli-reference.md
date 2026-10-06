@@ -723,7 +723,7 @@ MNEMOS_AUTO_COLLECT=1 vesma mcp-server
 }
 ```
 
-Полный список инструментов — в [mcp-tools.md](mcp-tools.md), подключение к VS Code — в [getting-started.md#run-the-mcp-server](getting-started.md#подключите-ваш-харнес-mcp).
+Полный список инструментов — в [mcp-tools.md](mcp-tools.md), развертывание в харнес — в [integration-guide.md](integration-guide.md).
 
 ---
 
@@ -812,6 +812,65 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 # ✓ Token created:
 #   token_id : 7c9e6679-7425-40de-944b-e07fc1f90ae7
 #   bearer   : <открытый токен — сохраните сейчас, повторно он не показывается>
+```
+
+---
+
+## `integration`
+
+Развёртывание и проверка интеграционного пака Vesma (инструкции, скиллы, промпты, MCP-регистрация) в обнаруженных на машине харнесах агентов (ADR-0035). `detect` печатает найденные харнессы и их пути; каждый развёртывающий глагол поддерживает `--dry-run` и альтернативный `--home` для кросс-окружений. Полный гайд с примерами — в [integration-guide.md](integration-guide.md).
+
+```text
+vesma integration detect [--home PATH]
+vesma integration setup [OPTIONS]
+vesma integration update [--target NAME] [--dry-run] [--home PATH]
+vesma integration verify [--target NAME] [--home PATH]
+vesma integration uninstall [--target NAME] [--dry-run] [--home PATH]
+```
+
+| Сабкоманда | Назначение |
+|------------|------------|
+| `detect` | Показать обнаруженные харнессы и пути развёртывания. Только чтение — префлайт перед `setup` / `update`; так же проверяется, что видит `--home`. |
+| `setup` | Полное развёртывание хоста в ОДИН непромптовый проход: файлы пака во ВСЕ обнаруженные харнессы + MCP-регистрация + подключение MCP-инструментов к агентам. Идемпотентно — повторный запуск обновляет устаревшие файлы, не дублируя. Сбой на одной цели сообщается громко и никогда не блокирует остальные (#448). |
+| `update` | Обновить уже развёрнутые файлы до текущей версии пака; по штампу версии трогаются только файлы с устаревшим штампом. |
+| `verify` | Сравнить развёрнутые файлы с поставляемым паком: `installed` (версия) / `stale` / `missing`. Exit 0 — всё актуально, 1 — есть stale или missing. Health-гейт для пака наравне с `doctor`. |
+| `uninstall` | Удалить ТОЛЬКО файлы со штампом версии пака (обеих поколений); созданные пользователем файлы никогда не удаляются. Также снимает зарегистрированную паком запись MCP-сервера (чужие записи не трогаются). |
+
+Опции `setup`:
+
+| Опция | По умолчанию | Описание |
+|-------|--------------|----------|
+| `--target / -t <имя>` | все обнаруженные | Развёртывание только в указанные харнессы; повторяемо (`all` принимается). |
+| `--dry-run` | `false` | Показать, что будет развёрнуто, без записи. |
+| `--no-mcp` | `false` | Пропустить MCP-регистрацию. |
+| `--no-wire-agents` | `false` | Пропустить подключение MCP-инструментов к агентам. |
+| `--select a,b` | — | Сузить подключение агентов до перечисленных имён. |
+| `--precise` | `false` | Использовать индивидуальные `mnemos/mnemos_*` имена инструментов вместо wildcard `mnemos/*`. |
+| `--home <каталог>` | `~` | Развёртывание в альтернативный домашний каталог (кросс-окружения). |
+
+У `update`, `verify`, `uninstall` общий набор `-t/--target`, `--dry-run` (кроме `verify`), `--home` — семантика та же.
+
+```bash
+# Префлайт: что найдено и куда развёлся бы пак
+vesma integration detect
+
+# Полное развёртывание хоста (файлы + MCP + агенты), без вопросов
+vesma integration setup
+
+# Показать развёртывание без записи
+vesma integration setup --dry-run
+
+# Только конкретные харнессы
+vesma integration setup --target copilot --target zcode
+
+# Проверить после обновления пакета
+vesma integration verify
+
+# Обновить устаревшие файлы пака
+vesma integration update --dry-run
+
+# Снять пак (только штампованные файлы)
+vesma integration uninstall --dry-run
 ```
 
 ---
@@ -1177,7 +1236,7 @@ vesma scanner run --full
 
 ### Связанные ресурсы
 
-- [sync.md](sync.md#исключение-vesmano-federate) — что исключает `mnemos:no-federate`
+- [sync.md](sync.md#исключение-mnemosno-federate) — что исключает `mnemos:no-federate`
 
 ---
 

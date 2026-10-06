@@ -539,8 +539,8 @@ The tools (`vesma_*`) appear in the agent's tool list once the MCP server is
 registered in the client's MCP configuration. Agent MCP wiring (above)
 ensures the `tools:` frontmatter actually grants those tools to each agent.
 
-For VS Code Copilot Chat, see [getting-started.md](getting-started.md#connect-your-harness-mcp)
-for MCP server setup. Once connected, the instructions and skills in this
+The full installation lifecycle (including the MCP server) is covered in
+[getting-started.md](getting-started.md). Once connected, the instructions and skills in this
 package tell the agent *when* and *how* to call those tools.
 
 ### The project graph needs no harness work

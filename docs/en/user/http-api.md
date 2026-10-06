@@ -426,7 +426,7 @@ State-machine / guardrail violations return `409`. The manager is the single sou
 
 ---
 
-## Search
+## Search {#search}
 
 RRF fusion of FTS5 and vector legs. Only `published` memories are searched by default.
 
@@ -1922,7 +1922,7 @@ If you need to generate a static client, fetch the schema and run [`openapi-gene
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json -o vesma-openapi.json
 npx @openapitools/openapi-generator-cli generate \
-  -i vesma-openapi.json -g typescript-fetch -o ./mnemos-client
+  -i vesma-openapi.json -g typescript-fetch -o ./vesma-client
 ```
 
 ---
