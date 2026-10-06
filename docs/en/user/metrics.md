@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Dashboard Metrics
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/metrics.md)
@@ -37,7 +37,7 @@ dashboard.
 
 ```json
 {
-  "version": "4.0.0",
+  "version": "5.6.2",
   "timestamp": "2026-06-20T14:30:00+00:00",
   "volume": {
     "memories_total": 1248,
@@ -153,7 +153,9 @@ they do not raise an error, so the dashboard can degrade gracefully.
 Returns Prometheus text exposition format for scraping by Grafana /
 Prometheus. Content-Type is `text/plain; version=0.0.4; charset=utf-8`.
 
-**Available metrics**:
+**Available metrics** (the names carry the legacy `mnemos_` prefix —
+format-stable identifiers, not a brand statement; renaming them would
+break existing dashboards):
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -167,7 +169,12 @@ Prometheus. Content-Type is `text/plain; version=0.0.4; charset=utf-8`.
 | `mnemos_pipeline_processed_total` | counter | — | Total processed memories |
 | `mnemos_pipeline_dlq_depth` | gauge | — | Current DLQ depth |
 | `mnemos_search_requests_total` | counter | — | Search requests since restart |
+| `mnemos_search_cross_project_requests_total` | counter | — | Cross-project (explicit global-mode) requests since restart |
 | `mnemos_search_avg_latency_ms` | gauge | — | Average search latency in ms |
+| `mnemos_search_graph_supersedes_enriched_requests_total` | counter | — | Searches enriched from the graph (since restart) |
+| `mnemos_search_graph_walk_enriched_requests_total` | counter | — | Searches enriched by a graph walk (since restart) |
+| `mnemos_graph_auto_dedupe_edges_total` | counter | — | `relates_to` edges dropped by auto-dedupe (since restart) |
+| `mnemos_graph_auto_dedupe_edges_by_project` | counter | `project` | Auto-dedupe-dropped `relates_to` edges, per project |
 | `mnemos_vectors_indexed_total` | gauge | — | Indexed vectors |
 | `mnemos_sessions_active` | gauge | — | Active sessions (updated within 24h) |
 | `mnemos_sessions_total` | gauge | — | Total sessions |
@@ -239,6 +246,7 @@ paginated browsing.
 | `until` | string | (all) | ISO datetime upper bound |
 | `limit` | int | `20` | Max results (≤ 500) |
 | `offset` | int | `0` | Pagination offset (≥ 0) |
+| `task` | string | (all) | Task scope — the bare slug (ADR-0027; byte-identical to the `task:<slug>` tag) |
 
 **Example**:
 
@@ -251,6 +259,7 @@ GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offse
 | Status | Cause |
 |--------|-------|
 | `422` | Invalid `status` value (valid: `raw`, `processing`, `processed`, `published`, `archived`) |
+| `400` | Unsalvageable `task` slug (the manager boundary's error string passes through verbatim, #407) |
 
 ---
 

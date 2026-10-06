@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Метрики дашборда
 
 **🌐 Language / Язык:** [English](../../en/user/metrics.md) · Русский
@@ -37,7 +37,7 @@ Vesma предоставляет три метрических эндпоинт�
 
 ```json
 {
-  "version": "4.0.0",
+  "version": "5.6.2",
   "timestamp": "2026-06-20T14:30:00+00:00",
   "volume": {
     "memories_total": 1248,
@@ -154,7 +154,9 @@ GET /api/v1/stats/timeseries?metric=memories_added&range=30d&granularity=day
 Возвращает Prometheus text exposition для скрейпинга Grafana / Prometheus.
 Content-Type: `text/plain; version=0.0.4; charset=utf-8`.
 
-**Доступные метрики**:
+**Доступные метрики** (имена несут легаси-префикс `mnemos_` —
+формат-стабильные идентификаторы, не бренд; переименование ломало бы
+существующие дашборды):
 
 | Метрика | Тип | Метки | Описание |
 |---------|-----|-------|----------|
@@ -168,7 +170,12 @@ Content-Type: `text/plain; version=0.0.4; charset=utf-8`.
 | `mnemos_pipeline_processed_total` | counter | — | Всего обработанных памятей |
 | `mnemos_pipeline_dlq_depth` | gauge | — | Текущая глубина DLQ |
 | `mnemos_search_requests_total` | counter | — | Запросов поиска с перезапуска |
+| `mnemos_search_cross_project_requests_total` | counter | — | Кросс-проектных поисков (глобальный режим) с перезапуска |
 | `mnemos_search_avg_latency_ms` | gauge | — | Средняя задержка поиска в мс |
+| `mnemos_search_graph_supersedes_enriched_requests_total` | counter | — | Поисков, обогащённых из графа (с перезапуска) |
+| `mnemos_search_graph_walk_enriched_requests_total` | counter | — | Поисков, обогащённых обходом графа (с перезапуска) |
+| `mnemos_graph_auto_dedupe_edges_total` | counter | — | Рёбер `relates_to`, снятых авто-дедупликацией (с перезапуска) |
+| `mnemos_graph_auto_dedupe_edges_by_project` | counter | `project` | Рёбра `relates_to`, снятые авто-дедупликацией, по проекту |
 | `mnemos_vectors_indexed_total` | gauge | — | Индексированных векторов |
 | `mnemos_sessions_active` | gauge | — | Активных сессий (обновлены за 24ч) |
 | `mnemos_sessions_total` | gauge | — | Всего сессий |
@@ -240,6 +247,7 @@ Prometheus используйте `GET /api/v1/metrics`.
 | `until` | string | (все) | Верхняя граница ISO datetime |
 | `limit` | int | `20` | Максимум результатов (≤ 500) |
 | `offset` | int | `0` | Смещение пагинации (≥ 0) |
+| `task` | string | (все) | Task-скоуп — «голый» slug (ADR-0027; байт-идентичен тегу `task:<slug>`) |
 
 **Пример**:
 
@@ -252,6 +260,7 @@ GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offse
 | Статус | Причина |
 |--------|---------|
 | `422` | Неверное значение `status` (допустимо: `raw`, `processing`, `processed`, `published`, `archived`) |
+| `400` | Неисправимый slug в `task` (строка ошибки границы менеджера проходит дословно, #407) |
 
 ---
 
