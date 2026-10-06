@@ -45,6 +45,14 @@ from vesmaro.codegraph import incremental as incremental_mod
 from vesmaro.codegraph.audit import GraphAudit
 from vesmaro.codegraph.indexer import IndexLimitError, IndexResult
 from vesmaro.codegraph.literal_scan import LITERAL_ROW_CAP, scan_literals
+from vesmaro.codegraph.walker import (
+    WALK_FANOUT_CAP,
+    WALK_MAX_DEPTH,
+    WALK_TOTAL_WORK_CAP,
+    WalkLimitError,
+    validate_walk_limits,
+    walk_bfs,
+)
 from vesmaro.config import CodeGraphConfig
 from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
 from vesmaro.storage.code_graph_store import (
@@ -69,10 +77,13 @@ MAX_MAX_OUTPUT_TOKENS = 1_000_000
 BYTES_PER_TOKEN = 4
 
 #: Trace caps (tool 4) — the ADR-0030 walk pattern: per-node fanout cap
-#: bounds hub symbols, the total-work cap bounds the whole BFS.
-TRACE_MAX_DEPTH = 2
-TRACE_FANOUT_CAP = 32
-TRACE_TOTAL_WORK_CAP = 512
+#: bounds hub symbols, the total-work cap bounds the whole BFS. Since
+#: ADR-0038 M1 the caps LIVE in the shared walker
+#: (:mod:`vesmaro.codegraph.walker`) — these names are the
+#: service/schema aliases of the same numbers (one walker, one clamp).
+TRACE_MAX_DEPTH = WALK_MAX_DEPTH
+TRACE_FANOUT_CAP = WALK_FANOUT_CAP
+TRACE_TOTAL_WORK_CAP = WALK_TOTAL_WORK_CAP
 
 #: W-H trace disambiguation: the ranked tail-candidate list an AMBIGUOUS
 #: bare tail answers with (never more than this many rows).
@@ -1178,10 +1189,23 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
         depth: int = 2,
+        direction: str = "out",
+        edge_kinds: list[str] | tuple[str, ...] | None = None,
         max_output_tokens: Any = None,
     ) -> dict[str, Any]:
         """BFS over outgoing project_edges from a symbol — depth ≤ 2,
         per-node fanout cap, total-work cap (the ADR-0030 discipline).
+
+        Since ADR-0038 M1 the BFS core lives in the shared walker
+        (:mod:`vesmaro.codegraph.walker`) — this tool keeps its default
+        direction ``out`` and no kind filter, so the answers are
+        byte-identical to the pre-extraction tool (pinned by the
+        existing corpus plus the JSON pin fixture). ``direction``
+        (``in``/``both``) and ``edge_kinds`` are the opt-in M1 filters:
+        the fail-closed limits live in
+        :func:`walker.validate_walk_limits` (unknown direction/edge
+        kind, a non-list filter or a depth outside [1, 2] are
+        REFUSED — never a silently different walk).
 
         W-H resolution: an exact qname behaves byte-identically to the
         pre-W-H tool; a bare tail that resolves UNIQUELY traces
@@ -1196,12 +1220,12 @@ class CodeGraphService:
         key = registered.graph_key
         if not isinstance(qname, str) or not qname.strip():
             raise GraphToolError("qname is required and must be a non-empty string")
-        if (
-            not isinstance(depth, int)
-            or isinstance(depth, bool)
-            or not 1 <= depth <= TRACE_MAX_DEPTH
-        ):
-            raise GraphToolError(f"depth must be an integer in [1, {TRACE_MAX_DEPTH}]")
+        try:
+            v_depth, v_direction, v_kinds = validate_walk_limits(
+                depth, direction, edge_kinds, max_depth=TRACE_MAX_DEPTH
+            )
+        except WalkLimitError as exc:
+            raise GraphToolError(str(exc)) from exc
         query = qname.strip()
         start, candidates = self._resolve_trace_start(key, query)
         if start is None:
@@ -1230,43 +1254,16 @@ class CodeGraphService:
                 max_output_tokens=max_output_tokens,
                 hint=hint,
             )
-        visited: dict[str, dict[str, Any]] = {
-            start.id: self._trace_node(start, 0),
-        }
-        edges_out: list[dict[str, Any]] = []
-        truncated = False
-        frontier = [start.id]
-        for level in range(1, depth + 1):
-            if not frontier or len(visited) >= TRACE_TOTAL_WORK_CAP:
-                truncated = truncated or bool(frontier)
-                break
-            next_frontier: list[str] = []
-            for node_id in frontier:
-                if len(visited) >= TRACE_TOTAL_WORK_CAP:
-                    truncated = True
-                    break
-                fanout = self._store.get_edges(key, from_id=node_id, limit=TRACE_FANOUT_CAP + 1)
-                if len(fanout) > TRACE_FANOUT_CAP:
-                    fanout = fanout[:TRACE_FANOUT_CAP]
-                    truncated = True
-                for edge in fanout:
-                    edges_out.append(
-                        {
-                            "from": edge.from_id,
-                            "to": edge.to_id,
-                            "kind": edge.kind,
-                            "provenance": edge.provenance,
-                        }
-                    )
-                    if edge.to_id in visited:
-                        continue
-                    target = self._store.get_node(edge.to_id)
-                    if target is None:  # cascade promise not yet materialized
-                        continue
-                    visited[edge.to_id] = self._trace_node(target, level)
-                    next_frontier.append(edge.to_id)
-            frontier = next_frontier
-        rows = sorted(visited.values(), key=lambda r: (r["depth"], str(r["qname"])))
+        walk = walk_bfs(
+            self._store,
+            key,
+            start.id,
+            start,
+            depth=v_depth,
+            direction=v_direction,
+            edge_kinds=v_kinds,
+        )
+        rows = walk["rows"]
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, 0)
         self._audit.record(
             key,
@@ -1274,15 +1271,17 @@ class CodeGraphService:
             actor,
             session=sess,
             reason="trace",
-            details={"start": start.qname, "visited": len(rows), "edges": len(edges_out)},
+            # M1 keeps this audit row EXACTLY as today (start/visited/
+            # edges) — walk-event audit is M2/M3 scope (ADR-0038 §7/8).
+            details={"start": start.qname, "visited": len(rows), "edges": len(walk["edges"])},
         )
         return {
             "project": key,
             "start": start.qname,
-            "depth": depth,
+            "depth": v_depth,
             "nodes": page,
-            "edges": edges_out,
-            "truncated": truncated,
+            "edges": walk["edges"],
+            "truncated": walk["truncated"],
             "cursor": next_cursor,
             "has_more": has_more,
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
@@ -1429,18 +1428,6 @@ class CodeGraphService:
                 "qualified name (qname) of the intended candidate"
             ),
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
-        }
-
-    @staticmethod
-    def _trace_node(node: Any, depth: int) -> dict[str, Any]:
-        return {
-            "id": node.id,
-            "qname": node.qname,
-            "kind": node.kind,
-            "path": node.path,
-            "start_line": node.start_line,
-            "end_line": node.end_line,
-            "depth": depth,
         }
 
     # ── tool 5: get_file_outline ────────────────────────────────────────────
