@@ -331,6 +331,33 @@ filters) use the HTTP API — see [http-api.md](http-api.md).
 
 ---
 
+## Your project indexes itself (the project graph)
+
+Vesma can also index a project's **code structure** — file outlines, symbol
+search, call tracing — with no source bytes stored. This is the
+[project graph](project-graph.md), on by default. Since PG-0.5 it needs no
+setup: **your project indexes itself**. The first MCP call (or a
+`pre_llm_call` hook) an agent makes inside a directory carrying a packaging
+manifest (`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml` or
+`setup.py`) auto-registers and indexes the project in the background
+(`auto_index`, audit reason `auto-first`). No explicit call, no instruction,
+no skill.
+
+What happens, in order:
+
+1. Work in your project as usual — an agent calls any MCP tool there.
+2. The first index runs in the background (`auto-first`); from then on a
+   beacon line in `assemble_context` output reports graph freshness on its own.
+3. Check it with `mnemos_project_graph_status` (look up the `project_id` with
+   `mnemos_list_graph_projects`).
+
+Don't want the auto path? Two switches in `config.yaml`:
+`code_graph.auto_index: false` stops only the background auto path (the manual
+graph tools keep working); `code_graph.enabled: false` turns the whole surface
+off. Full walkthrough: [project-graph.md](project-graph.md).
+
+---
+
 ## Running the HTTP API (optional)
 
 For non-MCP clients, dashboards and A2A traffic:
@@ -666,6 +693,7 @@ note in the [integration guide](integration-guide.md).
 | See every MCP tool | [mcp-tools.md](mcp-tools.md) |
 | See every HTTP endpoint | [http-api.md](http-api.md) |
 | Read the tag schema | [tag-contract.md](tag-contract.md) |
+| Dive into the project graph (symbol search, call tracing, auto-indexing) | [project-graph.md](project-graph.md) |
 | Perform an operational task | [admin/runbooks/install.md](../admin/runbooks/install.md) |
 | Review the security boundaries | [security.md](../admin/security.md) |
 | Learn why a decision was made | [project/adr/](../../project/adr/) |
