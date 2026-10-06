@@ -43,21 +43,21 @@ and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesma
 Pull the released image and start it directly — nothing to build:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesma:4.3.0      # :latest tracks the newest release
+podman pull ghcr.io/vesmaro/vesma:5.6.2      # :latest tracks the newest release
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesma:4.3.0
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
+  ghcr.io/vesmaro/vesma:5.6.2
 ```
 
 `docker` works identically — swap `podman` for `docker`. The image includes
 `config.container.yaml` baked in as `/app/config.yaml` — no config mount is
 required unless you want to override settings. The TOTP master key is
-mandatory (the baked config binds to `0.0.0.0`); 4.x images read the
-`MNEMOS_API__*` spelling, 5.0–5.2 read `VESMARO_API__*`, and 5.3+ read the
-canonical `VESMA_API__*` — setting all of them is always safe (the
-deprecated spellings stay accepted until 6.0, ADR-0031).
+mandatory (the baked config binds to `0.0.0.0`); the canonical spelling is
+`VESMA_API__*` (5.3+), while 4.x images read `MNEMOS_API__*` and 5.0–5.2 read
+`VESMARO_API__*` — setting all of them is always safe (the deprecated
+spellings stay accepted until 6.0, ADR-0031).
 
 Verify:
 
@@ -93,7 +93,7 @@ To activate Ollama as the embedding provider, set `embedding.provider: ollama`
 in the container config (see [Configuration](#configuration)).
 
 > The repo-root [`compose.yaml`](../../../../compose.yaml) also uses the published image —
-> it keeps the historic `vesma-*` resource names for existing podman-compose users.
+> it keeps the historic `mnemos-*` resource names for existing podman-compose users.
 > The build-from-source flow is described in
 > [Build from source](#build-from-source-fallback).
 
@@ -119,7 +119,7 @@ Full guide with values, TLS and troubleshooting:
 
 ## Run — Kubernetes-style pod (podman kube play)
 
-Vesma ships a Kubernetes-style pod manifest (`deploy/podman/kube/mnemos-pod.yaml`) compatible
+Vesma ships a Kubernetes-style pod manifest (`deploy/podman/kube/vesma-pod.yaml`) compatible
 with `podman kube play`. The manifest pulls the published image, injects the TOTP key from a
 podman secret, and defines health probes.
 
@@ -130,7 +130,7 @@ printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<yo
   | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
-podman kube play deploy/podman/kube/mnemos-pod.yaml
+podman kube play deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut (creates volumes automatically before playing the manifest):
@@ -142,7 +142,7 @@ Shortcut (creates volumes automatically before playing the manifest):
 ### Stop
 
 ```bash
-podman kube down deploy/podman/kube/mnemos-pod.yaml
+podman kube down deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut:
@@ -156,20 +156,26 @@ Shortcut:
 ## Run — systemd (quadlet)
 
 The quadlet path installs a systemd **user** unit and manages the container as a persistent
-service. The unit references the published `ghcr.io/vesmaro/vesma:4.3.0`, pulled
+service. The unit references the published `ghcr.io/vesmaro/vesma:5.2.0`, pulled
 automatically; to run a local build instead, build the image first (see
 [Build from source](#build-from-source-fallback)) and set `Image=localhost/mnemos:latest` in the unit.
+
+> **The service name comes from the unit filename**, not from `ContainerName=`:
+> the quadlet file `mnemos.container` generates the `mnemos.service` unit
+> (while `ContainerName=mnemos` only overrides the podman container name).
+> The commands below manage `mnemos.service` — a legacy spelling of the same
+> Vesma installation.
 
 ### Set the TOTP key
 
 The unit reads the key from `~/.vesmaro.env` (`EnvironmentFile`), so no unit
-editing is needed. All env spellings must carry the same value — 4.x images
-read `MNEMOS_API__*`, 5.0–5.2 read `VESMARO_API__*`, 5.3+ read the canonical
-`VESMA_API__*` (ADR-0031):
+editing is needed. The spellings must all carry the same value: canonical is
+`VESMA_API__*` (5.3+), deprecated `MNEMOS_API__*` (4.x) and `VESMARO_API__*`
+(5.0–5.2) stay accepted until 6.0 (ADR-0031) — setting all three is always safe:
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\nVESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
+printf 'VESMA_API__TOTP_MASTER_KEY=%s\nMNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
 ```
 
 ### Install the unit
@@ -184,14 +190,14 @@ This copies `deploy/podman/quadlet/mnemos.container` to `~/.config/containers/sy
 ### Start and enable
 
 ```bash
-systemctl --user start vesma
-systemctl --user enable vesma   # autostart on login
+systemctl --user start mnemos
+systemctl --user enable mnemos   # autostart on login
 ```
 
 ### Check status
 
 ```bash
-systemctl --user status vesma
+systemctl --user status mnemos
 ```
 
 ---
@@ -203,13 +209,14 @@ systemctl --user status vesma
 > need this section.
 
 ```bash
-podman build -t localhost/vesma:4.3.0 -f Containerfile .
+podman build -t localhost/vesma:5.6.2 -f Containerfile .
 ```
 
 The `Containerfile` uses `python:3.12-slim` as the base, installs the package (the MCP SDK rides in core),
 copies `config.container.yaml` as `/app/config.yaml`, and sets the serve command on port 8787.
 
-Makefile shortcut (builds `localhost/mnemos:latest`):
+Makefile shortcut (builds `localhost/mnemos:$(VERSION)` + `:latest` — the
+names used by `scripts/deploy.sh` / `make build-image`):
 
 ```bash
 make build-image
@@ -221,16 +228,19 @@ The deploy helper does the same:
 ./scripts/deploy.sh build
 ```
 
-**Pushing to ghcr.io (maintainers):** the release pipeline (`scripts/local-release.sh`)
-pushes the versioned tag and `:latest` on every release — GitHub Actions are disabled, and
-this script is the canonical path (see [ci-cd.md](ci-cd.md)). The pipeline targets the
+**Pushing to ghcr.io (maintainers):** the release train is
+`scripts/pypi-publish.sh --publish`; its mandatory image phase
+(`scripts/image-publish.sh`) builds, smoke-tests and pushes the versioned tag
+plus `:latest` on every release (GitHub Actions are billing-locked, #117 — the
+train runs locally; see [ci-cd.md](ci-cd.md) and
+[pypi-publish.md](pypi-publish.md)). The pipeline targets the
 public `ghcr.io/vesmaro/vesma` name directly.
 Manual push, if ever needed (PAT with `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesma:4.3.0
-podman push ghcr.io/vesmaro/vesma:4.3.0
+podman tag localhost/vesma:5.6.2 ghcr.io/vesmaro/vesma:5.6.2
+podman push ghcr.io/vesmaro/vesma:5.6.2
 podman push ghcr.io/vesmaro/vesma:latest
 ```
 
@@ -252,7 +262,7 @@ Key settings:
 | `api.host` | `0.0.0.0` | Binds to all interfaces — **requires auth** |
 | `api.port` | `8787` | Container-internal port; host mapping set in compose/run |
 | `api.auth_enabled` | `true` | Must stay `true` when `host` is `0.0.0.0` |
-| `api.totp_enabled` | `true` | Requires TOTP 2FA; key via `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` on 5.0–5.2, canonical `VESMA_API__*` from 5.3 — ADR-0031) |
+| `api.totp_enabled` | `true` | Requires TOTP 2FA; key via env only — canonical `VESMA_API__TOTP_MASTER_KEY` (5.3+; deprecated `MNEMOS_API__*` / `VESMARO_API__*` accepted until 6.0 — ADR-0031) |
 | `api.behind_tls_proxy` | `true` | TLS terminates upstream (Caddy, nginx, ingress, etc.) |
 | `embedding.provider` | `nano` | vesma-embed-v1: bundled local model, works offline; no GPU required |
 
@@ -314,12 +324,12 @@ Prints running containers (name, status, ports) and named volumes.
 
 - [kubernetes-deployment.md](../kubernetes-deployment.md) — Helm chart for real K8s/K3s clusters
 - [`deploy/README.md`](../../../../deploy/README.md) — all deployment paths at a glance
-- [install.md](install.md) — bare-metal / virtualenv install
+- [install.md](install.md) — bare-metal install (PyPI / uv / pipx)
 - [../security.md](../security.md) — threat model, auth model, SSRF guard
 - [../../user/getting-started.md](../../user/getting-started.md) — first run guide
 
 ---
 
 _Source files: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
-`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/mnemos-pod.yaml`,
+`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/vesma-pod.yaml`,
 `deploy/docker/`, `deploy/helm/vesma/`_

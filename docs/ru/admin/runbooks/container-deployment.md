@@ -43,12 +43,12 @@
 Скачайте опубликованный образ и запустите сразу — собирать ничего не нужно:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesma:4.3.0      # :latest указывает на свежий релиз
+podman pull ghcr.io/vesmaro/vesma:5.6.2      # :latest указывает на свежий релиз
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
-  --env MNEMOS_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesma:4.3.0
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
+  ghcr.io/vesmaro/vesma:5.6.2
 ```
 
 `docker` работает идентично — замените `podman` на `docker`. В образ встроен
@@ -93,7 +93,7 @@ docker exec vesma-ollama ollama pull nomic-embed-text
 в конфиге контейнера (см. [Конфигурация](#конфигурация)).
 
 > Корневой [`compose.yaml`](../../../../compose.yaml) тоже использует опубликованный образ —
-> он сохраняет исторические имена ресурсов `vesma-*` для существующих пользователей
+> он сохраняет исторические имена ресурсов `mnemos-*` для существующих пользователей
 > podman-compose. Про сборку из исходников см.
 > [Сборка из исходников](#сборка-из-исходников-фолбэк).
 
@@ -119,7 +119,7 @@ helm install vesma deploy/helm/vesma \
 
 ## Запуск — Kubernetes-подобный pod (podman kube play)
 
-Vesma поставляется с Kubernetes-подобным манифестом pod'а (`deploy/podman/kube/mnemos-pod.yaml`)
+Vesma поставляется с Kubernetes-подобным манифестом pod'а (`deploy/podman/kube/vesma-pod.yaml`)
 для `podman kube play`. Манифест скачивает опубликованный образ, инжектит TOTP-ключ из
 podman-секрета и определяет пробы здоровья.
 
@@ -130,7 +130,7 @@ printf 'MNEMOS_API__TOTP_MASTER_KEY=<your-key>\nVESMARO_API__TOTP_MASTER_KEY=<yo
   | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
-podman kube play deploy/podman/kube/mnemos-pod.yaml
+podman kube play deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut (создаёт volumes автоматически перед запуском манифеста):
@@ -142,7 +142,7 @@ Shortcut (создаёт volumes автоматически перед запу�
 ### Остановка
 
 ```bash
-podman kube down deploy/podman/kube/mnemos-pod.yaml
+podman kube down deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut:
@@ -156,20 +156,27 @@ Shortcut:
 ## Запуск — systemd (quadlet)
 
 Путь через quadlet устанавливает systemd **user**-юнит и управляет контейнером как постоянным
-сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:4.3.0`, образ скачивается
+сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:5.2.0`, образ скачивается
 автоматически; для локальной сборки соберите образ заранее (см.
 [Сборка из исходников](#сборка-из-исходников-фолбэк)) и укажите
 `Image=localhost/mnemos:latest` в юните.
 
+> **Имя сервиса задаётся именем файла-юнита**, а не `ContainerName=`:
+> quadlet-файл `mnemos.container` генерирует юнит
+> `mnemos.service` (а `ContainerName=mnemos` переопределяет только имя
+> контейнера у podman). Команды ниже управляют именно `mnemos.service`;
+> это легаси-неймс той же установки Vesma.
+
 ### Задать TOTP-ключ
 
 Юнит читает ключ из `~/.vesmaro.env` (`EnvironmentFile`), править юнит не нужно.
-Все имена переменной должны нести одно значение — образы 4.x читают `MNEMOS_API__*`,
-5.0–5.2 читают `VESMARO_API__*`, 5.3+ читают каноническое `VESMA_API__*` (ADR-0031):
+Имена переменной должны нести одно значение: каноническое — `VESMA_API__*` (5.3+),
+устаревшие `MNEMOS_API__*` (4.x) и `VESMARO_API__*` (5.0–5.2) принимаются до 6.0
+(ADR-0031) — задать все три сразу всегда безопасно:
 
 ```bash
 KEY=$(openssl rand -hex 32)
-printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\nVESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
+printf 'VESMA_API__TOTP_MASTER_KEY=%s\nMNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\n' "$KEY" "$KEY" "$KEY" > ~/.vesmaro.env
 ```
 
 ### Установка юнита
@@ -184,14 +191,14 @@ printf 'MNEMOS_API__TOTP_MASTER_KEY=%s\nVESMARO_API__TOTP_MASTER_KEY=%s\nVESMA_A
 ### Запуск и автозапуск
 
 ```bash
-systemctl --user start vesma
-systemctl --user enable vesma   # автозапуск при входе в систему
+systemctl --user start mnemos
+systemctl --user enable mnemos   # автозапуск при входе в систему
 ```
 
 ### Проверка статуса
 
 ```bash
-systemctl --user status vesma
+systemctl --user status mnemos
 ```
 
 ---
@@ -203,14 +210,15 @@ systemctl --user status vesma
 > пользователям этот раздел не нужен.
 
 ```bash
-podman build -t localhost/vesma:4.3.0 -f Containerfile .
+podman build -t localhost/vesma:5.6.2 -f Containerfile .
 ```
 
 `Containerfile` использует `python:3.12-slim` в качестве базового образа, устанавливает пакет (MCP SDK едет в core),
 копирует `config.container.yaml` как `/app/config.yaml` и задаёт serve-команду на
 порту 8787.
 
-Shortcut через Makefile (собирает `localhost/mnemos:latest`):
+Shortcut через Makefile (собирает `localhost/mnemos:$(VERSION)` + `:latest` —
+имена берёт из `scripts/deploy.sh` / `make build-image`):
 
 ```bash
 make build-image
@@ -222,16 +230,18 @@ make build-image
 ./scripts/deploy.sh build
 ```
 
-**Залитие в ghcr.io (мейнтейнеры):** релизный конвейер (`scripts/local-release.sh`)
-при каждом релизе пушит версионный тег и `:latest` — GitHub Actions отключены, и этот
-скрипт является каноническим путём (см. [ci-cd.md](ci-cd.md)). Конвейер таргетит
+**Залитие в ghcr.io (мейнтейнеры):** релизный поезд — `scripts/pypi-publish.sh
+--publish`; его обязательная image-фаза (`scripts/image-publish.sh`) при каждом
+релизе собирает, смоукает и пушит версионный тег и `:latest` (GitHub Actions
+заблокированы по billing #117 — поезд идёт локально; см. [ci-cd.md](ci-cd.md) и
+[pypi-publish.md](pypi-publish.md)). Конвейер таргетит
 публичное имя `ghcr.io/vesmaro/vesma` напрямую.
 Ручное залитие, если когда-нибудь понадобится (PAT с правом `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesma:4.3.0
-podman push ghcr.io/vesmaro/vesma:4.3.0
+podman tag localhost/vesma:5.6.2 ghcr.io/vesmaro/vesma:5.6.2
+podman push ghcr.io/vesmaro/vesma:5.6.2
 podman push ghcr.io/vesmaro/vesma:latest
 ```
 
@@ -253,7 +263,7 @@ Vesma использует `config.container.yaml` в качестве конф�
 | `api.host` | `0.0.0.0` | Привязка ко всем интерфейсам — **требует auth** |
 | `api.port` | `8787` | Внутренний порт контейнера; маппинг задаётся в compose/run |
 | `api.auth_enabled` | `true` | Обязательно `true` при `host: 0.0.0.0` |
-| `api.totp_enabled` | `true` | Требует TOTP 2FA; ключ через `MNEMOS_API__TOTP_MASTER_KEY` (+ `VESMARO_API__*` на 5.0–5.2, канон `VESMA_API__*` с 5.3 — ADR-0031) |
+| `api.totp_enabled` | `true` | Требует TOTP 2FA; ключ только через env — канон `VESMA_API__TOTP_MASTER_KEY` (5.3+; устаревшие `MNEMOS_API__*` / `VESMARO_API__*` принимаются до 6.0 — ADR-0031) |
 | `api.behind_tls_proxy` | `true` | TLS завершается выше по стеку (Caddy, nginx, ingress и т.п.) |
 | `embedding.provider` | `nano` | vesma-embed-v1: встроенная локальная модель, работает офлайн; GPU не требуется |
 
@@ -316,12 +326,12 @@ podman inspect --format '{{.State.Health.Status}}' vesma
 
 - [kubernetes-deployment.md](../kubernetes-deployment.md) — helm-чарт для настоящих кластеров K8s/K3s
 - [`deploy/README.md`](../../../../deploy/README.md) — все пути развёртывания одним взглядом
-- [install.md](install.md) — установка на bare-metal / в virtualenv
+- [install.md](install.md) — установка на bare-metal (PyPI / uv / pipx)
 - [../security.md](../security.md) — модель угроз, аутентификация, SSRF-защита
 - [../../user/getting-started.md](../../user/getting-started.md) — руководство по первому запуску
 
 ---
 
 _Исходные файлы: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
-`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/mnemos-pod.yaml`,
+`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/vesma-pod.yaml`,
 `deploy/docker/`, `deploy/helm/vesma/`_
