@@ -48,6 +48,15 @@ from vesmaro.danger_detectors import DetectionResult, detect
 # collision (the function IS ``ingest_document`` on both sides; the
 # manager's method is the public surface, the module's function is the
 # single implementation).
+from vesmaro.decision_jev import resolve_decision_provider
+from vesmaro.decision_provider import (
+    CanonRecordView,
+    CanonState,
+    DecisionProvider,
+    DeterministicProvider,
+    IsDuplicateRequest,
+    MissingEvidenceError,
+)
 from vesmaro.docs_ingest import (
     DOC_CHUNK_CACHE_VERSION_META_KEY,
     DOC_SWEEP_STAMP_KEYS,
@@ -160,6 +169,21 @@ def _derive_feedback_event_id(
 # fail CONSECUTIVELY — the embedder is presumed down and one summary
 # warning replaces the per-row flood.
 HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
+
+
+class _SeamNotBuilt:
+    """The «decision seam not built YET» sentinel (ADR-0004 B0 seam).
+
+    A distinct type (NOT ``None``) so the lazily cached
+    ``_decision_seam_provider`` field can hold all three honest states:
+    not-built (``_NOT_BUILT``), resolved-but-disabled (``None``,
+    decision_provider=off) and the resolved provider. Truthiness of the
+    resolved provider is never consulted through the sentinel —
+    ``_decision_seam`` does the isinstance decode.
+    """
+
+
+_NOT_BUILT: Final[_SeamNotBuilt] = _SeamNotBuilt()
 
 # ADR-0019 B2b (review #163 follow-up F7) — INTERNAL lifecycle metadata
 # keys. The store writes them server-side (``json_set`` in
@@ -692,6 +716,95 @@ class MemoryManager:
         # (idempotent re-mints contribute nothing).
         self._graph_mint_stats: dict[str, int] = {}
         self._graph_mint_stats_lock: threading.Lock = threading.Lock()
+        # ADR-0004 B0 seam (card b0-provider-seam-wiring) — the lazily
+        # built decision provider behind the existing
+        # ``mnemos.decision_provider`` config. ``False`` here means «not
+        # built YET»; the ``None`` state means «resolved to seam-disabled
+        # (``"off"``)» — the one-shot construction in ``_decision_seam``
+        # stays honest without re-resolving the config on every write.
+        self._decision_seam_provider: DecisionProvider | None | _SeamNotBuilt = _NOT_BUILT
+        self._decision_seam_lock: threading.Lock = threading.Lock()
+
+    def _decision_seam(self) -> DecisionProvider | None:
+        """The live ADR-0004 provider seam (built lazily, once).
+
+        Resolves the EXISTING ``mnemos.decision_provider`` config through
+        :func:`vesmaro.decision_jev.resolve_decision_provider` —
+        ``"vesma"`` activates the bundled provider (W5d); the
+        deterministic default keeps the unchanged behavior (a baseline
+        provider that re-answers the exact step rule the minting path
+        always applied, still emitting its §3.9 telemetry). Fail-open
+        (inference-v1.md §7, config.py:173-181 contract): ANY resolution
+        exception degrades to the deterministic provider with a
+        machine-parseable warn — ingest is never blocked by the seam;
+        ``"off"`` resolves to ``None`` (call sites skip the probe).
+        Thread-safety mirrors ``self.embedder``: the minting path is
+        synchronous user-facing writes — the lock makes a concurrent
+        first probe build once.
+        """
+        provider = self._decision_seam_provider
+        if not isinstance(provider, _SeamNotBuilt):
+            return provider
+        with self._decision_seam_lock:
+            provider = self._decision_seam_provider
+            if not isinstance(provider, _SeamNotBuilt):
+                return provider
+            try:
+                resolved: DecisionProvider | None = resolve_decision_provider(
+                    self.settings.mnemos,
+                    embedder_fingerprint=self._embedder_fingerprint(),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "code=DECISION-E-SEAM class=provider-class decision provider resolution "
+                    "failed, degrading to deterministic (ingest never blocked): %s",
+                    exc,
+                )
+                resolved = DeterministicProvider()
+            self._decision_seam_provider = resolved
+            return resolved
+
+    def _decision_provider_probe(
+        self, record_view: CanonRecordView, candidate_view: CanonRecordView, similarity: float
+    ) -> None:
+        """One live near-duplicate VERDICT probe (B0 telemetry capture).
+
+        Asks the configured provider «is-duplicate» over the prepared
+        pair state exactly as the ADR-0037 R1 seam prescribes it. §8.3
+        verdict/action split: the provider answers VERDICTS only — the
+        probe NEVER gates, weights or suppresses anything; the system
+        action stays with the existing minting logic until the Wave B
+        arbiter. The §3.9 DECISION line is emitted by the provider's own
+        evaluate (:func:`log_decision_telemetry`; the B0 collector joins
+        verdict/probability from it — b0-telemetry-plan.md criteria 3/5).
+
+        Fail-open (inference-v1.md §7): :class:`MissingEvidenceError` is
+        the QUESTION being unanswerable for EVERY provider (no measured
+        evidence) — the deterministic twin would raise it too — so the
+        probe skips quietly instead of fabricating; any OTHER exception
+        degrades to the deterministic step rule with a machine-parseable
+        warn. Ingest is never blocked: the caller already wraps this
+        call best-effort.
+        """
+        provider = self._decision_seam()
+        if provider is None:
+            return
+        state = CanonState(record=record_view, candidate=candidate_view, similarity=similarity)
+        try:
+            provider.evaluate(IsDuplicateRequest(), state)
+        except MissingEvidenceError:
+            return
+        except Exception as exc:
+            logger.warning(
+                "code=DECISION-E-PROBE class=verdict-class provider seam verdict degraded "
+                "to the deterministic step rule: %s",
+                exc,
+            )
+            try:
+                baseline = DeterministicProvider()
+                baseline.evaluate(IsDuplicateRequest(), state)
+            except Exception:
+                pass
 
     @property
     def embedder(self) -> EmbeddingProvider:
@@ -3130,6 +3243,33 @@ class MemoryManager:
                 continue  # deleted between the index and the resolve
             resolved.append(SearchResult(memory=row, score=cosine, search_type="semantic"))
         minted = 0
+        # ── ADR-0004 B0 seam (card b0-provider-seam-wiring, live leg) ────
+        # The deterministic dup heuristic runs HERE — this selector pass
+        # IS the add-time near-duplicate path. Before the mint loop the
+        # configured decision provider gets ONE is-duplicate VERDICT
+        # probe over the TOP-qualified pair (the arbiter candidate of the
+        # future Wave B): §8.3 verdict/action split — the provider
+        # answers, the mint behavior stays byte-identical (A probe's
+        # verdict is telemetry, not a gate). Probe placement AFTER the
+        # selector (not per retrieval row) keeps the provider cost at
+        # <= 1 per write and covers exactly the pair the seam exists to
+        # instrument; the fail-open discipline lives in
+        # _decision_provider_probe.
+        survivors = select_auto_dedupe_candidates(memory, resolved)
+        if survivors:
+            top = survivors[0]
+            try:
+                self._decision_provider_probe(
+                    CanonRecordView.from_memory(memory),
+                    CanonRecordView.from_memory(top.memory),
+                    top.score,
+                )
+            except Exception as exc:  # pragma: no cover — _probe is fail-open already
+                logger.warning(
+                    "code=DECISION-E-PROBE class=verdict-class provider probe failed "
+                    "(non-fatal, ingest never blocked): %s",
+                    exc,
+                )
         # ── Review L1: orientation-aware mint idempotency. The PK
         # (from, to, kind) treats A→B and B→A as distinct rows, but for
         # MINTED fuel the pair is semantically undirected — a re-mint of
@@ -3143,7 +3283,7 @@ class MemoryManager:
             str(e["from_memory_id"])
             for e in self.sqlite.get_incoming_edges(memory.id, kind=AUTO_DEDUPE_EDGE_KIND)
         }
-        for candidate in select_auto_dedupe_candidates(memory, resolved):
+        for candidate in survivors:
             if candidate.memory.id in incoming_from:
                 logger.debug(
                     "graph auto-mint: reverse pair exists, skipping from=%s to=%s",
