@@ -24,7 +24,9 @@ Coverage map (one section per B2b deliverable):
   vectors carry the ``content_hash`` freshness key and the sweeper can
   heal them.
 * **F7** — an external ``update(metadata=...)`` cannot wipe the
-  internal lifecycle keys (retry counter / backoff gate).
+  internal lifecycle keys (retry counter / backoff gate), nor mint
+  them on a row that never had them (vesma #432; create strips the
+  client-supplied copies too).
 * **F8** — a clean content edit of a ``refined`` row re-enters the
   refine intake (``pending``); ``swap_key`` is deliberately kept.
 """
@@ -591,6 +593,38 @@ class TestF7InternalMetadataMerge:
         updated = manager.update(mem.id, MemoryUpdate(metadata={"k": "v"}))
         assert updated is not None
         assert updated.metadata == {"k": "v"}
+
+    def test_update_cannot_mint_retry_keys_on_fresh_row(self, manager: MemoryManager) -> None:
+        """vesma #432 (mint leg): the merge-back only protects EXISTING
+        values — a client-supplied retry counter on a row that never had
+        one must not survive the update either (the reviewer's recorded
+        attack: pipeline_retry_count=99 on a fresh row)."""
+        mem = _add(manager, "f7 mint attempt body about pangolin")
+        assert "pipeline_retry_count" not in mem.metadata
+        updated = manager.update(
+            mem.id,
+            MemoryUpdate(metadata={"pipeline_retry_count": 99, "pipeline_retry_at": "x", "k": "v"}),
+        )
+        assert updated is not None
+        assert "pipeline_retry_count" not in updated.metadata
+        assert "pipeline_retry_at" not in updated.metadata
+        assert updated.metadata["k"] == "v"  # honest keys still apply
+
+    def test_add_strips_client_retry_keys(self, manager: MemoryManager) -> None:
+        """vesma #432 (mint leg): a generic create never mints the refine
+        lane's retry bookkeeping — its only writer is the store's
+        server-internal ``record_refine_failure``/``clear_refine_retry``
+        (SQL json_set), so no add() caller can mint it either."""
+        data = MemoryCreate(
+            content="f7 forged create body about oryx",
+            tags=TAGS,
+            source=MemorySource.MCP,
+            metadata={"pipeline_retry_count": 99, "pipeline_retry_at": "x", "honest": 1},
+        )
+        created = manager.add(data, project=PROJECT, agent=AGENT)
+        assert created.metadata["honest"] == 1
+        assert "pipeline_retry_count" not in created.metadata
+        assert "pipeline_retry_at" not in created.metadata
 
 
 # ── 7. F8 — content edit of a refined row re-enters the refine intake ─────────

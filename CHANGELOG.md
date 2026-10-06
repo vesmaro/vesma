@@ -15,16 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`vesma add --url/--file` are hidden deprecated aliases (W3 alias cycle, design doc `docs/project/cli-architecture-rework.md` §2.5, §3; soft mode)** — the flag forms still work with identical behavior, but are hidden from `add --help` and print a one-line stderr hint (`[deprecated] \`vesma add --url URL\` is deprecated — use: vesma ingest url URL`; the W-C/W2 precedent, stdout stays clean for pipes/JSON). `vesma add <content>` remains the canonical quick-capture. Removal is not before 6.0. Historical edge semantics preserved: `add --url --dry-run` is still refused (exit 1), `add --file --dry-run` still previews; on the new `ingest file` surface a missing path is a clean exit-1 error instead of a traceback.
 
+### Fixed
+
+- **Client metadata stamp hardening: pipeline retry keys join the server-minted strip class (#432)** (`src/vesmaro/manager.py`, `src/vesmaro/models.py`, `src/vesmaro/cli/import_.py`; tests `tests/test_b2b_semantics.py`, `tests/test_export_import.py`, `tests/test_sync.py`) — `pipeline_retry_count`/`pipeline_retry_at` (the refine lane's retry bookkeeping) are SERVER-MINTED: a client `add`/`update` can no longer MINT them on rows that lack them (the #251 forged-stamp class, CWE-346 — the merge-back only protected existing values) nor overwrite/reset them on rows that carry them; the JSON import strip covers the retry keys too (`--trusted-restore` keeps them, like checkpoint stamps — a trusted self-backup carries its own server retry state); the federation compact contract carries NO metadata field, pinned by test so a future mapper change that starts copying peer metadata reopens the question loudly instead of silently.
+
 ### Documentation
 
 - ADR-0037: PG-1 two-level graph walk ratified with 9 binding conditions — one BFS walker (`trace_path` byte-pinned), a separate `walk` section in `search_graph` behind `code_graph.search_walk` (default-off), quota `k(limit)` with work caps independent of it, epoch in the payload, `graph_audit` with token economics (`out_tokens`/`avoided_bytes`), baseline-before-implementation; slices M1–M3.
 - New API surface-parity record (EN/RU): the CLI/REST/MCP matrix re-enumerated from code, the four ratified `wontfix` dispositions, and the versioning canon (`/api/v1` roots, legacy aliases, `Sunset` with 6.0); versioning notes synced into the HTTP API reference (EN/RU).
 
 ## [5.6.1] — 2026-10-06
-
-### Fixed
-
-- **`vesma doctor service`: DR-06 no longer false-FAILs healthy installations (#501)** — the check compared each component venv's `bin/python` resolution against the doctor's own interpreter (`sys.executable`); every venv of the same base CPython resolves to the same base binary, so any component venv "was" the running interpreter and DR-06 FAILED on a healthy install (live-tested on 5.6.0), while the prescribed `vesma service install` changed nothing. Identity is now judged against the LAYOUT engine venv (`~/.local/share/vesma/venv`, layout §3.2) by venv ROOTS and resolved site-packages; a symlinked `venvs/<name>` still FAILs (the actual supply-chain guard); when the engine venv is absent (dev/self-hosted) the identity leg is n/a and reserved-names enforcement stays. Fix commands are truthful per case; check retitled `venv != engine venv; reserved names`. Regression tests in `tests/test_service_doctor.py::TestDR06` (same-base-CPython repro, distinct engine venv, shared engine site-packages, DR-04 enforcer intact).
 
 ## [5.6.0] — 2026-10-06
 

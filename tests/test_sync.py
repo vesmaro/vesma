@@ -36,6 +36,7 @@ from vesmaro.config import Settings
 from vesmaro.manager import MemoryManager
 from vesmaro.models import (
     NO_FEDERATE_TAG,
+    PIPELINE_RETRY_METADATA_KEYS,
     Memory,
     MemoryCreate,
     MemorySource,
@@ -306,6 +307,49 @@ class TestSyncImport:
         assert result2.errors == []
         assert result2.records_imported == 0
         assert result2.records_skipped == 1
+
+    def test_sync_import_peer_metadata_cannot_mint_retry_keys(
+        self, mgr: MemoryManager, tmp_path: Path
+    ) -> None:
+        """vesma #432 (mint leg, sync leg): the compact contract carries NO
+        metadata — ``CompactRecord`` has no such field, pydantic drops
+        extraneous keys at validation, and the mapper mints a fresh
+        ``federated_origin``-only dict. Pinned here so a future mapper
+        change that starts copying peer metadata cannot silently reopen
+        the mint hole: a peer-supplied ``pipeline_retry_count`` on a
+        fresh row must never land as if the local server had minted it
+        (CWE-346 — server-minted per store, like the manager and JSON-
+        import strips)."""
+        src = tmp_path / "sync-forged-retry.json"
+        mem = Memory(
+            id="22222222-2222-2222-2222-222222222222",
+            content="peer row with a forged retry counter",
+            tags=["project:mnemos", "agent:tech-lead", "mnemos:decision"],
+            source=MemorySource.CLI,
+            status=MemoryStatus.PUBLISHED,
+            created_at=datetime(2026, 7, 19, 10, 0, 0, tzinfo=UTC),
+        )
+        payload = build_compact_payload([mem], source_agent="tech-lead")
+        # The mint attempt: a hostile (or naive) peer ships server-minted
+        # keys alongside the contract fields.
+        payload["records"][0]["metadata"] = {
+            "pipeline_retry_count": 99,
+            "pipeline_retry_at": "2099-01-01T00:00:00+00:00",
+        }
+        src.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+
+        result = run_sync_import(mgr, source=src)
+        assert result.errors == []
+        assert result.records_imported == 1
+
+        stored = mgr.sqlite.get("fed:tech-lead:22222222-2222-2222-2222-222222222222")
+        assert stored is not None
+        assert not PIPELINE_RETRY_METADATA_KEYS & set(stored.metadata), (
+            "a peer-supplied retry counter must not survive sync-accept"
+        )
+        assert stored.metadata == {"federated_origin": "tech-lead"}, (
+            "the mapper mints exactly the federated_origin stamp — nothing else lands"
+        )
 
     def test_sync_import_skip_existing(self, mgr: MemoryManager, tmp_path: Path) -> None:
         """Record whose id already exists locally → skipped, not overwritten."""
