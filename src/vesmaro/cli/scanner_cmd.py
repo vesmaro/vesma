@@ -25,8 +25,15 @@ from vesmaro.scanner_runtime import get_scanner
 console = Console()
 
 scanner_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="scanner",
-    help="Background secrets scanner (Layer 2 defence-in-depth) — manual trigger + status.",
+    help=(
+        "Background secrets scanner (Layer 2 defence-in-depth) — manual trigger + status.\n\n"
+        "Detects credential-shaped content (API keys, tokens) in stored "
+        "memories and flags those records. The scanner normally runs on its "
+        "own schedule; `run` triggers a pass now, `status` reports liveness "
+        "and the last scan. It reports — it never deletes content."
+    ),
     no_args_is_help=True,
 )
 
@@ -44,7 +51,13 @@ def scanner_run_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Run one background scanner pass synchronously and print the summary."""
+    """Run one background scanner pass synchronously and print the summary.
+
+    Scans the corpus for credential-shaped patterns and prints the counts
+    (scanned, tagged, skipped) plus every pattern that matched. Incremental
+    by default (only records past the last boundary); `--full` rescans
+    everything — use it after enabling a new detection pattern.
+    """
     mgr = get_manager(config)
     scanner = get_scanner(mgr)
     result = scanner.run_scan(incremental=not full)
@@ -69,7 +82,12 @@ def scanner_status_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Print the background scanner's current state."""
+    """Print the background scanner's current state.
+
+    Shows whether the scheduled loop is running (and its interval), when the
+    last pass finished, and when the next one fires. The first stop when
+    `scanner run` finds nothing new but you suspect it never runs on its own.
+    """
     mgr = get_manager(config)
     scanner = get_scanner(mgr)
 

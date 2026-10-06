@@ -21,8 +21,16 @@ from vesmaro.cli.sync import run_sync_export, run_sync_import
 console = Console()
 
 sync_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="sync",
-    help="Federation Phase 0 batch sync — export/import compact payloads between Vesma instances.",
+    help=(
+        "Federation Phase 0 batch sync — export/import compact payloads "
+        "between Vesma instances.\n\n"
+        "Move shared projects between Vesma instances as file-based batches: "
+        "`export` writes a compact `vesmaro.federation.v1` payload (optionally "
+        "AES-256-GCM encrypted), `import` merges one idempotently by record "
+        "id. Scheduled federation comes later — this is the operator-driven path."
+    ),
     no_args_is_help=True,
 )
 
@@ -60,7 +68,14 @@ def sync_export_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Export memories in the compact federation format (vesmaro.federation.v1)."""
+    """Export memories in the compact federation format (vesmaro.federation.v1).
+
+    Writes the shared projects (config `federation.shared_projects`, or an
+    explicit `--shared-projects` list) to `--output` as one compact payload.
+    `--encrypt` seals it with AES-256-GCM using the VESMARO_EXPORT_PASSPHRASE
+    env var; `--dry-run` builds the payload and prints the summary without
+    writing a file.
+    """
     mgr = get_manager(config)
     try:
         result = run_sync_export(
@@ -107,7 +122,13 @@ def sync_import_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Import a compact federation payload (merge, idempotent by record id)."""
+    """Import a compact federation payload (merge, idempotent by record id).
+
+    Merges the payload's memories into the local store — re-importing the
+    same file is a no-op, so retries after a partial run are safe. Encrypted
+    payloads decrypt via the env var named by `--passphrase-env` (default
+    VESMARO_EXPORT_PASSPHRASE). Run it on the RECEIVING instance.
+    """
     mgr = get_manager(config)
     result = run_sync_import(
         mgr,

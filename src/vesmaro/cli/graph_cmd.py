@@ -33,8 +33,15 @@ from vesmaro.cli._manager import get_manager
 console = Console()
 
 graph_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="graph",
-    help="Project-graph registration lifecycle (register / repoint / delete).",
+    help=(
+        "Project-graph registration lifecycle (register / repoint / delete).\n\n"
+        "Registers a project root on disk so the code-graph tools can index "
+        "and search it: `register` creates the registration, `repoint` moves "
+        "it when the checkout moved (ghost root), `delete` removes it. "
+        "`--agent` attributes each mutation in the audit trail."
+    ),
     no_args_is_help=True,
 )
 

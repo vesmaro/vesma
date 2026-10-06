@@ -34,9 +34,18 @@ if TYPE_CHECKING:
     from vesmaro.manager import MemoryManager
 
 app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="vesma",
     help="Vesma — standalone memory & knowledge server for AI agents.",
     no_args_is_help=True,
+    # UX-4: the hint under the Commands table (rendered as the epilog).
+    epilog="Tip: add -h to any command for help.",
+    # typer's generated completion scripts carry no candidate descriptions in
+    # any shell (verified for click 8.5's shell_complete path — typer drops the
+    # help values). `vesma completion` installs the custom engine-backed
+    # scripts instead, and owns --install-completion below so the builtin flag
+    # can never install the description-less variants.
+    add_completion=False,
 )
 console = Console()
 
@@ -72,6 +81,29 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _install_completion_callback(value: bool) -> None:
+    """`--install-completion` — install the custom completion for $SHELL.
+
+    Delegates to the exact `vesma completion` path (auto-detect + install),
+    so the flag can never fall back to typer's description-less generated
+    scripts (disabled via ``add_completion=False`` on the root app).
+    """
+    if not value:
+        return
+    from vesmaro.cli.completion import _detect_shell, _install
+
+    target = _detect_shell()
+    if target is None:
+        console.print(
+            "[red]Could not auto-detect your shell from $SHELL.[/red]\n"
+            "Pass an explicit shell: [bold]vesma completion bash|zsh|fish[/bold]"
+        )
+        raise typer.Exit(1)
+    if not _install(target):
+        raise typer.Exit(1)
+    raise typer.Exit(0)
+
+
 @app.callback()
 def main(
     version: Annotated[
@@ -81,6 +113,17 @@ def main(
             "-V",
             help="Show the Vesma version and exit.",
             callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    install_completion: Annotated[
+        bool,
+        typer.Option(
+            "--install-completion",
+            help="Install shell completion for the current shell ($SHELL) — tab "
+            "completion with command/option descriptions where the shell can "
+            "render them. Same as `vesma completion`.",
+            callback=_install_completion_callback,
             is_eager=True,
         ),
     ] = False,
@@ -288,6 +331,7 @@ def add(
 # hint; soft mode — removal not before 6.0, design doc §3).
 
 _ingest_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="ingest",
     help=(
         "Ingest external content into the memory store.\n\n"
@@ -307,7 +351,12 @@ def ingest_url(
     tags: str = typer.Option("", "--tags", "-T", help="Comma-separated tags"),
     config: str = ConfigOption,
 ) -> None:
-    """Ingest a web page: fetch it, extract the main text, save as a memory."""
+    """Ingest a web page: fetch it, extract the main text, save as a memory.
+
+    Fetches the URL, extracts the readable main text (boilerplate stripped),
+    and stores it as a memory. Tags are required per the tag contract — pass
+    at least one `--tags` entry, typically including a `project:` slug.
+    """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     mgr = get_manager(config)
     memory = _save_url_ingest(mgr, url, tag_list)
@@ -330,7 +379,14 @@ def ingest_file(
     ] = False,
     config: str = ConfigOption,
 ) -> None:
-    """Ingest a local file: save its text content as a memory."""
+    """Ingest a local file: save its text content as a memory.
+
+    Saves the file's text content as a memory with an optional `--title`,
+    `--source` and comma-separated `--tags`. `--dry-run` shows the
+    context-filter stats (profile, token reduction, dedup, noise) WITHOUT
+    saving — a preview of what the content would look like in context.
+    A missing or binary file is a clean error, not a traceback.
+    """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     try:
         text = path.read_text()
@@ -443,8 +499,14 @@ def _print_recall_memories(memories: list[Memory]) -> None:
 
 
 _recall_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="recall",
-    help="Recall recent memories, optionally scoped to an agent or a project.",
+    help=(
+        "Recall recent memories, optionally scoped to an agent or a project.\n\n"
+        "Bare `vesma recall` prints the most recent memories (default 10 — "
+        "`--limit` to change), filtered by `--project`. Per-agent recall is a "
+        "subcommand: `vesma recall agent SLUG [QUERY]`."
+    ),
     invoke_without_command=True,
 )
 app.add_typer(_recall_app, name="recall")
@@ -453,7 +515,9 @@ app.add_typer(_recall_app, name="recall")
 @_recall_app.callback(invoke_without_command=True)
 def recall(
     ctx: typer.Context,
-    project: str = typer.Option(None, "--project", "-p"),
+    project: str = typer.Option(
+        None, "--project", "-p", help="Filter by project slug (e.g. `project:vesma`)."
+    ),
     agent: str | None = typer.Option(
         None,
         "--agent",
@@ -461,7 +525,7 @@ def recall(
         help="Deprecated flag form — use: `vesma recall agent SLUG`.",
         hidden=True,
     ),
-    limit: int = typer.Option(10, "--limit", "-l"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Max memories to print."),
     config: str = ConfigOption,
 ) -> None:
     """Recall recent memories, optionally filtered by project.
@@ -498,8 +562,10 @@ def recall_agent(
         help="Optional query — hybrid search scoped to the agent's entries "
         "(without it: the N most recent entries for the agent).",
     ),
-    project: str = typer.Option(None, "--project", "-p"),
-    limit: int = typer.Option(10, "--limit", "-l"),
+    project: str = typer.Option(
+        None, "--project", "-p", help="Filter by project slug (e.g. `project:vesma`)."
+    ),
+    limit: int = typer.Option(10, "--limit", "-l", help="Max memories to print."),
     config: str = ConfigOption,
 ) -> None:
     """Per-agent recall (M3): one agent's entries, optionally query-matched.
@@ -519,7 +585,18 @@ def recall_agent(
 # Subcommand tree:
 #   vesma tags validate <vault>   — validate tag contract across a vault
 
-_tags_app = typer.Typer(name="tags", help="Manage and validate memory tags.", no_args_is_help=True)
+_tags_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="tags",
+    help=(
+        "Manage and validate memory tags.\n\n"
+        "The tag contract (`project:<slug>` / `agent:<slug>` lowercase slugs) "
+        "is what project- and agent-scoped recall searches against. These "
+        "verbs audit a vault for contract violations and bulk-normalize or "
+        "bulk-rename tags when conventions drift."
+    ),
+    no_args_is_help=True,
+)
 app.add_typer(_tags_app, name="tags")
 
 
@@ -528,7 +605,13 @@ def tags_validate(
     vault: Annotated[Path, typer.Argument(help="Path to Vesma vault directory")],
     config: str = ConfigOption,
 ) -> None:
-    """Validate tag contract across an existing vault. Reports non-conformant entries."""
+    """Validate tag contract across an existing vault. Reports non-conformant entries.
+
+    Scans the vault for tags that break the contract — wrong `project:`/
+    `agent:` spelling, uppercase slugs, spaces instead of hyphens — and
+    reports each offending entry with its reason. Pair with `vesma tags
+    normalize` for the bulk fix of the case/spacing class.
+    """
 
     console.print(f"[bold]Validating tag contract in:[/bold] {vault}")
     # TODO (M2): scan SQLite + vault markdown files
@@ -939,10 +1022,15 @@ def tags_audit(
 # MCP tool and REST layer surface the same violations.
 
 _workflow_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="workflow",
     help=(
         "Manage the workflow lifecycle of a memory "
-        "(states: open, in-progress, blocked, resolved, done, withdrawn)."
+        "(states: open, in-progress, blocked, resolved, done, withdrawn).\n\n"
+        "Transitions are enforced by a server-side state machine with "
+        "guardrails (an agent may only take `set` while holding the memory "
+        "lock); `get` shows the current status and lock owner, `history` the "
+        "transition audit log."
     ),
     no_args_is_help=True,
 )
@@ -954,7 +1042,13 @@ def workflow_get(
     memory_id: Annotated[str, typer.Argument(help="Target memory id.")],
     config: str = ConfigOption,
 ) -> None:
-    """Show the current workflow status + lock owner for a memory."""
+    """Show the current workflow status + lock owner for a memory.
+
+    Prints the memory's workflow_status, who holds its lock (locked_by) and
+    since when — the pre-flight check before `workflow set`: a transition on
+    a memory locked by another actor fails unless `--force` with `--reason`
+    is used. Exits 1 when the memory id does not exist.
+    """
 
     mgr = get_manager(config)
     result = mgr.workflow_get(memory_id)
@@ -994,7 +1088,14 @@ def workflow_set(
     ] = False,
     config: str = ConfigOption,
 ) -> None:
-    """Transition a memory's workflow status through the server-enforced state machine."""
+    """Transition a memory's workflow status through the server-enforced state machine.
+
+    The target status goes in `--to` (open|in-progress|blocked|resolved|done|
+    withdrawn); `--actor` identifies who is acting. Illegal transitions and
+    guardrail violations (locked by someone else, terminal state) exit 1 with
+    the server's reason. `--force` overrides another actor's lock but REQUIRES
+    `--reason` — the override lands in the audit log.
+    """
 
     mgr = get_manager(config)
     try:
@@ -1025,7 +1126,13 @@ def workflow_history(
     limit: Annotated[int, typer.Option("--limit", help="Max rows to show (newest first).")] = 50,
     config: str = ConfigOption,
 ) -> None:
-    """Show the workflow transition audit log for a memory (newest first)."""
+    """Show the workflow transition audit log for a memory (newest first).
+
+    Every transition — including forced ones and idempotent replays — is
+    recorded with timestamp, from/to status, actor and reason. Use it to
+    answer "who moved this memory and why"; `--limit` caps the rows shown
+    (default 50).
+    """
 
     mgr = get_manager(config)
     rows = mgr.workflow_history(memory_id, limit=limit)
@@ -1057,7 +1164,13 @@ def workflow_history(
 
 @app.command()
 def stats(config: str = ConfigOption) -> None:
-    """Display Vesma health statistics."""
+    """Display Vesma health statistics.
+
+    One-line-per-key dump of the manager's health snapshot: memory counts,
+    vector-store state, and the knowledge-pipeline block (queue depth, last
+    processed timestamp, running flag). The first thing to run when the
+    store "feels wrong" — `vesma doctor` adds deeper per-subsystem checks.
+    """
     mgr = get_manager(config)
     s = mgr.stats()
     for k, v in s.items():
@@ -1077,6 +1190,7 @@ def stats(config: str = ConfigOption) -> None:
 # `vesma edge-stats` shows help instead of running `stats`.
 
 _fts_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="fts",
     help=(
         "FTS5 full-text index maintenance.\n\n"
@@ -1091,7 +1205,12 @@ app.add_typer(_fts_app, name="fts")
 
 @_fts_app.command(name="rebuild")
 def fts_rebuild(config: str = ConfigOption) -> None:
-    """Rebuild the FTS5 index and report the number of rows indexed."""
+    """Rebuild the FTS5 index and report the number of rows indexed.
+
+    Drops and repopulates the FTS5 full-text index from the memory table —
+    the fix when search results go stale or wrong after a crash, a restore,
+    or an FTS-trigger desync. Safe to re-run; reports the row count indexed.
+    """
     mgr = get_manager(config)
     try:
         count = mgr.sqlite.rebuild_fts_index()
@@ -1101,6 +1220,7 @@ def fts_rebuild(config: str = ConfigOption) -> None:
 
 
 _processor_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="processor",
     help=(
         "Background processor (knowledge pipeline) management.\n\n"
@@ -1116,7 +1236,13 @@ app.add_typer(_processor_app, name="processor")
 
 @_processor_app.command(name="status")
 def processor_status(config: str = ConfigOption) -> None:
-    """Queue depth, last processed timestamp, running flag."""
+    """Queue depth, last processed timestamp, running flag.
+
+    The pipeline's vital signs without touching it: how many raw memories
+    wait to be clustered/published, when the pipeline last ran, and whether
+    the background loop is alive. Use after `vesma add` to see the entry
+    queued, and before `processor run`/`start` to see what is pending.
+    """
     mgr = get_manager(config)
     try:
         s = mgr.stats()
@@ -1130,7 +1256,14 @@ def processor_status(config: str = ConfigOption) -> None:
 
 @_processor_app.command(name="run")
 def processor_run(config: str = ConfigOption) -> None:
-    """Run one synchronous pipeline pass (cluster → synthesize → quality gate → publish)."""
+    """Run one synchronous pipeline pass (cluster → synthesize → quality gate → publish).
+
+    Drains the pending queue once in the foreground and prints the per-stage
+    counts (clusters formed, entries synthesized, published, and how many
+    failed the quality gate). Use it in cron jobs or to debug the pipeline
+    without starting the background loop; repeated runs until the queue is
+    empty are safe.
+    """
     mgr = get_manager(config)
     try:
         result = mgr.run_pipeline()
@@ -1144,7 +1277,13 @@ def processor_run(config: str = ConfigOption) -> None:
 
 @_processor_app.command(name="start")
 def processor_start(config: str = ConfigOption) -> None:
-    """Start the background processor loop (the daemon for CLI-only deployments)."""
+    """Start the background processor loop (the daemon for CLI-only deployments).
+
+    Starts the in-process loop that keeps advancing the pipeline (cluster →
+    synthesize → publish) without a `processor run` per batch — for setups
+    that run the CLI without the HTTP service. In service deployments the
+    supervisor owns the loop instead; check liveness with `processor status`.
+    """
     mgr = get_manager(config)
     try:
         mgr.start_background_processor()
@@ -1155,7 +1294,12 @@ def processor_start(config: str = ConfigOption) -> None:
 
 @_processor_app.command(name="stop")
 def processor_stop(config: str = ConfigOption) -> None:
-    """Stop the background processor loop (a no-op when it is not running)."""
+    """Stop the background processor loop (a no-op when it is not running).
+
+    Signals the loop to finish cleanly and exit; a pipeline pass in flight
+    completes before the loop stops, so nothing is left half-processed.
+    Stopping an already-stopped loop succeeds quietly — safe in stop scripts.
+    """
     mgr = get_manager(config)
     try:
         mgr.stop_background_processor()
@@ -1222,6 +1366,7 @@ def backfill_embedding_ids_cmd(
 
 
 _edge_stats_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="edge-stats",
     help=(
         "edge_stats (used/rejected feedback capture) maintenance (ADR-0030 A0).\n\n"
@@ -1239,7 +1384,13 @@ app.add_typer(_edge_stats_app, name="edge-stats")
 
 @_edge_stats_app.command(name="stats")
 def edge_stats_stats(config: str = ConfigOption) -> None:
-    """Report edge_stats row counts vs the global cap, capture flag, last purge."""
+    """Report edge_stats row counts vs the global cap, capture flag, last purge.
+
+    Read-only maintenance view for the ADR-0030 feedback table: rows per
+    kind against the global cap, whether feedback capture is currently
+    enabled, and when `edge-stats purge` last ran. Pair with `edge-stats
+    purge --keep-last N` when the table approaches the cap.
+    """
     mgr = get_manager(config)
     try:
         by_kind = mgr.sqlite.count_edge_stats_by_kind()
@@ -1399,7 +1550,14 @@ def serve(
     ] = None,
     config: str = ConfigOption,
 ) -> None:
-    """Start the Vesma HTTP API server (+ the MnemosCore mesh gRPC server when mesh is enabled)."""
+    """Start the Vesma HTTP API server (+ the MnemosCore mesh gRPC server when mesh is enabled).
+
+    Serves the REST API on `--host`/`--port` (defaults from config; loopback
+    only with built-in zero-config defaults — non-loopback binds require
+    auth + TOTP + TLS). With `mesh.enabled` in config, the MnemosCore gRPC
+    server joins the same process on its Unix socket. `--log-file` overrides
+    the config log path; `--config` selects a non-default config.yaml.
+    """
     import os
 
     import uvicorn
@@ -1678,7 +1836,13 @@ def meta_poll(
 
 @app.command(name="mcp-server")
 def mcp_server_cmd(config: str = ConfigOption) -> None:
-    """Start the MCP server (stdio transport)."""
+    """Start the MCP server (stdio transport).
+
+    The Model Context Protocol surface for AI agents: memory tools over
+    stdio, speaking to the same store as the CLI and REST API. Register it
+    in the agent's MCP client config as `vesma mcp-server` — no port, no
+    bind; the transport is the agent's stdin/stdout.
+    """
     import asyncio
 
     from vesmaro.mcp_server import main as mcp_main
@@ -1699,7 +1863,16 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 #   vesma migrate tags            — migrate gcw: tags → mnemos: tags
 
 _migrate_app = typer.Typer(
-    name="migrate", help="Migrate data from other memory systems.", no_args_is_help=True
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="migrate",
+    help=(
+        "Migrate data from other memory systems.\n\n"
+        "One-shot importers for supported sources — currently `from-ai-brain` "
+        "(the historical ~/.ai-brain layout) and `tags` (gcw: tag → mnemos: "
+        "tag renaming). Each importer reports what it converted; source data "
+        "is read, never modified."
+    ),
+    no_args_is_help=True,
 )
 app.add_typer(_migrate_app, name="migrate")
 
@@ -1718,7 +1891,14 @@ def migrate(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be migrated"),
     config: str = ConfigOption,
 ) -> None:
-    """Migrate existing ai-brain data to Vesma format. (M13)"""
+    """Migrate existing ai-brain data to Vesma format. (M13)
+
+    Reads the ai-brain SQLite database (default `~/.ai-brain`, override with
+    `--source`) and optional vault directory (`--vault`), converts every
+    memory to the Vesma store, and prints the migrated counts. `--dry-run`
+    reports what WOULD migrate without writing anything; the source is only
+    ever read.
+    """
     from vesmaro.cli.migrate import migrate_from_ai_brain
 
     settings = load_settings(config)
@@ -1796,10 +1976,40 @@ def migrate_tags(
 #   vesma auth totp test    --token-id <id> --code <123456>
 
 _auth_app = typer.Typer(
-    name="auth", help="Manage API auth tokens and TOTP 2FA.", no_args_is_help=True
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="auth",
+    help=(
+        "Manage API auth tokens and TOTP 2FA.\n\n"
+        "Operator-side credential management for non-loopback API binds: "
+        "`auth token` mints, lists and revokes bearer tokens; `auth totp` "
+        "enrolls, tests and disables the second factor per token."
+    ),
+    no_args_is_help=True,
 )
-_token_app = typer.Typer(name="token", help="Manage bearer tokens.", no_args_is_help=True)
-_totp_app = typer.Typer(name="totp", help="Manage TOTP 2FA enrollment.", no_args_is_help=True)
+_token_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="token",
+    help=(
+        "Manage bearer tokens.\n\n"
+        "`create` prints the plaintext token ONCE (store it immediately), "
+        "`list` shows metadata without secrets, `revoke` permanently disables "
+        "a token. By default new tokens require the TOTP second factor; "
+        "`create --no-totp` opts out for service-to-machine use."
+    ),
+    no_args_is_help=True,
+)
+_totp_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="totp",
+    help=(
+        "Manage TOTP 2FA enrollment.\n\n"
+        "Enroll a token with `enroll` (prints the provisioning URI for the "
+        "authenticator app), smoke-test it with `test`, retire it with "
+        "`disable`. Requires VESMARO_API__TOTP_MASTER_KEY to encrypt the "
+        "secret at rest."
+    ),
+    no_args_is_help=True,
+)
 
 app.add_typer(_auth_app, name="auth")
 _auth_app.add_typer(_token_app, name="token")
@@ -1831,7 +2041,14 @@ def token_create(
     ),
     config: str = ConfigOption,
 ) -> None:
-    """Mint a new bearer token and print it ONCE."""
+    """Mint a new bearer token and print it ONCE.
+
+    Creates the token record and prints the token_id plus the plaintext
+    bearer — the only time the secret is ever shown, so store it now.
+    `--name` labels the token for `token list` audits, `--expires` takes an
+    ISO-8601 stamp (naive dates are normalized to UTC), and `--no-totp`
+    creates a token usable directly as a bearer (default: TOTP required).
+    """
     store = _auth_store(config)
     try:
         # Normalize expires_at to offset-aware ISO-8601 (UTC).
@@ -1864,7 +2081,12 @@ def token_create(
 
 @_token_app.command("list")
 def token_list(config: str = ConfigOption) -> None:
-    """List all tokens (IDs and metadata — no secrets)."""
+    """List all tokens (IDs and metadata — no secrets).
+
+    One row per token: id, label, created/expires stamps, disabled state and
+    whether TOTP is required. Use it for credential audits and to find the
+    token_id that `token revoke` or `totp enroll` need.
+    """
     store = _auth_store(config)
     try:
         tokens = store.list_tokens()
@@ -1893,7 +2115,13 @@ def token_revoke(
     token_id: str = typer.Argument(..., help="token_id to permanently revoke"),
     config: str = ConfigOption,
 ) -> None:
-    """Permanently revoke a token."""
+    """Permanently revoke a token.
+
+    Disables the token immediately and permanently — requests bearing it
+    fail auth from that moment on. There is no un-revoke: mint a fresh
+    token if the credentials are needed again. Exits 1 when the token_id
+    is unknown.
+    """
     store = _auth_store(config)
     try:
         ok = store.revoke_token(token_id)
@@ -1911,7 +2139,13 @@ def totp_enroll(
     token_id: str = typer.Option(..., "--token-id", help="token_id to enroll TOTP for"),
     config: str = ConfigOption,
 ) -> None:
-    """Generate a TOTP secret and print the provisioning URI + optional QR code."""
+    """Generate a TOTP secret and print the provisioning URI + optional QR code.
+
+    Enrolls the token for time-based 2FA: a fresh secret is generated,
+    encrypted with VESMARO_API__TOTP_MASTER_KEY, and stored; the provisioning
+    URI goes to your authenticator app. Re-enrolling replaces the previous
+    secret. Afterwards verify with `totp test` before relying on it.
+    """
     import pyotp
 
     from vesmaro.api.auth import encrypt_totp_secret
@@ -1957,7 +2191,13 @@ def totp_disable(
     token_id: str = typer.Option(..., "--token-id", help="token_id to disable TOTP for"),
     config: str = ConfigOption,
 ) -> None:
-    """Remove the TOTP secret from a token (disables 2FA for that token)."""
+    """Remove the TOTP secret from a token (disables 2FA for that token).
+
+    Clears the enrolled secret so the token authenticates with the bearer
+    alone again — for retiring a lost authenticator or converting the token
+    to service use (pair with `token create --no-totp` semantics). The
+    token itself stays valid; revoke it separately if it should not be.
+    """
     store = _auth_store(config)
     try:
         row = store.get_token_by_id(token_id)
@@ -1976,7 +2216,13 @@ def totp_test(
     code: str = typer.Option(..., "--code", help="6-digit TOTP code to verify"),
     config: str = ConfigOption,
 ) -> None:
-    """Verify a TOTP code against the enrolled secret (smoke-test for the operator)."""
+    """Verify a TOTP code against the enrolled secret (smoke-test for the operator).
+
+    Runs the same verification the API login performs against the current
+    code from your authenticator app — the end-to-end check that enrollment
+    worked before you depend on it. Pass the token with `--token-id` and the
+    6-digit code with `--code`; a mismatch is a clean failure, not a lockout.
+    """
     import pyotp
 
     from vesmaro.api.auth import decrypt_totp_secret
@@ -2053,7 +2299,14 @@ app.command(
     hidden=True,
     # The engine receives raw words that legitimately start with `-`
     # (option-name completion): they are data, not options of __complete.
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    # help_option_names=[] pins that: the global -h/--help sweep (UX-1) must
+    # never plant a help option HERE, or `-h<TAB>` / `--help<TAB>` would be
+    # intercepted by click instead of reaching the engine as data.
+    context_settings={
+        "ignore_unknown_options": True,
+        "allow_extra_args": True,
+        "help_option_names": [],
+    },
 )(complete_engine)
 
 
