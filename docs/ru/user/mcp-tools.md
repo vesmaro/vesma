@@ -8,7 +8,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 Сервер определён в `src/vesmaro/mcp_server.py`. Каждый инструмент регистрируется с помощью декоратора `@server.list_tools()` и диспетчеризируется функцией `call_tool()`.
 
-Быстрое подключение к VS Code — в [getting-started.md#run-the-mcp-server](getting-started.md#подключите-ваш-харнес-mcp). Те же возможности доступны через HTTP — см. [http-api.md](http-api.md). Схема тегов, соблюдаемая большинством инструментов, — в [tag-contract.md](tag-contract.md).
+Быстрое подключение — через [integration-guide.md](integration-guide.md) (утилита развертывания). Те же возможности доступны через HTTP — см. [http-api.md](http-api.md). Схема тегов, соблюдаемая большинством инструментов, — в [tag-contract.md](tag-contract.md).
 
 ---
 
@@ -23,6 +23,8 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 | Кодировка | UTF-8, JSON |
 
 Сервер не занимает никакой порт. Остановить через `Ctrl+C` или отправкой EOF на stdin.
+
+> **Префикс инструментов и брендинг.** Канонические имена инструментов внутри кода — `mnemos_*`; при заданном `VESMA_MCP_BRAND=vesma` манифест рекламирует их под бренд-префиксом `vesma_*` — и по факту клиент видит один набор (owner ruling 2026-10-01: двойной список `mnemos_*`/`vesma_*` путает клиентов). Записи `mnemos_*` в каталоге ниже — легаси-написания, принимаемые на call-пути до 6.0, вызовы нормализуются к каноническому имени перед диспетчеризацией; устаревшая переменная `VESMARO_MCP_BRAND` тоже принимается до 6.0.
 
 ---
 

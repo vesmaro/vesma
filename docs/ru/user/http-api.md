@@ -1928,7 +1928,7 @@ Pydantic-модель `Memory` (определена в `src/vesmaro/models.py`)
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json -o vesma-openapi.json
 npx @openapitools/openapi-generator-cli generate \
-  -i vesma-openapi.json -g typescript-fetch -o ./mnemos-client
+  -i vesma-openapi.json -g typescript-fetch -o ./vesma-client
 ```
 
 ---

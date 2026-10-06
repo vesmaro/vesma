@@ -16,7 +16,7 @@ three-way diff.
 |---|---|
 | CLI (`vesma ...`) | Humans and shell scripts |
 | REST (`/api/v1/...`) | Non-Python integrations |
-| MCP (`mnemos_*` tools) | Agents |
+| MCP (`mnemos_*` tools — canonical; brand-primary `vesma_*` under `VESMA_MCP_BRAND`) | Agents |
 
 A capability may legitimately live on one surface only. A twin is added
 when its named user exists — and then only under the versioning canon

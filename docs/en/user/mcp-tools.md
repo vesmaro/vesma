@@ -8,7 +8,7 @@ Vesma speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP
 
 The server is defined in `src/vesmaro/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
 
-For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp-server](getting-started.md#connect-your-harness-mcp). For programmatic access, the same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
+For a quick start, deploy through the [integration guide](integration-guide.md) (the deploy utility). The same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
 
 ---
 
@@ -23,6 +23,8 @@ For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp
 | Encoding | UTF-8, JSON |
 
 The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on stdin.
+
+> **Tool prefix and branding.** The canonical tool names inside the code are `mnemos_*`; with `VESMA_MCP_BRAND=vesma` set, the manifest advertises them under the brand prefix `vesma_*` — and the client sees one set (owner ruling 2026-10-01: a doubled `mnemos_*`/`vesma_*` list confuses clients). The `mnemos_*` entries in the catalogue below are the legacy spellings, still ACCEPTED on the call path until 6.0; calls normalize to the canonical name before dispatch. The deprecated `VESMARO_MCP_BRAND` variable is accepted until 6.0 as well.
 
 ---
 
