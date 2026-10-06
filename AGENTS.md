@@ -18,6 +18,12 @@ read it as a constraint, not a suggestion. Product canon lives in [CONTRIBUTING.
   parallel sessions take the same number at the same time (2026-10-06: two ADR-0037s
   landed hours apart; the incoming renumber `0037→0038` cost a re-link pass).
 - Delete a merged branch only after `git merge-base --is-ancestor <branch> origin/main`.
+- A release train may run DIRECTLY on main (2026-10-06: 5.6.3 rode main with in-flight
+  red gates — version guard 5.6.2≠5.6.3, mypy on the hotfix). If `origin/main` has an
+  OPEN train (a release commit without its tag on origin, or red gate tests), DO NOT
+  push your stack into the middle of it: hold your merged worktree, wait for the train
+  to close (tag + channels), then merge the closed main and push (2026-10-06 precedent:
+  the wait cost minutes and avoided publishing the neighbors' red WIP).
 
 ## Test gates (TL-verified, 2026-10-06)
 
