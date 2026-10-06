@@ -257,7 +257,10 @@ GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offse
 ## How vesma-eyes consumes these endpoints
 
 The `vesma-eyes` frontend (L1 read-only viewer) uses the metrics
-endpoints as follows:
+endpoints as follows. Stack note: Vesma serves these endpoints itself
+(FastAPI/uvicorn — the same process as `vesma serve`); `vesma-eyes` is a
+separate frontend project that only consumes them over HTTP — no Node.js
+runtime ships with, or is required by, Vesma.
 
 | Dashboard widget | Endpoint | Section / param |
 |------------------|----------|-----------------|

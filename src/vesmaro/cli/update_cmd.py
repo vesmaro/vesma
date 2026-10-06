@@ -976,6 +976,7 @@ def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
 
 
 update_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     help="Check for updates / update the user-site install (issues #445, #460).\n\n"
     "Subcommands: `check` (report only), `apply` (the update path), `timer "
     "install|uninstall|status` (the weekly systemd timer), `components` (the "
@@ -1188,7 +1189,16 @@ def update_apply(
 # ── timer subcommands (`vesma update timer ...`) ──────────────────────────────
 
 
-timer_app = typer.Typer(help="Install, remove or inspect the weekly update timer.")
+timer_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=(
+        "Install, remove or inspect the weekly update timer.\n\n"
+        "The timer is the scheduled side of `vesma update`: a systemd user "
+        "timer (or the platform equivalent) that runs the weekly check+apply "
+        "pass. `install` sets it up, `remove` tears it down, `status` shows "
+        "whether it is scheduled and when it last fired."
+    ),
+)
 
 
 @timer_app.command(name="install")

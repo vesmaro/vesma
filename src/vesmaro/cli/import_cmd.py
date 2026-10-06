@@ -17,8 +17,16 @@ from vesmaro.cli.import_ import ImportMode, run_import
 console = Console()
 
 import_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="import",
-    help="Import memories from a JSON or SQLite export file.",
+    help=(
+        "Import memories from a JSON or SQLite export file.\n\n"
+        "The counterpart of `vesma export`. `--mode merge` upserts by record "
+        "id (idempotent, re-runnable); `--mode restore` REPLACES the whole "
+        "store and therefore requires `--confirm`. Untrusted imports have "
+        "server-minted canon keys stripped unless `--trusted-restore` says "
+        "otherwise."
+    ),
     no_args_is_help=True,
 )
 
@@ -64,7 +72,15 @@ def import_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Import memories from an export file (merge or restore)."""
+    """Import memories from an export file (merge or restore).
+
+    Merge mode is the safe default: idempotent by record id, `--overwrite`
+    refreshes rows that already exist. Restore mode DELETES everything
+    first — it refuses to run without `--confirm`, and `--backup-dir` takes
+    a safety snapshot of the current DB before the clobber. Encrypted
+    exports decrypt via `--passphrase-file`; `--dry-run` validates the
+    file without writing.
+    """
     mgr = get_manager(config)
 
     if mode == ImportMode.RESTORE and not dry_run and not confirm:

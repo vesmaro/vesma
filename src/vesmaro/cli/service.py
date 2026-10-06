@@ -42,10 +42,17 @@ from vesmaro.service.errors import ManifestError
 from vesmaro.service.install import InstallError, install, uninstall
 
 service_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="service",
     help=(
         "Install/uninstall the vesma service and drive the supervisor "
-        "control plane: status, start/stop/restart, logs, run."
+        "control plane: status, start/stop/restart, logs, run.\n\n"
+        "The client verbs (status/health/start/stop/restart/logs) talk to the "
+        "running supervisor over its control socket; `install` sets up the "
+        "systemd user unit and per-component venvs, and `run` starts the "
+        "supervisor itself in the foreground. Every client verb accepts "
+        "`--socket` to point at a non-default control socket (tests, "
+        "multi-instance machines)."
     ),
     no_args_is_help=True,
 )
@@ -175,7 +182,13 @@ def status(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Show the component state tree (or one component)."""
+    """Show the component state tree (or one component).
+
+    Prints the live state (running/stopped/failed plus PID and uptime where
+    available) as JSON for every installed component, or only the one named
+    as the argument. Requires the supervisor to be up (`vesma service run`);
+    exits 1 with a hint when the control socket does not answer.
+    """
     result = _with_client(socket, lambda client: client.status(component))
     console.print_json(json.dumps(result))
 
@@ -187,7 +200,13 @@ def health(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Show global and per-component health (or one component)."""
+    """Show global and per-component health (or one component).
+
+    Health is the supervisor's own verdict (healthz semantics): OK when the
+    component process answers its readiness probe, DEGRADED/FAIL with the
+    reason otherwise. Use it after `start`/`restart` to confirm the component
+    actually came up, or pass a component name to check just that one.
+    """
     result = _with_client(socket, lambda client: client.health(component))
     console.print_json(json.dumps(result))
 
@@ -199,7 +218,13 @@ def start(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Start a component (idempotent: already-running is not an error)."""
+    """Start a component (idempotent: already-running is not an error).
+
+    Asks the supervisor to launch the component from its installed manifest;
+    an already-running component is reported as-is instead of failing, so
+    start scripts can run this unconditionally. Prints the resulting state;
+    check `vesma service health` afterwards to confirm readiness.
+    """
     state = _with_client(socket, lambda client: client.start(component))
     console.print(f"{component}: {state}")
 
@@ -214,7 +239,13 @@ def stop(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Stop a component (idempotent: already-stopped is not an error)."""
+    """Stop a component (idempotent: already-stopped is not an error).
+
+    Stops gracefully first (SIGTERM, short grace period); `--force` skips the
+    graceful phase and SIGKILLs after a short delay — for a wedged process
+    only, since in-flight work is lost. An already-stopped component is
+    reported as-is instead of failing.
+    """
     state = _with_client(socket, lambda client: client.stop(component, force=force))
     console.print(f"{component}: {state}")
 
@@ -226,7 +257,13 @@ def restart(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Restart a component (not idempotent by contract)."""
+    """Restart a component (not idempotent by contract).
+
+    A restart is a real stop-then-start cycle, not a no-op replay: unlike
+    start/stop it is NOT idempotent — a retry after a lost response performs
+    a second restart. Use it to reload a component after config or manifest
+    changes; confirm readiness with `vesma service health`.
+    """
     state = _with_client(socket, lambda client: client.restart(component))
     console.print(f"{component}: {state}")
 
@@ -245,7 +282,13 @@ def logs(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Show recent component logs; --follow streams until the source stops."""
+    """Show recent component logs; --follow streams until the source stops.
+
+    Prints the last `--tail` lines (default 100, capped at 1000) from the
+    component's log source, or keeps streaming new lines with `--follow`/`-f`
+    until the component stops. Pass a component name from the manifest
+    registry; `--socket` overrides the control socket.
+    """
     if follow:
         _with_client(
             socket,
