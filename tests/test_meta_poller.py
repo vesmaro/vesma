@@ -577,6 +577,55 @@ class TestPollPeer:
         result = run(MetaPoller(store, make_federation(mesh)).poll_peer("peer-a"))
         assert result.error is not None and "timed out" in result.error
 
+    def test_timeout_kill_race_with_external_reaper_is_honest_error(
+        self, store: SQLiteStore, mesh: MeshDouble, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Issue #510 side note: under ``service run`` the supervisor's
+        reaper thread drains ``waitpid(-1, WNOHANG)`` and may reap the
+        timed-out child before the poller's kill — the OLD bare
+        ``proc.kill()`` surfaced ``ProcessLookupError("[Errno 3] No such
+        process")`` as a bogus peer error. The kill is now best-effort:
+        the honest ``timed out`` error stands either way, no ESRCH
+        escapes."""
+        import threading
+
+        import vesmaro.meta_poller as mp
+
+        # A supervisor-shaped reaper: drain waitpid(-1, WNOHANG) in a loop.
+        reaping = threading.Event()
+
+        def reaper() -> None:
+            while not reaping.is_set():
+                try:
+                    pid, _status = os.waitpid(-1, os.WNOHANG)
+                except ChildProcessError:
+                    continue
+                if pid == 0:
+                    reaping.wait(0.01)
+                    continue
+                return  # a child was reaped — the race materialized
+
+        thread = threading.Thread(target=reaper, daemon=True)
+        thread.start()
+        try:
+            monkeypatch.setattr(mp, "META_POLL_PAGE_TIMEOUT_S", 0.3)
+            mesh.set_peer("peer-a", {"sleep_s": 5, "pages": []})
+            result = run(MetaPoller(store, make_federation(mesh)).poll_peer("peer-a"))
+        finally:
+            reaping.set()
+            thread.join(timeout=2)
+            # Drain anything left behind so the suite process stays
+            # zombie-free (pytest here is not a PID 1 with an auto-reaper).
+            while True:
+                try:
+                    pid, _status = os.waitpid(-1, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if pid == 0:
+                    break
+        assert result.error is not None and "timed out" in result.error
+        assert "No such process" not in (result.error or "")
+
 
 class TestTickLoop:
     def test_peer_error_does_not_kill_the_tick(self, store: SQLiteStore, mesh: MeshDouble) -> None:

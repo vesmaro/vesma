@@ -360,7 +360,9 @@ def run(
             "the in-process core is always single-process (workers=1)"
         )
 
-    app = ServiceApp(manifests, socket_path=socket, core_bind=(host, port), log=logger)
+    app = ServiceApp(
+        manifests, socket_path=socket, core_bind=(host, port), log=logger, config=config
+    )
     try:
         outcome = app.bind()
     except Exception as exc:

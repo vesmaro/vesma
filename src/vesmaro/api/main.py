@@ -220,6 +220,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         auth_store.close()
         if _manager is not None:
             _manager.close()
+        # Null the singleton WITH the close: get_manager() must never hand
+        # out a CLOSED manager to a later user (uvicorn in-process shutdown
+        # → a next lifespan cycle, incl. ServiceApp's shared mesh helper,
+        # issue #510). Same semantics as cli._manager.reset_manager().
+        globals()["_manager"] = None
 
 
 app = FastAPI(
