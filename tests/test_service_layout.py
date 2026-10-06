@@ -183,6 +183,51 @@ class TestRuntimeResolution:
         resolution = layout.resolve_runtime_dir()
         assert resolution.used_fallback is True
 
+    def test_set_but_unwritable_runtime_dir_falls_back_with_warning(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, caplog
+    ):
+        """Issue #509: ``ProtectHome=read-only`` leaves XDG_RUNTIME_DIR SET
+        but the mount read-only — os.access alone cannot see the EROFS, so
+        the resolution must PROBE-create a file and take the §3.6 fallback
+        with the structured warning instead of returning an unwritable dir."""
+        xdg_runtime = isolated_home / ".run"
+        xdg_runtime.mkdir(mode=0o555)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(xdg_runtime))
+        with caplog.at_level(logging.WARNING, logger="vesmaro.service.layout"):
+            resolution = layout.resolve_runtime_dir()
+        assert resolution.path == isolated_home / ".local" / "state" / "vesma" / "run"
+        assert resolution.used_fallback is True
+        assert any("not writable" in record.message for record in caplog.records)
+        # The unwritable candidate was NOT adopted.
+        assert not (xdg_runtime / "vesma" / ".vesma-write-probe-*").exists()
+
+    def test_writable_runtime_dir_probe_passes(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The happy path still probes (create+unlink one file) and returns
+        the canonical candidate."""
+        xdg_runtime = tmp_path / "run"
+        xdg_runtime.mkdir()
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(xdg_runtime))
+        resolution = layout.resolve_runtime_dir()
+        assert resolution.path == xdg_runtime / "vesma"
+        assert resolution.used_fallback is False
+        assert (xdg_runtime / "vesma").is_dir()  # candidate materialized
+        probes = [
+            p for p in (xdg_runtime / "vesma").iterdir() if p.name.startswith(".vesma-write-probe-")
+        ]
+        assert probes == []  # the probe file is always cleaned
+
+    def test_runtime_candidate_isolated_xdg_roots(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The fallback honors XDG_STATE_HOME (tmp isolation), not only HOME."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        monkeypatch.setenv("XDG_RUNTIME_DIR", "")
+        resolution = layout.resolve_runtime_dir()
+        assert resolution.path == tmp_path / "state" / "vesma" / "run"
+        assert resolution.used_fallback is True
+
 
 class TestResolveComponentPaths:
     def test_table_matches_layout_3_4(

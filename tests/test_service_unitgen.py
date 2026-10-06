@@ -51,6 +51,10 @@ SPECS_EXAMPLE = (
 _MUST_ACTIVE = {
     # [Service]
     "Type": "exec",
+    # Issue #509: the control-socket runtime dir must be systemd-created
+    # writable even under ProtectSystem=strict + ProtectHome=read-only.
+    "RuntimeDirectory": "vesma",
+    "RuntimeDirectoryMode": "0700",
     "KillSignal": "SIGTERM",
     "KillMode": "mixed",
     "TimeoutStopSec": "90",

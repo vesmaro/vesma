@@ -1600,17 +1600,14 @@ def serve(
     # vesma-mesh/test/integration/serve-with-mesh.py. Additive: with
     # ``mesh.enabled: false`` (the default) the command behaves exactly
     # as before (uvicorn only).
+    # Issue #510: the wiring itself lives in the SHARED helper
+    # (backend.start_mesh_legs) so `service run` reaches the identical
+    # unix+tcp parity without duplicating the manager-singleton seeding.
     mesh_server = None
     if settings.mesh.enabled:
-        from vesmaro.api.main import get_manager as get_api_manager
-        from vesmaro.mesh_server import MeshServer
+        from vesmaro.service.backend import start_mesh_legs
 
-        # Seed the api.main singleton from serve's own --config so the
-        # MeshServer shares the manager with the in-process HTTP app
-        # (uvicorn workers=1) instead of building a second one.
-        mesh_manager = get_api_manager(config)
-        mesh_server = MeshServer(settings.mesh.socket_path, mesh_manager, settings)
-        mesh_server.start()  # logs: mesh server listening on <path>
+        mesh_server = start_mesh_legs(settings, config)
 
     # S2 phase 2: the meta poller starts in the FastAPI lifespan, which
     # is PER WORKER — with uvicorn workers > 1 every worker polls. The
@@ -1637,7 +1634,9 @@ def serve(
         # drains (2s grace, matching the reference wiring) and removes
         # its socket file. Also covers uvicorn startup failures.
         if mesh_server is not None:
-            mesh_server.stop(grace=2.0)
+            from vesmaro.service.backend import stop_mesh_legs
+
+            stop_mesh_legs(mesh_server, grace=2.0)
 
 
 # ── fetch (S2 lazy fetch) ─────────────────────────────────────────────────────

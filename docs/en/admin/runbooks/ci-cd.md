@@ -16,7 +16,7 @@ every pull request targeting `main`, and on a weekly drift check
 | Job | Runner | Purpose |
 |---|---|---|
 | `verify` | `ubuntu-latest`, Python 3.11 / 3.12 / 3.13 matrix | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and `vesma --help` works in-image |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and the CLI works in-image (today the legacy hook `mnemos --help`) |
 
 The `verify` job is the **required status check** for `main` (see
 [Branch protection](#branch-protection)).
@@ -31,13 +31,13 @@ Run the same gates locally before pushing to save CI minutes:
 cd /path/to/vesma   # repo root
 source .venv/bin/activate
 
-ruff check src/ tests/                                # lint
-ruff format --check src/ tests/                       # format
-mypy --strict src/vesmaro/                             # types
+ruff check .                                          # lint (CI runs the repo root)
+ruff format --check .                                 # format
+mypy --strict src/vesmaro/ src/mnemos/                # types (both packages)
 bandit -r src/ -f json -o bandit-report.json          # security (static)
-pip-audit --ignore-vuln CVE-2026-45829                # security (deps)
+pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146   # security (deps; two ignores, see dependency-updates.md)
 pytest tests/ -q --tb=short                           # tests
-pytest --cov=src/vesma --cov-fail-under=80 tests/ -q # coverage gate
+pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing tests/ -q   # coverage gate
 ```
 
 The single-shot equivalent:
@@ -52,25 +52,28 @@ patch version, OS libs (e.g. sqlite), or pip resolver behavior.
 
 ---
 
-## Reproducing CI locally with `act`
+## Reproducing CI locally
 
-[`act`](https://github.com/nektos/act) runs GitHub Actions workflows in
-Docker locally. It will not be byte-identical to GitHub-hosted runners
-(it uses a smaller base image), but it catches most workflow-syntax
-mistakes and dependency-resolution issues before you push.
+**The primary local path is `scripts/local-ci.sh`** (`make local-ci` /
+`make local-ci-build`): a byte-for-byte replica of the ci.yml `verify` job —
+lint, format, mypy, bandit, pip-audit (same ignore flags), pytest, the
+coverage gate and doctor; `--build` adds the release.yml wheel/sdist build.
+GitHub Actions is billing-locked (#117), so merge and release gates close
+through this script; once Actions resume it remains as a fast pre-push
+sanity check.
+
+A local image build with smoke (what the `build-container` job does — the
+legacy `mnemos --help` hook inside the image):
 
 ```bash
-# Install
-brew install act              # macOS
-sudo apt install act          # Debian/Ubuntu (often older — prefer binary)
-
-# Default runner is a small image; use 'medium' for closer parity:
-act -j verify --matrix python-version:3.12
+buildah bud -t mnemos:test .
+buildah from --name vesma-test mnemos:test
+buildah run vesma-test -- mnemos --help
 ```
 
-If `act` fails on the `build-container` job, run the same steps
-manually — `buildah` is available from `apt` on most distros and the
-smoke test is just `vesma --help` inside a built image.
+[`act`](https://github.com/nektos/act) is the alternative for running the
+workflow file in Docker once Actions resume; while billing is locked, runs
+go through `local-ci.sh` only.
 
 ---
 
@@ -173,11 +176,13 @@ runners. Steps:
 
 1. `apt-get install buildah`
 2. `buildah bud -t mnemos:test .` — builds the `Containerfile`
-3. `buildah from --name vesma-test mnemos:test` — starts a container
-4. `buildah run vesma-test -- python --version` — smoke test
+3. `buildah from --name mnemos-test mnemos:test` — starts a container
+4. `buildah run mnemos-test -- mnemos --help` — smoke test (plus Python version printout)
 
-> The smoke step runs `vesma --help` (plus a Python version print) inside
+> The smoke step runs the CLI (plus a Python version print) inside
 > the built image, so it validates the CLI entrypoint, not just the base image.
+> The name `mnemos` is the legacy entry-point hook still shipped in the image
+> (dual period until 6.0); the canonical CLI is `vesma`.
 
 If the container job fails, inspect the log for:
 
@@ -227,10 +232,13 @@ lint/format/type/security block and before the test step. The
 convention:
 
 1. Use `source .venv/bin/activate &&` so the step runs in the
-   project venv (uv-installed deps live there).
-2. Cache nothing — let `setup-python@v5` cache `pip` deps at the
-   cache step. The workflow already pins to the right `pyproject.toml`
-   extras, so adding the tool means adding it to `[project.optional-dependencies].dev`.
+   project venv (uv-installed deps live there; the venv is created by the
+   `uv venv` CI step — install flow only, no manual venvs).
+2. pip caching is already enabled on the `setup-python` step
+   (`cache: pip`). The workflow pins ruff (`ruff>=0.15,<0.16`) to match
+   the local `make verify`, so adding a tool means editing the
+   `[project.optional-dependencies].dev` extras plus, if needed, a
+   synced CI-side pin.
 3. If the step produces a report (like `bandit-report.json`), upload
    it as an artifact with the `if: failure()` guard so the artifact
    only appears on failure.
@@ -250,15 +258,16 @@ before merging.
 
 - **CD / deploy** — the release pipeline lives in
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
-  a `v*.*.*` tag builds the wheel/sdist and attaches them to the GitHub
-  Release, and pushes `ghcr.io/vesmaro/vesma:$VERSION` + `:latest`
-  (registry corrected from the pre-rebrand `korrnals` name). The
+  a `v*.*.*` tag is supposed to build the wheel/sdist, the GitHub Release
+  and the `ghcr.io/vesmaro/vesma:$VERSION` + `:latest` image (registry
+  corrected from the pre-rebrand `korrnals` name); the `release-complete`
+  job fails the run unless every piece lands. The
   workflow is billing-locked (#117) and does not fire — the operative
   release train is the local one: `scripts/pypi-publish.sh --publish`
-  with its mandatory image phase (see
-  [`pypi-publish.md`](pypi-publish.md), "Container image").
-  PyPI upload is run separately per [`pypi-publish.md`](pypi-publish.md);
-  container use is covered by [`container-deployment.md`](container-deployment.md).
+  with its mandatory image phase (`scripts/image-publish.sh`; see
+  [`pypi-publish.md`](pypi-publish.md), "Container image"), while
+  `scripts/local-release.sh` is the deprecated fallback.
+  Container use is covered by [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — not needed at this scale. GitHub-hosted
   `ubuntu-latest` is fast enough and the concurrency group keeps
   costs in check.

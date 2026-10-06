@@ -357,6 +357,62 @@ class CoreStartupError(Exception):
     """The embedded in-process core failed to start (fail-fast, SL §3.1)."""
 
 
+class MeshLegError(Exception):
+    """The mesh (MnemosCore gRPC) server failed to start (fail-fast parity
+    with serve(); the mnemos-mesh Go node degrades without the leg)."""
+
+
+def start_mesh_legs(
+    settings: Any,
+    config_path: str | None = None,
+    *,
+    log: logging.Logger | None = None,
+) -> Any | None:
+    """Shared MeshServer wiring for ``serve`` AND ``service run`` (SL §3.1
+    parity, issue #510): when ``settings.mesh.enabled``, build the
+    :class:`MeshServer` over the api manager SINGLETON (so the mesh, the
+    HTTP app and the in-process core share one manager) and start it —
+    unix socket (always) + the mTLS TCP leg when ``mesh.tcp.enabled``.
+
+    Returns the started server (drain via :func:`stop_mesh_legs`), or
+    ``None`` when the mesh is disabled (the caller's wiring is additive,
+    byte-identical to the pre-#510 shape). A failed TCP leg raises
+    :class:`MeshLegError` — the server never comes up half-alive.
+    """
+    if not settings.mesh.enabled:
+        return None
+    log = log or logger
+    try:
+        from vesmaro.api.main import get_manager as get_api_manager
+        from vesmaro.mesh_server import MeshServer
+
+        manager = get_api_manager(config_path)
+        server = MeshServer(settings.mesh.socket_path, manager, settings)
+        server.start()
+    except MeshLegError:
+        raise  # mesh_server's own fail-fast type: propagate verbatim
+    except Exception as exc:
+        raise MeshLegError(
+            f"mesh server failed to start on {settings.mesh.socket_path}: {exc}"
+        ) from exc
+    log.info(
+        "mesh legs listening (unix: %s%s)",
+        settings.mesh.socket_path,
+        f", tcp: {settings.mesh.tcp.bind}:{server.tcp_bound_port}"
+        if settings.mesh.tcp.enabled and server.tcp_bound_port is not None
+        else "",
+    )
+    return server
+
+
+def stop_mesh_legs(server: Any | None, *, grace: float = 2.0) -> None:
+    """Drain + remove the socket of the shared mesh leg (serve()'s finally
+    semantics, grace=2.0); a ``None`` leg is a no-op."""
+    if server is None:
+        return
+    server.stop(grace=grace)
+
+
 class ServiceApp:
     """The ``vesma service run`` composition: supervisor + control socket +
     in-process core, one process (SL §3.1).
@@ -387,15 +443,18 @@ class ServiceApp:
         sink: Logsink | None = None,
         journal: Any | None = None,  # HistoryJournal — typed lazily (import cycle)
         log: logging.Logger | None = None,
+        config: str | None = None,
     ) -> None:
         self._log = log or logger
         self._with_core = with_core
         self._core_bind = core_bind
+        self._config = config
         self._exit_code = 0
         self._finalized = False
         self._core_server: Any | None = None  # uvicorn.Server (lazy import)
         self._core_thread: threading.Thread | None = None
         self._accept_thread: threading.Thread | None = None
+        self._mesh_server: Any | None = None  # MeshServer (issue #510, lazy import)
 
         names = list(manifests)
         self.buffer = ComponentLogBuffer(names)
@@ -441,10 +500,36 @@ class ServiceApp:
                 self.server.stop()  # accept loop exits → socket file cleaned
                 raise
         self.supervisor.start()
+        self._start_mesh_legs()
         threading.Thread(target=self._watch_core, name="vesma-core-watcher", daemon=True).start()
         threading.Thread(
             target=self._watch_supervisor, name="vesma-shutdown-watcher", daemon=True
         ).start()
+
+    def _start_mesh_legs(self) -> None:
+        """Issue #510 (SL §3.1 parity): the in-process core is the SAME app
+        serve() runs — its mesh legs (unix socket + tcp) come up here, in
+        the service-run process, AFTER the supervisor (children must not
+        race the core's manager availability).
+
+        Settings are re-read from the api manager (the singleton seeded by
+        the core's own load_settings) when a config path was passed; an
+        explicit ``enabled`` probe reads the SAME config the core uses —
+        one settings source, no drift. A failed leg is core DEATH under
+        the SL §3.1 fail-fast contract: supervisor shutdown + exit 1.
+        """
+        from vesmaro.config import load_settings
+
+        settings = load_settings(self._config)
+        try:
+            self._mesh_server = start_mesh_legs(settings, self._config, log=self._log)
+        except MeshLegError as exc:
+            self._log.error("mesh legs failed to start — fail-fast (SL §3.1): %s", exc)
+            self._exit_code = 1
+            self.server.stop()
+            self._finalized = True
+            self.supervisor.shutdown()
+            raise CoreStartupError(str(exc)) from exc
 
     def wait(self) -> int:
         """Block until the service stopped; finalize and return the exit
@@ -552,6 +637,11 @@ class ServiceApp:
         server = self._core_server
         if server is not None:
             server.should_exit = True
+        # Issue #510: the shutdown watcher races _finalize on teardown —
+        # drop the mesh legs at FIRST sight of shutdown too (stop is
+        # idempotent: _finalize's stop_mesh_legs becomes a no-op).
+        stop_mesh_legs(self._mesh_server, grace=2.0)
+        self._mesh_server = None
 
     def _finalize(self) -> int:
         if self._finalized:
@@ -559,6 +649,8 @@ class ServiceApp:
         self._finalized = True
         self.server.stop()
         code = self.supervisor.shutdown()  # reverse-topological stop + reap
+        stop_mesh_legs(self._mesh_server, grace=2.0)  # issue #510: drain the legs LAST-wired
+        self._mesh_server = None
         server = self._core_server
         thread = self._core_thread
         if server is not None and thread is not None:

@@ -10,14 +10,19 @@ var = default) plus the two file-mode primitives the whole wave builds on:
 
 ``resolve_component_paths`` produces the §3.4 placeholder expansion table
 (``{config_path}`` / ``{data_dir}`` / ``{runtime_dir}`` / ``{venv_bin}``).
-Runtime resolution warns when ``XDG_RUNTIME_DIR`` is empty and falls back
-to ``~/.local/state/vesma/run/`` (§3.6). The system profile is deferred
-(spec §3.3, v2) and deliberately absent here.
+Runtime resolution verifies the candidate is WRITABLE with a probe (a
+stale-socket dir, an EROFS mount or ``ProtectHome=read-only`` can leave
+``$XDG_RUNTIME_DIR`` set but unwritable — ``os.access`` cannot see mount
+flags); an unwritable or empty ``$XDG_RUNTIME_DIR`` falls back to
+``~/.local/state/vesma/run/`` (§3.6) with a WARN. The system profile is
+deferred (spec §3.3, v2) and deliberately absent here.
 """
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import errno
 import logging
 import os
 import stat
@@ -119,7 +124,8 @@ def history_dir() -> Path:
 
 
 def run_fallback_dir() -> Path:
-    """``~/.local/state/vesma/run/`` — runtime fallback when XDG_RUNTIME_DIR is empty."""
+    """``~/.local/state/vesma/`` — runtime fallback when ``$XDG_RUNTIME_DIR``
+    is empty OR unwritable (layout §3.6)."""
     return state_root() / "run"
 
 
@@ -134,15 +140,55 @@ class RuntimeResolution:
     used_fallback: bool
 
 
+def _dir_is_writable(path: Path) -> bool:
+    """True when ``path`` admits creating + deleting a file NOW.
+
+    Defense-in-depth (issue #509): ``os.access`` tests the DAC bits only —
+    a read-only bind mount (``ProtectHome=read-only`` makes ``/run/user``
+    RO inside the unit, a stale/foreign-owned directory, a full tmpfs)
+    fails the write() itself. The probe is one 0-byte file created and
+    unlinked under a unique name; any OSError means "not writable".
+    """
+    if not path.is_dir():
+        return False
+    probe = path / f".vesma-write-probe-{os.getpid()}"
+    try:
+        probe.touch(mode=0o600)
+    except OSError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            probe.unlink()
+    return True
+
+
 def resolve_runtime_dir() -> RuntimeResolution:
     """``${XDG_RUNTIME_DIR}/vesma/``, or the state/run fallback + WARN.
 
-    An empty ``XDG_RUNTIME_DIR`` takes the fallback branch and emits one
-    structured warning line (layout §3.6, LY-11).
+    An empty ``XDG_RUNTIME_DIR`` takes the fallback branch (LY-11). A SET
+    but unwritable ``XDG_RUNTIME_DIR`` also takes the fallback (issue
+    #509: ``ProtectHome=read-only`` makes ``/run/user`` read-only inside
+    the unit while the variable is still set — binding the control socket
+    there is a fatal EROFS). Both take ONE structured warning line; the
+    fallback restores tmpfs-less but WORKABLE semantics instead of a
+    crash loop.
     """
     value = os.environ.get("XDG_RUNTIME_DIR", "")
     if value.strip():
-        return RuntimeResolution(Path(value) / "vesma", used_fallback=False)
+        candidate = Path(value) / "vesma"
+        try:
+            _ensure_runtime_candidate(candidate)
+        except OSError:
+            fallback = run_fallback_dir()
+            logger.warning(
+                "layout: %s is not writable (%s) — runtime falls back to %s "
+                "(tmpfs semantics lost; specs/layout/v1 §3.6, issue #509)",
+                candidate,
+                "probe failed",
+                fallback,
+            )
+            return RuntimeResolution(fallback, used_fallback=True)
+        return RuntimeResolution(candidate, used_fallback=False)
     fallback = run_fallback_dir()
     logger.warning(
         "layout: XDG_RUNTIME_DIR is empty — runtime falls back to %s "
@@ -150,6 +196,21 @@ def resolve_runtime_dir() -> RuntimeResolution:
         fallback,
     )
     return RuntimeResolution(fallback, used_fallback=True)
+
+
+def _ensure_runtime_candidate(candidate: Path) -> None:
+    """Make the candidate existing + writable or raise ``OSError``.
+
+    Creates the ``vesma`` subdirectory when missing (0700) and runs the
+    writability probe against the candidate itself — the probe's OSError
+    is the honest EROFS/permission verdict.
+    """
+    with contextlib.suppress(FileExistsError):
+        candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not _dir_is_writable(candidate):
+        raise OSError(
+            errno.EROFS, "runtime candidate is not writable (writability probe)", str(candidate)
+        )
 
 
 # ── §3.9 cache ────────────────────────────────────────────────────────
