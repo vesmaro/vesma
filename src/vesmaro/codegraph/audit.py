@@ -45,12 +45,17 @@ logger = logging.getLogger(__name__)
 #: the refusal reason rides the row's ``reason`` field, matching the
 #: ``auto-register-capped`` precedent (a refusal the operator cannot
 #: see is a silent scope event).
+#: ``search-walk`` joined in PG-1 M2 (ADR-0038 conditions 7-8): every
+#: search_walk execution writes its OWN row with the details (nodes /
+#: edges / k / truncated) PLUS the token-economics pair ``out_tokens``
+#: and ``avoided_bytes`` — the walk prices itself from day one.
 AUDIT_ACTIONS = (
     "index",
     "reindex",
     "delete",
     "snippet-read",
     "graph-read",
+    "search-walk",
     "auto-register",
     "auto-register-reused",
     "auto-register-capped",
