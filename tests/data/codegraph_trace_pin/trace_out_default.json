@@ -1,0 +1,37 @@
+{
+  "project": "pinproj",
+  "start": "Derived",
+  "depth": 2,
+  "nodes": [
+    {
+      "id": "7:pinproj#app.py#Derived#3",
+      "qname": "Derived",
+      "kind": "Class",
+      "path": "app.py",
+      "start_line": 3,
+      "end_line": 4,
+      "depth": 0
+    },
+    {
+      "id": "7:pinproj#pkg/helper.py#Base#1",
+      "qname": "Base",
+      "kind": "Class",
+      "path": "pkg/helper.py",
+      "start_line": 1,
+      "end_line": 3,
+      "depth": 1
+    }
+  ],
+  "edges": [
+    {
+      "from": "7:pinproj#app.py#Derived#3",
+      "to": "7:pinproj#pkg/helper.py#Base#1",
+      "kind": "INHERITS",
+      "provenance": "tree-sitter"
+    }
+  ],
+  "truncated": false,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00"
+}
