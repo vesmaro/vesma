@@ -2199,7 +2199,7 @@ The tail is one appended `TextContent` after the handler (never inline, lane=awa
 | `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. W1 additions: the optional `agent` argument on `mnemos_search` / `mnemos_recall_context` feeds the heartbeat identity (the most frequent calls used to stay identity-less), and the hooks channel (`mnemos_hooks` / `POST /hooks/{action}`) composes awareness by DEFAULT — see `include_awareness` above. |
 | `on` | yes | yes | yes | Wave 2: the default flips only after the wave 0/1 gates close green. |
 
-Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
+Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The operator CLI is the canonical way to switch the mode — `vesma awareness set <mode>` (validated write into the resolved config file) and `vesma awareness get` (raw vs effective value); `vesma awareness stats` reads the wave-0 funnel from the metrics sidecar without raw SQL. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
 
 ### The envelope (canary/on)
 

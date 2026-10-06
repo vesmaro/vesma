@@ -2365,6 +2365,16 @@ from vesmaro.cli.service import service_app  # noqa: E402
 
 app.add_typer(service_app, name="service")
 
+# ── awareness (ADR-0035 operator surface, board card vesma-ops-mode-ux) ──
+#    get/set — the heartbeat mode switch in the resolved config file (the
+#    manual-YAML + blind-restart path stops being the documented way);
+#    stats — the wave-0 funnel read off the metrics sidecar without
+#    operator SQL.
+
+from vesmaro.cli.awareness_cmd import awareness_app  # noqa: E402
+
+app.add_typer(awareness_app, name="awareness")
+
 
 def cli_main() -> None:
     """Console-script entry: time the whole CLI invocation as one verb.

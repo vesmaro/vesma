@@ -46,6 +46,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`sync`](sync.md) | Federation batch sync export / import (dedicated page) |
 | [`meta-poll`](#meta-poll) | Federation metadata poll: run one poller pass manually (S2 phase 2) |
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
+| [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
 > The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. The `mnemos:` prefix in tag namespaces is a data contract unchanged by the rebrand (6.0 decision) — renames of the project namespace do not touch it.
 
@@ -1069,6 +1070,97 @@ vesma scanner run --full
 
 ---
 
+## `awareness`
+
+Operator surface for the native awareness heartbeat (ADR-0035): view and
+switch the delivery mode, and read the wave-0 gate metrics from the metrics
+sidecar — no manual YAML edit, no raw SQL.
+
+### `awareness get`
+
+Show `awareness.native_heartbeat_mode` twice: the RAW value as written in
+the resolved config file, and the EFFECTIVE value (the settings the next
+server start will load — env overrides included). When the canonical env
+override `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE` is set, the output names
+it (`config file > env` per the dual-source precedence).
+
+```bash
+vesma awareness get
+#   config file: /home/you/.mnemos/config.yaml
+#   awareness.native_heartbeat_mode: shadow
+#   effective: shadow
+```
+
+### `awareness set`
+
+Switch the heartbeat mode end-to-end:
+
+```bash
+vesma awareness set shadow   # off | shadow | canary | on
+```
+
+The value is validated against the born-final mode ladder — an unknown
+value is refused with the allowed list and nothing is written. The write
+is atomic (tmp + rename) and preserves every other mapping in the file
+(missing `awareness:` section is created additively). Because a running
+server reads the config once at startup, the command always prints the
+restart note; when the `vesma service` supervisor answers on its control
+socket, the output names the exact restart verb.
+
+| Mode | Meaning (ADR-0035) |
+|------|--------------------|
+| `off` *(default)* | The kill switch — the contour is fully inert. |
+| `shadow` | Wave 0: compose + events in the metrics sidecar, nothing rendered. |
+| `canary` | Wave 1: the envelope renders as the last `TextContent`. |
+| `on` | Wave 2: full delivery. |
+
+### `awareness stats`
+
+Print the wave-0 gate metrics read from the `awareness_events` table of the
+metrics sidecar (`<data_dir>/metrics.sqlite`) through the sink's own
+connection — no raw SQL:
+
+| Output | Meaning |
+|--------|---------|
+| `tool_call (denominator)` | Every dispatched MCP call — the funnel denominator. |
+| `peer_write` | Write-class calls (the freshness numerator's start stamp). |
+| `delta_available` / `heartbeat_delivery` | Probe hits and delivered tails, with the calm/delta split. |
+| `heartbeat_suppressed` | Deliveries suppressed, broken down by reason (`rate_cap`, `probe_error`, …). |
+| `tail token cost` | Sum and mean estimated tail tokens over the window's deliveries (budget input). |
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--window-hours / -w` | `24` | Window in hours (1..2160). |
+| `--project / -p` | — | Scope the funnel to one project slug. |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### Example
+
+```bash
+vesma awareness stats
+# awareness heartbeat — wave-0 funnel (window 24h)
+#   tool_call (denominator): 812
+#   peer_write: 23
+#   delta_available: 9
+#   heartbeat_delivery: 9
+#     — state: calm 2 / delta 7
+#   heartbeat_suppressed: 0
+#   conflict_hint_emitted: 1
+#   tail token cost: sum 640 over 9 deliveries (mean ~71)
+#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+```
+
+A missing sidecar prints a hint line and exits 0 (a broken metrics plane
+must not make console reads fatal). Output is aggregates-only — identity
+slugs never print (zero peer content, ADR-0035 CWE-359 posture).
+
+### Related
+
+- Mode ladder semantics: [mcp-tools.md](mcp-tools.md#native-awareness-heartbeat-adr-0035)
+- Decision record: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
+
+---
+
 ## Exit codes
 
 | Code | Meaning |
@@ -1093,4 +1185,4 @@ The CLI does not return non-zero for "no results" — `vesma search` exits 0 wit
 
 ---
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-06_

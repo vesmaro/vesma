@@ -2215,7 +2215,7 @@ output_style:
 | `canary` | да | да | да | Волна 1: только машины команды, kill-switch наготове. Пополнение W1: опциональный аргумент `agent` у `mnemos_search` / `mnemos_recall_context` питает идентичность сердцебиения (самые частые вызовы раньше оставались без идентичности), а канал хуков (`mnemos_hooks` / `POST /hooks/{action}`) компонует awareness ПО УМОЛЧАНИЮ — см. `include_awareness` выше. |
 | `on` | да | да | да | Волна 2: дефолт переворачивается только после зелёных гейтов волн 0/1. |
 
-Канонический env-override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. Ручка rate-cap `awareness.heartbeat_rate_limit_per_minute` (по умолчанию 30, `0` отключает) ограничивает композиции на `(project, agent)` в минуту; превышение подавляет хвост с событием — никогда не ошибка.
+Канонический env-override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. Канонический способ переключить режим для оператора — CLI: `vesma awareness set <mode>` (валидированная запись в найденный конфиг-файл) и `vesma awareness get` (сырое vs эффективное значение); `vesma awareness stats` читает воронку волны-0 из metrics-sidecar без сырого SQL. Ручка rate-cap `awareness.heartbeat_rate_limit_per_minute` (по умолчанию 30, `0` отключает) ограничивает композиции на `(project, agent)` в минуту; превышение подавляет хвост с событием — никогда не ошибка.
 
 ### Конверт (canary/on)
 
