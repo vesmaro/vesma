@@ -209,6 +209,13 @@ def generate(
     lines.append(f"StartLimitBurst={START_LIMIT_BURST}")
     lines += ["", "[Service]"]
     lines.append(f"Type={UNIT_TYPE}")
+    # Issue #509: ProtectHome=read-only makes /run/user RO inside the unit
+    # namespace (systemd.exec(5)) — the canonical control-socket dir
+    # ${XDG_RUNTIME_DIR}/vesma must be systemd-CREATED writable:
+    # RuntimeDirectory= works even under ProtectSystem=strict +
+    # ProtectHome=read-only (it whitelists the dir it creates).
+    lines.append("RuntimeDirectory=vesma")
+    lines.append("RuntimeDirectoryMode=0700")
     lines.append(f"ExecStart={exec_start}")
     lines += [
         "# ExecStop is intentionally NOT generated: the default SIGTERM to the main",
