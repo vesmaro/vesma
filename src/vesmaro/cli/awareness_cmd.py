@@ -238,27 +238,6 @@ def _print_restart_note(config: str | None) -> None:
     :func:`vesmaro.cli.service._with_client`: that helper SPEAKS for every
     failure (red pre-flight banner) and ends with ``typer.Exit``, which a
     broad ``except`` here would swallow — the P2 finding of the 2026-10-06
-    review. A bare probe that returns None on any refusal keeps the quiet
-    dim-line fallback honest.
-    """
-    console.print(
-        "[yellow]note[/yellow] the new mode takes effect on the NEXT server start"
-        " (running processes read the config once at startup)"
-    )
-
-
-def _print_restart_note(config: str | None) -> None:
-    """The restart guard: a running server reads the config at startup only.
-
-    Probes the supervisor control socket (best-effort, no manager boot) —
-    when it answers, name the exact `vesma service restart` verb; either
-    way the note states the takes-effect-next-start rule (never silently
-    assume a restart happened — silent degradation is banned).
-
-    The probe deliberately does NOT go through
-    :func:`vesmaro.cli.service._with_client`: that helper SPEAKS for every
-    failure (red pre-flight banner) and ends with ``typer.Exit``, which a
-    broad ``except`` here would swallow — the P2 finding of the 2026-10-06
     review. The bare probe keeps the quiet dim-line fallback honest.
     """
     console.print(

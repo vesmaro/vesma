@@ -663,6 +663,7 @@ ADR-0023; после переустановки транспорт подтве�
 | Посмотреть все подкоманды CLI | [cli-reference.md](cli-reference.md) |
 | Посмотреть все MCP-инструменты | [mcp-tools.md](mcp-tools.md) |
 | Посмотреть все HTTP-эндпоинты | [http-api.md](http-api.md) |
+| Поставить движок на индексацию код-графа этого репозитория для поиска кода — репозиторий индексируется сам (блок `auto_index` конфига: авторегистрация + автом-переиндексация) | [project-graph.md](project-graph.md) |
 | Прочитать схему тегов | [tag-contract.md](tag-contract.md) |
 | Выполнить операционную задачу | [admin/runbooks/install.md](../admin/runbooks/install.md) |
 | Пересмотреть границы безопасности | [security.md](../admin/security.md) |
