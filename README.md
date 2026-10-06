@@ -48,7 +48,8 @@ closing of a window.
 
 ## 🚀 Quick start
 
-Three commands from an empty machine to an agent that remembers — and knows when to look.
+Four commands from an empty machine to a running, self-checking service with an agent
+that remembers — all driven by the `vesma` utility.
 
 ### 1 · Install the server
 
@@ -60,10 +61,13 @@ One package, everything included: the memory server, the `vesma` CLI, the REST A
 MCP server your agent harness talks to. The embedding model ships inside — search works fully
 offline, no API keys, nothing downloaded.
 
+Other channels: `uv tool install vesma` / `pipx install vesma` (isolated),
+`npm install -g @vesmaro/vesma` (npm), or the prebuilt image below.
+
 > ⚠️ **Names.** The product and the CLI are `vesma` (`pip install vesma`, PyPI slot `project/vesma`).
 > The pre-rebrand packages remain live until deprecation: `pip install mnemos-memory-server`
-> installs the same server under the legacy name (its legacy CLI spelling was `vesma`, now an
-> alias). The bare `pip install vesma` is an unrelated project — do not use it.
+> installs the same server under the legacy name, and `vesma-memory-server` is our live mirror
+> alias. The bare `pip install vesma` slot is ours — it is the primary channel.
 
 #### Or take the prebuilt image — Docker, Podman, or a Kubernetes cluster
 
@@ -106,10 +110,10 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # systemd user service (preferred for a long-running host)
 # legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
-# add the TOTP key to ~/.vesmaro.env (both env spellings), then:
-podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
-# quadlet derives the unit name from the file name — the unit is mnemos.service for now
-systemctl --user daemon-reload && systemctl --user start vesma
+# add the TOTP key to ~/.vesmaro.env (VESMA_API__TOTP_MASTER_KEY; 4.x images also accept the legacy MNEMOS_* spelling), then:
+podman pull ghcr.io/vesmaro/vesma:5.6.2
+# quadlet derives the unit name from the file name — the unit is mnemos.service until the rename
+systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
 ```
 
@@ -118,7 +122,20 @@ Both Podman recipes (quadlet + `podman kube play`):
 **[container deployment](docs/en/admin/runbooks/container-deployment.md)**.
 </details>
 
-### 2 · Connect your harness — and teach it to use memory
+### 2 · Deploy the service
+
+```bash
+vesma service install
+systemctl --user enable --now vesma.service
+```
+
+`install` packs the component manifests, data dirs, venvs and the systemd user unit
+(idempotent — re-running regenerates the artifacts; manual venv creation is not part of
+any workflow). `vesma service run` starts the supervisor in the foreground when systemd
+is not available. Check the live state with `vesma service status` and
+`vesma service health`.
+
+### 3 · Connect your harness — and teach it to use memory
 
 ```bash
 vesma integration setup
@@ -131,17 +148,19 @@ always-on instructions and memory skills, so the agent recalls at session start,
 before its context gets compacted, and treats memory as a priority instead of forgetting the
 tools exist.
 
-Running a harness that reads nothing standard? One paste block per harness:
+Manual MCP registration is cancelled — the utility is the only path. Running a harness that
+reads nothing standard? One paste block per harness:
 [Connect Vesma to any harness](integrations/mcp-presets.md).
 
-### 3 · Verify — then try it
+### 4 · Verify — then try it
 
 ```bash
 vesma doctor
 ```
 
-PASS / WARN / FAIL per check: store, config, MCP transport, harness registration (`--fix`
-repairs the common warnings). Then give it a memory:
+PASS / WARN / FAIL per check: store, config, MCP transport, harness registration
+(`vesma doctor fix` repairs the common warnings; `vesma doctor service` audits the
+service installation against the layout contract). Then give it a memory:
 
 ```bash
 vesma add "First memory — Vesma remembers across sessions" \
@@ -151,10 +170,11 @@ vesma search "remembers across sessions"
 
 That is the whole loop: **write, find, never lose it — and the agent knows when to look.**
 
-> 📘 **Want every detail?** The extended guide covers all install variants (`uv tool`, `pipx`,
-> CLI-only, external LLM extras, installer script, container), per-harness connection
-> walkthroughs, configuration, and troubleshooting:
-> **[Getting Started — the complete first run](docs/en/user/getting-started.md)**.
+> 📘 **Want every detail?** The extended guide covers the full lifecycle — all install
+> variants (`uv tool`, `pipx`, npm, container), service deployment, per-harness connection,
+> updates and the update timer, cleanup of legacy installations, configuration, and
+> troubleshooting:
+> **[Getting Started — the complete lifecycle](docs/en/user/getting-started.md)**.
 
 ---
 
@@ -219,7 +239,7 @@ pick the strongest one your harness supports:
 
 | Harness | Native deploy target | One-line MCP preset | Adapter template |
 |---------|----------------------|---------------------|------------------|
-| VS Code Copilot | `copilot` (+ prompts via `generic-copilot`) | [mcp-setup.sh](scripts/mcp-setup.sh) | ✓ |
+| VS Code Copilot | `copilot` (+ prompts via `generic-copilot`) | `vesma integration setup --target copilot` | ✓ |
 | Claude Code | via `agents` | [preset](integrations/mcp-presets.md#claude-code) | ✓ |
 | Cursor | `cursor` | [preset](integrations/mcp-presets.md#cursor) | ✓ |
 | Codex | via `agents` | [preset](integrations/mcp-presets.md#codex) | ✓ |
