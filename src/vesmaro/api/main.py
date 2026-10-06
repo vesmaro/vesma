@@ -1936,6 +1936,7 @@ class GraphSearchRequest(BaseModel):
     cursor: int = 0
     max_output_tokens: int | None = None
     include_signature: bool = False
+    walk_cursor: int = 0
 
 
 class GraphTraceRequest(BaseModel):
@@ -2056,6 +2057,7 @@ async def graph_search(req: GraphSearchRequest) -> dict[str, Any]:
             cursor=req.cursor,
             max_output_tokens=req.max_output_tokens,
             include_signature=req.include_signature,
+            walk_cursor=req.walk_cursor,
         )
     )
 

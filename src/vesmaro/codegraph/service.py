@@ -39,6 +39,7 @@ import weakref
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from vesmaro.codegraph import incremental as incremental_mod
@@ -52,6 +53,7 @@ from vesmaro.codegraph.walker import (
     WalkLimitError,
     validate_walk_limits,
     walk_bfs,
+    walk_quota,
 )
 from vesmaro.config import CodeGraphConfig
 from vesmaro.secrets_detector import detect_secrets, findings_by_pattern
@@ -60,6 +62,7 @@ from vesmaro.storage.code_graph_store import (
     NODE_KINDS,
     CodeGraphStore,
     bump_project_graph_epoch,
+    read_project_graph_epoch,
 )
 
 if TYPE_CHECKING:
@@ -91,6 +94,22 @@ TRACE_CANDIDATE_CAP = 10
 
 #: Search surface: hard row ceiling of ONE page regardless of budget.
 SEARCH_ROW_CAP = 200
+
+#: The M2 walk section (ADR-0038, card vesma-pg1-walk-m2-section).
+#: Default edge-kind filter of the walk: the structural kinds MINUS the
+#: pure-containment pairs (``CONTAINS_FILE``/``DEFINES``/``TESTS`` are
+#: file-shape edges the search results already describe; the walk is
+#: for CALLS/IMPORTS/INHERITS/USES/INVOKES/HANDLES — the navigation
+#: neighbourhood). ADR-0038 condition 2 keeps it a filter default, not
+#: a new vocabulary: the kinds are the store's CHECK-enforced set.
+SEARCH_WALK_EDGE_KINDS: tuple[str, ...] = (
+    "CALLS",
+    "IMPORTS",
+    "INHERITS",
+    "USES",
+    "INVOKES",
+    "HANDLES",
+)
 
 #: Sidecar schema version reported by ``get_graph_schema``. v2 (card
 #: vesma-graph-command-route-nodes): the ``Command``/``Route`` node
@@ -1012,6 +1031,7 @@ class CodeGraphService:
         cursor: int = 0,
         max_output_tokens: Any = None,
         include_signature: bool = False,
+        walk_cursor: int = 0,
     ) -> dict[str, Any]:
         """Substring search over name/qname/path; ranked rows under the
         token contract (exact name/qname hits outrank prefix hits,
@@ -1032,7 +1052,23 @@ class CodeGraphService:
         redacted through the same PG4 secrets detector as snippet
         issuance, poisoned paths (PG3) never issuing content. The
         ``fallback_used: true`` marker is present ONLY when the
-        fallback ran (shape policy: absent, never null/empty)."""
+        fallback ran (shape policy: absent, never null/empty).
+
+        M2 walk section (ADR-0038, behind ``code_graph.search_walk``,
+        default OFF): when the flag is on AND the symbol search found
+        hits, a two-level walk over the hits' neighbourhood (direction
+        in+out from every origin, default edge kinds CALLS/IMPORTS/
+        INHERITS/USES/INVOKES/HANDLES, quota ``k`` origins —
+        :func:`walker.walk_quota` of ``limit``) is answered as a
+        SEPARATE ``walk`` section — PG1 node rows only, never mixed
+        into ``results``, present ONLY when it fired (absent-when-
+        empty, the ``fallback_used`` precedent). The section obeys the
+        same token contract with its OWN budget over ``walk_cursor``
+        (a per-section cursor: ``walk.has_more`` + strictly advancing
+        ``walk.walk_cursor``); the payload carries the graph ``epoch``
+        (condition 6 — consumers invalidate on it; no TTL cache).
+        With the flag off the response is byte-identical to the pre-M2
+        shape (PGT pin fixture)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -1043,6 +1079,8 @@ class CodeGraphService:
             raise GraphToolError(f"kind must be one of: {', '.join(NODE_KINDS)}")
         if not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0:
             raise GraphToolError("cursor must be a non-negative integer")
+        if not isinstance(walk_cursor, int) or isinstance(walk_cursor, bool) or walk_cursor < 0:
+            raise GraphToolError("walk_cursor must be a non-negative integer")
         total = self._store.count_search_nodes(key, query, kind=kind)
         matches = self._store.search_nodes(
             key, query, kind=kind, limit=min(max(int(limit), 1), SEARCH_ROW_CAP) * 2
@@ -1068,6 +1106,23 @@ class CodeGraphService:
             for row in rows:
                 row.pop("signature", None)
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
+        # ── M2 walk section (ADR-0038 conditions 2/3/7/8) ────────────────────
+        # Fires ONLY behind code_graph.search_walk (default OFF) and ONLY
+        # on symbol hits — the literal leg never walks (no node ids to
+        # walk FROM). Flag-off path: this block is skipped entirely, the
+        # response below stays byte-identical to the pre-M2 shape (PGT
+        # pin fixtures, tests/data/codegraph_search_pin/).
+        walk_section: dict[str, Any] | None = None
+        if self._config.search_walk and not fallback_used:
+            walk_section = self._search_walk_section(
+                key,
+                rows,
+                limit=limit,
+                walk_cursor=walk_cursor,
+                max_output_tokens=max_output_tokens,
+                actor=actor,
+                sess=sess,
+            )
         # Card vesma-graph-audit-firstcall-marking: the FIRST search of a
         # task (actor+session scoped) is marked on its own audit row so
         # the graph-first share stays computable from graph_audit rows
@@ -1102,7 +1157,153 @@ class CodeGraphService:
         }
         if fallback_used:  # shape policy: present only when it ran
             payload["fallback_used"] = True
+        if walk_section is not None:  # shape policy: absent-when-empty
+            payload["walk"] = walk_section
         return payload
+
+    def _search_walk_section(
+        self,
+        key: str,
+        rows: list[dict[str, Any]],
+        *,
+        limit: int,
+        walk_cursor: int,
+        max_output_tokens: Any,
+        actor: str,
+        sess: str | None,
+    ) -> dict[str, Any] | None:
+        """The ADR-0038 M2 ``walk`` section: a two-level neighbourhood
+        walk from the ranked symbol hits, answered SEPARATELY — never
+        mixed into ``results`` (condition 2).
+
+        Origins: the quota ``k = min(ceil(limit/5), limit//2)`` top
+        ranked symbol rows (:func:`walker.walk_quota` — a pure function
+        of ``limit``, condition 3). Direction ``both`` (in+out legs from
+        every origin — «who calls X» AND «what does X call» in one
+        answer), the default edge kinds :data:`SEARCH_WALK_EDGE_KINDS`
+        (the structural navigation kinds), depth
+        :data:`walker.WALK_MAX_DEPTH` — every limit fail-closed. The
+        shared walker (:func:`walker.walk_bfs`) bounds each origin's
+        walk with its own caps (fanout 32, total work 512 — they stand
+        INDEPENDENTLY of ``k``, condition 3); per-origin results merge
+        deterministically in ranked-origin order, deduplicating node
+        ids (first visit wins, keep-the-minimum-depth-by-rank-policy)
+        and edge triples (first traverse wins).
+
+        Payload shape: PG1 ``node_row`` rows only (no signatures,
+        repo-relative paths — condition 4) + the origin list + the
+        traversed edges + ``truncated`` + the graph ``epoch``
+        (condition 6 — freshness rides the payload, consumers
+        invalidate on it; no TTL cache). The ``nodes`` rows ride the
+        token contract under a per-section budget with their own
+        ``walk_cursor``; a budget that cannot fit even one walk row
+        drops the WHOLE section (the enrichment must never break the
+        search that already succeeded — logged, audited absent, honest).
+        Returns ``None`` when the walk did not fire (no origins —
+        absent-when-empty shape policy)."""
+        origin_rows = [r for r in rows if r.get("match_kind") == "symbol" and r.get("id")]
+        try:
+            quota_k = walk_quota(min(max(int(limit), 1), SEARCH_ROW_CAP))
+        except WalkLimitError:
+            quota_k = 0
+        if not origin_rows or quota_k <= 0:
+            return None
+        origins = origin_rows[:quota_k]
+
+        visited: dict[str, dict[str, Any]] = {}
+        edge_seen: set[tuple[str, str, str]] = set()
+        edges: list[dict[str, Any]] = []
+        truncated = False
+        for origin in origins:
+            node = SimpleNamespace(
+                id=origin["id"],
+                qname=origin["qname"],
+                kind=origin["kind"],
+                path=origin["path"],
+                start_line=origin["start_line"],
+                end_line=origin["end_line"],
+            )
+            walk = walk_bfs(
+                self._store,
+                key,
+                origin["id"],
+                node,
+                depth=WALK_MAX_DEPTH,
+                direction="both",
+                edge_kinds=SEARCH_WALK_EDGE_KINDS,
+            )
+            truncated = truncated or walk["truncated"]
+            for row in walk["rows"]:
+                if row["id"] not in visited:
+                    visited[row["id"]] = row
+            for edge in walk["edges"]:
+                trip = (edge["from"], edge["to"], edge["kind"])
+                if trip not in edge_seen:
+                    edge_seen.add(trip)
+                    edges.append(edge)
+        if not visited:
+            return None
+        walk_rows = sorted(
+            visited.values(),
+            key=lambda r: (r["depth"], str(r["qname"])),  # the pinned walker sort
+        )
+        try:
+            walk_page, walk_has_more, walk_next_cursor = window_rows(
+                walk_rows, max_output_tokens, walk_cursor
+            )
+        except GraphBudgetError:
+            # The walk is an enrichment over an already-successful
+            # search: a budget that cannot fit even one walk row would
+            # refuse the WHOLE answer (window_rows raises) — the section
+            # is dropped instead (absent-when-empty, the enrichment must
+            # never break the search) and the failure is loud: logged +
+            # the audit row carries truncated=true, priced at zero.
+            logger.warning(
+                "codegraph: walk section dropped for project %s — budget cannot fit one walk row",
+                key,
+            )
+            truncated = True
+            walk_page, walk_has_more, walk_next_cursor = [], False, walk_cursor
+        # Token economics (conditions 7-8): the walk prices itself.
+        # out_tokens — the serialized cost of EVERYTHING the section
+        # issued (node page + edges) at the deterministic 4 B/token
+        # ceiling; avoided_bytes — the summed graph_files size of the
+        # DISTINCT source files behind the VISITED nodes (M2 policy:
+        # the full visit set, not just the page — the neighbourhood
+        # discovery is what the agent would have paid file-reading for;
+        # M3 may refine the baseline).
+        walk_bytes = sum(_row_bytes(r) for r in walk_page) + sum(_row_bytes(e) for e in edges)
+        file_sizes = {rec.path: rec.size or 0 for rec in self._store.get_file_records(key)}
+        avoided = sum(
+            file_sizes.get(str(r["path"]), 0) for r in visited.values() if r.get("path") is not None
+        )
+        self._audit.record(
+            key,
+            "search-walk",
+            actor,
+            session=sess,
+            reason="search",
+            details={
+                "k": len(origins),
+                "nodes": len(walk_rows),
+                "edges": len(edges),
+                "returned": len(walk_page),
+                "truncated": truncated,
+                "out_tokens": (walk_bytes + BYTES_PER_TOKEN - 1) // BYTES_PER_TOKEN,
+                "avoided_bytes": avoided,
+            },
+        )
+        return {
+            "origins": [origin["qname"] for origin in origins],
+            "k": len(origins),
+            "nodes": walk_page,
+            "edges": edges,
+            "truncated": truncated,
+            "epoch": read_project_graph_epoch(self._main, key),
+            "walk_cursor": walk_next_cursor,
+            "has_more": walk_has_more,
+            "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
+        }
 
     def _literal_fallback_rows(
         self, registered: _RegisteredRoot, query: str
@@ -1709,6 +1910,13 @@ class CodeGraphService:
                 "max_depth": TRACE_MAX_DEPTH,
                 "fanout_cap": TRACE_FANOUT_CAP,
                 "total_work_cap": TRACE_TOTAL_WORK_CAP,
+            },
+            "search_walk": {
+                "enabled": self._config.search_walk,
+                "max_depth": WALK_MAX_DEPTH,
+                "fanout_cap": WALK_FANOUT_CAP,
+                "total_work_cap": WALK_TOTAL_WORK_CAP,
+                "edge_kinds": list(SEARCH_WALK_EDGE_KINDS),
             },
         }
         if project_id is not None:
