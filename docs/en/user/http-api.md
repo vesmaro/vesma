@@ -46,6 +46,8 @@ The canonical API location is **`/api/v1/<path>`**. The root-level routes (`/mem
 
 No `Sunset` header is sent: RFC 8594 requires an absolute HTTP-date, and the removal date is not fixed yet — `Sunset` will be added once it is. Not deprecated: `/health` (liveness convention), the A2A Sessions API at `/v1` (its own versioned surface), and `/auth/*` (no `/api/v1` counterpart). In **Vesma 6.0** the routes move under `/api/v1` physically and the root aliases are removed — migrate before then.
 
+Breaking changes — alias removal, the physical move, and any request/response shape unification — are parked behind 6.0 and land in that one major (ArchCom canon, 2026-10-04). Note the documented near-duplicate: `GET /metrics` serves the legacy stats JSON body (see Health and metrics), while `GET /api/v1/metrics` serves the Prometheus text exposition. The ratified CLI/REST/MCP parity record — which surface exists for which user, and which gaps are `wontfix` — lives in [api-surface-parity.md](api-surface-parity.md).
+
 ---
 
 ## Status codes
