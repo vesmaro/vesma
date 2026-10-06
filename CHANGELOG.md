@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`vesma ingest url URL` / `vesma ingest file PATH` — external-content ingest as canonical subcommands (board card `vesma-cli-w3-ingest`, wave W3 of `vesma-cli-architecture-rework`; standing design rule: subcommand = function (WHAT), flag = configuration (HOW))** (`src/vesmaro/cli/main.py`; docs `docs/en|ru/user/cli-reference.md`, `docs/en|ru/architecture/overview.md`, `docs/en|ru/admin/runbooks/backup-restore.md`, `docs/en|ru/admin/security.md`, `docs/en|ru/user/mcp-tools.md`; tests `tests/test_cli.py` +15 new, 1 re-pinned) — `ingest url` fetches a web page, extracts the main text and saves it as a memory (the former `add --url` behavior; tags required per the tag contract); `ingest file` saves a local file's text content as a memory with `--title/--tags/--source` and supports `--dry-run` (context-filter preview without saving; bare `vesma ingest` shows the group help). Both canonical surfaces and the legacy flag forms share ONE save path in `main.py` — no logic duplication.
+
+### Changed
+
+- **`vesma add --url/--file` are hidden deprecated aliases (W3 alias cycle, design doc `docs/project/cli-architecture-rework.md` §2.5, §3; soft mode)** — the flag forms still work with identical behavior, but are hidden from `add --help` and print a one-line stderr hint (`[deprecated] \`vesma add --url URL\` is deprecated — use: vesma ingest url URL`; the W-C/W2 precedent, stdout stays clean for pipes/JSON). `vesma add <content>` remains the canonical quick-capture. Removal is not before 6.0. Historical edge semantics preserved: `add --url --dry-run` is still refused (exit 1), `add --file --dry-run` still previews; on the new `ingest file` surface a missing path is a clean exit-1 error instead of a traceback.
+
 ### Documentation
 
 - ADR-0037: PG-1 two-level graph walk ratified with 9 binding conditions — one BFS walker (`trace_path` byte-pinned), a separate `walk` section in `search_graph` behind `code_graph.search_walk` (default-off), quota `k(limit)` with work caps independent of it, epoch in the payload, `graph_audit` with token economics (`out_tokens`/`avoided_bytes`), baseline-before-implementation; slices M1–M3.

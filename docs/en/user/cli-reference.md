@@ -21,6 +21,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | Subcommand | Purpose |
 |------------|---------|
 | [`add`](#add) | Create a new memory entry |
+| [`ingest`](#ingest) | Ingest external content: `ingest url URL` / `ingest file PATH` |
 | [`search`](#search) | Hybrid FTS5 + vector search |
 | [`recall`](#recall) | List recent memories; `recall agent` scopes to one agent |
 | [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
@@ -100,7 +101,7 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 
 ## `add`
 
-Create a new memory entry.
+Create a new memory entry (quick-capture). File and URL ingest are subcommands now — see [`ingest`](#ingest) (CLI-architecture rework W3: a subcommand names the function, a flag only configures it).
 
 ```text
 vesma add [CONTENT] [OPTIONS]
@@ -111,12 +112,12 @@ vesma add [CONTENT] [OPTIONS]
 | `CONTENT` (positional) | — | Text to remember. If omitted, reads from stdin. |
 | `--title / -t` | auto | Short title. Auto-generated from content if omitted. |
 | `--tags / -T` | `""` | Comma-separated tags (e.g. `project:test,agent:me,mnemos:learning`). |
-| `--file / -f` | — | Import the contents of a file. Mutually exclusive with `CONTENT` and `--url`. |
-| `--url / -u` | — | Fetch and ingest a URL. Requires tags. |
 | `--source / -s` | `cli` | Memory source enum: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `--type` | `note` | Memory type: `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
-| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. |
+| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. With `--file` (deprecated), previews the file's text. |
 | `--config / -c` | — | Path to `config.yaml`. |
+
+> **Deprecated flag forms: `--file / -f`, `--url / -u`.** The old flag forms still work as hidden deprecated aliases — identical behavior, plus a one-line `[deprecated]` hint on stderr. Use `vesma ingest file PATH` / `vesma ingest url URL` instead; the flags are not removed before 6.0.
 
 > **Tag contract.** Every entry must have `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. The CLI enforces this in strict mode (the default). See [tag-contract.md](tag-contract.md) for the full schema.
 
@@ -131,15 +132,59 @@ vesma add "Always validate SQL with parameterized queries" \
   --title "SQL safety rule" \
   --tags "project:vesma,agent:security,mnemos:rule,severity:high"
 
-# From a file
-vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead mnemos:decision
-
-# From a URL (fetches, extracts, saves)
-vesma add --url https://example.com/article --tags project:research agent:user mnemos:learning
-
 # From stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
   | vesma add --tags project:vesma agent:sre mnemos:bug-pattern,severity:medium
+```
+
+---
+
+## `ingest`
+
+Ingest external content into the memory store: a web page or a local file's text. These subcommands carry the former `add --url` / `add --file` behavior (CLI-architecture rework W3).
+
+### `ingest url`
+
+Fetch a web page, extract the main text, and save it as a memory.
+
+```text
+vesma ingest url URL [OPTIONS]
+```
+
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `URL` (positional) | — | URL to fetch, extract, and save. |
+| `--tags / -T` | `""` | Comma-separated tags. Required (tag contract). |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### `ingest file`
+
+Save a local file's text content as a memory.
+
+```text
+vesma ingest file PATH [OPTIONS]
+```
+
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `PATH` (positional) | — | File whose text content is saved. |
+| `--title / -t` | auto | Short title. Auto-generated from content if omitted. |
+| `--tags / -T` | `""` | Comma-separated tags. |
+| `--source / -s` | `cli` | Memory source enum (same values as `add`). |
+| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### Examples
+
+```bash
+# From a URL (fetches, extracts, saves)
+vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
+
+# From a file
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
+
+# Preview the filter stats for a file without saving
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
 ```
 
 ---

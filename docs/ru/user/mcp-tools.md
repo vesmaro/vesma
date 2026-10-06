@@ -253,7 +253,7 @@ Per-agent recall (M3). Возвращает последние записи од
 ### Связанные ресурсы
 
 - HTTP-эквивалент: [`GET /recall/agent/{name}`](http-api.md#get-recallagentname--отзыв-агента)
-- CLI-эквивалент: [`vesma recall --agent <slug>`](cli-reference.md#recall)
+- CLI-эквивалент: [`vesma recall agent <slug>`](cli-reference.md#recall-agent)
 
 ---
 
@@ -644,7 +644,7 @@ Vesma синтезирует части в единую запись Markdown с
 
 ### Связанные ресурсы
 
-- CLI-эквивалент: [`vesma add --url <URL>`](cli-reference.md#add)
+- CLI-эквивалент: [`vesma ingest url <URL>`](cli-reference.md#ingest-url)
 - HTTP-эквивалент: [`POST /memories` с ручным контентом](http-api.md#post-memories--создать-запись-create-memory)
 - HTTP-эквивалент: [`POST /ingest-url`](http-api.md#post-ingest-url--получить-и-сохранить-веб-страницу)
 - Безопасность: [security.md](../admin/security.md#2-защита-от-ssrf-memorymanager_validate_url)

@@ -59,4 +59,4 @@ print(json.dumps([dict(r) for r in rows], indent=2, default=str))
 
 ### Import from JSON
 
-Use `vesma add --file` or API `POST /memories` for bulk import.
+Use `vesma ingest file` or API `POST /memories` for bulk import.

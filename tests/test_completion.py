@@ -70,7 +70,7 @@ class TestCompleteEngine:
         out = run_complete("", "0")
         lines = out.splitlines()
         assert lines, "top-level completion must not be empty"
-        assert "add\tAdd a new memory entry." in lines
+        assert "add\tAdd a new memory entry (quick-capture)." in lines
         assert "search\tSearch long-term memory (hybrid FTS + vector)." in lines
         # Contract shape: value<TAB>description, no headers, no Rich markup.
         for line in lines:

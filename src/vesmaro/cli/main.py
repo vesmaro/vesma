@@ -31,6 +31,7 @@ from vesmaro.storage.sqlite_store import (
 
 if TYPE_CHECKING:
     from vesmaro.api.auth_store import AuthStore
+    from vesmaro.manager import MemoryManager
 
 app = typer.Typer(
     name="vesma",
@@ -103,13 +104,105 @@ ConfigOption = typer.Option(None, "--config", "-c", help="Path to config.yaml")
 # ── add ────────────────────────────────────────────────────────────────────────
 
 
+def _parse_project_agent(tag_list: list[str]) -> tuple[str, str]:
+    """Extract the ``project:`` / ``agent:`` slugs from a ``--tags`` comma list."""
+    project = next((t[len("project:") :] for t in tag_list if t.startswith("project:")), "")
+    agent = next((t[len("agent:") :] for t in tag_list if t.startswith("agent:")), "")
+    return project, agent
+
+
+def _save_url_ingest(mgr: MemoryManager, url: str, tag_list: list[str]) -> Memory:
+    """Shared URL-ingest save path (W3): fetch, extract, save as a memory.
+
+    Used by the canonical ``vesma ingest url`` and by the deprecated
+    ``add --url`` alias — one implementation, two surfaces.
+    """
+    project, agent = _parse_project_agent(tag_list)
+    with console.status("Fetching URL..."):
+        return mgr.ingest_url(url, tags=tag_list, project=project, agent=agent)
+
+
+def _save_file_ingest(
+    mgr: MemoryManager, *, text: str, title: str | None, tag_list: list[str], source: MemorySource
+) -> Memory:
+    """Shared file-ingest save path (W3).
+
+    Used by the canonical ``vesma ingest file`` and by the deprecated
+    ``add --file`` alias — one implementation, two surfaces. The caller
+    reads the file (keeping each surface's historical read semantics).
+    """
+    data = MemoryCreate(content=text, title=title, tags=tag_list, source=source)
+    project, agent = _parse_project_agent(tag_list)
+    return mgr.add(data, project=project, agent=agent)
+
+
+def _print_saved(memory: Memory) -> None:
+    console.print(f"[green]✓[/green] Saved: {memory.auto_title()} ({memory.id})")
+
+
+def _dry_run_filter_preview(text: str, tag_list: list[str], config: str | None) -> None:
+    """Validate the tag contract and print context-filter stats without saving.
+
+    Shared by ``add --dry-run`` (content / stdin / file text) and
+    ``ingest file --dry-run`` (W3).
+    """
+    # Validate tag contract (raises TagContractError in strict mode).
+    from vesmaro.config import load_settings as _load_settings
+    from vesmaro.filter.pipeline import apply_filter
+    from vesmaro.models import validate_tag_contract
+
+    settings = _load_settings(config)
+    validate_tag_contract(tag_list, strict=settings.mnemos.strict_tag_contract)
+
+    result = apply_filter(text)
+    stats = result["stats"]
+    tokens_in = len(text) // 4 or 1
+    tokens_out = stats["tokens"]["estimated_tokens"]
+    reduction_pct = round((1 - tokens_out / tokens_in) * 100, 1) if tokens_in else 0.0
+
+    console.print("[cyan][dry-run][/cyan] Filter preview (no memory saved):")
+    console.print(f"  Input:     {tokens_in} tokens")
+    console.print(f"  Output:    {tokens_out} tokens ({reduction_pct}% reduction)")
+    console.print(f"  Profile:   {result['profile']} (auto-detected)")
+    dedup = stats.get("dedup", {})
+    console.print(
+        f"  Dedup:     {dedup.get('exact_dups', 0)} exact, "
+        f"{dedup.get('near_dups', 0)} near-duplicates removed"
+    )
+    noise = stats.get("noise", {})
+    noise_lines = (
+        noise.get("removed_ansi", 0)
+        + noise.get("removed_progress", 0)
+        + noise.get("removed_timestamps", 0)
+        + noise.get("removed_separators", 0)
+    )
+    console.print(f"  Noise:     {noise_lines} lines cleaned")
+    budget = stats["tokens"].get("budget")
+    console.print(f"  Budget:    {budget if budget else 'not set (no truncation)'}")
+    console.print("[dim][dry-run] Memory would be saved with these filter stats.[/dim]")
+
+
 @app.command()
 def add(
     content: str = typer.Argument(None, help="Text content to remember"),
     title: str = typer.Option(None, "--title", "-t"),
     tags: str = typer.Option("", "--tags", "-T", help="Comma-separated tags"),
-    file: Annotated[Path | None, typer.Option("--file", "-f", help="Import from file")] = None,
-    url: str = typer.Option(None, "--url", "-u", help="Import from URL"),
+    file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            "-f",
+            help="Deprecated flag form — use: `vesma ingest file PATH`.",
+            hidden=True,
+        ),
+    ] = None,
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Deprecated flag form — use: `vesma ingest url URL`.",
+        hidden=True,
+    ),
     source: Annotated[MemorySource, typer.Option("--source", "-s")] = MemorySource.CLI,
     memory_type: Annotated[MemoryType, typer.Option("--type")] = MemoryType.NOTE,
     dry_run: Annotated[
@@ -122,7 +215,12 @@ def add(
     ] = False,
     config: str = ConfigOption,
 ) -> None:
-    """Add a new memory entry.
+    """Add a new memory entry (quick-capture).
+
+    URL and file ingest are subcommands now (CLI-architecture rework W3):
+    `vesma ingest url URL` / `vesma ingest file PATH`. The old flag forms
+    (--url / --file) still work — hidden deprecated aliases with identical
+    behavior and a stderr hint; removal is not before 6.0.
 
     With ``--dry-run``: validates the tag contract, runs the context filter
     pipeline on the content, and prints filter stats **without saving**.
@@ -130,6 +228,11 @@ def add(
     before committing it to the store.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
+    if url:
+        _deprecated_flag_hint("vesma add --url URL", "vesma ingest url URL")
+    if file:
+        _deprecated_flag_hint("vesma add --file PATH", "vesma ingest file PATH")
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
@@ -149,62 +252,22 @@ def add(
                 console.print("[red]No content provided.[/red]")
                 raise typer.Exit(1)
             text = stdin_text
-
-        # Validate tag contract (raises TagContractError in strict mode).
-        from vesmaro.config import load_settings as _load_settings
-        from vesmaro.filter.pipeline import apply_filter
-        from vesmaro.models import validate_tag_contract
-
-        settings = _load_settings(config)
-        validate_tag_contract(tag_list, strict=settings.mnemos.strict_tag_contract)
-
-        result = apply_filter(text)
-        stats = result["stats"]
-        tokens_in = len(text) // 4 or 1
-        tokens_out = stats["tokens"]["estimated_tokens"]
-        reduction_pct = round((1 - tokens_out / tokens_in) * 100, 1) if tokens_in else 0.0
-
-        console.print("[cyan][dry-run][/cyan] Filter preview (no memory saved):")
-        console.print(f"  Input:     {tokens_in} tokens")
-        console.print(f"  Output:    {tokens_out} tokens ({reduction_pct}% reduction)")
-        console.print(f"  Profile:   {result['profile']} (auto-detected)")
-        dedup = stats.get("dedup", {})
-        console.print(
-            f"  Dedup:     {dedup.get('exact_dups', 0)} exact, "
-            f"{dedup.get('near_dups', 0)} near-duplicates removed"
-        )
-        noise = stats.get("noise", {})
-        noise_lines = (
-            noise.get("removed_ansi", 0)
-            + noise.get("removed_progress", 0)
-            + noise.get("removed_timestamps", 0)
-            + noise.get("removed_separators", 0)
-        )
-        console.print(f"  Noise:     {noise_lines} lines cleaned")
-        budget = stats["tokens"].get("budget")
-        console.print(f"  Budget:    {budget if budget else 'not set (no truncation)'}")
-        console.print("[dim][dry-run] Memory would be saved with these filter stats.[/dim]")
+        _dry_run_filter_preview(text, tag_list, config)
         return
 
     mgr = get_manager(config)
 
     if url:
-        project = next((t[len("project:") :] for t in tag_list if t.startswith("project:")), "")
-        agent = next((t[len("agent:") :] for t in tag_list if t.startswith("agent:")), "")
-        with console.status("Fetching URL..."):
-            memory = mgr.ingest_url(url, tags=tag_list, project=project, agent=agent)
+        memory = _save_url_ingest(mgr, url, tag_list)
     elif file:
-        text = Path(file).read_text()
-        data = MemoryCreate(content=text, title=title, tags=tag_list, source=source)
-        project = next((t[len("project:") :] for t in tag_list if t.startswith("project:")), "")
-        agent = next((t[len("agent:") :] for t in tag_list if t.startswith("agent:")), "")
-        memory = mgr.add(data, project=project, agent=agent)
+        memory = _save_file_ingest(
+            mgr, text=Path(file).read_text(), title=title, tag_list=tag_list, source=source
+        )
     elif content:
         data = MemoryCreate(
             content=content, title=title, tags=tag_list, source=source, memory_type=memory_type
         )
-        project = next((t[len("project:") :] for t in tag_list if t.startswith("project:")), "")
-        agent = next((t[len("agent:") :] for t in tag_list if t.startswith("agent:")), "")
+        project, agent = _parse_project_agent(tag_list)
         memory = mgr.add(data, project=project, agent=agent)
     else:
         stdin_text = sys.stdin.read().strip()
@@ -214,7 +277,75 @@ def add(
         data = MemoryCreate(content=stdin_text, title=title, tags=tag_list, source=source)
         memory = mgr.add(data)
 
-    console.print(f"[green]✓[/green] Saved: {memory.auto_title()} ({memory.id})")
+    _print_saved(memory)
+
+
+# ── ingest (CLI-architecture rework W3) ───────────────────────────────────────
+# Standing design rule (docs/project/cli-architecture-rework.md §2.5): a
+# subcommand names the function (WHAT), a flag only configures it (HOW).
+# URL and file ingest moved here from `add --url/--file`; the flag forms
+# stay on `add` as hidden deprecated aliases (identical behavior + stderr
+# hint; soft mode — removal not before 6.0, design doc §3).
+
+_ingest_app = typer.Typer(
+    name="ingest",
+    help=(
+        "Ingest external content into the memory store.\n\n"
+        "Subcommands: `url` — fetch a web page, extract the main text, save "
+        "it as a memory; `file` — save a local file's text content as a "
+        "memory. (Former `add --url` / `add --file` flag forms; those remain "
+        "as hidden deprecated aliases.)"
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(_ingest_app, name="ingest")
+
+
+@_ingest_app.command(name="url")
+def ingest_url(
+    url: str = typer.Argument(..., help="URL to fetch, extract, and save as a memory."),
+    tags: str = typer.Option("", "--tags", "-T", help="Comma-separated tags"),
+    config: str = ConfigOption,
+) -> None:
+    """Ingest a web page: fetch it, extract the main text, save as a memory."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    mgr = get_manager(config)
+    memory = _save_url_ingest(mgr, url, tag_list)
+    _print_saved(memory)
+
+
+@_ingest_app.command(name="file")
+def ingest_file(
+    path: Annotated[Path, typer.Argument(help="File whose text content is saved as a memory.")],
+    title: str = typer.Option(None, "--title", "-t"),
+    tags: str = typer.Option("", "--tags", "-T", help="Comma-separated tags"),
+    source: Annotated[MemorySource, typer.Option("--source", "-s")] = MemorySource.CLI,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show context-filter stats (profile, token reduction, dedup, noise) "
+            "without saving the memory.",
+        ),
+    ] = False,
+    config: str = ConfigOption,
+) -> None:
+    """Ingest a local file: save its text content as a memory."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError is a ValueError, not an OSError: without it a
+        # binary file would traceback on the canonical surface.
+        detail = exc.strerror if isinstance(exc, OSError) else str(exc)
+        console.print(f"[red]Cannot read {path}: {detail}[/red]")
+        raise typer.Exit(1) from exc
+    if dry_run:
+        _dry_run_filter_preview(text, tag_list, config)
+        return
+    mgr = get_manager(config)
+    memory = _save_file_ingest(mgr, text=text, title=title, tag_list=tag_list, source=source)
+    _print_saved(memory)
 
 
 # ── search ─────────────────────────────────────────────────────────────────────

@@ -394,7 +394,7 @@ These controls are documented in §9 and remain in force:
 vesma doctor --json | grep -i api_key   # should show SecretStr('**********')
 
 # Confirm SSRF rejection
-vesma add --url http://169.254.169.254/  # rejected, not stored
+vesma ingest url http://169.254.169.254/  # rejected, not stored
 
 # Confirm .gitignore covers secrets
 git check-ignore -v config.yaml .env     # should list .gitignore:line

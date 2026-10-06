@@ -387,7 +387,7 @@ fetch-failed фиксирует причину отклонения, а не с�
 vesma doctor --json | grep -i api_key   # должно показать SecretStr('**********')
 
 # Подтвердить отклонение SSRF
-vesma add --url http://169.254.169.254/  # отклонено, не сохранено
+vesma ingest url http://169.254.169.254/  # отклонено, не сохранено
 
 # Подтвердить покрытие секретов в .gitignore
 git check-ignore -v config.yaml .env     # должен указать .gitignore:line

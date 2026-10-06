@@ -94,6 +94,7 @@ def test_all_expected_groups_are_registered() -> None:
     expected_groups = {
         "tags",
         "recall",
+        "ingest",
         "migrate",
         "auth",
         "integration",
@@ -1060,6 +1061,210 @@ class TestRecallGroup:
         result = runner.invoke(app, ["recall", "--project", "x", "agent", "cli"])
         assert result.exit_code == 0, result.output
         assert "options placed before the subcommand are ignored" in result.stderr
+
+
+# `vesma ingest url|file` (CLI-architecture rework W3): URL and file ingest
+# moved to the canonical subcommands; the legacy `add --url` / `add --file`
+# flag forms stay as hidden deprecated aliases (identical behavior + stderr
+# hint, removal not before 6.0). `vesma add <content>` remains the canonical
+# quick-capture.
+
+
+def _fake_ingested_memory(content: str) -> object:
+    """A real Memory model instance standing in for mgr.ingest_url's return."""
+    from vesmaro.models import Memory
+
+    return Memory(content=content, title=content)
+
+
+class TestIngestSubApp:
+    def test_top_level_help_advertises_ingest(self, isolated_config: Path) -> None:
+        """`vesma --help` lists the new `ingest` group."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0, result.output
+        assert "ingest" in result.output
+
+    def test_ingest_help_lists_url_and_file(self, isolated_config: Path) -> None:
+        """`vesma ingest --help` names both canonical subcommands."""
+        result = runner.invoke(app, ["ingest", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "url" in result.output
+        assert "file" in result.output
+
+    def test_ingest_no_args_shows_help(self, isolated_config: Path) -> None:
+        """Bare `vesma ingest` shows the group help (no_args_is_help)."""
+        result = runner.invoke(app, ["ingest"])
+        assert "Usage:" in result.output
+        assert "url" in result.output
+        assert "file" in result.output
+
+    def test_ingest_file_happy_path_saves_memory(self, isolated_config: Path) -> None:
+        """`vesma ingest file PATH` saves the file's text and reports the id."""
+        from vesmaro.cli._manager import get_manager
+
+        note = isolated_config.parent / "w3-note.md"
+        note.write_text("w3 ingest file happy path body\n", encoding="utf-8")
+        result = runner.invoke(app, ["ingest", "file", str(note)])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 ingest file happy path body" in result.output
+        mgr = get_manager(str(isolated_config))
+        saved = [m for m in mgr.sqlite.list_all(limit=100) if "happy path body" in m.content]
+        assert saved, "the memory must be in the vault"
+
+    def test_ingest_file_dry_run_previews_without_saving(self, isolated_config: Path) -> None:
+        """`vesma ingest file PATH --dry-run` prints filter stats, saves nothing."""
+        from vesmaro.cli._manager import get_manager
+
+        note = isolated_config.parent / "w3-dry.md"
+        note.write_text("w3 dry run body line\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "ingest",
+                "file",
+                str(note),
+                "--dry-run",
+                "--tags",
+                "project:test,agent:cli,mnemos:learning",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Filter preview" in result.output
+        assert "Saved" not in result.output
+        mgr = get_manager(str(isolated_config))
+        assert mgr.sqlite.list_all(limit=100) == []
+
+    def test_ingest_file_missing_file_clean_error(self, isolated_config: Path) -> None:
+        """A missing path is a clean exit-1 error, not a traceback."""
+        missing = isolated_config.parent / "does-not-exist.txt"
+        result = runner.invoke(app, ["ingest", "file", str(missing)])
+        assert result.exit_code == 1, result.output
+        assert "Cannot read" in result.output
+        assert "Traceback" not in result.output
+
+    def test_ingest_file_binary_file_clean_error(
+        self, isolated_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A binary (non-UTF-8) file is a clean exit-1 error, not a traceback.
+
+        UnicodeDecodeError is a ValueError, not an OSError — it must be
+        caught explicitly. The preferred encoding is pinned so the decode
+        failure is hermetic regardless of the ambient locale.
+        """
+        monkeypatch.setattr("locale.getpreferredencoding", lambda do_setlocale: "utf-8")
+        blob = isolated_config.parent / "w3-blob.bin"
+        blob.write_bytes(b"\xff\xfe\x00\x01not-utf8")
+        result = runner.invoke(app, ["ingest", "file", str(blob)])
+        assert result.exit_code == 1, result.output
+        assert "Cannot read" in result.output
+        assert "Traceback" not in result.output
+
+    def test_ingest_file_requires_path(self, isolated_config: Path) -> None:
+        """`vesma ingest file` without a path is a usage error (exit 2)."""
+        result = runner.invoke(app, ["ingest", "file"])
+        assert result.exit_code == 2, result.output
+
+    def test_ingest_url_happy_path_saves_extracted_page(self, isolated_config: Path) -> None:
+        """`vesma ingest url URL` delegates to mgr.ingest_url (no live network)."""
+        from unittest.mock import patch
+
+        from vesmaro.manager import MemoryManager
+
+        with patch.object(
+            MemoryManager,
+            "ingest_url",
+            return_value=_fake_ingested_memory("w3 extracted page text"),
+        ) as mock_ingest:
+            result = runner.invoke(app, ["ingest", "url", "https://example.com/w3"])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 extracted page text" in result.output
+        mock_ingest.assert_called_once()
+        assert mock_ingest.call_args.args[0] == "https://example.com/w3"
+
+    def test_ingest_url_requires_url(self, isolated_config: Path) -> None:
+        """`vesma ingest url` without a URL is a usage error (exit 2)."""
+        result = runner.invoke(app, ["ingest", "url"])
+        assert result.exit_code == 2, result.output
+
+
+class TestAddIngestAliases:
+    def test_help_hides_deprecated_flags(self, isolated_config: Path) -> None:
+        """`add --help` must not advertise the retired --url/--file forms.
+
+        The options panel must not list them; the docstring's plain-text
+        mention of the old forms (alias policy) is expected and allowed.
+        """
+        result = runner.invoke(app, ["add", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "-u, --url" not in result.output, "the deprecated flag must be hidden"
+        assert "-f, --file" not in result.output, "the deprecated flag must be hidden"
+
+    def test_content_form_stays_canonical_and_hint_free(self, isolated_config: Path) -> None:
+        """`vesma add <content>` keeps working with no deprecation noise."""
+        result = runner.invoke(app, ["add", "w3 quick capture note"])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "deprecated" not in result.output
+        assert "deprecated" not in result.stderr
+
+    def test_url_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
+        """`add --url` keeps identical behavior + prints the stderr hint."""
+        from unittest.mock import patch
+
+        from vesmaro.manager import MemoryManager
+
+        with patch.object(
+            MemoryManager,
+            "ingest_url",
+            return_value=_fake_ingested_memory("w3 alias page body"),
+        ) as mock_ingest:
+            result = runner.invoke(app, ["add", "--url", "https://example.com/alias"])
+        assert result.exit_code == 0, result.output
+        mock_ingest.assert_called_once()
+        assert "Saved" in result.output
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma ingest url URL" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_file_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
+        """`add --file` keeps identical behavior + prints the stderr hint."""
+        note = isolated_config.parent / "w3-alias-note.md"
+        note.write_text("w3 file alias body\n", encoding="utf-8")
+        result = runner.invoke(app, ["add", "--file", str(note)])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 file alias body" in result.output
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma ingest file PATH" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_url_alias_dry_run_refused_as_before(self, isolated_config: Path) -> None:
+        """`add --url --dry-run` keeps its historical refusal (exit 1)."""
+        result = runner.invoke(app, ["add", "--url", "https://example.com/x", "--dry-run"])
+        assert result.exit_code == 1, result.output
+        assert "--dry-run is not supported with --url" in result.output
+
+    def test_file_alias_dry_run_still_previews(self, isolated_config: Path) -> None:
+        """`add --file --dry-run` keeps the preview behavior + the hint."""
+        note = isolated_config.parent / "w3-alias-dry.md"
+        note.write_text("w3 alias dry run body\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--file",
+                str(note),
+                "--dry-run",
+                "--tags",
+                "project:test,agent:cli,mnemos:learning",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Filter preview" in result.output
+        assert "Saved" not in result.output
+        assert "[deprecated]" in result.stderr
 
 
 class TestGraphLifecycleCli:
