@@ -73,14 +73,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:5.6.2
+  ghcr.io/vesmaro/vesma:5.6.3
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Теги: `:5.6.2` (фиксированная) · `:latest` (rolling).
+Теги: `:5.6.3` (фиксированная) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Полное руководство: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -89,7 +89,7 @@ curl -s http://localhost:8787/health | jq
 
 <!-- version:pip -->
 ```bash
-pip install vesma==5.6.2
+pip install vesma==5.6.3
 ```
 <!-- /version:pip -->
 
