@@ -141,6 +141,26 @@ def _chunks(seq: list[FederationIndexEntry], size: int) -> Sequence[Sequence[Fed
     return [seq[i : i + size] for i in range(0, len(seq), size)]
 
 
+def _kill_subprocess(proc: asyncio.subprocess.Process) -> None:
+    """Best-effort kill of a child whose lifetimes we no longer own.
+
+    Race-safe (issue #510 side note): under ``service run`` the
+    supervisor's reaper thread drains ``waitpid(-1, WNOHANG)`` and can
+    reap a just-exited child before asyncio's own child watcher — a bare
+    ``kill()`` on the already-reaped pid raises
+    ``ProcessLookupError("[Errno 3] No such process")``. Same for
+    ``wait()``: the ThreadedChildWatcher already reaped it concurrently.
+    Both are suppressed HERE (idempotent cleanup semantics, mirroring
+    :meth:`MetaPoller._kill_inflight`), never wrapped into peer errors.
+    """
+    with contextlib.suppress(ProcessLookupError, ConnectionResetError, OSError):
+        if proc.returncode is None:
+            proc.kill()
+    with contextlib.suppress(ProcessLookupError, OSError):
+        if proc.returncode is None:
+            proc.wait()
+
+
 def _validate_envelope(peer_id: str, payload: Any) -> SyncMetaPage:
     """Validate a parsed JSON payload as a :class:`SyncMetaPage`.
 
@@ -457,8 +477,13 @@ class MetaPoller:
                 proc.communicate(), timeout=META_POLL_PAGE_TIMEOUT_S
             )
         except TimeoutError as exc:
-            proc.kill()
-            await proc.wait()
+            # Kill the timed-out child. Best-effort: under ``service run``
+            # the supervisor reaper owns waitpid(-1, WNOHANG) and may reap
+            # the child between the timeout verdict and this kill — a bare
+            # kill()/wait() then surfaces ProcessLookupError("[Errno 3] No
+            # such process") as a bogus peer error (prod window
+            # 2026-10-06, issue #510 side note).
+            _kill_subprocess(proc)
             raise MetaPollError(
                 peer_id, f"sync-meta timed out after {META_POLL_PAGE_TIMEOUT_S:.0f}s"
             ) from exc
