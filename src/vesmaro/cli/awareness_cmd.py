@@ -233,24 +233,70 @@ def _print_restart_note(config: str | None) -> None:
     when it answers, name the exact `vesma service restart` verb; either
     way the note states the takes-effect-next-start rule (never silently
     assume a restart happened — silent degradation is banned).
+
+    The probe deliberately does NOT go through
+    :func:`vesmaro.cli.service._with_client`: that helper SPEAKS for every
+    failure (red pre-flight banner) and ends with ``typer.Exit``, which a
+    broad ``except`` here would swallow — the P2 finding of the 2026-10-06
+    review. A bare probe that returns None on any refusal keeps the quiet
+    dim-line fallback honest.
     """
     console.print(
         "[yellow]note[/yellow] the new mode takes effect on the NEXT server start"
         " (running processes read the config once at startup)"
     )
+
+
+def _print_restart_note(config: str | None) -> None:
+    """The restart guard: a running server reads the config at startup only.
+
+    Probes the supervisor control socket (best-effort, no manager boot) —
+    when it answers, name the exact `vesma service restart` verb; either
+    way the note states the takes-effect-next-start rule (never silently
+    assume a restart happened — silent degradation is banned).
+
+    The probe deliberately does NOT go through
+    :func:`vesmaro.cli.service._with_client`: that helper SPEAKS for every
+    failure (red pre-flight banner) and ends with ``typer.Exit``, which a
+    broad ``except`` here would swallow — the P2 finding of the 2026-10-06
+    review. The bare probe keeps the quiet dim-line fallback honest.
+    """
+    console.print(
+        "[yellow]note[/yellow] the new mode takes effect on the NEXT server start"
+        " (running processes read the config once at startup)"
+    )
+    fallback = "  [dim]start/restart the server with: vesma serve (or vesma service run)[/dim]"
     try:
-        from vesmaro.cli.service import _with_client
-        from vesmaro.service.client import control_socket_path
+        from vesmaro.service.client import ControlClientError, control_socket_path
 
-        state: Any = _with_client(control_socket_path()[0], lambda client: client.status("core"))
-
+        client = _open_probe_client(control_socket_path()[0])
+        try:
+            state = client.status("core")
+        finally:
+            client.close()
+    except ControlClientError:
+        console.print(fallback)
+    except Exception:
+        console.print(fallback)
+    else:
         console.print(
             f"  restart the running service now: [bold]vesma service restart core[/bold] ({state})"
         )
-    except Exception:
-        console.print(
-            "  [dim]start/restart the server with: vesma serve (or vesma service run)[/dim]"
-        )
+
+
+def _open_probe_client(socket: Path) -> Any:
+    """Bare supervisor probe opener for the restart note — no CLI chatter.
+
+    Imports :func:`vesmaro.cli.service._open_client` (the same client
+    construction the service verbs use) WITHOUT its `_with_client`
+    wrapper — no red pre-flight banner, no ``typer.Exit``; every
+    refusal surfaces as the raised error and the caller's quiet dim
+    fallback. Test-visible so a fake client can stand in for a live
+    supervisor.
+    """
+    from vesmaro.cli.service import _open_client
+
+    return _open_client(socket)
 
 
 # ── stats: the wave-0 gate metrics over awareness_events ─────────────────────

@@ -211,6 +211,53 @@ class TestModeSet:
         # the note is unconditional — a silent no-restart assumption is banned
         assert "takes effect on the NEXT server start" in result.output
 
+    def test_dead_supervisor_socket_falls_back_quietly(
+        self, ops_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # P2 fix pin (2026-10-06 review): with no supervisor running (the bare
+        # `vesma serve` profile), the best-effort probe must NOT leak the
+        # service-CLI red pre-flight banner or swallow its own typer.Exit —
+        # a successful set prints only the quiet dim-line fallback.
+        reset_manager()
+        tmp_sock_dir = ops_config.parent / "sockdir"
+        tmp_sock_dir.mkdir()
+        monkeypatch.setenv("VESMA_SERVICE_CONTROL_SOCKET", str(tmp_sock_dir / "no.sock"))
+        result = runner.invoke(app, ["awareness", "set", "shadow"])
+        assert result.exit_code == 0, result.output
+        assert "✓" in result.output
+        assert "takes effect on the NEXT server start" in result.output
+        assert "start/restart the server with" in result.output
+        # the P2 leak this pins against: the red pre-flight banner and the
+        # fix-command suggestion must never appear from a bare successful set
+        assert "refusing to connect" not in result.output
+        assert "fix manually" not in result.output
+
+    def test_live_supervisor_socket_names_restart_verb(
+        self, ops_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_manager()
+
+        from vesmaro.cli import awareness_cmd as ops
+
+        class _FakeProbeClient:
+            """Minimal ControlClient stand-in for the bare probe."""
+
+            def __init__(self) -> None:
+                self._closed = False
+
+            def status(self, component: str | None = None) -> dict[str, Any]:
+                return {"component": component, "state": "running"}
+
+            def close(self) -> None:
+                self._closed = True
+
+        fake = _FakeProbeClient()
+        monkeypatch.setattr(ops, "_open_probe_client", lambda socket: fake)
+        result = runner.invoke(app, ["awareness", "set", "canary"])
+        assert result.exit_code == 0, result.output
+        assert "vesma service restart core" in result.output
+        assert fake._closed, "the probe client must be closed on every path"
+
     def test_set_preserves_other_awareness_keys(
         self, ops_config: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
