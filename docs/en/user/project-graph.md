@@ -229,6 +229,66 @@ Behavior:
 
 ---
 
+## The walk section: rent the neighborhood (PG-1, ADR-0038)
+
+A structural question — "what calls `X`, one or two hops out" — used to
+cost either a `mnemos_trace_path` call per symbol or opening whole files.
+When `code_graph.search_walk` is on, every symbol-hitting
+`mnemos_search_graph` call ALSO walks the hits' neighborhood and answers
+with a SEPARATE `walk` section:
+
+```json
+"walk": {
+  "origins": ["Base", "Base.greet", "make_base"],
+  "k": 3,
+  "nodes": [ { "id": "...", "qname": "Base", "kind": "Class", "path": "pkg/helper.py",
+               "start_line": 1, "end_line": 3, "depth": 0 }, "…"],
+  "edges": [ { "from": "...", "to": "...", "kind": "CALLS", "provenance": "tree-sitter" } ],
+  "truncated": false,
+  "epoch": 4,
+  "walk_cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00"
+}
+```
+
+How it works:
+
+- **Separate, never mixed.** The walk is its own top-level section;
+  `results` keep the pinned search shape unchanged. The section appears
+  ONLY when it fired (symbol hits existed) — absent otherwise, never
+  null/empty (the `fallback_used` shape precedent). The literal-fallback
+  leg never walks (its rows carry no node ids).
+- **Origins = the quota.** `k = min(ceil(limit/5), limit//2)` top ranked
+  symbol hits become the walk origins (a pure function of `limit`).
+- **Two hops, both directions.** Nodes are PG1 metadata rows
+  (`id`/`qname`/`kind`/`path`/`start_line`/`end_line`/`depth`) — no
+  signatures, repo-relative paths — sorted by `(depth, qname)`. Edges
+  keep the trace contract (`from`/`to`/`kind`/`provenance`), walking
+  in+out per origin, depth ≤ 2, over the structural kinds
+  `CALLS` / `IMPORTS` / `INHERITS` / `USES` / `INVOKES` / `HANDLES`
+  (file-shape edges — `CONTAINS_FILE` / `DEFINES` / `TESTS` — stay out).
+- **Capped, honestly.** Per origin the shared walker enforces the
+  fanout cap (32) and the total-work cap (512 visited nodes)
+  INDEPENDENTLY of `k` + a project-boundary guard (an edge leaving the
+  project is skipped, not followed); any cap or boundary hit sets
+  `truncated: true` — the walk never pretends it showed everything.
+- **Fresh on arrival.** The section carries the graph `epoch` —
+  consumers invalidate on it; there is no TTL cache of walks.
+- **Own budget.** The walk `nodes` ride the same token contract
+  (4 bytes/token ceiling, whole-row drops) with their OWN
+  `walk_cursor` — paginate the section with `walk_cursor` the same way
+  `results` paginate with `cursor`.
+- **It prices itself.** Every walk execution writes a `search-walk` row
+  into the sidecar `graph_audit` with `out_tokens` (the answer cost) and
+  `avoided_bytes` (the source-file bytes behind the visited nodes the
+  agent would otherwise have opened whole).
+- **Knob.** `code_graph.search_walk` (default `false`) — the flag-off
+  period is the measured "search + read" baseline; turn the walk on
+  deliberately (env: `VESMA_CODE_GRAPH__SEARCH_WALK`).
+
+---
+
 ## Native auto-indexing (zero-touch)
 
 Since PG-0.5 the graph indexes **by itself**: every MCP tool call and every
@@ -327,7 +387,7 @@ purges only the derived index.
 |------|--------------|
 | `mnemos_index_project` | Full or incremental index of a registered root; serialized per project |
 | `mnemos_project_graph_status` | Volumes, freshness, parse errors, poisoned count for one project |
-| `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H) |
+| `mnemos_search_graph` | Ranked search by name / qualified name / path; opt-in signatures; hybrid literal fallback on an empty result (W-H); flag-gated `walk` neighborhood section (`code_graph.search_walk`, ADR-0038) |
 | `mnemos_trace_path` | BFS over edges from one symbol (depth ≤ 2, honest `truncated` flag); ambiguous bare tails and identical-qname collisions answer a candidate list (W-H) |
 | `mnemos_get_file_outline` | Symbol outline of one indexed file — shapes, never bodies |
 | `mnemos_get_code_snippet` | Line range read **from disk**, freshness-checked and secret-scanned |
@@ -457,6 +517,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `agent_registration` | `true` | Whether connected MCP agents may register roots via `mnemos_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness ("indexed …, N/M files fresh — call mnemos_search_graph"). Only when `enabled`. |
 | `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
+| `search_walk` | `false` | The separate `walk` section of `search_graph` (PG-1 M2, ADR-0038): when a symbol search hits, a two-level neighborhood walk (in+out, depth ≤ 2, quota `k = min(ceil(limit/5), limit//2)` origins, caps fanout 32 / total work 512 independent of `k`) answers the hits' surroundings as PG1 metadata rows in its own token-windowed section with its own `walk_cursor`, the graph `epoch` riding the payload, and a self-priced `search-walk` audit row (`out_tokens` / `avoided_bytes`). Never mixed into `results`; absent-when-empty; flag-off responses are byte-identical to the pre-walk shape. Env: `VESMA_CODE_GRAPH__SEARCH_WALK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
 | `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |
