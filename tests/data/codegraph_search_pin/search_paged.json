@@ -1,0 +1,36 @@
+{
+  "project": "pinproj",
+  "query_kind": null,
+  "results": [
+    {
+      "id": "7:pinproj#pkg/helper.py##0#module",
+      "project": "pinproj",
+      "kind": "Module",
+      "name": "helper",
+      "qname": "pkg.helper",
+      "path": "pkg/helper.py",
+      "start_line": null,
+      "end_line": null,
+      "lang": "python",
+      "metadata": {},
+      "match_kind": "symbol"
+    },
+    {
+      "id": "7:pinproj#pkg/helper.py##0",
+      "project": "pinproj",
+      "kind": "File",
+      "name": "helper.py",
+      "qname": "pkg/helper.py",
+      "path": "pkg/helper.py",
+      "start_line": 1,
+      "end_line": 7,
+      "lang": "python",
+      "metadata": {},
+      "match_kind": "symbol"
+    }
+  ],
+  "total_matches": 5,
+  "cursor": 2,
+  "has_more": true,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00"
+}

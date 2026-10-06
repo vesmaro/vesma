@@ -1021,6 +1021,15 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 
 **Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. `total_matches` counts the WHOLE answer set — when the fallback answers, it counts the literal rows returned (a non-empty fallback is never reported as `total_matches: 0`). Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
 
+**Flag-gated walk section (PG-1 M2, ADR-0038).** When `code_graph.search_walk` is on (default OFF — the flag-off period is the measured «search + read» baseline; with the flag off the response is byte-identical to the pre-walk shape), every symbol-hitting search ALSO answers a SEPARATE `walk` section — the hits' two-level neighbourhood, never mixed into `results`, present ONLY when it fired (symbol hits existed; the literal leg never walks):
+
+- **`origins`** — the quota `k = min(ceil(limit/5), limit//2)` top ranked symbol hits (a pure function of `limit`; the section also carries `k`).
+- **`nodes`** — PG1 metadata rows only (`id`/`qname`/`kind`/`path`/`start_line`/`end_line`/`depth`): no signatures, repo-relative paths, sorted `(depth, qname)`; the walk runs **in+out** from every origin (callers AND callees in one answer), depth ≤ 2, over the structural kinds `CALLS`/`IMPORTS`/`INHERITS`/`USES`/`INVOKES`/`HANDLES`.
+- **`edges`** — the traversed edges in trace contract form (`from`/`to`/`kind`/`provenance`), deduplicated across origins; riding outside the node budget, bounded by the walker caps (fanout 32 / total work 512 per origin walk, standing INDEPENDENTLY of `k`) and the project-boundary guard (an edge leaving the project is skipped, not followed) — any cap/boundary hit sets **`truncated: true`**.
+- **`epoch`** — the graph epoch rides the payload (consumers invalidate on it; no TTL cache exists).
+- **Own token window.** The `nodes` rows ride the same token contract under their OWN budget with their own **`walk_cursor`** / `has_more` (pass `walk_cursor` to page the section; strictly advancing, whole-row drops).
+- **Self-priced audit.** Every walk execution writes its own `search-walk` `graph_audit` row with the economics pair `out_tokens` (the issued answer cost at the 4 B/token ceiling) and `avoided_bytes` (the summed source-file sizes behind the visited nodes).
+
 ### Input
 
 | Field | Type | Required | Default | Description |
@@ -1032,6 +1041,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 | `kind` | string | no | — | Filter by node kind: one of `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`. |
 | `limit` | integer | no | `50` | Max ranked rows per page (hard page ceiling 200). |
 | `cursor` | integer | no | `0` | Page cursor from the previous call. |
+| `walk_cursor` | integer | no | `0` | Walk-section page cursor from the previous call (only meaningful when `code_graph.search_walk` is on). |
 | `max_output_tokens` | integer | no | `3200` | Output budget (128–1M). |
 | `include_signature` | boolean | no | `false` | Opt-in detail flag: include signature shapes. |
 

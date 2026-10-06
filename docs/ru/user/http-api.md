@@ -1188,6 +1188,7 @@ curl -s "http://127.0.0.1:8000/graph/status/vesma?agent=ci-runner"
 | `kind` | string | нет | — | Фильтр по виду узла (`Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`). |
 | `limit` | int | нет | `50` | Максимум ранжированных строк на страницу. |
 | `cursor` | int | нет | `0` | Курсор страницы из предыдущего вызова. |
+| `walk_cursor` | int | нет | `0` | Курсор страницы секции walk из предыдущего вызова (имеет смысл только при включённом `code_graph.search_walk` — флаг-гейт секции `walk`, ADR-0038). |
 | `max_output_tokens` | int | нет | `3200` | Бюджет вывода (128–1 млн). |
 | `include_signature` | bool | нет | `false` | Включить формы сигнатур (opt-in). |
 

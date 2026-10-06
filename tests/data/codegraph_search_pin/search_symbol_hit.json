@@ -1,0 +1,49 @@
+{
+  "project": "pinproj",
+  "query_kind": null,
+  "results": [
+    {
+      "id": "7:pinproj#pkg/helper.py#Base#1",
+      "project": "pinproj",
+      "kind": "Class",
+      "name": "Base",
+      "qname": "Base",
+      "path": "pkg/helper.py",
+      "start_line": 1,
+      "end_line": 3,
+      "lang": "python",
+      "metadata": {},
+      "match_kind": "symbol"
+    },
+    {
+      "id": "7:pinproj#pkg/helper.py#greet#2",
+      "project": "pinproj",
+      "kind": "Method",
+      "name": "greet",
+      "qname": "Base.greet",
+      "path": "pkg/helper.py",
+      "start_line": 2,
+      "end_line": 3,
+      "lang": "python",
+      "metadata": {},
+      "match_kind": "symbol"
+    },
+    {
+      "id": "7:pinproj#pkg/helper.py#make_base#5",
+      "project": "pinproj",
+      "kind": "Function",
+      "name": "make_base",
+      "qname": "make_base",
+      "path": "pkg/helper.py",
+      "start_line": 5,
+      "end_line": 6,
+      "lang": "python",
+      "metadata": {},
+      "match_kind": "symbol"
+    }
+  ],
+  "total_matches": 3,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00"
+}

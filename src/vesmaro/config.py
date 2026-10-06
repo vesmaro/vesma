@@ -1052,7 +1052,8 @@ class CodeGraphConfig(BaseModel):
     ``VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
     ``VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
     ``VESMA_CODE_GRAPH__AGENT_REGISTRATION`` /
-    ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
+    ``VESMA_CODE_GRAPH__LITERAL_FALLBACK`` /
+    ``VESMA_CODE_GRAPH__SEARCH_WALK``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1156,6 +1157,27 @@ class CodeGraphConfig(BaseModel):
             issue content. Default ON; set ``false`` to keep
             ``search_graph`` symbol-only. Env override:
             ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
+        search_walk: The separate ``walk`` section of ``search_graph``
+            (PG-1 M2, ADR-0038 conditions 2/3/7/8; card
+            ``vesma-pg1-walk-m2-section``). When ON, every
+            ``search_graph`` call ALSO walks the graph neighbourhood of
+            the symbol hits (direction in+out from every hit, the
+            default edge kinds CALLS/IMPORTS/INHERITS/USES/INVOKES/
+            HANDLES, quota ``k = min(ceil(limit/5), limit//2)`` origins,
+            the walker caps fanout 32 / total work 512 standing
+            INDEPENDENTLY of k) and answers with a SEPARATE ``walk``
+            section — PG1 metadata rows only (no signatures), never
+            mixed into ``results``, present ONLY when it fired
+            (absent-when-empty, the ``fallback_used`` precedent);
+            flag-off responses stay byte-identical to the pre-M2 shape.
+            The walk carries the graph ``epoch`` (condition 6: freshness
+            rides the payload, no TTL cache) and writes its own
+            ``search-walk`` audit row with the token-economics pair
+            ``out_tokens`` / ``avoided_bytes`` (condition 7). Default
+            OFF — the flag-off period is the «search + read» baseline
+            the verdict metric compares against (condition 8); the
+            operator turns it on deliberately. Env override:
+            ``VESMA_CODE_GRAPH__SEARCH_WALK``.
         exclude_globs: Directory-name globs excluded from the index
             surface ON TOP of the built-in ``file_surface.DENY_DIRS``
             denylist (defect 2026-10-03: a ``wt/`` git-worktree inside
@@ -1196,6 +1218,10 @@ class CodeGraphConfig(BaseModel):
     # result (read-only bounded scan of the registered root; PG4-redacted
     # rows). Default ON; false keeps search_graph symbol-only.
     literal_fallback: bool = True
+    # PG-1 M2 (ADR-0038): the separate `walk` section of search_graph.
+    # Default OFF — the flag-off period is the «search + read» baseline
+    # the token-economics verdict compares against; the operator opts in.
+    search_walk: bool = False
     watch: bool = True
     auto_index: bool = True
     auto_reindex_min_interval_sec: float = Field(default=300.0, ge=0.0)

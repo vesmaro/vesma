@@ -1182,6 +1182,7 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
 | `kind` | string | no | — | Node-kind filter (`Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`). |
 | `limit` | int | no | `50` | Max ranked rows per page. |
 | `cursor` | int | no | `0` | Page cursor from the previous call. |
+| `walk_cursor` | int | no | `0` | Walk-section page cursor from the previous call (only meaningful when `code_graph.search_walk` is on — the flag-gated `walk` section, ADR-0038). |
 | `max_output_tokens` | int | no | `3200` | Output budget (128–1M). |
 | `include_signature` | bool | no | `false` | Include signature shapes (opt-in). |
 

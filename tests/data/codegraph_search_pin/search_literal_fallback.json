@@ -1,0 +1,17 @@
+{
+  "project": "pinproj",
+  "query_kind": null,
+  "results": [
+    {
+      "match_kind": "literal",
+      "path": "pkg/helper.py",
+      "line": 3,
+      "snippet": "return 'hi'"
+    }
+  ],
+  "total_matches": 1,
+  "cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00",
+  "fallback_used": true
+}

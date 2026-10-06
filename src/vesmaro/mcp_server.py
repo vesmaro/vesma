@@ -1934,11 +1934,18 @@ async def _canonical_tools() -> list[Tool]:
                 "root answers with match_kind:'literal' rows "
                 "(path/line/snippet, secrets-redacted) and a "
                 "fallback_used:true marker (absent on symbol hits; "
-                "disable via code_graph.literal_fallback). Token "
-                "contract: max_output_tokens 128-1M (default 3200), "
-                "whole-row drops, strictly advancing cursor, has_more; "
-                "signatures are opt-in via include_signature. Read-only, "
-                "audited per agent."
+                "disable via code_graph.literal_fallback). "
+                "Flag-gated walk section (ADR-0038, "
+                "code_graph.search_walk, default off): when enabled, a "
+                "separate walk: {origins, nodes, edges, truncated, "
+                "epoch, walk_cursor/has_more} section answers the "
+                "hits' neighbourhood (in+out, depth ≤ 2, PG1 rows, "
+                "never mixed into results; its own walk_cursor page). "
+                "Token contract: max_output_tokens 128-1M (default "
+                "3200), whole-row drops, strictly advancing cursor, "
+                "has_more (results cursor + the walk section's own "
+                "walk_cursor); signatures are opt-in via "
+                "include_signature. Read-only, audited per agent."
             ),
             input_schema={
                 "type": "object",
@@ -1961,6 +1968,11 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Page cursor from the previous call.",
+                    },
+                    "walk_cursor": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Walk-section page cursor from the previous call.",
                     },
                     "max_output_tokens": {
                         "type": "integer",
@@ -3432,6 +3444,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 kind=args.get("kind"),
                 limit=args.get("limit", 50),
                 cursor=args.get("cursor", 0),
+                walk_cursor=args.get("walk_cursor", 0),
                 max_output_tokens=args.get("max_output_tokens"),
                 include_signature=bool(args.get("include_signature", False)),
                 **common,

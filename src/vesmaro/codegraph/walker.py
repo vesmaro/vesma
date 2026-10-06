@@ -162,21 +162,45 @@ def same_project_prefix(node_id: str, project: str) -> bool:
     return node_id.startswith(f"{len(project)}:{project}#")
 
 
+def walk_quota(limit: Any) -> int:
+    """The M2 walk quota: ``k = min(ceil(limit/5), limit//2)`` — a PURE
+    function of the search ``limit`` (ADR-0038 condition 3; the ratified
+    formula, no adaptivity). ``limit`` goes through the same
+    non-negative-int gate the search already applies (raise-on-junk —
+    the quota never silently clamps its input). The hard caps
+    (fanout 32, total work 512) apply INDEPENDENTLY of ``k``: they
+    bound the walk no matter how the quota resolves."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
+        raise WalkLimitError(f"limit must be a non-negative integer, got {limit!r}")
+    return min(-(-limit // 5), limit // 2)
+
+
 def walk_bfs(
     store: WalkEdgeSource,
     project: str,
     start_id: str,
     node_meta: Any,
     *,
-    depth: int,
-    direction: str,
-    edge_kinds: tuple[str, ...] | None = None,
+    depth: Any,
+    direction: Any,
+    edge_kinds: Any = None,
     fanout_cap: int = WALK_FANOUT_CAP,
     total_work_cap: int = WALK_TOTAL_WORK_CAP,
 ) -> dict[str, Any]:
     """The BFS core: from ``start_id`` over ``project_edges`` in the
     given ``direction`` (``in``/``out``/``both``) with an optional
     edge-kind filter (OR-semantics over the given kinds).
+
+    Fail-closed limit validation (brief card vesma-pg1-walk-m2-section
+    P3-b) lives HERE, not only at the service layer: ``depth``,
+    ``direction`` and ``edge_kinds`` go through
+    :func:`validate_walk_limits` at entry — a breach raises
+    :class:`WalkLimitError` BEFORE any store access, so a caller that
+    skips the service check can never smuggle a silently different
+    walk into the BFS. Validated values are then re-typed (``depth``
+    is provably ``int``, ``direction`` provably ``str``, ``edge_kinds``
+    provably a kind tuple or None) — the ``Any`` annotations keep that
+    contract honest for callers passing raw tool arguments.
 
     Returns live walk state: ``rows`` (the visited node rows sorted by
     ``(depth, qname)`` — byte-identical to trace_path's sort under the
@@ -191,11 +215,14 @@ def walk_bfs(
     discovered next frontier still rides the level loop); the fanout
     ``+1`` probe sets ``truncated`` and slices the leg to the cap.
     """
+    v_depth, v_direction, v_kinds = validate_walk_limits(
+        depth, direction, edge_kinds, max_depth=WALK_MAX_DEPTH
+    )
     visited: dict[str, dict[str, Any]] = {start_id: node_row(node_meta, 0)}
     edges: list[dict[str, Any]] = []
     truncated = False
     frontier = [start_id]
-    for level in range(1, depth + 1):
+    for level in range(1, v_depth + 1):
         if not frontier or len(visited) >= total_work_cap:
             truncated = truncated or bool(frontier)
             break
@@ -208,8 +235,8 @@ def walk_bfs(
                 store,
                 project,
                 node_id,
-                direction=direction,
-                edge_kinds=edge_kinds,
+                direction=v_direction,
+                edge_kinds=v_kinds,
                 fanout_cap=fanout_cap,
             )
             if over_limit:
