@@ -127,6 +127,9 @@ def _child_manifest(name: str, extra_argv: str = "", health: str = "") -> str:
         f"    repo: https://example.com/{name}\n"
         "    license: MIT\n"
         "launch:\n"
+        "  python:\n"
+        "    requirements:\n"
+        '      - "vesma=={engine_version}"\n'
         "  argv:\n"
         '    - "{venv_bin}/python"\n'
         "    - -m\n"
@@ -274,9 +277,16 @@ class TestFreezeFormats:
 
 
 class TestDR03:
-    def test_real_clean_env_subprocess_user_site_excluded(self) -> None:
+    def test_real_clean_env_subprocess_user_site_excluded(self, isolated_home: Path) -> None:
         """The REAL interpreter under a clean env + PYTHONNOUSERSITE=1 must
-        keep the user site dir out of sys.path — this is the DR-03 probe."""
+        keep the user site dir out of sys.path — this is the DR-03 probe.
+        Runs on an ISOLATED installation (the bundled pack, install flow):
+        the probe itself is host-agnostic, but run_service_checks() loads
+        components.d fail-closed first, and the HOST components.d may carry
+        a manifest of another engine version (the load verdict must not
+        depend on machine state outside the check's subject)."""
+
+        install_mod.install()
         finding = _finding(run_service_checks(), "DR-03")
         assert finding.severity is Severity.OK
         assert "clean-env import test passed" in finding.detail
