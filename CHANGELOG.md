@@ -5,7 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.6.3] — 2026-10-06
+
+### Fixed
+
+- **`vesma service install` generated unit: `RuntimeDirectory=vesma` + writability probe (#509)** — `ProtectHome=read-only` makes `/run/user` read-only inside the unit namespace, so the canonical control-socket dir `${XDG_RUNTIME_DIR}/vesma` could not be bound (EROFS crash loop). systemd now creates it via `RuntimeDirectory=vesma` + `RuntimeDirectoryMode=0700` (works under `ProtectSystem=strict`); defense-in-depth: `resolve_runtime_dir()` probes writability (create+unlink — `os.access` cannot see RO mounts) and falls back to the sanctioned layout §3.6 dir `~/.local/state/vesma/run/` with a WARN when the candidate is unwritable.
+- **`vesma service run` starts the mesh legs (unix + tcp) — serve() parity (#510)** — `ServiceApp` ran only the HTTP core, so the MnemosCore gRPC mesh transport never listened under the unit and federation degraded. The mesh wiring is now one shared code path with `serve()` (`backend.start_mesh_legs` / `stop_mesh_legs`): legs come up after the supervisor, stop on graceful + abnormal teardown with the control-socket file removed; a failed leg is SL §3.1 fail-fast. Side fix: the `lifespan` finally-clause nulls the `api.main` manager singleton on close, so a closed manager can never be handed out to a later lifespan cycle; the `meta_poller` page-timeout kill became best-effort — under service run the supervisor reaper owns `waitpid(-1)` and may reap the child first, so `ProcessLookupError` (ESRCH race) no longer surfaces as a bogus peer error.
 
 ### Added
 

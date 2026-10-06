@@ -73,14 +73,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:5.6.2
+  ghcr.io/vesmaro/vesma:5.6.3
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Теги: `:5.6.2` (фиксированная) · `:latest` (rolling).
+Теги: `:5.6.3` (фиксированная) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Полное руководство: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -89,7 +89,7 @@ curl -s http://localhost:8787/health | jq
 
 <!-- version:pip -->
 ```bash
-pip install vesma==5.6.2
+pip install vesma==5.6.3
 ```
 <!-- /version:pip -->
 
@@ -327,6 +327,32 @@ vesma search "hello"
 
 Для программного доступа с расширенными опциями (вес вектора, сырой контент, фильтр
 по тегам) используйте HTTP API — см. [http-api.md](http-api.md).
+
+---
+
+## Ваш проект индексируется сам (граф проектов)
+
+Vesma умеет индексировать и **структуру кода** проекта — схемы файлов, поиск по
+символам, трассировку вызовов — без единого байта исходника в хранилище. Это
+[граф проектов](project-graph.md), включённый по умолчанию. С волны PG-0.5 он
+не требует настройки: **ваш проект индексируется сам**. Первый MCP-вызов (или
+хук `pre_llm_call`), который агент делает внутри каталога с packaging-манифестом
+(`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml` или `setup.py`),
+авторегистрирует и индексирует проект в фоне (`auto_index`, причина аудита —
+`auto-first`). Ни явного вызова, ни инструкций, ни скиллов.
+
+Что происходит, по шагам:
+
+1. Работайте в проекте как обычно — агент вызывает там любой MCP-инструмент.
+2. Первый индекс идёт в фоне (`auto-first`); дальше строка-маячок в выводе
+   `assemble_context` сама сообщает свежесть графа.
+3. Проверьте: `mnemos_project_graph_status` (сначала найдите `project_id` через
+   `mnemos_list_graph_projects`).
+
+Не нужен авто-путь? Два выключателя в `config.yaml`:
+`code_graph.auto_index: false` останавливает только фоновый авто-путь (ручные
+инструменты графа работают); `code_graph.enabled: false` выключает всю
+поверхность. Полный гид: [project-graph.md](project-graph.md).
 
 ---
 
@@ -665,6 +691,7 @@ ADR-0023; после переустановки транспорт подтве�
 | Посмотреть все HTTP-эндпоинты | [http-api.md](http-api.md) |
 | Поставить движок на индексацию код-графа этого репозитория для поиска кода — репозиторий индексируется сам (блок `auto_index` конфига: авторегистрация + автом-переиндексация) | [project-graph.md](project-graph.md) |
 | Прочитать схему тегов | [tag-contract.md](tag-contract.md) |
+| Углубиться в граф проектов (поиск по символам, трассировка вызовов, авто-индексация) | [project-graph.md](project-graph.md) |
 | Выполнить операционную задачу | [admin/runbooks/install.md](../admin/runbooks/install.md) |
 | Пересмотреть границы безопасности | [security.md](../admin/security.md) |
 | Узнать, почему принято то или иное решение | [project/adr/](../../project/adr/) |

@@ -73,14 +73,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:5.6.2
+  ghcr.io/vesmaro/vesma:5.6.3
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:5.6.2` (pinned) · `:latest` (rolling).
+Tags: `:5.6.3` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -89,7 +89,7 @@ Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md)
 
 <!-- version:pip -->
 ```bash
-pip install vesma==5.6.2
+pip install vesma==5.6.3
 ```
 <!-- /version:pip -->
 
@@ -328,6 +328,33 @@ Useful flags:
 
 For programmatic access with extended options (vector weight, raw content, tag
 filters) use the HTTP API — see [http-api.md](http-api.md).
+
+---
+
+## Your project indexes itself (the project graph)
+
+Vesma can also index a project's **code structure** — file outlines, symbol
+search, call tracing — with no source bytes stored. This is the
+[project graph](project-graph.md), on by default. Since PG-0.5 it needs no
+setup: **your project indexes itself**. The first MCP call (or a
+`pre_llm_call` hook) an agent makes inside a directory carrying a packaging
+manifest (`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml` or
+`setup.py`) auto-registers and indexes the project in the background
+(`auto_index`, audit reason `auto-first`). No explicit call, no instruction,
+no skill.
+
+What happens, in order:
+
+1. Work in your project as usual — an agent calls any MCP tool there.
+2. The first index runs in the background (`auto-first`); from then on a
+   beacon line in `assemble_context` output reports graph freshness on its own.
+3. Check it with `mnemos_project_graph_status` (look up the `project_id` with
+   `mnemos_list_graph_projects`).
+
+Don't want the auto path? Two switches in `config.yaml`:
+`code_graph.auto_index: false` stops only the background auto path (the manual
+graph tools keep working); `code_graph.enabled: false` turns the whole surface
+off. Full walkthrough: [project-graph.md](project-graph.md).
 
 ---
 
@@ -667,6 +694,7 @@ note in the [integration guide](integration-guide.md).
 | See every HTTP endpoint | [http-api.md](http-api.md) |
 | Have the engine index THIS repository's code graph for code search — it indexes itself (the `auto_index` config block: auto-register + auto-reindex) | [project-graph.md](project-graph.md) |
 | Read the tag schema | [tag-contract.md](tag-contract.md) |
+| Dive into the project graph (symbol search, call tracing, auto-indexing) | [project-graph.md](project-graph.md) |
 | Perform an operational task | [admin/runbooks/install.md](../admin/runbooks/install.md) |
 | Review the security boundaries | [security.md](../admin/security.md) |
 | Learn why a decision was made | [project/adr/](../../project/adr/) |

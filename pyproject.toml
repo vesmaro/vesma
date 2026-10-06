@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vesma"
-version = "5.6.2"
+version = "5.6.3"
 description = "Vesma — standalone memory & knowledge server for AI agents (Vesmaro Project)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -202,14 +202,17 @@ mnemos-train = "vesmaro.train_entry:main"
 # Machine-local scratch must never ride the sdist: hatchling selects by
 # .gitignore, so untracked-but-not-ignored top-level entries are swept in —
 # a foreign wt/ worktree dir carrying an absolute-path symlink polluted the
-# sdist AND crashed the tar data filter on the 5.6.2 train. Pin the scratch
-# names (#481 precedent: artefact content independent of checkout state).
+# sdist AND crashed the tar data filter on the 5.6.2 train; the same class
+# came back as a feat/ native-worktree checkout with an absolute-path symlink
+# on the 5.6.3 train ([5/18] Build wheel+sdist). Pin the scratch names
+# (#481 precedent: artefact content independent of checkout state).
 exclude = [
     "scripts/run-release-local.sh",
     "scripts/local-ci",
     "benchmarks",
     "training",
     "wt",
+    "feat",
     "handoff",
     "gen_wave*.sh",
     "node-*.tar.xz",
