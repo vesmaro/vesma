@@ -36,16 +36,23 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`mcp-server`](#mcp-server) | Запустить MCP stdio-сервер для VS Code Copilot |
 | [`migrate from-ai-brain`](#migrate-from-ai-brain) | Однократный импорт из устаревшей установки `ai-brain` |
 | [`auth`](#auth) | Bearer-токены (`auth token`) и TOTP 2FA (`auth totp`) |
-| [`integration`](integration-guide.md) | Развёртывание / проверка слоя интеграции (отдельная страница) |
+| [`integration`](#integration) | Развёртывание / проверка слоя интеграции (полный гайд: [integration-guide.md](integration-guide.md)) |
 | [`completion`](#completion) | Установка shell-автодополнения (bash / zsh / fish) |
-| [`doctor`](#doctor) | Диагностика установки (субкоманды `fix` / `paths`; проверки: конфиг, база, vault, …) |
-| [`update`](#update) | Проверка обновлений / обновление user-site-установки |
+| [`doctor`](#doctor) | Диагностика установки (субкоманды `fix` / `paths` / `service`; проверки: конфиг, база, vault, …) |
+| [`update`](#update) | Проверка обновлений / обновление user-site-установки (`check` / `apply` / `components` / `timer`) |
+| [`service`](#service) | Служба Vesma: `install` / `uninstall` + управление супервизором (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`) |
 | [`export`](export-import.md) | Экспорт записей в JSON / SQLite-бэкап (отдельная страница) |
 | [`import`](export-import.md) | Импорт записей из файла экспорта (отдельная страница) |
 | [`logs`](#logs) | Просмотр трассировок пайплайна |
 | [`sync`](sync.md) | Пакетная federation-синхронизация: export / import (отдельная страница) |
 | [`meta-poll`](#meta-poll) | Опрос метаданных федерации: один проход поллера вручную (S2 фаза 2) |
+| [`fetch`](#fetch) | Дозагрузка полных записей с пира федерации (S2 lazy fetch) |
 | [`scanner`](#scanner) | Фоновый сканер секретов: `run` / `status` |
+| [`graph`](#graph) | Жизненный цикл регистрации граф-проекта: `register` / `repoint` / `delete` |
+| [`agent-token`](#agent-token) | Токены W3 AgentGateway: `issue` / `rotate` / `revoke` / `list` |
+| [`backfill-embedding-ids`](#backfill-embedding-ids) | Проставить `memories.embedding_id` из векторного стора (search v2) |
+| [`edge-stats`](#edge-stats) | Обслуживание таблицы feedback-фидбека edge_stats: `stats` / `purge` |
+| [`memory`](#memory-status) | Статус подключения памяти по харнесам (`memory status`, ADR-0034) |
 
 > Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают.
 
@@ -278,17 +285,16 @@ vesma recall agent sre --project vesma --limit 25
 
 ## `tags validate`
 
-Проверить контракт тегов Vesma по всей существующей директории Vesma vault. Сообщает о записях, нарушающих схему M2.
+Проверить контракт тегов по всем файлам vault. Сканирует vault на теги, ломающие контракт, — неверное написание `project:`/`agent:`, заглавные буквы в слагах, пробелы вместо дефисов — и сообщает каждую нарушающую запись с причиной. Массовое исправление класса «регистр/пробелы» — парная команда `vesma tags normalize`.
 
 ```text
-vesma tags validate VAULT_PATH
+vesma tags validate VAULT_PATH [OPTIONS]
 ```
 
-| Аргумент | Описание |
+| Аргумент / Опция | Описание |
 |----------|---------- |
 | `VAULT_PATH` (позиционный) | Путь к директории Vesma vault (зеркало в markdown). |
-
-> **Статус.** Полная реализация сканирования vault ещё не подключена (`# TODO (M2): scan SQLite + vault markdown files`). Пока команда выводит заглушку. Для проверки тегов через SQLite используйте `vesma stats` и HTTP API `GET /memories?project=...`.
+| `--config / -c` | Путь к `config.yaml`. |
 
 ### Пример
 
@@ -402,24 +408,42 @@ vesma stats [OPTIONS]
 | Ключ | Значение |
 |------|--------- |
 | `status` | Всегда `ok` (сигнал живости) |
-| `version` | Версия Vesma (сейчас `4.0.0`) |
+| `version` | Версия Vesma (например `5.6.2`) |
+| `update_available` | Сводка проверки обновлений: `installed`, `latest`, `dist`, `update_available`, `checked_at` (кэш 24 ч) |
 | `data_dir` | Разрешённая директория данных |
 | `vault_path` | Разрешённая директория vault |
 | `total` | Общее количество записей (любой статус) |
 | `by_status` | Словарь `raw` / `processing` / `processed` / `published` / `archived` |
 | `vectors` | Количество векторов в локальном векторном индексе (`vectors.db`) |
+| `projects` | Словарь «slug проекта → число записей» |
+| `filter` | Состояние контекстного фильтра: `auto_filter`, счётчики `filtered`/`unfiltered`, средний процент сокращения, разбивка по профилям |
+| `embedding_status` | Провайдер эмбеддингов, число векторов, флаг деградации |
+| `processor` | Состояние конвейера знаний: глубины очередей, `pipeline_states`, время последней обработки |
+| `doc_chunk_cache_version` | Consumer-facing счётчик инвалидации doc-chunk-кэша CCR (ADR-0027) |
+| `search_health` | Доступность FTS и вектора, режим поиска, флаг осиротевших векторов |
 
 ### Пример
 
 ```bash
 vesma stats
 # status: ok
-# version: 4.0.0
-# data_dir: /home/you/.vesma/data
-# vault_path: /home/you/.vesma/vault
+# version: 5.6.2
+# update_available: {'installed': '5.6.2', 'latest': '5.6.2', 'dist': 'vesma-memory-server',
+#   'update_available': False, 'checked_at': '2026-10-06T10:04:51+00:00', 'stale': False}
+# data_dir: /home/you/.mnemos/data
+# vault_path: /home/you/.mnemos/vault
 # total: 142
-# by_status: {'raw': 5, 'processing': 0, 'processed': 12, 'published': 120, 'archived': 5}
-# vectors: 120
+# by_status: {'archived': 2, 'processed': 23, 'published': 117}
+# vectors: 117
+# projects: {'vesma': 97, 'gcw': 32, ...}
+# filter: {'auto_filter': True, 'filtered_count': 140, 'unfiltered_count': 2,
+#   'avg_reduction_pct': 0.83, 'by_profile': {'docs': 95, 'default': 44, 'code': 1}}
+# embedding_status: {'provider': 'nano', 'vectors_indexed': 117, 'degraded': False}
+# processor: {'queue_depth': 0, 'legacy_queue_depth': 0, 'refine_queue_depth': 0,
+#   'pipeline_states': {'legacy': 37, 'refined': 105}, 'last_processed_at': '...'}
+# doc_chunk_cache_version: 0
+# search_health: {'fts_available': True, 'vector_available': True, 'mode': 'hybrid',
+#   'orphaned_vectors': False}
 ```
 
 ---
@@ -840,6 +864,7 @@ vesma tags <TAB>
 vesma doctor [OPTIONS]
 vesma doctor fix [--dry-run] [--json]
 vesma doctor paths [--json]
+vesma doctor service [--json]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -856,16 +881,28 @@ vesma doctor paths [--json]
 
 ```bash
 vesma doctor paths
-# Root:         ~/.mnemos
-# Data dir:     ~/.mnemos/data
-# Vault:        ~/.mnemos/vault
-# Logs:         ~/.mnemos/logs/vesma.log
-# Cache:        ~/.mnemos/cache
-# Completion:   ~/.mnemos/completion
-# MCP config:   ~/.config/Code/User/mcp.json
+# ── Paths ─────────────────────────────────────
+#   Root          ~/.mnemos
+#   Config        ~/.mnemos/config.yaml
+#   Data dir      ~/.mnemos/data
+#   DB            ~/.mnemos/data/mnemos.db
+#   Vault         ~/.mnemos/vault
+#   Logs          ~/.mnemos/logs/mnemos.log
+#   Cache         ~/.mnemos/cache
+#   Completion    ~/.mnemos/completion
+#   MCP config    ~/.config/Code/User/mcp.json
 ```
 
 Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции. С `--json` объект путей выводится для скриптов.
+
+### `doctor service`
+
+Проверка установки службы (layout v1 §3.10, DR-01…DR-13): манифесты компонентов, venv, юнит, окружение. **Read-only по контракту**: находка несёт серьёзность OK / WARN / FAIL и готовую команду исправления, но doctor сам ничего не исполняет. Коды выхода: `0` — всё OK, `1` — есть FAIL, `2` — только предупреждения. `--json` отдаёт находки для скриптов / CI.
+
+```bash
+vesma doctor service
+vesma doctor service --json
+```
 
 ### `doctor fix`
 
@@ -947,6 +984,8 @@ vesma update components [--json]
 
 Устаревшие флаги-алиасы (каждый печатает одну строку `use: vesma update …` в stderr; stdout остаётся чистым): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Опции, поставленные ПЕРЕД словом сабкоманды, игнорируются с явной пометкой в stderr.
 
+Опция `--verbose` есть и на самой группе: `vesma update --verbose` печатает полный вывод pip вместо однострочной сводки по каждой поверхности (при отказе последние строки pip показываются в любом случае).
+
 Результат проверки кэшируется на 24 часа; если установленная версия новее закэшированного `latest` (сразу после само-обновления), кэш один раз синхронно перепроверяется. Если установленная версия новее всего опубликованного, отчёт пишет `newer than published latest (local build?)`.
 
 ### Строка pip-семейства алиасов
@@ -994,6 +1033,81 @@ vesma update components
 ```
 
 После успешного обновления перезапустите работающих клиентов (MCP / `serve`), чтобы подхватить новую версию.
+
+---
+
+## `service`
+
+Установка службы Vesma и управление супервизором — девять глаголов в одной группе (service-lifecycle v1). Инсталляторные глаголы готовят файлы и юнит; клиентские глаголы (`status` / `health` / `start` / `stop` / `restart` / `logs`) общаются с работающим супервизором по его control-сокету.
+
+```text
+vesma service install
+vesma service uninstall [name] [--all]
+vesma service status [component] [--socket PATH]
+vesma service health [component] [--socket PATH]
+vesma service start {component} [--socket PATH]
+vesma service stop {component} [--force] [--socket PATH]
+vesma service restart {component} [--socket PATH]
+vesma service logs {component} [--follow] [--tail N] [--socket PATH]
+vesma service run [--socket PATH] [--config PATH]
+```
+
+| Глагол | Назначение |
+|--------|----------- |
+| `install` | Установить службу: манифесты компонентов, каталоги данных, venv, юнит. |
+| `uninstall [name]` | Удалить один компонент; с `--all` — всю установку. |
+| `status [component]` | Live-состояние компонентов (или одного) в JSON. |
+| `health [component]` | Глобальное и покомпонентное здоровье — вердикт самого супервизора. |
+| `start {component}` | Запустить компонент (идемпотентно). |
+| `stop {component}` | Остановить (идемпотентно); `--force` — жёсткое убийство. |
+| `restart {component}` | Перезапустить (по контракту НЕ идемпотентно). |
+| `logs {component}` | Последние строки лога компонента; `--follow` — поток. |
+| `run` | Запустить службу в foreground: супервизор + control-сокет + in-process core. |
+
+### `service install`
+
+Идемпотентно — повторный запуск пересоздаёт каждый артефакт; ручные правки юнита перезаписываются by design (threat model «ручная правка юнита»). Внутри контейнера директивы filesystem hardening громко понижаются: маркер в юните плюс строки отчёта.
+
+### `service uninstall`
+
+Удаляет только файлы, которыми владеет install-флоу (манифест, env-файл, venv). Каталоги данных компонентов — операторские данные и сохраняются. `--all` останавливает и выключает юнит, удаляет его и все компоненты.
+
+### Клиентские глаголы: `status` / `health` / `start` / `stop` / `restart` / `logs`
+
+Все клиентские глаголы требуют работающего супервизора (`vesma service run`); при молчащем control-сокете — exit 1 с подсказкой. `--socket <path>` переопределяет сокет (тесты, мультиинстанс-машины).
+
+- `status` печатает live-состояние (running / stopped / failed плюс PID и uptime, где доступны) в JSON для каждого установленного компонента — или только для указанного аргументом.
+- `health` — вердикт супервизора (семантика healthz): `OK`, когда процесс компонента отвечает на readiness-пробу; `DEGRADED` / `FAIL` с причиной — иначе. Запускайте после `start` / `restart`, чтобы убедиться, что компонент реально поднялся.
+- `start` запускает компонент из его установленного манифеста. Уже запущенный компонент сообщается как есть, а не ошибкой — стартовые скрипты могут вызывать команду безусловно. Готовность подтверждайте `vesma service health`.
+- `stop` сначала останавливает мягко (SIGTERM, короткий grace-период); `--force` пропускает мягкую фазу и SIGKILL-ит после короткой задержки — только для зависшего процесса, так как невыполненная работа теряется. Уже остановленный компонент сообщается как есть.
+- `restart` — настоящий цикл stop-then-start, а не no-op: в отличие от `start`/`stop` он НЕ идемпотентен — повтор после потерянного ответа выполнит второй рестарт. Используйте для перезагрузки компонента после изменения конфига или манифеста.
+- `logs` печатает последние `--tail` строк (по умолчанию 100, потолок 10000) из источника логов компонента или держит поток новых строк с `--follow` / `-f`, пока компонент не остановится.
+
+### `service run`
+
+Запуск службы в foreground: супервизор + control-сокет + in-process core. Ядро memory-сервера (то же приложение, что запускает `vesma serve`) встроено В ЭТОТ ПРОЦЕСС как сердце супервизора (service-lifecycle v1 §3.1): смерть ядра = смерть супервизора (fail-fast, exit 1, юнит systemd перезапускает — механизма рестарта ядра нет намеренно). Board и дочерние компоненты едут из их манифестов. Режим single-instance: когда живой супервизор уже отвечает на сокете, команда завершается с exit 0 и сообщением.
+
+| Опция | По умолчанию | Описание |
+|-------|-------------|---------- |
+| `--socket` | дефолт сокета | Переопределение control-сокета (тесты). |
+| `--config / -c` | — | Путь к `config.yaml` (bind/port core API). |
+
+```bash
+# Установка (на хосте — юнит systemd user)
+vesma service install
+
+# Запуск службы; состоянием заведует супервизор
+vesma service run
+
+# Из другой сессии: состояние, здоровье, управление
+vesma service status
+vesma service health
+vesma service start board
+vesma service logs board --follow
+vesma service stop board
+```
+
+Диагностика установки — `vesma doctor service` (read-only, DR-01…DR-13).
 
 ---
 
