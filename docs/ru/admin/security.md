@@ -98,9 +98,10 @@ loopback, а также те же классы кодировок для `169.25
    должен передавать `revision=` (путь в `ONNXHubProvider.__init__` поднимает
    `ValueError`, если оператор не предоставил ревизию).
 2. **Конфигурируемость** — SHA можно переопределить через env var
-   `MNEMOS_EMBEDDING__HF_REVISION` или `config.yaml`. Операторы, меняющие
-   `embedding.model`, ОБЯЗАНЫ также обновить `embedding.hf_revision` до
-   соответствующего закреплённого SHA.
+   `VESMA_EMBEDDING__HF_REVISION` (устаревшие написания
+   `VESMARO_*`/`MNEMOS_*` принимаются до 6.0) или `config.yaml`.
+   Операторы, меняющие `embedding.model`, ОБЯЗАНЫ также обновить
+   `embedding.hf_revision` до соответствующего закреплённого SHA.
 3. **Проверка SHA256 (запланировано, не реализовано)** — TODO для следующей
    фазы. Ответ HF Hub должен хэшироваться и сравниваться с ожидаемым дайджестом
    рядом с закреплённой ревизией.
@@ -244,8 +245,9 @@ Vesma использует **непрозрачные bearer-токены** (п�
 ### 9.2 TOTP второй фактор
 
 TOTP-секреты на уровне токена шифруются в покое через AES-128 (Fernet),
-используя ключ, производный от `api.totp_master_key`. Мастер-ключ **только в
-env** (`MNEMOS_API__TOTP_MASTER_KEY`) и никогда не записывается на диск. Пустой
+используя ключ, производный от `api.totp_master_key`. Мастер-ключ **только в env** (канон
+`VESMA_API__TOTP_MASTER_KEY`; устаревшие `VESMARO_API__*`/`MNEMOS_API__*`
+принимаются до 6.0 — ADR-0031) и никогда не записывается на диск. Пустой
 мастер-ключ отклоняется при запуске с `ValueError`, когда `api.totp_enabled=true`.
 
 **Защита от replay**: колонка `totp_last_step` в строке каждого токена фиксирует
@@ -284,8 +286,8 @@ env** (`MNEMOS_API__TOTP_MASTER_KEY`) и никогда не записывае�
 
 ### 9.5 Стартовый guard CLI
 
-`vesma serve` экспортирует `MNEMOS_API__HOST` и `MNEMOS_API__PORT` в окружение
-перед запуском uvicorn. Стартовый guard воркера проверяет экспортированный хост:
+`vesma serve` экспортирует канонические `VESMA_API__HOST` и `VESMA_API__PORT`
+в окружение перед запуском uvicorn. Стартовый guard воркера проверяет экспортированный хост:
 non-loopback привязка отклоняется с ненулевым кодом выхода, если
 `api.auth_enabled=true` не установлено. Это предотвращает молчаливое открытие
 API для сети при ошибочном деплое «аутентификация потом».
@@ -328,8 +330,8 @@ API-ключи LLM-провайдеров (`openai_api_key`, `anthropic_api_key`
 окружения, никогда через `config.yaml` в VCS:
 
 ```bash
-export MNEMOS_LLM__OPENAI_API_KEY="sk-..."
-export MNEMOS_LLM__ANTHROPIC_API_KEY="sk-ant-..."
+export VESMA_LLM__OPENAI_API_KEY="sk-..."      # канон; VESMARO_/MNEMOS_ twin'ы принимаются до 6.0
+export VESMA_LLM__ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 ### 10.2 SSRF — заблокированные URL отклоняются, не сохраняются
@@ -494,9 +496,12 @@ key, database connection strings, и high-entropy base64-последовате�
   прогоняет `moderate()` на каждой записи: `allow` → оригинальный
   контент в compact-summary, `redact` → sanitized-контент, `refuse` →
   запись исключается и учитывается в `records_refused`. Compact-payload
-  (`mnemos.federation.v1`) записывается в файл, опционально
-  AES-256-GCM зашифрованным с паролем из `MNEMOS_EXPORT_PASSPHRASE`
-  (никогда из CLI-аргумента).
+  (`vesmaro.federation.v1`) записывается в файл, опционально
+  AES-256-GCM зашифрованным с паролем из env-переменной: CLI-путь читает
+  `VESMARO_EXPORT_PASSPHRASE` (текущий `sync export`), MCP-путь предпочитает
+  `VESMA_EXPORT_PASSPHRASE` с fallback'ом на `VESMARO_EXPORT_PASSPHRASE`
+  (оба принимаются до 6.0 — ADR-0031). Пароль НИКОГДА не передаётся
+  CLI-аргументом.
 - **Импорт** — `vesma sync import` читает compact-payload
   (расшифровывая при необходимости через пароль из переменной
   окружения, **названной** `--passphrase-env`), валидирует каждую

@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/admin/kubernetes-deployment.md)
 
-> Admin-tier guide for deploying the full Vesma (Vesma) server into any
+> Admin-tier guide for deploying the full Vesma server into any
 > Kubernetes 1.25+ cluster — vanilla K8s, K3s, kind, k0s — with the bundled
 > Helm chart (`deploy/helm/vesma/`): Deployment, Service, **Ingress**,
 > two PersistentVolumeClaims and the TOTP secret.
@@ -32,11 +32,17 @@ Health surface: unauthenticated `GET /health` (used by probes and `helm test`).
 - The container image reachable from the cluster — see
   [Image registry status](#image-registry-status)
 
+> **Image tag.** The chart pins `image.tag` to `Chart.yaml appVersion`
+> (currently `4.3.0`). For a fresh release pin the image explicitly:
+> `--set image.tag=5.6.2` (published tags —
+> `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x, latest`).
+
 ## Quick start
 
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -47,6 +53,7 @@ K3s (Traefik + local-path are the defaults, so nothing extra is needed):
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -81,11 +88,14 @@ supported ways, in order of preference:
 
 3. **Values file** — never commit the real value; keep it out of git.
 
-The key is injected under **both env spellings** —
+The template injects the key under **two env spellings** —
 `MNEMOS_API__TOTP_MASTER_KEY` (read by 4.x images) and
-`VESMA_API__TOTP_MASTER_KEY` (canonical since 5.3; 5.0–5.2 images read the
-deprecated `VESMARO_API__TOTP_MASTER_KEY`, accepted until 6.0) — from the
-single secret key. This is the ADR-0031 dual-prefix contract: one value,
+`VESMARO_API__TOTP_MASTER_KEY` (5.x). On 5.3+ images the canonical spelling
+is `VESMA_API__TOTP_MASTER_KEY` (ADR-0031: both older spellings stay
+accepted until 6.0, so the two existing names are enough for every
+published image; to set the canonical spelling as well, pass it through
+the chart's top-level `extraEnv`).
+This is the ADR-0031 dual-prefix contract: one value,
 several names, so the chart works across the 4.3.0 → 5.0.0 → 5.3.0 rebrand
 boundaries unchanged.
 
@@ -139,15 +149,16 @@ Published images live at **`ghcr.io/vesmaro/vesma`** (org namespace) and are
 remains available for private-registry setups or rate limits, but is not
 needed for this image.
 
-The release pipeline (`scripts/local-release.sh`) pushes the versioned tag
-and `:latest` on every release; the registry history (legacy namespaces,
-backfills) lives in ADR-0031.
+The release train (`scripts/pypi-publish.sh --publish` plus the mandatory
+`scripts/image-publish.sh` image phase) pushes the versioned tag plus
+`:latest` on every release; the registry history (legacy namespaces,
+re-pushes) lives in ADR-0031.
 
 ## Upgrades & uninstall
 
 ```bash
 helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=4.4.0              # data volumes survive upgrades
+  --set image.tag=5.6.2              # data volumes survive upgrades
 helm uninstall vesma -n vesma    # PVCs are kept; delete them explicitly if needed
 ```
 

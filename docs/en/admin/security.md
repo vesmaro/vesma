@@ -499,9 +499,12 @@ into the federation batch-sync path. See
   calls `build_compact_payload()` which runs `moderate()` on every
   record: `allow` → original content in the compact summary, `redact` →
   sanitized content, `refuse` → record excluded and counted in
-  `records_refused`. The compact payload (`mnemos.federation.v1`) is
-  written to a file, optionally AES-256-GCM encrypted with a passphrase
-  from `MNEMOS_EXPORT_PASSPHRASE` (never a CLI argument).
+  `records_refused`. The compact payload (`vesmaro.federation.v1`) is
+  written to a file, optionally
+  AES-256-GCM encrypted with a passphrase from an env var: the CLI path
+  reads `VESMARO_EXPORT_PASSPHRASE` (today's `sync export`), the MCP path
+  prefers `VESMA_EXPORT_PASSPHRASE` with a `VESMARO_EXPORT_PASSPHRASE`
+  fallback (both accepted until 6.0 — ADR-0031). NEVER a CLI argument.
 - **Import** — `vesma sync import` reads the compact payload
   (decrypting if needed via a passphrase from the env var **named** by
   `--passphrase-env`), validates each record (reuses #86

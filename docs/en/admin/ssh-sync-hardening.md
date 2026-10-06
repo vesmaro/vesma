@@ -1,12 +1,16 @@
 # Vesma — SSH Sync Hardening Checklist
 
 Auto-cron federation bridge (#104) — host/SSH layer hardening for the
-`mnemos-sync` automation between two vesma instances (A = source, B = target).
+batch-sync automation between two vesma instances (A = source, B = target).
+Names like `mnemos-sync` (the service user, directories, key comments) are a
+legacy spelling of the same installation and need no renaming; the script's
+env contract is `VESMARO_SYNC_*` (legacy `MNEMOS_SYNC_*` names map with a
+fallback, see `scripts/sync-peers.sh`).
 
 ## Scope, audience, related
 
 - **Scope:** the host/SSH layer that `scripts/sync-peers.sh` and the
-  `contrib/systemd/mnemos-sync.{service,timer}` units run on. This is NOT
+  `contrib/systemd/vesma-sync.{service,timer}` units run on. This is NOT
   vesma application code — vesma itself stays offline.
 - **Audience:** operators deploying the Phase 0 batch sync as an automated
   cron bridge. Assumes root on both A and B, both running Linux with systemd.
@@ -123,8 +127,8 @@ Rotate quarterly, or immediately on any suspected compromise.
      sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
 2. Add the new .pub to authorized_keys on B (§2) — keep the OLD line in place
    during the cutover so a failed rotation does not break the cron.
-3. Test: run sync-peers.sh manually with MNEMOS_SYNC_DRY_RUN=1 against the
-   new key, then a real run.
+3. Test: run sync-peers.sh manually with `VESMARO_SYNC_DRY_RUN=1` (or the
+   legacy `MNEMOS_SYNC_DRY_RUN=1`) against the new key, then a real run.
 4. Update sync.env on A to point at the new key path.
 5. Remove the old .pub line from authorized_keys on B.
 6. Shred the old private key on A:  sudo shred -u /etc/vesma/sync-push-key-old
@@ -208,7 +212,7 @@ Ordered steps, A → B.
      sudo install -m 0755 contrib/systemd/vesma-import-wrapper.sh /usr/local/sbin/
 4. Create /var/log/vesma-sync.log owned by mnemos-sync (§6).
 5. Add the two restricted keys to ~/.ssh/authorized_keys (§2) — after A's
-   public keys exist (step A3 below).
+   public keys exist (step A1 below).
 6. Apply the sshd_config drop-in + firewall rule (§7). Reload sshd.
 
 # ── On A (source) ──────────────────────────────────────────────────────────
@@ -216,16 +220,17 @@ Ordered steps, A → B.
 4. Copy the two .pub files to B and add them to authorized_keys (step B5).
 5. Install scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-6. Provision /etc/vesma/sync.env from contrib/systemd/sync.env.example
+4. Provision /etc/mnemos/sync.env from contrib/systemd/sync.env.example —
+   the exact path the `EnvironmentFile=` of `vesma-sync.service` loads
    (replace every RFC-reserved dummy). Provision the passphrase via a
    systemd drop-in or LoadCredential — NOT in sync.env.
-7. Install the systemd units:
+5. Install the systemd units:
      sudo install -m 0644 contrib/systemd/vesma-sync.service /etc/systemd/system/
      sudo install -m 0644 contrib/systemd/vesma-sync.timer   /etc/systemd/system/
      sudo systemctl daemon-reload
-8. Dry-run first:  sudo MNEMOS_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
+6. Dry-run first:  sudo MNEMOS_SYNC_DRY_RUN=1 systemctl start vesma-sync.service  # or VESMARO_SYNC_DRY_RUN=1
    (or run sync-peers.sh by hand with the env vars exported).
-9. Enable the timer:  sudo systemctl enable --now vesma-sync.timer
+7. Enable the timer:  sudo systemctl enable --now vesma-sync.timer
 ```
 
 ## Verification
@@ -238,7 +243,7 @@ How to confirm the hardening holds.
 | `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | rejected — "non-rsync command refused" (exit 2) | rsync-wrapper.sh not the `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | rejected — "destination outside INCOMING_DIR" (exit 2) | rsync-wrapper.sh path check broken |
 | `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | rejected — "non-import command refused" (exit 2) | vesma-import-wrapper.sh guard broken |
-| `MNEMOS_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
+| `VESMARO_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
 | `tail /var/log/vesma-sync.log` after a real run | ACCEPT lines with src IP + timestamp | audit helper not writing |
 
 Run the dry-run first on every new install — it exercises the full
@@ -256,5 +261,6 @@ env-var validation and command construction without touching the network.
 - `contrib/systemd/vesma-import-wrapper.sh` — concrete import-trigger guard
   (§2, §6).
 - `contrib/systemd/sync.env.example` — env var template (RFC-reserved dummies).
-- `scripts/sync-peers.sh` — the ExecStart script (reads `MNEMOS_SYNC_*`).
+- `scripts/sync-peers.sh` — the ExecStart script (reads `VESMARO_SYNC_*`;
+  legacy `MNEMOS_SYNC_*` names remain a compatibility fallback).
 - `tests/test_sync_peers_script.py` — tests for the script + systemd units.
