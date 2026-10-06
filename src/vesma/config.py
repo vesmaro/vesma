@@ -198,6 +198,29 @@ class VesmaConfig(BaseModel):
     decision_jev_api_key_env: str = Field(
         default="VESMA_OPENROUTER_API_KEY", min_length=1, max_length=256
     )
+    # The Choice-arbiter v2 seam (W1-W3, ``vesma.merge_arbiter``): member
+    # choice over a duplicate cluster AFTER the is-dup gate (v42 stays
+    # untouched — separate contract, separate pin, ADR-0002 R2). Three
+    # postures, ADR-0037 §8.3 verdict/action split:
+    #   * "advisory" (default) — the arbiter runs on is-dup-gated
+    #     near-dup clusters at write time: verdicts land in the
+    #     structured log (machine-parseable MERGE-ARBITER lines) and the
+    #     OBSERVATION mark ``same-message-other-envelope`` mints on
+    #     CH-0/CH-5 sightings. NO fold ever happens: a spare copy is
+    #     cheap, a false fold is irreversible.
+    #   * "apply" — the consolidation executor runs on a keep verdict:
+    #     marks carry over onto the keeper (ADR-0037 D6), the Д3
+    #     ``relates_to`` edge (provenance ``merge-arbiter``) mints, and
+    #     folded rows go through the store's own Stage-1 tombstone.
+    #     Flipping this is the TL/owner gate AFTER the executor has been
+    #     exercised on a store copy — never a silent default.
+    #   * "off" — the arbiter seam is disabled (call sites skip).
+    # Fail-open: any MERGE-E-* load/pin/infer refusal disables the
+    # arbiter for the process with a machine-parseable warn — ingest is
+    # never blocked (the verify-before-load refusal protects the
+    # verdict, the wiring protects the write).
+    # Canonical env override: VESMA_VESMA__MERGE_ARBITER=apply.
+    merge_arbiter: Literal["off", "advisory", "apply"] = "advisory"
 
 
 class LoggingConfig(BaseModel):
