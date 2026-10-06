@@ -1,4 +1,4 @@
-# ADR 0037: PG-1 Two-Level Graph Walk — One Walker, a Separate `walk` Section, Work Caps
+# ADR 0038: PG-1 Two-Level Graph Walk — One Walker, a Separate `walk` Section, Work Caps
 
 **Status:** Accepted (ArchCom 2026-10-06, consensus without disputes; the
 architect's and security's positions on PG-1 converged independently, the

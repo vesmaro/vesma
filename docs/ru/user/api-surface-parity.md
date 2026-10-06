@@ -4,7 +4,7 @@
 Lead и Product Architect подписали каждую диспозицию). Эта запись существует,
 чтобы вопрос не переоткрывался:** будущие предложения поверхностей
 оцениваются по ней, а не переобсуждаются. Parity-вердикт той же сессии,
-что приняла [ADR-0037](../../project/adr/0037-pg1-graph-walk.md).
+что приняла [ADR-0038](../../project/adr/0038-pg1-graph-walk.md).
 
 ## Принцип
 
@@ -109,4 +109,4 @@ main, auth, federation, A2A-сессии), 40 MCP-тулов (`src/vesmaro/mcp_s
 
 _Протокол комитета 2026-10-06 (team-local:
 `~/.gcw/architectural-committee/2026-10-06-vesma-pg1-walk-and-rest-parity.md`),
-[ADR-0037](../../project/adr/0037-pg1-graph-walk.md). Последнее обновление: 2026-10-06._
+[ADR-0038](../../project/adr/0038-pg1-graph-walk.md). Последнее обновление: 2026-10-06._

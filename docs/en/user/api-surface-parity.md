@@ -4,7 +4,7 @@
 Lead and Product Architect signed every disposition). This record exists so
 the question stays closed:** future surface proposals are judged by it, not
 re-litigated. The parity verdict of the same session that produced
-[ADR-0037](../../project/adr/0037-pg1-graph-walk.md).
+[ADR-0038](../../project/adr/0038-pg1-graph-walk.md).
 
 ## The principle
 
@@ -111,4 +111,4 @@ versioning» in Conventions).
 
 _Committee protocol 2026-10-06 (team-local:
 `~/.gcw/architectural-committee/2026-10-06-vesma-pg1-walk-and-rest-parity.md`),
-[ADR-0037](../../project/adr/0037-pg1-graph-walk.md). Last updated: 2026-10-06._
+[ADR-0038](../../project/adr/0038-pg1-graph-walk.md). Last updated: 2026-10-06._

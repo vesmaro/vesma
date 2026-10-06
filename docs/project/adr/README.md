@@ -65,7 +65,8 @@ documented elsewhere, or anything that fits in a code comment.
 | [0034](0034-memory-engine-switch-protocol.md) | Memory-engine switch protocol — open vendor-neutral spec, reference implementation in vesma | Accepted (conditional — spec extraction gated by adoption; B1–B4 blocking controls) | 2026-10-01 |
 | [0035](0035-native-awareness-delivery.md) | Native awareness delivery — doorbell-heartbeat on every MCP response | Accepted (conditional) | 2026-10-01 |
 | [0036](0036-native-situational-awareness-canon.md) | Native situational awareness — canon, roster, and cortex integration (the E/C/R/X/S frame; extends ADR-0035, does not supersede it) | Accepted (conditional — 4 security clauses in PR #489; canary after a 1–2-week shadow soak) | 2026-10-05 |
-| [0037](0037-pg1-graph-walk.md) | PG-1 two-level graph walk — one walker, a separate `walk` section, work caps (extends ADR-0032; slices M1–M3) | Accepted (9 binding conditions) | 2026-10-06 |
+| [0037](0037-lineage-marks-engine-attachment-points.md) | lineage_marks — engine attachment points for the ratified canon schema (labeling-policy v1.1 §8.3; wiring plan + three canon↔engine divergences) | Proposed (owner ratification gate; doc-only) | 2026-10-06 |
+| [0038](0038-pg1-graph-walk.md) | PG-1 two-level graph walk — one walker, a separate `walk` section, work caps (extends ADR-0032; slices M1–M3) | Accepted (9 binding conditions) | 2026-10-06 |
 
 ## Themes
 
