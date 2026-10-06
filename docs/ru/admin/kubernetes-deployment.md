@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/admin/kubernetes-deployment.md) · Русский
 
-> Admin-руководство по развёртыванию полноценного сервера Vesma (Vesma)
+> Admin-руководство по развёртыванию полноценного Vesma-сервера
 > в любом кластере Kubernetes 1.25+ — ванильный K8s, K3s, kind, k0s — с помощью
 > helm-чарта (`deploy/helm/vesma/`): Deployment, Service, **Ingress**,
 > два PersistentVolumeClaim и секрет с TOTP-ключом.
@@ -32,11 +32,17 @@
 - Ingress-контроллер (в K3s Traefik установлен из коробки)
 - Образ контейнера, доступный кластеру — см. [Статус реестра образов](#статус-реестра-образов)
 
+> **Тег образа.** Chart pin'ит `image.tag` на `Chart.yaml appVersion`
+> (сегодня `4.3.0`). Для свежего релиза задавайте образ явно:
+> `--set image.tag=5.6.2` (все опубликованные теги —
+> `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x, latest`).
+
 ## Быстрый старт
 
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -47,6 +53,7 @@ K3s (Traefik и local-path — дефолты, ничего дополнител
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -82,11 +89,14 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 3. **Values-файл** — никогда не коммитьте реальное значение; держите его
    вне git.
 
-Ключ инжектится под **обоими именами** — `MNEMOS_API__TOTP_MASTER_KEY`
-(читают образы 4.x) и `VESMA_API__TOTP_MASTER_KEY` (канон с 5.3; образы
-5.0–5.2 читают устаревшее `VESMARO_API__TOTP_MASTER_KEY`, принимается до
-6.0) — из одного ключа секрета. Это dual-prefix контракт ADR-0031: одно
-значение, несколько имён, — чарт работает через границы ребрендинга
+Ключ инжектится под **двумя именами**, которые отдаёт текущий шаблон
+чарта: `MNEMOS_API__TOTP_MASTER_KEY` (читают образы 4.x) и
+`VESMARO_API__TOTP_MASTER_KEY` (5.x). На образах 5.3+ каноническое —
+`VESMA_API__TOTP_MASTER_KEY` (ADR-0031: оба старых написания принимаются
+до 6.0, поэтому инъекции обоих существующих имён достаточно для всех
+опубликованных образов; если нужно «все три сразу» — задайте канон через
+топ-левел `extraEnv` чарта). Это dual-prefix контракт ADR-0031: одно значение,
+несколько имён, — чарт работает через границы ребрендинга
 4.3.0 → 5.0.0 → 5.3.0 без правок.
 
 ## Ingress и TLS
@@ -138,15 +148,16 @@ helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
 `image.pullSecrets` остаётся доступным для приватных реестров и
 rate-limit'ов, но для этого образа не нужен.
 
-Релизный конвейер (`scripts/local-release.sh`) при каждом релизе пушит
-версионный тег и `:latest`; история реестра (легаси-неймспейсы, перезаливки)
-живёт в ADR-0031.
+Релизный поезд (`scripts/pypi-publish.sh --publish` + обязательная
+image-фаза `scripts/image-publish.sh`) пушит при каждом релизе версионный
+тег и `:latest`; история реестра (легаси-неймспейсы, перезаливки) живёт в
+ADR-0031.
 
 ## Обновления и удаление
 
 ```bash
 helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=4.4.0              # тома с данными переживают обновления
+  --set image.tag=5.6.2              # тома с данными переживают обновления
 helm uninstall vesma -n vesma    # PVC сохраняются; при необходимости удалите явно
 ```
 
