@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Client metadata stamp hardening: pipeline retry keys join the server-minted strip class (#432)** (`src/vesmaro/manager.py`, `src/vesmaro/models.py`, `src/vesmaro/cli/import_.py`; tests `tests/test_b2b_semantics.py`, `tests/test_export_import.py`, `tests/test_sync.py`) — `pipeline_retry_count`/`pipeline_retry_at` (the refine lane's retry bookkeeping) are SERVER-MINTED: a client `add`/`update` can no longer MINT them on rows that lack them (the #251 forged-stamp class, CWE-346 — the merge-back only protected existing values) nor overwrite/reset them on rows that carry them; the JSON import strip covers the retry keys too (`--trusted-restore` keeps them, like checkpoint stamps — a trusted self-backup carries its own server retry state); the federation compact contract carries NO metadata field, pinned by test so a future mapper change that starts copying peer metadata reopens the question loudly instead of silently.
+
 ## [5.6.0] — 2026-10-06
 
 ### Added
