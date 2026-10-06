@@ -692,6 +692,7 @@ note in the [integration guide](integration-guide.md).
 | See every CLI subcommand | [cli-reference.md](cli-reference.md) |
 | See every MCP tool | [mcp-tools.md](mcp-tools.md) |
 | See every HTTP endpoint | [http-api.md](http-api.md) |
+| Have the engine index THIS repository's code graph for code search — it indexes itself (the `auto_index` config block: auto-register + auto-reindex) | [project-graph.md](project-graph.md) |
 | Read the tag schema | [tag-contract.md](tag-contract.md) |
 | Dive into the project graph (symbol search, call tracing, auto-indexing) | [project-graph.md](project-graph.md) |
 | Perform an operational task | [admin/runbooks/install.md](../admin/runbooks/install.md) |

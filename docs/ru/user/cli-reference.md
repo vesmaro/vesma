@@ -53,6 +53,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`backfill-embedding-ids`](#backfill-embedding-ids) | Проставить `memories.embedding_id` из векторного стора (search v2) |
 | [`edge-stats`](#edge-stats) | Обслуживание таблицы feedback-фидбека edge_stats: `stats` / `purge` |
 | [`memory`](#memory-status) | Статус подключения памяти по харнесам (`memory status`, ADR-0034) |
+| [`awareness`](#awareness) | Нативный awareness-heartbeat: `get` / `set` (переключение режима) / `stats` (метрики гейта) |
 
 > Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают.
 
@@ -1240,6 +1241,98 @@ vesma scanner run --full
 
 ---
 
+## `awareness`
+
+Операторская поверхность нативного awareness-heartbeat (ADR-0035): просмотр и
+переключение режима доставки, чтение метрик гейта волны-0 из metrics-sidecar —
+без ручной правки YAML и без сырого SQL.
+
+### `awareness get`
+
+Показывает `awareness.native_heartbeat_mode` дважды: «сырое» значение из
+найденного конфиг-файла и ЭФФЕКТИВНОЕ значение (настройки, которые загрузит
+следующий старт сервера — включая env-переопределения). Если задан
+канонический env-оверрайд `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE`, вывод его
+называет (файл > env по приоритету двух источников).
+
+```bash
+vesma awareness get
+#   config file: /home/you/.mnemos/config.yaml
+#   awareness.native_heartbeat_mode: shadow
+#   effective: shadow
+```
+
+### `awareness set`
+
+Переключает режим heartbeat end-to-end:
+
+```bash
+vesma awareness set shadow   # off | shadow | canary | on
+```
+
+Значение валидируется по рождающе-финальной лестнице режимов — неизвестное
+значение отклоняется со списком допустимых, и НИЧЕГО не записывается. Запись
+атомарна (tmp + rename) и сохраняет все остальные маппинги файла (отсутствующая
+секция `awareness:` создается аддитивно). Поскольку запущенный сервер читает
+конфиг один раз при старте, команда всегда печатает напоминание о рестарте;
+когда супервизор `vesma service` отвечает на control-сокете, в выводе назван
+точный рестарт-глагол.
+
+| Режим | Значение (ADR-0035) |
+|-------|--------------------|
+| `off` *(по умолчанию)* | Кил-свитч — контур полностью инертен. |
+| `shadow` | Волна 0: compose + события в metrics-sidecar, ничего не рендерится. |
+| `canary` | Волна 1: конверт рендерится последним `TextContent`. |
+| `on` | Волна 2: полная доставка. |
+
+### `awareness stats`
+
+Печатает метрики гейта волны-0 из таблицы `awareness_events` metrics-sidecar
+(`<data_dir>/metrics.sqlite`) через собственное подключение sink-а — без
+сырого SQL:
+
+| Вывод | Значение |
+|-------|--------- |
+| `tool_call (denominator)` | Каждый диспетчеризованный MCP-вызов — знаменатель воронки. |
+| `peer_write` | Вызовы класса записи (стартовая метка числителя свежести). |
+| `delta_available` / `heartbeat_delivery` | Срабатывания щупа и доставленные хвосты, с разрезом calm/delta. |
+| `heartbeat_suppressed` | Подавленные доставки, в разрезе причин (`rate_cap`, `probe_error`, …). |
+| `tail token cost` | Сумма и средний оценённый объём хвостов за окно (бюджетный вход). |
+
+| Опция | По умолчанию | Описание |
+|-------|-------------|---------- |
+| `--window-hours / -w` | `24` | Окно в часах (1..2160). |
+| `--project / -p` | — | Ограничить воронку одним slug-ом проекта. |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### Пример
+
+```bash
+vesma awareness stats
+# awareness heartbeat — wave-0 funnel (window 24h)
+#   tool_call (denominator): 812
+#   peer_write: 23
+#   delta_available: 9
+#   heartbeat_delivery: 9
+#     — state: calm 2 / delta 7
+#   heartbeat_suppressed: 0
+#   conflict_hint_emitted: 1
+#   tail token cost: sum 640 over 9 deliveries (mean ~71)
+#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+```
+
+Отсутствующий sidecar печатает строку-подсказку и завершается с кодом 0
+(сломанная плоскость метрик не делает чтение с консоли фатальным). Вывод —
+только агрегаты: identity-slug-и никогда не печатаются (нулевой peer-контент,
+поза CWE-359 по ADR-0035).
+
+### Связанные ресурсы
+
+- Семантика лестницы режимов: [mcp-tools.md](mcp-tools.md#native-awareness-heartbeat-adr-0035)
+- Запись решения: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
+
+---
+
 ## Коды выхода
 
 | Код | Значение |
@@ -1264,4 +1357,4 @@ CLI не возвращает ненулевой код при «нет резу
 
 ---
 
-_Последнее обновление: 2026-10-01_
+_Последнее обновление: 2026-10-06_

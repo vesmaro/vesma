@@ -141,7 +141,7 @@ def _chunks(seq: list[FederationIndexEntry], size: int) -> Sequence[Sequence[Fed
     return [seq[i : i + size] for i in range(0, len(seq), size)]
 
 
-def _kill_subprocess(proc: asyncio.subprocess.Process) -> None:
+async def _kill_subprocess(proc: asyncio.subprocess.Process) -> None:
     """Best-effort kill of a child whose lifetimes we no longer own.
 
     Race-safe (issue #510 side note): under ``service run`` the
@@ -152,13 +152,19 @@ def _kill_subprocess(proc: asyncio.subprocess.Process) -> None:
     ``wait()``: the ThreadedChildWatcher already reaped it concurrently.
     Both are suppressed HERE (idempotent cleanup semantics, mirroring
     :meth:`MetaPoller._kill_inflight`), never wrapped into peer errors.
+
+    ``wait()`` IS a coroutine (asyncio), so this helper is async and its
+    caller awaits it — the sync version shipped in #510 left an unused
+    coroutine on the floor behind ``contextlib.suppress`` (mypy strict
+    [unused-coroutine]; at runtime the timed-out child was never awaited,
+    leaking a zombie until GC).
     """
     with contextlib.suppress(ProcessLookupError, ConnectionResetError, OSError):
         if proc.returncode is None:
             proc.kill()
     with contextlib.suppress(ProcessLookupError, OSError):
         if proc.returncode is None:
-            proc.wait()
+            await proc.wait()
 
 
 def _validate_envelope(peer_id: str, payload: Any) -> SyncMetaPage:
@@ -483,7 +489,7 @@ class MetaPoller:
             # kill()/wait() then surfaces ProcessLookupError("[Errno 3] No
             # such process") as a bogus peer error (prod window
             # 2026-10-06, issue #510 side note).
-            _kill_subprocess(proc)
+            await _kill_subprocess(proc)
             raise MetaPollError(
                 peer_id, f"sync-meta timed out after {META_POLL_PAGE_TIMEOUT_S:.0f}s"
             ) from exc
