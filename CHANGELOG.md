@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- ADR-0037: PG-1 two-level graph walk ratified with 9 binding conditions — one BFS walker (`trace_path` byte-pinned), a separate `walk` section in `search_graph` behind `code_graph.search_walk` (default-off), quota `k(limit)` with work caps independent of it, epoch in the payload, `graph_audit` with token economics (`out_tokens`/`avoided_bytes`), baseline-before-implementation; slices M1–M3.
+- New API surface-parity record (EN/RU): the CLI/REST/MCP matrix re-enumerated from code, the four ratified `wontfix` dispositions, and the versioning canon (`/api/v1` roots, legacy aliases, `Sunset` with 6.0); versioning notes synced into the HTTP API reference (EN/RU).
+
 ## [5.6.0] — 2026-10-06
 
 ### Added
