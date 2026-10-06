@@ -63,19 +63,22 @@ flowchart LR
 
 | Требование | Детали |
 | --- | --- |
-| Версия vesma | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 4.0.0. |
+| Версия vesma | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 5.6.2. |
 | Конфиг peer B | `federation.enabled: true` (или непустой `federation.shared_projects` — сервер трактует пустой `shared_projects` как выключенную федерацию). |
 | Peer'ы peer B | Peer A сконфигурирован в `federation.peers` на peer B с `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. См. [`federation.md`](federation.md) §1. |
 | SSH-доступ | Для cross-host-теста оператор имеет SSH-доступ к хосту peer B (используется, чтобы пробросить loopback-порт peer B на ноутбук). |
 | Привязка к loopback | Стартовый guard `_check_non_loopback_auth` (в `src/vesmaro/api/main.py`) завершается с ненулевым кодом при попытке non-loopback bind без `auth_enabled=true` + `totp_enabled=true` + `behind_tls_proxy=true`. Тест привязывается к loopback и туннелируется через SSH, поэтому полный auth-стек для теста не требуется. |
 
 > **Изоляция хранилищ.** vesma разрешает свой конфиг в фиксированном
-> порядке — явный флаг `--config` → переменная окружения `MNEMOS_CONFIG` →
+> порядке — явный флаг `--config` → переменная окружения `VESMA_CONFIG`
+> (устаревший алиас `VESMARO_CONFIG` принимается до 6.0) →
 > `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
-> `src/vesmaro/config.py`). Переменной `MNEMOS_HOME` **не существует**.
+> `src/vesmaro/config.py`). Переменных `MNEMOS_CONFIG` и `MNEMOS_HOME`
+> **не существует** — 5.x их не читает (в 6.0 проверено по источнику;
+> `VESMA_CONFIG` протестирована в `tests/test_env_dual_prefix.py`).
 > Чтобы запустить изолированный инстанс, создайте per-instance
 > `config.yaml` (с собственными `mnemos.data_dir` / `mnemos.vault_path`)
-> и укажите `MNEMOS_CONFIG` на него — все команды ниже используют этот
+> и укажите `VESMA_CONFIG` на него — все команды ниже используют этот
 > паттерн.
 
 ### Почему для тестирования loopback + SSH-туннель
@@ -98,7 +101,7 @@ Bearer-токен, используемый в этом руководстве, 
 ```bash
 # Generate a test bearer token (32 bytes, base64)
 TEST_TOKEN=$(openssl rand -base64 32)
-echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
+echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 ```
 
 ---
@@ -107,7 +110,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 
 Смоук-тест на одном хосте запускает два инстанса vesma на одной машине —
 каждый смотрит на своё хранилище через per-instance конфиг-файл,
-выбираемый `MNEMOS_CONFIG` — и проходит цикл export → import → search →
+выбираемый `VESMA_CONFIG` — и проходит цикл export → import → search →
 повторный import (идемпотентность). Он **не** задействует живой эндпоинт
 `POST /api/v1/federation/pull` — это cross-host-тест в §4. Смоук-тест
 проверяет формат compact-payload и CLI `vesma sync`.
@@ -124,8 +127,8 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    указывающим `mnemos.data_dir` / `mnemos.vault_path` внутри неё:
 
    ```bash
-   export MNEMOS_CONF_A=/tmp/vesma-fed-a/config.yaml
-   export MNEMOS_CONF_B=/tmp/vesma-fed-b/config.yaml
+   export VESMA_CONF_A=/tmp/vesma-fed-a/config.yaml
+   export VESMA_CONF_B=/tmp/vesma-fed-b/config.yaml
    for inst in a b; do
      mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
      cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
@@ -137,7 +140,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    ```
 
    Каждая команда в остатке этого раздела выполняется с
-   `MNEMOS_CONFIG="$MNEMOS_CONF_A"` (peer A) или `"$MNEMOS_CONF_B"`
+   `VESMA_CONFIG="$VESMA_CONF_A"` (peer A) или `"$VESMA_CONF_B"`
    (peer B) в окружении.
 
 2. **Наполните peer B тестовой памятью.**
@@ -146,7 +149,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    значения `--tags` через запятую (контракт тегов):
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma add \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
      --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
    ```
@@ -154,7 +157,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 3. **Экспортируйте compact-payload с peer B.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_B" vesma sync export \
+   VESMA_CONFIG="$VESMA_CONF_B" vesma sync export \
      --shared-projects cross-memory-test \
      --output /tmp/vesma-fed-payload.json
    ```
@@ -164,7 +167,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Исходный файл — позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -175,7 +178,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    Запрос — тоже позиционный аргумент:
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma search \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma search \
      "federation pull" --project cross-memory-test
    ```
 
@@ -184,7 +187,7 @@ echo "MNEMOS_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
 6. **Повторно импортируйте тот же payload — проверьте идемпотентность.**
 
    ```bash
-   MNEMOS_CONFIG="$MNEMOS_CONF_A" vesma sync import \
+   VESMA_CONFIG="$VESMA_CONF_A" vesma sync import \
      /tmp/vesma-fed-payload.json
    ```
 
@@ -254,7 +257,7 @@ federation:
     - cross-memory-test
   peers:
     mnemos-A:
-      bearer_token_env: MNEMOS_FED_PEER_MNEMOS_A_TOKEN
+      bearer_token_env: VESMA_FED_PEER_MNEMOS_A_TOKEN
       allowed_projects:
         - cross-memory-test
       allowed_types:
@@ -275,7 +278,7 @@ federation:
 
 ```bash
 # On peer B (remote host)
-MNEMOS_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
+VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 Сервер читает токен из переменной окружения, названной в
@@ -319,7 +322,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 - `trigger_code: "EXHAUSTIVE"`
 - массив `records` непуст (одна запись — тестовая запись из шага b)
 - `records[0].source_agent` совпадает с self-id peer B (`mnemos-B` по
-  умолчанию или значение `MNEMOS_FED_SELF_ID`, если переопределено)
+  умолчанию или значение `VESMARO_FED_SELF_ID`, если переопределено)
 - `ttl_class: "ephemeral"` — policy-подсказка; сервер не принуждает TTL
   на стороне A (контракт §3.3)
 
@@ -396,7 +399,7 @@ Rate limiter — per-peer скользящее 60-секундное окно с
 ### k. Полный roundtrip — pull, импорт, поиск на peer A
 
 Сохраните pull-ответ из шага f в файл, оберните массив `records` в
-compact-payload `mnemos.federation.v1` и импортируйте на ноутбуке.
+compact-payload `vesmaro.federation.v1` и импортируйте на ноутбуке.
 
 ```bash
 # On peer A (laptop) — save the pull response
@@ -412,7 +415,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 
 # Wrap the records as a compact payload. The compact payload shape is
 # documented in src/vesmaro/compact.py. A minimal wrapper:
-jq '{format_version: "mnemos.federation.v1", records: .records}' \
+jq '{format_version: "vesmaro.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
 # Import into peer A's vesma
@@ -453,7 +456,7 @@ vesma sync import /tmp/compact-payload.json
 
 3. Удалите тестовый токен из окружения peer B (он был задан инлайн в
    команде serve, так что завершение процесса его очищает; если
-   экспортировали — `unset MNEMOS_FED_PEER_MNEMOS_A_TOKEN`).
+   экспортировали — `unset VESMA_FED_PEER_MNEMOS_A_TOKEN`).
 4. Уберите запись peer'а `mnemos-A` из `config.yaml` peer B или замените
    её на production-конфиг.
 5. Опционально отзовите тестовую память на peer B. CLI-глагола
