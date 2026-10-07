@@ -190,6 +190,7 @@ flowchart TD
     Gates -->|"clear"| Snap["SQLite backup-API snapshot → verified + counts; kept as the rollback artifact"]
     Snap --> Stage["Build target in staging next to the target, FROM the snapshot: new home, vesma.db, pins rewritten; source never touched"]
     Stage --> Reslag["Re-slag in staging: mnemos:* → vesma:*, project:mnemos → project:vesma, FTS rebuild, provenance slugs updated, vectors untouched; no-federate marker excluded (byte-constant)"]
+  Record *payload* (titles, bodies, provenance/pipeline-state strings that embed old slugs) is intentionally NOT rewritten — content is byte-preserved; only the tag namespace and the denormalized `project` column flip. Downstream consumers that match slugs inside payload text are out of scope for the mover (documented TL ratification, 2026-10-07 cascade).
     Reslag --> Post["Verify in staging: counts equal, FTS matches, integrity checks"]
     Post -->|"fail"| Cleanup["Staging removed; snapshot kept"]
     Post -->|"green"| Publish["Publish: staging → target, same-FS atomic rename"]
