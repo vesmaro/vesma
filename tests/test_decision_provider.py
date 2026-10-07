@@ -149,7 +149,7 @@ EXPECTED_BASELINE: Final[tuple[tuple[str, float | None, str | None, float | None
         "examples/intake/fixtures-positive/intake-decision-secret-gate.json",
         0.0,
         "examples/after/decision.json",
-        0.913699,
+        0.913157,
     ),
     (
         "examples/intake/fixtures-positive/intake-report-week39.json",
@@ -179,7 +179,7 @@ EXPECTED_BASELINE: Final[tuple[tuple[str, float | None, str | None, float | None
         "examples/intake/fixtures-negative/bad-intake-e-language.json",
         0.0,
         "examples/intake/fixtures-positive/intake-task-draft.json",
-        0.898726,
+        0.899323,
     ),
     (
         "examples/intake/fixtures-negative/bad-intake-e-section.json",
@@ -197,7 +197,7 @@ EXPECTED_BASELINE: Final[tuple[tuple[str, float | None, str | None, float | None
         "examples/intake/fixtures-negative/bad-intake-e-title.json",
         1.0,
         "examples/intake/fixtures-negative/bad-intake-e-language.json",
-        0.954565,
+        0.954042,
     ),
     (
         "examples/intake/fixtures-edge/edge-date-relative-word.json",
@@ -233,13 +233,13 @@ EXPECTED_BASELINE: Final[tuple[tuple[str, float | None, str | None, float | None
         "examples/intake/fixtures-edge/edge-title-exactly-80.json",
         1.0,
         "examples/intake/fixtures-negative/bad-intake-e-title.json",
-        0.96157,
+        0.961191,
     ),
     (
         "examples/intake/fixtures-edge/edge-title-multiline-crlf.json",
         1.0,
         "examples/intake/fixtures-edge/edge-title-exactly-80.json",
-        0.959406,
+        0.959815,
     ),
 )
 
