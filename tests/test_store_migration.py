@@ -774,6 +774,48 @@ def test_base_exception_mid_apply_cleans_staging(
     assert not target.exists()
 
 
+# ── P2-fsync (review): staging is flushed BEFORE the atomic rename ───────────
+
+
+def test_fsync_runs_before_rename(store_home: Path, tmp_path: Path, monkeypatch: Any) -> None:
+    """Pin: os.fsync fires on the staged files BEFORE Path.rename — a power
+    loss right after the rename must never leave --to with hollow files."""
+    import os
+
+    import vesma.store_migration as sm
+
+    calls = {"fsync": 0}
+    real_fsync = os.fsync
+
+    def counting_fsync(fd: int) -> None:
+        calls["fsync"] += 1
+        return real_fsync(fd)
+
+    monkeypatch.setattr(sm.os, "fsync", counting_fsync)
+
+    rename_fsync_count: list[int] = []
+    real_rename = Path.rename
+
+    def renaming(self: Path, dest: Any) -> Path:
+        rename_fsync_count.append(calls["fsync"])
+        return real_rename(self, dest)
+
+    monkeypatch.setattr(Path, "rename", renaming)
+
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["fsync"] > 0, "no fsync calls observed"
+    # Exactly ONE fsync fires after the rename — the parent-dir flush that
+    # persists the rename itself; every STAGING fsync happened before it.
+    assert calls["fsync"] >= 2
+    assert rename_fsync_count == [calls["fsync"] - 1], "rename happened before staging fsyncs"
+    assert target.exists()
+
+
 # ── Verification net (whitebox tamper check) ──────────────────────────────────
 
 

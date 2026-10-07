@@ -73,6 +73,7 @@ import os
 import random
 import shutil
 import sqlite3
+import stat
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -1174,6 +1175,37 @@ def _cleanup_staging(staging: Path) -> None:
     shutil.rmtree(staging, ignore_errors=True)
 
 
+def _fsync_dir(path: Path) -> None:
+    """fsync a directory entry so a rename/creation inside it is durable."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _fsync_tree(root: Path) -> None:
+    """fsync every staged file and directory BEFORE the atomic rename.
+
+    Without this, a power-loss right after the rename could leave ``--to``
+    present with EMPTY file contents (data survived only in page cache).
+    Only regular files are synced (fifos/sockets would block); the sqlite
+    files were already committed by the backup API, this flushes the rest.
+    """
+    for dirpath, _dirnames, filenames in os.walk(root):
+        dir_path = Path(dirpath)
+        for name in filenames:
+            file_path = dir_path / name
+            if not stat.S_ISREG(file_path.stat().st_mode):
+                continue
+            fd = os.open(file_path, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        _fsync_dir(dir_path)
+
+
 def run_migration(plan: MigrationPlan) -> MigrationReport:
     """Execute a plan built with ``apply=True`` (the only writable mode)."""
     if plan.mode != "apply":
@@ -1208,13 +1240,19 @@ def run_migration(plan: MigrationPlan) -> MigrationReport:
         _, config_plan = migrate_config(layout, plan.target_home, plan.staging_dir)
         verification = verify_target(target_db, snapshot, moved_dbs)
         # Atomic appearance of the fully verified target (same-FS rename).
+        # Cascade P2-fsync: flush every staged file + directory fd FIRST —
+        # a rename without fsync is not durable (post-power-loss --to could
+        # exist with hollow files) — then persist the rename itself via the
+        # parent dir fd.
         plan.target_home.parent.mkdir(parents=True, exist_ok=True)
+        _fsync_tree(plan.staging_dir)
         if plan.target_home.exists():
             # build_plan already refused ANY pre-existing --to; reaching this
             # guard means the path appeared MID-RUN (a racing actor) — the
             # rename is refused, staging is cleaned up by the caller.
             raise UsageError(f"--to raced during migration: {plan.target_home}")
         plan.staging_dir.rename(plan.target_home)
+        _fsync_dir(plan.target_home.parent)
     except StoreMigrationError:
         raise
     except (OSError, sqlite3.Error, json.JSONDecodeError, ValueError) as exc:
