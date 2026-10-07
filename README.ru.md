@@ -111,7 +111,7 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 # легаси-имя ассета — unit-файл остаётся mnemos.container до деплой-волны
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesmaro.env (VESMA_API__TOTP_MASTER_KEY; образы 4.x принимают и легаси-написание MNEMOS_*), затем:
-podman pull ghcr.io/vesmaro/vesma:5.6.4
+podman pull ghcr.io/vesmaro/vesma:5.6.5
 # quadlet выводит имя unit из имени файла — до переименования это mnemos.service
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health

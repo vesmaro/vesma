@@ -111,7 +111,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
 cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesmaro.env (VESMA_API__TOTP_MASTER_KEY; 4.x images also accept the legacy MNEMOS_* spelling), then:
-podman pull ghcr.io/vesmaro/vesma:5.6.4
+podman pull ghcr.io/vesmaro/vesma:5.6.5
 # quadlet derives the unit name from the file name — the unit is mnemos.service until the rename
 systemctl --user daemon-reload && systemctl --user start mnemos
 curl -fsS http://localhost:8787/health
