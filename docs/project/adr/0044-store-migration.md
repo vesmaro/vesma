@@ -93,7 +93,7 @@ executes only with all five B3 gates in place:
 
 | Gate | Semantics |
 |---|---|
-| Snapshot gate | SQLite backup-API snapshot to a mandatory `--backup` target, verified readable, with pre-migration row counts recorded — before anything is touched |
+| Snapshot gate | SQLite backup-API snapshot to a mandatory snapshot directory (derived next to the target: `<to>/../migrate-snapshot-<ts>/`), verified readable, with pre-migration row counts recorded — before anything is touched |
 | Dry-run default | The command reports planned changes (paths and counters) and exits without writing unless explicitly overridden |
 | Clone-drill counter equality | A rehearsal on an isolated-HOME clone of the live store must end with exact counter equality between source and migrated clone (plan-time baseline: 3790 records — the gate is equality, not the number) |
 | Quiesce | A live socket or a held database lock is a loud refusal, never a concurrent migration |
