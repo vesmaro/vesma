@@ -59,7 +59,9 @@ flagged in the delivery report):
 
 The target is built in a staging directory and appears at ``--to`` only
 after full verification (same-FS atomic rename); a failed run leaves the
-snapshot in place and removes staging.
+snapshot in place and removes staging. ``--to`` must not exist when the
+run starts — even an empty directory is refused (choose a fresh target);
+a path that appears MID-run is refused by the race guard before the rename.
 """
 
 from __future__ import annotations
@@ -1032,8 +1034,12 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
         raise UsageError("--from and --to must be different paths")
     if source_home in target_home.parents or target_home in source_home.parents:
         raise UsageError("--from and --to must not be nested inside each other")
-    if target_home.exists() and any(target_home.iterdir()):
-        raise UsageError(f"--to exists and is not empty: {target_home}")
+    if target_home.exists():
+        # ANY pre-existing --to is refused (even an empty directory): the
+        # mover must never mix its materialized layout with foreign content,
+        # and the empty case used to slip through to a mid-run rename
+        # failure with a misleading "appeared during migration" message.
+        raise UsageError(f"--to exists: {target_home} — choose a fresh target")
 
     layout = _resolve_layout(source_home)
     stats = read_store_stats(layout.db_path)
@@ -1176,7 +1182,10 @@ def run_migration(plan: MigrationPlan) -> MigrationReport:
         # Atomic appearance of the fully verified target (same-FS rename).
         plan.target_home.parent.mkdir(parents=True, exist_ok=True)
         if plan.target_home.exists():
-            raise UsageError(f"--to appeared during migration: {plan.target_home}")
+            # build_plan already refused ANY pre-existing --to; reaching this
+            # guard means the path appeared MID-RUN (a racing actor) — the
+            # rename is refused, staging is cleaned up by the caller.
+            raise UsageError(f"--to raced during migration: {plan.target_home}")
         plan.staging_dir.rename(plan.target_home)
     except StoreMigrationError:
         _cleanup_staging(plan.staging_dir)

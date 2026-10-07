@@ -43,7 +43,8 @@ _TO_OPTION = Annotated[
     typer.Option(
         "--to",
         help="REQUIRED explicit target store home (6.0 layout). "
-        "Must not exist or be empty; snapshot lands next to it.",
+        "Must not exist at all (even an empty directory is refused — "
+        "choose a fresh target); snapshot lands next to it.",
     ),
 ]
 _APPLY_OPTION = Annotated[

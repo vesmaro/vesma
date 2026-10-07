@@ -471,6 +471,29 @@ def test_discovery_without_any_candidate_explains(
     assert "No known 5.x store home" in _output(result)
 
 
+def test_existing_empty_target_refused_before_any_work(
+    store_home: Path, tmp_path: Path
+) -> None:
+    """Pin (P2-1): even an EMPTY existing --to is refused at plan time.
+
+    The refusal must happen BEFORE any work: no snapshot, no staging, the
+    source untouched — not a mid-run rename failure.
+    """
+    target = _target_of(store_home, tmp_path)
+    target.mkdir()  # exists and is empty — used to slip through to run_migration
+    db_bytes_before = (store_home / "data" / "mnemos.db").read_bytes()
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 2
+    assert "choose a fresh target" in _output(result)
+    assert "appeared during migration" not in _output(result)
+    assert not list(target.parent.glob("migrate-snapshot-*"))
+    assert not list(target.parent.glob("*.staging-*"))
+    assert (store_home / "data" / "mnemos.db").read_bytes() == db_bytes_before
+
+
 def test_usage_errors_nested_and_nonempty_target(store_home: Path, tmp_path: Path) -> None:
     same = runner.invoke(
         app,
