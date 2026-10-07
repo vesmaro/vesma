@@ -45,11 +45,11 @@ class TriggerCode(StrEnum):
         REFUSED: B refused the request — moderation did not pass, the
             content cannot be shared even after redaction. A should NOT
             repeat the request and should fall back to local
-            :func:`mnemos_search` per КП-2.
+            :func:`vesma_search` per КП-2.
         OFFLINE_LITE: B is online but in a reduced mode (for example,
             the moderation pipeline is partially offline). A receives a
             partial result and may supplement it with local
-            :func:`mnemos_search`.
+            :func:`vesma_search`.
     """
 
     EXHAUSTIVE = "EXHAUSTIVE"
@@ -71,7 +71,7 @@ def is_terminal(code: TriggerCode) -> bool:
 
 
 def should_fallback_to_local(code: TriggerCode) -> bool:
-    """Return ``True`` if A should fall back to local ``mnemos_search``.
+    """Return ``True`` if A should fall back to local ``vesma_search``.
 
     Per КП-2 (contract §3.2): ``REFUSED`` (content cannot be shared) and
     ``OFFLINE_LITE`` (B in reduced mode) both signal that A should

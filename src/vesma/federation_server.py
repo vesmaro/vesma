@@ -134,7 +134,7 @@ class PullResponse(BaseModel):
         ttl_class: Policy marker (contract §3.3). Always
             ``"ephemeral"`` in Phase 2 — the mediated-pull channel is
             ephemeral by policy; the A-side agent body is responsible
-            for NOT calling ``mnemos_add`` on these records. The server
+            for NOT calling ``vesma_add`` on these records. The server
             does NOT enforce TTL — this is a policy hint, not a
             technical guarantee.
         peer_id: The B-side agent id that produced the records (for A's

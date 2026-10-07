@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # ── Legacy ai-brain schema mapping ───────────────────────────────────────────
 
-_LEGACY_TO_VESMARO_SOURCE: dict[str, MemorySource] = {
+_LEGACY_TO_VESMA_SOURCE: dict[str, MemorySource] = {
     "manual": MemorySource.MANUAL,
     "telegram": MemorySource.MCP,  # closest match
     "web": MemorySource.WEB,
@@ -37,7 +37,7 @@ _LEGACY_TO_VESMARO_SOURCE: dict[str, MemorySource] = {
     "cli": MemorySource.CLI,
 }
 
-_LEGACY_TO_VESMARO_TYPE: dict[str, MemoryType] = {
+_LEGACY_TO_VESMA_TYPE: dict[str, MemoryType] = {
     "note": MemoryType.NOTE,
     "fact": MemoryType.FACT,
     "snippet": MemoryType.SNIPPET,
@@ -46,7 +46,7 @@ _LEGACY_TO_VESMARO_TYPE: dict[str, MemoryType] = {
     "session_context": MemoryType.SESSION_CONTEXT,
 }
 
-_LEGACY_TO_VESMARO_STATUS: dict[str, MemoryStatus] = {
+_LEGACY_TO_VESMA_STATUS: dict[str, MemoryStatus] = {
     "raw": MemoryStatus.RAW,
     "processing": MemoryStatus.PROCESSING,
     "processed": MemoryStatus.PROCESSED,
@@ -85,7 +85,7 @@ def _migrate_tags(old_tags: list[str]) -> list[str]:
     return tags
 
 
-def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
+def migrate_gcw_to_vesma_tags(db_path: Path) -> dict[str, int]:
     """Migrate existing gcw: tags in the Vesma DB to the canonical namespace.
 
     Converts all tag arrays in the memories table that contain ``gcw:<subtype>``
@@ -131,15 +131,15 @@ def _migrate_memory(row: sqlite3.Row) -> MemoryCreate:
 
     # Migrate source
     raw_source = row["source"] or "manual"
-    source = _LEGACY_TO_VESMARO_SOURCE.get(raw_source, MemorySource.MANUAL)
+    source = _LEGACY_TO_VESMA_SOURCE.get(raw_source, MemorySource.MANUAL)
 
     # Migrate type
     raw_type = row["memory_type"] or "note"
-    memory_type = _LEGACY_TO_VESMARO_TYPE.get(raw_type, MemoryType.NOTE)
+    memory_type = _LEGACY_TO_VESMA_TYPE.get(raw_type, MemoryType.NOTE)
 
     # Migrate status
     raw_status = row["status"] or "raw"
-    status = _LEGACY_TO_VESMARO_STATUS.get(raw_status, MemoryStatus.RAW)
+    status = _LEGACY_TO_VESMA_STATUS.get(raw_status, MemoryStatus.RAW)
 
     # Build metadata from legacy fields not present in Vesma
     metadata: dict[str, Any] = {}
@@ -202,11 +202,11 @@ def migrate_from_ai_brain(
         settings.apply_runtime_env()
 
     # Backup existing Vesma DB if it exists
-    mnemos_db = settings.db_path
-    if backup and not dry_run and mnemos_db.exists():
+    vesma_db = settings.db_path
+    if backup and not dry_run and vesma_db.exists():
         ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        backup_path = mnemos_db.with_suffix(f".db.backup-{ts}")
-        shutil.copy2(mnemos_db, backup_path)
+        backup_path = vesma_db.with_suffix(f".db.backup-{ts}")
+        shutil.copy2(vesma_db, backup_path)
         logger.info("Backed up existing Vesma DB to %s", backup_path)
 
     manager = MemoryManager(settings)

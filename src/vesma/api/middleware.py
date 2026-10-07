@@ -7,8 +7,8 @@ Sits after CORS, before routes.  Logic:
   endpoints (``/metrics``, ``/api/v1/metrics``) are bypassed ONLY on
   loopback binds — on non-loopback binds they require a valid session
   (issue #249: the metrics exposition exports
-  ``mnemos_memories_by_project{project=...}`` and
-  ``mnemos_memories_by_agent{agent=...}`` gauges, so unauthenticated
+  ``vesma_memories_by_project{project=...}`` and
+  ``vesma_memories_by_agent{agent=...}`` gauges, so unauthenticated
   exposure is a reconnaissance-grade surface, CWE-200). All other paths
   require a valid session.
 - Trust-zone resolution: if ``api.auth_enabled`` is ``False`` AND
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # ``_get_bypass_paths``. On non-loopback binds they require auth:
 # docs leak the API schema, and metrics (issue #249) leak operational
 # intelligence — the exposition exports per-project and per-agent gauges
-# (``mnemos_memories_by_project``, ``mnemos_memories_by_agent``), which is
+# (``vesma_memories_by_project``, ``vesma_memories_by_agent``), which is
 # reconnaissance-grade information for an unauthenticated remote caller
 # (CWE-200). Loopback binds keep both open: local scrapers (e.g. a
 # Prometheus agent scraping localhost) and local dev tooling rely on
@@ -96,7 +96,7 @@ def _get_bypass_paths(host: str) -> frozenset[str]:
     for dev convenience and for local scrapers (a Prometheus agent scraping
     localhost must not need operator credentials). On non-loopback binds
     both require auth: docs leak the API schema, and metrics (issue #249)
-    export ``mnemos_memories_by_project`` / ``mnemos_memories_by_agent``
+    export ``vesma_memories_by_project`` / ``vesma_memories_by_agent``
     gauges — operational intelligence an unauthenticated remote caller
     must not see (CWE-200).
     """

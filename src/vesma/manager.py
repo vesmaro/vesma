@@ -718,7 +718,7 @@ class MemoryManager:
         self._graph_mint_stats_lock: threading.Lock = threading.Lock()
         # ADR-0004 B0 seam (card b0-provider-seam-wiring) — the lazily
         # built decision provider behind the existing
-        # ``mnemos.decision_provider`` config. ``False`` here means «not
+        # ``vesma.decision_provider`` config. ``False`` here means «not
         # built YET»; the ``None`` state means «resolved to seam-disabled
         # (``"off"``)» — the one-shot construction in ``_decision_seam``
         # stays honest without re-resolving the config on every write.
@@ -728,7 +728,7 @@ class MemoryManager:
     def _decision_seam(self) -> DecisionProvider | None:
         """The live ADR-0004 provider seam (built lazily, once).
 
-        Resolves the EXISTING ``mnemos.decision_provider`` config through
+        Resolves the EXISTING ``vesma.decision_provider`` config through
         :func:`vesma.decision_jev.resolve_decision_provider` —
         ``"vesma"`` activates the bundled provider (W5d); the
         deterministic default keeps the unchanged behavior (a baseline
@@ -3421,7 +3421,7 @@ class MemoryManager:
         never diverge from the write surface. Fail-loud on an
         unsalvageable slug: a contract-invalid project means the caller
         asked for a namespace that cannot exist. An empty project stays
-        the pre-existing global recency listing (CLI ``vesma recall`` — legacy CLI name
+        the pre-existing global recency listing (CLI ``vesma recall``
         with no ``--project`` on an empty vault relies on it; the MCP
         tool always passes a concrete project via the ``_detect_project``
         fallback).
@@ -6000,7 +6000,7 @@ class MemoryManager:
             target=self._processor_loop,
             args=(interval_sec,),
             daemon=True,
-            name="mnemos-processor",
+            name="vesma-processor",
         )
         self._processor_thread.start()
         logger.info("Background processor started (interval=%ds)", interval_sec)

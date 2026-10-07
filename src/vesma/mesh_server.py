@@ -163,7 +163,7 @@ import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
-from vesma import __version__ as _mnemos_version
+from vesma import __version__ as _vesma_version
 from vesma import _mesh_gen
 from vesma.agent_tokens import (
     AgentTokenStore,
@@ -1619,7 +1619,7 @@ class VesmaCoreServicer:
                 mode_applied=_mesh_gen.core_pb2.ImportMode.IMPORT_MODE_UNSPECIFIED,
                 trigger_code=_trigger_code_to_proto(TriggerCode.REFUSED),
             )
-        # RESTORE hard gate (mnemos-operations §1).
+        # RESTORE hard gate (vesma-memory-ops §1).
         if import_mode == int(_mesh_gen.core_pb2.ImportMode.RESTORE) and not bool(request.confirm):
             logger.warning("mesh_server: WriteMemory refused — RESTORE without confirm=True")
             context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
@@ -2162,7 +2162,7 @@ class VesmaCoreServicer:
         uptime = int(time.monotonic() - self._start_time)
         return _mesh_gen.core_pb2.HeartbeatResponse(
             healthy=True,
-            version=f"vesma {_mnemos_version}",
+            version=f"vesma {_vesma_version}",
             uptime_seconds=uptime,
         )
 

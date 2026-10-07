@@ -180,13 +180,11 @@ all = [
 dev = ["vesma[dev]"]
 
 [project.scripts]
-# Canonical + short hook (owner-approved, GWS card #331 amendment)
-vesmaro = "vesma.cli.main:cli_main"
+# 6.0 clean sheet: canonical names only — the legacy entry points
+# (``vesmaro``, ``vesmaro-train``, ``mnemos``, ``mnemos-train``) retired
+# together with the 5.x line (rebrand sweep contract v2, Zone A).
 vesma = "vesma.cli.main:cli_main"
-vesmaro-train = "vesma.train_entry:main"
-# Legacy compatibility commands (retire no earlier than 6.0)
-mnemos = "vesma.cli.main:app"
-mnemos-train = "vesma.train_entry:main"
+vesma-train = "vesma.train_entry:main"
 
 # Korrnals/release-pipeline symlinks (local pipeline mode) must never enter
 # the sdist: their absolute symlink targets break sdist extraction during
@@ -228,14 +226,14 @@ packages = ["src/vesma"]
 exclude = ["benchmarks", "training"]
 
 # Ship the integration pack (instructions, skills, prompts, targets.yaml) inside
-# the wheel so `mnemos integration setup` works from a pip-installed package,
+# the wheel so `vesma integration setup` works from a pip-installed package,
 # not just from a source checkout. The directory is mapped to
 # `vesma/integrations/` so it is reachable via `importlib.resources.files(
 # "vesma") / "integrations"`.
 [tool.hatch.build.targets.wheel.force-include]
 "integrations" = "vesma/integrations"
 # Ship the setup scripts (mcp-setup.sh, install.sh, deploy.sh, setup-distrobox.sh)
-# inside the wheel so `mnemos integration setup` can find mcp-setup.sh from a
+# inside the wheel so `vesma integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
 # `vesma/scripts/` — reachable via `importlib.resources.files("vesma") / "scripts"`.
 #
@@ -353,7 +351,7 @@ ignore_errors = true
 
 # training/ is anti-scope (ADR-0021): it never ships in the wheel and is not
 # runtime code — type-checking it under --strict only produces noise. Skip
-# following into it; mnemos.train_entry's import resolves as Any.
+# following into it; vesma.train_entry's import resolves as Any.
 [[tool.mypy.overrides]]
 module = "training"
 follow_imports = "skip"

@@ -1,7 +1,7 @@
 """``vesma completion`` CLI subcommand — custom shell completion auto-install.
 
 Installs Vesma's OWN completion scripts (backed by the ``vesma __complete``
-engine, :mod:`vesmaro.cli.complete_cmd`) instead of typer's generated ones,
+engine, :mod:`vesma.cli.complete_cmd`) instead of typer's generated ones,
 which carry no candidate descriptions in any shell. The custom scripts
 surface commands/subcommands/options WITH their descriptions in zsh and
 fish; bash's readline cannot render descriptions, so it completes values
@@ -11,15 +11,13 @@ Prog binding
 ------------
 
 The scripts are bound to the PRIMARY program name — the ``sys.argv[0]``
-basename at install time when it is one of Vesma's real binary names,
-defaulting to ``vesma`` — plus the legacy alias names that exist as real
-binaries (``vesmaro`` always, ``mnemos`` when found on PATH). Each
-registered name gets the same completion function, so Tab works for every
-way the user actually invokes the CLI. This fixes the historical bug where
-the installer registered completion for ``vesmaro`` while the binary users
-invoke is ``vesma`` (dead Tab completion), compounded by stale pre-rebrand
-``source ~/.mnemos/completion/vesmaro.bash`` rc lines making the installer
-report "already installed".
+basename at install time when it is the real binary name, defaulting to
+``vesma``. 6.0 is the clean sheet: legacy alias binaries are retired, so
+exactly one name is ever registered. This fixes the historical bug where
+the installer registered completion for an old binary name while the
+binary users invoke is ``vesma`` (dead Tab completion), compounded by
+stale pre-rebrand ``source ~/.mnemos/completion/vesmaro.bash`` rc lines
+making the installer report "already installed".
 
 File layout::
 
@@ -66,7 +64,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -96,10 +93,10 @@ completion_app = typer.Typer(
 # Shells we support for auto-install.
 _SUPPORTED_SHELLS = ("bash", "zsh", "fish")
 
-# Real binary names Vesma has shipped under. The primary name is derived
-# from sys.argv[0] only when it is one of these (a pytest/uv-run argv must
+# Real binary names Vesma ships under. The primary name is derived from
+# sys.argv[0] only when it is the real binary (a pytest/uv-run argv must
 # not rename the installed scripts); otherwise the brand default wins.
-_KNOWN_PROG_NAMES = ("vesma", "vesmaro", "mnemos")
+_KNOWN_PROG_NAMES = ("vesma",)
 _DEFAULT_PROG_NAME = "vesma"
 
 
@@ -138,16 +135,10 @@ def _primary_prog_name() -> str:
 def _prog_names() -> list[str]:
     """All program names the completion must be bound to.
 
-    Primary first, then legacy aliases: ``vesmaro`` always (the historical
-    binary name), ``mnemos`` only when it exists as a real binary on PATH.
+    Clean sheet: exactly the primary name — legacy alias binaries are
+    retired with the 5.x line and never registered.
     """
-    primary = _primary_prog_name()
-    names = [primary]
-    if "vesmaro" not in names:
-        names.append("vesmaro")
-    if "mnemos" not in names and shutil.which("mnemos"):
-        names.append("mnemos")
-    return names
+    return [_primary_prog_name()]
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -191,8 +182,8 @@ def _canonical_source_line(shell: str) -> str:
 
     ``_is_installed`` compares rc lines against this exact string — never a
     substring match — so stale lines merely MENTIONING the completion dir
-    (pre-rebrand ``vesmaro.bash``, ``mnemos.bash`` one-liners/if-blocks)
-    can never be mistaken for an installed completion.
+    (pre-6.0 script names, one-liners/if-blocks) can never be mistaken for
+    an installed completion.
     """
     path = _completion_file_path(shell)
     tilde_path = f"~/{path.relative_to(Path.home())}"
@@ -225,7 +216,7 @@ _{prog_names[0]}() {{
     done < <({prog_names[0]} __complete "${{COMP_WORDS[@]:1}}" "$((COMP_CWORD - 1))" 2>/dev/null)
     return 0
 }}
-# Bound to every registered program name (primary + legacy aliases).
+# Bound to the single registered program name.
 complete -F _{prog_names[0]} {bound}
 """
 
@@ -265,7 +256,7 @@ _{prog_names[0]}() {{
     (( ${{#completions[@]}} )) || return 0
     _describe -t {prog_names[0]}-completions '{prog_names[0]} completion' completions
 }}
-# Bind every registered program name (primary + legacy aliases).
+# Bind the single registered program name.
 if (( $+functions[compdef] )); then
   compdef _{prog_names[0]} {compdefs}
 fi
@@ -556,7 +547,8 @@ def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
     * orphaned pure control lines — ``fi``/``then``/``else``/``elif``/
       ``do``/``done``/``esac`` whose opener is gone, whether we just removed
       it or a historical edit did (the 2026-10-03 field incident);
-    * old ``eval "$(… --show-completion …)"`` lines (vesma/mnemos spelling).
+    * old ``eval "$(… --show-completion …)"`` lines (any spelling —
+      the flag is retired with the custom engine).
 
     Duplicate copies of the canonical line itself collapse to the first
     occurrence (exactly ONE canonical line stays).
@@ -765,7 +757,7 @@ def completion(
     descriptions where the shell can show them) plus a single canonical
     ``source`` line in the rc file. Idempotent — re-running rewrites the
     scripts and keeps exactly one canonical source line, migrating away all
-    legacy forms (old eval lines, pre-rebrand vesmaro/mnemos script names,
+    legacy forms (old eval lines, stale pre-6.0 script names,
     if-blocks and one-liner sources).
 
     Pass an explicit shell (bash/zsh/fish) to override auto-detection.

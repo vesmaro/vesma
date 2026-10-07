@@ -3,9 +3,10 @@
 The generic MCP check scans every target the integration registry
 (``integrations/targets.yaml``) declares with an ``mcp.config`` — JSON
 surfaces in their declared shape, the Codex TOML config via stdlib
-``tomllib`` — and accepts BOTH key generations (brand-primary ``vesma``,
-legacy ``mnemos``) during the dual period until 6.0. Report-only: the
-check never writes or migrates configs.
+``tomllib`` — and counts ONLY the ``vesma`` key as a registration (6.0
+clean sheet). A stale legacy ``mnemos`` entry is foreign data: it never
+turns the check green, but it IS reported as a diagnostic so the operator
+can clean it up. Report-only: the check never writes or migrates configs.
 """
 
 from __future__ import annotations
@@ -81,14 +82,16 @@ def test_json_surface_keygen_matrix(
     if keygen == "vesma":
         assert result.status == CheckStatus.PASS
         assert f"{target}: vesma key" in result.detail
-        assert "migrate to vesma" not in result.detail
+        assert "stale legacy mnemos key" not in result.detail
     elif keygen == "mnemos":
-        assert result.status == CheckStatus.PASS, "legacy-only hosts stay green until 6.0"
-        assert f"{target}: legacy mnemos key" in result.detail
-        assert "migrate to vesma" in result.detail, "green, but with the deprecation note"
+        assert result.status == CheckStatus.WARN, "the legacy key is not a registration in 6.0"
+        assert "not registered in any known harness" in result.detail
+        assert f"{target}: stale legacy mnemos key" in result.detail
+        assert "vesma integration setup" in result.detail
     elif keygen == "both":
         assert result.status == CheckStatus.PASS
-        assert f"{target}: vesma + legacy mnemos keys" in result.detail
+        assert f"{target}: vesma key" in result.detail
+        assert "stale legacy mnemos key present" in result.detail
     else:
         assert result.status == CheckStatus.WARN
         assert "not registered in any known harness" in result.detail
@@ -101,13 +104,15 @@ def test_codex_toml_keygen_matrix(fake_home: Path, keygen: str) -> None:
     if keygen == "vesma":
         assert result.status == CheckStatus.PASS
         assert "codex: vesma key" in result.detail
+        assert "stale legacy mnemos key" not in result.detail
     elif keygen == "mnemos":
-        assert result.status == CheckStatus.PASS
-        assert "codex: legacy mnemos key" in result.detail
-        assert "migrate to vesma" in result.detail
+        assert result.status == CheckStatus.WARN
+        assert "codex: stale legacy mnemos key" in result.detail
+        assert "vesma integration setup" in result.detail
     elif keygen == "both":
         assert result.status == CheckStatus.PASS
-        assert "codex: vesma + legacy mnemos keys" in result.detail
+        assert "codex: vesma key" in result.detail
+        assert "stale legacy mnemos key present" in result.detail
     else:
         assert result.status == CheckStatus.WARN
 
@@ -127,9 +132,10 @@ def test_fully_migrated_host_reports_green(fake_home: Path) -> None:
     result = _check_mcp_server()
 
     assert result.status == CheckStatus.PASS
-    # The deprecation note is an exact phrase — asserting it verbatim keeps
-    # the check immune to tmp-path substrings ("migrated") in the detail.
+    # The legacy-note phrases are exact — asserting them verbatim keeps the
+    # check immune to tmp-path substrings ("migrated") in the detail.
     assert "LEGACY mnemos key only" not in result.detail
+    assert "stale legacy mnemos key" not in result.detail
     assert "migrate to vesma" not in result.detail
     for target in _JSON_SURFACES:
         assert f"{target}: vesma key" in result.detail
@@ -137,12 +143,16 @@ def test_fully_migrated_host_reports_green(fake_home: Path) -> None:
     assert "pi: MCP bridge deployed" in result.detail
 
 
-def test_legacy_only_host_is_green_with_deprecation_note(fake_home: Path) -> None:
-    """A host still running the pre-rebrand generation: green + migrate hint."""
+def test_legacy_only_host_is_warn_with_migration_hint(fake_home: Path) -> None:
+    """A host still carrying only the pre-6.0 generation: WARN + cleanup hint.
+
+    The legacy key is foreign data in 6.0 — it never counts as registered,
+    but the doctor names it so the operator can remove the stale entry.
+    """
     _write_json_surface(fake_home, ".cursor/mcp.json", ("mcpServers",), "mnemos")
     result = _check_mcp_server()
-    assert result.status == CheckStatus.PASS
-    assert "cursor: legacy mnemos key" in result.detail
+    assert result.status == CheckStatus.WARN
+    assert "cursor: stale legacy mnemos key" in result.detail
     assert "vesma integration setup" in result.detail
 
 
@@ -179,12 +189,12 @@ def test_vscode_legacy_surface_is_seen(fake_home: Path, keygen: str) -> None:
     dest.write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
 
     result = _check_mcp_server()
-    assert result.status == CheckStatus.PASS
     if keygen == "vesma":
+        assert result.status == CheckStatus.PASS
         assert "vscode (legacy): vesma key" in result.detail
     else:
-        assert "vscode (legacy): legacy mnemos key" in result.detail
-        assert "migrate to vesma" in result.detail
+        assert result.status == CheckStatus.WARN
+        assert "vscode (legacy): stale legacy mnemos key" in result.detail
 
 
 def test_vscode_legacy_foreign_only_config_is_reported(fake_home: Path) -> None:

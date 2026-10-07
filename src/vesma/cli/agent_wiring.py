@@ -1,9 +1,11 @@
-"""Agent MCP wiring — add ``mnemos/*`` tools to Copilot agent frontmatter.
+"""Agent MCP wiring — add ``vesma/*`` tools to Copilot agent frontmatter.
 
 This module extends the integration layer with **agent MCP wiring**: it
 detects ``*.agent.md`` files in ``~/.copilot/agents/``, parses their YAML
-frontmatter, and adds ``mnemos/*`` (wildcard) or individual
-``mnemos/mnemos_*`` tool references to the ``tools:`` array.
+frontmatter, and adds ``vesma/*`` (wildcard) or individual
+``vesma/vesma_*`` tool references to the ``tools:`` array. Stale
+``mnemos/*`` tool tokens written by pre-6.0 deployments are removed in the
+same pass (one-time migration aid; the legacy names are no longer served).
 
 Design constraints:
 
@@ -12,7 +14,7 @@ Design constraints:
 * **Agents with ``tool_profile:`` are skipped** — those are resolved by
   the Copilot installer, not by us. Mutating them would be overwritten on the
   next ``make install-all``.
-* **Idempotent** — re-running does not duplicate ``mnemos/*`` entries.
+* **Idempotent** — re-running does not duplicate ``vesma/*`` entries.
 * **Formatting preserved** — we use ``python-frontmatter`` which round-trips
   the YAML structure without mangling block/flow styles.
 * **Safe** — the original file is only rewritten when the frontmatter
@@ -46,8 +48,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_AGENTS_DIR",
-    "VESMARO_TOOLS",
-    "VESMARO_WILDCARD",
+    "VESMA_TOOLS",
+    "VESMA_WILDCARD",
     "AgentInfo",
     "AgentVerifySummary",
     "WireResult",
@@ -68,24 +70,24 @@ DEFAULT_AGENTS_DIR = Path.home() / ".copilot" / "agents"
 #: ``watch_*`` tools are admin-only (start/stop file watchers) and are
 #: intentionally excluded from precise mode — they are not appropriate for
 #: general agent wiring.
-VESMARO_TOOLS: tuple[str, ...] = (
-    "mnemos/mnemos_add",
-    "mnemos/mnemos_search",
-    "mnemos/mnemos_recall_context",
-    "mnemos/mnemos_agent_recall",
-    "mnemos/mnemos_save_context",
-    "mnemos/mnemos_list_recent",
-    "mnemos/mnemos_list_tags",
-    "mnemos/mnemos_ingest_url",
+VESMA_TOOLS: tuple[str, ...] = (
+    "vesma/vesma_add",
+    "vesma/vesma_search",
+    "vesma/vesma_recall_context",
+    "vesma/vesma_agent_recall",
+    "vesma/vesma_save_context",
+    "vesma/vesma_list_recent",
+    "vesma/vesma_list_tags",
+    "vesma/vesma_ingest_url",
     # ADR-0027 Ф3 (epic #308): the document ingest (born-quarantined
     # doc chunks, swept at completion) joins the wired tool set.
-    "mnemos/mnemos_ingest_document",
-    "mnemos/mnemos_stats",
-    "mnemos/mnemos_auto_collect_status",
+    "vesma/vesma_ingest_document",
+    "vesma/vesma_stats",
+    "vesma/vesma_auto_collect_status",
 )
 
 #: Wildcard token granting all vesma tools in one entry.
-VESMARO_WILDCARD = "mnemos/*"
+VESMA_WILDCARD = "vesma/*"
 
 
 # ── Data models ───────────────────────────────────────────────────────────────
@@ -113,7 +115,7 @@ class AgentInfo:
     path: Path
     name: str
     filename: str
-    has_mnemos: bool
+    has_vesma: bool
     uses_tool_profile: bool
     tools_count: int
     has_tools: bool
@@ -133,11 +135,11 @@ class WireResult:
 # ── Detection ─────────────────────────────────────────────────────────────────
 
 
-def _has_mnemos_in_tools(tools: object) -> bool:
-    """Return ``True`` if any element in ``tools`` starts with ``mnemos/``."""
+def _has_vesma_in_tools(tools: object) -> bool:
+    """Return ``True`` if any element in ``tools`` starts with ``vesma/``."""
     if not isinstance(tools, list):
         return False
-    return any(isinstance(t, str) and t.startswith("mnemos/") for t in tools)
+    return any(isinstance(t, str) and t.startswith("vesma/") for t in tools)
 
 
 def detect_agents(agents_dir: Path | None = None) -> list[AgentInfo]:
@@ -341,7 +343,7 @@ def _parse_agent(path: Path) -> AgentInfo:
             path=path,
             name=filename,
             filename=filename,
-            has_mnemos=False,
+            has_vesma=False,
             uses_tool_profile=False,
             tools_count=0,
             has_tools=False,
@@ -352,13 +354,13 @@ def _parse_agent(path: Path) -> AgentInfo:
     tools = metadata.get("tools")
     has_tools = isinstance(tools, list)
     tools_count = len(tools) if isinstance(tools, list) else 0
-    has_mnemos = _has_mnemos_in_tools(tools)
+    has_vesma = _has_vesma_in_tools(tools)
 
     return AgentInfo(
         path=path,
         name=name,
         filename=filename,
-        has_mnemos=has_mnemos,
+        has_vesma=has_vesma,
         uses_tool_profile=has_tool_profile,
         tools_count=tools_count,
         has_tools=has_tools,
@@ -378,9 +380,9 @@ def _build_tools_to_add(mode: str) -> list[str]:
         ValueError: if ``mode`` is not recognised.
     """
     if mode == "wildcard":
-        return [VESMARO_WILDCARD]
+        return [VESMA_WILDCARD]
     if mode == "precise":
-        return list(VESMARO_TOOLS)
+        return list(VESMA_TOOLS)
     raise ValueError(f"Unknown wiring mode: {mode!r} (expected 'wildcard' or 'precise')")
 
 
@@ -404,15 +406,17 @@ def wire_agent(
 
     Args:
         agent_path: Path to the ``*.agent.md`` file.
-        mode: ``"wildcard"`` (add ``mnemos/*``) or ``"precise"`` (add
-            individual ``mnemos/mnemos_*`` tokens).
+        mode: ``"wildcard"`` (add ``vesma/*``) or ``"precise"`` (add
+            individual ``vesma/vesma_*`` tokens).
         dry_run: If ``True``, report what would change without writing.
 
     Returns:
         :class:`WireResult` describing the outcome.
 
     The function is idempotent: an agent that already has the requested
-    tokens is reported as ``ALREADY_WIRED`` and left untouched.
+    tokens is reported as ``ALREADY_WIRED`` and left untouched. Stale
+    ``mnemos/*`` tokens from pre-6.0 deployments are dropped in the same
+    pass (migration aid — the legacy server name is no longer served).
     """
     to_add = _build_tools_to_add(mode)
 
@@ -445,10 +449,17 @@ def wire_agent(
     tools = metadata.get("tools")
     existing_tools: list[str] = list(tools) if isinstance(tools, list) else []
 
+    # One-time migration aid: drop stale ``mnemos/*`` tokens written by
+    # pre-6.0 deployments — the legacy server name is no longer served, so
+    # keeping them would leave dead grants in the frontmatter.
+    stale_legacy = [t for t in existing_tools if isinstance(t, str) and t.startswith("mnemos/")]
+    if stale_legacy:
+        existing_tools = [t for t in existing_tools if t not in stale_legacy]
+
     # Determine which tokens are actually missing.
     missing = _filter_missing(to_add, existing_tools)
 
-    if not missing:
+    if not missing and not stale_legacy:
         return WireResult(
             path=agent_path,
             name=name,
@@ -464,7 +475,10 @@ def wire_agent(
             path=agent_path,
             name=name,
             status=WireStatus.DRY_RUN,
-            note=f"would add {len(missing)} tool(s): {', '.join(missing)}",
+            note=(
+                f"would add {len(missing)} tool(s): {', '.join(missing)}"
+                + (f"; drop {len(stale_legacy)} legacy mnemos token(s)" if stale_legacy else "")
+            ),
             tools_added=missing,
         )
 
@@ -489,7 +503,10 @@ def wire_agent(
         path=agent_path,
         name=name,
         status=WireStatus.WIRED,
-        note=f"added {len(missing)} tool(s)",
+        note=(
+            f"added {len(missing)} tool(s)"
+            + (f"; dropped {len(stale_legacy)} legacy mnemos token(s)" if stale_legacy else "")
+        ),
         tools_added=missing,
     )
 
@@ -546,7 +563,7 @@ def verify_agents(agents_dir: Path | None = None) -> AgentVerifySummary:
     for info in infos:
         if info.uses_tool_profile:
             summary.skipped_tool_profile += 1
-        elif info.has_mnemos:
+        elif info.has_vesma:
             summary.wired += 1
         else:
             summary.unwired += 1

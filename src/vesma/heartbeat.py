@@ -29,8 +29,8 @@ Hard contract (the wrapper's side of ADR-0035):
 * the deny-list surfaces (``vesma_assemble_context`` — it already
   composes the full picture, a tail there means double render and
   double cursor advance; export/import — the bulk transfer pair, the
-  MCP legs of the federation class; ``mnemos_awareness`` /
-  ``mnemos_hooks`` — the awareness surfaces themselves, cascade SEC-2)
+  MCP legs of the federation class; ``vesma_awareness`` /
+  ``vesma_hooks`` — the awareness surfaces themselves, cascade SEC-2)
   never carry the tail (but still land in the ``tool_call``
   denominator).
 

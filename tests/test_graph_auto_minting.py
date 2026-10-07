@@ -846,7 +846,7 @@ class TestTelemetry:
         _add(mint_manager, NEAR_DUP_A)
         _add(mint_manager, NEAR_DUP_B)
         text = _prometheus_text(mint_manager)
-        assert "# HELP mnemos_graph_auto_dedupe_edges_total" in text
-        assert "# TYPE mnemos_graph_auto_dedupe_edges_total counter" in text
-        assert "mnemos_graph_auto_dedupe_edges_total 1" in text
-        assert f'mnemos_graph_auto_dedupe_edges_by_project{{project="{PROJECT}"}} 1' in text
+        assert "# HELP vesma_graph_auto_dedupe_edges_total" in text
+        assert "# TYPE vesma_graph_auto_dedupe_edges_total counter" in text
+        assert "vesma_graph_auto_dedupe_edges_total 1" in text
+        assert f'vesma_graph_auto_dedupe_edges_by_project{{project="{PROJECT}"}} 1' in text

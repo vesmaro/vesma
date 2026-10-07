@@ -381,8 +381,8 @@ class TestExpositionLabelFree:
                 resp = client.get("/api/v1/metrics")
             assert resp.status_code == 200
             text = resp.text
-            assert "mnemos_usage_reports_total" in text  # reports render now
-            assert "mnemos_usage_loop_rate 1.0" in text  # closure visible
+            assert "vesma_usage_reports_total" in text  # reports render now
+            assert "vesma_usage_loop_rate 1.0" in text  # closure visible
             assert "vitals-9" not in text  # project slug never leaks
         finally:
             manager.close()

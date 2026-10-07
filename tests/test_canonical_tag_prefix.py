@@ -129,7 +129,7 @@ class TestNormalizeAliasTable:
 
     def test_contract_subtypes_extraction_both_spellings(self) -> None:
         tc = TagContract(tags=["project:p", "agent:a", "vesma:decision", "mnemos:no-federate"])
-        assert tc.mnemos_subtypes == frozenset({"decision", "no-federate"})
+        assert tc.vesma_subtypes == frozenset({"decision", "no-federate"})
 
     def test_filter_alias_normalization_list_form(self) -> None:
         assert normalize_tag_aliases(["mnemos:decision", "task:x"]) == [

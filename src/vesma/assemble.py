@@ -11,7 +11,7 @@ Fixed pipeline, in order (ADR-0017 D1 with the ADR-0018 CCR-stage amendment):
                   no ``status``/``include_raw`` is passed, so only
                   ``published``/``processed`` surface). ADR-0025 E1: when
                   ``LanesConfig.enabled`` is on, this stage runs the
-                  deterministic lanes SUB-STAGE first (``mnemos/lanes.py``
+                  deterministic lanes SUB-STAGE first (``vesma/lanes.py``
                   — rules/decisions via ``list_all(tags=...)``, knowledge
                   = the same RRF recall with governance rows excluded);
                   the six-stage order itself is unchanged, and with the

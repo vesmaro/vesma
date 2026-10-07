@@ -37,7 +37,6 @@ from rich.table import Table
 
 from vesma import __version__
 from vesma.cli.integration import (
-    MCP_LEGACY_SERVER_KEY,
     MCP_SERVER_KEY,
     IntegrationManager,
     load_targets,
@@ -116,8 +115,8 @@ def _server_keys(cfg_path: Path | None, home: Path | None) -> dict[str, Any]:
     if not isinstance(servers, dict):
         return {"vesma": False, "external": [], "config": str(resolved)}
 
-    ours = MCP_SERVER_KEY in servers or MCP_LEGACY_SERVER_KEY in servers
-    external = sorted(str(k) for k in servers if k not in (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY))
+    ours = MCP_SERVER_KEY in servers
+    external = sorted(str(k) for k in servers if k != MCP_SERVER_KEY)
     return {"vesma": ours, "external": external, "config": str(resolved)}
 
 

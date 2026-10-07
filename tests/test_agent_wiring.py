@@ -1,10 +1,10 @@
-"""Tests for agent MCP wiring — ``mnemos/cli/agent_wiring.py``.
+"""Tests for agent MCP wiring — ``vesma/cli/agent_wiring.py``.
 
 Covers:
 
 * ``detect_agents`` — finds all ``*.agent.md`` files, parses frontmatter.
-* ``wire_agent`` wildcard mode — adds ``mnemos/*`` to ``tools`` array.
-* ``wire_agent`` precise mode — adds individual ``mnemos/mnemos_*`` tokens.
+* ``wire_agent`` wildcard mode — adds ``vesma/*`` to ``tools`` array.
+* ``wire_agent`` precise mode — adds individual ``vesma/vesma_*`` tokens.
 * ``wire_agent`` idempotency — re-running does not duplicate.
 * ``wire_agent`` already-wired — skips with correct status.
 * ``wire_agent`` tool_profile — skips with reason.
@@ -30,8 +30,8 @@ import pytest
 from typer.testing import CliRunner
 
 from vesma.cli.agent_wiring import (
-    VESMARO_TOOLS,
-    VESMARO_WILDCARD,
+    VESMA_TOOLS,
+    VESMA_WILDCARD,
     WireStatus,
     detect_agents,
     verify_agents,
@@ -99,7 +99,7 @@ def agents_dir(tmp_path: Path) -> Path:
         directory,
         "tech-lead.agent.md",
         name="GCW: Tech Lead",
-        tools=["read", "search", "execute", VESMARO_WILDCARD],
+        tools=["read", "search", "execute", VESMA_WILDCARD],
     )
 
     # Agent with tool_profile — should be skipped.
@@ -118,12 +118,12 @@ def agents_dir(tmp_path: Path) -> Path:
         tools=None,
     )
 
-    # Agent already wired with precise mnemos tools.
+    # Agent already wired with precise vesma tools.
     _write_agent(
         directory,
         "mnemos-curator.agent.md",
         name="GCW: Mnemos Curator",
-        tools=["read", "search", VESMARO_TOOLS[0], VESMARO_TOOLS[1]],
+        tools=["read", "search", VESMA_TOOLS[0], VESMA_TOOLS[1]],
     )
 
     return directory
@@ -180,14 +180,14 @@ class TestDetectAgents:
         assert "GCW: Tech Lead" in names
         assert "GCW: CR Critic" in names
 
-    def test_detects_mnemos_presence(self, agents_dir: Path) -> None:
-        """``has_mnemos`` is True for agents with mnemos tools."""
+    def test_detects_vesma_presence(self, agents_dir: Path) -> None:
+        """``has_vesma`` is True for agents carrying vesma tool tokens."""
         infos = detect_agents(agents_dir)
         by_name = {info.name: info for info in infos}
 
-        assert by_name["GCW: Tech Lead"].has_mnemos is True
-        assert by_name["GCW: Mnemos Curator"].has_mnemos is True
-        assert by_name["GCW: Agent Architect"].has_mnemos is False
+        assert by_name["GCW: Tech Lead"].has_vesma is True
+        assert by_name["GCW: Mnemos Curator"].has_vesma is True
+        assert by_name["GCW: Agent Architect"].has_vesma is False
 
     def test_detects_tool_profile(self, agents_dir: Path) -> None:
         """``uses_tool_profile`` is True for tool_profile agents."""
@@ -273,7 +273,7 @@ class TestDetectAgents:
         # adds the memory-tool wildcard token.
         result = wire_agent(path, mode="wildcard")
         assert result.status == WireStatus.WIRED
-        assert result.tools_added == ["mnemos/*"]
+        assert result.tools_added == ["vesma/*"]
 
 
 # ── wire_agent ────────────────────────────────────────────────────────────────
@@ -282,32 +282,32 @@ class TestDetectAgents:
 class TestWireAgent:
     """Tests for ``wire_agent``."""
 
-    def test_wildcard_adds_mnemos_slash_star(self, agents_dir: Path) -> None:
-        """Wildcard mode adds ``mnemos/*`` to the tools array."""
+    def test_wildcard_adds_vesma_slash_star(self, agents_dir: Path) -> None:
+        """Wildcard mode adds ``vesma/*`` to the tools array."""
         path = agents_dir / "agent-architect.agent.md"
         result = wire_agent(path, mode="wildcard")
 
         assert result.status == WireStatus.WIRED
-        assert VESMARO_WILDCARD in result.tools_added
+        assert VESMA_WILDCARD in result.tools_added
 
         post = frontmatter.load(path)
         tools = post.metadata["tools"]
-        assert VESMARO_WILDCARD in tools
+        assert VESMA_WILDCARD in tools
         # Original tools preserved.
         assert "read" in tools
         assert "search" in tools
 
     def test_precise_adds_individual_tools(self, agents_dir: Path) -> None:
-        """Precise mode adds individual ``mnemos/mnemos_*`` tokens."""
+        """Precise mode adds individual ``vesma/vesma_*`` tokens."""
         path = agents_dir / "agent-architect.agent.md"
         result = wire_agent(path, mode="precise")
 
         assert result.status == WireStatus.WIRED
-        assert len(result.tools_added) == len(VESMARO_TOOLS)
+        assert len(result.tools_added) == len(VESMA_TOOLS)
 
         post = frontmatter.load(path)
         tools = post.metadata["tools"]
-        for tool in VESMARO_TOOLS:
+        for tool in VESMA_TOOLS:
             assert tool in tools
 
     def test_idempotent_wildcard(self, agents_dir: Path) -> None:
@@ -321,7 +321,7 @@ class TestWireAgent:
 
         post = frontmatter.load(path)
         tools = post.metadata["tools"]
-        assert tools.count(VESMARO_WILDCARD) == 1
+        assert tools.count(VESMA_WILDCARD) == 1
 
     def test_idempotent_precise(self, agents_dir: Path) -> None:
         """Re-running precise mode does not duplicate tokens."""
@@ -334,7 +334,7 @@ class TestWireAgent:
 
         post = frontmatter.load(path)
         tools = post.metadata["tools"]
-        for tool in VESMARO_TOOLS:
+        for tool in VESMA_TOOLS:
             assert tools.count(tool) == 1
 
     def test_already_wired_wildcard(self, agents_dir: Path) -> None:
@@ -348,7 +348,7 @@ class TestWireAgent:
     def test_already_wired_precise_when_wildcard_present(self, agents_dir: Path) -> None:
         """Precise mode on a wildcard-wired agent adds the individual tokens.
 
-        The wildcard ``mnemos/*`` is not the same string as ``mnemos/vesma_add``,
+        The wildcard ``vesma/*`` is not the same string as ``vesma/vesma_add``,
         so precise mode adds the individual tokens. This is correct behaviour —
         the user explicitly asked for precise mode.
         """
@@ -357,7 +357,7 @@ class TestWireAgent:
 
         # The individual tokens were missing (only wildcard was present).
         assert result.status == WireStatus.WIRED
-        assert len(result.tools_added) == len(VESMARO_TOOLS)
+        assert len(result.tools_added) == len(VESMA_TOOLS)
 
     def test_skips_tool_profile(self, agents_dir: Path) -> None:
         """Agents with ``tool_profile`` are skipped, not modified."""
@@ -381,7 +381,7 @@ class TestWireAgent:
         post = frontmatter.load(path)
         tools = post.metadata["tools"]
         assert isinstance(tools, list)
-        assert VESMARO_WILDCARD in tools
+        assert VESMA_WILDCARD in tools
 
     def test_dry_run_does_not_modify(self, agents_dir: Path) -> None:
         """``--dry-run`` reports the change without writing."""
@@ -391,7 +391,7 @@ class TestWireAgent:
         result = wire_agent(path, mode="wildcard", dry_run=True)
 
         assert result.status == WireStatus.DRY_RUN
-        assert VESMARO_WILDCARD in result.tools_added
+        assert VESMA_WILDCARD in result.tools_added
         # File untouched.
         assert path.read_text(encoding="utf-8") == original
 
@@ -464,7 +464,7 @@ class TestVerifyAgents:
         _write_agent(
             directory,
             "a.agent.md",
-            tools=["read", VESMARO_WILDCARD],
+            tools=["read", VESMA_WILDCARD],
         )
         _write_agent(
             directory,
@@ -490,7 +490,7 @@ class TestVerifyAgents:
 
 
 class TestCliSetupWireAgents:
-    """CLI tests for ``mnemos integration setup --wire-agents``.
+    """CLI tests for ``vesma integration setup --wire-agents``.
 
     These tests use ``monkeypatch`` to redirect ``DEFAULT_AGENTS_DIR`` to a
     ``tmp_path`` directory so the real ``~/.copilot/agents/`` is never touched.
@@ -521,13 +521,13 @@ class TestCliSetupWireAgents:
 
         assert result.exit_code == 0, result.output
 
-        # agent-architect should now have mnemos/*.
+        # agent-architect should now have vesma/*.
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
-        # concierge (no tools) should now have tools with mnemos/*.
+        # concierge (no tools) should now have tools with vesma/*.
         post = frontmatter.load(agents_dir / "concierge.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
         # cr-critic (tool_profile) should NOT have tools added.
         post = frontmatter.load(agents_dir / "cr-critic.agent.md")
@@ -561,7 +561,7 @@ class TestCliSetupWireAgents:
 
         # agent-architect wired.
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
         # concierge NOT wired (was not selected).
         post = frontmatter.load(agents_dir / "concierge.agent.md")
@@ -625,10 +625,10 @@ class TestCliSetupWireAgents:
 
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
         tools = post.metadata["tools"]
-        for tool in VESMARO_TOOLS:
+        for tool in VESMA_TOOLS:
             assert tool in tools
         # Wildcard should NOT be present in precise mode.
-        assert VESMARO_WILDCARD not in tools
+        assert VESMA_WILDCARD not in tools
 
     def test_wire_agents_dry_run(
         self,
@@ -735,7 +735,7 @@ class TestCliVerifyAgentsSection:
 
 
 class TestDoctorAgentWiring:
-    """Tests for the agent wiring check in ``mnemos doctor``."""
+    """Tests for the agent wiring check in ``vesma doctor``."""
 
     def test_doctor_includes_agent_wiring_check(
         self,

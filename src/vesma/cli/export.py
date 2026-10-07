@@ -361,9 +361,9 @@ def _build_sqlite_snapshot(mgr: MemoryManager) -> bytes:
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        mnemos_db_path = mgr.settings.db_path
+        vesma_db_path = mgr.settings.db_path
         vectors_db_path = mgr.settings.vesma.data_dir / "vectors.db"
-        for name, path in (("mnemos.db", mnemos_db_path), ("vectors.db", vectors_db_path)):
+        for name, path in (("mnemos.db", vesma_db_path), ("vectors.db", vectors_db_path)):
             if not path.exists():
                 continue
             data = path.read_bytes()
@@ -608,12 +608,12 @@ def restore_sqlite_snapshot(
     mgr.vectors.close()
 
     data_dir = mgr.settings.vesma.data_dir
-    mnemos_db = mgr.settings.db_path
+    vesma_db = mgr.settings.db_path
     vectors_db = data_dir / "vectors.db"
 
     if backup_current is not None:
         backup_current.mkdir(parents=True, exist_ok=True)
-        for src in (mnemos_db, vectors_db):
+        for src in (vesma_db, vectors_db):
             if src.exists():
                 (backup_current / src.name).write_bytes(src.read_bytes())
 
@@ -623,7 +623,7 @@ def restore_sqlite_snapshot(
                 extracted = tar.extractfile(member)
                 if extracted is None:
                     raise ValueError("SQLite snapshot missing mnemos.db payload")
-                mnemos_db.write_bytes(extracted.read())
+                vesma_db.write_bytes(extracted.read())
             elif member.name == "vectors.db":
                 extracted = tar.extractfile(member)
                 if extracted is None:
@@ -631,7 +631,7 @@ def restore_sqlite_snapshot(
                 vectors_db.write_bytes(extracted.read())
 
     # Re-open the store on the restored file and count rows.
-    conn = sqlite3.connect(str(mnemos_db))
+    conn = sqlite3.connect(str(vesma_db))
     try:
         row = conn.execute("SELECT COUNT(*) FROM memories").fetchone()
         return int(row[0]) if row else 0

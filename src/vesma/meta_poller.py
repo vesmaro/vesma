@@ -286,7 +286,7 @@ class MetaPoller:
         if self._task is not None and not self._task.done():
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self.run(), name="mnemos-meta-poller")
+        self._task = asyncio.create_task(self.run(), name="vesma-meta-poller")
         logger.info(
             "meta poller started interval=%ds peers=%s mesh_bin=%s mesh_config=%s",
             self._config.interval_seconds,

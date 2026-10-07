@@ -16,11 +16,11 @@ F1/F2):
 * ``recall`` scans every echoed item at issuance
   (``MemoryManager.scan_issuance_item`` over content + title —
   per-item redactions, refuse-mode drop), exactly like the
-  ``mnemos_search`` / REST ``/search`` channels. The SDK returns
+  ``vesma_search`` / REST ``/search`` channels. The SDK returns
   SCANNED item dicts, never stored rows.
 * ``remember`` validates caller-supplied tags against the tag contract
   (``validate_tag_contract``, deployment strictness knob), exactly like
-  the ``mnemos_add`` / REST write channels.
+  the ``vesma_add`` / REST write channels.
 
 Verb → manager method map:
 
@@ -122,7 +122,7 @@ class VesmaSDK:
         ``tags``, ``memory_type``, ``source``, ``metadata``, …). Caller
         tags are validated against the tag contract at THIS channel
         (W3 review F2 — ``validate_tag_contract`` with the deployment's
-        ``vesma.strict_tag_contract`` knob, mirroring the ``mnemos_add``
+        ``vesma.strict_tag_contract`` knob, mirroring the ``vesma_add``
         / REST write channels): a violation raises
         :class:`vesma.models.TagContractError` (a ``ValueError``)
         BEFORE any write. The entry then enters the knowledge pipeline
@@ -166,7 +166,7 @@ class VesmaSDK:
         matched spans become ``<REDACTED:<pattern>>`` in the returned
         copy (per-item ``redactions`` / ``redacted_patterns``), refuse
         mode (``ccr.retrieve_refuse_on_secret``) DROPS the item, exactly
-        like the ``mnemos_search`` / REST ``/search`` channels. The SDK
+        like the ``vesma_search`` / REST ``/search`` channels. The SDK
         therefore returns SCANNED item dicts (``id``, ``title``,
         ``content``, ``tags``, ``score``, ``search_type``, ``status``,
         ``redactions``, optional ``redacted_patterns``) — never stored

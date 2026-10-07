@@ -796,15 +796,15 @@ def _import_sqlite(
 
     # Validate the snapshot by reading the memory count from it.
     with tarfile.open(fileobj=io.BytesIO(snapshot), mode="r:gz") as tar:
-        mnemos_member = None
+        legacy_member = None
         for m in tar.getmembers():
             if m.name == "mnemos.db":
-                mnemos_member = m
+                legacy_member = m
                 break
-        if mnemos_member is None:
+        if legacy_member is None:
             result.errors.append("SQLite snapshot missing mnemos.db.")
             return result
-        extracted = tar.extractfile(mnemos_member)
+        extracted = tar.extractfile(legacy_member)
         if extracted is None:
             result.errors.append("SQLite snapshot mnemos.db payload is empty.")
             return result

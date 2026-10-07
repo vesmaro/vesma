@@ -5,7 +5,7 @@ across vesma. It is consumed by three defence-in-depth layers
 (ArchCom 2026-07-17 federation contract §2.2.1):
 
 * **Layer 1 — write-path scanner** (this issue, #86): wired into
-  ``MemoryManager.add`` / ``mnemos_add`` / HTTP ``POST /memories`` /
+  ``MemoryManager.add`` / ``vesma_add`` / HTTP ``POST /memories`` /
   ``ingest_url`` / ``ingest_path_scoped_rules``. On detect → auto-add the
   ``mnemos:no-federate`` tag so the record is excluded from external
   exchange (batch sync + mediated pull).

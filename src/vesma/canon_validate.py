@@ -16,7 +16,7 @@ violations). Validation applies ONLY to records that carry the envelope.
 This holds in BOTH modes: strict never rejects a legacy record retroactively
 (canon §10 "new records only").
 
-MODES (``mnemos.canon_mode``, default ``"warn"``):
+MODES (``vesma.canon_mode``, default ``"warn"``):
 
 * warn — every violation is a machine-parseable warning: one
   ``logger.warning`` line per violation AND the violation list attached to

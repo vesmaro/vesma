@@ -842,7 +842,7 @@ CREATE TABLE IF NOT EXISTS meta (
 -- P1-4: CCR (Compress-Cache-Retrieve) reversible compression cache.
 -- Stores the ORIGINAL uncompressed content keyed by its SHA-256 hash.
 -- The compressed representation embeds a marker referencing this hash;
--- mnemos_retrieve fetches the original back with zero data loss.
+-- vesma_retrieve fetches the original back with zero data loss.
 -- Inspired by headroom's CCR (https://github.com/headroomlabs-ai/headroom),
 -- Apache 2.0 — we integrate into the existing Vesma store (one DB).
 -- A1 (ArchCom 2026-08-27): composite PK (project, hash) — the same content
@@ -981,7 +981,7 @@ END;
 -- local corpus via build_metadata_entry) and rows mirrored from peers
 -- (origin_peer=<peer A2A id>). INDEX-ONLY by design: no summary, no
 -- key points, no content — a record's existence is itself an inference
--- surface (position paper §4), and the table is OUTSIDE mnemos_search
+-- surface (position paper §4), and the table is OUTSIDE vesma_search
 -- (never served by the memory search path). ``id`` is the wire
 -- MetadataRecord id (fed:<source_agent>:<uuid>) — UNIQUE is the
 -- cross-peer dedup key. ``tags`` is a JSON array (same convention as

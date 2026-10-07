@@ -2,10 +2,10 @@
 
 Covers:
 
-* Task 1: ``mnemos integration setup`` default-flow agent wiring prompt
+* Task 1: ``vesma integration setup`` default-flow agent wiring prompt
   (interactive Y/n + non-interactive safe skip).
-* Task 2: ``mnemos add --dry-run`` — filter preview without saving.
-* Task 3: ``mnemos doctor --fix`` — auto-fix WARN-level checks, plus
+* Task 2: ``vesma add --dry-run`` — filter preview without saving.
+* Task 3: ``vesma doctor --fix`` — auto-fix WARN-level checks, plus
   ``--fix --dry-run`` preview.
 
 All tests use ``tmp_path`` and ``monkeypatch`` — never the real
@@ -20,7 +20,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from vesma.cli.agent_wiring import VESMARO_WILDCARD
+from vesma.cli.agent_wiring import VESMA_WILDCARD
 from vesma.cli.integration import IntegrationManager, load_targets
 from vesma.cli.main import app
 
@@ -86,7 +86,7 @@ def agents_dir(tmp_path: Path) -> Path:
         directory,
         "tech-lead.agent.md",
         name="GCW: Tech Lead",
-        tools=["read", "search", "execute", VESMARO_WILDCARD],
+        tools=["read", "search", "execute", VESMA_WILDCARD],
     )
     return directory
 
@@ -99,17 +99,17 @@ def fake_pack(tmp_path: Path) -> Path:
     (pack / "skills").mkdir(parents=True)
     (pack / "prompts").mkdir(parents=True)
 
-    (pack / "instructions" / "mnemos-memory.instructions.md").write_text(
-        "---\napplyTo: '**'\n---\n# Mnemos memory trigger\nUse mnemos tools.\n",
+    (pack / "instructions" / "vesma-memory.instructions.md").write_text(
+        "---\napplyTo: '**'\n---\n# Vesma memory trigger\nUse vesma tools.\n",
         encoding="utf-8",
     )
-    skill_dir = pack / "skills" / "mnemos-recall"
+    skill_dir = pack / "skills" / "vesma-recall"
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
-        "# Mnemos recall skill\n\nRecall context from memory.\n", encoding="utf-8"
+        "# Vesma recall skill\n\nRecall context from memory.\n", encoding="utf-8"
     )
-    (pack / "prompts" / "mnemos-session.prompt.md").write_text(
-        "# Mnemos session prompt\n\nStart a memory-aware session.\n", encoding="utf-8"
+    (pack / "prompts" / "vesma-session.prompt.md").write_text(
+        "# Vesma session prompt\n\nStart a memory-aware session.\n", encoding="utf-8"
     )
     (pack / "targets.yaml").write_text(
         yaml.dump(
@@ -187,7 +187,7 @@ class TestSetupDefaultWiring:
 
         assert result.exit_code == 0, result.output
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
     def test_no_wire_agents_skips_wiring(
         self,
@@ -238,7 +238,7 @@ class TestSetupDefaultWiring:
 
         assert result.exit_code == 0, result.output
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
     def test_no_wire_agents_flag_still_works(
         self,
@@ -269,11 +269,11 @@ class TestSetupDefaultWiring:
         assert (agents_dir / "agent-architect.agent.md").read_text(encoding="utf-8") == original
 
 
-# ── Task 2: mnemos add --dry-run ──────────────────────────────────────────────
+# ── Task 2: vesma add --dry-run ──────────────────────────────────────────────
 
 
 class TestAddDryRun:
-    """``mnemos add --dry-run`` shows filter stats without saving."""
+    """``vesma add --dry-run`` shows filter stats without saving."""
 
     def test_dry_run_shows_filter_stats(
         self,
@@ -288,7 +288,7 @@ class TestAddDryRun:
                 "add",
                 content,
                 "--tags",
-                "project:dry,agent:test,mnemos:learning",
+                "project:dry,agent:test,vesma:learning",
                 "--dry-run",
             ],
         )
@@ -314,7 +314,7 @@ class TestAddDryRun:
                 "add",
                 "some content that will not be saved",
                 "--tags",
-                "project:dry,agent:test,mnemos:learning",
+                "project:dry,agent:test,vesma:learning",
                 "--dry-run",
             ],
         )
@@ -327,7 +327,7 @@ class TestAddDryRun:
         isolated_config: Path,
     ) -> None:
         """``--dry-run`` with invalid tags raises TagContractError (strict mode)."""
-        # Missing required project:/agent:/mnemos: tags.
+        # Missing required project:/agent:/vesma: tags.
         result = runner.invoke(
             app,
             ["add", "content", "--tags", "random-tag", "--dry-run"],
@@ -351,7 +351,7 @@ class TestAddDryRun:
                 "--file",
                 str(content_file),
                 "--tags",
-                "project:dry,agent:test,mnemos:learning",
+                "project:dry,agent:test,vesma:learning",
                 "--dry-run",
             ],
         )
@@ -371,7 +371,7 @@ class TestAddDryRun:
                 "--url",
                 "https://example.com",
                 "--tags",
-                "project:dry,agent:test,mnemos:learning",
+                "project:dry,agent:test,vesma:learning",
                 "--dry-run",
             ],
         )
@@ -379,11 +379,11 @@ class TestAddDryRun:
         assert "not supported" in result.output.lower()
 
 
-# ── Task 3: mnemos doctor --fix ───────────────────────────────────────────────
+# ── Task 3: vesma doctor --fix ───────────────────────────────────────────────
 
 
 class TestDoctorFix:
-    """``mnemos doctor --fix`` auto-fixes WARN-level checks."""
+    """``vesma doctor --fix`` auto-fixes WARN-level checks."""
 
     @pytest.fixture(autouse=True)
     def _isolate_vscode_mcp_surface(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -447,9 +447,9 @@ class TestDoctorFix:
         ok, note = _fix_agent_wiring()
         assert ok is True
         assert "wired" in note
-        # agent-architect now has mnemos/*.
+        # agent-architect now has vesma/*.
         post = frontmatter.load(agents_dir / "agent-architect.agent.md")
-        assert VESMARO_WILDCARD in post.metadata["tools"]
+        assert VESMA_WILDCARD in post.metadata["tools"]
 
     def test_fix_integration_stale_updates(
         self,

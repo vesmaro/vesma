@@ -26,7 +26,7 @@ class VesmaConfig(BaseModel):
     db_name: str = "mnemos.db"
     # M2: tag contract enforcement
     strict_tag_contract: bool = True
-    # M10: auto-run the context filter on ingest (mnemos_add / manager.add).
+    # M10: auto-run the context filter on ingest (vesma_add / manager.add).
     # When True, raw_content is preserved and clean_content is populated;
     # filter failures are non-fatal (memory is still saved with raw content).
     auto_filter: bool = True
@@ -206,7 +206,7 @@ class EmbeddingConfig(BaseModel):
     # Legacy values ("chromadb"/"chroma"/"default") migrate to nano with a
     # deprecation warning; quality-first operators can switch to "onnx".
     provider: str = "nano"  # nano | onnx | ollama | sentence-transformers
-    # nano: bundled artifact name under mnemos/models/, or a filesystem path
+    # nano: bundled artifact name under src/vesma/models/, or a filesystem path
     # to a .onnx file; onnx/st: HF model ID. Renamed from "mnema-embed-v1"
     # in the vesma rebrand (weights byte-identical; old name resolved as a
     # deprecated fallback until 6.0).
@@ -426,7 +426,7 @@ class HooksConfig(BaseModel):
     # characters, enforced at the hook boundary BEFORE any write: an
     # oversized payload is rejected with ValueError → 422 / MCP error
     # dict, nothing reaches ccr_store/FTS). Default matches the
-    # ``mnemos.context_rewrite_max_content_chars`` caps convention
+    # ``vesma.context_rewrite_max_content_chars`` caps convention
     # (1 MiB in chars). 0 disables the cap.
     max_output_chars: int = Field(default=1_048_576, ge=0, le=100_000_000)
 
@@ -435,7 +435,7 @@ class LanesConfig(BaseModel):
     """ADR-0025 E1 — deterministic retrieval lanes (vesma #253).
 
     Lanes dispatch is a recall SUB-STAGE of ``assemble_context``
-    (``mnemos/lanes.py``): rules/decisions ride deterministic SQL
+    (``vesma/lanes.py``): rules/decisions ride deterministic SQL
     (``list_all(tags=...)``), knowledge keeps the hybrid RRF recall with
     governance rows excluded, checkpoints stay on the
     ``on_session_start`` bootstrap channel. ``STAGE_ORDER`` and
@@ -559,7 +559,7 @@ class PeerConfig(BaseModel):
     ADR-0016 mandates per-peer bearer ``mnk_fed_<peer_id>_`` plus mTLS
     client cert pinned per peer, plus a per-peer ACL GATE. Each entry
     in :attr:`FederationConfig.peers` is one peer — keyed by the peer's
-    A2A id (e.g. ``mnemos-A``).
+    A2A id (e.g. ``vesma-A``).
 
     Fail-closed defaults: every list field defaults to empty, which
     means "none" — never implicit "allow all". ``["*"]`` is the explicit
@@ -763,7 +763,7 @@ class FederationConfig(BaseModel):
             §2.2). Default 0.8 = 80%. If >80% of content is redacted or
             anonymized, the record is refused (no useful remainder).
         peers: Per-peer ACL map — Phase 1 prerequisite (contract §3.2,
-            §6, ADR-0016). Keyed by peer A2A id (e.g. ``mnemos-A``).
+            §6, ADR-0016). Keyed by peer A2A id (e.g. ``vesma-A``).
             Empty dict = no peers configured = the federation server
             refuses all pull requests (fail-closed). Each value is a
             :class:`PeerConfig` with the per-peer bearer token env name,
@@ -798,7 +798,7 @@ class FederationConfig(BaseModel):
             behaviour.
         agent_token_key_path: Optional override for the W3 AgentGateway
             token signing key (ADR-0018-T §3). ``None`` (default) resolves
-            to ``<mnemos.data_dir>/agent-token-signing.key`` — generated
+            to ``<vesma.data_dir>/agent-token-signing.key`` — generated
             on first use with mode 0600, never leaves this host. Additive:
             configs without the key parse unchanged.
         agent_token_issuer: ``iss`` claim stamped into minted agent tokens
@@ -1056,7 +1056,7 @@ class CodeGraphConfig(BaseModel):
             graphs, so they are first-class, not an opt-in). Set
             ``false`` to hide the graph from agents entirely.
         agent_registration: Whether a connected MCP agent may register
-            project roots via ``mnemos_register_project`` (issue #464
+            project roots via ``vesma_register_project`` (issue #464
             P2-1). Registration IS a read-scope grant: the registered
             tree becomes indexable and its symbols/snippets readable
             through the graph tools by EVERY agent on the server. Set
@@ -1109,7 +1109,7 @@ class CodeGraphConfig(BaseModel):
             shared scheduler thread — zero explicit calls, zero
             instructions. DEFAULT ON (the whole point of the
             directive); set ``false`` to fall back to the manual
-            ``mnemos_index_project`` / ``watch_start`` triggers only.
+            ``vesma_index_project`` / ``watch_start`` triggers only.
         auto_reindex_min_interval_sec: Per-project throttle for the
             auto path: the sidecar ``graph_meta`` stamp
             ``last_auto_action`` gates consecutive auto actions on the
@@ -1289,7 +1289,7 @@ class UpdatesConfig(BaseModel):
 
     The check is quiet by design: one stdlib GET of the PyPI version
     manifest (3s timeout, no telemetry), answered from a 24h disk cache
-    (``<data_dir>/update-check.json``) and surfaced in ``mnemos_stats``,
+    (``<data_dir>/update-check.json``) and surfaced in ``vesma_stats``,
     the ``vesma --version`` stderr hint, and one INFO line at server
     start. See ``vesma.updates`` for the full contract.
 

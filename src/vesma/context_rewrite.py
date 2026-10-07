@@ -26,7 +26,7 @@ Event semantics (ADR-0018 §"on_context_rewrite", verbatim requirements):
   ``published`` (``CONTEXT_ADMISSIBLE_STATUSES`` gate). The Layer-1
   write-path secret scan runs inside ``add`` (a hit auto-tags
   ``mnemos:no-federate``). Rehydrate is the EXISTING scanned/gated path —
-  ``mnemos_retrieve`` / ``assemble_context`` — never a new one.
+  ``vesma_retrieve`` / ``assemble_context`` — never a new one.
 * **Advisory diff** — caller-supplied, stored as metadata
   (``rewrite_diff``), never load-bearing and never echoed in responses.
   Because the diff becomes part of the persisted record, it gets its own
@@ -88,7 +88,7 @@ Design decisions (flagged for ArchCom ratification in the #125 report):
   ``Memory.source`` stays ``MemorySource.MCP`` — the event arrives from
   the harness over the MCP/REST surface like every other tool call.
 * **No new retrieval surface** — deliberately. The rehydrate roundtrip is
-  verified in tests through ``assemble_context`` / ``mnemos_retrieve``.
+  verified in tests through ``assemble_context`` / ``vesma_retrieve``.
 """
 
 from __future__ import annotations
@@ -261,7 +261,7 @@ def context_rewrite(
             never load-bearing, never echoed.
         include_marker: When True, also return the CCR compress marker
             for the original (the caller keeps the marker in its window;
-            rehydrate goes through ``mnemos_retrieve``).
+            rehydrate goes through ``vesma_retrieve``).
 
     Returns:
         Event receipt: ``status`` (``stored`` | ``deduplicated``),

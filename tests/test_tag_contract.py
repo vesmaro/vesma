@@ -70,7 +70,7 @@ class TestValidateTagContractHappyPath:
         result = validate_tag_contract(tags)
         assert result == tags
 
-    def test_multiple_mnemos_subtypes_allowed(self):
+    def test_multiple_vesma_subtypes_allowed(self):
         tags = ["project:x", "agent:y", "mnemos:session", "mnemos:checkpoint"]
         result = validate_tag_contract(tags)
         assert sorted(result) == sorted(
@@ -186,11 +186,11 @@ class TestTagContractModel:
         assert tc.project == "myproject"
         assert tc.agent == "copilot"
 
-    def test_mnemos_subtypes_extracted(self):
+    def test_vesma_subtypes_extracted(self):
         tags = ["project:x", "agent:y", "mnemos:session", "mnemos:checkpoint"]
         tc = TagContract(tags=tags)
-        assert "session" in tc.mnemos_subtypes
-        assert "checkpoint" in tc.mnemos_subtypes
+        assert "session" in tc.vesma_subtypes
+        assert "checkpoint" in tc.vesma_subtypes
 
     def test_invalid_tags_raise_validation_error_in_strict(self):
         with pytest.raises(ValidationError):

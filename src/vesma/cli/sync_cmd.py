@@ -46,7 +46,7 @@ def sync_export_cmd(
         typer.Option(
             "--encrypt",
             help=(
-                "Encrypt with AES-256-GCM. Passphrase read from VESMARO_EXPORT_PASSPHRASE env var."
+                "Encrypt with AES-256-GCM. Passphrase read from VESMA_EXPORT_PASSPHRASE env var."
             ),
         ),
     ] = False,
@@ -72,7 +72,7 @@ def sync_export_cmd(
 
     Writes the shared projects (config `federation.shared_projects`, or an
     explicit `--shared-projects` list) to `--output` as one compact payload.
-    `--encrypt` seals it with AES-256-GCM using the VESMARO_EXPORT_PASSPHRASE
+    `--encrypt` seals it with AES-256-GCM using the VESMA_EXPORT_PASSPHRASE
     env var; `--dry-run` builds the payload and prints the summary without
     writing a file.
     """
@@ -113,7 +113,7 @@ def sync_import_cmd(
             "--passphrase-env",
             help=(
                 "Name of the env var holding the decryption passphrase "
-                "(default: VESMARO_EXPORT_PASSPHRASE)."
+                "(default: VESMA_EXPORT_PASSPHRASE)."
             ),
         ),
     ] = None,
@@ -127,7 +127,7 @@ def sync_import_cmd(
     Merges the payload's memories into the local store — re-importing the
     same file is a no-op, so retries after a partial run are safe. Encrypted
     payloads decrypt via the env var named by `--passphrase-env` (default
-    VESMARO_EXPORT_PASSPHRASE). Run it on the RECEIVING instance.
+    VESMA_EXPORT_PASSPHRASE). Run it on the RECEIVING instance.
     """
     mgr = get_manager(config)
     result = run_sync_import(

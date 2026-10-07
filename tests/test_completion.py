@@ -156,40 +156,51 @@ class TestProgBinding:
         assert _primary_prog_name() == "vesma"
 
     def test_primary_from_argv0_when_real_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesmaro", "completion", "bash"])
-        assert _primary_prog_name() == "vesmaro"
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesma", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
 
-    def test_prog_names_vesmaro_always_mnemos_only_when_on_path(
+    def test_legacy_binary_names_are_not_recognized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """6.0 clean sheet: retired alias binaries fall back to the brand
+        default and are never registered as completion program names."""
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesmaro", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/mnemos", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
+
+    def test_prog_names_single_primary_even_with_legacy_binaries_on_path(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(shutil, "which", lambda name: None)
-        assert _prog_names() == ["vesma", "vesmaro"]
+        """Legacy aliases (vesmaro/mnemos) are never added, even when such a
+        binary exists on PATH — exactly one program name is registered."""
         monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
-        assert _prog_names() == ["vesma", "vesmaro", "mnemos"]
+        assert _prog_names() == ["vesma"]
 
 
 # ── Installer: script content pins ────────────────────────────────────────────
 
 
 class TestScriptContent:
-    def test_bash_script_binds_primary_and_alias_and_engine(self, fake_home: Path) -> None:
+    def test_bash_script_binds_primary_and_engine(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "bash"])
         assert result.exit_code == 0
         script = _completion_file_path("bash").read_text(encoding="utf-8")
         assert "_vesma()" in script
         assert "__complete" in script
         assert "COMP_WORDS" in script and "COMP_CWORD" in script
-        # Both the primary binary and the legacy alias are bound.
-        assert "complete -F _vesma vesma vesmaro" in script
+        # Exactly the primary binary is bound — no legacy aliases.
+        assert "complete -F _vesma vesma" in script
+        assert "vesmaro" not in script
+        assert "mnemos" not in script
 
-    def test_zsh_script_uses_describe_and_binds_aliases(self, fake_home: Path) -> None:
+    def test_zsh_script_uses_describe_and_binds_primary(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "zsh"])
         assert result.exit_code == 0
         script = _completion_file_path("zsh").read_text(encoding="utf-8")
-        assert script.startswith("#compdef vesma vesmaro")
+        assert script.startswith("#compdef vesma\n")
         assert "_describe" in script  # zsh SHOWS the descriptions
         assert "__complete" in script
-        assert "compdef _vesma vesma vesmaro" in script
+        assert "compdef _vesma vesma" in script
+        assert "vesmaro" not in script and "mnemos" not in script
 
     def test_fish_script_per_name_with_native_pairs(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "fish"])
@@ -198,10 +209,10 @@ class TestScriptContent:
         assert primary.exists()
         text = primary.read_text(encoding="utf-8")
         assert "complete -c vesma -f -a '(__vesma_complete)'" in text
-        assert "complete -c vesmaro -f -a '(__vesma_complete)'" in text
         assert "__complete" in text
-        # Legacy alias gets its own auto-sourced file.
-        assert _fish_completions_file("vesmaro").exists()
+        # Legacy aliases get NO auto-sourced copies (clean sheet).
+        assert _fish_completions_file("vesmaro").exists() is False
+        assert _fish_completions_file("mnemos").exists() is False
 
     def test_scripts_rewritten_every_run(self, fake_home: Path) -> None:
         runner.invoke(app, ["completion", "bash"])
