@@ -71,6 +71,14 @@ behind gates».
 
 ## Decision
 
+> **Amended 2026-10-07 after cascade review.** The B3 implementation
+> (branch `feat/b3-migrate-store`) deviated from the drafted text in five
+> places; the Tech Lead ratified every deviation — each resolves toward the
+> safer or an equivalently safe variant. The ratified contract is folded
+> into the decisions below; inline notes carry the marker «Amended
+> 2026-10-07 after cascade review», and the diagram and Consequences are
+> amended for consistency.
+
 **1. A mover, not an alias, carries the 6.0 storage identity.** `vesma
 migrate-store` is an explicit, operator-invoked command that flips the
 store's identity end to end: canonical tag prefix `vesma:*`, silo slug
@@ -93,16 +101,45 @@ executes only with all five B3 gates in place:
 
 **3. Migration order is fixed and one-way per run:** precondition checks
 (refuse if both configs exist without an explicit `--config` choice;
-quiesce) → snapshot → path migration (same-FS atomic rename, cross-FS
-falls back to copy + fsync + hash; config pins rewritten; the legacy
-directory preserved renamed `~/.mnemos.pre-6.0` until the operator deletes
-it) → tag/slug re-slag (in-place UPDATE sweep, FTS rebuild, slug-bearing
+quiesce) → snapshot → target construction in staging (config pins
+rewritten onto the new home; the source is never touched) → tag/slug
+re-slag (in-place UPDATE sweep in staging, FTS rebuild, slug-bearing
 provenance and pipeline-state lines updated; vectors untouched — they are
-id-keyed) → post-checks (row counts match, FTS matches, a known checkpoint
-recalls, one federated pull against a live 5.x peer succeeds) →
-idempotence marker and a loud report. Re-running on a migrated store is a
-no-op, not a second mutation. The run is timeboxed; breaching the timebox
-rolls back to the snapshot.
+id-keyed) → full verification (counters, digests, FTS and integrity
+checks) → publication by same-FS atomic rename → idempotence marker and a
+loud report. Re-running on a migrated store is a no-op, not a second
+mutation.
+
+*Amended 2026-10-07 after cascade review* — four drafted mechanics are
+replaced by ratified equivalents (the B3 implementation is the authority;
+each resolves toward the safer or an equivalently safe side):
+
+- **Timebox → atomicity by construction.** The drafted «the run is
+  timeboxed; breaching the timebox rolls back to the snapshot» is NOT
+  implemented — no timeout can fire mid-rewrite. Instead: the target is
+  materialized in a staging directory FROM THE VERIFIED SNAPSHOT, the
+  source is never mutated, and staging is published onto the target by a
+  same-FS atomic rename only after full verification. A failed attempt
+  removes staging; the snapshot stays in place as the rollback artifact.
+- **Cross-FS fallback → no such path.** The drafted «cross-FS falls back
+  to copy + fsync + hash» does not exist: staging is created next to the
+  target, so the rename is same-FS by construction and the requirement
+  «target on the same filesystem as staging» holds automatically — no code
+  path can violate it.
+- **Legacy rename → source untouched.** The drafted «legacy directory
+  preserved renamed `~/.mnemos.pre-6.0`» is replaced by the SAFER rule:
+  the legacy home is left byte-for-byte in place — never renamed, never
+  deleted by the mover; disposal stays an operator decision.
+- **Live post-checks → runbook steps.** The two live-interaction checks —
+  «a known checkpoint recalls» and «one federated pull against a live 5.x
+  peer succeeds» — are NOT automated gates in the mover. They move to the
+  production window as mandatory manual runbook steps, executed on a fresh
+  consistent backup. Compensation for their absence from the auto-gate:
+  the Tech Lead's clone-drill practice — two full rehearsals (3649 and
+  3790 records, both ending in exact counter equality). The automated
+  verification in the mover (row counts, status and slug breakdowns, id-set
+  digest, sample-field checksums, FTS rebuild and integrity, `quick_check`)
+  still refuses to report success on a skewed store.
 
 **4. Output privacy is a hard contract.** The mover prints paths and
 counters, never record values, never tag contents, never secret-bearing
@@ -112,18 +149,27 @@ so rehearsal cannot touch live state. The server-minted metadata strip
 class is preserved across migration: a rewrite pass never promotes
 server-minted keys into operator-editable ones.
 
-**5. The no-federate trust marker dual-matches for the whole transition
-window.** Records arriving from 5.x peers carry `mnemos:no-federate`; a
-migrated store stores `vesma:no-federate`. Every enforcement site must
-match both spellings until the dual-accept window closes — a single-
-spelling rewrite across a mixed 5.x/6.0 fleet converts the trust boundary
-into an exfiltration amplifier. This is a required invariant of the B3
-wave and of any new enforcement code until 5.x EOL.
+**5. The no-federate trust marker is a permanent byte-constant.** Amended
+2026-10-07 after cascade review: the drafted «a migrated store stores
+`vesma:no-federate`» is superseded. The marker `mnemos:no-federate` is
+NEVER re-slaged — not by the mover, not by any lazy rewrite; storage keeps
+the single legacy spelling indefinitely (gate file, master plan Zone B.5,
+team-local), the 6.0.0 code reads it byte-stable (`NO_FEDERATE_TAG` is the
+single authority), and the mover reports the kept marker count. The
+rationale is the drafted one, taken to its safe conclusion: a spelling
+rewrite of a trust marker across a mixed 5.x/6.0 fleet converts the trust
+boundary into an exfiltration amplifier — so the marker is excluded from
+every rewrite wave, and a rewrite could only ride a future atomic
+code+data wave that flips the canonical prefix in the same change. The
+dual-accept window (Decision 6) applies to ordinary tags, not to the
+marker. This is a required invariant of the B3 wave and of any new
+enforcement code.
 
 **6. Federation runs a dual-accept window.** The 6.0 code accepts both
 `mnemos:*` and `vesma:*` on read/filter, writes only the canonical
 spelling; records with legacy tags arriving from peers are accepted,
-stored, rewritten lazily; sync dedup keys are versioned by the
+stored, rewritten lazily — except the no-federate marker, which is never
+rewritten (Decision 5); sync dedup keys are versioned by the
 tag-namespace epoch. The window closes with the 5.x line (EOL 2026-10-20)
 and is removed no earlier than 6.1.
 
@@ -141,14 +187,22 @@ flowchart TD
     Dry -->|"explicit apply"| Gates{"Precondition gates"}
     Gates -->|"both configs, no --config"| Refuse["Loud refusal"]
     Gates -->|"socket live / db lock held"| Refuse
-    Gates -->|"clear"| Snap["SQLite backup-API snapshot → mandatory --backup, verified + counts"]
-    Snap --> Path["Path migration: ~/.mnemos → ~/.vesma, mnemos.db → vesma.db, pins rewritten, legacy kept as ~/.mnemos.pre-6.0"]
-    Path --> Reslag["Re-slag: mnemos:* → vesma:*, project:mnemos → project:vesma, FTS rebuild, provenance slugs updated, vectors untouched"]
-    Reslag --> Post["Post-checks: counts equal, FTS matches, checkpoint recalls, federated pull vs 5.x peer"]
-    Post --> Done["Idempotence marker + loud report"]
+    Gates -->|"clear"| Snap["SQLite backup-API snapshot → verified + counts; kept as the rollback artifact"]
+    Snap --> Stage["Build target in staging next to the target, FROM the snapshot: new home, vesma.db, pins rewritten; source never touched"]
+    Stage --> Reslag["Re-slag in staging: mnemos:* → vesma:*, project:mnemos → project:vesma, FTS rebuild, provenance slugs updated, vectors untouched; no-federate marker excluded (byte-constant)"]
+    Reslag --> Post["Verify in staging: counts equal, FTS matches, integrity checks"]
+    Post -->|"fail"| Cleanup["Staging removed; snapshot kept"]
+    Post -->|"green"| Publish["Publish: staging → target, same-FS atomic rename"]
+    Publish --> Done["Idempotence marker + loud report"]
+    Runbook["Runbook, production window on a fresh consistent backup: a known checkpoint recalls + one federated pull vs a live 5.x peer (manual, mandatory)"] -.->|after publish| Done
     Drill["Clone-drill (isolated HOME, counter equality)"] -->|"green"| Start
     Drill -->|"red"| Fallback["6.0.0 ships without re-slag; re-slag → 6.0.1; data untouched"]
 ```
+
+*Amended 2026-10-07 after cascade review:* the diagram reflects the
+ratified contract — snapshot-built staging with same-FS publication, the
+untouched source, the excluded trust marker, and the live post-checks as
+manual runbook steps rather than automated gates.
 
 ## Rollout
 
@@ -165,8 +219,10 @@ drill does not authorize a live migration.
 
 - 6.0 is «vesma end to end» at every surface a user can touch — typed
   tags, exports, slugs, paths — with no mnemos spelling left on live
-  surfaces. The tag-contract storage prefix, the export schema and the
-  tag-contract docs all flip canonical spelling with the migration.
+  surfaces (one standing exception by design: the no-federate trust
+  marker stays `mnemos:no-federate`, Decision 5). The tag-contract
+  storage prefix, the export schema and the tag-contract docs all flip
+  canonical spelling with the migration.
 - Memory continuity survives the rebrand: checkpoints remain recallable
   under the new slug, FTS stays consistent, vectors and record ids are
   untouched — the G1 gates keep working across the migration.
@@ -189,13 +245,20 @@ drill does not authorize a live migration.
 **Risks accepted:**
 
 - The rewrite touches the trust-marker surface (~20 enforcement sites).
-  Mitigation: the dual-match invariant (Decision 5) plus cascade review on
-  the B3 wave — the mover is a trust-boundary, data-loss and lifecycle
-  surface by the project's cascade-review rule.
+  Mitigation, amended 2026-10-07 after cascade review: the marker is
+  excluded from every rewrite wave — the byte-constant invariant
+  (Decision 5) keeps enforcement sites on the single legacy spelling, and
+  the cascade review on the B3 wave has run, producing the ratified
+  amendments folded into this ADR — the mover is a trust-boundary,
+  data-loss and lifecycle surface by the project's cascade-review rule.
 - A partial migration (interrupted run) is the worst failure shape.
-  Mitigation: snapshot-first ordering, idempotence marker, timebox
-  rollback, and post-checks that refuse to report success on a skewed
-  store.
+  Mitigation, amended 2026-10-07 after cascade review: snapshot-first
+  ordering, atomicity by construction (staging from the verified snapshot,
+  publication only by a verified same-FS rename, staging removed on
+  failure — no timebox needed), the idempotence marker, and verification
+  that refuses to report success on a skewed store; the two
+  live-interaction checks ride the production-window runbook on a fresh
+  consistent backup.
 
 ## Alternatives considered
 
@@ -221,5 +284,9 @@ drill does not authorize a live migration.
 - [ADR-0031](0031-rebrand-mnemos-to-vesmaro.md) — the mnemos → vesmaro
   rebrand; its Decision 3 explicitly deferred the data-contract rename to
   a separate 6.0 decision, which this ADR closes.
+- Cascade review of the B3 mover, 2026-10-07 (finding P2-3) — the five
+  ratified deviations folded into this ADR (timebox, live post-checks,
+  legacy rename, cross-FS fallback, trust-marker spelling); delivery
+  report of branch `feat/b3-migrate-store`, team-local.
 - CHANGELOG, [6.0.0] unreleased — the landed alias, `vesma_version` and
   point-of-contact freeze lines that this ADR subordinates to the mover.
