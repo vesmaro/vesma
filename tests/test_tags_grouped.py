@@ -198,7 +198,7 @@ class TestTagsRemove:
         assert mem is not None
         # Stored tags are unchanged — the contract-breaking write was skipped.
         assert "project:p" in mem.tags
-        assert mem.tags == ["project:p", "agent:a", "mnemos:decision"]
+        assert mem.tags == ["project:p", "agent:a", "vesma:decision"]
         assert mem.project == "p"
 
     def test_remove_scoped_to_project(self, tmp_manager: MemoryManager) -> None:
@@ -285,7 +285,7 @@ class TestTagsAdd:
         assert report["errors"]
         mem = tmp_manager.sqlite.list_all(limit=10)[0]
         assert "mnemos:bogus_subtype" not in mem.tags
-        assert mem.tags == ["project:p", "agent:a", "mnemos:decision"]
+        assert mem.tags == ["project:p", "agent:a", "vesma:decision"]
 
     def test_add_malformed_slug_rejected(self, tmp_manager: MemoryManager) -> None:
         """Adding a tag with a malformed slug is rejected per memory.

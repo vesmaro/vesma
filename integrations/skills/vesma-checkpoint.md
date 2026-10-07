@@ -55,7 +55,7 @@ compaction to recover state.
 3. Confirm with a one-line notice:
 
    ```text
-   mnemos: checkpoint saved (project=<name>)
+   vesma: checkpoint saved (project=<name>)
    ```
 
 ## DISCIPLINE

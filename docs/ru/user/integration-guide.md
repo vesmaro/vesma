@@ -454,7 +454,7 @@ vesma integration setup
 фильтр-пайплайн и выводит статистику — без записи в хранилище.
 
 ```bash
-vesma add "long log output..." --tags "project:vesma,agent:tech-lead,mnemos:trace" --dry-run
+vesma add "long log output..." --tags "project:vesma,agent:tech-lead,vesma:learning" --dry-run
 ```
 
 Вывод:
@@ -662,7 +662,7 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 | `mnemos_search` | `VesmaSDK.recall` (скан выдачи) |
 | `mnemos_add` | `VesmaSDK.remember` (контракт тегов на канале) |
 | `mnemos_recall_context` | recall чекпоинтов + скан канала |
-| `mnemos_save_context` | `VesmaSDK.remember` (`mnemos:checkpoint`) |
+| `mnemos_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
 | `mnemos_agent_recall` | агентский recall + скан канала |
 | `mnemos_list_recent` | `MemoryManager.list_recent` (скан только заголовков) |
 | `mnemos_list_tags` | `MemoryManager.list_tags` |
@@ -697,9 +697,9 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 Плагин реализует ABC `MemoryProvider` Hermes как тонкий шим над `HermesMemoryAdapter`:
 
 - **prefetch()** — хук `pre_llm_call` → `assemble_context` (recall → фильтр → скан секретов → align → бюджет, провенанс на каждом блоке), вне цикла хода
-- **sync_turn()** — `VesmaSDK.remember` (`mnemos:session`) для значимых ходов (пользователь > 50 символов или каждый N-й)
-- **on_memory_write()** — зеркало записей MEMORY.md/USER.md через `VesmaSDK.remember` (`mnemos:learning` / `mnemos:rule`)
-- **on_session_end()** — один итог `mnemos:session` на сессию через `remember`
+- **sync_turn()** — `VesmaSDK.remember` (`vesma:session`) для значимых ходов (пользователь > 50 символов или каждый N-й)
+- **on_memory_write()** — зеркало записей MEMORY.md/USER.md через `VesmaSDK.remember` (`vesma:learning` / `vesma:rule`)
+- **on_session_end()** — один итог `vesma:session` на сессию через `remember`
 - **on_pre_compress()** — мост ADR-0018: отбрасываемый блок репортится через `VesmaSDK.rewrite` (`on_context_rewrite`), оригинал попадает в LTM без потерь
 - **Идентичность** — `project`+`agent` фиксируются при construction (с валидацией контракта тегов заранее), `session` привязывается на сессию Hermes и прошивается в каждый глагол (включая A2-гейт CCR-эмитента и мандат N2 на сжатие)
 

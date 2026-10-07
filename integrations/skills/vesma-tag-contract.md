@@ -20,7 +20,7 @@ on it.
 - **Before every `vesma_add` call** — validate the tag set.
 - **Before every `vesma_ingest_url` call** — same requirement.
 - **When reviewing a migration** — check that legacy entries have valid
-  tags or `mnemos:legacy`.
+  tags or `vesma:legacy`.
 
 ## Required tags (mandatory on all new entries)
 
@@ -28,27 +28,27 @@ on it.
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory (use `agent:user` for user-authored) |
-| `mnemos:<subtype>` | see table below | **at least 1** | Cognitive category |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `mnemos:<subtype>` accepted on input) |
 
 ### Vesma subtypes (whitelist)
 
 | Subtype | When to use |
 |---------|-------------|
-| `mnemos:session` | Session continuity snapshots |
-| `mnemos:checkpoint` | Mid-session compaction-resilient checkpoints |
-| `mnemos:bug-pattern` | Recurring failure modes, root-cause patterns |
-| `mnemos:learning` | Non-obvious facts acquired during a task |
-| `mnemos:decision` | Explicit architectural / product decisions + rationale |
-| `mnemos:rule` | Hard constraints and invariants |
-| `mnemos:open-question` | Unresolved questions requiring future investigation |
-| `mnemos:legacy` | Migrated entries from ai-brain or pre-contract stores |
+| `vesma:session` | Session continuity snapshots |
+| `vesma:checkpoint` | Mid-session compaction-resilient checkpoints |
+| `vesma:bug-pattern` | Recurring failure modes, root-cause patterns |
+| `vesma:learning` | Non-obvious facts acquired during a task |
+| `vesma:decision` | Explicit architectural / product decisions + rationale |
+| `vesma:rule` | Hard constraints and invariants |
+| `vesma:open-question` | Unresolved questions requiring future investigation |
+| `vesma:legacy` | Migrated entries from ai-brain or pre-contract stores |
 
 ## Optional tags (accepted, not required)
 
 | Tag | Format | Purpose |
 |-----|--------|---------|
 | `source:<slug>` | any string | Origin of the entry (chat, file, url, …) |
-| `applyTo:<glob>` | file glob | Scope a `mnemos:rule` to specific file paths |
+| `applyTo:<glob>` | file glob | Scope a `vesma:rule` to specific file paths |
 | `milestone:<id>` | any string | Links entry to a project milestone |
 | `domain:<slug>` | any string | Domain sub-classifier within a project |
 | `severity:<level>` | `low\|medium\|high\|critical` | Severity for bug-patterns |
@@ -71,7 +71,7 @@ Unknown prefixes not listed here are **rejected** in strict mode.
 2. **Identify the agent** — the agent slug that authored this entry. Use
    `agent:user` for user-provided content.
 
-3. **Choose the subtype** — pick exactly one `mnemos:<subtype>` from the
+3. **Choose the subtype** — pick exactly one `vesma:<subtype>` from the
    whitelist. If none fits, do not invent one — propose a new subtype via
    PR.
 
@@ -86,7 +86,7 @@ Unknown prefixes not listed here are **rejected** in strict mode.
      tags=[
        "project:<slug>",
        "agent:<slug>",
-       "mnemos:<subtype>",
+       "vesma:<subtype>",
        "<optional>:<value>"
      ]
    )

@@ -49,7 +49,7 @@ vesma migrate from-ai-brain
 `mnemos:<subtype>` получают:
 - `project:legacy`
 - `agent:unknown`
-- `mnemos:legacy`
+- `vesma:legacy`
 
 После миграции просмотрите и перетегируйте важные записи:
 
@@ -66,10 +66,10 @@ vesma search legacy --tags project:legacy --limit 50
 
 ```bash
 # Сначала dry-run — предпросмотр, ничего не записывается (по умолчанию)
-vesma tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to vesma: --dry-run
 
 # Применить переименование
-vesma tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to vesma: --no-dry-run
 ```
 
 Замечания:
@@ -79,7 +79,7 @@ vesma tags rename --from gcw: --to mnemos: --no-dry-run
   канонизации хранящихся тегов.
 - Неверные подтипы `gcw:` (не из whitelist) по умолчанию пропускаются и
   учитываются в `skipped_invalid`. Передайте `--invalid-to-legacy`, чтобы
-  переименовать их в `mnemos:legacy` вместо пропуска.
+  переименовать их в `vesma:legacy` вместо пропуска.
 - Операция **идемпотентна** — повторный запуск вернёт `renamed=0`.
 - Устаревшая команда `vesma migrate tags` теперь делегирует на этот
   безопасный путь и выдаёт предупреждение. Предпочитайте `vesma tags rename`.

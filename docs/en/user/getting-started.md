@@ -291,7 +291,7 @@ Vesma automatically:
 2. **Mirrored it to your Obsidian vault** at `~/.mnemos/vault/` as a markdown file with YAML frontmatter.
 3. **Validated the tag contract** — `project:test` + `agent:getting-started` + `vesma:learning` is a valid trio. Skip one and you get `❌ Tag contract violation: ...` instead.
 
-The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). You always type the `vesma:` alias; `mnemos:` is the canonical storage prefix, stable by contract, and `vesma:` is accepted as an input alias everywhere — stored tags keep the canonical `mnemos:*` form.
+The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). The legacy `mnemos:` spelling is accepted as an input alias everywhere and normalized to the canon; stored tags keep the canonical `vesma:*` form.
 
 > **Note.** Freshly added entries get the `raw` status. The background processor
 > (it runs in the MCP and HTTP API modes, and in a CLI-only deployment —
@@ -645,7 +645,7 @@ vesma migrate from-ai-brain
 ```
 
 The migrator translates legacy source types, fixes the tag contract
-(`project:legacy`, `agent:unknown`, `mnemos:legacy`), preserves entry statuses
+(`project:legacy`, `agent:unknown`, `vesma:legacy`), preserves entry statuses
 and moves the `content_ru` / `content_en` columns into `metadata` (no data
 loss). For non-standard locations use `--source PATH` and `--vault PATH`.
 

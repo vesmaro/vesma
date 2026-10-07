@@ -361,7 +361,7 @@ fetch-failed фиксирует причину отклонения, а не с�
 `tags LIKE '%"tag"%'`, что совпадает по JSON-строке. Это **точное
 совпадение тега** — паттерн `%"tag"%` гарантирует, что тег совпадает как
 полный элемент JSON-строки, а не как подстрока другого тега. Например,
-фильтр по `mnemos:decision` не совпадает с `mnemos:decision-review`.
+фильтр по `vesma:decision` не совпадает с `vesma:decision-review`.
 
 Агрегат `get_all_tags` использует `json_each(memories.tags)` для
 итерации JSON-массива напрямую — никакого строкового сопоставления,
@@ -393,7 +393,7 @@ vesma ingest url http://169.254.169.254/  # отклонено, не сохра�
 git check-ignore -v config.yaml .env     # должен указать .gitignore:line
 
 # Подтвердить точное совпадение тегов
-vesma search --tags mnemos:decision         # не совпадает с mnemos:decision-review
+vesma search --tags vesma:decision         # не совпадает с vesma:decision-review
 ```
 
 ---

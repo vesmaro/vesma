@@ -151,7 +151,9 @@ def render_retraction(memory: Memory) -> str:
 # ── Vesma Tag Contract (M2) ──────────────────────────────────────────────────────
 
 
-# Valid mnemos:* subtypes (enforced when strict_tag_contract=True)
+# Valid subtype names (enforced when strict_tag_contract=True). Written as
+# ``vesma:<subtype>`` since 6.0; the legacy ``mnemos:<subtype>`` spelling is
+# accepted on input and rewritten to the canon.
 VESMA_TAG_SUBTYPES: frozenset[str] = frozenset(
     {
         "session",
@@ -165,20 +167,22 @@ VESMA_TAG_SUBTYPES: frozenset[str] = frozenset(
         # Pipeline-synthesised entries (output of the synthesis worker, not
         # agent-authored). Mirrors MemorySource.SYNTHESIZED — the concept
         # already exists, the tag subtype now catches up so synthesised
-        # memories can carry a valid mnemos: category instead of falling
-        # back to mnemos:legacy.
+        # memories can carry a valid category instead of falling back to
+        # vesma:legacy.
         "synthesized",
         # Exclusion marker (ArchCom 2026-07-17 federation contract §4 КП-6):
         # ``mnemos:no-federate`` excludes a record from ALL external exchange
         # (batch sync + mediated pull). It is NOT a cognitive category — it
-        # is an opt-out marker living in the ``mnemos:`` namespace so it
-        # passes tag-contract validation without a new prefix. The auto-tagger
+        # is an opt-out marker that KEEPS the legacy ``mnemos:`` spelling as
+        # its ONLY canonical form, byte-stable forever (ArchCom 2026-10-03;
+        # 6.0 mover never re-slugs it). ``vesma:no-federate`` is accepted as
+        # an input alias and normalized to the marker. The auto-tagger
         # in ``secrets_detector`` (Layer 1) adds it on write when a secret is
         # detected. Owners can remove it with explicit confirmation.
         # Decision: option (a) — add to whitelist with a comment, rather than
         # a special-case bypass in ``validate_tag_contract``. Simpler, and
         # the contract explicitly says it is compatible with the tag contract
-        # (mnemos: subtype namespace, not a new prefix).
+        # (subtype namespace, not a new prefix).
         "no-federate",
     }
 )
@@ -186,6 +190,9 @@ VESMA_TAG_SUBTYPES: frozenset[str] = frozenset(
 
 #: Tag that marks a record as excluded from all federation (batch export +
 #: mediated pull). Auto-added by the write-path secrets scanner (Layer 1).
+#: BYTE-STABLE TRUST MARKER (ArchCom 2026-10-03): the ONLY tag that keeps
+#: the legacy ``mnemos:`` spelling as canonical — written and read exactly
+#: like this, forever; never re-slugged by the 6.0 mover.
 #: See ArchCom 2026-07-17 federation contract §4 КП-6 and §2.2.1.
 NO_FEDERATE_TAG: str = "mnemos:no-federate"
 
@@ -390,37 +397,57 @@ _TASK_SLUG_PATTERN = r"[a-z0-9_\-]{1,64}"
 # row.tags) can never hit "task:t1\n" (Ф1-PREP, #360 review item 2).
 TASK_SLUG_RE: re.Pattern[str] = re.compile(rf"^{_TASK_SLUG_PATTERN}\Z")
 _TASK_RE = re.compile(rf"^task:{_TASK_SLUG_PATTERN}\Z")
-_VESMA_TAG_RE = re.compile(r"^mnemos:[a-z][a-z0-9\-]*\Z")
+# Accepts BOTH namespaces: ``vesma:`` (canonical since 6.0) and the legacy
+# ``mnemos:`` spelling. After alias migration the ONLY ``mnemos:`` tag that
+# can survive validation is the byte-stable ``mnemos:no-federate`` trust
+# marker — any other legacy spelling is refused by the subtype check below.
+_VESMA_TAG_RE = re.compile(r"^(?:vesma|mnemos):[a-z][a-z0-9\-]*\Z")
 
-# ── Input alias: vesma:* → mnemos:* (6.0.0 store block) ──────────────────────
-# ArchCom 2026-10-03, 6.0.0 store-migration verdict option B (split): the
-# tag prefix is a FROZEN storage data format — every record is still WRITTEN
-# as ``mnemos:*`` — while users type the product prefix at every input
-# surface. One shared helper here (next to ``_VESMA_TAG_RE``); the CLI
-# (``add``/``search``/``export --tags``) and the HTTP API (tag-filter query
-# parsing, plus every ``validate_tag_contract`` caller) reuse it — no
-# duplicated prefix/regex logic at the boundaries.
-#: ``mnemos:`` is the canonical storage prefix, stable by contract;
-#: ``vesma:`` is accepted as an input alias everywhere.
-INPUT_ALIAS_PREFIX: Final[str] = "vesma:"
+# ── Canonical prefix flip: vesma:* is canon, mnemos:* is the input alias ─────
+# 6.0.0 consolidation (task B2b, supersedes the store-block "option B" split):
+# every NEW record is WRITTEN as ``vesma:<subtype>``; the legacy ``mnemos:``
+# spelling is accepted on INPUT everywhere and rewritten to the canon by
+# :func:`normalize_tag_alias` / ``validate_tag_contract``. Existing 5.x rows
+# still carrying ``mnemos:<subtype>`` are re-slugged in place by the 6.0
+# mover in the same release train, so the mixed-spelling window is short.
+# THE EXCEPTION: ``mnemos:no-federate`` is a byte-stable trust marker by
+# ArchCom verdict (2026-10-03) — the code writes AND reads ONLY that
+# spelling, forever; ``vesma:no-federate`` is accepted as input and
+# normalized to the marker, never minted.
+#: ``vesma:`` — the canonical storage prefix, written by all new records.
+CANONICAL_TAG_PREFIX: Final[str] = "vesma:"
+#: ``mnemos:`` — the legacy prefix; accepted on input, never written
+#: (except the ``mnemos:no-federate`` marker, which is canonical forever).
+LEGACY_TAG_PREFIX: Final[str] = "mnemos:"
 
 
 def normalize_tag_alias(tag: str) -> str:
-    """Normalize one ``vesma:<subtype>`` input alias to ``mnemos:<subtype>``.
+    """Normalize one legacy tag alias to the canonical ``vesma:<subtype>``.
 
-    A tag is rewritten ONLY when its subtype is in
-    :data:`VESMA_TAG_SUBTYPES` — this includes ``no-federate``, so the
-    ``mnemos:no-federate`` trust marker stays byte-stable in storage no
-    matter which spelling the caller typed. Anything else (other
-    namespaces, unknown subtypes) is returned UNCHANGED so the tag
-    contract validator refuses it loudly — this helper never mints,
-    drops, or silently repairs a tag.
+    Rewrites (canonical direction):
+      - ``mnemos:<subtype>`` → ``vesma:<subtype>`` for every subtype in
+        :data:`VESMA_TAG_SUBTYPES` except ``no-federate`` (the 5.x
+        canonical spelling migrates to the 6.0 canon);
+      - ``vesma:no-federate`` → ``mnemos:no-federate`` — the trust marker
+        is byte-stable by contract, so whichever spelling the caller
+        types, exactly one form lands in storage.
+
+    Everything else (canonical ``vesma:<known-subtype>`` itself, the
+    ``mnemos:no-federate`` marker, other namespaces, unknown subtypes)
+    is returned UNCHANGED so the tag contract validator refuses unknown
+    subtypes loudly — this helper never mints, drops, or silently
+    repairs a tag.
     """
-    if not tag.startswith(INPUT_ALIAS_PREFIX):
+    if tag.startswith(CANONICAL_TAG_PREFIX):
+        subtype = tag[len(CANONICAL_TAG_PREFIX) :]
+        if subtype == "no-federate":
+            return NO_FEDERATE_TAG
         return tag
-    subtype = tag[len(INPUT_ALIAS_PREFIX) :]
-    if subtype in VESMA_TAG_SUBTYPES:
-        return f"mnemos:{subtype}"
+    if tag.startswith(LEGACY_TAG_PREFIX):
+        subtype = tag[len(LEGACY_TAG_PREFIX) :]
+        if subtype in VESMA_TAG_SUBTYPES and subtype != "no-federate":
+            return f"{CANONICAL_TAG_PREFIX}{subtype}"
+        return tag  # mnemos:no-federate stays; unknown subtypes refused below
     return tag
 
 
@@ -428,10 +455,11 @@ def normalize_tag_aliases(tags: list[str]) -> list[str]:
     """Apply :func:`normalize_tag_alias` across a tag list (input boundary).
 
     The list-level form the CLI and API input boundaries call after
-    splitting comma-separated ``--tags`` / query parameters. Legacy
-    ``mnemos:*`` input passes through byte-identical, so the normalized
-    value always equals what the legacy form produces (round-trip
-    guarantee pinned by tests).
+    splitting comma-separated ``--tags`` / query parameters. Canonical
+    ``vesma:*`` input passes through byte-identical, and legacy
+    ``mnemos:<known-subtype>`` input rewrites to the canon — so a
+    filter typed the old way matches the same rows the new way
+    produces (round-trip guarantee pinned by tests).
     """
     return [normalize_tag_alias(t) for t in tags]
 
@@ -521,18 +549,23 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
         TagContractError: If strict=True and any contract requirement is not met,
             or (always) on ambiguous tag sets (multiple project:/agent:/task:).
     """
-    # Backward compat: gcw: is accepted as an alias for mnemos:
-    # Old memories with gcw: tags are auto-migrated to mnemos: on validation.
-    # 6.0.0 input alias: vesma:<valid-subtype> normalizes the same way
-    # (normalize_tag_alias — the single alias authority); unknown vesma:
-    # subtypes survive the migration and are refused below with the alias
-    # named, never silently repaired.
+    # Backward compat: gcw: is accepted as an alias for the subtype
+    # namespace. Old memories with gcw: tags are auto-migrated to the
+    # CURRENT canon on validation (6.0: ``vesma:<subtype>``, except the
+    # byte-stable ``mnemos:no-federate`` marker).
+    # Legacy ``mnemos:<subtype>`` input migrates the same way
+    # (normalize_tag_alias — the single alias authority); unknown subtypes
+    # survive the migration under their typed spelling and are refused
+    # below, never silently repaired.
     _migrated: list[str] = []
     for t in tags:
         if t.startswith("gcw:"):
             subtype = t[4:]
             if subtype in VESMA_TAG_SUBTYPES:
-                _migrated.append(f"mnemos:{subtype}")
+                if subtype == "no-federate":
+                    _migrated.append(NO_FEDERATE_TAG)
+                else:
+                    _migrated.append(f"{CANONICAL_TAG_PREFIX}{subtype}")
             else:
                 _migrated.append(t)  # invalid gcw: subtype, keep as-is for error msg
         else:
@@ -542,7 +575,9 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
     project_tags = [t for t in tags if t.startswith("project:")]
     agent_tags = [t for t in tags if t.startswith("agent:")]
     task_tags = [t for t in tags if t.startswith("task:")]
-    mnemos_tags = [t for t in tags if t.startswith("mnemos:")]
+    subtype_tags = [
+        t for t in tags if t.startswith(CANONICAL_TAG_PREFIX) or t.startswith(LEGACY_TAG_PREFIX)
+    ]
 
     # Errors that are fatal even in lax mode (ambiguous context, can't auto-patch)
     fatal_errors: list[str] = []
@@ -583,33 +618,26 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
             f"invalid task: tag format '{task_tags[0]}' (must match task:[a-z0-9_-]{{1,64}})"
         )
 
-    # --- Require at least one mnemos:* tag ---
-    if not mnemos_tags:
+    # --- Require at least one subtype tag (vesma:* canon, mnemos:* legacy) ---
+    # After the alias migration above, surviving ``mnemos:`` tags can only
+    # be ``mnemos:no-federate`` (the byte-stable marker) or an unknown
+    # subtype that will be refused here.
+    if not subtype_tags:
         patchable_errors.append(
-            "missing required tag: mnemos:<subtype> "
+            "missing required tag: vesma:<subtype> "
             f"(valid subtypes: {', '.join(sorted(VESMA_TAG_SUBTYPES))})"
         )
     else:
-        for mnemos_tag in mnemos_tags:
-            if not _VESMA_TAG_RE.match(mnemos_tag):
-                patchable_errors.append(f"invalid mnemos: tag format: '{mnemos_tag}'")
+        for subtype_tag in subtype_tags:
+            if not _VESMA_TAG_RE.match(subtype_tag):
+                patchable_errors.append(f"invalid subtype tag format: '{subtype_tag}'")
             else:
-                subtype = mnemos_tag[len("mnemos:") :]
+                subtype = subtype_tag.split(":", 1)[1]
                 if subtype not in VESMA_TAG_SUBTYPES:
                     patchable_errors.append(
-                        f"invalid mnemos: subtype '{subtype}' — "
+                        f"invalid subtype '{subtype}' in tag '{subtype_tag}' — "
                         f"allowed: {', '.join(sorted(VESMA_TAG_SUBTYPES))}"
                     )
-
-    # 6.0.0 input alias: any vesma:-prefixed tag that SURVIVED the alias
-    # migration carries an unknown subtype — refuse it with the offending
-    # tag named (instead of the generic missing-mnemos error), so a typo
-    # like vesma:leanring fails loud at every input boundary.
-    for stray_alias in (t for t in tags if t.startswith(INPUT_ALIAS_PREFIX)):
-        patchable_errors.append(
-            f"invalid vesma: alias '{stray_alias}' — unknown subtype "
-            f"(allowed: {', '.join(sorted(VESMA_TAG_SUBTYPES))})"
-        )
 
     # Always fatal errors raise regardless of strict flag
     if fatal_errors:
@@ -685,8 +713,8 @@ def validate_tag_contract(tags: list[str], *, strict: bool = True) -> list[str]:
                 task_tags[0],
             )
 
-    if not mnemos_tags:
-        patched.append("mnemos:legacy")
+    if not subtype_tags:
+        patched.append("vesma:legacy")
     return patched
 
 
@@ -718,8 +746,12 @@ class TagContract(BaseModel):
                 self.agent = tag[len("agent:") :]
             elif tag.startswith("task:") and not self.task:
                 self.task = tag[len("task:") :]
-            elif tag.startswith("mnemos:"):
-                subtypes.add(tag[len("mnemos:") :])
+            elif tag.startswith(CANONICAL_TAG_PREFIX):
+                subtypes.add(tag[len(CANONICAL_TAG_PREFIX) :])
+            elif tag.startswith(LEGACY_TAG_PREFIX):
+                # Only the byte-stable ``mnemos:no-federate`` marker can
+                # survive validation under the legacy spelling.
+                subtypes.add(tag[len(LEGACY_TAG_PREFIX) :])
         self.mnemos_subtypes = frozenset(subtypes)
         return self
 
@@ -908,6 +940,18 @@ class Memory(BaseModel):
         return self.clean_content or self.content
 
 
+def _canonicalize_dto_tags(v: list[str]) -> list[str]:
+    """Field-level alias canonicalization shared by the create/update DTOs.
+
+    The 6.0 canonical-prefix flip: legacy ``mnemos:<subtype>`` input
+    rewrites to ``vesma:<subtype>`` at EVERY DTO boundary (REST, MCP,
+    SDK, and internal callers alike) — :func:`normalize_tag_aliases` is
+    the single authority. The byte-stable ``mnemos:no-federate`` marker
+    and every non-tag namespace pass through untouched.
+    """
+    return normalize_tag_aliases(v)
+
+
 class MemoryCreate(BaseModel):
     content: str
     title: str | None = None
@@ -921,6 +965,11 @@ class MemoryCreate(BaseModel):
     filter_profile: str | None = None
     # Allow override for path-scoped rules ingest (M8) and migrations (M13)
     status: MemoryStatus = MemoryStatus.RAW
+
+    @field_validator("tags")
+    @classmethod
+    def _canonicalize_tag_aliases(cls, v: list[str]) -> list[str]:
+        return _canonicalize_dto_tags(v)
 
     @field_validator("metadata")
     @classmethod
@@ -976,6 +1025,11 @@ class MemoryUpdate(BaseModel):
     quality_score: float | None = None
     confidence: float | None = None
     cluster_id: str | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _canonicalize_tag_aliases(cls, v: list[str] | None) -> list[str] | None:
+        return None if v is None else _canonicalize_dto_tags(v)
 
     @field_validator("metadata")
     @classmethod

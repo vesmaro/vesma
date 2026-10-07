@@ -426,13 +426,13 @@ async def _canonical_tools() -> list[Tool]:
         (
             "🔄 [AUTO-COLLECT] Proactively save discoveries, patterns, decisions, gotchas, "
             "and any reusable knowledge. Tags MUST include project:<slug>, agent:<slug>, "
-            "and at least one mnemos:<subtype> tag."
+            "and at least one vesma:<subtype> tag."
         )
         if _ac
         else (
             "Add a new entry to long-term memory. "
-            "Tags MUST include: project:<slug>, agent:<slug>, and mnemos:<subtype>. "
-            "Valid vesma: subtypes: session, bug-pattern, learning, decision, rule, "
+            "Tags MUST include: project:<slug>, agent:<slug>, and vesma:<subtype>. "
+            "Valid subtypes: session, bug-pattern, learning, decision, rule, "
             "open-question, checkpoint, legacy."
         )
     )
@@ -536,7 +536,7 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Tags. REQUIRED: project:<slug>, agent:<slug>, mnemos:<subtype>. "
+                            "Tags. REQUIRED: project:<slug>, agent:<slug>, vesma:<subtype>. "
                             "Optional: task:<slug> (at most one — task scope, ADR-0027), "
                             "severity:, stack:, applyTo:, source: prefixes."
                         ),
@@ -768,7 +768,7 @@ async def _canonical_tools() -> list[Tool]:
                 "Bulk rename tags matching from_prefix:<subtype> → "
                 "to_prefix:<subtype> across existing memories. Safe: uses "
                 "UPDATE (FTS5 stays consistent), dry_run=true by default, "
-                "idempotent. Use to migrate gcw: → mnemos: tags."
+                "idempotent. Use to migrate gcw: → vesma: tags."
             ),
             input_schema={
                 "type": "object",
@@ -779,7 +779,7 @@ async def _canonical_tools() -> list[Tool]:
                     },
                     "to_prefix": {
                         "type": "string",
-                        "description": "Target prefix, e.g. 'mnemos:'",
+                        "description": "Target prefix, e.g. 'vesma:'",
                     },
                     "subtypes": {
                         "type": "array",
@@ -841,7 +841,7 @@ async def _canonical_tools() -> list[Tool]:
                     },
                     "to_prefix": {
                         "type": "string",
-                        "description": "Target prefix for rename (e.g. 'mnemos:')",
+                        "description": "Target prefix for rename (e.g. 'vesma:')",
                     },
                     "tags": {
                         "type": "array",
@@ -898,7 +898,7 @@ async def _canonical_tools() -> list[Tool]:
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Tags (must include project:, agent:, mnemos:)",
+                        "description": "Tags (must include project:, agent:, vesma:)",
                     },
                 },
                 "required": ["url", "tags"],
@@ -936,7 +936,7 @@ async def _canonical_tools() -> list[Tool]:
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Tags (must include project:, agent:, mnemos:)",
+                        "description": "Tags (must include project:, agent:, vesma:)",
                     },
                     "source_url": {
                         "type": "string",
@@ -2729,7 +2729,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             if not args.get("from_prefix") or not args.get("to_prefix"):
                 return {
                     "error": "action='rename' requires 'from_prefix' and 'to_prefix' "
-                    "(both must end with ':', e.g. 'gcw:' -> 'mnemos:')"
+                    "(both must end with ':', e.g. 'gcw:' -> 'vesma:')"
                 }
             return mgr.tags_rename(
                 from_prefix=args["from_prefix"],

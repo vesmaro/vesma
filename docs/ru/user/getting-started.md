@@ -294,7 +294,7 @@ Vesma автоматически:
 
 Контракт тегов описан в [tag-contract.md](tag-contract.md). Коротко: каждая запись требует
 **ровно одного** `project:<slug>`, **ровно одного** `agent:<slug>` и **хотя бы одного**
-`vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Вы всегда печатаете алиас `vesma:`; `mnemos:` — канонический префикс хранения, стабильный по контракту, а `vesma:` принимается как входной алиас везде — в хранилище теги сохраняют каноническую форму `mnemos:*`.
+`vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Старое написание `mnemos:` принимается как входной алиас везде и нормализуется в канон; в хранилище теги сохраняют каноническую форму `vesma:*`.
 
 > **Замечание.** Только что добавленные записи получают статус `raw`. Фоновый процессор
 > (работает в режимах MCP и HTTP API, а в CLI-развёртывании — `vesma processor start`)
@@ -661,7 +661,7 @@ vesma migrate from-ai-brain
 ```
 
 Мигратор переводит легаси-типы источников, исправляет контракт тегов
-(`project:legacy`, `agent:unknown`, `mnemos:legacy`), сохраняет статусы записей
+(`project:legacy`, `agent:unknown`, `vesma:legacy`), сохраняет статусы записей
 и переносит колонки `content_ru` / `content_en` в `metadata` (без потери данных).
 Для нестандартных расположений используйте `--source PATH` и `--vault PATH`.
 

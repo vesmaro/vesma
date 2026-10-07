@@ -251,7 +251,7 @@ paginated browsing.
 **Example**:
 
 ```http
-GET /memories?project=vesma&status=published&tags=mnemos:decision&limit=10&offset=20
+GET /memories?project=vesma&status=published&tags=vesma:decision&limit=10&offset=20
 ```
 
 **Errors**:

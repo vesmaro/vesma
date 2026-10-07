@@ -20,23 +20,27 @@ The tag contract:
 
 ---
 
-## Storage prefix: `mnemos:` vs the `vesma:` input alias
+## Storage prefix: `vesma:` is canonical, `mnemos:` is the legacy alias
 
-`mnemos:` is the canonical storage prefix, stable by contract; `vesma:` is
-accepted as an input alias everywhere.
+`vesma:` is the canonical storage prefix (6.0 canonical-prefix flip);
+every new record is written as `vesma:<subtype>`. The legacy `mnemos:`
+spelling is accepted on input everywhere and rewritten to the canon.
 
-- **You type** `vesma:<subtype>` — at the CLI (`--tags`), in HTTP API tag
-  filters and in MCP add calls. Vesma normalizes it to `mnemos:<subtype>`
-  before anything is written or matched.
-- **Storage keeps `mnemos:*`.** The prefix is a frozen data format
-  (6.0 decision, ArchCom 2026-10-03): exports, stores and federation
-  traffic stay byte-stable across the rebrand.
-- **Unknown subtypes are refused loudly** in either spelling: `vesma:bogus`
-  fails with `invalid vesma: alias ...`, exactly like `mnemos:bogus` does.
-- `vesma:no-federate` normalizes too — the exclusion marker is always
-  stored as `mnemos:no-federate` (a byte-stable trust marker, see below).
-- Legacy input keeps working unchanged: `mnemos:*` passes through as-is,
-  and old `gcw:*` tags still migrate on validation.
+- **You type** either spelling — at the CLI (`--tags`), in HTTP API tag
+  filters and in MCP add calls. Vesma normalizes `mnemos:<subtype>` to
+  `vesma:<subtype>` before anything is written or matched.
+- **Storage keeps `vesma:*`.** Existing 5.x rows still carrying
+  `mnemos:*` are re-slugged in place by the 6.0 mover in the same
+  release train, so stores, exports and federation traffic converge on
+  one spelling.
+- **Unknown subtypes are refused loudly** in either spelling:
+  `vesma:bogus` and `mnemos:bogus` both fail with an
+  `invalid subtype ...` error.
+- **The one exception: `mnemos:no-federate` stays byte-stable forever**
+  (ArchCom 2026-10-03). The exclusion marker is written and read ONLY
+  under that exact spelling; `vesma:no-federate` is accepted as input
+  and normalizes to it; the 6.0 mover never re-slugs it (see below).
+- Older `gcw:*` tags still migrate on validation, to the current canon.
 
 ---
 
@@ -145,9 +149,11 @@ tests on every surface):
 ## `mnemos:no-federate` — federation exclusion marker
 
 `mnemos:no-federate` is an **exclusion marker**, not a cognitive category.
-It lives in the `mnemos:` subtype namespace (so it passes tag-contract
-validation without a new prefix; typing `vesma:no-federate` normalizes to
-the same stored tag) but its semantics are operational, not
+It keeps the legacy `mnemos:` spelling as its ONLY canonical form — a
+byte-stable trust marker by ArchCom verdict (2026-10-03): the code writes
+and reads exactly that spelling, forever, and the 6.0 mover never re-slugs
+it. Typing `vesma:no-federate` normalizes to the same stored tag. Its
+semantics are operational, not
 cognitive: a record carrying this tag is **excluded from all external
 exchange** — both batch export and mediated pull (federation).
 
@@ -216,12 +222,12 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Validate a list of tags (strict, raises on violations).
-# You type the vesma: alias — the result carries the canonical mnemos: form.
+# Legacy mnemos: input normalizes — the result carries the canonical vesma: form.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "vesma:learning"],
+    ["project:myproject", "agent:copilot", "mnemos:learning"],
     strict=True,
 )
-# clean_tags == ["project:myproject", "agent:copilot", "mnemos:learning"]
+# clean_tags == ["project:myproject", "agent:copilot", "vesma:learning"]
 
 # Use TagContract model directly
 tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
@@ -269,19 +275,19 @@ replacement for the deprecated `vesma migrate tags` subcommand.
 
 ```bash
 # Dry-run first — preview only, nothing written (default)
-vesma tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to vesma: --dry-run
 
 # Apply the rename
-vesma tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to vesma: --no-dry-run
 
 # Restrict to specific subtypes
-vesma tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
+vesma tags rename --from gcw: --to vesma: --subtypes decision --subtypes learning --no-dry-run
 
 # Scope to a single project / agent
-vesma tags rename --from gcw: --to mnemos: --project vesma --no-dry-run
+vesma tags rename --from gcw: --to vesma: --project vesma --no-dry-run
 
 # Send invalid subtypes to <to_prefix>legacy instead of skipping them
-vesma tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
+vesma tags rename --from gcw: --to vesma: --invalid-to-legacy --no-dry-run
 ```
 
 **Why this is safe:** the rename goes through `SQLiteStore.update_fields`
@@ -314,7 +320,7 @@ The report returned (and printed by the CLI) has the shape:
   "errors": [],
   "dry_run": false,
   "from_prefix": "gcw:",
-  "to_prefix": "mnemos:"
+  "to_prefix": "vesma:"
 }
 ```
 
@@ -383,7 +389,7 @@ invalid `mnemos:` subtype, adding a malformed slug, or adding a tag without a
 ai-brain had no required tag schema. Migrating:
 
 1. Run `vesma migrate from-ai-brain` — copies ai-brain SQLite to Vesma store.
-2. Existing entries without `project:` / `agent:` get tag `mnemos:legacy` appended
+2. Existing entries without `project:` / `agent:` get tag `vesma:legacy` appended
    and are stored with `strict_tags=False`.
 3. Check the contract with `vesma tags validate` (vault walk) or
    `vesma tags audit` — a report over every SQLite store entry, with
@@ -409,8 +415,8 @@ Common messages:
 |-----------------|-------|
 | `exactly one project:` | 0 or ≥2 `project:` tags |
 | `exactly one agent:` | 0 or ≥2 `agent:` tags |
-| `at least one mnemos:` | No `mnemos:` tag present (the validator's real message fragment) |
-| `invalid mnemos: subtype` | Subtype not in allowed set |
+| `missing required tag: vesma:` | No `vesma:` tag present (the validator's real message fragment) |
+| `invalid subtype '<name>' in tag '<tag>'` | Subtype not in allowed set |
 | `invalid vesma: alias` | A `vesma:`-spelled tag whose subtype is not in the allowed set (see the input alias above) |
 | `invalid slug for project:` | Slug contains uppercase or special chars |
 | `invalid slug for agent:` | Slug contains uppercase or special chars |

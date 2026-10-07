@@ -90,8 +90,8 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
    server-minted for its own channels; task/decision/report envelopes passed
    via `metadata` are validated, and violations are attached to the stored
    record. Tags stay mandatory on every channel: `project:<slug>`,
-   `agent:<slug>`, `mnemos:<subtype>` (see `vesma-tag-contract`; `report`
-   pairs with `mnemos:session`, `task` pairs with `mnemos:open-question`).
+   `agent:<slug>`, `vesma:<subtype>` (see `vesma-tag-contract`; `report`
+   pairs with `vesma:session`, `task` pairs with `vesma:open-question`).
 
 6. **Read back the verdict** — in warn mode the write always succeeds. If the
    returned `metadata.canon_warnings` (or the `canon_violation:` log line) is
@@ -101,7 +101,7 @@ fixed body sections, one language, ISO dates, an ≤ 80-char title.
 7. **Confirm with a one-line notice**:
 
    ```text
-   mnemos: canon <type> written (id=<id>, warnings=none)
+   vesma: canon <type> written (id=<id>, warnings=none)
    ```
 
 ## DISCIPLINE

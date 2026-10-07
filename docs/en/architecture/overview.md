@@ -349,9 +349,9 @@ Installation paths (do not confuse them with the memory-store legacy paths
 
 #### CLI (Typer)
 ```bash
-vesma add "Note about something important" --tags project:vesma agent:user mnemos:learning   # quick add
-vesma ingest file ./document.pdf --tags project:vesma agent:user mnemos:learning             # from a file
-vesma ingest url https://example.com --tags project:research agent:user mnemos:learning      # ingest a URL
+vesma add "Note about something important" --tags project:vesma agent:user vesma:learning   # quick add
+vesma ingest file ./document.pdf --tags project:vesma agent:user vesma:learning             # from a file
+vesma ingest url https://example.com --tags project:research agent:user vesma:learning      # ingest a URL
 vesma search "how to configure nginx"             # hybrid search (FTS5 + vector + RRF)
 vesma search "CVE" --project vesma --limit 20    # project-scoped search
 vesma recall agent tech-writer --limit 20         # recent entries for an agent

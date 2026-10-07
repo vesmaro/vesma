@@ -33,22 +33,22 @@ beyond the current session.
 
    | Tag | When |
    |-----|------|
-   | `mnemos:bug-pattern` | A class of bug; want future reviews to catch it. |
-   | `mnemos:learning` | An insight to avoid re-learning. |
-   | `mnemos:decision` | A design/process choice + rationale. |
-   | `mnemos:rule` | A hard constraint or invariant. |
-   | `mnemos:open-question` | An unresolved question to revisit. |
+   | `vesma:bug-pattern` | A class of bug; want future reviews to catch it. |
+   | `vesma:learning` | An insight to avoid re-learning. |
+   | `vesma:decision` | A design/process choice + rationale. |
+   | `vesma:rule` | A hard constraint or invariant. |
+   | `vesma:open-question` | An unresolved question to revisit. |
 
 2. **Compose the content** — markdown, one idea per entry:
 
-   - For `mnemos:bug-pattern`: describe the bug class, how to spot it, and the
+   - For `vesma:bug-pattern`: describe the bug class, how to spot it, and the
      fix pattern.
-   - For `mnemos:learning`: state the insight and the context in which it
+   - For `vesma:learning`: state the insight and the context in which it
      applies.
-   - For `mnemos:decision`: state the decision, the rationale, and the
+   - For `vesma:decision`: state the decision, the rationale, and the
      alternatives considered.
-   - For `mnemos:rule`: state the rule and the scope (`applyTo:` tag).
-   - For `mnemos:open-question`: state the question and what is needed to
+   - For `vesma:rule`: state the rule and the scope (`applyTo:` tag).
+   - For `vesma:open-question`: state the question and what is needed to
      resolve it.
 
 3. **Assemble the tags** (mandatory):
@@ -57,7 +57,7 @@ beyond the current session.
    tags=[
      "project:<slug>",
      "agent:<slug>",
-     "mnemos:<subtype>"
+     "vesma:<subtype>"
    ]
    ```
 

@@ -44,7 +44,7 @@ what a specialist agent already established before duplicating it.
    ```
 
 4. **For open work**, follow up with `vesma_workflow(action="get", …)` on
-   entries tagged `mnemos:open-question`.
+   entries tagged `vesma:open-question`.
 
 ## DISCIPLINE
 

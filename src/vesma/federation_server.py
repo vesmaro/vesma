@@ -528,7 +528,7 @@ def _handle_pull_impl(
         # refuse them anyway, but skip the moderation cost).
         if NO_FEDERATE_TAG in memory.tags:
             continue
-        # Apply allowed_types filter (subset of mnemos:<subtype>).
+        # Apply allowed_types filter (subset of the subtype namespace).
         rec_type = _memory_type_for_filter(memory.tags)
         if not _type_allowed(peer, rec_type):
             continue
@@ -667,16 +667,22 @@ def _acl_allows(peer: PeerConfig, project_scope: str) -> bool:
 
 
 def _memory_type_for_filter(tags: list[str]) -> str:
-    """Return the ``mnemos:<subtype>`` value for a memory, or ``""`` if none.
+    """Return the subtype value for a memory, or ``""`` if none.
 
     Mirrors :func:`vesma.compact.derive_record_type` but returns the raw
     subtype string (e.g. ``"decision"``) so it can be matched against
-    ``PeerConfig.allowed_types``. ``mnemos:no-federate`` is skipped.
+    ``PeerConfig.allowed_types``. Both the canonical ``vesma:`` spelling
+    and the legacy ``mnemos:`` spelling count (rows written by 5.x builds
+    before the 6.0 mover re-slugs them — a legacy row must never
+    silently fail the type filter). ``no-federate`` is skipped.
     """
     for tag in tags:
-        if not tag.startswith("mnemos:"):
+        if tag.startswith("vesma:"):
+            suffix = tag[len("vesma:") :]
+        elif tag.startswith("mnemos:"):
+            suffix = tag[len("mnemos:") :]
+        else:
             continue
-        suffix = tag[len("mnemos:") :]
         if suffix == "no-federate":
             continue
         return suffix
@@ -687,7 +693,7 @@ def _type_allowed(peer: PeerConfig, rec_type: str) -> bool:
     """Return ``True`` if ``rec_type`` is in the peer's allowed types.
 
     ``["*"]`` is the explicit wildcard. Empty list = none (fail-closed).
-    An empty ``rec_type`` (memory has no ``mnemos:<subtype>`` tag) is
+    An empty ``rec_type`` (memory has no subtype tag) is
     treated as ``session`` by :func:`derive_record_type` for compact
     records, but here we filter on the raw subtype — if a memory has
     no subtype tag, it is excluded by an explicit ``allowed_types``

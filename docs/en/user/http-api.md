@@ -216,7 +216,7 @@ curl -s http://127.0.0.1:8000/tags
 [
   {"tag": "project:vesma", "count": 142},
   {"tag": "agent:tech-writer", "count": 58},
-  {"tag": "mnemos:learning", "count": 41}
+  {"tag": "vesma:learning", "count": 41}
 ]
 ```
 
@@ -314,7 +314,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"]
   }'
 ```
 
@@ -323,7 +323,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
   "title": "Use uv, not pip",
-  "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+  "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
   "source": "manual",
   "memory_type": "note",
   "status": "raw",
@@ -468,7 +468,7 @@ curl -s -X POST http://127.0.0.1:8000/search \
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "score": 0.812,
     "search_type": "hybrid"
   }
@@ -520,13 +520,13 @@ curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=vesma&l
 
 These endpoints mirror the `mnemos_save_context` and `mnemos_recall_context`
 plugin tools. They store and retrieve `session_context` memories tagged
-`mnemos:checkpoint`, enabling an agent to restore its working state across
+`vesma:checkpoint`, enabling an agent to restore its working state across
 sessions or after context compaction.
 
 ### `POST /context/save` — save a session checkpoint
 
 Builds structured Markdown from the supplied fields and stores it as a
-`SESSION_CONTEXT` memory tagged `mnemos:checkpoint`. Mirrors the
+`SESSION_CONTEXT` memory tagged `vesma:checkpoint`. Mirrors the
 `mnemos_save_context` plugin tool.
 
 **Request body**
@@ -604,7 +604,7 @@ filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Session checkpoint — 2026-07-07T12:00:00+00:00",
       "content": "# Session checkpoint — 2026-07-07T12:00:00+00:00\n\n## Goals\nFinish HTTP API docs for all 15 tools\n",
-      "tags": ["project:vesma", "agent:user", "mnemos:checkpoint"],
+      "tags": ["project:vesma", "agent:user", "vesma:checkpoint"],
       "created_at": "2026-07-07T12:00:00+00:00"
     }
   ]
@@ -1006,7 +1006,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
-    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "vesma:learning"]
   }'
 ```
 
@@ -1081,7 +1081,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
     "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
     "doc_id": "dep-guide",
     "title": "Deployment Guide",
-    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "vesma:learning"]
   }'
 ```
 

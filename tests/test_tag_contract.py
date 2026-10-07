@@ -45,22 +45,37 @@ VALID_TAGS_ALL = [
 
 class TestValidateTagContractHappyPath:
     def test_minimal_valid(self):
+        # Legacy mnemos:* input is an alias — output carries the canon.
         result = validate_tag_contract(VALID_TAGS)
-        assert result == VALID_TAGS
+        assert result == ["project:myproject", "agent:copilot", "vesma:learning"]
 
     def test_all_optional_pass_through(self):
         result = validate_tag_contract(VALID_TAGS_ALL)
-        assert set(result) == set(VALID_TAGS_ALL)
+        assert set(result) == {
+            "project:myproject",
+            "agent:copilot",
+            "vesma:learning",
+            "vesma:decision",
+            "source:chat",
+            "applyTo:src/**/*.py",
+        }
 
-    def test_returns_original_list_unchanged(self):
+    def test_legacy_input_normalizes_to_canon(self):
         tags = ["project:x", "agent:y", "mnemos:session"]
+        result = validate_tag_contract(tags)
+        assert result == ["project:x", "agent:y", "vesma:session"]
+
+    def test_canonical_input_unchanged(self):
+        tags = ["project:x", "agent:y", "vesma:session"]
         result = validate_tag_contract(tags)
         assert result == tags
 
     def test_multiple_mnemos_subtypes_allowed(self):
         tags = ["project:x", "agent:y", "mnemos:session", "mnemos:checkpoint"]
         result = validate_tag_contract(tags)
-        assert sorted(result) == sorted(tags)
+        assert sorted(result) == sorted(
+            ["project:x", "agent:y", "vesma:session", "vesma:checkpoint"]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -77,8 +92,8 @@ class TestValidateTagContractStrictRaises:
         with pytest.raises(TagContractError, match="agent:"):
             validate_tag_contract(["project:myproject", "mnemos:learning"], strict=True)
 
-    def test_missing_mnemos_raises(self):
-        with pytest.raises(TagContractError, match="mnemos:"):
+    def test_missing_subtype_raises(self):
+        with pytest.raises(TagContractError, match="vesma:<subtype>"):
             validate_tag_contract(["project:myproject", "agent:copilot"], strict=True)
 
     def test_empty_list_raises(self):
@@ -276,10 +291,11 @@ class TestMnemosSubtypes:
     }
 
     def test_all_expected_subtypes_valid(self):
+        # Legacy-spelled input — each migrates to the canon on validation.
         for subtype in self.EXPECTED:
             tags = [f"mnemos:{subtype}", "project:x", "agent:y"]
             result = validate_tag_contract(tags, strict=True)
-            assert any(f"mnemos:{subtype}" in t for t in result)
+            assert any(f"vesma:{subtype}" in t for t in result)
 
     def test_unknown_subtype_invalid(self):
         with pytest.raises(TagContractError):
@@ -295,27 +311,30 @@ class TestMnemosSubtypes:
 
 
 class TestVesmaInputAlias:
-    """``vesma:<subtype>`` is accepted as input, stored as ``mnemos:<subtype>``.
-
-    Storage format is frozen: ``mnemos:`` stays the canonical written
-    prefix; the alias exists only at input boundaries (normalized by
-    ``normalize_tag_aliases`` — the single shared helper — and inside
-    ``validate_tag_contract``, so every write path accepts it).
+    """6.0 canonical-prefix flip: ``vesma:<subtype>`` is the canon both
+    typed and stored; the legacy ``mnemos:<subtype>`` spelling is the
+    input alias, normalized to the canon by ``normalize_tag_aliases`` —
+    the single shared helper — and inside ``validate_tag_contract``, so
+    every write path accepts it.
     """
 
-    def test_alias_normalized_to_mnemos(self):
+    def test_canonical_input_is_identity(self):
         result = validate_tag_contract(["project:x", "agent:y", "vesma:learning"], strict=True)
-        assert "mnemos:learning" in result
-        assert not any(t.startswith("vesma:") for t in result)
+        assert "vesma:learning" in result
+        assert not any(t.startswith("mnemos:") for t in result)
 
     def test_no_federate_alias_normalized(self):
         """The federation trust marker normalizes too — storage stays byte-stable."""
         result = validate_tag_contract(["project:x", "agent:y", "vesma:no-federate"], strict=True)
         assert "mnemos:no-federate" in result
 
-    def test_legacy_form_unchanged(self):
+    def test_legacy_input_normalizes_to_canon(self):
         legacy = ["project:x", "agent:y", "mnemos:learning"]
-        assert validate_tag_contract(list(legacy), strict=True) == legacy
+        assert validate_tag_contract(list(legacy), strict=True) == [
+            "project:x",
+            "agent:y",
+            "vesma:learning",
+        ]
 
     def test_round_trip_alias_equals_legacy(self):
         """Normalized alias input produces the byte-identical tag list as legacy."""
@@ -326,7 +345,7 @@ class TestVesmaInputAlias:
         ) == validate_tag_contract(list(legacy), strict=True)
 
     def test_unknown_alias_subtype_refuses_loudly(self):
-        with pytest.raises(TagContractError, match="invalid vesma: alias 'vesma:bogus'"):
+        with pytest.raises(TagContractError, match="invalid subtype 'bogus' in tag 'vesma:bogus'"):
             validate_tag_contract(["project:x", "agent:y", "vesma:bogus"], strict=True)
 
     def test_alias_typo_refused_not_repaired(self):
@@ -342,6 +361,6 @@ class TestVesmaInputAlias:
         """The helper never drops or repairs — refusal belongs to the contract."""
         assert normalize_tag_aliases(["vesma:bogus"]) == ["vesma:bogus"]
 
-    def test_alias_accepted_in_lax_mode(self):
-        result = validate_tag_contract(["project:x", "agent:y", "vesma:decision"], strict=False)
-        assert "mnemos:decision" in result
+    def test_legacy_input_accepted_in_lax_mode(self):
+        result = validate_tag_contract(["project:x", "agent:y", "mnemos:decision"], strict=False)
+        assert "vesma:decision" in result

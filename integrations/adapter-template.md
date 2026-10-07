@@ -64,7 +64,7 @@ harness's instruction channel — system prompt, rules file, AGENTS.md):
 ```text
 At session start call vesma_agent_recall before reading files.
 Before writing any memory, compose tags: exactly one project:<slug>,
-exactly one agent:<slug>, at least one mnemos:<subtype>.
+exactly one agent:<slug>, at least one vesma:<subtype>.
 Before compaction or session end, call vesma_save_context.
 ```
 
@@ -76,7 +76,7 @@ Pick two slugs once and reuse them everywhere (keeps recall scoped):
 - `agent:<slug>` — this harness's identity (e.g. `agent:cursor`, or `agent:user`)
 
 Every write must carry exactly one of each plus at least one
-`mnemos:<subtype>` (`decision`, `rule`, `session`, `checkpoint`, `learning`, …).
+`vesma:<subtype>` (`decision`, `rule`, `session`, `checkpoint`, `learning`, …).
 Full schema: [tag-contract.md](../docs/en/user/tag-contract.md). The server
 rejects contract-breaking writes, so a failed `vesma_add` means bad tags,
 not a broken connection.
@@ -95,7 +95,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 - [ ] `vesma_*` tools from the Expose table are visible to the agent.
 - [ ] `vesma_agent_recall` returns (possibly empty) results at session start.
 - [ ] The wire probe above replies with a JSON-RPC result whose `serverInfo.name` is `vesma`.
-- [ ] A test write roundtrips: `vesma_add` with `project:test,agent:<slug>,mnemos:learning`,
+- [ ] A test write roundtrips: `vesma_add` with `project:test,agent:<slug>,vesma:learning`,
       then `vesma_search "test"` finds it.
 - [ ] A write missing `project:` is rejected — the tag contract is active.
 - [ ] `vesma doctor` (in a shell) reports no FAIL-level checks.

@@ -102,7 +102,7 @@ class TestIngestRule:
         assert memory is not None
         assert memory.source == MemorySource.RULE
         assert memory.status == MemoryStatus.PUBLISHED
-        assert "mnemos:rule" in memory.tags
+        assert "vesma:rule" in memory.tags
         assert "project:test-proj" in memory.tags
         assert "agent:test-agent" in memory.tags
         assert "applyTo:**" in memory.tags

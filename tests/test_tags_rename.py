@@ -101,32 +101,33 @@ class TestSynthesizedSubtype:
         assert "synthesized" in VESMA_TAG_SUBTYPES
 
     def test_validate_accepts_mnemos_synthesized(self) -> None:
+        # Legacy spelling is an input alias — output carries the canon.
         tags = ["project:p", "agent:a", "mnemos:synthesized"]
         out = validate_tag_contract(tags, strict=True)
-        assert "mnemos:synthesized" in out
+        assert "vesma:synthesized" in out
 
-    def test_gcw_synthesized_migrates_to_mnemos(self) -> None:
-        """gcw:synthesized is now valid → validate_tag_contract migrates it."""
+    def test_gcw_synthesized_migrates_to_canon(self) -> None:
+        """gcw:synthesized is valid → validate_tag_contract migrates it to the canon."""
         tags = ["project:p", "agent:a", "gcw:synthesized"]
         out = validate_tag_contract(tags, strict=True)
-        assert "mnemos:synthesized" in out
+        assert "vesma:synthesized" in out
         assert "gcw:synthesized" not in out
 
     def test_gcw_unknown_stays_as_is_for_error(self) -> None:
         """Invalid gcw: subtype is preserved (for the error message).
 
         In strict mode the migration keeps the unknown gcw: tag as-is,
-        so the resulting tag set has no valid mnemos: tag and strict
+        so the resulting tag set has no valid subtype tag and strict
         validation raises. In lax mode the tag is still kept as-is and
-        the contract patches in mnemos:legacy. The rename method itself
+        the contract patches in vesma:legacy. The rename method itself
         re-validates in lax mode, so this is the realistic path.
         """
         tags = ["project:p", "agent:a", "gcw:totally-unknown"]
         out = validate_tag_contract(tags, strict=False)
         # The unknown gcw: tag is preserved (not migrated), and lax mode
-        # patches in mnemos:legacy because no valid mnemos: tag exists.
+        # patches in vesma:legacy because no valid subtype tag exists.
         assert "gcw:totally-unknown" in out
-        assert "mnemos:legacy" in out
+        assert "vesma:legacy" in out
 
 
 # ---------------------------------------------------------------------------
@@ -239,17 +240,17 @@ class TestInvalidSubtypes:
 
 class TestTagsRenameIntegration:
     def test_fts5_finds_new_tag_not_old(self, tmp_manager: MemoryManager) -> None:
-        """After rename, vesma_search finds records by mnemos:decision, not gcw:decision."""
+        """After rename, vesma_search finds records by vesma:decision, not gcw:decision."""
         mid = _add_gcw_memory(tmp_manager, subtype="decision")
         # Before rename: search with gcw:decision tag filter finds it.
         hits_before = tmp_manager.search("gcw memory", tags=["gcw:decision"], limit=10)
         assert any(r.memory.id == mid for r in hits_before)
 
         # Rename.
-        tmp_manager.tags_rename(from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
+        tmp_manager.tags_rename(from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
 
-        # After rename: search with mnemos:decision finds it.
-        hits_after_new = tmp_manager.search("gcw memory", tags=["mnemos:decision"], limit=10)
+        # After rename: search with vesma:decision finds it.
+        hits_after_new = tmp_manager.search("gcw memory", tags=["vesma:decision"], limit=10)
         assert any(r.memory.id == mid for r in hits_after_new)
 
         # After rename: search with the OLD gcw:decision tag no longer finds it.

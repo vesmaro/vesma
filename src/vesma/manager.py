@@ -2324,6 +2324,18 @@ class MemoryManager:
 
             project = normalize_project_slug(project)
 
+        # 6.0 canonical-prefix flip (B2b): the ``tags`` filter accepts the
+        # legacy ``mnemos:<subtype>`` spelling as an input alias and
+        # rewrites it to the canonical ``vesma:<subtype>`` — old-style
+        # filters keep matching the re-slugged rows. Reads run no
+        # tag-contract validation, so the alias must normalize HERE (the
+        # CLI/HTTP boundaries already call normalize_tag_aliases — this is
+        # the single choke point for the SDK/MCP channels that bypass them).
+        if tags:
+            from vesma.models import normalize_tag_aliases
+
+            tags = normalize_tag_aliases(tags)
+
         # Ф2 (epic #308): mint the task tag at the boundary — the SAME
         # ``tags`` filter the F1 arm-C call used, so task= ≡ tags=["task:x"]
         # holds by construction (one code path, not two). The shared
@@ -3397,7 +3409,7 @@ class MemoryManager:
         """Return most recent checkpoint memories for a project.
 
         When ``query`` is provided, a hybrid search scoped to
-        ``mnemos:checkpoint`` tags is used to rank checkpoints by relevance,
+        ``vesma:checkpoint`` tags is used to rank checkpoints by relevance,
         then the top ``limit`` are returned. When ``query`` is omitted,
         checkpoints are returned by recency only.
 
@@ -3417,8 +3429,8 @@ class MemoryManager:
         Ф2 (epic #308, ADR-0027 Phase 2) — ``task``: the first-class
         task-scope switcher, byte-identical to ``tags=["task:<slug>"]``
         composed with the checkpoint scope (the F1 arm-C surface): the
-        minted tag JOINS the ``mnemos:checkpoint`` tag on both legs
-        (query and recency), so ``task="x"`` ≡ ``["mnemos:checkpoint",
+        minted tag JOINS the ``vesma:checkpoint`` tag on both legs
+        (query and recency), so ``task="x"`` ≡ ``["vesma:checkpoint",
         "task:x"]`` by construction — the equivalence doctrine pinned by
         tests. Normalized/fail-loud at this boundary exactly like
         ``project`` (the #407 canon); task-scoped recall returns only
@@ -3433,7 +3445,7 @@ class MemoryManager:
                 f"project must be 1-64 characters of [a-z0-9_-] after normalization "
                 f"(got {project!r})"
             )
-        tags: list[str] = ["mnemos:checkpoint"]
+        tags: list[str] = ["vesma:checkpoint"]
         if task is not None:
             task_tag = self._normalize_task_boundary(task)
             tags.append(task_tag)
@@ -3694,7 +3706,7 @@ class MemoryManager:
         checkpoint_tags: list[str] = [
             f"project:{project}",
             f"agent:{resolved_agent}",
-            "mnemos:checkpoint",
+            "vesma:checkpoint",
         ]
         if task_tag is not None:
             checkpoint_tags.append(task_tag)
@@ -3745,6 +3757,13 @@ class MemoryManager:
             from vesma.models import normalize_project_slug
 
             project = normalize_project_slug(project)
+        # 6.0 canonical-prefix flip (B2b): same alias contract as search —
+        # a legacy ``mnemos:<subtype>`` filter normalizes to the canon
+        # before the exact-match SQL predicate.
+        if tags:
+            from vesma.models import normalize_tag_aliases
+
+            tags = normalize_tag_aliases(tags)
         if task is not None:
             task_tag = self._normalize_task_boundary(task)
             tags = [*(tags or []), task_tag]
@@ -3874,10 +3893,10 @@ class MemoryManager:
             strict: Contract-validation mode for the resulting tag set.
 
                 ``False`` (default, used by ``tags_rename``) — *lax*: a missing
-                ``project:`` / ``agent:`` / ``mnemos:`` tag, an invalid
-                ``mnemos:`` subtype, or a malformed slug is auto-patched in the
+                ``project:`` / ``agent:`` / subtype tag, an invalid
+                subtype, or a malformed slug is auto-patched in the
                 returned list rather than rejected. Rename is a prefix swap
-                (``gcw:`` → ``mnemos:``) that preserves required tags, so lax is
+                (legacy ``gcw:`` → canon rewrite) that preserves required tags, so lax is
                 the correct, non-corrupting mode there.
 
                 ``True`` (used by ``tags_remove`` / ``tags_add``) — *strict*:
@@ -3885,7 +3904,7 @@ class MemoryManager:
                 patch) raises ``TagContractError``, which this method reports as
                 a per-memory error and skips the write. ``remove`` / ``add`` are
                 explicit mutations, so a contract-breaking result (e.g. removing
-                the last ``project:``, or adding an invalid ``mnemos:`` subtype)
+                the last ``project:``, or adding an invalid subtype)
                 is rejected per memory instead of corrupting the store.
 
         Returns:
@@ -3900,7 +3919,7 @@ class MemoryManager:
             the new tag set so a prefix change that touched ``project:`` /
             ``agent:`` keeps the denormalised columns aligned with the tags
             (otherwise per-project / per-agent queries drift). For the common
-            ``gcw:`` → ``mnemos:`` rename these are unchanged.
+            legacy ``gcw:`` → canon rewrites are unchanged.
         """
         from vesma.models import validate_tag_contract
 
@@ -3953,7 +3972,7 @@ class MemoryManager:
 
         Args:
             from_prefix: Source prefix without the subtype (e.g. ``"gcw:"``).
-            to_prefix: Target prefix without the subtype (e.g. ``"mnemos:"``).
+            to_prefix: Target prefix without the subtype (e.g. ``"vesma:"``).
             subtypes: Optional whitelist — only rename these subtypes.
                 ``None`` means "all subtypes present on matching tags".
             dry_run: When ``True`` (default) nothing is written; the report
@@ -4011,7 +4030,7 @@ class MemoryManager:
         # Validate prefix shapes early — must end with ":" so we don't
         # accidentally match `project:` when the caller means `gcw:`.
         if not from_prefix.endswith(":") or not to_prefix.endswith(":"):
-            report["errors"].append("prefixes must end with ':' (e.g. 'gcw:', 'mnemos:')")
+            report["errors"].append("prefixes must end with ':' (e.g. 'gcw:', 'vesma:')")
             return report
 
         subtype_filter = set(subtypes) if subtypes else None
@@ -4042,6 +4061,15 @@ class MemoryManager:
                         # Decide target subtype.
                         if subtype in VESMA_TAG_SUBTYPES:
                             target = to_prefix + subtype
+                            if subtype == "no-federate" and target != NO_FEDERATE_TAG:
+                                # Byte-stable trust marker (ArchCom
+                                # 2026-10-03; the 6.0 mover's security
+                                # condition): the exclusion marker exists
+                                # in storage ONLY as ``mnemos:no-federate``
+                                # — never renamed into another namespace,
+                                # never minted as ``vesma:no-federate``.
+                                new_tags.append(tag)
+                                continue
                         elif invalid_subtypes_to_legacy:
                             target = to_prefix + "legacy"
                         else:
@@ -4119,7 +4147,7 @@ class MemoryManager:
             (plain ``UPDATE``), so the FTS5 ``AFTER UPDATE`` trigger fires and
             the external-content index stays consistent — same path as
             ``tags_rename``. The resulting tag set is validated in **strict**
-            mode: removing the last ``project:`` / ``agent:`` / ``mnemos:`` tag
+            mode: removing the last ``project:`` / ``agent:`` / subtype tag
             (or otherwise breaking the contract) is rejected per memory with an
             error entry instead of corrupting the store. Idempotent: a second
             run reports ``changed=0``.
@@ -4159,7 +4187,7 @@ class MemoryManager:
             for mem in batch:
                 report["scanned"] += 1
                 new_tags = [t for t in mem.tags if not _is_match(t)]
-                # Strict gate: removing the last project:/agent:/mnemos: tag
+                # Strict gate: removing the last project:/agent:/subtype tag
                 # (or otherwise breaking the contract) is rejected per memory
                 # with an error entry instead of corrupting the store. The
                 # write is skipped for that memory; the batch continues.
@@ -4213,7 +4241,7 @@ class MemoryManager:
             Same ``_commit_tags`` → ``update_fields`` path as rename/remove,
             so FTS5 stays consistent. The full resulting set is validated in
             **strict** mode before any write: an added tag that breaks the
-            contract (e.g. an invalid ``mnemos:`` subtype or a malformed slug)
+            contract (e.g. an invalid subtype or a malformed slug)
             is rejected per memory with an error entry instead of corrupting
             the store.
         """
@@ -4258,7 +4286,7 @@ class MemoryManager:
                     if t not in new_tags:
                         new_tags.append(t)
                 # Strict gate: a tag whose addition breaks the contract (e.g.
-                # an invalid mnemos: subtype, a malformed slug, or a tag that
+                # an invalid subtype, a malformed slug, or a tag that
                 # leaves the set without exactly one project:/agent:) is
                 # rejected per memory with an error entry; the write is skipped
                 # for that memory and the batch continues.

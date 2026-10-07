@@ -443,7 +443,7 @@ Validates the tag contract, runs the five-stage filter pipeline, and
 prints stats — without writing anything to the store.
 
 ```bash
-vesma add "long log output..." --tags "project:vesma,agent:tech-lead,mnemos:trace" --dry-run
+vesma add "long log output..." --tags "project:vesma,agent:tech-lead,vesma:learning" --dry-run
 ```
 
 Output:
@@ -643,7 +643,7 @@ The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the
 | `mnemos_search` | `VesmaSDK.recall` (issuance-scanned) |
 | `mnemos_add` | `VesmaSDK.remember` (tag contract at the channel) |
 | `mnemos_recall_context` | checkpoint recall + channel scan |
-| `mnemos_save_context` | `VesmaSDK.remember` (`mnemos:checkpoint`) |
+| `mnemos_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
 | `mnemos_agent_recall` | agent-scoped recall + channel scan |
 | `mnemos_list_recent` | `MemoryManager.list_recent` (title-only scan) |
 | `mnemos_list_tags` | `MemoryManager.list_tags` |
@@ -678,9 +678,9 @@ Config is stored in `~/.hermes/config.yaml` under `memory.vesma`:
 The plugin implements the Hermes `MemoryProvider` ABC as a thin shim over `HermesMemoryAdapter`:
 
 - **prefetch()** — `pre_llm_call` hook → `assemble_context` (recall → filter → secret scan → align → budget, provenance on every block), run off the turn loop
-- **sync_turn()** — `VesmaSDK.remember` (`mnemos:session`) for significant turns (user > 50 chars or every Nth)
-- **on_memory_write()** — `VesmaSDK.remember` mirror of MEMORY.md/USER.md writes (`mnemos:learning` / `mnemos:rule`)
-- **on_session_end()** — one `mnemos:session` summary per session via `remember`
+- **sync_turn()** — `VesmaSDK.remember` (`vesma:session`) for significant turns (user > 50 chars or every Nth)
+- **on_memory_write()** — `VesmaSDK.remember` mirror of MEMORY.md/USER.md writes (`vesma:learning` / `vesma:rule`)
+- **on_session_end()** — one `vesma:session` summary per session via `remember`
 - **on_pre_compress()** — the ADR-0018 bridge: the to-be-discarded block is reported via `VesmaSDK.rewrite` (`on_context_rewrite`), so the original lands in LTM losslessly
 - **Identity threading** — `project`+`agent` fixed at construction (tag-contract-validated up front), `session` bound per Hermes session and threaded onto every verb (incl. the A2 CCR issuer gate and the N2 compress mandate)
 

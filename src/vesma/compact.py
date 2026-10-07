@@ -33,7 +33,7 @@ Public API:
 * :func:`build_compact_payload` — aggregate builder: run moderation on
   a list of memories, skip refused, return
   ``{"schema": ..., "records": [...], "stats": {...}}``.
-* :func:`derive_record_type` — map a memory's ``mnemos:<subtype>`` tag
+* :func:`derive_record_type` — map a memory's subtype tag
   to the compact ``type`` field.
 * :func:`summarize_content` — truncate content to ≤500 chars at a word
   boundary with ``...``.
@@ -106,12 +106,12 @@ MAX_KEY_POINTS: int = 5
 
 # ── Type mapping ──────────────────────────────────────────────────────────────
 #
-# Map a memory's ``mnemos:<subtype>`` tag to the compact record ``type``
+# Map a memory's subtype tag to the compact record ``type``
 # field. The compact format's type vocabulary (contract §2.3) is a
-# subset of the vesma tag subtypes. ``mnemos:legacy`` and
-# ``mnemos:synthesized`` (pipeline artefacts) fall back to ``session``
+# subset of the vesma tag subtypes. ``vesma:legacy`` and
+# ``vesma:synthesized`` (pipeline artefacts) fall back to ``session``
 # (sensible default — they are not categorical decisions). The
-# ``mnemos:no-federate`` tag is NOT mapped — records with that tag are
+# ``no-federate`` (either spelling) is NOT mapped — records with that tag are
 # refused by moderation and never reach the builder.
 
 _TYPE_MAP: dict[str, str] = {
@@ -127,7 +127,7 @@ _TYPE_MAP: dict[str, str] = {
     "synthesized": "session",
 }
 
-#: Default record type when no known ``mnemos:`` subtype tag is present.
+#: Default record type when no known subtype tag is present.
 _DEFAULT_TYPE: str = "session"
 
 # ── Heuristics for summary + key points ──────────────────────────────────────
@@ -149,7 +149,7 @@ class CompactRecord(BaseModel):
         id: ``fed:<source_agent>:<local_uuid>`` — globally unique and
             idempotent on import (the receiving side keys on this id).
         type: Compact format type vocabulary — derived from the
-            memory's ``mnemos:<subtype>`` tag (see :data:`_TYPE_MAP`).
+            memory's subtype tag (see :data:`_TYPE_MAP`).
         title: Short headline (≤ :data:`MAX_TITLE_LEN` chars).
         summary: ≤ :data:`MAX_SUMMARY_LEN` chars — the essence of the
             record, not raw content.
@@ -258,19 +258,24 @@ def extract_key_points(content: str, *, max_points: int = MAX_KEY_POINTS) -> lis
 
 
 def derive_record_type(tags: list[str]) -> str:
-    """Map a memory's ``mnemos:<subtype>`` tag to the compact record type.
+    """Map a memory's subtype tag to the compact record type.
 
-    Scans ``tags`` for a ``mnemos:`` prefixed tag whose suffix is a known
-    subtype (see :data:`_TYPE_MAP`). The first matching subtype wins.
-    ``mnemos:no-federate`` is explicitly skipped (records with that tag
-    are refused by moderation before reaching the builder). Returns
-    :data:`_DEFAULT_TYPE` (``session``) when no known ``mnemos:`` subtype
-    tag is present.
+    Scans ``tags`` for a subtype-prefixed tag whose suffix is a known
+    subtype (see :data:`_TYPE_MAP`) — both the canonical ``vesma:``
+    spelling and the legacy ``mnemos:`` spelling (rows written by 5.x
+    builds before the 6.0 mover re-slugs them). The first matching
+    subtype wins. ``no-federate`` is explicitly skipped under either
+    spelling (records with that tag are refused by moderation before
+    reaching the builder). Returns :data:`_DEFAULT_TYPE` (``session``)
+    when no known subtype tag is present.
     """
     for tag in tags:
-        if not tag.startswith("mnemos:"):
+        if tag.startswith("vesma:"):
+            suffix = tag[len("vesma:") :]
+        elif tag.startswith("mnemos:"):
+            suffix = tag[len("mnemos:") :]
+        else:
             continue
-        suffix = tag[len("mnemos:") :]
         if suffix == "no-federate":
             continue
         if suffix in _TYPE_MAP:
@@ -395,7 +400,7 @@ def build_compact_record(
     key_points = extract_key_points(content_source)
     record_type = derive_record_type(memory.tags)
 
-    # Tags: keep project/agent/mnemos: tags, defensively drop
+    # Tags: keep project/agent/subtype tags, defensively drop
     # ``mnemos:no-federate`` (moderation should have refused such records
     # already, but strip anyway — belt and braces).
     tags = [t for t in memory.tags if t != NO_FEDERATE_TAG]

@@ -342,9 +342,9 @@ flowchart TB
 
 #### CLI (Typer)
 ```bash
-vesma add "Заметка о важном" --tags project:vesma agent:user mnemos:learning   # быстрое добавление
-vesma ingest file ./document.pdf --tags project:vesma agent:user mnemos:learning             # из файла
-vesma ingest url https://example.com --tags project:research agent:user mnemos:learning      # ингест URL
+vesma add "Заметка о важном" --tags project:vesma agent:user vesma:learning   # быстрое добавление
+vesma ingest file ./document.pdf --tags project:vesma agent:user vesma:learning             # из файла
+vesma ingest url https://example.com --tags project:research agent:user vesma:learning      # ингест URL
 vesma search "как настроить nginx"               # гибридный поиск (FTS5 + vector + RRF)
 vesma search "CVE" --project vesma --limit 20    # поиск в пределах проекта
 vesma recall agent tech-writer --limit 20         # последние записи агента

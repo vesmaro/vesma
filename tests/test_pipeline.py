@@ -194,7 +194,7 @@ class TestSynthesizeWorker:
         assert draft is not None
         assert draft.status == MemoryStatus.PROCESSED
         assert draft.cluster_id == cluster_id
-        assert "mnemos:synthesized" in draft.tags
+        assert "vesma:synthesized" in draft.tags
 
     def test_idempotency_cache(self, tmp_manager):
         """Second call with same params returns cached result."""

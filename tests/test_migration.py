@@ -140,7 +140,7 @@ class TestMigrationWrite:
         for mem in all_mem:
             assert any(t.startswith("project:") for t in mem.tags)
             assert any(t.startswith("agent:") for t in mem.tags)
-            assert any(t.startswith("mnemos:") for t in mem.tags)
+            assert any(t.startswith("vesma:") for t in mem.tags)
 
     def test_source_mapping(self, ai_brain_db, tmp_path) -> None:
         settings = load_settings()

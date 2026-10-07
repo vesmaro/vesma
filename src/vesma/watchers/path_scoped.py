@@ -4,7 +4,7 @@ Watches `.github/instructions/*.instructions.md` (or any `*.instructions.md`)
 and creates Memory entries with:
   - source = MemorySource.RULE
   - status = MemoryStatus.PUBLISHED
-  - tags   = mnemos:rule, project:<repo>, applyTo:<glob>, source:path-scoped-rule
+  - tags   = vesma:rule, project:<repo>, applyTo:<glob>, source:path-scoped-rule
 
 On file change → update memory. On delete → remove memory + vector entry.
 """
@@ -133,7 +133,7 @@ def ingest_rule(
     parsed = parse_rule_file(file_path)
 
     # Build tags
-    tags: list[str] = ["mnemos:rule", "source:path-scoped-rule"]
+    tags: list[str] = ["vesma:rule", "source:path-scoped-rule"]
     if project:
         tags.append(f"project:{project}")
     if agent:

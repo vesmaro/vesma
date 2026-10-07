@@ -148,7 +148,7 @@ echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
    ```bash
    VESMA_CONFIG="$VESMA_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
-     --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
+     --tags "project:cross-memory-test,agent:hermes-test,vesma:decision"
    ```
 
 3. **Экспортируйте compact-payload с peer B.**
@@ -240,7 +240,7 @@ non-loopback bind, поэтому serve на loopback с `auth_enabled=false`
 ```bash
 vesma add \
   "Cross-host test decision: mediated pull verified 2026-07-27" \
-  --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
+  --tags "project:cross-memory-test,agent:hermes-test,vesma:decision"
 ```
 
 ### c. Сконфигурируйте peer A в `federation.peers` на peer B

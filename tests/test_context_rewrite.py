@@ -385,7 +385,7 @@ class TestTagContractAndProvenance:
 
         assert f"project:{PROJECT}" in stored.tags
         assert f"agent:{AGENT}" in stored.tags
-        assert "mnemos:session" in stored.tags, "closest existing subtype (ratify?)"
+        assert "vesma:session" in stored.tags, "closest existing subtype (ratify?)"
         assert stored.project == PROJECT
         assert stored.agent == AGENT
 

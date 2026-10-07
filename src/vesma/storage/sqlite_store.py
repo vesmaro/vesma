@@ -3111,7 +3111,8 @@ class SQLiteStore:
     ) -> Memory | None:
         """Issuer-keyed checkpoint dedup lookup (vesma #251 D0).
 
-        Finds the newest ``mnemos:checkpoint`` memory of the exact
+        Finds the newest checkpoint memory (canonical ``vesma:checkpoint`` or
+        legacy ``mnemos:checkpoint`` spelling) of the exact
         ``(project, agent)`` issuer whose server-written metadata carries
         ``checkpoint_dedup_key == dedup_key``. The dedup key is computed
         over the canonical field payload INCLUDING the issuer (CWE-294
@@ -3133,7 +3134,7 @@ class SQLiteStore:
               AND json_extract(metadata, '$.checkpoint_agent') = ?
               AND EXISTS (
                   SELECT 1 FROM json_each(memories.tags)
-                  WHERE json_each.value = 'mnemos:checkpoint'
+                  WHERE json_each.value IN ('vesma:checkpoint', 'mnemos:checkpoint')
               )
             ORDER BY created_at DESC
             LIMIT 1

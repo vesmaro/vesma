@@ -185,7 +185,7 @@ from vesma.compact import (
 from vesma.config import MeshTCPTLSConfig, PeerConfig, Settings
 from vesma.federation_server import verify_mtls_fingerprint
 from vesma.manager import MemoryManager
-from vesma.models import NO_FEDERATE_TAG, MemoryCreate, MemorySource
+from vesma.models import NO_FEDERATE_TAG, MemoryCreate, MemorySource, normalize_tag_aliases
 from vesma.moderation import ModerationVerdict, moderate
 from vesma.trigger_codes import TriggerCode
 
@@ -653,16 +653,21 @@ def _clamp_page_limit(limit: int) -> int:
 
 
 def _memory_type_for_filter(tags: list[str]) -> str:
-    """Return the ``mnemos:<subtype>`` value for a memory, or ``""`` if none.
+    """Return the subtype value for a memory, or ``""`` if none.
 
     Mirrors :func:`vesma.federation_server._memory_type_for_filter` so
     the type filter on :rpc:`ListMemories` uses the same semantics as
-    the HTTP pull path. ``mnemos:no-federate`` is skipped.
+    the HTTP pull path. Both the canonical ``vesma:`` spelling and the
+    legacy ``mnemos:`` spelling count (rows written by 5.x builds before
+    the 6.0 mover re-slugs them). ``no-federate`` is skipped.
     """
     for tag in tags:
-        if not tag.startswith("mnemos:"):
+        if tag.startswith("vesma:"):
+            suffix = tag[len("vesma:") :]
+        elif tag.startswith("mnemos:"):
+            suffix = tag[len("mnemos:") :]
+        else:
             continue
-        suffix = tag[len("mnemos:") :]
         if suffix == "no-federate":
             continue
         return suffix
@@ -1874,6 +1879,11 @@ class VesmaCoreServicer:
             effective_projects = list(allowed_projects)
 
         tag_filter = [str(t) for t in request.filter]
+        # 6.0 canonical-prefix flip (B2b): a peer typing the legacy
+        # ``mnemos:<subtype>`` filter spelling still matches the
+        # re-slugged (vesma:*) rows — same input-alias contract as the
+        # local search boundary.
+        tag_filter = normalize_tag_aliases(tag_filter)
         title_blocklist = self._settings.federation.index_title_blocklist
         page_limit = _clamp_page_limit(int(request.limit))
         rows = self._manager.sqlite.list_index(

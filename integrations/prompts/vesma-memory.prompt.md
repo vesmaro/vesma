@@ -50,7 +50,7 @@ If no prior context: `Memory: no prior context for <project>`.
 vesma_search(
   query=<natural language query>,
   project=<current-project>,
-  tags=["mnemos:decision"],
+  tags=["vesma:decision"],
   limit=10
 )
 ```
@@ -71,7 +71,7 @@ Every write must carry:
 |-----|-------------|---------|
 | `project:<slug>` | **exactly 1** | `project:vesma` |
 | `agent:<slug>` | **exactly 1** | `agent:tech-lead` (or `agent:user`) |
-| `mnemos:<subtype>` | **at least 1** | `mnemos:decision` |
+| `vesma:<subtype>` | **at least 1** | `vesma:decision` |
 
 ### Valid vesma subtypes
 
@@ -91,7 +91,7 @@ vesma_add(
   tags=[
     "project:vesma",
     "agent:tech-lead",
-    "mnemos:bug-pattern",
+    "vesma:bug-pattern",
     "severity:medium",
     "stack:sqlite"
   ],

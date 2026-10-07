@@ -1241,7 +1241,7 @@ class AssembleContextRequest(BaseModel):
 
 @app.post("/context/save", status_code=201)
 async def save_context(req: SaveContextRequest) -> dict[str, Any]:
-    """Save a session checkpoint memory tagged ``mnemos:checkpoint``.
+    """Save a session checkpoint memory tagged ``vesma:checkpoint``.
 
     Mirrors the ``mnemos_save_context`` MCP tool: identity validation,
     session→agent binding (mismatch → 409), issuer-keyed dedup and the

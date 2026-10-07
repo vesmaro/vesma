@@ -2,7 +2,7 @@
 
 Converts legacy ai-brain SQLite DB + vault into Vesma format.
 Key transformations:
-  - tags: add project:legacy, agent:unknown, mnemos:legacy
+  - tags: add project:legacy, agent:unknown, vesma:legacy
   - status: preserved (raw/processing/processed/published/archived)
   - source: ai-brain TELEGRAM → Vesma MCP (closest match)
   - Memory fields: parent_ids → derived_from, content_ru/content_en → metadata
@@ -55,29 +55,44 @@ _LEGACY_TO_VESMARO_STATUS: dict[str, MemoryStatus] = {
 }
 
 
+def _gcw_to_canonical_subtype(subtype: str) -> str:
+    """Map a legacy ``gcw:`` subtype to its canonical tag spelling.
+
+    ``no-federate`` always maps to the byte-stable ``mnemos:no-federate``
+    trust marker (ArchCom 2026-10-03 — never re-spelled); every other
+    subtype maps to the canonical ``vesma:<subtype>`` (6.0 prefix flip).
+    """
+    from vesma.models import NO_FEDERATE_TAG
+
+    return NO_FEDERATE_TAG if subtype == "no-federate" else f"vesma:{subtype}"
+
+
 def _migrate_tags(old_tags: list[str]) -> list[str]:
-    """Add Vesma contract tags to legacy tags and migrate gcw: → mnemos:."""
+    """Add Vesma contract tags to legacy tags and migrate gcw: → vesma:."""
     tags = []
     for t in old_tags:
-        # Migrate legacy gcw: tags → mnemos:
+        # Migrate legacy gcw: tags → the current canon
         if t.startswith("gcw:"):
-            tags.append(f"mnemos:{t[4:]}")
+            tags.append(_gcw_to_canonical_subtype(t[4:]))
         else:
             tags.append(t)
     if not any(t.startswith("project:") for t in tags):
         tags.append("project:legacy")
     if not any(t.startswith("agent:") for t in tags):
         tags.append("agent:unknown")
-    if not any(t.startswith("mnemos:") for t in tags):
-        tags.append("mnemos:legacy")
+    if not any(t.startswith("vesma:") or t.startswith("mnemos:") for t in tags):
+        tags.append("vesma:legacy")
     return tags
 
 
 def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
-    """Migrate existing gcw: tags in the Vesma DB to mnemos: tags.
+    """Migrate existing gcw: tags in the Vesma DB to the canonical namespace.
 
     Converts all tag arrays in the memories table that contain ``gcw:<subtype>``
-    entries to ``mnemos:<subtype>``. Idempotent — safe to run multiple times.
+    entries to the current canon (``vesma:<subtype>`` since 6.0; the
+    ``no-federate`` marker keeps its byte-stable ``mnemos:no-federate``
+    spelling). Idempotent — safe to run multiple times. Function NAME kept
+    for back-compat with existing callers/scripts.
 
     Returns:
         Summary dict with counts: ``{"memories_updated": N, "tags_converted": N}``
@@ -92,7 +107,9 @@ def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
         cur = conn.execute("SELECT id, tags FROM memories")
         for row in cur.fetchall():
             tags = json.loads(row["tags"]) if row["tags"] else []
-            new_tags = [f"mnemos:{t[4:]}" if t.startswith("gcw:") else t for t in tags]
+            new_tags = [
+                _gcw_to_canonical_subtype(t[4:]) if t.startswith("gcw:") else t for t in tags
+            ]
             if new_tags != tags:
                 conn.execute(
                     "UPDATE memories SET tags = ? WHERE id = ?",
@@ -103,7 +120,7 @@ def migrate_gcw_to_mnemos_tags(db_path: Path) -> dict[str, int]:
         conn.commit()
     finally:
         conn.close()
-    logger.info("Migrated %d tags across %d memories (gcw: → mnemos:)", converted, updated)
+    logger.info("Migrated %d tags across %d memories (gcw: → vesma:)", converted, updated)
     return {"memories_updated": updated, "tags_converted": converted}
 
 

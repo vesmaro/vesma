@@ -42,10 +42,12 @@ Tags are the searchability backbone of the store. Every write MUST carry:
 - exactly one `project:<slug>` — the codebase or initiative;
 - exactly one `agent:<slug>` — the authoring agent (`agent:user` for
   user-authored);
-- at least one `mnemos:<subtype>` — e.g. `mnemos:decision`,
-  `mnemos:learning`, `mnemos:bug-pattern`, `mnemos:checkpoint` (the
-  `mnemos:` tag prefix is the storage data contract; it predates the
-  product rebrand and is not renamed).
+- at least one `vesma:<subtype>` — e.g. `vesma:decision`,
+  `vesma:learning`, `vesma:bug-pattern`, `vesma:checkpoint` (the
+  `vesma:` tag prefix is the canonical storage form since 6.0; the
+  legacy `mnemos:` spelling is accepted on input — except the
+  `mnemos:no-federate` exclusion marker, which stays byte-stable
+  forever).
 
 Without the contract, memory degrades into unstructured noise: project and
 agent-scoped recall stop working.

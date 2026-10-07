@@ -153,7 +153,7 @@ class HermesMemoryAdapter:
         # every write below composes, validated with the deployment's own
         # strictness knob (the same call VesmaSDK.remember makes later).
         validate_tag_contract(
-            [f"project:{project}", f"agent:{agent}", "mnemos:session"],
+            [f"project:{project}", f"agent:{agent}", "vesma:session"],
             strict=sdk.manager.settings.vesma.strict_tag_contract,
         )
         if sync_interval < 1:
@@ -307,7 +307,7 @@ class HermesMemoryAdapter:
         """
         _require_str(content, "content")
         if not tags:
-            raise ValueError("tags are required: project:<slug>, agent:<slug>, mnemos:<subtype>")
+            raise ValueError("tags are required: project:<slug>, agent:<slug>, vesma:<subtype>")
         meta = {"channel": _CHANNEL, **(metadata or {})}
         memory = self._sdk.remember(
             content,
@@ -326,7 +326,7 @@ class HermesMemoryAdapter:
         user_content: str,
         assistant_content: str,
     ) -> Memory | None:
-        """Persist one significant turn as a ``mnemos:session`` entry.
+        """Persist one significant turn as a ``vesma:session`` entry.
 
         Write-sparingly harness policy (the legacy plugin's, kept): a turn
         is significant when the user message exceeds
@@ -347,7 +347,7 @@ class HermesMemoryAdapter:
             content,
             self._project,
             self._agent,
-            tags=[f"project:{self._project}", f"agent:{self._agent}", "mnemos:session"],
+            tags=[f"project:{self._project}", f"agent:{self._agent}", "vesma:session"],
             memory_type=MemoryType.CONVERSATION,
             source=MemorySource.MANUAL,
             metadata={
@@ -375,7 +375,7 @@ class HermesMemoryAdapter:
 
         Only ``action == "add"`` mirrors (the legacy posture); ``target ==
         "user"`` is the USER.md mirror — tagged ``agent:user`` +
-        ``mnemos:rule`` — everything else is the assistant's own learning.
+        ``vesma:rule`` — everything else is the assistant's own learning.
         """
         if not self._auto_sync or action != "add" or not content.strip():
             return None
@@ -386,7 +386,7 @@ class HermesMemoryAdapter:
             content,
             self._project,
             agent_tag,
-            tags=[f"project:{self._project}", f"agent:{agent_tag}", f"mnemos:{subtype}"],
+            tags=[f"project:{self._project}", f"agent:{agent_tag}", f"vesma:{subtype}"],
             memory_type=MemoryType.FACT,
             source=MemorySource.MANUAL,
             metadata={
@@ -400,7 +400,7 @@ class HermesMemoryAdapter:
         return memory
 
     def session_end(self, messages: list[dict[str, Any]]) -> Memory | None:
-        """Synthesize and store one ``mnemos:session`` summary per session.
+        """Synthesize and store one ``vesma:session`` summary per session.
 
         Harness policy: extract non-trivial user messages (>50 chars, last
         10, 300-char excerpts) and assistant responses (>50 chars, last 5),
@@ -436,7 +436,7 @@ class HermesMemoryAdapter:
             self._project,
             self._agent,
             title=f"Session {session[:8]} summary",
-            tags=[f"project:{self._project}", f"agent:{self._agent}", "mnemos:session"],
+            tags=[f"project:{self._project}", f"agent:{self._agent}", "vesma:session"],
             memory_type=MemoryType.CONVERSATION,
             source=MemorySource.MANUAL,
             metadata={
@@ -465,7 +465,7 @@ class HermesMemoryAdapter:
         decisions: str | list[str] | None = None,
         context: str | list[str] | None = None,
     ) -> Memory:
-        """Store a structured ``mnemos:checkpoint`` (session checkpoint).
+        """Store a structured ``vesma:checkpoint`` (session checkpoint).
 
         Builds the same sectioned markdown as the ``vesma_save_context``
         MCP/REST channels (format-compatible recall) but threads the
@@ -487,7 +487,7 @@ class HermesMemoryAdapter:
             content,
             self._project,
             self._agent,
-            tags=[f"project:{self._project}", f"agent:{self._agent}", "mnemos:checkpoint"],
+            tags=[f"project:{self._project}", f"agent:{self._agent}", "vesma:checkpoint"],
             memory_type=MemoryType.SESSION_CONTEXT,
             source=MemorySource.MANUAL,
             metadata={"channel": _CHANNEL, "session_id": session},

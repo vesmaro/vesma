@@ -221,7 +221,7 @@ class TestSynthesizedTagPolicy:
 
         assert not any(t.startswith("applyTo:") for t in draft.tags)
         assert not any(t.startswith("severity:") for t in draft.tags)
-        assert "mnemos:synthesized" in draft.tags
+        assert "vesma:synthesized" in draft.tags
         assert "project:mnemos" in draft.tags
 
     def test_no_federate_propagates_from_any_member(self, tmp_manager):

@@ -123,7 +123,7 @@ The store schema is migrated automatically on first start of the new version. Ba
 ## Verify
 
 ```bash
-vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
+vesma add "Hello Vesma" --tags "project:test,agent:manual,vesma:learning"
 vesma search "Hello"
 vesma recall agent manual --project test
 vesma doctor          # the health gate: config, store, MCP transport, registrations

@@ -129,7 +129,7 @@ Go-бинарники и контейнеры никогда не обновля
 ## Проверка
 
 ```bash
-vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
+vesma add "Hello Vesma" --tags "project:test,agent:manual,vesma:learning"
 vesma search "Hello"
 vesma recall agent manual --project test
 vesma doctor          # база здоровья: конфиг, хранилище, MCP-транспорт, регистрации

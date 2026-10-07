@@ -626,7 +626,7 @@ class TestBuildMetadataEntry:
         assert entry.schema_version == METADATA_SCHEMA
         # Metadata-only: no content, no summary — the model has no such
         # fields at all; the tags carry no content either.
-        assert entry.tags == [f"project:{_PROJECT}", f"agent:{_AGENT}", "mnemos:decision"]
+        assert entry.tags == [f"project:{_PROJECT}", f"agent:{_AGENT}", "vesma:decision"]
 
     def test_no_federate_memory_excluded(self, manager: MemoryManager) -> None:
         memory = manager.add(
@@ -881,7 +881,8 @@ class TestBuildMetadataSyncResponse:
         self, servicer: VesmaCoreServicer, indexed: MemoryManager
     ) -> None:
         resp = servicer.build_metadata_sync_response(self._request(filter=["mnemos:learning"]))
-        assert all("mnemos:learning" in list(r.tags) for r in resp.records)
+        # Legacy-spelled filter normalizes; the re-slugged rows carry the canon.
+        assert all("vesma:learning" in list(r.tags) for r in resp.records)
         assert len(resp.records) >= 1
 
     def test_title_blocklist_on_serve(self, tmp_path: Path, manager: MemoryManager) -> None:

@@ -2,7 +2,7 @@
 
 Separates mutable *workflow state* (this module: open → in-progress → done,
 blocked/resolved, terminal states) from append-only *classification* (the
-tag contract: ``project:X``, ``mnemos:decision``). The tag layer stays
+tag contract: ``project:X``, ``vesma:decision``). The tag layer stays
 append-only; this layer is the mutable lifecycle.
 
 The state machine is pure: it knows nothing about SQLite, locks, or the

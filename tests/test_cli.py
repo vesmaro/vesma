@@ -257,8 +257,8 @@ class TestVesmaTagInputAlias:
         )
         assert result.exit_code == 0, result.output
         mems = get_manager(str(isolated_config)).list_recent(limit=10)
-        assert any("mnemos:learning" in m.tags for m in mems)
-        assert not any(t.startswith("vesma:") for m in mems for t in m.tags)
+        assert any("vesma:learning" in m.tags for m in mems)
+        assert not any(t.startswith("mnemos:") for m in mems for t in m.tags)
 
     def test_add_alias_round_trip_equals_legacy(self, isolated_config: Path) -> None:
         """Alias spelling produces byte-identical stored tags as legacy spelling."""

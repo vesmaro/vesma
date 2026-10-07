@@ -36,7 +36,7 @@ decisions, before web searches, and when resuming work on a topic.
    vesma_search(
      query=<natural language query>,
      project=<current-project>,
-     tags=["mnemos:decision"],     # or mnemos:bug-pattern, mnemos:learning
+     tags=["vesma:decision"],     # or vesma:bug-pattern, vesma:learning
      limit=10
    )
    ```

@@ -252,7 +252,7 @@ class TestExportFilters:
             mgr,
             fmt=ExportFormat.JSON,
             output=out,
-            filt=ExportFilter(tags=["mnemos:decision"]),
+            filt=ExportFilter(tags=["vesma:decision"]),
         )
         payload = json.loads(out.read_text())
         assert len(payload["memories"]) == 1

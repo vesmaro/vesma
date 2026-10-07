@@ -347,7 +347,8 @@ class TestMemoryFilters:
         assert resp.status_code == 200
         items = resp.json()
         assert len(items) == 1
-        assert "mnemos:learning" in items[0]["tags"]
+        # Legacy-spelled filter normalizes; the stored row carries the canon.
+        assert "vesma:learning" in items[0]["tags"]
 
     def test_filter_by_date_range(self, client):
         _add_memory(
