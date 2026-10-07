@@ -68,6 +68,7 @@ documented elsewhere, or anything that fits in a code comment.
 | [0037](0037-lineage-marks-engine-attachment-points.md) | lineage_marks — engine attachment points for the ratified canon schema (labeling-policy v1.1 §8.3; wiring plan + three canon↔engine divergences) | Proposed (owner ratification gate; doc-only) | 2026-10-06 |
 | [0038](0038-pg1-graph-walk.md) | PG-1 two-level graph walk — one walker, a separate `walk` section, work caps (extends ADR-0032; slices M1–M3) | Accepted (9 binding conditions) | 2026-10-06 |
 | [0042](0042-eyes-memory-transport.md) | vesma-eyes → memory transport: B-shim (gRPC-bidi proxy in mesh → kernel loopback); 8788 is a transitional leg, de-commissioned on B-shim acceptance (extends ADR-0014/0021/0025) | Accepted (5 binding conditions; phase A-then-B) | 2026-10-06 |
+| [0043](0043-awareness-machine-liveness.md) | Awareness machine-wide liveness — `scope="machine"` on `vesma_awareness`; «live» = a store write within window N=15 min; advisory-only, presence-not-lock; honest coverage marker; phases 5.6.x flag default-off → 5.7 exposure; OS-signals deferred with 5 Security conditions (extends ADR-0035/0036) | Accepted (ACCEPT WITH CONDITIONS — 6 binding conditions) | 2026-10-06 |
 
 ## Themes
 
