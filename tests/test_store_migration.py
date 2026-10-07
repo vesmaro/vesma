@@ -723,6 +723,57 @@ def test_config_unknown_key_inside_section_refuses_apply(
     assert not list(target.parent.glob("*.staging-*"))
 
 
+# ── P2-cleanup (review): staging is removed on EVERY failure path ────────────
+
+
+def test_unexpected_crash_mid_apply_cleans_staging(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-typed exception mid-apply still leaves no staging residue."""
+    import vesma.store_migration as sm
+
+    def exploding(snapshot: Any, staging: Path) -> dict[str, int]:
+        staging.mkdir(parents=True)
+        (staging / "data").mkdir()
+        (staging / "data" / "half-written.db").write_bytes(b"partial")
+        raise RuntimeError("boom mid-materialize")
+
+    monkeypatch.setattr(sm, "_materialize_target", exploding)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 6
+    assert "migration failed unexpectedly" in _output(result)
+    assert "boom mid-materialize" in _output(result)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+    # The rollback snapshot stays (deliberate).
+    assert list(target.parent.glob("migrate-snapshot-*"))
+
+
+def test_base_exception_mid_apply_cleans_staging(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin (P2-cleanup): finally is the only cleanup path — a BaseException
+    (e.g. KeyboardInterrupt) must not leave staging behind either."""
+    import vesma.store_migration as sm
+
+    def interrupted(snapshot: Any, staging: Path) -> dict[str, int]:
+        staging.mkdir(parents=True)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sm, "_materialize_target", interrupted)
+    target = _target_of(store_home, tmp_path)
+    plan = sm.build_plan(store_home, target, apply=True)
+    with pytest.raises(KeyboardInterrupt):
+        sm.run_migration(plan)
+    assert not plan.staging_dir.exists()
+    assert plan.snapshot_dir.exists()  # rollback artifact kept
+    assert not target.exists()
+
+
 # ── Verification net (whitebox tamper check) ──────────────────────────────────
 
 

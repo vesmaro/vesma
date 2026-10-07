@@ -1216,11 +1216,21 @@ def run_migration(plan: MigrationPlan) -> MigrationReport:
             raise UsageError(f"--to raced during migration: {plan.target_home}")
         plan.staging_dir.rename(plan.target_home)
     except StoreMigrationError:
-        _cleanup_staging(plan.staging_dir)
         raise
     except (OSError, sqlite3.Error, json.JSONDecodeError, ValueError) as exc:
-        _cleanup_staging(plan.staging_dir)
         raise VerificationError(f"migration failed: {exc}") from exc
+    except Exception as exc:
+        # Typed last resort: an unexpected failure must still surface with a
+        # stable exit code — the old except-tuple missed internal errors and
+        # left staging residue behind.
+        raise VerificationError(f"migration failed unexpectedly: {exc!r}") from exc
+    finally:
+        # The SINGLE cleanup path (cascade P2-cleanup): on success staging no
+        # longer exists (renamed onto --to), so this is a no-op; on ANY
+        # failure — typed, unexpected, or a BaseException like
+        # KeyboardInterrupt — staging is removed. The snapshot stays (the
+        # rollback artifact is deliberate).
+        _cleanup_staging(plan.staging_dir)
 
     return MigrationReport(
         mode="apply",
