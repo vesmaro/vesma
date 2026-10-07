@@ -1140,6 +1140,89 @@ def test_fifo_in_vault_skipped_with_warning(store_home: Path, tmp_path: Path) ->
     assert (target / "vault" / "a.txt").is_file()
 
 
+# ── Coverage holes (review): failure-path CLI flows + output privacy ─────────
+
+
+def test_snapshot_gate_failure_exit_5_cleans_up(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A snapshot failing its own verification stops the run: exit 5, no
+    staging residue, --to never appears."""
+    import dataclasses
+
+    import vesma.store_migration as sm
+
+    real_stats = sm.read_store_stats
+
+    def lying_stats(db_path: Path, **kwargs: Any) -> Any:
+        stats = real_stats(db_path, **kwargs)
+        if db_path.parent.parent.name.startswith("migrate-snapshot-"):
+            return dataclasses.replace(stats, ids_digest="0" * 64)
+        return stats
+
+    monkeypatch.setattr(sm, "read_store_stats", lying_stats)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 5
+    assert "changed while the snapshot was taken" in _output(result)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+
+
+def test_verification_failure_exit_6_cleans_up(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tampered materialization fails verification: exit 6, staging removed,
+    --to absent, the rollback snapshot kept."""
+    import vesma.store_migration as sm
+
+    real_materialize = sm._materialize_target
+
+    def tampering(snapshot: Any, staging: Path) -> dict[str, int]:
+        counters = real_materialize(snapshot, staging)
+        conn = sqlite3.connect(str(staging / "data" / "vesma.db"))
+        try:
+            conn.execute("UPDATE memories SET content = content || ' tampered'")
+            conn.commit()
+        finally:
+            conn.close()
+        return counters
+
+    monkeypatch.setattr(sm, "_materialize_target", tampering)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 6
+    assert "checksums mismatched" in _output(result)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+    assert list(target.parent.glob("migrate-snapshot-*"))
+
+
+def test_record_content_never_printed(store_home: Path, tmp_path: Path) -> None:
+    """Privacy contract: a record's content string never enters the output."""
+    secret_fragment = "content-for-id-01"
+    target = _target_of(store_home, tmp_path)
+    dry = runner.invoke(app, ["migrate-store", "--from", str(store_home), "--to", str(target)])
+    assert dry.exit_code == 0, _output(dry)
+    assert secret_fragment not in _output(dry)
+    apply_result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert apply_result.exit_code == 0, _output(apply_result)
+    assert secret_fragment not in _output(apply_result)
+
+
+def test_missing_to_flag_is_usage_error(store_home: Path) -> None:
+    """--to omitted -> exit 2 with the explicit-only contract message."""
+    result = runner.invoke(app, ["migrate-store", "--from", str(store_home)])
+    assert result.exit_code == 2
+    assert "--to is required" in _output(result)
+
+
 # ── Env-gated drill (skipped by default; clones only, never the live store) ──
 
 
