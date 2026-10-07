@@ -393,7 +393,7 @@ def test_flat_layout_home_root_non_data_never_becomes_data(
     assert cfg["vesma"]["db_name"] == "vesma.db"  # the ONLY config is canonical
 
     # The snapshot filters the same way (the leak used to start there).
-    snapshot = list(target.parent.glob("migrate-snapshot-*"))[0]
+    snapshot = next(iter(target.parent.glob("migrate-snapshot-*")))
     assert not (snapshot / "data" / "config.yaml").exists()
     assert not (snapshot / "data" / "vault").exists()
     assert (snapshot / "config.yaml").is_file()
@@ -484,6 +484,7 @@ def test_quiesce_refuses_when_source_is_locked(store_home: Path, tmp_path: Path)
         )
         assert result.exit_code == 4
         assert "not quiescent" in _output(result)
+        assert "stop the vesma service first" in _output(result)  # P3f: English wording
         assert not target.exists()
         assert not list(target.parent.glob("migrate-snapshot-*"))
     finally:
@@ -539,9 +540,7 @@ def test_discovery_without_any_candidate_explains(
     assert "No known 5.x store home" in _output(result)
 
 
-def test_existing_empty_target_refused_before_any_work(
-    store_home: Path, tmp_path: Path
-) -> None:
+def test_existing_empty_target_refused_before_any_work(store_home: Path, tmp_path: Path) -> None:
     """Pin (P2-1): even an EMPTY existing --to is refused at plan time.
 
     The refusal must happen BEFORE any work: no snapshot, no staging, the
@@ -690,9 +689,7 @@ def test_config_unmapped_key_refuses_apply(tmp_path: Path) -> None:
     assert not target.exists()
 
 
-def test_config_unknown_key_inside_section_refuses_apply(
-    store_home: Path, tmp_path: Path
-) -> None:
+def test_config_unknown_key_inside_section_refuses_apply(store_home: Path, tmp_path: Path) -> None:
     """Pin (P1-2/CWE-1188): a typo INSIDE a mapped section must abort.
 
     model_validate with extra=ignore would silently drop e.g. a typo'd
@@ -856,6 +853,291 @@ def test_legacy_migrate_command_untouched_and_no_collision() -> None:
     assert legacy.exit_code == 0
     assert "from-ai-brain" in legacy.output
     assert "tags" in legacy.output
+
+
+# ── Review P3 batch ───────────────────────────────────────────────────────────
+
+
+def test_legacy_store_without_legacy_tags_is_migratable(tmp_path: Path) -> None:
+    """Pin (P3a): absent mnemos:* tags are NOT proof of a past migration."""
+    home = tmp_path / "plain-home"
+    (home / "data").mkdir(parents=True)
+    conn = sqlite3.connect(str(home / "data" / "mnemos.db"))
+    try:
+        conn.executescript(_DB_SCHEMA)
+        conn.execute(
+            """INSERT INTO memories (id, content, tags, created_at, updated_at,
+               metadata, project, agent, status)
+               VALUES ('p-1', 'c', '["custom","agent:user"]', '2026', '2026', '{}',
+                       'own-silo', 'user', 'raw')"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    target = tmp_path / "t"
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 0, _output(result)
+    assert (target / "data" / "vesma.db").is_file()
+
+
+def test_canonical_db_presence_is_positive_migration_evidence(tmp_path: Path) -> None:
+    """Pin (P3a): a vesma.db next to the resolved legacy db refuses politely."""
+    home = tmp_path / "dual-home"
+    (home / "data").mkdir(parents=True)
+    for name in ("mnemos.db", "vesma.db"):
+        conn = sqlite3.connect(str(home / "data" / name))
+        try:
+            conn.executescript(_DB_SCHEMA)
+            conn.commit()
+        finally:
+            conn.close()
+    result = runner.invoke(app, ["migrate-store", "--from", str(home), "--to", str(tmp_path / "t")])
+    assert result.exit_code == 7
+    assert "already carries the vesma:* namespace" in _output(result)
+
+
+def test_special_characters_in_source_path_survive(tmp_path: Path) -> None:
+    """Pin (P3b): '?'/'%' in the store path must not break the ro URI opens."""
+    home = tmp_path / "we?rd%src"
+    (home / "data").mkdir(parents=True)
+    _insert_records(home / "data" / "mnemos.db")
+    target = tmp_path / "plain-target"
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 0, _output(result)
+    conn = sqlite3.connect(str(target / "data" / "vesma.db"))
+    try:
+        assert conn.execute("SELECT count(*) FROM memories").fetchone()[0] == _EXPECTED_TOTAL
+    finally:
+        conn.close()
+
+
+def test_db_name_misconfig_pinned_to_canonical(store_home: Path, tmp_path: Path) -> None:
+    """Pin (P3c): db_name pins vesma.db even from a misconfigured value."""
+    import yaml
+
+    (store_home / "config.yaml").write_text(
+        yaml.safe_dump({"mnemos": {"db_name": "legacy-custom.db"}}), encoding="utf-8"
+    )
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["config"]["db_name_pinned"] is True
+    cfg = yaml.safe_load((target / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["vesma"]["db_name"] == "vesma.db"
+
+
+def test_dry_run_leaves_source_wal_untouched(store_home: Path, tmp_path: Path) -> None:
+    """Pin (P3d): dry-run stats open read-only — no source WAL growth."""
+    db = store_home / "data" / "mnemos.db"
+    holder = sqlite3.connect(str(db))
+    try:
+        holder.execute("PRAGMA journal_mode=WAL")
+        holder.execute("UPDATE memories SET title = 'wal-seed' WHERE id = 'id-01'")
+        holder.commit()
+        wal = store_home / "data" / "mnemos.db-wal"
+        assert wal.is_file()
+        wal_size_before = wal.stat().st_size
+        db_size_before = db.stat().st_size
+        target = _target_of(store_home, tmp_path)
+        result = runner.invoke(
+            app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--json"]
+        )
+        assert result.exit_code == 0, _output(result)
+        assert json.loads(result.output)["mode"] == "dry-run"
+        assert wal.stat().st_size == wal_size_before, "dry-run grew the source WAL"
+        assert db.stat().st_size == db_size_before
+        assert not target.exists()
+    finally:
+        holder.close()
+
+
+def test_dry_run_skips_quiesce_probe_apply_still_gates(store_home: Path, tmp_path: Path) -> None:
+    """Pin (P3d): the write-lock probe runs on --apply only."""
+    target = _target_of(store_home, tmp_path)
+    holder = sqlite3.connect(str(store_home / "data" / "mnemos.db"))
+    try:
+        holder.execute("BEGIN IMMEDIATE")
+        holder.execute("UPDATE memories SET title = 'held' WHERE id = 'id-01'")
+        dry = runner.invoke(
+            app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--json"]
+        )
+        assert dry.exit_code == 0, _output(dry)  # no write-lock probe in dry-run
+        assert json.loads(dry.output)["mode"] == "dry-run"
+        apply_run = runner.invoke(
+            app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+        )
+        assert apply_run.exit_code == 4
+        assert "not quiescent" in _output(apply_run)
+        assert "stop the vesma service first" in _output(apply_run)  # P3f wording
+        assert not target.exists()
+    finally:
+        holder.rollback()
+        holder.close()
+
+
+def test_quiesce_readonly_reported_honestly_not_as_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin (P3e): a 'readonly database' error is a warning, NEVER 'locked'.
+
+    The chmod -w route cannot reproduce this deterministically (SQLite's
+    BEGIN IMMEDIATE may still take the lock on a 0444 file), so the
+    classification branch is driven directly at the same failure point.
+    """
+    import vesma.store_migration as sm
+
+    db = tmp_path / "ro.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute("CREATE TABLE t (x)")
+        conn.commit()
+    finally:
+        conn.close()
+    real_connect = sqlite3.connect
+
+    def fake_connect(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if str(path) == str(db) and "mode=ro" not in str(path):
+            raise sqlite3.OperationalError("attempt to write a readonly database")
+        return real_connect(path, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+    fatal, warnings = sm.quiesce_problems([db], with_wal_sampling=False)
+    assert not fatal
+    assert any("read-only filesystem" in w for w in warnings)
+    assert not any("database is locked" in w for w in warnings)
+    assert not any("not quiescent" in w for w in warnings)
+
+
+def test_readonly_source_still_migrates(store_home: Path, tmp_path: Path) -> None:
+    """A chmod-444 source db does not block the run (read-only opens)."""
+    target = _target_of(store_home, tmp_path)
+    db = store_home / "data" / "mnemos.db"
+    db.chmod(0o444)
+    try:
+        result = runner.invoke(
+            app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+        )
+        assert result.exit_code == 0, _output(result)
+        assert (target / "data" / "vesma.db").is_file()
+        assert "database is locked" not in _output(result)
+    finally:
+        db.chmod(0o644)
+
+
+def test_mover_cli_surface_has_no_cyrillic() -> None:
+    """Pin (P3f): every user-facing mover string is English — no Cyrillic."""
+    import vesma.cli.migrate_store_cmd as cmd
+    import vesma.store_migration as sm
+
+    for module in (sm, cmd):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        cyrillic = sorted({ch for ch in source if "\u0400" <= ch <= "\u04ff"})
+        assert not cyrillic, f"{module.__name__} carries Cyrillic: {cyrillic!r}"
+
+
+def test_moved_sqlite_dbs_covers_nested_trees(tmp_path: Path) -> None:
+    """Pin (P3g): _moved_sqlite_dbs descends into copied directories."""
+    from vesma.store_migration import _moved_sqlite_dbs
+
+    data = tmp_path / "data"
+    (data / "notes").mkdir(parents=True)
+    for name in ("vesma.db", "vectors.db", "notes/inner.sqlite3"):
+        conn = sqlite3.connect(str(data / name))
+        try:
+            conn.execute("CREATE TABLE t (x)")
+            conn.commit()
+        finally:
+            conn.close()
+    (data / "notes" / "inner.sqlite3-wal").write_bytes(b"junk-sidecar")
+    (data / "notes" / "readme.txt").write_text("x", encoding="utf-8")
+    found = [p.relative_to(data).as_posix() for p in _moved_sqlite_dbs(data)]
+    assert found == ["notes/inner.sqlite3", "vectors.db", "vesma.db"]
+
+
+def test_nested_sqlite_in_data_tree_moves_and_verifies(store_home: Path, tmp_path: Path) -> None:
+    """Pin (P3g): a nested sqlite rides _copy_tree AND gets quick_check."""
+    conn = sqlite3.connect(str(store_home / "data" / "notes" / "inner.db"))
+    try:
+        conn.execute("CREATE TABLE t (x TEXT)")
+        conn.execute("INSERT INTO t VALUES ('deep')")
+        conn.commit()
+    finally:
+        conn.close()
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 0, _output(result)  # quick_check passed on nested too
+    nested = sqlite3.connect(str(target / "data" / "notes" / "inner.db"))
+    try:
+        assert nested.execute("SELECT count(*) FROM t").fetchone()[0] == 1
+    finally:
+        nested.close()
+
+
+def test_corrupt_nested_sqlite_fails_as_snapshot_error(store_home: Path, tmp_path: Path) -> None:
+    """A corrupt nested sqlite fails the SNAPSHOT phase, typed exit 5.
+
+    The backup API raises sqlite3.DatabaseError mid-copy; a raw exit 1
+    traceback here would violate the stable-exit-code contract.
+    """
+    (store_home / "data" / "notes" / "corrupt.db").write_bytes(
+        b"SQLite format 3\x00" + b"\x11" * 4096
+    )
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 5
+    assert "snapshot copy failed" in _output(result)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+
+
+def test_stat_failure_during_planning_is_usage_error(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin (P3h): a bare OSError from stat in build_plan is exit 2, not 1."""
+    real_stat = Path.stat
+
+    def poisoned(self: Path, *args: Any, **kwargs: Any) -> Any:
+        if self.name == "vectors.db":
+            raise OSError(13, "Permission denied", str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", poisoned)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(app, ["migrate-store", "--from", str(store_home), "--to", str(target)])
+    assert result.exit_code == 2
+    assert "unreadable" in _output(result)
+    assert "vectors.db" in _output(result)
+    assert not list(target.parent.glob("*.staging-*"))
+    assert not list(target.parent.glob("migrate-snapshot-*"))
+
+
+def test_fifo_in_vault_skipped_with_warning(store_home: Path, tmp_path: Path) -> None:
+    """Pin (P3-fifo): a fifo in vault is skipped (no hang) and reported."""
+    import os
+
+    os.mkfifo(store_home / "vault" / "pipe.fifo")
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert any("pipe.fifo" in w and "skipped non-regular" in w for w in payload["warnings"])
+    assert not (target / "vault" / "pipe.fifo").exists()
+    assert (target / "vault" / "a.txt").is_file()
 
 
 # ── Env-gated drill (skipped by default; clones only, never the live store) ──

@@ -13,17 +13,20 @@ flagged in the delivery report):
 1. explicit-only: both ``--from`` and ``--to`` are REQUIRED paths; the mover
    NEVER guesses the live store. An omitted ``--from`` triggers a READ-ONLY
    discovery that can only SUGGEST candidates — it never proceeds.
-2. dry-run by default: planning + counters, zero writes anywhere. Writes
-   happen only under an explicit ``--apply``.
+2. dry-run by default: planning + counters through READ-ONLY opens —
+   the source's records stay unchanged (no WAL sidecar effects, no
+   write-lock probe). Writes happen only under an explicit ``--apply``.
 3. snapshot-gate: before any write a full consistent copy of the source
    (SQLite backup API per database file) lands in
    ``<to>/../migrate-snapshot-<ts>/`` and is verified (open + counters)
    BEFORE the migration continues. The target is materialized FROM the
    verified snapshot, never from the (possibly racy) live source.
-4. quiesce gate: live connections on the source databases (write-lock held,
-   WAL growth between samples) refuse the run with a "stop the vesma
-   service" message. A frozen-name unix socket merely warns (stale sockets
-   are common); the database probes decide.
+4. quiesce gate (--apply only): live connections on the source databases
+   (write-lock held, WAL growth between samples) refuse the run with a
+   "stop the vesma service first" message. A frozen-name unix socket
+   merely warns (stale sockets are common); the database probes decide.
+   A read-only source FILESYSTEM is reported as an honest warning (the
+   write probe cannot lock there) — never misdiagnosed as "locked".
 5. zero-config fork refusal: without an explicit ``--from`` and without ONE
    unambiguous candidate the mover refuses with an explanation — it never
    picks a "similar" store.
@@ -80,6 +83,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, get_args
+from urllib.parse import quote
 
 from vesma.models import NO_FEDERATE_TAG
 
@@ -202,13 +206,28 @@ class ConfigMigrationError(StoreMigrationError):
 # ── Connection helpers ────────────────────────────────────────────────────────
 
 
-def _open_conn(db_path: Path) -> sqlite3.Connection:
+def _ro_uri(db_path: Path) -> str:
+    """Read-only SQLite URI with the path percent-encoded (review P3b).
+
+    A literal ``?``/``%``/``#`` in a store path would otherwise be parsed as
+    URI syntax (query/fragment) and break the open or silently retarget it.
+    """
+    return f"file:{quote(str(db_path))}?mode=ro"
+
+
+def _open_conn(db_path: Path, *, read_only: bool = False) -> sqlite3.Connection:
     """Open a store database with Row access.
 
     Prefers a read-write open so SQLite can recover a stale ``-shm`` after a
     killed writer (the quiesce gate guarantees no live writers); falls back
     to a read-only URI open when the filesystem refuses writes.
+    ``read_only=True`` skips the RW attempt entirely — dry-run planning must
+    never create WAL sidecars or trigger recovery on the source (review P3d).
     """
+    if read_only:
+        conn = sqlite3.connect(_ro_uri(db_path), uri=True, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        return conn
     conn: sqlite3.Connection | None = None
     try:
         conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -217,7 +236,7 @@ def _open_conn(db_path: Path) -> sqlite3.Connection:
         if conn is not None:
             with contextlib.suppress(sqlite3.Error):
                 conn.close()
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
+        conn = sqlite3.connect(_ro_uri(db_path), uri=True, timeout=5.0)
     assert conn is not None
     conn.row_factory = sqlite3.Row
     return conn
@@ -397,9 +416,13 @@ class StoreStats:
     unparseable_rows: int
 
 
-def read_store_stats(db_path: Path) -> StoreStats:
-    """One full pass over ``memories``: counters, digests, rewrite counts."""
-    conn = _open_conn(db_path)
+def read_store_stats(db_path: Path, *, read_only: bool = False) -> StoreStats:
+    """One full pass over ``memories``: counters, digests, rewrite counts.
+
+    ``read_only=True`` (dry-run planning) opens the database through the
+    read-only URI so the source gains no WAL sidecars from the read.
+    """
+    conn = _open_conn(db_path, read_only=read_only)
     try:
         rows = conn.execute("SELECT id, tags, project, status FROM memories").fetchall()
     finally:
@@ -452,16 +475,20 @@ def _marker_file(data_dir: Path) -> Path:
     return data_dir / _MARKER_FILE_NAME
 
 
-def is_already_migrated(layout: _StoreLayout, stats: StoreStats) -> bool:
-    """True when the source store carries the post-migration namespace.
+def is_already_migrated(layout: _StoreLayout) -> bool:
+    """True when the source carries POSITIVE evidence of a past migration.
 
-    The trust marker is byte-stable by design, so ``mnemos:no-federate``
-    tags do NOT count against migration. An empty store is never
-    "already migrated" (a copy-only move is still legitimate).
+    Evidence: the idempotence marker file, or a canonical ``vesma.db``
+    (data/ or the home root) beside the resolved database. The mere ABSENCE
+    of ``mnemos:*`` tags is NOT evidence — a legacy store that never used
+    the namespace must stay migratable (review P3a: the old "zero
+    re-slaggable tags" heuristic false-positived on exactly that).
     """
     if _marker_file(layout.data_dir).is_file():
         return True
-    return stats.total > 0 and stats.subtype_swaps == 0 and stats.project_swaps == 0
+    return (layout.data_dir / CANONICAL_DB_NAME).is_file() or (
+        layout.home / CANONICAL_DB_NAME
+    ).is_file()
 
 
 # ── Quiesce gate ──────────────────────────────────────────────────────────────
@@ -475,7 +502,9 @@ def quiesce_problems(
     Returns ``(fatal_problems, warnings)``. Fatal: a held write lock or
     WAL growth between samples — the operator must stop the vesma service.
     Warning-only: the frozen-name unix socket exists (stale sockets survive
-    a stopped service; the database probes decide).
+    a stopped service; the database probes decide); a read-only source
+    FILESYSTEM fails the write probe without any live writer and is
+    reported honestly instead of as "database is locked" (review P3e).
     """
     fatal: list[str] = []
     warnings: list[str] = []
@@ -488,6 +517,12 @@ def quiesce_problems(
             finally:
                 conn.close()
         except sqlite3.OperationalError as exc:
+            if "readonly" in str(exc):
+                warnings.append(
+                    f"{db_path}: source is on a read-only filesystem — the "
+                    "write-lock probe was skipped (nothing can write there)"
+                )
+                continue
             fatal.append(f"{db_path}: database is locked ({exc})")
             continue
         wal_path = db_path.parent / f"{db_path.name}-wal"
@@ -514,7 +549,7 @@ def _copy_sqlite(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists():
         dst.unlink()
-    source = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    source = sqlite3.connect(_ro_uri(src), uri=True)
     try:
         target = sqlite3.connect(str(dst))
         try:
@@ -526,12 +561,15 @@ def _copy_sqlite(src: Path, dst: Path) -> None:
     _harden_file(dst)  # the backup-API copy must not inherit umask defaults
 
 
-def _copy_tree(src: Path, dst: Path) -> tuple[int, int]:
+def _copy_tree(src: Path, dst: Path, warnings: list[str] | None = None) -> tuple[int, int]:
     """Byte-for-byte recursive copy; sqlite files go through the backup API.
 
     SQLite ``-wal``/``-shm`` sidecars are SKIPPED: every sqlite main file
     is merged through the backup API, and a stale sidecar copied next to a
     merged copy would be replayed on open (corruption risk).
+    Non-regular entries (fifos, sockets, devices, broken symlinks) are
+    SKIPPED too — ``copy2`` would hang on a fifo — and reported as warning
+    lines (paths only, review P3-fifo).
 
     Returns ``(files_copied, sqlite_via_backup_api)``.
     """
@@ -547,6 +585,10 @@ def _copy_tree(src: Path, dst: Path) -> tuple[int, int]:
             if _is_sidecar(name):
                 continue
             src_file = root_path / name
+            if not src_file.is_file():
+                if warnings is not None:
+                    warnings.append(f"{src_file}: skipped non-regular file (fifo/socket)")
+                continue
             dst_file = dst_dir / name
             if _is_sqlite(src_file):
                 _copy_sqlite(src_file, dst_file)
@@ -563,6 +605,7 @@ class _Snapshot:
     layout: _StoreLayout
     path: Path
     stats: StoreStats  # stats of the SNAPSHOT copy (authoritative for the run)
+    warnings: tuple[str, ...] = ()  # skipped non-regular entries (paths only)
 
 
 def _is_non_data_entry(path: Path, *, flat_layout: bool) -> bool:
@@ -603,11 +646,20 @@ def _snapshot_data_files(data_dir: Path, main_db_name: str, *, flat_layout: bool
 
 def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
     """Snapshot-gate (brief item 3): consistent copy + verification."""
+    copy_warnings: list[str] = []
     try:
         (snapshot_dir / "data").mkdir(parents=True)
         _harden_dir(snapshot_dir)
         _harden_dir(snapshot_dir / "data")
         _copy_sqlite(source.db_path, snapshot_dir / "data" / source.db_path.name)
+        # Non-regular entries at the data-dir top level never enter the
+        # _snapshot_data_files listing — report them instead of dropping
+        # them silently (review P3-fifo; the vault case is handled inside
+        # _copy_tree).
+        for entry in sorted(source.data_dir.iterdir()):
+            if entry.is_file() or entry.is_dir() or _is_sidecar(entry.name):
+                continue
+            copy_warnings.append(f"{entry}: skipped non-regular file (fifo/socket)")
         for item in _snapshot_data_files(
             source.data_dir, source.db_path.name, flat_layout=source.data_dir == source.home
         ):
@@ -619,13 +671,16 @@ def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
                     shutil.copy2(item, target)
                     _harden_file(target)
             else:
-                _copy_tree(item, target)
+                _copy_tree(item, target, copy_warnings)
         if source.vault_dir.is_dir():
-            _copy_tree(source.vault_dir, snapshot_dir / "vault")
+            _copy_tree(source.vault_dir, snapshot_dir / "vault", copy_warnings)
         if source.config_path.is_file():
             shutil.copy2(source.config_path, snapshot_dir / "config.yaml")
             _harden_file(snapshot_dir / "config.yaml")
-    except OSError as exc:
+    except (OSError, sqlite3.Error) as exc:
+        # sqlite3.Error joins OSError here (P2-cleanup class): a corrupt or
+        # unreadable source database failing the backup API is a SNAPSHOT
+        # failure (exit 5), not a raw traceback (exit 1).
         raise SnapshotError(f"snapshot copy failed: {exc}") from exc
 
     # Verify the snapshot BEFORE continuing (open + counters), and confirm
@@ -638,7 +693,12 @@ def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
             "the source store changed while the snapshot was taken "
             "(live writer detected) — stop the vesma service and retry"
         )
-    return _Snapshot(layout=snapshot_layout, path=snapshot_dir, stats=snap_stats)
+    return _Snapshot(
+        layout=snapshot_layout,
+        path=snapshot_dir,
+        stats=snap_stats,
+        warnings=tuple(copy_warnings),
+    )
 
 
 # ── Config migration ──────────────────────────────────────────────────────────
@@ -718,9 +778,13 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
     db_name_pinned = False
     rerooted: dict[str, Any] = {}
     for key, value in vesma_section.items():
-        if key == "db_name" and value == LEGACY_DB_NAME:
+        if key == "db_name":
+            # ALWAYS pin the canonical name (review P3c): a misconfigured
+            # legacy value (anything but vesma.db) must not survive — the
+            # materialized database IS vesma.db, and a carried-over custom
+            # name would leave the produced config pointing at nothing.
             rerooted[key] = CANONICAL_DB_NAME
-            db_name_pinned = True
+            db_name_pinned = value != CANONICAL_DB_NAME
             continue
         new_value, moved = _reroot(value, source.home, new_home)
         if moved:
@@ -1052,7 +1116,12 @@ def _sibling_sqlite_dbs(layout: _StoreLayout) -> list[Path]:
 
 
 def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> MigrationPlan:
-    """Dry-run-safe planning: reads only, writes nothing."""
+    """Plan the run: reads only (read-only opens), writes nothing.
+
+    Dry-run planning never touches the source for write: stats go through
+    the read-only URI and the quiesce write-lock probe runs on ``--apply``
+    only (review P3d) — a dry-run on a busy source still produces its plan.
+    """
     source_home = source_home.expanduser().resolve()
     target_home = target_home.expanduser().resolve()
     if not source_home.is_dir():
@@ -1069,8 +1138,8 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
         raise UsageError(f"--to exists: {target_home} — choose a fresh target")
 
     layout = _resolve_layout(source_home)
-    stats = read_store_stats(layout.db_path)
-    if is_already_migrated(layout, stats):
+    stats = read_store_stats(layout.db_path, read_only=True)
+    if is_already_migrated(layout):
         raise AlreadyMigratedError(
             f"source {source_home} already carries the vesma:* namespace "
             f"({stats.total} records, 0 re-slaggable) — nothing to migrate"
@@ -1081,58 +1150,67 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
             "JSON — repair the source before migrating (nothing was touched)"
         )
 
-    fatal, warnings = quiesce_problems(
-        [layout.db_path, *_sibling_sqlite_dbs(layout)], with_wal_sampling=False
-    )
-    if fatal:
-        raise QuiesceViolationError(
-            "source store is not quiescent (остановите vesma service): " + "; ".join(fatal)
+    quiesce_warnings: tuple[str, ...] = ()
+    if apply:
+        fatal, probe_warnings = quiesce_problems(
+            [layout.db_path, *_sibling_sqlite_dbs(layout)], with_wal_sampling=False
         )
+        if fatal:
+            raise QuiesceViolationError(
+                "source store is not quiescent (stop the vesma service first): " + "; ".join(fatal)
+            )
+        quiesce_warnings = tuple(probe_warnings)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     snapshot_dir = target_home.parent / f"{SNAPSHOT_DIR_PREFIX}{timestamp}"
     staging_dir = target_home.parent / f"{target_home.name}.staging-{timestamp}"
 
-    planned: list[PlannedFile] = [
-        PlannedFile(
-            source=layout.db_path,
-            target=target_home / "data" / CANONICAL_DB_NAME,
-            size_bytes=layout.db_path.stat().st_size,
-            via_backup_api=True,
-        )
-    ]
-    for path in _snapshot_data_files(
-        layout.data_dir, layout.db_path.name, flat_layout=layout.data_dir == layout.home
-    ):
-        if path.is_file():
-            planned.append(
-                PlannedFile(
-                    source=path,
-                    target=target_home / "data" / path.name,
-                    size_bytes=path.stat().st_size,
-                    via_backup_api=_is_sqlite(path),
-                )
+    try:
+        planned: list[PlannedFile] = [
+            PlannedFile(
+                source=layout.db_path,
+                target=target_home / "data" / CANONICAL_DB_NAME,
+                size_bytes=layout.db_path.stat().st_size,
+                via_backup_api=True,
             )
-        else:
-            total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+        ]
+        for path in _snapshot_data_files(
+            layout.data_dir, layout.db_path.name, flat_layout=layout.data_dir == layout.home
+        ):
+            if path.is_file():
+                planned.append(
+                    PlannedFile(
+                        source=path,
+                        target=target_home / "data" / path.name,
+                        size_bytes=path.stat().st_size,
+                        via_backup_api=_is_sqlite(path),
+                    )
+                )
+            else:
+                total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+                planned.append(
+                    PlannedFile(
+                        source=path,
+                        target=target_home / "data" / path.name,
+                        size_bytes=total,
+                        via_backup_api=False,
+                    )
+                )
+        if layout.vault_dir.is_dir():
+            vault_size = sum(f.stat().st_size for f in layout.vault_dir.rglob("*") if f.is_file())
             planned.append(
                 PlannedFile(
-                    source=path,
-                    target=target_home / "data" / path.name,
-                    size_bytes=total,
+                    source=layout.vault_dir,
+                    target=target_home / "vault",
+                    size_bytes=vault_size,
                     via_backup_api=False,
                 )
             )
-    if layout.vault_dir.is_dir():
-        vault_size = sum(f.stat().st_size for f in layout.vault_dir.rglob("*") if f.is_file())
-        planned.append(
-            PlannedFile(
-                source=layout.vault_dir,
-                target=target_home / "vault",
-                size_bytes=vault_size,
-                via_backup_api=False,
-            )
-        )
+    except OSError as exc:
+        # A bare OSError here used to surface as a traceback (exit 1); a
+        # vanished/unreadable source file is an operator-facing usage
+        # problem (review P3h).
+        raise UsageError(f"source file unreadable while planning: {exc}") from exc
     return MigrationPlan(
         source_home=source_home,
         target_home=target_home,
@@ -1142,7 +1220,7 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
         vault_present=layout.vault_dir.is_dir(),
         config_present=layout.config_path.is_file(),
         stats=stats,
-        quiesce_warnings=tuple(warnings),
+        quiesce_warnings=quiesce_warnings,
         planned_files=tuple(planned),
         snapshot_dir=snapshot_dir,
         staging_dir=staging_dir,
@@ -1206,6 +1284,16 @@ def _fsync_tree(root: Path) -> None:
         _fsync_dir(dir_path)
 
 
+def _moved_sqlite_dbs(staging_data: Path) -> list[Path]:
+    """Every sqlite main file the run produced, INCLUDING nested trees.
+
+    Review P3g: ``quick_check`` must cover databases inside copied
+    directories (``_copy_tree``), not only the data-dir top level; the
+    ``_is_sqlite`` header check keeps ``-wal``/``-shm`` sidecars out.
+    """
+    return [path for path in sorted(staging_data.rglob("*")) if path.is_file() and _is_sqlite(path)]
+
+
 def run_migration(plan: MigrationPlan) -> MigrationReport:
     """Execute a plan built with ``apply=True`` (the only writable mode)."""
     if plan.mode != "apply":
@@ -1220,11 +1308,12 @@ def run_migration(plan: MigrationPlan) -> MigrationReport:
     warnings.extend(extra_warnings)
     if fatal:
         raise QuiesceViolationError(
-            "source store is not quiescent (остановите vesma service): " + "; ".join(fatal)
+            "source store is not quiescent (stop the vesma service first): " + "; ".join(fatal)
         )
 
     pre_stats = read_store_stats(layout.db_path)
     snapshot = make_snapshot(layout, plan.snapshot_dir)
+    warnings.extend(snapshot.warnings)  # skipped non-regular entries (P3-fifo)
     if snapshot.stats.ids_digest != pre_stats.ids_digest:
         raise SnapshotError("source changed between plan and snapshot — retry")
 
@@ -1232,11 +1321,7 @@ def run_migration(plan: MigrationPlan) -> MigrationReport:
     try:
         applied = _materialize_target(snapshot, plan.staging_dir)
         target_db = plan.staging_dir / "data" / CANONICAL_DB_NAME
-        moved_dbs = [
-            path
-            for path in sorted((plan.staging_dir / "data").iterdir())
-            if path.is_file() and _is_sqlite(path)
-        ]
+        moved_dbs = _moved_sqlite_dbs(plan.staging_dir / "data")
         _, config_plan = migrate_config(layout, plan.target_home, plan.staging_dir)
         verification = verify_target(target_db, snapshot, moved_dbs)
         # Atomic appearance of the fully verified target (same-FS rename).

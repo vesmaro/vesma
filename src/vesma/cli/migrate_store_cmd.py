@@ -52,7 +52,8 @@ _APPLY_OPTION = Annotated[
     typer.Option(
         "--apply",
         help="Write the migration. WITHOUT this flag the command is a "
-        "dry-run: plan + counters, zero writes.",
+        "dry-run: plan + counters via read-only opens; the source's "
+        "records stay unchanged.",
     ),
 ]
 _JSON_OPTION = Annotated[
@@ -224,10 +225,11 @@ def migrate_store(
 ) -> None:
     """Move a 5.x store to the 6.0 layout: vesma.db, vesma:* tags, vesma: config.
 
-    Safety: explicit --from/--to only; dry-run by default (zero writes);
-    SQLite backup-API snapshot gate; quiesce check; the mnemos:no-federate
-    trust marker stays byte-stable; the report prints paths and numbers
-    only. The legacy `vesma migrate` (ai-brain) command is unaffected.
+    Safety: explicit --from/--to only; dry-run by default (read-only opens,
+    the source's records stay unchanged); SQLite backup-API snapshot gate;
+    quiesce gate on --apply; the mnemos:no-federate trust marker stays
+    byte-stable; the report prints paths and numbers only. The legacy
+    `vesma migrate` (ai-brain) command is unaffected.
     """
     try:
         if from_home is None:
