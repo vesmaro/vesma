@@ -599,6 +599,39 @@ def test_config_unmapped_key_refuses_apply(tmp_path: Path) -> None:
     assert not target.exists()
 
 
+def test_config_unknown_key_inside_section_refuses_apply(
+    store_home: Path, tmp_path: Path
+) -> None:
+    """Pin (P1-2/CWE-1188): a typo INSIDE a mapped section must abort.
+
+    model_validate with extra=ignore would silently drop e.g. a typo'd
+    ``vual_path`` and the produced config would fork the store onto the
+    default path. Key NAMES are named; values never print.
+    """
+    import yaml
+
+    (store_home / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "mnemos": {
+                    "db_name": "mnemos.db",
+                    "vual_path": f"{store_home}/vault",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 9
+    assert "vual_path" in _output(result)  # key NAME printed, never values
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+
+
 # ── Verification net (whitebox tamper check) ──────────────────────────────────
 
 

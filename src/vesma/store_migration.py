@@ -655,8 +655,8 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
     The ``mnemos:`` section becomes ``vesma:``; Path-typed values under the
     old home re-root under the new home; ``db_name`` pins ``vesma.db``; the
     result is validated against the Settings section models BEFORE any
-    write. Unmapped key NAMES abort with exit code 9 — values are never
-    printed.
+    write. Unmapped key NAMES — at the top level AND inside every mapped
+    section — abort with exit code 9; values are never printed.
     """
     import yaml
     from pydantic import BaseModel, ValidationError
@@ -758,6 +758,20 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
         model_field = settings_fields.get(section_name)
         annotation = model_field.annotation if model_field else None
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            if isinstance(section_value, dict):
+                # Unknown keys INSIDE a section must abort: model_validate
+                # with extra=ignore would silently DROP a typo'd key (e.g.
+                # vual_path) and the produced config would quietly fork the
+                # store onto a default path. Key NAMES only — never values.
+                unknown_keys = sorted(
+                    str(key) for key in set(section_value) - set(annotation.model_fields)
+                )
+                if unknown_keys:
+                    raise ConfigMigrationError(
+                        f"config section {section_name}: keys unknown to the 6.0 schema "
+                        "cannot be carried over (map them manually): "
+                        f"{', '.join(unknown_keys)}"
+                    )
             try:
                 annotation.model_validate(section_value)
             except ValidationError as exc:
