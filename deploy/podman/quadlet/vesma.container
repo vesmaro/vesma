@@ -1,22 +1,22 @@
-# Podman Quadlet — systemd user unit for the Vesmaro (Mnemos) container.
-# For a real cluster (K8s/K3s) use the Helm chart: deploy/helm/vesmaro/.
+# Podman Quadlet — systemd user unit for the Vesma container.
+# For a real cluster (K8s/K3s) use the Helm chart: deploy/helm/vesma/.
 #
 # Install:
 #   mkdir -p ~/.config/containers/systemd
-#   cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
+#   cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 #   printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' > ~/.vesma.env
-#   systemctl --user daemon-reload && systemctl --user start mnemos
+#   systemctl --user daemon-reload && systemctl --user start vesma
 [Container]
-ContainerName=mnemos
+ContainerName=vesma
 # Published image (org namespace). Local build alternative:
-#   podman build -t localhost/mnemos:latest -f Containerfile .
-#   → then set Image=localhost/mnemos:latest and AutoUpdate=local
+#   podman build -t localhost/vesma:latest -f Containerfile .
+#   → then set Image=localhost/vesma:latest and AutoUpdate=local
 Image=ghcr.io/vesmaro/vesma:5.2.0
 AutoUpdate=registry
 
 PublishPort=8787:8787
-Volume=mnemos-data:/data
-Volume=mnemos-vault:/vault
+Volume=vesma-data:/data
+Volume=vesma-vault:/vault
 
 Environment=VESMA_CONFIG=/app/config.yaml
 # TOTP master key lives outside the unit under the canonical VESMA_API__*
@@ -24,7 +24,6 @@ Environment=VESMA_CONFIG=/app/config.yaml
 EnvironmentFile=%h/.vesma.env
 
 # Unauthenticated /health endpoint; kept CLI-independent on purpose
-# (the CLI binary name changes in the 5.0.0 rebrand).
 HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3)"
 HealthInterval=30s
 

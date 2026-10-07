@@ -1,7 +1,7 @@
 # Vesma memory — always-on gates (G0 + G1–G4)
 
 You have persistent shared memory through the `vesma_*` MCP tools (server
-builds before 6.0 still accept the legacy `mnemos_*` input names). Follow
+builds before 6.0 still accept the legacy `vesma_*` input names). Follow
 these gates in every session, unprompted. Skipping a gate is an operational
 failure, not a style issue. Full canon: the pack's `vesma-memory-ops`
 instruction and the `vesma-*` skills.
@@ -45,7 +45,7 @@ Tags are the searchability backbone of the store. Every write MUST carry:
 - at least one `vesma:<subtype>` — e.g. `vesma:decision`,
   `vesma:learning`, `vesma:bug-pattern`, `vesma:checkpoint` (the
   `vesma:` tag prefix is the canonical storage form since 6.0; the
-  legacy `mnemos:` spelling is accepted on input — except the
+  legacy `vesma:` spelling is accepted on input — except the
   `mnemos:no-federate` exclusion marker, which stays byte-stable
   forever).
 

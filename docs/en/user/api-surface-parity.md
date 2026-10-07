@@ -16,7 +16,7 @@ three-way diff.
 |---|---|
 | CLI (`vesma ...`) | Humans and shell scripts |
 | REST (`/api/v1/...`) | Non-Python integrations |
-| MCP (`mnemos_*` tools — canonical; brand-primary `vesma_*` under `VESMA_MCP_BRAND`) | Agents |
+| MCP (`vesma_*` tools — the only registered spelling in 6.0) | Agents |
 
 A capability may legitimately live on one surface only. A twin is added
 when its named user exists — and then only under the versioning canon
@@ -25,9 +25,9 @@ below (new REST twins go to `/api/v1`).
 ## Matrix (verified against main `408836f`)
 
 Re-enumerated from code, not from older tables: 10 top-level CLI commands
-plus 21 CLI groups (`src/vesmaro/cli/`), 66 REST routes
-(`src/vesmaro/api/` — main, auth, federation, A2A sessions), 40 MCP tools
-(`src/vesmaro/mcp_server.py`). `✓` = present, `—` = absent,
+plus 21 CLI groups (`src/vesma/cli/`), 66 REST routes
+(`src/vesma/api/` — main, auth, federation, A2A sessions), 40 MCP tools
+(`src/vesma/mcp_server.py`). `✓` = present, `—` = absent,
 `— *(wontfix)*` = a ratified non-goal (see dispositions below).
 
 | Operation | CLI | REST | MCP |

@@ -5,9 +5,9 @@
 #   printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
 #     | podman secret create vesma-totp -
 #   podman volume create vesma-data && podman volume create vesma-vault
-#   podman kube play deploy/podman/kube/mnemos-pod.yaml
+#   podman kube play deploy/podman/kube/vesma-pod.yaml
 # Stop:
-#   podman kube down deploy/podman/kube/mnemos-pod.yaml
+#   podman kube down deploy/podman/kube/vesma-pod.yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -18,7 +18,7 @@ spec:
   containers:
     - name: api
       # Published image (org namespace). Local build alternative:
-      #   podman build -t localhost/mnemos:latest -f Containerfile .
+      #   podman build -t localhost/vesma:latest -f Containerfile .
       image: ghcr.io/vesmaro/vesma:5.2.0
       ports:
         - containerPort: 8787

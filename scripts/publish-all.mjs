@@ -21,7 +21,7 @@
 // FIRST PUBLISH of each name must be done manually (npm requires a package to
 // exist before you can configure a Trusted Publisher for it). After the first
 // manual publish of each name, configure an npm Trusted Publisher pointing at
-// repo `vesmaro/vesmaro` + workflow `publish-npm.yml` + environment `npm`,
+// repo `vesmaro/vesma` + workflow `publish-npm.yml` + environment `npm`,
 // then this script (via the workflow) publishes all three over OIDC with no
 // long-lived token.
 import fs from "node:fs";

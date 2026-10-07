@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 <!-- Adapted from ~/.config/Code/User/prompts/ai-brain-memory.prompt.md (legacy ai-brain prompt). -->
 <!-- This prompt mode is adapted for Hermes Agent. The tools are provided by the Vesma MemoryProvider plugin. -->
 ---

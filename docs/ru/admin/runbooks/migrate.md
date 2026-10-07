@@ -46,7 +46,7 @@ vesma migrate from-ai-brain
 ## Обработка контракта тегов
 
 Унаследованные записи ai-brain без тегов `project:` / `agent:` /
-`mnemos:<subtype>` получают:
+`vesma:<subtype>` получают:
 - `project:legacy`
 - `agent:unknown`
 - `vesma:legacy`
@@ -57,12 +57,12 @@ vesma migrate from-ai-brain
 vesma search legacy --tags project:legacy --limit 50
 ```
 
-## Миграция тегов `gcw:` → `mnemos:`
+## Миграция тегов `gcw:` → `vesma:`
 
 Если в хранилище есть записи с устаревшим префиксом тегов `gcw:<subtype>`
 (от семейства агентов GCW до версии 2.7.8), переименуйте их массово в
-канонический префикс `mnemos:<subtype>` безопасной командой `tags rename`
-(контракт тегов: `project:` / `agent:` / `mnemos:<subtype>`):
+канонический префикс `vesma:<subtype>` безопасной командой `tags rename`
+(контракт тегов: `project:` / `agent:` / `vesma:<subtype>`):
 
 ```bash
 # Сначала dry-run — предпросмотр, ничего не записывается (по умолчанию)
@@ -74,7 +74,7 @@ vesma tags rename --from gcw: --to vesma: --no-dry-run
 
 Замечания:
 - `validate_tag_contract()` уже автоматически мигрирует валидные
-  `gcw:<subtype>` → `mnemos:<subtype>` при чтении, поэтому теги `gcw:`
+  `gcw:<subtype>` → `vesma:<subtype>` при чтении, поэтому теги `gcw:`
   принимаются как alias. Массовое переименование — разовая операция для
   канонизации хранящихся тегов.
 - Неверные подтипы `gcw:` (не из whitelist) по умолчанию пропускаются и
@@ -88,10 +88,9 @@ vesma tags rename --from gcw: --to vesma: --no-dry-run
 
 - [ ] `vesma stats` показывает ожидаемое количество записей
 - [ ] `vesma search "hello"` возвращает результаты
-- [ ] Файлы vault видны в `~/.mnemos/vault/`
-- [ ] MCP-команда recall работает: канонический инструмент
-      `mnemos_recall_context` (при настроенном брендинге — под брендовым
-      именем `vesma_recall_context`, переменная `VESMA_MCP_BRAND`)
+- [ ] Файлы vault видны в `~/.vesma/vault/`
+- [ ] MCP-команда recall работает: `vesma_recall_context`
+      (единственное зарегистрированное написание в 6.0)
 
 ## Апгрейд при смене весов эмбеддера
 
@@ -125,13 +124,13 @@ embedding-пространства — семантическое ранжиро
 
 ```bash
 # Восстановление из резервной копии Vesma
-ls ~/.mnemos/data/*.backup-*
-cp ~/.mnemos/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.mnemos/data/mnemos.db
+ls ~/.vesma/data/*.backup-*
+cp ~/.vesma/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.vesma/data/mnemos.db
 
 # Или восстановление из экспорта — идемпотентный merge из JSON
 vesma import vesma-export.json --mode merge
 ```
 
 Крайний случай — снести стор и начать миграцию заново
-(`rm -rf ~/.mnemos/data ~/.mnemos/vault`): деструктивная операция, делайте
+(`rm -rf ~/.vesma/data ~/.vesma/vault`): деструктивная операция, делайте
 только с бэкапом из [backup-restore.md](backup-restore.md).

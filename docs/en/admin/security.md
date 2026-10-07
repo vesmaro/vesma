@@ -415,7 +415,7 @@ layer does not expose a secret.
 
 ```mermaid
 flowchart TB
-    L1[1. Write-path scanner\nruns on every mnemos_add] -->|tag mnemos:no-federate| DB[(vesma store)]
+    L1[1. Write-path scanner\nruns on every vesma_add] -->|tag mnemos:no-federate| DB[(vesma store)]
     DB -->|configurable interval| L2[2. Background scanner job\nre-scans corpus for false negatives\nfuture: #89]
     L2 -->|found sensitive| DB
     DB -->|on sync export / pull| L3[3. Moderation pipeline\nfinal defense on output\nshipped: #85 parts 1+2a+2b]
@@ -424,7 +424,7 @@ flowchart TB
 
 | Layer | Where | When | What it does | Status |
 |-------|-------|------|-------------|--------|
-| **1. Write-path scanner** | `mnemos_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | On every write | Runs `detect_secrets(content)`. If a secret is detected and the record does not already carry `mnemos:no-federate`, the tag is auto-added. Logs pattern names + counts only — never raw matched values. | ✅ Shipped (#86) |
+| **1. Write-path scanner** | `vesma_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | On every write | Runs `detect_secrets(content)`. If a secret is detected and the record does not already carry `mnemos:no-federate`, the tag is auto-added. Logs pattern names + counts only — never raw matched values. | ✅ Shipped (#86) |
 | **2. Background scanner** | MCP server, background job | Configurable interval (`scanner.interval_hours`, default 6h) | Re-scans the whole corpus for false negatives missed at write time. Re-uses `detect_secrets` unchanged (DRY — one source of truth for patterns). Manual trigger: `vesma scanner run`. | ✅ Shipped (#89) |
 | **3. Moderation pipeline** | Sync export (Phase 0) / Pull (Phase 2) | On every sync export / pull | Final defense — runs `moderate()` on output via `build_compact_payload()`. Even if the `no-federate` tag is missing, the pipeline sanitizes the content (redact) or refuses the record. | ✅ Shipped (#85 parts 1, 2a, 2b) |
 

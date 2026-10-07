@@ -25,7 +25,7 @@ per-peer ACL, enum триггер-кодов и журнал доступа фе
 
 Phase 1 расширяет `FederationConfig` (`src/vesma/config.py`) картой
 `peers: dict[str, PeerConfig]`. Ключ каждого peer'а — его A2A id
-(например, `mnemos-A`), а значение описывает, что этому peer'у разрешено
+(например, `vesma-A`), а значение описывает, что этому peer'у разрешено
 вытягивать. Глобальный whitelist `federation.shared_projects` остаётся
 фильтром верхнего уровня; per-peer `allowed_projects` — фильтр-подмножество
 поверх него.
@@ -63,7 +63,7 @@ federation:
     - vesma
     - project-umbra
   peers:
-    mnemos-A:
+    vesma-A:
       bearer_token_env: VESMA_FED_PEER_A_TOKEN
       allowed_projects:
         - vesma
@@ -92,15 +92,15 @@ federation:
 | `EXHAUSTIVE` | B дал полный sanitized-ответ | Использовать; не повторять запрос по той же теме. |
 | `ALREADY_EXHAUSTED` | B уже отвечал `EXHAUSTIVE` по этой теме (проверяется по журналу доступа) | Переиспользовать прежний ответ; не перезапрашивать. |
 | `PARTIAL` | Ответ частичный (записи отсутствуют или moderation отредактировал часть) | Уточнить запрос (другая тема/ракурс); не повторять дословно. |
-| `REFUSED` | B отказал — контент нельзя расшарить даже после редекции | Не повторять; уйти в локальный `mnemos_search` (КП-2). |
-| `OFFLINE_LITE` | B в сети в урезанном режиме (например, moderation частично офлайн) | Использовать частичный результат; дополнить локальным `mnemos_search`. |
+| `REFUSED` | B отказал — контент нельзя расшарить даже после редекции | Не повторять; уйти в локальный `vesma_search` (КП-2). |
+| `OFFLINE_LITE` | B в сети в урезанном режиме (например, moderation частично офлайн) | Использовать частичный результат; дополнить локальным `vesma_search`. |
 
 Два хелпера:
 
 - `is_terminal(code)` — возвращает `True` для `EXHAUSTIVE`,
   `ALREADY_EXHAUSTED`, `REFUSED` (A не должен перезапрашивать ту же тему).
 - `should_fallback_to_local(code)` — возвращает `True` для `REFUSED`,
-  `OFFLINE_LITE` (A уходит в локальный `mnemos_search`).
+  `OFFLINE_LITE` (A уходит в локальный `vesma_search`).
 
 Phase 1 определяет enum и оба хелпера. Phase 2 подключает коды к серверу
 (возврат в payload) и клиенту (диспетчеризация при получении).
@@ -155,14 +155,14 @@ moderation mapping-таблица, это поверхность утечки �
 
 Сервер федерации (сторона B) и клиент (сторона A) живут в кодовой базе:
 
-1. **Сервер** — `handle_pull` в `src/vesmaro/federation_server.py` читает
+1. **Сервер** — `handle_pull` в `src/vesma/federation_server.py` читает
    `federation.peers`, валидирует per-peer bearer-токен из именованной
    переменной окружения, опционально пиннит mTLS-сертификат клиента,
    применяет per-peer ACL поверх `shared_projects`, прогоняет moderation
    pipeline, проверяет журнал доступа на `ALREADY_EXHAUSTED` и возвращает
    sanitized-ответ с `TriggerCode`. HTTP-маршрут:
-   `POST /api/v1/federation/pull` (адаптер `src/vesmaro/api/federation.py`).
-2. **Клиент** — `src/vesmaro/federation_client.py` отправляет pull-запрос,
+   `POST /api/v1/federation/pull` (адаптер `src/vesma/api/federation.py`).
+2. **Клиент** — `src/vesma/federation_client.py` отправляет pull-запрос,
    получает `TriggerCode` и диспетчеризует — `is_terminal` /
    `should_fallback_to_local` решают, использовать ответ, уточнить его
    или уйти в локальный поиск. Сквозная проверка —

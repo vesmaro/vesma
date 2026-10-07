@@ -77,7 +77,7 @@ beyond the current session.
 5. **Confirm with a one-line notice**:
 
    ```text
-   mnemos: wrote <mnemos:subtype> / <title>
+   vesma: wrote <vesma:subtype> / <title>
    ```
 
 ## DISCIPLINE

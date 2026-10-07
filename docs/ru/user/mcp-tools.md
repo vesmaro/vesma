@@ -24,7 +24,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 Сервер не занимает никакой порт. Остановить через `Ctrl+C` или отправкой EOF на stdin.
 
-> **Префикс инструментов и брендинг.** Канонические имена инструментов внутри кода — `mnemos_*`; при заданном `VESMA_MCP_BRAND=vesma` манифест рекламирует их под бренд-префиксом `vesma_*` — и по факту клиент видит один набор (owner ruling 2026-10-01: двойной список `mnemos_*`/`vesma_*` путает клиентов). Записи `mnemos_*` в каталоге ниже — легаси-написания, принимаемые на call-пути до 6.0, вызовы нормализуются к каноническому имени перед диспетчеризацией; устаревшая переменная `VESMARO_MCP_BRAND` тоже принимается до 6.0.
+> **Имена инструментов (чистый лист 6.0).** Сервер регистрирует и принимает ТОЛЬКО канонические имена `vesma_*` — легаси-написания `mnemos_*`/`vesmaro_*` и переключатель бренда манифеста `VESMA_MCP_BRAND`/`VESMARO_MCP_BRAND` удалены вместе с линейкой 5.x. Клиентам, allow-листившим старые написания, нужно перейти на `vesma_*`; явный старый бренд даёт громкую ошибку именования со ссылкой на этот гайд.
 
 ---
 
@@ -85,7 +85,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Текст для запоминания. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>` (старое написание `mnemos:<subtype>` принимается как входной алиас). |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>` (старое написание `vesma:<subtype>` принимается как входной алиас). |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | нет | авто | Одно из `log`, `terminal`, `code`, `docs`, `web`, `default`. Управляет контекстным фильтром M10. |
 | `verbosity` | string | нет | из конфига | Одно из `default`, `terse`, `minimal`. Вставляет подсказку по стилю вывода во framing результата. См. [Сокращение токенов вывода (P1-7)](#сокращение-токенов-вывода-p1-7). |
@@ -1153,16 +1153,16 @@ BFS по `project_edges` от одного символа. Разрешение 
   "candidates": true,
   "candidate_list": [
     {
-      "qname": "vesmaro.models.Project.update_fields",
+      "qname": "vesma.models.Project.update_fields",
       "kind": "Method",
-      "path": "src/vesmaro/models.py",
+      "path": "src/vesma/models.py",
       "start_line": 210,
       "end_line": 240
     },
     {
-      "qname": "vesmaro.store.Row.update_fields",
+      "qname": "vesma.store.Row.update_fields",
       "kind": "Method",
-      "path": "src/vesmaro/store.py",
+      "path": "src/vesma/store.py",
       "start_line": 88,
       "end_line": 96
     }
@@ -1372,7 +1372,7 @@ BFS по `project_edges` от одного символа. Разрешение 
 `root_missing: true` (#450) помечает **призрака**: зарегистрированный корень
 исчез с диска (перенесён/переименован), индексация застряла — чинится
 командой `vesma graph repoint <project> <new-root>`, либо призрак удаляется
-целиком через `mnemos_delete_graph_project` за evidence-гейтом
+целиком через `vesma_delete_graph_project` за evidence-гейтом
 (`confirm=true` + `confirm_name`).
 
 ### Связанные ресурсы
@@ -1402,7 +1402,7 @@ BFS по `project_edges` от одного символа. Разрешение 
 { "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
 
-`ghost: true` + `deregistered: true` означают удаление призрака за evidence-гейтом — строка регистрации снята; `mnemos_register_project` вернёт её при необходимости. CLI-двойник: `vesma graph delete <project>` (для призраков: `--force --confirm-name <project>`).
+`ghost: true` + `deregistered: true` означают удаление призрака за evidence-гейтом — строка регистрации снята; `vesma_register_project` вернёт её при необходимости. CLI-двойник: `vesma graph delete <project>` (для призраков: `--force --confirm-name <project>`).
 
 ### Связанные ресурсы
 
@@ -1536,8 +1536,8 @@ CLI-двойник: `vesma graph register <project> <root>`.
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.vesma/data",
-  "vault_path": "/home/you/.vesma/vault",
+  "data_dir": "/home/you/.mnemos/data",
+  "vault_path": "/home/you/.mnemos/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -1986,7 +1986,7 @@ output_style:
 Каждый внедряемый блок несёт строку провенанса, точный формат:
 
 ```text
-[mnemos:<memory-id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso8601>]
+[vesma:<memory-id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso8601>]
 ```
 
 Сегмент `pipeline=` опускается, если `pipeline_state` строки NULL (легаси-строки).
@@ -2016,7 +2016,7 @@ output_style:
   "file": null,
   "mode": "sync",
   "content_type": null,
-  "text": "[mnemos:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]\nDeployment guide…",
+  "text": "[vesma:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]\nDeployment guide…",
   "blocks": [
     {
       "memory_id": "3f2a…",
@@ -2025,7 +2025,7 @@ output_style:
       "score": 0.0114,
       "search_type": "hybrid",
       "content_type": "prose",
-      "provenance": "[mnemos:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]",
+      "provenance": "[vesma:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]",
       "content": "Deployment guide…",
       "tokens": 96,
       "redactions": 1,
@@ -2113,9 +2113,9 @@ output_style:
 
 ### Замечания
 
-- **Валидация на границе** — пустые `content`/`project`/`agent`, пустые опциональные строки, нарушение контракта тегов (strict-режим), нарушение размерных лимитов (`content` > `mnemos.context_rewrite_max_content_chars`, по умолчанию 1 МиБ; `diff` > `mnemos.context_rewrite_max_diff_chars`, по умолчанию 256 КиБ) или цель `supersedes`, **не найденная в проекте вызывающего**, возвращают `{"error": …}` (REST-близнец отвечает 422). Сообщение о supersedes сознательно не различает «нет такой записи» и «запись другого проекта» — глобального оракула существования нет.
-- **Rate limit на поверхность записи** — `mnemos.context_rewrite_rate_limit_per_minute` (по умолчанию 30, 0 отключает) считает СОХРАНЁННЫЕ события на `(project, session)` в скользящую минуту; при превышении возвращается `{"error": …, "rate_limited": true}` (REST 429). Дедуплицированные повторные доставки не пишут и не расходуют квоту — штормы ретраев безвредны.
-- **Сохраняемые теги** — `project:<slug>`, `agent:<slug>`, `vesma:session` (ближайший существующий подтип для живого сессионного материала; отдельный подтип `mnemos:context-rewrite` — изменение словаря контракта тегов, отложено на комитет), плюс `mnemos:no-federate` при любой находке секрета.
+- **Валидация на границе** — пустые `content`/`project`/`agent`, пустые опциональные строки, нарушение контракта тегов (strict-режим), нарушение размерных лимитов (`content` > `vesma.context_rewrite_max_content_chars`, по умолчанию 1 МиБ; `diff` > `vesma.context_rewrite_max_diff_chars`, по умолчанию 256 КиБ) или цель `supersedes`, **не найденная в проекте вызывающего**, возвращают `{"error": …}` (REST-близнец отвечает 422). Сообщение о supersedes сознательно не различает «нет такой записи» и «запись другого проекта» — глобального оракула существования нет.
+- **Rate limit на поверхность записи** — `vesma.context_rewrite_rate_limit_per_minute` (по умолчанию 30, 0 отключает) считает СОХРАНЁННЫЕ события на `(project, session)` в скользящую минуту; при превышении возвращается `{"error": …, "rate_limited": true}` (REST 429). Дедуплицированные повторные доставки не пишут и не расходуют квоту — штормы ретраев безвредны.
+- **Сохраняемые теги** — `project:<slug>`, `agent:<slug>`, `vesma:session` (ближайший существующий подтип для живого сессионного материала; отдельный подтип `vesma:context-rewrite` — изменение словаря контракта тегов, отложено на комитет), плюс `mnemos:no-federate` при любой находке секрета.
 - **Метаданные провенанса** — `metadata["source"] = "context-rewrite"`, `rewrite_session`, `rewrite_event_key` и (при наличии) `rewrite_diff` + `rewrite_diff_scan_verdict`.
 - **Модель доверия single-tenant** — харнесс является доверенным ПО; провайдер гарантирует хранение, сканирование, гейтирование и провенанс, но не политику замены (pinned-зоны, бюджеты и эмиссия событий замены остаются на стороне харнесса).
 
@@ -2298,7 +2298,7 @@ output_style:
   "params": {
     "name": "vesma_export",
     "arguments": {
-      "output_path": "/tmp/mnemos-backup.json",
+      "output_path": "/tmp/vesma-backup.json",
       "format": "json",
       "project": "vesma",
       "compress": "gzip"
@@ -2313,7 +2313,7 @@ output_style:
 {
   "name": "vesma_export",
   "arguments": {
-    "output_path": "/tmp/mnemos-snapshot.tar.gz",
+    "output_path": "/tmp/vesma-snapshot.tar.gz",
     "format": "sqlite",
     "encrypt": true
   }
@@ -2373,7 +2373,7 @@ output_style:
   "params": {
     "name": "vesma_import",
     "arguments": {
-      "source_path": "/tmp/mnemos-backup.json",
+      "source_path": "/tmp/vesma-backup.json",
       "mode": "merge",
       "overwrite": false
     }
@@ -2387,7 +2387,7 @@ Restore (деструктивный) с подтверждением:
 {
   "name": "vesma_import",
   "arguments": {
-    "source_path": "/tmp/mnemos-snapshot.tar.gz",
+    "source_path": "/tmp/vesma-snapshot.tar.gz",
     "mode": "restore",
     "confirm": true
   }

@@ -5,9 +5,9 @@
 
 The Context Filter is a five-stage pipeline that strips noise from raw
 content **before** it reaches a model. It runs automatically on every
-memory write (`vesma add`, `vesma ingest url|file`, the `mnemos_add`
+memory write (`vesma add`, `vesma ingest url|file`, the `vesma_add`
 MCP tool — when `auto_filter: true`) and can be re-run explicitly on
-existing memories via the `mnemos_filter` MCP tool or the `vesma filter`
+existing memories via the `vesma_filter` MCP tool or the `vesma filter`
 CLI command.
 
 ---
@@ -62,7 +62,7 @@ override it explicitly via `--profile` (CLI) or the `profile` argument
 ## Auto-filter on ingest
 
 When `auto_filter: true` (the default for new installs), every memory
-write (`vesma add`, `vesma ingest url|file`, MCP `mnemos_add`) runs the
+write (`vesma add`, `vesma ingest url|file`, MCP `vesma_add`) runs the
 filter pipeline before storing the memory.
 
 ```yaml
@@ -79,7 +79,7 @@ What happens on ingest:
 4. If the filter fails, the memory is **still saved** with `raw_content`
    only — filter failures are non-fatal.
 
-`mnemos_search` and `mnemos_recall_context` return `clean_content` when
+`vesma_search` and `vesma_recall_context` return `clean_content` when
 available, falling back to `raw_content` (or `content`) if the memory was
 stored before filtering was enabled.
 
@@ -120,9 +120,9 @@ enabling `auto_filter` on a vault that already has unfiltered entries, or
 after a pipeline upgrade. Reports `filtered`, `total`, `failed`, and
 `skipped` counts. Individual failures are non-fatal.
 
-### MCP tool — `mnemos_filter`
+### MCP tool — `vesma_filter`
 
-Agents can call `mnemos_filter` explicitly to re-filter a memory, for
+Agents can call `vesma_filter` explicitly to re-filter a memory, for
 example when the auto-detected profile was wrong or when a new profile
 should be applied.
 
@@ -249,7 +249,7 @@ Exact duplicates removed; the near-duplicate detector normalises lines
 
 ```yaml
 vesma:
-  auto_filter: true   # run filter on every mnemos_add (default: true)
+  auto_filter: true   # run filter on every vesma_add (default: true)
 ```
 
 To disable auto-filter (store raw content only, filter manually later):
@@ -261,12 +261,12 @@ vesma:
 
 Profile selection is automatic — there is no global "default profile"
 config. Override per-call with `--profile` (CLI) or the `profile`
-argument (MCP `mnemos_filter`).
+argument (MCP `vesma_filter`).
 
 ---
 
 ## See also
 
 - [Integration Guide](integration-guide.md) — behavioural instructions that tell agents *when* to filter.
-- [MCP Tools Reference](mcp-tools.md) — the full tool catalogue (tool names carry the legacy `mnemos_` prefix).
+- [MCP Tools Reference](mcp-tools.md) — the full tool catalogue (tool names carry the legacy `vesma_` prefix).
 - [CLI Reference](cli-reference.md) — every `vesma` subcommand.

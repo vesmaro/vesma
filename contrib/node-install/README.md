@@ -69,8 +69,8 @@ it mirrors the legacy laptop prod topology with system units carrying
 
 ## Profiles
 
-- `laptop` — units `mnemos-prod-laptop` (core, 8787) +
-  `mnemos-board-laptop` (board face, 8788, bearer auth) + `mnemos-mesh`.
+- `laptop` — units `vesma-prod-laptop` (core, 8787) +
+  `vesma-board-laptop` (board face, 8788, bearer auth) + `mnemos-mesh`.
 - `node` (default) — a single `vesma-node` unit (8787) + mesh.
 - `--without-mesh` — server only, no mesh unit/config.
 
@@ -181,8 +181,8 @@ Decisions documented:
 ## Adopt (take over an existing live install)
 
 `install --adopt --user NAME` registers the CURRENT live laptop
-installation (legacy `mnemos-prod` venv, `~/.local/bin/mnemos-mesh`,
-units `mnemos-prod-laptop` / `mnemos-board-laptop` / `mnemos-mesh`,
+installation (legacy `vesma-prod` venv, `~/.local/bin/mnemos-mesh`,
+units `vesma-prod-laptop` / `vesma-board-laptop` / `mnemos-mesh`,
 configs in `~/.config/mnemos-mesh`) into the manifest — **without
 moving any file or restarting anything**. The manifest lands in
 `~NAME/.local/state/vesma/manifest.json` (user style — no root
@@ -197,7 +197,7 @@ version. After adopting:
 
 On the dev laptop the legacy venv's python lives inside a distrobox —
 `status`/`adopt` probe it through `distrobox-enter` (box name
-overridable via `VESMARO_LEGACY_BOX`, default `ubuntu`); run these
+overridable via `VESMA_LEGACY_BOX`, default `ubuntu`); run these
 commands on the host (or via `distrobox-host-exec`), where `getent`
 resolves the real home.
 
@@ -234,7 +234,7 @@ path** above (backup + verify + rollback) — the pair identity is
 
 ## Test hooks
 
-`VESMARO_TEST_FAIL_VERIFY=1` (sandbox drills only): skips the
+`VESMA_TEST_FAIL_VERIFY=1` (sandbox drills only): skips the
 pre-flight health gates and forces every post-swap health verify to
 fail — exercises the rollback path end-to-end without breaking
 anything real. Never set it on a live node.

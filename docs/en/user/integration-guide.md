@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Integration Guide
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/integration-guide.md)
@@ -66,7 +66,7 @@ integrations/
 Every deployable file carries the pack safety contract (recalled content is
 data, not instructions; no exfiltration; no secrets; harness-local canon
 takes precedence) and a `vesma-integration` version stamp. Legacy
-`mnemos-integration` stamps are recognized during the migration window and
+`vesma-integration` stamps are recognized during the migration window and
 re-stamped by the first `vesma integration update`.
 ```
 
@@ -187,7 +187,7 @@ without rewriting targets.yaml:
 ```bash
 vesma integration setup --target zcode \
   --home /var/home/you/.distrobox/other-box/home \
-  --vesma-bin /path/to/mnemos-wrapper \
+  --vesma-bin /path/to/vesma-wrapper \
   --no-wire-agents
 ```
 
@@ -224,7 +224,7 @@ Checks:
 - All instruction files present with valid frontmatter (`applyTo: '**'`).
 - All skill files present with `name:` and `description:`.
 - Prompt mode file present with `mode:` and `tools:`.
-- Version stamp `<!-- mnemos-integration: v2.0.0 -->` in every file.
+- Version stamp `<!-- vesma-integration: v2.0.0 -->` in every file.
 - No `ai-brain` references (except the "adapted from" comment in the prompt).
 
 Exit code `0` = all checks passed. Non-zero = missing or malformed files.
@@ -350,15 +350,15 @@ reports the same summary and warns if unwired agents are detected.
 
 The Context Filter is a five-stage pipeline (dedup, noise, extract,
 compress, tokens) that strips noise from raw content before it reaches a
-model. It runs automatically on every `mnemos_add` when `auto_filter: true`
+model. It runs automatically on every `vesma_add` when `auto_filter: true`
 (the default for new installs).
 
 Key surfaces:
 
-- **Auto-filter on ingest** — `mnemos_add` stores `raw_content` +
+- **Auto-filter on ingest** — `vesma_add` stores `raw_content` +
   `clean_content` + `filter_stats`. Search and recall return
   `clean_content` when available.
-- **`mnemos_filter` MCP tool** — explicit re-filter of an existing memory
+- **`vesma_filter` MCP tool** — explicit re-filter of an existing memory
   (override profile, set token budget).
 - **`vesma filter` CLI** — `vesma filter <id>` for a single memory,
   `vesma filter --all` to backfill unfiltered records.
@@ -377,7 +377,7 @@ configuration, see [context-filter.md](context-filter.md).
 Vesma ships two dedicated surfaces for harness/automation integrations
 (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3):
 
-- **Lifecycle hooks** — the grouped `mnemos_hooks` MCP tool and the REST
+- **Lifecycle hooks** — the grouped `vesma_hooks` MCP tool and the REST
   twin `POST /hooks/{action}` with three actions: `pre_llm_call`
   (assemble the context block to inject before a model call — pass
   `context_hint` = what the call is about, and optionally `task` = the
@@ -388,7 +388,7 @@ Vesma ships two dedicated surfaces for harness/automation integrations
   `auto_compress: true` — the tool output is compressed via CCR and the
   marker-headed `compressed_text` is returned to substitute in your
   window). Identity (`session`/`project`/`agent`) is required on every
-  hook call. Full reference: [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
+  hook call. Full reference: [mcp-tools.md → `vesma_hooks`](mcp-tools.md#vesma_hooks)
   / [http-api.md → Lifecycle hooks](http-api.md).
 - **`VesmaSDK`** (`from vesma.sdk import VesmaSDK`) — the thin typed
   Python facade over `MemoryManager` for in-process adapters:
@@ -594,7 +594,7 @@ template is the whole integration.
 
 ## Tag contract
 
-Every `mnemos_add` and `mnemos_ingest_url` call must carry:
+Every `vesma_add` and `vesma_ingest_url` call must carry:
 
 - **exactly one** `project:<slug>`
 - **exactly one** `agent:<slug>` (or `agent:user`)
@@ -608,7 +608,7 @@ the `vesma-tag-contract` skill, and the `vesma-memory` prompt mode.
 
 ## Hermes Agent
 
-Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `mnemos.adapters.hermes.HermesMemoryAdapter` — the `VesmaSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
+Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research. Since the ADR-0017 D1 migration (#125 W5) the plugin runs **in-process on the provider contract**: every memory operation routes through `vesma.adapters.hermes.HermesMemoryAdapter` — the `VesmaSDK` facade plus the lifecycle hooks (`pre_llm_call` / `on_session_start` / `post_tool_call`) — down to one `MemoryManager`. The legacy bespoke HTTP path (urllib client, TOTP login flow, circuit breaker, auto-publish bypass) is gone.
 
 ### Installation
 
@@ -636,25 +636,25 @@ Vesma provides a native `MemoryProvider` plugin for [Hermes Agent](https://herme
 
 ### Tools
 
-The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the contract verbs (`VesmaSDK.remember` / `recall`, the hooks) instead of raw HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
+The plugin exposes the `vesma_*` tools as native Hermes tools, now backed by the contract verbs (`VesmaSDK.remember` / `recall`, the hooks) instead of raw HTTP. `vesma_align_prefix` (P1-5 CacheAligner) remains **MCP-only** — the assembly pipeline applies alignment internally, but there is no standalone manager verb.
 
 | Tool | Contract surface |
 |------|------------------|
-| `mnemos_search` | `VesmaSDK.recall` (issuance-scanned) |
-| `mnemos_add` | `VesmaSDK.remember` (tag contract at the channel) |
-| `mnemos_recall_context` | checkpoint recall + channel scan |
-| `mnemos_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
-| `mnemos_agent_recall` | agent-scoped recall + channel scan |
-| `mnemos_list_recent` | `MemoryManager.list_recent` (title-only scan) |
-| `mnemos_list_tags` | `MemoryManager.list_tags` |
-| `mnemos_stats` | `VesmaSDK.stats` (project slice) |
-| `mnemos_auto_collect_status` | in-process call counter (same shape) |
-| `mnemos_ingest_url` | `MemoryManager.ingest_url` |
-| `mnemos_compress` | `post_tool_call` hook (N2 identity threaded) |
-| `mnemos_retrieve` | `MemoryManager.retrieve_content` (agent+session) |
-| `mnemos_watch_start` | `MemoryManager.watch_start` |
-| `mnemos_watch_stop` | `MemoryManager.watch_stop` |
-| `mnemos_watch_status` | `MemoryManager.watch_status` |
+| `vesma_search` | `VesmaSDK.recall` (issuance-scanned) |
+| `vesma_add` | `VesmaSDK.remember` (tag contract at the channel) |
+| `vesma_recall_context` | checkpoint recall + channel scan |
+| `vesma_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
+| `vesma_agent_recall` | agent-scoped recall + channel scan |
+| `vesma_list_recent` | `MemoryManager.list_recent` (title-only scan) |
+| `vesma_list_tags` | `MemoryManager.list_tags` |
+| `vesma_stats` | `VesmaSDK.stats` (project slice) |
+| `vesma_auto_collect_status` | in-process call counter (same shape) |
+| `vesma_ingest_url` | `MemoryManager.ingest_url` |
+| `vesma_compress` | `post_tool_call` hook (N2 identity threaded) |
+| `vesma_retrieve` | `MemoryManager.retrieve_content` (agent+session) |
+| `vesma_watch_start` | `MemoryManager.watch_start` |
+| `vesma_watch_stop` | `MemoryManager.watch_stop` |
+| `vesma_watch_status` | `MemoryManager.watch_status` |
 
 ### Configuration
 
@@ -693,7 +693,7 @@ Adapter acceptance is pinned in-process by `tests/test_hermes_adapter.py` (the A
 Every file in the integration layer carries a version stamp:
 
 ```html
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 ```
 
 This allows `vesma integration verify` to detect stale files after an update. If

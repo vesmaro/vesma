@@ -205,8 +205,8 @@ version_core() {  # $1 = vesma bin -> "4.3.0" or ""
   if [[ -n "$dbx" ]]; then
     # legacy laptop: the prod venv's python lives inside a distrobox (the
     # host has no python3.12) — probe through the box; box name overridable
-    # via VESMARO_LEGACY_BOX (default: ubuntu)
-    v="$("$dbx" -n "${VESMARO_LEGACY_BOX:-ubuntu}" -- "$1" --version 2>/dev/null | awk '{print $NF}' || true)"
+    # via VESMA_LEGACY_BOX (default: ubuntu)
+    v="$("$dbx" -n "${VESMA_LEGACY_BOX:-ubuntu}" -- "$1" --version 2>/dev/null | awk '{print $NF}' || true)"
   fi
   echo "${v:-}"
 }
@@ -236,7 +236,7 @@ pick_python() {
 }
 
 # ── repo resolution ──────────────────────────────────────────────────
-default_vesmaro_repo() {
+default_vesma_repo() {
   if [[ -n "$VESMA_REPO_FLAG" ]]; then echo "$VESMA_REPO_FLAG"; return; fi
   if [[ -n "${VESMA_REPO:-}" ]]; then echo "$VESMA_REPO"; return; fi
   local p="$HOME/LABs/Projects/Project-Vesma/vesma"
@@ -354,7 +354,7 @@ compute_paths() {
     MESHBIN="$home/.local/bin/mnemos-mesh"
     CONFDIR="$home/.config/vesma"
     DATADIR="$home/.local/share/vesma/data"
-    RUNDIR="$home/.run/vesmaro"
+    RUNDIR="$home/.run/vesma"
     STATEDIR="$home/.local/state/vesma"
     BUNDLE_DIR="$home/.local/share/vesma/node-install"
   else
@@ -383,7 +383,7 @@ build_venv() {  # build_venv <repo> <ref> -> echoes cache path
   sha="$(git -C "$repo" rev-parse --short=12 "${ref}^{commit}")"
   pyver="$("$PYBIN" -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
   cache="$WORKDIR/cache/venv-${sha}-py${pyver}"
-  if [[ -x "$cache/bin/mnemos" ]]; then
+  if [[ -x "$cache/bin/vesma" ]]; then
     info "server venv: cache hit ($ref @ $sha)"
     echo "$cache"; return
   fi
@@ -393,7 +393,7 @@ build_venv() {  # build_venv <repo> <ref> -> echoes cache path
   git -C "$repo" archive --format=tar "${ref}^{commit}" | tar -x -C "$src"
   ( cd "$src" && UV_PROJECT_ENVIRONMENT="$cache" uv sync --frozen --no-editable --no-dev --python "$PYBIN" ) \
     || die "uv sync failed for $ref"
-  [[ -x "$cache/bin/mnemos" ]] || die "venv build produced no vesma binary"
+  [[ -x "$cache/bin/vesma" ]] || die "venv build produced no vesma binary"
   echo "$cache"
 }
 
@@ -487,7 +487,7 @@ PY
 # ── units ────────────────────────────────────────────────────────────
 profile_units() {  # echoes unit names for the profile
   if [[ "$PROFILE" == "laptop" ]]; then
-    printf '%s\n%s\n' mnemos-prod-laptop.service mnemos-board-laptop.service
+    printf '%s\n%s\n' vesma-prod-laptop.service vesma-board-laptop.service
   else
     echo "vesma-node.service"
   fi
@@ -538,10 +538,10 @@ install_units() {  # returns (echo) list of units whose files changed
     if [[ "$u" == vesma-mesh.service ]]; then
       $WITHOUT_MESH && continue
       emit_mesh_unit
-    elif [[ "$PROFILE" == "laptop" && "$u" == mnemos-prod-laptop.service ]]; then
+    elif [[ "$PROFILE" == "laptop" && "$u" == vesma-prod-laptop.service ]]; then
       emit_server_unit "$u" "vesma node core (laptop) — HTTP 127.0.0.1:8787 + mesh tcp 8790" \
         8787 node.yaml "${ENVDIR}/node.env"
-    elif [[ "$PROFILE" == "laptop" && "$u" == mnemos-board-laptop.service ]]; then
+    elif [[ "$PROFILE" == "laptop" && "$u" == vesma-board-laptop.service ]]; then
       emit_server_unit "$u" "vesma node board face (laptop) — HTTP 0.0.0.0:8788, bearer auth" \
         8788 board.yaml "${ENVDIR}/board.env"
     else
@@ -718,17 +718,17 @@ install_bundle_copy() {
 adopt_legacy() {
   local home leg_venv leg_bin leg_conf u enabled=0
   home="$LEG_HOME"
-  leg_venv="$home/.local/share/mnemos-prod/venv"
+  leg_venv="$home/.local/share/vesma-prod/venv"
   leg_bin="$home/.local/bin/mnemos-mesh"
   leg_conf="$home/.config/mnemos-mesh"
-  [[ -x "$leg_venv/bin/mnemos" ]] || die "adopt: no legacy venv at $leg_venv"
+  [[ -x "$leg_venv/bin/vesma" ]] || die "adopt: no legacy venv at $leg_venv"
   [[ -x "$leg_bin" ]] || die "adopt: no legacy mesh binary at $leg_bin"
-  for u in mnemos-prod-laptop mnemos-board-laptop mnemos-mesh; do
+  for u in vesma-prod-laptop vesma-board-laptop mnemos-mesh; do
     sys_real is-enabled "$u.service" >/dev/null 2>&1 && enabled=$((enabled + 1))
   done
   [[ $enabled -ge 2 ]] || warn "adopt: only $enabled/3 legacy units enabled — adopting anyway"
   local cv mv row_ct row_mr
-  cv="$(version_core "$leg_venv/bin/mnemos")"
+  cv="$(version_core "$leg_venv/bin/vesma")"
   mv="$(version_mesh "$leg_bin")"
   # pair identity: look the live mesh version up in the ledger (tag-based
   # core identity; the binary --version string is informational only)
@@ -741,13 +741,13 @@ adopt_legacy() {
   mf_write "style=user" "user=$USER_NAME" "run_user=$USER_NAME" "profile=laptop" \
     "adopted=yes" \
     "adopted_venv=$leg_venv" "adopted_meshbin=$leg_bin" \
-    "adopted_core_conf=$leg_conf/mnemos-laptop-prod.yaml" \
-    "adopted_board_conf=$leg_conf/mnemos-laptop-board.yaml" \
+    "adopted_core_conf=$leg_conf/vesma-laptop-prod.yaml" \
+    "adopted_board_conf=$leg_conf/vesma-laptop-board.yaml" \
     "adopted_mesh_conf=$leg_conf/mesh-laptop.yaml" \
     "core_version=$cv" "mesh_version=$mv" "mesh_sha256=$(sha256_of "$leg_bin")" \
     "core_tag=$row_ct" "mesh_ref=$row_mr" "dest=" \
-    "units.core=mnemos-prod-laptop.service" \
-    "units.board=mnemos-board-laptop.service" "units.mesh=mnemos-mesh.service"
+    "units.core=vesma-prod-laptop.service" \
+    "units.board=vesma-board-laptop.service" "units.mesh=mnemos-mesh.service"
   ok "adopted legacy laptop node into $MANIFEST (NOTHING was modified on disk)"
   info "vesma $cv | mesh $mv | units: $enabled/3 enabled"
   info "manage the adopted node with: $SCRIPT_NAME status | upgrade --check"
@@ -795,7 +795,7 @@ rollback_pair() {
     if [[ -n "$u" ]]; then sys restart "$u"; fi
   done
   sleep 3
-  if [[ -z "${VESMARO_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
+  if [[ -z "${VESMA_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
     local p
     for p in $(faces_for_profile); do
       wait_health "http://127.0.0.1:$p/health" 60 \
@@ -819,8 +819,8 @@ upgrade_swap_err() {  # ERR trap for the upgrade swap..verify area
 }
 
 verify_health() {  # $1 url, $2 timeout -> 0 ok (sandbox/test aware)
-  if [[ -n "${VESMARO_TEST_FAIL_VERIFY:-}" ]]; then
-    warn "TEST: VESMARO_TEST_FAIL_VERIFY is set — verify forced to FAIL ($1)"
+  if [[ -n "${VESMA_TEST_FAIL_VERIFY:-}" ]]; then
+    warn "TEST: VESMA_TEST_FAIL_VERIFY is set — verify forced to FAIL ($1)"
     return 1
   fi
   if $SANDBOX; then
@@ -910,7 +910,7 @@ render_quadlet() {  # $1 tmpl  $2 out  rest @@VAR@@=..
 cmd_container_install() {
   detect_sys   # keeps sys* harmless if anything calls it
   compute_container_paths
-  CT_NAME="${CT_NAME:-vesmaro}"
+  CT_NAME="${CT_NAME:-vesma}"
   CONFDIR="$CT_CONFDIR"   # deploy_yaml renders into $CONFDIR — point it at the container confdir
 
   # ── resolve the pair from the ledger (image tag == git tag) ─────
@@ -1056,7 +1056,7 @@ cmd_container_uninstall() {
   compute_container_paths
   [[ -f "$CT_MANIFEST" ]] || die "no container install recorded at $CT_MANIFEST"
   MANIFEST="$CT_MANIFEST"
-  CT_NAME="$(mf_get name)"; CT_NAME="${CT_NAME:-vesmaro}"
+  CT_NAME="$(mf_get name)"; CT_NAME="${CT_NAME:-vesma}"
   CT_MESH_ON=false; [[ "$(mf_get mesh_on)" == "true" ]] && CT_MESH_ON=true
   local POD="" UCTL=""
   if [[ -z "$DEST" ]]; then POD="$(podman_bin)"; UCTL="$(userctl_bin)"; fi
@@ -1194,13 +1194,13 @@ cmd_install() {
   fi
 
   local vrepo mrepo vcache mbin new_cv new_mv changed_units=""
-  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesma.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesma_repo)" git@github.com:vesmaro/vesma.git)"
   $WITHOUT_MESH || mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
 
   info "target pair: core $CORE_TAG + mesh $MESH_REF (${PAIR_MODE})"
 
   vcache="$(build_venv "$vrepo" "$CORE_REF")"
-  new_cv="$(version_core "$vcache/bin/mnemos")"
+  new_cv="$(version_core "$vcache/bin/vesma")"
   [[ -n "$new_cv" ]] || die "built venv has no working vesma CLI"
   if ! $WITHOUT_MESH; then
     mbin="$(build_mesh "$mrepo" "$MESH_REF" "$EXPECT_MESHV")"
@@ -1211,8 +1211,8 @@ cmd_install() {
   local venv_changed=false
   local dst_venv; dst_venv="$(dst "$VENV")"
   local old_cv=""
-  [[ -x "$dst_venv/bin/mnemos" ]] && old_cv="$(version_core "$dst_venv/bin/mnemos")"
-  if [[ "$old_cv" == "$new_cv" && -x "$dst_venv/bin/mnemos" ]]; then
+  [[ -x "$dst_venv/bin/vesma" ]] && old_cv="$(version_core "$dst_venv/bin/vesma")"
+  if [[ "$old_cv" == "$new_cv" && -x "$dst_venv/bin/vesma" ]]; then
     ok "server venv already at $new_cv — untouched"
   else
     if [[ -d "$dst_venv" ]]; then
@@ -1282,7 +1282,7 @@ cmd_install() {
       mf_write "mesh_version=$new_mv" "mesh_sha256=$(sha256_of "$dst_bin")" "mesh_ref=$MESH_REF"
     fi
     if [[ "$PROFILE" == "laptop" ]]; then
-      mf_write "units.core=mnemos-prod-laptop.service" "units.board=mnemos-board-laptop.service"
+      mf_write "units.core=vesma-prod-laptop.service" "units.board=vesma-board-laptop.service"
     else
       mf_write "units.core=vesma-node.service"
     fi
@@ -1384,8 +1384,8 @@ cmd_upgrade() {
   fi
 
   # ── pre-flight: health + fresh sqlite backup ─────────────────────
-  if [[ -n "${VESMARO_TEST_FAIL_VERIFY:-}" ]]; then
-    warn "TEST MODE (VESMARO_TEST_FAIL_VERIFY): pre-flight health SKIPPED, verify WILL FAIL — rollback drill only"
+  if [[ -n "${VESMA_TEST_FAIL_VERIFY:-}" ]]; then
+    warn "TEST MODE (VESMA_TEST_FAIL_VERIFY): pre-flight health SKIPPED, verify WILL FAIL — rollback drill only"
   elif $SANDBOX; then
     warn "sandbox: pre-flight health checks skipped (nothing runs under --dest)"
   else
@@ -1396,7 +1396,7 @@ cmd_upgrade() {
     done
   fi
   local mport; mport="$(mesh_metrics_port "${DEST}${CONFDIR}/mesh.yaml")"
-  if $have_mesh && [[ -z "${VESMARO_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
+  if $have_mesh && [[ -z "${VESMA_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
     curl -sf -m 2 "http://127.0.0.1:$mport/healthz" >/dev/null 2>&1 \
       || warn "pre-flight: mesh healthz not answering on :$mport (continuing)"
   fi
@@ -1413,9 +1413,9 @@ cmd_upgrade() {
 
   # ── build both artifacts BEFORE touching the node ───────────────
   local vrepo vcache new_cv
-  vrepo="$(ensure_repo vesma "$(default_vesmaro_repo)" git@github.com:vesmaro/vesma.git)"
+  vrepo="$(ensure_repo vesma "$(default_vesma_repo)" git@github.com:vesmaro/vesma.git)"
   vcache="$(build_venv "$vrepo" "$CORE_REF")"
-  new_cv="$(version_core "$vcache/bin/mnemos")"
+  new_cv="$(version_core "$vcache/bin/vesma")"
   local mrepo="" mbin="" new_mv=""
   if $have_mesh; then
     mrepo="$(ensure_repo mnemos-mesh "$(default_mesh_repo)" git@github.com:vesmaro/vesma-mesh.git)"
@@ -1458,7 +1458,7 @@ cmd_upgrade() {
   if [[ -n "$RB_MESH_UNIT" ]]; then
     sys restart "$RB_MESH_UNIT"
     verify_health "http://127.0.0.1:$mport/healthz" 120 || bad=true
-    if [[ -z "${VESMARO_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
+    if [[ -z "${VESMA_TEST_FAIL_VERIFY:-}" ]] && ! $SANDBOX; then
       local got
       got="$(curl -sf -m 2 "http://127.0.0.1:$mport/healthz" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
       # "v"-prefix tolerant comparison (ledger may say 1.3.2, healthz v1.3.2)
@@ -1509,9 +1509,9 @@ cmd_status() {
   local adopted cv mv cvbin mvbin
   adopted="$(mf_get adopted)"
   if [[ "$adopted" == "yes" ]]; then
-    cvbin="$(mf_get adopted_venv)/bin/mnemos"; mvbin="$(mf_get adopted_meshbin)"
+    cvbin="$(mf_get adopted_venv)/bin/vesma"; mvbin="$(mf_get adopted_meshbin)"
   else
-    cvbin="$(dst "$(mf_get venv)")/bin/mnemos"; mvbin="$(dst "$(mf_get meshbin)")"
+    cvbin="$(dst "$(mf_get venv)")/bin/vesma"; mvbin="$(dst "$(mf_get meshbin)")"
   fi
   cv="$(version_core "$cvbin")"; mv="$(version_mesh "$mvbin")"
   PROFILE="$(mf_get profile)"
@@ -1576,7 +1576,7 @@ PY
 
   # available tags + pair compatibility
   local vrepo mrepo
-  vrepo="$(default_vesmaro_repo)"; mrepo="$(default_mesh_repo)"
+  vrepo="$(default_vesma_repo)"; mrepo="$(default_mesh_repo)"
   if [[ -n "$vrepo" ]]; then
     local vt; vt="$(git -C "$vrepo" ls-remote --tags origin 2>/dev/null | awk -F/ '{print $NF}' | grep -v '\^{}' | sort -V | tail -3 | tr '\n' ' ')"
     [[ -n "$vt" ]] && echo "  tags/core : (remote) $vt"

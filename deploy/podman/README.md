@@ -10,7 +10,7 @@ Installs a systemd **user** unit; the container restarts on failure and on login
 
 ```bash
 mkdir -p ~/.config/containers/systemd
-cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
+cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 KEY=$(openssl rand -hex 32)
 printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesma.env
 podman pull ghcr.io/vesmaro/vesma:5.2.0   # or: podman build -t localhost/vesma:latest -f Containerfile . + edit the unit Image=
@@ -27,11 +27,11 @@ spelling only (4.x `MNEMOS_API__*` / 5.x `VESMARO_API__*` are retired).
 printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesma-totp -
 podman volume create vesma-data && podman volume create vesma-vault
-podman kube play deploy/podman/kube/mnemos-pod.yaml    # pulls ghcr.io/vesmaro/vesma:5.2.0
+podman kube play deploy/podman/kube/vesma-pod.yaml    # pulls ghcr.io/vesmaro/vesma:5.2.0
 curl -fsS http://localhost:8787/health
 ```
 
-Stop: `podman kube down deploy/podman/kube/mnemos-pod.yaml`.
+Stop: `podman kube down deploy/podman/kube/vesma-pod.yaml`.
 
 ## Notes
 

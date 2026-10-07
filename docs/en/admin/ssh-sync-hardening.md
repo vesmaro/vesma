@@ -2,10 +2,10 @@
 
 Auto-cron federation bridge (#104) — host/SSH layer hardening for the
 batch-sync automation between two vesma instances (A = source, B = target).
-Names like `mnemos-sync` (the service user, directories, key comments) are a
-legacy spelling of the same installation and need no renaming; the script's
-env contract is `VESMARO_SYNC_*` (legacy `MNEMOS_SYNC_*` names map with a
-fallback, see `scripts/sync-peers.sh`).
+The sync installation names itself `vesma-sync` (the service user,
+directories, key comments); the script's env contract is `VESMA_SYNC_*`
+(the 5.x `VESMARO_SYNC_*`/`MNEMOS_SYNC_*` spellings are retired — see
+`scripts/sync-peers.sh`).
 
 ## Scope, audience, related
 
@@ -32,20 +32,20 @@ SSH key only gives the attacker `command=""`-restricted operations
 
 ## Hardening points
 
-### 1. Dedicated `mnemos-sync` user on B
+### 1. Dedicated `vesma-sync` user on B
 
 Create a system user with no shell and a home under `/var/lib`. This user
 owns the `incoming/` directory and the restricted `authorized_keys`.
 
 ```bash
 sudo useradd --system --shell /usr/sbin/nologin \
-    --home /var/lib/mnemos-sync --create-home mnemos-sync
-sudo install -d -o mnemos-sync -g mnemos-sync -m 0750 /var/lib/mnemos-sync/incoming
-sudo install -d -o mnemos-sync -g mnemos-sync -m 0700 /var/lib/mnemos-sync/.ssh
+    --home /var/lib/vesma-sync --create-home vesma-sync
+sudo install -d -o vesma-sync -g vesma-sync -m 0750 /var/lib/vesma-sync/incoming
+sudo install -d -o vesma-sync -g vesma-sync -m 0700 /var/lib/vesma-sync/.ssh
 ```
 
 The `incoming/` dir (`0750`) is where rsync delivers payloads. The `.ssh/`
-dir (`0700`) holds `authorized_keys`. The `mnemos-sync` user has no password
+dir (`0700`) holds `authorized_keys`. The `vesma-sync` user has no password
 and no shell — login is key-only via the two restricted keys (§2).
 
 ### 2. `authorized_keys` on B with `command=""` restrictions
@@ -55,17 +55,17 @@ allow-list, `no-pty`, and every forwarding disabled. The key alone never
 yields a shell — only the single guarded command runs.
 
 ```text
-# ~/.ssh/authorized_keys for mnemos-sync on B
+# ~/.ssh/authorized_keys for vesma-sync on B
 
 # PUSH key — rsync delivery (rsync-wrapper.sh restricts dest to incoming/)
 from="192.0.2.5",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding,\
 command="/usr/local/sbin/rsync-wrapper.sh" \
-ssh-ed25519 AAAA... mnemos-sync-push@A
+ssh-ed25519 AAAA... vesma-sync-push@A
 
 # TRIGGER key — import invocation (vesma-import-wrapper.sh pins passphrase-env)
 from="192.0.2.5",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding,\
 command="/usr/local/sbin/vesma-import-wrapper.sh" \
-ssh-ed25519 AAAA... mnemos-sync-trigger@A
+ssh-ed25519 AAAA... vesma-sync-trigger@A
 ```
 
 Concrete implementations:
@@ -88,8 +88,8 @@ versa). A single shared key would force a full rotation on any compromise.
 
 ```bash
 sudo install -d -o root -g root -m 0750 /etc/vesma
-sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "mnemos-sync-push@A"
-sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "vesma-sync-push@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "vesma-sync-trigger@A"
 ```
 
 | Option | Two keys (chosen) | One shared key |
@@ -104,7 +104,7 @@ line (§2). The private keys stay on A at `/etc/vesma/` (§4).
 ### 4. Key storage on A
 
 Private keys live at `/etc/vesma/` with `chmod 600`, owner `root:root`.
-The `vesma-sync.service` unit runs as `mnemos-sync` but reads the keys via
+The `vesma-sync.service` unit runs as `vesma-sync` but reads the keys via
 the systemd unit's `User=` — adjust if your policy requires the service
 user to own the keys. Alternatively store keys in an OS keyring or a
 secrets manager (Vault, systemd-creds) and reference the path in
@@ -124,7 +124,7 @@ Rotate quarterly, or immediately on any suspected compromise.
 
 ```text
 1. Generate a new Ed25519 key on A (§3):
-     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
+     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "vesma-sync-push@A-rotN"
 2. Add the new .pub to authorized_keys on B (§2) — keep the OLD line in place
    during the cutover so a failed rotation does not break the cron.
 3. Test: run sync-peers.sh manually with VESMA_SYNC_DRY_RUN=1 against the
@@ -143,32 +143,32 @@ wrappers write via the `_audit` helper — the audit happens inside the
 `command=""` guard, so it cannot be bypassed by a stolen key.
 
 ```bash
-sudo install -o mnemos-sync -g mnemos-sync -m 0640 /dev/null /var/log/vesma-sync.log
+sudo install -o vesma-sync -g vesma-sync -m 0640 /dev/null /var/log/vesma-sync.log
 # Optional: logrotate entry for /var/log/vesma-sync.log
 ```
 
 Log line shapes (see `rsync-wrapper.sh` and `vesma-import-wrapper.sh`):
 
 ```text
-[2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json
-[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
+[2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/vesma-sync/incoming/vesma-sync-20260721T120000Z.json
+[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/vesma-sync/incoming/vesma-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
 [2026-07-21T12:01:00Z] rsync-wrapper src=192.0.2.5 REJECT destination outside INCOMING_DIR: /etc/passwd
 ```
 
 Forward to a central collector via rsyslog if you aggregate logs:
 
 ```text
-# /etc/rsyslog.d/mnemos-sync.conf
-:syslogtag, contains, "mnemos-sync"  /var/log/vesma-sync.log
+# /etc/rsyslog.d/vesma-sync.conf
+:syslogtag, contains, "vesma-sync"  /var/log/vesma-sync.log
 & stop
 ```
 
 ### 7. Network — `from=""` allow-list + firewall
 
-Two layers restrict who can reach the `mnemos-sync` SSH surface:
+Two layers restrict who can reach the `vesma-sync` SSH surface:
 
 1. **`from=""` in `authorized_keys`** (§2) — only A's IP can use either key.
-2. **Firewall rule** — only A's IP can reach `sshd` for the `mnemos-sync`
+2. **Firewall rule** — only A's IP can reach `sshd` for the `vesma-sync`
    user at all.
 
 ```bash
@@ -177,13 +177,13 @@ sudo nft add rule inet filter input tcp dport 22 ip saddr 192.0.2.5 accept
 sudo nft add rule inet filter input tcp dport 22 drop
 ```
 
-`sshd_config` example — restrict the `mnemos-sync` user to the wrappers
+`sshd_config` example — restrict the `vesma-sync` user to the wrappers
 and disable every form of forwarding for that user:
 
 ```text
-# /etc/ssh/sshd_config.d/mnemos-sync.conf
-Match User mnemos-sync
-    AllowUsers mnemos-sync
+# /etc/ssh/sshd_config.d/vesma-sync.conf
+Match User vesma-sync
+    AllowUsers vesma-sync
     PermitTTY no
     AllowAgentForwarding no
     X11Forwarding no
@@ -204,13 +204,13 @@ Ordered steps, A → B.
 
 ```text
 # ── On B (target) ──────────────────────────────────────────────────────────
-1. Create the mnemos-sync user (§1):
-     sudo useradd --system --shell /usr/sbin/nologin --home /var/lib/mnemos-sync --create-home mnemos-sync
+1. Create the vesma-sync user (§1):
+     sudo useradd --system --shell /usr/sbin/nologin --home /var/lib/vesma-sync --create-home vesma-sync
 2. Create incoming/ and .ssh/ with the right modes (§1).
 3. Install the wrappers:
      sudo install -m 0755 contrib/systemd/rsync-wrapper.sh         /usr/local/sbin/
      sudo install -m 0755 contrib/systemd/vesma-import-wrapper.sh /usr/local/sbin/
-4. Create /var/log/vesma-sync.log owned by mnemos-sync (§6).
+4. Create /var/log/vesma-sync.log owned by vesma-sync (§6).
 5. Add the two restricted keys to ~/.ssh/authorized_keys (§2) — after A's
    public keys exist (step A1 below).
 6. Apply the sshd_config drop-in + firewall rule (§7). Reload sshd.
@@ -220,7 +220,7 @@ Ordered steps, A → B.
 4. Copy the two .pub files to B and add them to authorized_keys (step B5).
 5. Install scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-4. Provision /etc/mnemos/sync.env from contrib/systemd/sync.env.example —
+4. Provision /etc/vesma/sync.env from contrib/systemd/sync.env.example —
    the exact path the `EnvironmentFile=` of `vesma-sync.service` loads
    (replace every RFC-reserved dummy). Provision the passphrase via a
    systemd drop-in or LoadCredential — NOT in sync.env.
@@ -239,10 +239,10 @@ How to confirm the hardening holds.
 
 | Test | Expected | Failure means |
 | --- | --- | --- |
-| `ssh -i sync-push-key mnemos-sync@B` (no command) | rejected — "no command provided — interactive shell refused." (exit 2) | `command=""` not set in authorized_keys |
-| `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | rejected — "non-rsync command refused" (exit 2) | rsync-wrapper.sh not the `command=""` |
+| `ssh -i sync-push-key vesma-sync@B` (no command) | rejected — "no command provided — interactive shell refused." (exit 2) | `command=""` not set in authorized_keys |
+| `ssh -i sync-push-key vesma-sync@B "cat /etc/passwd"` | rejected — "non-rsync command refused" (exit 2) | rsync-wrapper.sh not the `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | rejected — "destination outside INCOMING_DIR" (exit 2) | rsync-wrapper.sh path check broken |
-| `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | rejected — "non-import command refused" (exit 2) | vesma-import-wrapper.sh guard broken |
+| `ssh -i sync-trigger-key vesma-sync@B "vesma sync export ..."` | rejected — "non-import command refused" (exit 2) | vesma-import-wrapper.sh guard broken |
 | `VESMA_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (with env) | exit 0, stderr logs `vesma sync export`, `rsync`, `ssh` | script env-var contract drift |
 | `tail /var/log/vesma-sync.log` after a real run | ACCEPT lines with src IP + timestamp | audit helper not writing |
 

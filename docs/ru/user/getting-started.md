@@ -92,7 +92,7 @@ pip install vesma==5.6.5
 ```
 <!-- /version:pip -->
 
-<!-- deprecated-note: линейка 4.x шла wheel'ом mnemos_memory_server-*.whl; с 5.0.0 артефакт
+<!-- deprecated-note: линейка 4.x шла wheel'ом vesma_memory_server-*.whl; с 5.0.0 артефакт
 релиза — vesma-<версия>-py3-none-any.whl (приложен к GitHub-релизу и опубликован на PyPI —
 `pip install vesma` ставит тот же wheel). -->
 
@@ -294,7 +294,7 @@ Vesma автоматически:
 
 Контракт тегов описан в [tag-contract.md](tag-contract.md). Коротко: каждая запись требует
 **ровно одного** `project:<slug>`, **ровно одного** `agent:<slug>` и **хотя бы одного**
-`vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Старое написание `mnemos:` принимается как входной алиас везде и нормализуется в канон; в хранилище теги сохраняют каноническую форму `vesma:*`.
+`vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Старое написание `vesma:` принимается как входной алиас везде и нормализуется в канон; в хранилище теги сохраняют каноническую форму `vesma:*`.
 
 > **Замечание.** Только что добавленные записи получают статус `raw`. Фоновый процессор
 > (работает в режимах MCP и HTTP API, а в CLI-развёртывании — `vesma processor start`)
@@ -345,12 +345,12 @@ Vesma умеет индексировать и **структуру кода** �
 1. Работайте в проекте как обычно — агент вызывает там любой MCP-инструмент.
 2. Первый индекс идёт в фоне (`auto-first`); дальше строка-маячок в выводе
    `assemble_context` сама сообщает свежесть графа.
-3. Проверьте: `mnemos_project_graph_status` (сначала найдите `project_id` через
-   `mnemos_list_graph_projects`).
+3. Проверьте: `vesma_project_graph_status` (сначала найдите `project_id` через
+   `vesma_list_graph_projects`).
 
 Предпочитаете явный путь? Зарегистрируйте корень вручную
 (`mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`)
-и вызовите `mnemos_index_project` с `project_id` и `agent` — ручной поток
+и вызовите `vesma_index_project` с `project_id` и `agent` — ручной поток
 доступен всегда, а успешный ручной индекс к тому же снимает приостановку
 авто-пути.
 
@@ -549,16 +549,16 @@ Go-бинарники и контейнеры молча не обновляют
 # 1. pip-дистры старых имён (оставить один актуальный дист; список — vesma update components)
 pip uninstall mnemos-memory-server vesma-memory-server
 
-# 2. легаси-юниты mnemos-* (systemd user)
-systemctl --user disable --now mnemos-*.service 2>/dev/null
-rm -i ~/.config/systemd/user/mnemos-*.service ~/.config/systemd/user/mnemos-*.timer
+# 2. легаси-юниты vesma-* (systemd user)
+systemctl --user disable --now vesma-*.service 2>/dev/null
+rm -i ~/.config/systemd/user/vesma-*.service ~/.config/systemd/user/vesma-*.timer
 systemctl --user daemon-reload
 
 # 3. старые sh-обёртки и лаунчеры старых имён
-rm -i ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
 
 # 4. старые completion-скрипты (актуальные — vesma.*; их не трогать)
-rm -i ~/.mnemos/completion/mnemos.*
+rm -i ~/.mnemos/completion/vesma.*
 
 # 5. легаси venv-каталоги с версиями в имени (созданные руками — НЕ канонические vesma/venv*)
 rm -ri ~/venv-5.x   # пример: любой ручной venv старой установки
@@ -603,7 +603,7 @@ systemctl --user daemon-reload
 rm -ri ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
 
 # 7. лаунчеры и completion-скрипты
-rm -i ~/.local/bin/vesma ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma ~/.local/bin/vesma-*
 rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
 ```
 
@@ -619,8 +619,8 @@ rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
 | Признак | Где смотреть |
 |---------|--------------|
 | venv-каталоги с версиями в имени (`venv-5.x`, `venv-4.3`), созданные руками | домашний каталог, `~/venv*`, пути из старых юнитов |
-| Юниты `mnemos-*.service` / `mnemos-*.timer` в systemd user | `ls ~/.config/systemd/user/` |
-| sh-обёртки `mnemos-*-unit.sh`, лаунчеры `mnemos`, `mnemos-train` | `ls ~/.local/bin/` |
+| Юниты `vesma-*.service` / `vesma-*.timer` в systemd user | `ls ~/.config/systemd/user/` |
+| sh-обёртки `vesma-*-unit.sh`, лаунчеры `vesma`, `vesma-train` | `ls ~/.local/bin/` |
 | Конфиги с прежними именами в `~/.config` вне `vesma/` | `ls ~/.config/` |
 | env-файл с токеном вне канонического места | путь `env_file` в старых манифестах/юнитах |
 | Логи в трёх местах (journald + разрозненные файлы + data-каталог) | старые юниты, `~/.mnemos/logs/` |
@@ -674,17 +674,17 @@ Vesma читает `config.yaml` из текущего каталога или `
 
 | Параметр | По умолчанию | Назначение |
 |----------|--------------|-----------|
-| `mnemos.data_dir` | `~/.mnemos/data` | Хранилище SQLite + векторный индекс |
-| `mnemos.vault_path` | `~/.mnemos/vault` | Зеркало Obsidian |
-| `mnemos.strict_tag_contract` | `true` | Принуждать контракт тегов (`false` — только для легаси-импортов) |
+| `vesma.data_dir` | `~/.mnemos/data` | Хранилище SQLite + векторный индекс |
+| `vesma.vault_path` | `~/.mnemos/vault` | Зеркало Obsidian |
+| `vesma.strict_tag_contract` | `true` | Принуждать контракт тегов (`false` — только для легаси-импортов) |
 | `embedding.provider` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Вес векторной ноги в RRF (0.0 = чистый FTS, 1.0 = чистый вектор) |
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | Значения по умолчанию для `vesma serve` |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Синтез конвейера и контекстный фильтр |
 
 Любой из них переопределяется переменными окружения (`VESMA_*`, `__` — разделитель
-вложенности; написание 5.0–5.2 `VESMARO_*` принимается до 6.0, написание 4.x
-`MNEMOS_*` больше не читается):
+вложенности; написание 5.0–5.2 `VESMARO_*` выведено из обращения в 6.0.0, написание 4.x
+`VESMA_*` больше не читается):
 
 ```bash
 VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"

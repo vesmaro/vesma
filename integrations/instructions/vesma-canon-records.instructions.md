@@ -18,7 +18,7 @@ this instruction tells an agent WHEN a record is a canon record, HOW to compose
 it, and WHAT the validator will flag.
 
 Single source of truth: the canon repo `vesma-canon/docs/canon.md`
-(repo `vesmaro/vesma-canon`, pin tag `canon-v1.0.0`). This file teaches the
+(repo `vesma/vesma-canon`, pin tag `canon-v1.0.0`). This file teaches the
 ratified v1.0.0 shapes; the canon repo defines them.
 
 ---
@@ -31,8 +31,8 @@ generic write path. What that means for each channel:
 
 | Channel | Canon envelope | What you control |
 |---------|---------------|------------------|
-| `mnemos_save_context` | Auto-minted by the server (`type: checkpoint`). **Never hand-write `metadata.canon` for a checkpoint.** | `language` (`ru`/`en`) — the only canon-adjacent field |
-| Task / decision / report records | Not minted for you. Write the record so it *complies*, and pass the envelope via channels that accept `metadata` (SDK `remember(metadata=...)`, REST `POST /memories`, CLI). Note: `mnemos_add` (MCP) has no `metadata` field — on that surface the record is written canon-compliant but without the envelope. | The envelope shape below, the body sections, the title |
+| `vesma_save_context` | Auto-minted by the server (`type: checkpoint`). **Never hand-write `metadata.canon` for a checkpoint.** | `language` (`ru`/`en`) — the only canon-adjacent field |
+| Task / decision / report records | Not minted for you. Write the record so it *complies*, and pass the envelope via channels that accept `metadata` (SDK `remember(metadata=...)`, REST `POST /memories`, CLI). Note: `vesma_add` (MCP) has no `metadata` field — on that surface the record is written canon-compliant but without the envelope. | The envelope shape below, the body sections, the title |
 | Any record without `metadata.canon` | Out of canon scope — never validated, never warned, never rejected (canon §9 transitional rule). | Nothing to do |
 
 In warn mode (the default) a violating write ALWAYS succeeds — the engine logs

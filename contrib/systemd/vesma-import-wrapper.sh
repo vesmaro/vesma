@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vesma-import-wrapper.sh — restricted import trigger guard on B (#104).
 #
-# Pinned in ~mnemos-sync/.ssh/authorized_keys via command="" for the TRIGGER
+# Pinned in ~vesma-sync/.ssh/authorized_keys via command="" for the TRIGGER
 # key (ssh-sync-hardening.md §2). SSH invokes this wrapper instead of a shell;
 # the real import command arrives in $SSH_ORIGINAL_COMMAND. This wrapper:
 #
@@ -19,7 +19,7 @@
 # Install: chmod 0755, place at /usr/local/sbin/vesma-import-wrapper.sh, pin in
 # authorized_keys as:
 #   command="/usr/local/sbin/vesma-import-wrapper.sh",no-pty,no-agent-forwarding,... \
-#   ssh-ed25519 AAAA... mnemos-sync-trigger@A
+#   ssh-ed25519 AAAA... vesma-sync-trigger@A
 #
 # Exit codes: 0 success, 1 import failed, 2 policy violation / parse error.
 
@@ -29,11 +29,11 @@ set -euo pipefail
 # INCOMING_DIR MUST match VESMA_SYNC_REMOTE_IMPORT_DIR on A and rsync-wrapper.sh.
 # PASSPHRASE_ENV_NAME is the env var name that `vesma sync import` reads the
 # passphrase from on B. Provision the VALUE on B's systemd environment — never
-# on A and never inline in this file. Override via /etc/mnemos/import-wrapper.env.
-INCOMING_DIR="${VESMA_SYNC_INCOMING_DIR:-/var/lib/mnemos-sync/incoming}"
+# on A and never inline in this file. Override via /etc/vesma/import-wrapper.env.
+INCOMING_DIR="${VESMA_SYNC_INCOMING_DIR:-/var/lib/vesma-sync/incoming}"
 PASSPHRASE_ENV_NAME="${VESMA_SYNC_PASSPHRASE_ENV:-VESMA_EXPORT_PASSPHRASE}"
 AUDIT_LOG="${VESMA_SYNC_AUDIT_LOG:-/var/log/vesma-sync.log}"
-MNEMOS_BIN="${VESMA_SYNC_REMOTE_VESMA_BIN:-}"
+VESMA_BIN="${VESMA_SYNC_REMOTE_VESMA_BIN:-}"
 
 # ── audit helper (§6) ─────────────────────────────────────────────────────────
 _audit() {
@@ -67,13 +67,13 @@ if [[ "$SSH_ORIGINAL_COMMAND" != "vesma sync import "* ]]; then
 fi
 
 # ── 2. discover the vesma CLI on B ───────────────────────────────────────────
-if [[ -z "$MNEMOS_BIN" ]]; then
+if [[ -z "$VESMA_BIN" ]]; then
     if command -v vesma >/dev/null 2>&1; then
-        MNEMOS_BIN="$(command -v vesma)"
-    elif [[ -x /usr/local/bin/mnemos ]]; then
-        MNEMOS_BIN=/usr/local/bin/mnemos
-    elif [[ -x /opt/mnemos/.venv/bin/mnemos ]]; then
-        MNEMOS_BIN=/opt/mnemos/.venv/bin/mnemos
+        VESMA_BIN="$(command -v vesma)"
+    elif [[ -x /usr/local/bin/vesma ]]; then
+        VESMA_BIN=/usr/local/bin/vesma
+    elif [[ -x /opt/vesma/.venv/bin/vesma ]]; then
+        VESMA_BIN=/opt/vesma/.venv/bin/vesma
     else
         _err "vesma CLI not found on B. Set VESMA_SYNC_REMOTE_VESMA_BIN."
         exit 2
@@ -174,7 +174,7 @@ fi
 # --passphrase-env is ALWAYS pinned to PASSPHRASE_ENV_NAME (defence-in-depth:
 # even a compromised A cannot redirect the passphrase read to another var).
 # --dry-run is the only caller-controlled flag we forward (whitelisted above).
-_cmd=("$MNEMOS_BIN" sync import "$_source_real" --passphrase-env "$PASSPHRASE_ENV_NAME")
+_cmd=("$VESMA_BIN" sync import "$_source_real" --passphrase-env "$PASSPHRASE_ENV_NAME")
 if [[ $_dry_run_seen -eq 1 ]]; then
     _cmd+=(--dry-run)
 fi

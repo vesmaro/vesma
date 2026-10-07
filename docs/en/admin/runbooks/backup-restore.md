@@ -4,7 +4,7 @@
 
 - **Canonical store** — `~/.mnemos/`: DB at `~/.mnemos/data/mnemos.db` (SQLite, WAL)
   and the Obsidian-compatible mirror at `~/.mnemos/vault/`. The path is
-  historical (Mnemos era) and not due for renaming — the CLI and
+  historical (Vesma era) and not due for renaming — the CLI and
   `vesma doctor paths` both read it as-is.
 - For routine export/transfer use the utility (`vesma export` / `vesma import`), not
   a hand-rolled SQLite walk: the utility brings encryption, filters and an

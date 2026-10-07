@@ -22,7 +22,7 @@ Installation::
     # 1. vesma importable in the Hermes Python env (pip install vesma)
     #    — no separate ``vesma serve`` process is needed anymore
     # 2. Copy this plugin into the Hermes plugins dir
-    cp -r integrations/hermes ~/.hermes/plugins/mnemos
+    cp -r integrations/hermes ~/.hermes/plugins/vesma
     # 3. Activate via the interactive wizard (recommended)
     hermes memory setup
     # Select "vesma", configure project/agent slugs and store paths
@@ -32,7 +32,7 @@ Config (in $HERMES_HOME/config.yaml under ``memory.vesma``)::
 
     memory:
       provider: vesma
-      mnemos:
+      vesma:
         data_dir: ""            # Vesma data dir ("" = vesma default)
         vault_path: ""          # Obsidian vault path ("" = vesma default)
         project: "hermes"       # project tag slug
@@ -145,7 +145,7 @@ def _load_config() -> dict:
 # ── Tool schemas (OpenAI function-calling format — model-facing contract,
 #    unchanged names/params from the legacy plugin) ────────────────────────────
 
-MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
+VESMA_SEARCH_SCHEMA: dict[str, Any] = {
     "name": "vesma_search",
     "description": (
         "Search Vesma memory using hybrid vector + FTS5 search. Results are "
@@ -161,7 +161,7 @@ MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": 'Tag filters, e.g. ["mnemos:decision"].',
+                "description": 'Tag filters, e.g. ["vesma:decision"].',
             },
             "limit": {"type": "integer", "description": "Max results (default 10)."},
         },
@@ -169,12 +169,12 @@ MNEMOS_SEARCH_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_ADD_SCHEMA: dict[str, Any] = {
+VESMA_ADD_SCHEMA: dict[str, Any] = {
     "name": "vesma_add",
     "description": (
         "Add a memory entry to Vesma. Tag contract is mandatory: "
         "exactly one project:<slug>, one agent:<slug>, and at least one "
-        "mnemos:<subtype>. Write what you would want to read back in 30 days. "
+        "vesma:<subtype>. Write what you would want to read back in 30 days. "
         "One idea per entry.\n\n"
         "vesma subtypes: session, checkpoint, bug-pattern, learning, "
         "decision, rule, open-question, legacy."
@@ -187,7 +187,7 @@ MNEMOS_ADD_SCHEMA: dict[str, Any] = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    'Required: ["project:<slug>", "agent:<slug>", "mnemos:<subtype>"].'
+                    'Required: ["project:<slug>", "agent:<slug>", "vesma:<subtype>"].'
                 ),
             },
             "title": {"type": "string", "description": "Short title (optional)."},
@@ -201,7 +201,7 @@ MNEMOS_ADD_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_RECALL_CONTEXT_SCHEMA: dict[str, Any] = {
+VESMA_RECALL_CONTEXT_SCHEMA: dict[str, Any] = {
     "name": "vesma_recall_context",
     "description": (
         "Recall the most recent session checkpoints for the project — the "
@@ -221,12 +221,12 @@ MNEMOS_RECALL_CONTEXT_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_SAVE_CONTEXT_SCHEMA: dict[str, Any] = {
+VESMA_SAVE_CONTEXT_SCHEMA: dict[str, Any] = {
     "name": "vesma_save_context",
     "description": (
         "Save a session checkpoint — structured context capturing goals, "
         "completed work, in-progress items, decisions, free-form context. "
-        "Tagged mnemos:checkpoint for recall via vesma_recall_context. "
+        "Tagged vesma:checkpoint for recall via vesma_recall_context. "
         "Use at meaningful milestones; write sparingly."
     ),
     "parameters": {
@@ -242,7 +242,7 @@ MNEMOS_SAVE_CONTEXT_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_AGENT_RECALL_SCHEMA: dict[str, Any] = {
+VESMA_AGENT_RECALL_SCHEMA: dict[str, Any] = {
     "name": "vesma_agent_recall",
     "description": (
         "Recall agent-scoped context — entries authored by a specific "
@@ -261,7 +261,7 @@ MNEMOS_AGENT_RECALL_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_LIST_RECENT_SCHEMA: dict[str, Any] = {
+VESMA_LIST_RECENT_SCHEMA: dict[str, Any] = {
     "name": "vesma_list_recent",
     "description": (
         "List recent memories, optionally filtered by status.\n\n"
@@ -276,19 +276,19 @@ MNEMOS_LIST_RECENT_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_LIST_TAGS_SCHEMA: dict[str, Any] = {
+VESMA_LIST_TAGS_SCHEMA: dict[str, Any] = {
     "name": "vesma_list_tags",
     "description": "List all tags with entry counts.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
-MNEMOS_STATS_SCHEMA: dict[str, Any] = {
+VESMA_STATS_SCHEMA: dict[str, Any] = {
     "name": "vesma_stats",
     "description": "Store statistics — totals, status breakdown, project slice.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
-MNEMOS_AUTO_COLLECT_STATUS_SCHEMA: dict[str, Any] = {
+VESMA_AUTO_COLLECT_STATUS_SCHEMA: dict[str, Any] = {
     "name": "vesma_auto_collect_status",
     "description": (
         "Compaction signal vector — tool calls since the last "
@@ -299,7 +299,7 @@ MNEMOS_AUTO_COLLECT_STATUS_SCHEMA: dict[str, Any] = {
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
-MNEMOS_COMPRESS_SCHEMA: dict[str, Any] = {
+VESMA_COMPRESS_SCHEMA: dict[str, Any] = {
     "name": "vesma_compress",
     "description": (
         "Compress large content (tool output, logs, JSON) losslessly via "
@@ -320,7 +320,7 @@ MNEMOS_COMPRESS_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_RETRIEVE_SCHEMA: dict[str, Any] = {
+VESMA_RETRIEVE_SCHEMA: dict[str, Any] = {
     "name": "vesma_retrieve",
     "description": (
         "Retrieve the original for a CCR [compressed: …] marker hash — "
@@ -337,7 +337,7 @@ MNEMOS_RETRIEVE_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_INGEST_URL_SCHEMA: dict[str, Any] = {
+VESMA_INGEST_URL_SCHEMA: dict[str, Any] = {
     "name": "vesma_ingest_url",
     "description": (
         "Fetch a web page, extract main content, save as a memory. "
@@ -354,7 +354,7 @@ MNEMOS_INGEST_URL_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_WATCH_START_SCHEMA: dict[str, Any] = {
+VESMA_WATCH_START_SCHEMA: dict[str, Any] = {
     "name": "vesma_watch_start",
     "description": (
         "Start the background file watcher — new/modified files under the "
@@ -371,13 +371,13 @@ MNEMOS_WATCH_START_SCHEMA: dict[str, Any] = {
     },
 }
 
-MNEMOS_WATCH_STOP_SCHEMA: dict[str, Any] = {
+VESMA_WATCH_STOP_SCHEMA: dict[str, Any] = {
     "name": "vesma_watch_stop",
     "description": "Stop the file watcher. Idempotent.",
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
-MNEMOS_WATCH_STATUS_SCHEMA: dict[str, Any] = {
+VESMA_WATCH_STATUS_SCHEMA: dict[str, Any] = {
     "name": "vesma_watch_status",
     "description": "Watcher state: {running, paths, counts}.",
     "parameters": {"type": "object", "properties": {}, "required": []},
@@ -427,12 +427,12 @@ class VesmaMemoryProvider(MemoryProvider):
         """Construct the SDK + adapter once (idempotent)."""
         if self._adapter is not None:
             return self._adapter
-        mnemos_cfg: dict[str, str] = {}
+        vesma_cfg: dict[str, str] = {}
         if self._config.get("data_dir"):
-            mnemos_cfg["data_dir"] = str(self._config["data_dir"])
+            vesma_cfg["data_dir"] = str(self._config["data_dir"])
         if self._config.get("vault_path"):
-            mnemos_cfg["vault_path"] = str(self._config["vault_path"])
-        settings = Settings(vesma=mnemos_cfg)
+            vesma_cfg["vault_path"] = str(self._config["vault_path"])
+        settings = Settings(vesma=vesma_cfg)
         settings.resolve_paths()
         self._sdk = VesmaSDK(settings)
         self._adapter = HermesMemoryAdapter(
@@ -503,7 +503,7 @@ class VesmaMemoryProvider(MemoryProvider):
             "vesma_agent_recall to recover your own prior findings. Use "
             "vesma_compress / vesma_retrieve to shrink and rehydrate "
             "large tool outputs losslessly.\n"
-            "Tag contract: project:<slug> + agent:<slug> + mnemos:<subtype> "
+            "Tag contract: project:<slug> + agent:<slug> + vesma:<subtype> "
             "(session|checkpoint|bug-pattern|learning|decision|rule|"
             "open-question|legacy). Search first, write sparingly, never "
             "block on memory failure."
@@ -621,21 +621,21 @@ class VesmaMemoryProvider(MemoryProvider):
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [
-            MNEMOS_SEARCH_SCHEMA,
-            MNEMOS_ADD_SCHEMA,
-            MNEMOS_RECALL_CONTEXT_SCHEMA,
-            MNEMOS_SAVE_CONTEXT_SCHEMA,
-            MNEMOS_AGENT_RECALL_SCHEMA,
-            MNEMOS_LIST_RECENT_SCHEMA,
-            MNEMOS_LIST_TAGS_SCHEMA,
-            MNEMOS_STATS_SCHEMA,
-            MNEMOS_AUTO_COLLECT_STATUS_SCHEMA,
-            MNEMOS_COMPRESS_SCHEMA,
-            MNEMOS_RETRIEVE_SCHEMA,
-            MNEMOS_INGEST_URL_SCHEMA,
-            MNEMOS_WATCH_START_SCHEMA,
-            MNEMOS_WATCH_STOP_SCHEMA,
-            MNEMOS_WATCH_STATUS_SCHEMA,
+            VESMA_SEARCH_SCHEMA,
+            VESMA_ADD_SCHEMA,
+            VESMA_RECALL_CONTEXT_SCHEMA,
+            VESMA_SAVE_CONTEXT_SCHEMA,
+            VESMA_AGENT_RECALL_SCHEMA,
+            VESMA_LIST_RECENT_SCHEMA,
+            VESMA_LIST_TAGS_SCHEMA,
+            VESMA_STATS_SCHEMA,
+            VESMA_AUTO_COLLECT_STATUS_SCHEMA,
+            VESMA_COMPRESS_SCHEMA,
+            VESMA_RETRIEVE_SCHEMA,
+            VESMA_INGEST_URL_SCHEMA,
+            VESMA_WATCH_START_SCHEMA,
+            VESMA_WATCH_STOP_SCHEMA,
+            VESMA_WATCH_STATUS_SCHEMA,
         ]
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str:

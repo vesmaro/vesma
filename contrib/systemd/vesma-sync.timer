@@ -1,6 +1,6 @@
 [Unit]
 Description=Vesma — auto-cron federation bridge timer (#104)
-Documentation=file:///usr/share/doc/mnemos/admin/ssh-sync-hardening.md
+Documentation=file:///usr/share/doc/vesma/admin/ssh-sync-hardening.md
 
 [Timer]
 OnCalendar=*:0/15

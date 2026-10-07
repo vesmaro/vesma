@@ -2,7 +2,7 @@
 # local-ci.sh — local replica of .github/workflows/ci.yml, run on the active venv.
 #
 # WHY THIS EXISTS:
-#   GitHub Actions on vesmaro/vesmaro is locked due to a billing issue
+#   GitHub Actions on vesmaro/vesma is locked due to a billing issue
 #   (account locked — all jobs fail with "your account is locked due to a
 #   billing issue"). Until the owner resolves billing via the GitHub UI,
 #   ALL release/merge decisions MUST be verified locally. This script

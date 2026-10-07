@@ -122,7 +122,7 @@ vesma export --format json --encrypt --output backup.enc
 | Интерактивный ввод | (по умолчанию при `--encrypt`) | Ручные бэкапы |
 | Файл | `--passphrase-file /path/to/key` | CI / скрипты |
 
-Для HTTP API пароль передаётся в заголовке `X-Mnemos-Passphrase` —
+Для HTTP API пароль передаётся в заголовке `X-Vesma-Passphrase` —
 никогда в теле запроса — поэтому он не попадает в логи как параметр
 запроса.
 
@@ -209,10 +209,10 @@ vesma import backup.json --mode restore --dry-run
 | Поле | Значение |
 |------|----------|
 | `format_version` | Версия схемы экспорта (currently `1.0`). Увеличивается при ломающем изменении JSON-структуры. |
-| `vesma_version` | Версия Vesma, создавшей экспорт. Переименовано из `mnemos_version` в 6.0.0 — импортёр по-прежнему принимает старый ключ `mnemos_version` из экспортов до 6.0 (одно замечание об устаревании на импорт). |
+| `vesma_version` | Версия Vesma, создавшей экспорт. Переименовано из `vesma_version` в 6.0.0 — импортёр по-прежнему принимает старый ключ `vesma_version` из экспортов до 6.0 (одно замечание об устаревании на импорт). |
 
 > `vesma:` — канонический префикс хранения (переключение 6.0); старое
-> написание `mnemos:` принимается при импорте и нормализуется в канон.
+> написание `vesma:` принимается при импорте и нормализуется в канон.
 > Значения тегов внутри экспорта всегда хранятся (и импортируются) в
 > канонической форме `vesma:*` — см. [tag-contract.md](tag-contract.md).
 
@@ -300,10 +300,10 @@ vesma import SOURCE [OPTIONS]
 | `since` | string\|null | `null` | Нижняя граница ISO-даты |
 | `until` | string\|null | `null` | Верхняя граница ISO-даты |
 
-**Пароль шифрования** — передавайте через заголовок `X-Mnemos-Passphrase`
+**Пароль шифрования** — передавайте через заголовок `X-Vesma-Passphrase`
 (историческое имя заголовка — формат-стабильное, не бренд).
 Если `encrypt: true` и заголовок отсутствует, эндпоинт вернёт `400` с
-`{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
+`{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Ответ** — `StreamingResponse` с `Content-Disposition:
 attachment; filename="vesma-export.<suffix>"`. Суффикс зависит от
@@ -320,7 +320,7 @@ attachment; filename="vesma-export.<suffix>"`. Суффикс зависит о�
 | `overwrite` | query | bool | `false` | Обновлять существующие в merge |
 | `confirm` | query | bool | `false` | Обязательно для `restore` |
 | `dry_run` | query | bool | `false` | Валидировать без записи |
-| `X-Mnemos-Passphrase` | header | string | (нет) | Пароль расшифровки |
+| `X-Vesma-Passphrase` | header | string | (нет) | Пароль расшифровки |
 
 **Ответ** (`200 OK`):
 

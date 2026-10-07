@@ -40,7 +40,7 @@ succeed while agents believed the tools were missing.
 The server's canonical tool names are `vesma_*` (for example
 `vesma_search`, `vesma_add`, `vesma_recall_context`,
 `vesma_save_context`, `vesma_agent_recall`). Server builds before the
-6.0 rebrand still accept the legacy `mnemos_*` spellings as input
+6.0 rebrand still accept the legacy `vesma_*` spellings as input
 aliases — use them only when talking to an old server, never in new
 canon.
 
@@ -343,7 +343,7 @@ vesma_save_context(
 vesma_search(
   query={natural language query},
   project={current-project},   # optional, scope to project
-  tags=["vesma:decision"],    # optional, narrow by tag (vesma: is canon; mnemos: accepted on input, see §3)
+  tags=["vesma:decision"],    # optional, narrow by tag (vesma: is canon; vesma: accepted on input, see §3)
   limit=10
 )
 ```
@@ -469,7 +469,7 @@ memory is unstructured noise.
 |-----|--------|-------------|---------|
 | `project:{slug}` | `[a-z0-9]` + `[a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:{slug}` | `[a-z0-9]` + `[a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory (use `agent:user` for user-authored) |
-| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `mnemos:<subtype>` accepted on input) |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `vesma:<subtype>` accepted on input) |
 
 ### Subtypes (whitelist)
 
@@ -488,12 +488,12 @@ memory is unstructured noise.
 ### Backward compatibility (gcw: alias — deprecated)
 
 The current tag contract is `vesma:<subtype>` (canonical since 6.0);
-legacy `mnemos:<subtype>` and `gcw:` tags are **accepted as aliases**
+legacy `vesma:<subtype>` and `gcw:` tags are **accepted as aliases**
 for reading old data — the server keeps backward compatibility:
 
-- `mnemos:` and `gcw:` tags are **accepted as aliases** for `vesma:` —
+- `vesma:` and `gcw:` tags are **accepted as aliases** for `vesma:` —
   valid subtypes are auto-migrated to `vesma:<subtype>` at write time.
-- Old memories with `mnemos:`/`gcw:` tags continue to work **without
+- Old memories with `vesma:`/`gcw:` tags continue to work **without
   manual migration** (the 6.0 mover re-slugs stored rows in place).
 - Invalid subtypes (not in whitelist) are preserved as-is for error
   reporting — they are NOT auto-migrated.
@@ -536,7 +536,7 @@ for new installs):
 - Invalid subtype (not in whitelist) → `TagContractError`.
 - Malformed slug (bad characters) → `TagContractError`.
 - **Legacy alias auto-migration**: `gcw:<valid-subtype>` and
-  `mnemos:<valid-subtype>` are accepted and silently migrated to
+  `vesma:<valid-subtype>` are accepted and silently migrated to
   `vesma:<subtype>`. This is NOT an error.
 
 In lax mode (`strict_tag_contract=false`, for migrations), missing required
@@ -577,14 +577,14 @@ Use `source:` ONLY when the entry is the result of a delegated task
 
 - **Never omit required tags.** If you do not know the project or agent,
   determine it before calling `vesma_add`. Do not guess.
-- **Do not invent new `mnemos:` subtypes.** If you need a category that does not
+- **Do not invent new `vesma:` subtypes.** If you need a category that does not
   exist, propose it via PR to the tag contract — do not use an ad-hoc value.
 - **One `project:` per entry.** If a learning spans projects, write one entry
   per project, or use `project:shared` if it is genuinely cross-project.
 - **`agent:user` for user-authored content.** When the user provides a fact
   or decision directly, tag it `agent:user` — do not attribute it to the
   agent that happened to be running.
-- **Use `mnemos:` prefix for new writes.** `gcw:` is a read-only alias for
+- **Use `vesma:` prefix for new writes.** `gcw:` is a read-only alias for
   legacy data; it works but is deprecated and will be removed in a future
   major release. Never create new `gcw:` tags.
 

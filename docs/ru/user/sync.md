@@ -186,10 +186,10 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `VESMA_SYNC_PEER_USER` | `mnemos-sync` | ssh-пользователь на B. |
+| `VESMA_SYNC_PEER_USER` | `vesma-sync` | ssh-пользователь на B. |
 | `VESMA_SYNC_DRY_RUN` | — | `1` — только логировать команды, без записей и ssh. |
 | `VESMA_SYNC_SOURCE_CONFIG` | discovery | Путь к `config.yaml` на A. |
-| `VESMA_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Имя файла payload на B. |
+| `VESMA_SYNC_REMOTE_FILE` | `vesma-sync-<ts>.json` | Имя файла payload на B. |
 | `VESMA_SYNC_VESMA_BIN` | auto-discover | Путь к CLI `vesma` на A. |
 
 Путь к CLI `vesma` на B (`VESMA_SYNC_REMOTE_VESMA_BIN`) задаётся на B в
@@ -258,4 +258,4 @@ secrets/PII — defence-in-depth, чтобы один пропущенный с�
 - [Export & Import](./export-import.md) — полные бэкапы (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — трёхслойная модель.
 - [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации) — маркер исключения.
-- [MCP Tools](./mcp-tools.md) — `mnemos_export` / `mnemos_import` MCP-инструменты (MCP-поверхность для полного export/import).
+- [MCP Tools](./mcp-tools.md) — `vesma_export` / `vesma_import` MCP-инструменты (MCP-поверхность для полного export/import).

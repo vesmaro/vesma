@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/LABs/AI/mnemos/.venv/bin/mnemos watch
+ExecStart=%h/LABs/AI/vesma/.venv/bin/vesma watch
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

@@ -14,27 +14,27 @@ The tag contract:
 
 - Pins every entry to exactly **one project** and **one agent**
 - Optionally narrows the entry to **one task scope** (`task:`, ADR-0027)
-- Classifies the entry with at least **one `mnemos:` subtype** (cognitive category)
+- Classifies the entry with at least **one `vesma:` subtype** (cognitive category)
 - Enables per-agent recall (M3) and project-scoped cleanup
 - Prevents ambiguous dual-project entries (a common source of context pollution)
 
 ---
 
-## Storage prefix: `vesma:` is canonical, `mnemos:` is the legacy alias
+## Storage prefix: `vesma:` is canonical, `vesma:` is the legacy alias
 
 `vesma:` is the canonical storage prefix (6.0 canonical-prefix flip);
-every new record is written as `vesma:<subtype>`. The legacy `mnemos:`
+every new record is written as `vesma:<subtype>`. The legacy `vesma:`
 spelling is accepted on input everywhere and rewritten to the canon.
 
 - **You type** either spelling — at the CLI (`--tags`), in HTTP API tag
-  filters and in MCP add calls. Vesma normalizes `mnemos:<subtype>` to
+  filters and in MCP add calls. Vesma normalizes `vesma:<subtype>` to
   `vesma:<subtype>` before anything is written or matched.
 - **Storage keeps `vesma:*`.** Existing 5.x rows still carrying
-  `mnemos:*` are re-slugged in place by the 6.0 mover in the same
+  `vesma:*` are re-slugged in place by the 6.0 mover in the same
   release train, so stores, exports and federation traffic converge on
   one spelling.
 - **Unknown subtypes are refused loudly** in either spelling:
-  `vesma:bogus` and `mnemos:bogus` both fail with an
+  `vesma:bogus` and `vesma:bogus` both fail with an
   `invalid subtype ...` error.
 - **The one exception: `mnemos:no-federate` stays byte-stable forever**
   (ArchCom 2026-10-03). The exclusion marker is written and read ONLY
@@ -50,9 +50,9 @@ spelling is accepted on input everywhere and rewritten to the canon.
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory |
-| `mnemos:<subtype>` | see table below | **at least 1** | Cognitive category (a legacy prefix — the format-stable namespace; a valid tag is `mnemos:decision`, not `vesma:decision`). |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (a legacy prefix — the format-stable namespace; a valid tag is `vesma:decision`, not `vesma:decision`). |
 
-### `mnemos:` subtypes
+### `vesma:` subtypes
 
 | Subtype | When to use |
 |---------|-------------|
@@ -134,7 +134,7 @@ tests on every surface):
   `list_recent(task=)` (REST `GET /memories?task=`), `agent_recall`
   (`task` on `AgentRecallQuery`). Combined with `tags=` the two
   intersect (both must hold).
-- **Writes:** `save_checkpoint(task=)` (MCP `mnemos_save_context` /
+- **Writes:** `save_checkpoint(task=)` (MCP `vesma_save_context` /
   REST `POST /context/save`) mints the `task:<slug>` tag at the single
   save boundary — at most one task per record (zero-or-one invariant).
 - **Boundary:** the slug is normalized with the same canon as `project`
@@ -149,7 +149,7 @@ tests on every surface):
 ## `mnemos:no-federate` — federation exclusion marker
 
 `mnemos:no-federate` is an **exclusion marker**, not a cognitive category.
-It keeps the legacy `mnemos:` spelling as its ONLY canonical form — a
+It keeps the legacy `vesma:` spelling as its ONLY canonical form — a
 byte-stable trust marker by ArchCom verdict (2026-10-03): the code writes
 and reads exactly that spelling, forever, and the 6.0 mover never re-slugs
 it. Typing `vesma:no-federate` normalizes to the same stored tag. Its
@@ -162,13 +162,13 @@ exchange** — both batch export and mediated pull (federation).
 The tag is added automatically by the **write-path secrets scanner**
 (Layer 1 of the federation defence-in-depth, see
 [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth)).
-When `mnemos_add` (or the HTTP `POST /memories`, or `ingest_url`, or
+When `vesma_add` (or the HTTP `POST /memories`, or `ingest_url`, or
 `ingest_path_scoped_rules`) receives content that matches a known secret
 pattern (AWS keys, GitHub tokens, Slack tokens, OpenAI/Anthropic keys,
 JWTs, PEM private keys, database connection strings, high-entropy
 base64 spans), the scanner:
 
-1. Detects the pattern via `mnemos.secrets_detector.detect_secrets`.
+1. Detects the pattern via `vesma.secrets_detector.detect_secrets`.
 2. Appends `mnemos:no-federate` to the tag list (idempotent — if the tag
    is already present, it is not duplicated).
 3. Logs the pattern names and counts only — **never** the raw matched
@@ -186,11 +186,11 @@ blindly could expose a real secret to federation. The removal path
 - Re-scans the content after removal. If a secret is still present, the
   tag is **re-added automatically** and the report records
   `re_detected=True`. The owner must redact the content first (see
-  `mnemos.secrets_detector.redact_content`) to permanently remove the tag.
+  `vesma.secrets_detector.redact_content`) to permanently remove the tag.
 
-### Difference from the (non-existent) `mnemos:no-export`
+### Difference from the (non-existent) `vesma:no-export`
 
-There is **no** `mnemos:no-export` tag. The earlier design idea was
+There is **no** `vesma:no-export` tag. The earlier design idea was
 renamed to `mnemos:no-federate` because the same exclusion must cover
 **both** batch export and mediated pull — a single tag for both paths.
 `mnemos:no-federate` supersedes the `no-export` idea entirely.
@@ -203,7 +203,7 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 - All three required tag families must be present.
 - `TagContractError` is raised if any required tag is missing, malformed,
   or duplicated.
-- Used by `mnemos_add` (MCP tool) and `Memory(strict_tags=True)`.
+- Used by `vesma_add` (MCP tool) and `Memory(strict_tags=True)`.
 
 ### Lax mode (`strict_tag_contract=False`, for migrations)
 
@@ -222,9 +222,9 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Validate a list of tags (strict, raises on violations).
-# Legacy mnemos: input normalizes — the result carries the canonical vesma: form.
+# Legacy vesma: input normalizes — the result carries the canonical vesma: form.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "mnemos:learning"],
+    ["project:myproject", "agent:copilot", "vesma:learning"],
     strict=True,
 )
 # clean_tags == ["project:myproject", "agent:copilot", "vesma:learning"]
@@ -233,7 +233,7 @@ clean_tags = validate_tag_contract(
 tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
 print(tc.project)       # "myproject"
 print(tc.agent)         # "copilot"
-print(tc.mnemos_subtypes)  # {"decision"}
+print(tc.vesma_subtypes)  # {"decision"}
 
 # With an (optional) task scope tag
 tc = TagContract(
@@ -256,7 +256,7 @@ m = Memory(
 ## MCP usage
 
 ```
-mnemos_add(
+vesma_add(
     content="Discovered timing issue in FTS5 query planner.",
     tags=["project:vesma", "agent:copilot", "vesma:bug-pattern"],
     project="vesma",
@@ -266,9 +266,9 @@ mnemos_add(
 
 ---
 
-## Bulk tag rename (`gcw:` → `mnemos:` and other prefix changes)
+## Bulk tag rename (`gcw:` → `vesma:` and other prefix changes)
 
-The `vesma tags rename` command (and the equivalent `mnemos_tags_rename`
+The `vesma tags rename` command (and the equivalent `vesma_tags_rename`
 MCP tool / `POST /tags/rename` HTTP endpoint) bulk-renames tags matching a
 source prefix to a target prefix across existing memories. It is the safe
 replacement for the deprecated `vesma migrate tags` subcommand.
@@ -326,9 +326,9 @@ The report returned (and printed by the CLI) has the shape:
 
 ---
 
-## Grouped tag tool: `mnemos_tags` (rename / remove / add)
+## Grouped tag tool: `vesma_tags` (rename / remove / add)
 
-`mnemos_tags` is a **pilot** for consolidating MCP tools via an `action: enum`
+`vesma_tags` is a **pilot** for consolidating MCP tools via an `action: enum`
 dispatch (vesma #97). It groups three bulk tag operations behind one tool
 name, selected by the `action` parameter — **not** dot-notation and **not**
 `oneOf`/discriminated unions (which MCP clients do not render reliably).
@@ -337,7 +337,7 @@ Desktop, and Continue (ArchCom 2026-07-18 session 2).
 
 | Action | What it does | Key params |
 | --- | --- | --- |
-| `rename` | Same as `mnemos_tags_rename` (prefix → prefix) | `from_prefix`, `to_prefix`, `subtypes`, `invalid_subtypes_to_legacy` |
+| `rename` | Same as `vesma_tags_rename` (prefix → prefix) | `from_prefix`, `to_prefix`, `subtypes`, `invalid_subtypes_to_legacy` |
 | `remove` | Drop exact tags (or, with `wildcard=true`, prefix-matched tags) | `tags[]`, `wildcard` |
 | `add` | Append tags to every memory matching a `project`/`agent` filter | `tags[]`, `project`, `agent` |
 
@@ -347,30 +347,30 @@ FTS5-safe `UPDATE` (the `memories_au` trigger fires), so the external-content
 index stays consistent. The contract gate differs by action:
 
 - `rename` validates in **lax** mode — it is a prefix swap (e.g.
-  `gcw:` → `mnemos:`) that preserves required tags, so lax is the
+  `gcw:` → `vesma:`) that preserves required tags, so lax is the
   non-corrupting mode there.
 - `remove` / `add` validate the resulting tag set in **strict** mode — a
   contract-breaking result (e.g. removing the last `project:` tag, or adding
-  an invalid `mnemos:` subtype / a malformed slug) is rejected per memory with
+  an invalid `vesma:` subtype / a malformed slug) is rejected per memory with
   an entry in `errors` and the write is **skipped** for that memory, rather
   than corrupting the store.
 
 ```
-mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
-mnemos_tags(action="remove", tags=["severity:high"], dry_run=False)
-mnemos_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
-mnemos_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
+vesma_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
+vesma_tags(action="remove", tags=["severity:high"], dry_run=False)
+vesma_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
+vesma_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
 ```
 
-**Reports:** `rename` returns the same shape as `mnemos_tags_rename`
+**Reports:** `rename` returns the same shape as `vesma_tags_rename`
 (`scanned`, `renamed`, `changed`, `skipped_invalid`, …), where `changed`
 equals `renamed` and is added for a uniform report shape across all actions.
 `remove` returns `{action, scanned, changed, removed_tags, wildcard, errors, dry_run}`;
 `add` returns `{action, scanned, changed, added_tags, errors, dry_run}`.
 All three are idempotent (a repeat run reports `changed=0`).
 
-**Alias (non-breaking):** the legacy `mnemos_tags_rename` MCP tool still
-works — internally it routes to `mnemos_tags(action="rename")`, so existing
+**Alias (non-breaking):** the legacy `vesma_tags_rename` MCP tool still
+works — internally it routes to `vesma_tags(action="rename")`, so existing
 callers and `.agent.md` references keep working unchanged. No deprecation
 notice is added yet (that follows one release after the pilot lands).
 
@@ -378,8 +378,8 @@ notice is added yet (that follows one release after the pilot lands).
 empty target as "magic". Because both validate the resulting set in strict
 mode, any contract-breaking result is rejected per memory with an entry in
 `errors` and the write is skipped for that memory: removing the last
-`project:`/`agent:`/`mnemos:` tag, adding a second `project:` tag, adding an
-invalid `mnemos:` subtype, adding a malformed slug, or adding a tag without a
+`project:`/`agent:`/`vesma:` tag, adding a second `project:` tag, adding an
+invalid `vesma:` subtype, adding a malformed slug, or adding a tag without a
 `:` prefix. `rename` stays lax (prefix swaps preserve required tags).
 
 ---
@@ -404,7 +404,7 @@ ai-brain had no required tag schema. Migrating:
 ## TagContractError reference
 
 ```
-mnemos.models.TagContractError
+vesma.models.TagContractError
 ```
 
 Raised by `validate_tag_contract(..., strict=True)` and `TagContract(strict=True)`.

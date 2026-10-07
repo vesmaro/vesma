@@ -16,7 +16,7 @@ CI workflow (`.github/workflows/ci.yml`) запускается при кажд�
 | Job | Runner | Назначение |
 |---|---|---|
 | `verify` | `ubuntu-latest`, матрица Python 3.11 / 3.12 / 3.13 | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы CLI внутри образа (сегодня — легаси-хук `mnemos --help`) |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы CLI внутри образа (сегодня — легаси-хук `vesma --help`) |
 
 Job `verify` является **обязательной status check** для `main` (см.
 [Защита веток](#защита-веток)).
@@ -37,7 +37,7 @@ mypy --strict src/vesma/                             # типы
 bandit -r src/ -f json -o bandit-report.json          # безопасность (статическая)
 pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146   # зависимости (два игнора, см. dependency-updates.md)
 pytest tests/ -q --tb=short                           # тесты
-pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing tests/ -q   # gate по покрытию
+pytest --cov=src/vesma --cov-fail-under=80 --cov-report=term-missing tests/ -q   # gate по покрытию
 ```
 
 Эквивалент одной командой:
@@ -63,12 +63,12 @@ GitHub Actions заблокирован по billing (#117), поэтому merg
 pre-push-санити.
 
 Локальная сборка образа с smoke-ом (то, что делает job `build-container`, —
-легаси-CI хук `mnemos --help` внутри образа):
+легаси-CI хук `vesma --help` внутри образа):
 
 ```bash
-buildah bud -t mnemos:test .
-buildah from --name vesma-test mnemos:test
-buildah run vesma-test -- mnemos --help
+buildah bud -t vesma:test .
+buildah from --name vesma-test vesma:test
+buildah run vesma-test -- vesma --help
 ```
 
 [`act`](https://github.com/nektos/act) — альтернатива для прогонов workflow
@@ -171,12 +171,12 @@ Docker, чтобы избежать привилегированного кон�
 Шаги:
 
 1. `apt-get install buildah`
-2. `buildah bud -t mnemos:test .` — сборка `Containerfile`
-3. `buildah from --name mnemos-test mnemos:test` — запуск контейнера
-4. `buildah run mnemos-test -- mnemos --help` — smoke-тест (плюс вывод версии Python)
+2. `buildah bud -t vesma:test .` — сборка `Containerfile`
+3. `buildah from --name vesma-test vesma:test` — запуск контейнера
+4. `buildah run vesma-test -- vesma --help` — smoke-тест (плюс вывод версии Python)
 
 > Smoke-шаг запускает CLI внутри собранного образа, поэтому проверяет
-> CLI-точку входа, а не только базовый образ. Имя `mnemos` — легаси-хук
+> CLI-точку входа, а не только базовый образ. Имя `vesma` — легаси-хук
 > точки входа, который в образе остаётся (двойной период до 6.0); canonical
 > CLI — `vesma`.
 

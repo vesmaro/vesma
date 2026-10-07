@@ -3,8 +3,9 @@
 # distribution FAMILY in ONE run (codified from the manual 5.5.0-train
 # procedure): the primary dist (PyPI project: vesma) plus the live mirror
 # (vesma-memory-server). Import package: vesma — since the 6.0.0
-# rebrand (5.x shipped src/vesmaro); CLIs: vesma canonical, vesmaro/mnemos
-# legacy alias commands survive.
+# rebrand (5.x shipped src/vesmaro); 6.0 is the clean sheet — the CLI
+# entry points are `vesma` and `vesma-train` only (legacy alias commands
+# retired with the 5.x line).
 #
 # WHY: GitHub Actions is billing-locked (#117) so the release workflow
 # does not fire, and a first PyPI publish is an IRREVERSIBLE owner
@@ -457,7 +458,7 @@ pipeline_for_dist() {
   echo "=== [$IDX/$TOTAL] G4 metadata smoke ($PKG_NAME, --no-deps venv) ==="
   if $DRY_RUN; then echo "→ DRY-RUN: venv install --no-deps + version + integrations/scripts check"; record "G4 metadata smoke [$PKG_NAME]" "SKIP"
   else
-    SMOKE_DIR=$(mktemp -d /tmp/vesmaro-pypi-smoke.XXXXXX)
+    SMOKE_DIR=$(mktemp -d /tmp/vesma-pypi-smoke.XXXXXX)
     SMV="$SMOKE_DIR/.venv"
     # Debian/Ubuntu often ships python3 without ensurepip (python3-venv not
     # installed): fall back to a pip-less venv + the OUTER pip targeting the
@@ -494,7 +495,7 @@ PY
     echo ""; echo "=== [$IDX/$TOTAL] Full smoke ($PKG_NAME: throwaway venv, full deps, CLI) ==="
     if $DRY_RUN; then echo "→ DRY-RUN: venv install + vesma --version"; record "Full smoke [$PKG_NAME]" "SKIP"
     else
-      SMOKE_DIR=$(mktemp -d /tmp/vesmaro-pypi-fullsmoke.XXXXXX)
+      SMOKE_DIR=$(mktemp -d /tmp/vesma-pypi-fullsmoke.XXXXXX)
       SMV="$SMOKE_DIR/.venv"
       FULL_PIP="$SMV/bin/pip install -q"
       if ! python -m venv "$SMV" 2>/dev/null || [[ ! -x "$SMV/bin/pip" ]]; then

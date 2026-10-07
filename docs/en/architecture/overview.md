@@ -137,11 +137,11 @@ flowchart LR
 
 1. **Compress** — `apply_filter` runs the 5-stage pipeline (profile-aware: `log`, `terminal`, `code`, `docs`, `web`, `default`). Achieves 86–96% reduction on logs and JSON.
 2. **Cache** — the original uncompressed text is stored in `ccr_cache` keyed by its SHA-256 hash. Content-addressed: re-compressing the same text is a no-op.
-3. **Embed marker** — a short parseable marker is prepended to the compressed output. This is literal engine output, so it keeps the canonical tool name `mnemos_retrieve` (the legacy spelling in the byte output lives until 6.0):
+3. **Embed marker** — a short parseable marker is prepended to the compressed output. This is literal engine output, so it keeps the canonical tool name `vesma_retrieve` (the legacy spelling in the byte output lives until 6.0):
    ```text
-   [compressed: <hash> | <N>→<M> chars | retrieve via mnemos_retrieve]
+   [compressed: <hash> | <N>→<M> chars | retrieve via vesma_retrieve]
    ```
-4. **Retrieve** — `vesma_retrieve(hash)` (canonical name `mnemos_retrieve`) returns the full original (zero data loss). `vesma_retrieve(hash, query=...)` returns FTS5-ranked snippets within the cached original.
+4. **Retrieve** — `vesma_retrieve(hash)` (canonical name `vesma_retrieve`) returns the full original (zero data loss). `vesma_retrieve(hash, query=...)` returns FTS5-ranked snippets within the cached original.
 
 #### Storage integration
 
@@ -232,11 +232,11 @@ cache_aligner:
   extract_tokens: true       # bare 20+ char opaque tokens
 ```
 
-When `cache_aligner.enabled` is `false`, `align_prefix()` returns the text unchanged with an empty `extracted` list. The MCP tool `vesma_align_prefix` (canonical name `mnemos_align_prefix`) is the public surface; see [mcp-tools.md#mnemos_align_prefix](../user/mcp-tools.md#mnemos_align_prefix).
+When `cache_aligner.enabled` is `false`, `align_prefix()` returns the text unchanged with an empty `extracted` list. The MCP tool `vesma_align_prefix` (canonical name `vesma_align_prefix`) is the public surface; see [mcp-tools.md#vesma_align_prefix](../user/mcp-tools.md#vesma_align_prefix).
 
 ### Output token reduction (P1-7)
 
-Output token reduction steers the caller's output style without changing what Vesma stores or returns. Three tools — `vesma_add`, `vesma_search`, `vesma_recall_context` (canonical names `mnemos_add`, `mnemos_search`, `mnemos_recall_context`) — accept two optional parameters:
+Output token reduction steers the caller's output style without changing what Vesma stores or returns. Three tools — `vesma_add`, `vesma_search`, `vesma_recall_context` (canonical names `vesma_add`, `vesma_search`, `vesma_recall_context`) — accept two optional parameters:
 
 | Parameter | Values | Effect |
 |-----------|--------|--------|
@@ -393,7 +393,7 @@ Two separate contracts sit on top: the [A2A Sessions API](a2a-sessions.md) (`/v1
 
 #### MCP Server
 
-Tools for Copilot / LLM agents: **40 tools**, brand-primary manifest — with a brand configured (`VESMA_MCP_BRAND=vesma`, the default deploy channel) every tool is advertised under its `vesma_*` name; the canonical `mnemos_*` spellings remain accepted on the call path until 6.0 (the dual-prefix contract). Full catalogue in [mcp-tools.md](../user/mcp-tools.md); the main ones:
+Tools for Copilot / LLM agents: **40 tools**, registered and accepted under the canonical `vesma_*` names only (6.0 clean sheet — the legacy `mnemos_*`/`vesmaro_*` spellings and the brand switch were removed with the 5.x line). Full catalogue in [mcp-tools.md](../user/mcp-tools.md); the main ones:
 
 - `vesma_search` — hybrid semantic + full-text search over memory
 - `vesma_add` — add a new entry
@@ -451,7 +451,7 @@ Main note content...
 
 ## Configuration
 
-Config file discovery (in priority order): explicit `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.mnemos/config.yaml`. Environment variables are canonically read with the `VESMA_` prefix (e.g. `VESMA_MNEMOS__DATA_DIR`); the deprecated `VESMARO_*` spelling stays accepted until 6.0 (the dual-prefix contract, ADR-0031).
+Config file discovery (in priority order): explicit `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.mnemos/config.yaml`. Environment variables are canonically read with the `VESMA_` prefix (e.g. `VESMA_VESMA__DATA_DIR`); the 5.0–5.2 `VESMARO_*` spelling is retired — 6.0.0 reads `VESMA_*` only (the ADR-0031 dual-read period is over).
 
 ```yaml
 # config.yaml
@@ -477,7 +477,7 @@ mcp:
 ```
 
 > Two path planes must not be confused: the **memory store** (vault, SQLite,
-> cache — `~/.mnemos/…` by default, legacy paths, governed by the `mnemos:`
+> cache — `~/.mnemos/…` by default, legacy paths, governed by the `vesma:`
 > section) and the **service installation** (unit, venvs, manifests — layout
 > v1, `~/.config/vesma/`, `~/.local/share/vesma/`,
 > `~/.local/state/vesma/`). See the Service Layer section.

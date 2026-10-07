@@ -6,7 +6,7 @@ type: application
 # Chart version — bump on any template or default change (semver).
 version: 0.1.1
 # Version of the container image deployed by default, published at
-# ghcr.io/vesmaro/vesmaro (backfilled in the 4.3.0 wave; the release
+# ghcr.io/vesmaro/vesma (backfilled in the 4.3.0 wave; the release
 # pipeline moves here permanently in 5.0.0 phase-g, GWS card #331).
 appVersion: "4.3.0"
 kubeVersion: ">=1.25.0-0"

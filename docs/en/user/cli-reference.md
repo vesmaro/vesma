@@ -49,7 +49,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
 | [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
-> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `mnemos:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
+> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `vesma:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -58,9 +58,9 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Most subcommands accept a `--config / -c` flag pointing at a YAML file. Search order is:
 
 1. `--config` argument (if present)
-2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMA_CONFIG` and the 4.x spelling `MNEMOS_CONFIG` are no longer read as of 6.0.0)
+2. `$VESMA_CONFIG` env var (canonical since 5.3; the 5.0–5.2 spelling `VESMA_CONFIG` and the 4.x spelling `VESMA_CONFIG` are no longer read as of 6.0.0)
 3. `./config.yaml` in the current working directory
-4. `~/.mnemos/config.yaml`
+4. `~/.vesma/config.yaml`
 
 ```bash
 vesma --help
@@ -70,7 +70,7 @@ vesma add --help
 The only other global flags are `--version / -V` (print the version) and `--verbose / -v` (DEBUG logging for `vesma serve` and `vesma mcp-server`). To change the log level permanently, set `logging.level` in the config file or the corresponding env var:
 
 ```bash
-VESMA_LOGGING__LEVEL=DEBUG vesma serve      # the only honoured spelling (6.0.0 retired the 5.0–5.2 VESMARO_* and 4.x MNEMOS_* spellings)
+VESMA_LOGGING__LEVEL=DEBUG vesma serve      # the only honoured spelling (6.0.0 retired the 5.0–5.2 VESMARO_* and 4.x VESMA_* spellings)
 ```
 
 ---
@@ -82,8 +82,8 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 | Variable (canonical) | Default | Purpose |
 |----------|---------|---------|
 | `VESMA_CONFIG` | — | Path to `config.yaml` |
-| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | SQLite DB + vector index (canonical form) |
-| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Obsidian mirror directory (canonical form) |
+| `VESMA_VESMA__DATA_DIR` | `~/.vesma/data` | SQLite DB + vector index (canonical form) |
+| `VESMA_VESMA__VAULT_PATH` | `~/.vesma/vault` | Obsidian mirror directory (canonical form) |
 | `VESMA_VESMA__STRICT_TAG_CONTRACT` | `true` | Enforce M2 tag schema |
 | `VESMA_API__HOST` | `127.0.0.1` | Default for `vesma serve` |
 | `VESMA_API__PORT` | `8787` | Default for `vesma serve` |
@@ -94,7 +94,7 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 | `VESMA_AUTO_COLLECT` | `0` | Set `1` to enable MCP auto-collect mode |
 | `VESMA_LOGGING__LEVEL` | `INFO` | Python logging level |
 
-> **Retired spellings: `VESMARO_*` (5.0–5.2) and `MNEMOS_*` (4.x).** The table above lists the canonical `VESMA_*` names — the only ones read as of 6.0.0 (the ADR-0031 dual-read period is over; exports of only a deprecated spelling fall through to defaults). The short forms `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` are #139 compatibility aliases for the nested canonical names — a nested canonical name wins on conflict.
+> **Retired spellings: `VESMARO_*` (5.0–5.2) and `VESMA_*` (4.x).** The table above lists the canonical `VESMA_*` names — the only ones read as of 6.0.0 (the ADR-0031 dual-read period is over; exports of only a deprecated spelling fall through to defaults). The short forms `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` are #139 compatibility aliases for the nested canonical names — a nested canonical name wins on conflict.
 
 > **Legacy aliases.** The short forms predate the nested naming and are kept for compatibility (#139). Both forms work. On conflict the canonical env name — and an explicit value in the config file — wins over the legacy alias; the alias only fills the gap that would otherwise fall through to the default.
 
@@ -187,13 +187,13 @@ vesma ingest file PATH [OPTIONS]
 
 ```bash
 # From a URL (fetches, extracts, saves)
-vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
+vesma ingest url https://example.com/article --tags "project:research,agent:user,vesma:learning"
 
 # From a file
-vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,vesma:decision"
 
 # Preview the filter stats for a file without saving
-vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,vesma:decision"
 ```
 
 ---
@@ -286,7 +286,7 @@ vesma tags validate VAULT_PATH
 ### Example
 
 ```bash
-vesma tags validate ~/.mnemos/vault
+vesma tags validate ~/.vesma/vault
 ```
 
 ---
@@ -604,7 +604,7 @@ vesma serve --host 0.0.0.0 --port 8000
 vesma serve --host 127.0.0.1 --port 9000 --config /etc/vesma/config.yaml
 
 # Enable file logging without touching the config file
-vesma serve --log-file ~/.mnemos/logs/serve.log
+vesma serve --log-file ~/.vesma/logs/serve.log
 ```
 
 The full HTTP API surface is documented in [http-api.md](http-api.md). The Swagger UI is served at `http://HOST:PORT/docs`.
@@ -627,7 +627,7 @@ vesma meta-poll [OPTIONS]
 Per peer, the command shells out to the mesh CLI (`mnemos-mesh sync-meta --config <mesh.yaml> --peer <id> --json [--since <rev>]`), parses the JSON page, and imports the records in-process through the gated upsert (`upsert_index_entries` with `sender_peer_id`): no-federate tag, title blocklist, origin-mutation guard and LWW conflict resolution all apply. **Metadata-only**: the poll path touches `federation_index` and the poll watermark table, never `memories` or the pipeline. Each successful pass prints a line like:
 
 ```text
-✓ peer=mnemos-B fetched=12 accepted=10 rejected_by_gate=1 stale=1 pages=1 latest_rev=47
+✓ peer=vesma-B fetched=12 accepted=10 rejected_by_gate=1 stale=1 pages=1 latest_rev=47
 ```
 
 Exit code is `1` when any polled peer failed (non-zero CLI exit, broken JSON, timeout) — the failure is recorded in `federation_poll_state.last_error` and retried on the next pass; the watermark (`since_rev`) only advances on success.
@@ -741,8 +741,32 @@ Output is a one-line summary:
 ```
 
 If you see `Errors: N`, the `summary.errors` list (printed to stderr at DEBUG level) tells you which rows failed. They are typically schema-corrupt rows that you can ignore or fix by hand in SQLite.
-
 ---
+
+## `migrate-store`
+
+Move a 5.x store to the 6.0 layout: `vesma.db`, canonical `vesma:*` tags, `project:vesma` slug, `vesma:` config section, home `~/.vesma/` (ADR-0044). **Explicit-only**: both `--from` and `--to` are required — discovery never picks a store for you. **Dry-run by default**: without `--apply` the command prints the plan (paths and counters) and writes nothing. Safety gates on `--apply`: a SQLite backup-API snapshot is taken and verified first; a live socket or a held database lock is a loud refusal; the `mnemos:no-federate` trust marker stays byte-stable (never rewritten); the report prints paths and numbers only, never record contents. Re-running on an already-migrated store is a no-op.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--from PATH` | **Required.** Explicit source store home (e.g. `~/.mnemos`). |
+| `--to PATH` | **Required.** Explicit target store home (6.0 layout, e.g. `~/.vesma`). |
+| `--apply` | Write the migration. Without it: read-only plan. |
+| `--json` | Machine-readable report (paths and numbers only). |
+
+### Example
+
+```
+$ vesma migrate-store --from ~/.mnemos --to ~/.vesma          # plan only
+$ vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply  # execute
+```
+
+### Related
+
+- [Store migration ADR](../../project/adr/0044-store-migration.md)
+- [Migration runbook](../admin/runbooks/migrate.md)
 
 ## `auth`
 
@@ -815,7 +839,7 @@ vesma integration uninstall [--target NAME] [--dry-run] [--home PATH]
 | `--no-mcp` | `false` | Skip MCP server registration. |
 | `--no-wire-agents` | `false` | Skip agent MCP wiring entirely. |
 | `--select a,b` | — | Narrow agent wiring to the named agents. |
-| `--precise` | `false` | Use individual `mnemos/mnemos_*` tool names instead of the `mnemos/*` wildcard. |
+| `--precise` | `false` | Use individual `vesma/vesma_*` tool names instead of the `vesma/*` wildcard. |
 | `--home <dir>` | `~` | Deploy into an alternate home directory (cross-environment installs). |
 
 `update`, `verify` and `uninstall` share the same `-t/--target`, `--dry-run` (except `verify`) and `--home` options with identical semantics.
@@ -849,7 +873,7 @@ vesma integration uninstall --dry-run
 
 Install shell completion for the `vesma` CLI. Vesma ships its own completion engine (the hidden `vesma __complete` command): the installer writes per-shell scripts that introspect the live command tree, so commands, nested subcommands (any depth), option names and option/enum values all complete **with descriptions**. Descriptions are rendered by zsh and fish; bash's readline cannot render descriptions at all, so bash completes values only.
 
-With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.mnemos/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc` — put it after `compinit`; fish auto-sources its completions directory). The scripts are bound to the program name you invoked (`vesma`) plus legacy aliases that exist on PATH (`vesmaro`, and `mnemos` when installed), so Tab works for every way you call the binary. Idempotent — every run rewrites the scripts and keeps exactly one canonical source line, migrating away ALL legacy forms: old `eval "$(… --show-completion …)"` lines, pre-rebrand `mnemos.bash`/`vesmaro.bash` one-liners and `if [ -f … ]; then source …; fi` blocks, and stale marker comments.
+With no arguments it auto-detects the current shell from `$SHELL`, writes the completion script to `~/.vesma/completion/vesma.<shell>`, and adds a single guarded `source` line to your rc file (`~/.bashrc` / `~/.zshrc` — put it after `compinit`; fish auto-sources its completions directory). The scripts are bound to the program name you invoked (`vesma`) plus legacy aliases that exist on PATH (`vesma`, and `vesma` when installed), so Tab works for every way you call the binary. Idempotent — every run rewrites the scripts and keeps exactly one canonical source line, migrating away ALL legacy forms: old `eval "$(… --show-completion …)"` lines, pre-rebrand `vesma.bash`/`vesma.bash` one-liners and `if [ -f … ]; then source …; fi` blocks, and stale marker comments.
 
 Integrity guarantees: rc edits are block-aware and validated. The legacy migration operates on whole shell constructs — a matched `if …; then` line removes the entire if/then(/else)/fi block, and orphaned control lines (`fi`, `then`, `else`, `done`) left behind by older partial edits are cleaned up too, so a half-removed legacy block can no longer abort parsing of the rest of your rc (a non-parsing rc silently disables everything below the break, completion included). After every rc write the result is checked with `bash -n` (or `zsh -n` when a zsh binary exists; fish needs no check) and the original content is restored verbatim if the file would not parse, with the installer exiting non-zero. `vesma doctor` reports the same damage as a Completion warning with the exact failing line number and text.
 
@@ -866,7 +890,7 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
+# ✓ Installed bash completion → /home/you/.vesma/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```
@@ -902,7 +926,7 @@ vesma doctor service [--json]
 
 Exit codes: `0` = all checks pass (checks reported as `skip` — not applicable to this machine — count as pass), `1` = one or more checks failed, `2` = warnings only.
 
-> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMA_CONFIG` and 4.x `MNEMOS_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.mnemos/config.yaml`).
+> `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMA_CONFIG` and 4.x `VESMA_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.vesma/config.yaml`).
 
 ### `doctor paths`
 
@@ -911,18 +935,18 @@ Shows every path Vesma uses, resolved from config and environment:
 ```bash
 vesma doctor paths
 # ── Paths ─────────────────────────────────────
-#   Root          ~/.mnemos
-#   Config        ~/.mnemos/config.yaml
-#   Data dir      ~/.mnemos/data
-#   DB            ~/.mnemos/data/mnemos.db
-#   Vault         ~/.mnemos/vault
-#   Logs          ~/.mnemos/logs/mnemos.log
-#   Cache         ~/.mnemos/cache
-#   Completion    ~/.mnemos/completion
+#   Root          ~/.vesma
+#   Config        ~/.vesma/config.yaml
+#   Data dir      ~/.vesma/data
+#   DB            ~/.vesma/data/mnemos.db
+#   Vault         ~/.vesma/vault
+#   Logs          ~/.vesma/logs/mnemos.log
+#   Cache         ~/.vesma/cache
+#   Completion    ~/.vesma/completion
 #   MCP config    ~/.config/Code/User/mcp.json
 ```
 
-Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration. With `--json`, the paths object is emitted for scripting.
+Use this to verify the consolidated `~/.vesma/` layout after upgrade or migration. With `--json`, the paths object is emitted for scripting.
 
 ### `doctor service`
 
@@ -1225,7 +1249,7 @@ it (`config file > env` per the dual-source precedence).
 
 ```bash
 vesma awareness get
-#   config file: /home/you/.mnemos/config.yaml
+#   config file: /home/you/.vesma/config.yaml
 #   awareness.native_heartbeat_mode: shadow
 #   effective: shadow
 ```
@@ -1286,7 +1310,7 @@ vesma awareness stats
 #   heartbeat_suppressed: 0
 #   conflict_hint_emitted: 1
 #   tail token cost: sum 640 over 9 deliveries (mean ~71)
-#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+#   sidecar: /home/you/.vesma/data/metrics.sqlite
 ```
 
 A missing sidecar prints a hint line and exits 0 (a broken metrics plane

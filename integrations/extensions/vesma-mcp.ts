@@ -6,7 +6,7 @@
  * extensions. This extension spawns `vesma mcp-server` over stdio (the
  * legacy `vesma` binary is accepted in the dual period), performs
  * the MCP handshake and registers every `vesma_*` tool as a native Pi tool
- * (legacy `mnemos_*` names from server builds before 6.0 get the same
+ * (legacy `vesma_*` names from server builds before 6.0 get the same
  * treatment — the registration is generic over the server's tools/list).
  * It also injects the always-on vesma behavioral pack into Pi's system
  * prompt (before_agent_start hook) — Pi has no AGENTS.md surface, so the
@@ -15,7 +15,7 @@
  * Deployed by:  vesma integration setup --target pi
  * Location:     ~/.pi/agent/extensions/vesma-mcp.ts
  * Requires:     `vesma` on PATH (override with VESMA_BIN).
- * Reload:       /reload  (Pi hot-reloads extensions) or /mnemos to reconnect.
+ * Reload:       /reload  (Pi hot-reloads extensions) or /vesma to reconnect.
  */
 
 // ── Safety contract of the vesma integration pack — applies to this file. ──
@@ -37,14 +37,14 @@ const REQ_TIMEOUT_MS = 60_000;
 // (kept in sync with integrations/agents_md/). Pi has
 // no AGENTS.md mechanism; for the bridge extension this hint IS the
 // always-on instructions channel.
-const MNEMOS_STANDING_HINT = [
+const VESMA_STANDING_HINT = [
 	"# Vesma memory — always-on rules",
 	"",
 	"You have persistent shared memory through the `vesma_*` tools.",
 	"- Session start: call vesma_recall_context(project=<current-project>) BEFORE reading project files; surface a <=4-line memory header. Never block on failure.",
 	"- Before context compaction, session end or handoff: vesma_save_context(project, goals, completed, next_steps) — unsaved context is lost.",
 	"- PRIORITY ops: vesma_search before architectural decisions and before web searches; vesma_add when you learn something non-obvious or make a decision; vesma_agent_recall when resuming a named agent role.",
-	"- Tag contract on every vesma_add/vesma_ingest_url: exactly one project:<slug>, one agent:<slug>, at least one mnemos:<subtype>.",
+	"- Tag contract on every vesma_add/vesma_ingest_url: exactly one project:<slug>, one agent:<slug>, at least one vesma:<subtype>.",
 ].join("\n");
 
 interface McpTool {
@@ -154,7 +154,7 @@ export default function vesmaMcpBridge(pi: ExtensionAPI) {
 
 		pi.registerTool({
 			name: tool.name,
-			label: tool.name.replace(/^(?:mnemos_|vesma_)/, "🧠 "),
+			label: tool.name.replace(/^(?:vesma_|vesma_)/, "🧠 "),
 			description: tool.description ?? `vesma MCP tool ${tool.name}`,
 			promptSnippet: `Persistent shared memory: ${tool.description?.slice(0, 120) ?? tool.name}`,
 			parameters: schema as never,
@@ -185,9 +185,9 @@ export default function vesmaMcpBridge(pi: ExtensionAPI) {
 			registeredNames = new Set();
 			let fresh = 0;
 			for (const t of tools) if (registerTool(t)) fresh++;
-			ctx.ui?.notify(`🧠 mnemos: ${fresh} memory tools online (${tools.length} served)`, "info");
+			ctx.ui?.notify(`🧠 vesma: ${fresh} memory tools online (${tools.length} served)`, "info");
 		} catch (e) {
-			ctx.ui?.notify(`🧠 mnemos: bridge failed — ${(e as Error).message}`, "warning");
+			ctx.ui?.notify(`🧠 vesma: bridge failed — ${(e as Error).message}`, "warning");
 		}
 	}
 
@@ -198,9 +198,9 @@ export default function vesmaMcpBridge(pi: ExtensionAPI) {
 	pi.on("before_agent_start", (event: { systemPrompt?: string }) => {
 		const base = typeof event.systemPrompt === "string" ? event.systemPrompt : "";
 		// Dedup across both marker generations (stamp-migration window).
-		if (base.includes("vesma:integration") || base.includes("mnemos:integration"))
+		if (base.includes("vesma:integration") || base.includes("vesma:integration"))
 			return event; // hint already present — never duplicate
-		return { systemPrompt: base + (base ? "\n\n" : "") + MNEMOS_STANDING_HINT };
+		return { systemPrompt: base + (base ? "\n\n" : "") + VESMA_STANDING_HINT };
 	});
 	pi.on("session_start", (_event: unknown, ctx: Parameters<Parameters<typeof pi.on>[1]>[1]) =>
 		connect(ctx as { ui?: { notify: (m: string, l?: string) => void } }),
@@ -209,7 +209,7 @@ export default function vesmaMcpBridge(pi: ExtensionAPI) {
 	process.on("exit", () => killChild());
 
 	// Manual control: /vesma (brand-primary; docs reference it) and the
-	// legacy /mnemos alias reconnect the bridge and re-register tools.
+	// legacy /vesma alias reconnect the bridge and re-register tools.
 	for (const cmd of ["vesma", "vesma"]) {
 		pi.registerCommand(cmd, {
 			description: "Reconnect the vesma MCP memory bridge",

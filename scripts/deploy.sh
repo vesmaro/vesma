@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGE_NAME="localhost/mnemos:latest"
+IMAGE_NAME="localhost/vesma:latest"
 
 cd "$PROJECT_DIR"
 
@@ -68,18 +68,18 @@ cmd_kube_up() {
     # Ensure volumes exist
     podman volume create vesma-data 2>/dev/null || true
     podman volume create vesma-vault 2>/dev/null || true
-    podman kube play deploy/podman/kube/mnemos-pod.yaml
+    podman kube play deploy/podman/kube/vesma-pod.yaml
     echo "Vesma API:   http://localhost:8787"
 }
 
 cmd_kube_down() {
-    podman kube down deploy/podman/kube/mnemos-pod.yaml
+    podman kube down deploy/podman/kube/vesma-pod.yaml
 }
 
 cmd_quadlet() {
     local target_dir="$HOME/.config/containers/systemd"
     mkdir -p "$target_dir"
-    cp deploy/podman/quadlet/mnemos.container "$target_dir/"
+    cp deploy/podman/quadlet/vesma.container "$target_dir/"
     systemctl --user daemon-reload
     echo "Quadlet installed. Start with:"
     echo "  systemctl --user start vesma"

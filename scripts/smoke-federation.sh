@@ -41,7 +41,7 @@ PAYLOAD="$TMPDIR/compact.json"
 echo "1. Seed peer B with a clean decision memory"
 VESMA_CONFIG="$CONF_B" "$VESMA_BIN" add \
   "Smoke test: vesma federation verified via local roundtrip." \
-  --tags "project:$PROJECT,agent:$AGENT_B,mnemos:decision" \
+  --tags "project:$PROJECT,agent:$AGENT_B,vesma:decision" \
   --title "Federation smoke seed" >/dev/null
 
 echo "2. Export B's memories as a compact federation payload"

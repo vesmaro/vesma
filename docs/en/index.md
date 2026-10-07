@@ -66,43 +66,43 @@ Set `VESMA_AUTO_COLLECT=1` in the server's `env` block to make Vesma prompt your
 
 | Tool | Purpose |
 |------|---------|
-| `mnemos_search` | Hybrid FTS5 + vector search with Reciprocal Rank Fusion (published memories by default) |
-| `mnemos_add` | Create a memory — **enforces the Vesma tag contract** |
-| `mnemos_filter` | Run or refresh the context filter on an existing memory (e.g. with another profile) |
-| `mnemos_agent_recall` | Per-agent recall (M3) — most recent entries for a single agent |
-| `mnemos_save_context` | Persist a session checkpoint |
-| `mnemos_recall_context` | Restore the latest checkpoint for a project |
-| `mnemos_list_recent` | List the most recent memory entries |
-| `mnemos_list_tags` | List all tags with their counts |
-| `mnemos_tags_rename` | Bulk rename a tag prefix across existing memories (dry-run by default) |
-| `mnemos_tags` | Bulk tag operations: rename a prefix, remove or add tags |
-| `mnemos_ingest_url` | Fetch a web page and save it as a memory |
-| `mnemos_ingest_document` | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) |
-| `mnemos_watch_start` | Register the project-graph watch poll (ADR-0032 §3.2; graph flags on by default since 2026-09-28) |
-| `mnemos_watch_stop` | Stop one or all watch registrations |
-| `mnemos_watch_status` | Report watch registrations and last poll outcome |
-| `mnemos_index_project` | Index a registered project root into the project graph (ADR-0032, on by default) |
-| `mnemos_project_graph_status` | Project-graph volumes, freshness, parse failures, poisoned count |
-| `mnemos_search_graph` | Ranked search over the graph with the token contract |
-| `mnemos_trace_path` | BFS over project edges from one symbol (depth ≤ 2) |
-| `mnemos_get_file_outline` | Symbol outline of one indexed file (shapes, never bodies) |
-| `mnemos_get_code_snippet` | Secret-scanned line range read from disk (PG4) |
-| `mnemos_check_graph_coverage` | Per-path coverage verdicts: indexed / stale / parse-error / unindexed / poisoned |
-| `mnemos_get_graph_schema` | The graph contract card for agents |
-| `mnemos_list_graph_projects` | Registered projects joined with index status |
-| `mnemos_delete_graph_project` | Drop the graph index (sidecar only); clears the poisoned set |
-| `mnemos_auto_collect_status` | Compaction-detection signal vector (M7) |
-| `mnemos_stats` | Health counters and key paths |
-| `mnemos_reprocess` | Manually run the knowledge pipeline over queued entries |
-| `mnemos_compress` | CCR: compress large content with zero data loss — original cached, marker returned |
-| `mnemos_retrieve` | Fetch the original content back by CCR marker hash |
-| `mnemos_align_prefix` | CacheAligner (P1-5): relocate dynamic content to the tail for KV-cache hits |
-| `mnemos_assemble_context` | Assemble the model-facing context block: search → compress → filter → secret scan → cache align → token budget |
-| `mnemos_context_rewrite` | `on_context_rewrite` (ADR-0018): preserve the lossless original when the harness rewrites its history |
-| `mnemos_hooks` | Lifecycle hooks: `pre_llm_call` / `on_session_start` / `post_tool_call` actions |
-| `mnemos_export` | Export memories to a file on disk |
-| `mnemos_import` | Import memories from an export file |
-| `mnemos_workflow` | Workflow lifecycle state for a memory (open → in-progress → done, blocked / …) |
+| `vesma_search` | Hybrid FTS5 + vector search with Reciprocal Rank Fusion (published memories by default) |
+| `vesma_add` | Create a memory — **enforces the Vesma tag contract** |
+| `vesma_filter` | Run or refresh the context filter on an existing memory (e.g. with another profile) |
+| `vesma_agent_recall` | Per-agent recall (M3) — most recent entries for a single agent |
+| `vesma_save_context` | Persist a session checkpoint |
+| `vesma_recall_context` | Restore the latest checkpoint for a project |
+| `vesma_list_recent` | List the most recent memory entries |
+| `vesma_list_tags` | List all tags with their counts |
+| `vesma_tags_rename` | Bulk rename a tag prefix across existing memories (dry-run by default) |
+| `vesma_tags` | Bulk tag operations: rename a prefix, remove or add tags |
+| `vesma_ingest_url` | Fetch a web page and save it as a memory |
+| `vesma_ingest_document` | Ingest a document as chunked, born-quarantined rows (ADR-0027 Ф3) |
+| `vesma_watch_start` | Register the project-graph watch poll (ADR-0032 §3.2; graph flags on by default since 2026-09-28) |
+| `vesma_watch_stop` | Stop one or all watch registrations |
+| `vesma_watch_status` | Report watch registrations and last poll outcome |
+| `vesma_index_project` | Index a registered project root into the project graph (ADR-0032, on by default) |
+| `vesma_project_graph_status` | Project-graph volumes, freshness, parse failures, poisoned count |
+| `vesma_search_graph` | Ranked search over the graph with the token contract |
+| `vesma_trace_path` | BFS over project edges from one symbol (depth ≤ 2) |
+| `vesma_get_file_outline` | Symbol outline of one indexed file (shapes, never bodies) |
+| `vesma_get_code_snippet` | Secret-scanned line range read from disk (PG4) |
+| `vesma_check_graph_coverage` | Per-path coverage verdicts: indexed / stale / parse-error / unindexed / poisoned |
+| `vesma_get_graph_schema` | The graph contract card for agents |
+| `vesma_list_graph_projects` | Registered projects joined with index status |
+| `vesma_delete_graph_project` | Drop the graph index (sidecar only); clears the poisoned set |
+| `vesma_auto_collect_status` | Compaction-detection signal vector (M7) |
+| `vesma_stats` | Health counters and key paths |
+| `vesma_reprocess` | Manually run the knowledge pipeline over queued entries |
+| `vesma_compress` | CCR: compress large content with zero data loss — original cached, marker returned |
+| `vesma_retrieve` | Fetch the original content back by CCR marker hash |
+| `vesma_align_prefix` | CacheAligner (P1-5): relocate dynamic content to the tail for KV-cache hits |
+| `vesma_assemble_context` | Assemble the model-facing context block: search → compress → filter → secret scan → cache align → token budget |
+| `vesma_context_rewrite` | `on_context_rewrite` (ADR-0018): preserve the lossless original when the harness rewrites its history |
+| `vesma_hooks` | Lifecycle hooks: `pre_llm_call` / `on_session_start` / `post_tool_call` actions |
+| `vesma_export` | Export memories to a file on disk |
+| `vesma_import` | Import memories from an export file |
+| `vesma_workflow` | Workflow lifecycle state for a memory (open → in-progress → done, blocked / …) |
 
 Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-tools.md](user/mcp-tools.md)**
 

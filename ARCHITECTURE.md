@@ -8,7 +8,7 @@ Vesma is a single-tenant memory/knowledge service for AI agents (primarily Copil
 
 - **Runtime**: Python 3.11+, FastAPI HTTP API, Typer CLI, MCP server (stdio).
 - **Storage**: SQLite (FTS5) for raw + processing + processed, SQLite + NumPy vector store (`vectors.db`) only for `published` knowledge units, Obsidian-compatible vault on disk for human-readable mirror.
-- **Embeddings**: bundled `vesma-embed-v1` ONNX model (default `nano` provider, shipped at `src/mnemos/models/vesma-embed-v1/`) — privacy + offline, no external vector DB.
+- **Embeddings**: bundled `vesma-embed-v1` ONNX model (default `nano` provider, shipped at `src/vesma/models/vesma-embed-v1/`) — privacy + offline, no external vector DB.
 - **Packaging**: rootless `podman` container; systemd quadlet units; user-level install option.
 
 ### Conceptual layers
@@ -101,13 +101,13 @@ flowchart TB
 
 ### `TagContract`
 
-Required composition for any `mnemos_add`:
+Required composition for any `vesma_add`:
 - exactly one `project:<slug>` tag
 - exactly one `agent:<slug>` tag (or `agent:user` for human-authored)
-- ≥1 tag from `mnemos:*` namespace (`mnemos:session`, `mnemos:bug-pattern`, `mnemos:learning`, `mnemos:decision`, `mnemos:rule`, `mnemos:open-question`, `mnemos:checkpoint`, `mnemos:legacy`)
+- ≥1 tag from `vesma:*` namespace (`vesma:session`, `vesma:bug-pattern`, `vesma:learning`, `vesma:decision`, `vesma:rule`, `vesma:open-question`, `vesma:checkpoint`, `vesma:legacy`)
 - Optional whitelisted prefixes: `severity:`, `stack:`, `applyTo:`, `source:`
 
-Enforcement: at MCP layer when `strict_tag_contract=true` (default for new installs). Lax mode tags legacy records `mnemos:legacy` + `agent:unknown` automatically.
+Enforcement: at MCP layer when `strict_tag_contract=true` (default for new installs). Lax mode tags legacy records `vesma:legacy` + `agent:unknown` automatically.
 
 ### `Trace`
 
@@ -150,7 +150,7 @@ classDiagram
         +bool strict
         +str project
         +str agent
-        +list~str~ mnemos_subtypes
+        +list~str~ vesma_subtypes
     }
     class Trace {
         +str id
@@ -184,13 +184,13 @@ The MCP surface is **38 tools** (`mcp_server.py` `list_tools()`). The v1-era tab
 
 | Group | Tools |
 |---|---|
-| Memory operations | `mnemos_add`, `mnemos_search`, `mnemos_agent_recall`, `mnemos_recall_context`, `mnemos_save_context`, `mnemos_list_recent`, `mnemos_list_tags`, `mnemos_ingest_url` |
-| Context assembly & hooks | `mnemos_assemble_context`, `mnemos_context_rewrite`, `mnemos_hooks`, `mnemos_filter`, `mnemos_compress`, `mnemos_retrieve`, `mnemos_align_prefix` |
-| Tags & workflow | `mnemos_tags`, `mnemos_tags_rename`, `mnemos_workflow` |
-| Import / export | `mnemos_export`, `mnemos_import` |
-| Watch poll (project graph, ADR-0032 §3.2) | `mnemos_watch_start`, `mnemos_watch_stop`, `mnemos_watch_status` |
-| Project graph (ADR-0032, on by default) | `mnemos_index_project`, `mnemos_project_graph_status`, `mnemos_search_graph`, `mnemos_trace_path`, `mnemos_get_file_outline`, `mnemos_get_code_snippet`, `mnemos_check_graph_coverage`, `mnemos_get_graph_schema`, `mnemos_list_graph_projects`, `mnemos_delete_graph_project` |
-| Stats & pipeline | `mnemos_stats`, `mnemos_auto_collect_status`, `mnemos_reprocess` |
+| Memory operations | `vesma_add`, `vesma_search`, `vesma_agent_recall`, `vesma_recall_context`, `vesma_save_context`, `vesma_list_recent`, `vesma_list_tags`, `vesma_ingest_url` |
+| Context assembly & hooks | `vesma_assemble_context`, `vesma_context_rewrite`, `vesma_hooks`, `vesma_filter`, `vesma_compress`, `vesma_retrieve`, `vesma_align_prefix` |
+| Tags & workflow | `vesma_tags`, `vesma_tags_rename`, `vesma_workflow` |
+| Import / export | `vesma_export`, `vesma_import` |
+| Watch poll (project graph, ADR-0032 §3.2) | `vesma_watch_start`, `vesma_watch_stop`, `vesma_watch_status` |
+| Project graph (ADR-0032, on by default) | `vesma_index_project`, `vesma_project_graph_status`, `vesma_search_graph`, `vesma_trace_path`, `vesma_get_file_outline`, `vesma_get_code_snippet`, `vesma_check_graph_coverage`, `vesma_get_graph_schema`, `vesma_list_graph_projects`, `vesma_delete_graph_project` |
+| Stats & pipeline | `vesma_stats`, `vesma_auto_collect_status`, `vesma_reprocess` |
 
 Full per-tool reference — input schemas, output shapes, JSON-RPC examples: [docs/en/user/mcp-tools.md](docs/en/user/mcp-tools.md).
 
@@ -206,7 +206,7 @@ Mirrors MCP tools (`POST /memories`, `GET /recall/agent/{name}`, `POST /search`,
 
 ```mermaid
 flowchart TD
-    ADD["mnemos_add / ingest_url"]
+    ADD["vesma_add / ingest_url"]
     RAW[("status: raw")]
 
     subgraph CL["Cluster Worker — pipeline/cluster.py"]
@@ -280,7 +280,7 @@ Selection priority: explicit request → `source:` tag hint → content heuristi
 
 ### API behavior
 
-- `mnemos_add`: optional `filter_profile`, stores both raw and clean forms.
+- `vesma_add`: optional `filter_profile`, stores both raw and clean forms.
 - recall/search tools return `clean_content` by default.
 - `include_raw=true` enables drill-down to source payload.
 
@@ -313,13 +313,13 @@ Auto-collect signals (weighted, configurable in `~/.mnemos/auto_collect.yaml`):
 3. **Summary-marker detection**: regex on the most recent inbound messages for `<conversation-summary>` / `<compacted>`.
 4. **Reference-drop heuristic**: agent stops citing earlier identifiers in the last N tool calls.
 
-`mnemos_auto_collect_status` returns the per-signal vector + composite recommendation.
+`vesma_auto_collect_status` returns the per-signal vector + composite recommendation.
 
 ## 8. Path-scoped rules ingest (M8)
 
 File watcher on `.github/instructions/*.instructions.md` in configured repos. On change:
 - Parse frontmatter (`applyTo:` glob).
-- Create / update a `Memory` with `status=published`, tags `mnemos:rule`, `project:<repo>`, `applyTo:<glob>`, `source:path-scoped-rule`.
+- Create / update a `Memory` with `status=published`, tags `vesma:rule`, `project:<repo>`, `applyTo:<glob>`, `source:path-scoped-rule`.
 - On delete → remove memory + vector entry.
 
 This makes path-scoped rules first-class searchable knowledge instead of inert instruction files.
@@ -345,7 +345,7 @@ flowchart LR
 ## 9. Security & operational posture
 
 - **Rootless podman** by default. MCP server bound to localhost / unix-socket; HTTP API loopback only unless explicitly bound.
-- **Secrets**: provider API keys via env vars (`MNEMOS_LLM__ANTHROPIC_API_KEY`, …) read once at startup; never written to logs.
+- **Secrets**: provider API keys via env vars (`VESMA_LLM__ANTHROPIC_API_KEY`, …) read once at startup; never written to logs.
 - **URL ingest sanitisation**: strip credentials from URLs before storing.
 - **Explainability**: only short `rationale_summary` (≤200 chars), never raw LLM chain-of-thought.
 - **Filter safety**: Context Filter never removes source data; raw payload remains retrievable for audit/debug.
@@ -359,7 +359,7 @@ flowchart LR
 
 ## 11. Module layout (Python)
 
-> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from the filesystem at `src/vesma/` (6.0.0 removed the ADR-0031 `mnemos` import-compat shim); one-line purposes come from the module docstrings.
+> **Note**: Uses `src/` layout (inherited from ai-brain) to keep the Python package off `sys.path` by default and prevent accidental shadowing. Tree rebuilt from the filesystem at `src/vesma/` (6.0.0 removed the ADR-0031 `vesma` import-compat shim); one-line purposes come from the module docstrings.
 
 ```
 pyproject.toml
@@ -368,13 +368,13 @@ src/  vesma/
     config.py            # env + YAML settings; legacy env-name aliases (#139)
     models.py            # Memory, TagContract, Trace data models
     manager.py           # MemoryManager — core CRUD + search orchestrator
-    mcp_server.py        # MCP server over stdio — 38 mnemos_* tools
+    mcp_server.py        # MCP server over stdio — 38 vesma_* tools
     sdk.py               # VesmaSDK — thin typed facade over MemoryManager
     workflow.py          # workflow lifecycle state machine for memories (#96)
     traces.py            # explainability / trace layer (M6)
     auto_collect.py      # compaction detection signals (M7)
     logging_setup.py     # logging configuration
-    train_entry.py       # `mnemos-train` console entry point (ADR-0021 NM track)
+    train_entry.py       # `vesma-train` console entry point (ADR-0021 NM track)
 
     api/                 # FastAPI HTTP API
       main.py            #   app + routes (+ /graph/ project-graph namespace, ADR-0032)
@@ -510,7 +510,7 @@ git commit -m "chore(m1): fork from ai-brain; add Vesma planning documents"
 
 ## 12. Out of scope for v1 (explicit)
 
-- **Cache Center** (M11) — *shipped under different names.* The original v1 deferral is resolved: reversible compression landed as **CCR** (`src/mnemos/ccr.py` — compress → cache original in `ccr_cache` by SHA-256 → retrieve via marker; tools `mnemos_compress` / `mnemos_retrieve`; `ccr` config section) and prefix stabilization as the **CacheAligner** (`src/mnemos/cache_aligner.py` — relocate dynamic spans for byte-stable prefixes; tool `mnemos_align_prefix`; `cache_aligner` config section). Both are wired into `mnemos_assemble_context` (optional CCR expansion + alignment stage). Nothing of the original Cache Center vision remains open.
+- **Cache Center** (M11) — *shipped under different names.* The original v1 deferral is resolved: reversible compression landed as **CCR** (`src/vesma/ccr.py` — compress → cache original in `ccr_cache` by SHA-256 → retrieve via marker; tools `vesma_compress` / `vesma_retrieve`; `ccr` config section) and prefix stabilization as the **CacheAligner** (`src/vesma/cache_aligner.py` — relocate dynamic spans for byte-stable prefixes; tool `vesma_align_prefix`; `cache_aligner` config section). Both are wired into `vesma_assemble_context` (optional CCR expansion + alignment stage). Nothing of the original Cache Center vision remains open.
 - **New Web UI from scratch** — if ai-brain has one, we extend; if not, Swagger + mkdocs only.
 - **Multi-tenant / multi-user auth** — Vesma is single-tenant by design.
 - **Cloud-managed embeddings** — local ONNX only.
@@ -623,17 +623,17 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph TOOLS["MCP Tools — mcp_server.py"]
-        T1["mnemos_add"]
-        T2["mnemos_search"]
-        T3["mnemos_recall_context"]
-        T4["mnemos_agent_recall"]
-        T5["mnemos_save_context"]
-        T6["mnemos_list_recent"]
-        T7["mnemos_list_tags"]
-        T8["mnemos_ingest_url"]
-        T9["mnemos_watch_*"]
-        T10["mnemos_auto_collect_status"]
-        T11["mnemos_stats"]
+        T1["vesma_add"]
+        T2["vesma_search"]
+        T3["vesma_recall_context"]
+        T4["vesma_agent_recall"]
+        T5["vesma_save_context"]
+        T6["vesma_list_recent"]
+        T7["vesma_list_tags"]
+        T8["vesma_ingest_url"]
+        T9["vesma_watch_*"]
+        T10["vesma_auto_collect_status"]
+        T11["vesma_stats"]
     end
 
     subgraph MGR_B["MemoryManager — manager.py"]
@@ -653,7 +653,7 @@ flowchart LR
     T2 --> M2
     T3 --> M3
     T4 --> M4
-    T5 -->|"mnemos:checkpoint → add()"| M1
+    T5 -->|"vesma:checkpoint → add()"| M1
     T6 --> M5
     T7 --> M6
     T8 --> M7

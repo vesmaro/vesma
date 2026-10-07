@@ -28,7 +28,7 @@ second.**
 The graph ships as MCP tools `vesma_search_graph`, `vesma_trace_path`,
 `vesma_get_file_outline`, `vesma_get_code_snippet`,
 `vesma_check_graph_coverage`, `vesma_list_graph_projects` and
-`vesma_project_graph_status` (canonical spellings `mnemos_*`; legacy
+`vesma_project_graph_status` (canonical spellings `vesma_*`; legacy
 builds before the 6.0 rebrand accept the canonical names directly).
 Runtime names carry the harness namespace prefix (`mcp__vesma__…` on
 ZCode, `mcp_<server>_<tool>` on VS Code Copilot) — resolve them by the

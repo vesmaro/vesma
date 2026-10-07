@@ -186,10 +186,10 @@ Optional env vars:
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `VESMA_SYNC_PEER_USER` | `mnemos-sync` | ssh user on B. |
+| `VESMA_SYNC_PEER_USER` | `vesma-sync` | ssh user on B. |
 | `VESMA_SYNC_DRY_RUN` | — | `1` logs commands only, no writes / ssh. |
 | `VESMA_SYNC_SOURCE_CONFIG` | discovery | Per-side `config.yaml` path on A. |
-| `VESMA_SYNC_REMOTE_FILE` | `mnemos-sync-<ts>.json` | Basename of the payload on B. |
+| `VESMA_SYNC_REMOTE_FILE` | `vesma-sync-<ts>.json` | Basename of the payload on B. |
 | `VESMA_SYNC_VESMA_BIN` | auto-discover | Path to the `vesma` CLI on A. |
 
 The `vesma` CLI path on B (`VESMA_SYNC_REMOTE_VESMA_BIN`) is set on B in
@@ -259,4 +259,4 @@ secret. See [Security — Federation defence-in-depth](../admin/security.md#11-f
 - [Export & Import](./export-import.md) — full backups (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — the three-layer model.
 - [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-federation-exclusion-marker) — the exclusion marker.
-- [MCP Tools](./mcp-tools.md) — `mnemos_export` / `mnemos_import` MCP tools (the MCP surface for full export/import).
+- [MCP Tools](./mcp-tools.md) — `vesma_export` / `vesma_import` MCP tools (the MCP surface for full export/import).

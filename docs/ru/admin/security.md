@@ -408,7 +408,7 @@ vesma search --tags vesma:decision         # не совпадает с vesma:de
 
 ```mermaid
 flowchart TB
-    L1[1. Сканер на write-path\nзапускается на каждом mnemos_add] -->|тег mnemos:no-federate| DB[(vesma store)]
+    L1[1. Сканер на write-path\nзапускается на каждом vesma_add] -->|тег mnemos:no-federate| DB[(vesma store)]
     DB -->|настраиваемый интервал| L2[2. Background scanner job\nпересканирует корпус для false negatives\nбудущее: #89]
     L2 -->|найдено чувствительное| DB
     DB -->|на sync export / pull| L3[3. Moderation pipeline\nфинальная защита на выходе\nвыпущено: #85 parts 1+2a+2b]
@@ -417,7 +417,7 @@ flowchart TB
 
 | Слой | Где | Когда | Что делает | Статус |
 |------|-----|-------|-----------|--------|
-| **1. Сканер на write-path** | `mnemos_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | На каждой записи | Запускает `detect_secrets(content)`. Если секрет обнаружен и запись ещё не несёт `mnemos:no-federate`, тег добавляется автоматически. Логирует только имена паттернов + счётчики — никогда сырые значения. | ✅ Выпущено (#86) |
+| **1. Сканер на write-path** | `vesma_add` / `POST /memories` / `ingest_url` / `ingest_path_scoped_rules` | На каждой записи | Запускает `detect_secrets(content)`. Если секрет обнаружен и запись ещё не несёт `mnemos:no-federate`, тег добавляется автоматически. Логирует только имена паттернов + счётчики — никогда сырые значения. | ✅ Выпущено (#86) |
 | **2. Background scanner** | MCP-сервер, фоновая задача | Настраиваемый интервал (`scanner.interval_hours`, default 6ч) | Пересканирует весь корпус для false negatives, пропущенных на write-path. Переиспользует `detect_secrets` без изменений (DRY — один источник паттернов). Ручной запуск: `vesma scanner run`. | ✅ Выпущено (#89) |
 | **3. Moderation pipeline** | Sync export (Phase 0) / Pull (Phase 2) | На каждом sync export / pull | Финальная защита — запускает `moderate()` на выходе через `build_compact_payload()`. Даже если тег `no-federate` отсутствует, pipeline санитизирует контент (redact) или отказывает в записи. | ✅ Выпущено (#85 parts 1, 2a, 2b) |
 

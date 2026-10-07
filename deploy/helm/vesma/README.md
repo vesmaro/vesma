@@ -34,7 +34,7 @@ address. `helm test vesma` runs an in-cluster health check.
 
 ## Image registry status
 
-The default image is `ghcr.io/vesmaro/vesmaro` (org namespace, backfilled in
+The default image is `ghcr.io/vesmaro/vesma` (org namespace, backfilled in
 the 4.3.0 wave) and it is **public** — plain pulls work with no credentials.
 `image.pullSecrets` stays available for private-registry setups or rate
 limits, but is not needed here. The legacy `ghcr.io/korrnals/mnemos` package
