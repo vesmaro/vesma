@@ -55,7 +55,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`memory`](#memory-status) | Статус подключения памяти по харнесам (`memory status`, ADR-0034) |
 | [`awareness`](#awareness) | Нативный awareness-heartbeat: `get` / `set` (переключение режима) / `stats` (метрики гейта) |
 
-> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают. `mnemos:` — канонический префикс хранения, стабильный по контракту; `vesma:` принимается как входной алиас везде (см. [tag-contract.md](tag-contract.md)).
+> Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Переименования проектных неймспейсов префикс подтипов не затрагивают. `vesma:` — канонический префикс хранения (переключение 6.0); старое написание `mnemos:` принимается как входной алиас везде (см. [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -298,7 +298,7 @@ vesma tags validate ~/.mnemos/vault
 
 ## `tags audit`
 
-Ищет в SQLite-хранилище записи, нарушающие контракт тегов, и лечит их по запросу. Каждая запись должна нести хотя бы один тег `project:*`, один `agent:*` и один `mnemos:*` (тот же контракт, что проверяет doctor в проверке «Tag contract»); записи с нечитаемым tags-JSON тоже помечаются.
+Ищет в SQLite-хранилище записи, нарушающие контракт тегов, и лечит их по запросу. Каждая запись должна нести хотя бы один тег `project:*`, один `agent:*` и один `vesma:*` (тот же контракт, что проверяет doctor в проверке «Tag contract»); записи с нечитаемым tags-JSON тоже помечаются.
 
 ```text
 vesma tags audit [--apply] [--limit N] [--json]
@@ -310,7 +310,7 @@ vesma tags audit [--apply] [--limit N] [--json]
 | `--limit / -l` | `0` | Ограничить число ПОКАЗЫВАЕМЫХ строк (`0` — показать все). Скан всегда покрывает всё хранилище. |
 | `--json` | `false` | Вывести отчёт в JSON (для скриптов / CI). |
 
-Политика лечения (идемпотентна по построению — второй запуск `--apply` ничего не лечит): нет `mnemos:*` → `mnemos:legacy`; нет `agent:*` → `agent:user`; нет `project:*` → значение колонки `project` этой записи, нормализованное в слаг (нижний регистр, пробелы → дефисы), или `project:unsorted`, если колонка пуста.
+Политика лечения (идемпотентна по построению — второй запуск `--apply` ничего не лечит): нет `vesma:*` → `vesma:legacy`; нет `agent:*` → `agent:user`; нет `project:*` → значение колонки `project` этой записи, нормализованное в слаг (нижний регистр, пробелы → дефисы), или `project:unsorted`, если колонка пуста.
 
 ### Пример
 
@@ -737,7 +737,7 @@ vesma migrate from-ai-brain [OPTIONS]
 Мигратор:
 
 - Преобразует устаревшие значения `source` (напр. `telegram` → `mcp`).
-- **Патчит контракт тегов** — каждая устаревшая запись получает `project:legacy`, `agent:unknown`, `mnemos:legacy`, если они отсутствуют.
+- **Патчит контракт тегов** — каждая устаревшая запись получает `project:legacy`, `agent:unknown`, `vesma:legacy`, если они отсутствуют.
 - Сохраняет исходный `status` (`raw` / `processing` / `processed` / `published` / `archived`).
 - Мигрирует столбцы `content_ru` / `content_en` в `metadata` (без потери данных).
 - Мигрирует `parent_ids` в `metadata.parent_ids`.

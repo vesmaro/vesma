@@ -343,7 +343,7 @@ vesma_save_context(
 vesma_search(
   query={natural language query},
   project={current-project},   # optional, scope to project
-  tags=["mnemos:decision"],    # optional, narrow by tag (mnemos: prefix — the storage data contract, see §3)
+  tags=["vesma:decision"],    # optional, narrow by tag (vesma: is canon; mnemos: accepted on input, see §3)
   limit=10
 )
 ```
@@ -379,7 +379,7 @@ vesma_add(
   tags=[
     "project:{slug}",
     "agent:{slug}",
-    "mnemos:learning"           # or mnemos:bug-pattern, mnemos:decision, mnemos:rule
+    "vesma:learning"           # or vesma:bug-pattern, vesma:decision, vesma:rule
   ],
   title={short title}           # optional, auto-generated if omitted
 )
@@ -400,7 +400,7 @@ vesma_add(
   tags=[
     "project:{slug}",
     "agent:{slug}",
-    "mnemos:decision"
+    "vesma:decision"
   ]
 )
 ```
@@ -458,9 +458,9 @@ Every `vesma_add` and `vesma_ingest_url` call must carry a valid tag set.
 Tags are the searchability backbone of the memory store — without them,
 memory is unstructured noise.
 
-> **Naming note.** Tag prefixes `mnemos:*` are the STORAGE DATA CONTRACT
+> **Naming note.** Tag prefixes `vesma:*` are the STORAGE DATA CONTRACT
 > (the store's schema predates the product rebrand and is unchanged by
-> it). Tool names are `vesma_*`; tag prefixes are `mnemos:*`. Do not
+> it). Tool names are `vesma_*`; tag prefixes are `vesma:*`. Do not
 > "fix" one into the other.
 
 ### Required tags
@@ -469,60 +469,60 @@ memory is unstructured noise.
 |-----|--------|-------------|---------|
 | `project:{slug}` | `[a-z0-9]` + `[a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:{slug}` | `[a-z0-9]` + `[a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory (use `agent:user` for user-authored) |
-| `mnemos:<subtype>` | see table below | **at least 1** | Cognitive category |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `mnemos:<subtype>` accepted on input) |
 
 ### Subtypes (whitelist)
 
 | Subtype | When to use |
 |---------|-------------|
-| `mnemos:session` | Session continuity snapshots |
-| `mnemos:checkpoint` | Mid-session compaction-resilient checkpoints |
-| `mnemos:bug-pattern` | Recurring failure modes, root-cause patterns |
-| `mnemos:learning` | Non-obvious facts acquired during a task |
-| `mnemos:decision` | Explicit architectural / product decisions + rationale |
-| `mnemos:rule` | Hard constraints and invariants |
-| `mnemos:open-question` | Unresolved questions requiring future investigation |
-| `mnemos:legacy` | Migrated entries from pre-contract stores |
-| `mnemos:synthesized` | Entries created by the knowledge pipeline cluster/synthesis stage (not agent-authored) |
+| `vesma:session` | Session continuity snapshots |
+| `vesma:checkpoint` | Mid-session compaction-resilient checkpoints |
+| `vesma:bug-pattern` | Recurring failure modes, root-cause patterns |
+| `vesma:learning` | Non-obvious facts acquired during a task |
+| `vesma:decision` | Explicit architectural / product decisions + rationale |
+| `vesma:rule` | Hard constraints and invariants |
+| `vesma:open-question` | Unresolved questions requiring future investigation |
+| `vesma:legacy` | Migrated entries from pre-contract stores |
+| `vesma:synthesized` | Entries created by the knowledge pipeline cluster/synthesis stage (not agent-authored) |
 
 ### Backward compatibility (gcw: alias — deprecated)
 
-The current tag contract is `mnemos:<subtype>`; legacy `gcw:` tags are
-**accepted as aliases** for reading old data — the server keeps
-backward compatibility:
+The current tag contract is `vesma:<subtype>` (canonical since 6.0);
+legacy `mnemos:<subtype>` and `gcw:` tags are **accepted as aliases**
+for reading old data — the server keeps backward compatibility:
 
-- `gcw:` tags are **accepted as aliases** for `mnemos:` —
-  valid `gcw:` subtypes are auto-migrated to `mnemos:` at write time.
-- Old memories with `gcw:` tags continue to work **without manual migration**.
-- Invalid `gcw:` subtypes (not in whitelist) are preserved as-is for error
+- `mnemos:` and `gcw:` tags are **accepted as aliases** for `vesma:` —
+  valid subtypes are auto-migrated to `vesma:<subtype>` at write time.
+- Old memories with `mnemos:`/`gcw:` tags continue to work **without
+  manual migration** (the 6.0 mover re-slugs stored rows in place).
+- Invalid subtypes (not in whitelist) are preserved as-is for error
   reporting — they are NOT auto-migrated.
 
-**Rule for new writes:** always use `mnemos:<subtype>`. The `gcw:` alias
-exists only for reading legacy data and will be removed in a future major
-release.
+**Rule for new writes:** always use `vesma:<subtype>`. The legacy
+aliases exist only for reading old data.
 
 ### Optional tags (accepted, not required)
 
 | Tag | Format | Purpose |
 |-----|--------|---------|
 | `source:{slug}` | any string | **Initiator** — the senior agent that delegated the task. Used with `agent:` (executor) to distinguish who delegated vs who performed. Example: `source:tech-lead` |
-| `applyTo:{glob}` | file glob | Scope a `mnemos:rule` to specific file paths |
+| `applyTo:{glob}` | file glob | Scope a `vesma:rule` to specific file paths |
 | `milestone:{id}` | any string | Links entry to a project milestone |
 | `domain:{slug}` | any string | Domain sub-classifier within a project |
 | `severity:{level}` | `low` / `medium` / `high` / `critical` | Severity for bug-patterns |
 | `stack:{slug}` | any string | Technology stack (e.g. `stack:python`) |
-| `kind:instruction` | fixed string | Marks a `mnemos:rule` indexed from an instructions file — behavioral rule |
-| `kind:skill-manifest` | fixed string | Marks a `mnemos:rule` indexed from a `SKILL.md` file — skill manifest |
-| `kind:agent-body` | fixed string | Marks a `mnemos:rule` indexed from an agent body file — agent body |
-| `task:queue` | fixed string | Workflow-state tag marking a pending task. Combine with `mnemos:open-question` and `owner:<slug>` |
+| `kind:instruction` | fixed string | Marks a `vesma:rule` indexed from an instructions file — behavioral rule |
+| `kind:skill-manifest` | fixed string | Marks a `vesma:rule` indexed from a `SKILL.md` file — skill manifest |
+| `kind:agent-body` | fixed string | Marks a `vesma:rule` indexed from an agent body file — agent body |
+| `task:queue` | fixed string | Workflow-state tag marking a pending task. Combine with `vesma:open-question` and `owner:<slug>` |
 | `owner:{slug}` | `[a-z0-9]` + `[a-z0-9\-_]*` | Task owner — **required** for `task:queue` entries. The agent or user responsible for resolving the task |
 
 **`kind:*` subtype separation:** `kind:*` tags separate indexed
-systematica types — `vesma_search(tags=["mnemos:rule",
+systematica types — `vesma_search(tags=["vesma:rule",
 "kind:instruction"])` returns only behavioral rules, not skill manifests.
 Use `kind:skill-manifest` and `kind:agent-body` analogously to scope
 searches to skills or agent bodies. Without a `kind:*` tag,
-`mnemos:rule` searches return all indexed systematica.
+`vesma:rule` searches return all indexed systematica.
 
 Unknown prefixes not listed here are **rejected** in strict mode.
 
@@ -533,10 +533,11 @@ for new installs):
 
 - Missing any required tag → `TagContractError`, write rejected.
 - Multiple `project:` or `agent:` tags → `TagContractError` (always ambiguous).
-- Invalid `mnemos:<subtype>` (not in whitelist) → `TagContractError`.
+- Invalid subtype (not in whitelist) → `TagContractError`.
 - Malformed slug (bad characters) → `TagContractError`.
-- **`gcw:` alias auto-migration**: `gcw:<valid-subtype>` is accepted and
-  silently migrated to `mnemos:<subtype>`. This is NOT an error.
+- **Legacy alias auto-migration**: `gcw:<valid-subtype>` and
+  `mnemos:<valid-subtype>` are accepted and silently migrated to
+  `vesma:<subtype>`. This is NOT an error.
 
 In lax mode (`strict_tag_contract=false`, for migrations), missing required
 tags emit a warning but do not raise. Multiple `project:` / `agent:` tags
@@ -550,7 +551,7 @@ vesma_add(
   tags=[
     "project:vesma",
     "agent:tech-lead",
-    "mnemos:bug-pattern",
+    "vesma:bug-pattern",
     "severity:medium",
     "stack:sqlite"
   ],
@@ -615,7 +616,7 @@ a release number.
 
 Per-tool usage procedures — `vesma_ingest_url` (URL ingest, strips
 credentials from URLs), `vesma_watch_*` (file watcher,
-`include_rules=true` indexes instruction files as `mnemos:rule`),
+`include_rules=true` indexes instruction files as `vesma:rule`),
 `vesma_auto_collect_status` (compaction detection — run before
 deciding to checkpoint), `vesma_reprocess` (drains the raw/processing
 queue when `vesma_stats` shows `queue_depth > 0`) — live in the
@@ -624,18 +625,18 @@ corresponding skills of this pack (`vesma-bootstrap`,
 table above is the authoritative tool list; the skills carry the
 step-by-step procedures.
 
-### Disk-authoritative rule for `mnemos:rule` entries
+### Disk-authoritative rule for `vesma:rule` entries
 
-When `vesma_search` returns a `mnemos:rule` entry, read the source file
+When `vesma_search` returns a `vesma:rule` entry, read the source file
 on disk before acting — memory is the index, disk is the authority. A
-`mnemos:rule` entry is a navigation hint pointing back to the source
+`vesma:rule` entry is a navigation hint pointing back to the source
 file, never the rule itself.
 
-- **Always read the source file** before acting on a `mnemos:rule`. The
+- **Always read the source file** before acting on a `vesma:rule`. The
   entry may be stale (watcher lag, uncommitted edit).
-- **Never cite `mnemos:rule` as the authority.** Cite the source file path
+- **Never cite `vesma:rule` as the authority.** Cite the source file path
   the entry points to.
-- **If source file and `mnemos:rule` diverge, disk wins.** Re-index via
+- **If source file and `vesma:rule` diverge, disk wins.** Re-index via
   `vesma_watch_start` or `vesma_reprocess` after reconciling.
 - **Reference-only indexing.** `SKILL.md` and agent-body files are indexed
   with metadata + pointer (path, frontmatter, description), NOT full

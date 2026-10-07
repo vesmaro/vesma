@@ -48,21 +48,21 @@ Run once per workspace before any other `vesma-*` skill uses the file store.
 
 ## Bug patterns
 
-<!-- mnemos:bug-pattern entries -->
+<!-- vesma:bug-pattern entries -->
 
 ## Learnings
 
-<!-- mnemos:learning entries -->
+<!-- vesma:learning entries -->
 
 ## Decisions
 
-<!-- mnemos:decision entries -->
+<!-- vesma:decision entries -->
 
 ```
 
 1. Print a one-line notice on first use only:
 
-   `mnemos: file-mode (MCP not installed); see plugins/vesma-integration/README.md`.
+   `vesma: file-mode (MCP not installed); see plugins/vesma-integration/README.md`.
 
 ## Idempotency
 

@@ -147,7 +147,7 @@ present in your checkout, run the steps manually.
    ```bash
    VESMA_CONFIG="$VESMA_CONF_B" vesma add \
      "Test decision: federation pull uses POST /api/v1/federation/pull" \
-     --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
+     --tags "project:cross-memory-test,agent:hermes-test,vesma:decision"
    ```
 
 3. **Export a compact payload from peer B.**
@@ -238,7 +238,7 @@ A's `allowed_projects`:
 ```bash
 vesma add \
   "Cross-host test decision: mediated pull verified 2026-07-27" \
-  --tags "project:cross-memory-test,agent:hermes-test,mnemos:decision"
+  --tags "project:cross-memory-test,agent:hermes-test,vesma:decision"
 ```
 
 ### c. Configure peer A in `federation.peers` on peer B

@@ -85,7 +85,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Text to remember. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>` (subtype namespace — unchanged data contract across the rebrand). |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `mnemos:<subtype>` spelling is accepted as an input alias). |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | no | auto | One of `log`, `terminal`, `code`, `docs`, `web`, `default`. Drives M10 context filter. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -112,7 +112,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
     "name": "vesma_add",
     "arguments": {
       "content": "Use uv, not pip",
-      "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
+      "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"]
     }
   }
 }
@@ -122,7 +122,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 
 | Error | Cause |
 |-------|-------|
-| `❌ Tag contract violation: ...` | Missing `project:`, `agent:`, or `mnemos:` tag. |
+| `❌ Tag contract violation: ...` | Missing `project:`, `agent:`, or subtype (`vesma:*`) tag. |
 | `❌ Error: ...` | SQLite write failure, vault write failure, or embed failure (the latter is non-fatal — see [architecture overview](../architecture/overview.md#1-storage-layer)). |
 
 ### Related
@@ -161,7 +161,7 @@ Hybrid search: FTS5 (full-text) + vector + Reciprocal Rank Fusion. Only `publish
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it's faster and resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "score": 0.812,
     "search_type": "hybrid",
     "status": "published"
@@ -222,7 +222,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Bandit B608 hardcoded SQL — flag for triage",
     "content": "Found hardcoded SQL in src/legacy/loader.py:42 ...",
-    "tags": ["project:vesma", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
+    "tags": ["project:vesma", "agent:cr-security-reviewer", "vesma:bug-pattern"],
     "created_at": "2026-06-15T10:42:00+00:00",
     "status": "published"
   }
@@ -344,7 +344,7 @@ Persist a session checkpoint. Agents should call this **proactively**: after mea
 | `session` | string | no | — | Session id binding the checkpoint to a conversation. First presentation records the session→agent binding server-side; later calls with the same session but a different agent are rejected. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `vesma_recall_context` / `vesma_search` / `vesma_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
 
-Vesma synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `mnemos:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
+Vesma synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `vesma:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
 
 A checkpoint whose five payload fields are all empty is trivially rejected before any store (zero-loss: the caller is told, nothing is silently dropped). Re-sending an identical payload for the same `(project, agent)` is idempotent: the existing memory id is returned with `duplicate=true` and nothing new is stored.
 
@@ -403,7 +403,7 @@ List the most recent memory entries, oldest-last.
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "status": "raw",
     "created_at": "2026-06-15T10:42:00+00:00"
   }
@@ -446,10 +446,10 @@ None.
   "project:vesma": 142,
   "agent:tech-writer": 23,
   "agent:sre": 41,
-  "mnemos:learning": 67,
-  "mnemos:bug-pattern": 12,
-  "mnemos:decision": 8,
-  "mnemos:checkpoint": 14
+  "vesma:learning": 67,
+  "vesma:bug-pattern": 12,
+  "vesma:decision": 8,
+  "vesma:checkpoint": 14
 }
 ```
 
@@ -521,7 +521,7 @@ A report dict. `changed` counts memories whose tag set actually changed; `rename
     "arguments": {
       "action": "rename",
       "from_prefix": "gcw:",
-      "to_prefix": "mnemos:",
+      "to_prefix": "vesma:",
       "dry_run": false
     }
   }
@@ -584,7 +584,7 @@ Bulk rename tags matching `from_prefix:<subtype>` → `to_prefix:<subtype>` acro
     "name": "vesma_tags_rename",
     "arguments": {
       "from_prefix": "gcw:",
-      "to_prefix": "mnemos:",
+      "to_prefix": "vesma:",
       "invalid_subtypes_to_legacy": true
     }
   }
@@ -632,7 +632,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
     "name": "vesma_ingest_url",
     "arguments": {
       "url": "https://example.com/article",
-      "tags": ["project:research", "agent:user", "mnemos:learning"]
+      "tags": ["project:research", "agent:user", "vesma:learning"]
     }
   }
 }
@@ -712,7 +712,7 @@ Re-ingesting the same `doc_id` **replaces** the document's chunk rows (a re-frag
     "arguments": {
       "text": "# Deploy\n\nRun the rollout.\n\n# Rollback\n\nRestore the previous release.",
       "doc_id": "dep-guide",
-      "tags": ["project:research", "agent:user", "mnemos:learning"],
+      "tags": ["project:research", "agent:user", "vesma:learning"],
       "title": "Deployment Guide"
     }
   }
@@ -1886,9 +1886,9 @@ The `vesma_add` and `vesma_ingest_url` tools reject calls that violate the M2 co
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Binds to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Authoring agent |
-| `mnemos:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category (namespace — unchanged data contract) |
+| `vesma:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category (legacy `mnemos:` spelling accepted on input) |
 
-Valid `mnemos:` subtypes: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
+Valid `vesma:` subtypes: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
 
 Optional scope tag (ADR-0027 Phase 0): `task:<slug>` (`[a-z0-9][a-z0-9\-_]{0,63}`, at most 1) narrows the entry to one task scope — see [tag-contract.md](tag-contract.md#task--task-scope-multi-context-memory-adr-0027-phase-0).
 
@@ -2099,7 +2099,7 @@ Semantics (ADR-0018, verbatim):
 
 - **Boundary validation** — empty `content`/`project`/`agent`, blank optional strings, a tag-contract violation (strict mode), a size-cap violation (`content` > `mnemos.context_rewrite_max_content_chars`, default 1 MiB; `diff` > `mnemos.context_rewrite_max_diff_chars`, default 256 KiB), or a `supersedes` target **not found in the caller's project** returns an `{"error": …}` dict (REST twin answers 422). The supersedes message deliberately does not distinguish "no such memory" from "memory of another project" — no global existence oracle.
 - **Write-surface rate limit** — `mnemos.context_rewrite_rate_limit_per_minute` (default 30, 0 disables) counts STORED events per `(project, session)` in a rolling minute; over-limit returns `{"error": …, "rate_limited": true}` (REST 429). Deduplicated re-deliveries perform no write and consume no quota — retry storms stay harmless.
-- **Stored tags** — `project:<slug>`, `agent:<slug>`, `mnemos:session` (closest existing subtype for live session material; a dedicated `mnemos:context-rewrite` subtype is a tag-contract vocabulary change deferred to the committee), plus `mnemos:no-federate` on any secret hit.
+- **Stored tags** — `project:<slug>`, `agent:<slug>`, `vesma:session` (closest existing subtype for live session material; a dedicated `mnemos:context-rewrite` subtype is a tag-contract vocabulary change deferred to the committee), plus `mnemos:no-federate` on any secret hit.
 - **Provenance metadata** — `metadata["source"] = "context-rewrite"`, `rewrite_session`, `rewrite_event_key`, and (when supplied) `rewrite_diff` + `rewrite_diff_scan_verdict`.
 - **Single-tenant trust model** — the harness is trusted software; the provider guarantees storage, scanning, gating and provenance, not replacement policy (pinned zones, budgets and replace-event emission stay harness-side).
 
@@ -2395,7 +2395,7 @@ Encrypted import (with `VESMA_IMPORT_PASS` set in the server's environment):
 
 ## `vesma_workflow`
 
-Workflow lifecycle management for a memory (vesma #96). Separates mutable **workflow state** (open → in-progress → done, blocked/resolved, terminal states) from the append-only **tag classification** (`project:X`, `mnemos:decision`). The tag layer stays append-only; this layer is the mutable work lifecycle.
+Workflow lifecycle management for a memory (vesma #96). Separates mutable **workflow state** (open → in-progress → done, blocked/resolved, terminal states) from the append-only **tag classification** (`project:X`, `vesma:decision`). The tag layer stays append-only; this layer is the mutable work lifecycle.
 
 Action-based dispatch — the same `action: enum` pattern as `vesma_tags`. The state machine and the five guardrails are enforced **server-side** in `MemoryManager.workflow_set`; this tool (and the REST `POST /memories/{id}/workflow`) are thin wrappers that cannot bypass it.
 

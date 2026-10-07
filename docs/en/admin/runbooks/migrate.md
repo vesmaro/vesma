@@ -49,7 +49,7 @@ Legacy ai-brain entries without `project:` / `agent:` / `mnemos:<subtype>`
 tags get:
 - `project:legacy`
 - `agent:unknown`
-- `mnemos:legacy`
+- `vesma:legacy`
 
 After migration, review and retag important entries:
 
@@ -66,10 +66,10 @@ If your store contains memories with the legacy `gcw:<subtype>` tag prefix
 
 ```bash
 # Dry-run first — preview the change, nothing written (default)
-vesma tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to vesma: --dry-run
 
 # Apply the rename
-vesma tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to vesma: --no-dry-run
 ```
 
 Notes:
@@ -78,7 +78,7 @@ Notes:
   bulk rename is a one-time housekeeping step to canonicalise the stored tags.
 - Invalid `gcw:` subtypes (not in the whitelist) are skipped by default and
   counted in `skipped_invalid`. Pass `--invalid-to-legacy` to rename them to
-  `mnemos:legacy` instead of skipping.
+  `vesma:legacy` instead of skipping.
 - The operation is **idempotent** — a second run reports `renamed=0`.
 - The deprecated `vesma migrate tags` command now delegates to this safe path
   and emits a deprecation warning. Prefer `vesma tags rename` directly.

@@ -85,7 +85,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Текст для запоминания. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `mnemos:<subtype>` (неймспейс подтипов — контракт данных, ребрендингом не изменяемый). |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>` (старое написание `mnemos:<subtype>` принимается как входной алиас). |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | нет | авто | Одно из `log`, `terminal`, `code`, `docs`, `web`, `default`. Управляет контекстным фильтром M10. |
 | `verbosity` | string | нет | из конфига | Одно из `default`, `terse`, `minimal`. Вставляет подсказку по стилю вывода во framing результата. См. [Сокращение токенов вывода (P1-7)](#сокращение-токенов-вывода-p1-7). |
@@ -112,7 +112,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
     "name": "vesma_add",
     "arguments": {
       "content": "Use uv, not pip",
-      "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
+      "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"]
     }
   }
 }
@@ -122,7 +122,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 
 | Ошибка | Причина |
 |--------|-------- |
-| `❌ Tag contract violation: ...` | Отсутствует тег `project:`, `agent:` или `mnemos:`. |
+| `❌ Tag contract violation: ...` | Отсутствует тег `project:`, `agent:` или подтип (`vesma:*`). |
 | `❌ Error: ...` | Сбой записи SQLite, vault или ошибка эмбеддинга (последняя не критична — см. [обзор архитектуры](../architecture/overview.md#1-хранилище-storage-layer)). |
 
 ### Связанные ресурсы
@@ -161,7 +161,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it's faster and resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "score": 0.812,
     "search_type": "hybrid",
     "status": "published"
@@ -222,7 +222,7 @@ Per-agent recall (M3). Возвращает последние записи од
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Bandit B608 hardcoded SQL — flag for triage",
     "content": "Found hardcoded SQL in src/legacy/loader.py:42 ...",
-    "tags": ["project:vesma", "agent:cr-security-reviewer", "mnemos:bug-pattern"],
+    "tags": ["project:vesma", "agent:cr-security-reviewer", "vesma:bug-pattern"],
     "created_at": "2026-06-15T10:42:00+00:00",
     "status": "published"
   }
@@ -344,7 +344,7 @@ No context found for project 'vesma'. Start by saving context with vesma_save_co
 | `session` | string | нет | — | Идентификатор сессии, привязывающий чекпойнт к разговору. Первое предъявление фиксирует привязку session→agent на сервере; последующие вызовы с той же сессией, но другим агентом отклоняются. |
 | `task` | string | нет | — | ADR-0027 Phase 2 (epic #308): опциональная область задачи — «голый» slug (`[a-z0-9_-]{1,64}`, без префикса `task:`). Штампует тег `task:<slug>` на этом чекпойнте на границе сохранения (одна точка минта, максимум одна задача на запись); отзывается через `task=` в `vesma_recall_context` / `vesma_search` / `vesma_list_recent`. Дедуп-попадание возвращает первую запись с ЕЁ областью задачи (task нового вызова никогда не перезаписывает сохранённую запись). |
 
-Vesma синтезирует части в единую запись Markdown с тегами `project:<slug>`, `agent:<валидированный агент>` (`agent:user`, если не указан) и `mnemos:checkpoint` — плюс опциональный `task:<slug>`, если передан `task`. Валидированная идентичность дополнительно штампуется в серверные метаданные (`checkpoint_agent`, `checkpoint_session`) — именно они являются источником истины для атрибуции по агентам; теги носят демонстрационный характер.
+Vesma синтезирует части в единую запись Markdown с тегами `project:<slug>`, `agent:<валидированный агент>` (`agent:user`, если не указан) и `vesma:checkpoint` — плюс опциональный `task:<slug>`, если передан `task`. Валидированная идентичность дополнительно штампуется в серверные метаданные (`checkpoint_agent`, `checkpoint_session`) — именно они являются источником истины для атрибуции по агентам; теги носят демонстрационный характер.
 
 Чекпойнт с пятью пустыми полями тривиально отклоняется до любого сохранения (zero-loss: вызывающий получает отказ, ничего не отбрасывается молча). Повторная отправка идентичной полезной нагрузки того же `(project, agent)` идемпотентна: возвращается id существующей записи с `duplicate=true`, ничего нового не создаётся.
 
@@ -403,7 +403,7 @@ Vesma синтезирует части в единую запись Markdown с
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "status": "raw",
     "created_at": "2026-06-15T10:42:00+00:00"
   }
@@ -446,10 +446,10 @@ Vesma синтезирует части в единую запись Markdown с
   "project:vesma": 142,
   "agent:tech-writer": 23,
   "agent:sre": 41,
-  "mnemos:learning": 67,
-  "mnemos:bug-pattern": 12,
-  "mnemos:decision": 8,
-  "mnemos:checkpoint": 14
+  "vesma:learning": 67,
+  "vesma:bug-pattern": 12,
+  "vesma:decision": 8,
+  "vesma:checkpoint": 14
 }
 ```
 
@@ -521,7 +521,7 @@ Vesma синтезирует части в единую запись Markdown с
     "arguments": {
       "action": "rename",
       "from_prefix": "gcw:",
-      "to_prefix": "mnemos:",
+      "to_prefix": "vesma:",
       "dry_run": false
     }
   }
@@ -584,7 +584,7 @@ Vesma синтезирует части в единую запись Markdown с
     "name": "vesma_tags_rename",
     "arguments": {
       "from_prefix": "gcw:",
-      "to_prefix": "mnemos:",
+      "to_prefix": "vesma:",
       "invalid_subtypes_to_legacy": true
     }
   }
@@ -632,7 +632,7 @@ Vesma синтезирует части в единую запись Markdown с
     "name": "vesma_ingest_url",
     "arguments": {
       "url": "https://example.com/article",
-      "tags": ["project:research", "agent:user", "mnemos:learning"]
+      "tags": ["project:research", "agent:user", "vesma:learning"]
     }
   }
 }
@@ -709,7 +709,7 @@ Vesma синтезирует части в единую запись Markdown с
     "arguments": {
       "text": "# Деплой\n\nЗапусти раскатку.\n\n# Откат\n\nВерни предыдущий релиз.",
       "doc_id": "dep-guide",
-      "tags": ["project:research", "agent:user", "mnemos:learning"],
+      "tags": ["project:research", "agent:user", "vesma:learning"],
       "title": "Гайд по деплою"
     }
   }
@@ -1904,7 +1904,7 @@ updated: <старая> → <новая>` — и штамп перезаписы
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | ровно 1 | Агент-автор |
 | `vesma:<subtype>` | `[a-z][a-z0-9\-]*` | не менее 1 | Когнитивная категория |
 
-Допустимые подтипы `mnemos:`: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
+Допустимые подтипы `vesma:`: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
 
 Опциональный скоуп-тег (ADR-0027 Фаза 0): `task:<slug>` (`[a-z0-9][a-z0-9\-_]{0,63}`, не более 1) сужает запись до одной task-области — см. [tag-contract.md](tag-contract.md#task--task-область-многоконтекстная-память-adr-0027-фаза-0).
 
@@ -2115,7 +2115,7 @@ output_style:
 
 - **Валидация на границе** — пустые `content`/`project`/`agent`, пустые опциональные строки, нарушение контракта тегов (strict-режим), нарушение размерных лимитов (`content` > `mnemos.context_rewrite_max_content_chars`, по умолчанию 1 МиБ; `diff` > `mnemos.context_rewrite_max_diff_chars`, по умолчанию 256 КиБ) или цель `supersedes`, **не найденная в проекте вызывающего**, возвращают `{"error": …}` (REST-близнец отвечает 422). Сообщение о supersedes сознательно не различает «нет такой записи» и «запись другого проекта» — глобального оракула существования нет.
 - **Rate limit на поверхность записи** — `mnemos.context_rewrite_rate_limit_per_minute` (по умолчанию 30, 0 отключает) считает СОХРАНЁННЫЕ события на `(project, session)` в скользящую минуту; при превышении возвращается `{"error": …, "rate_limited": true}` (REST 429). Дедуплицированные повторные доставки не пишут и не расходуют квоту — штормы ретраев безвредны.
-- **Сохраняемые теги** — `project:<slug>`, `agent:<slug>`, `mnemos:session` (ближайший существующий подтип для живого сессионного материала; отдельный подтип `mnemos:context-rewrite` — изменение словаря контракта тегов, отложено на комитет), плюс `mnemos:no-federate` при любой находке секрета.
+- **Сохраняемые теги** — `project:<slug>`, `agent:<slug>`, `vesma:session` (ближайший существующий подтип для живого сессионного материала; отдельный подтип `mnemos:context-rewrite` — изменение словаря контракта тегов, отложено на комитет), плюс `mnemos:no-federate` при любой находке секрета.
 - **Метаданные провенанса** — `metadata["source"] = "context-rewrite"`, `rewrite_session`, `rewrite_event_key` и (при наличии) `rewrite_diff` + `rewrite_diff_scan_verdict`.
 - **Модель доверия single-tenant** — харнесс является доверенным ПО; провайдер гарантирует хранение, сканирование, гейтирование и провенанс, но не политику замены (pinned-зоны, бюджеты и эмиссия событий замены остаются на стороне харнесса).
 
@@ -2411,7 +2411,7 @@ Restore (деструктивный) с подтверждением:
 
 ## `vesma_workflow`
 
-Управление жизненным циклом workflow для памяти (vesma #96). Отделяет изменяемое **состояние workflow** (open → in-progress → done, blocked/resolved, терминальные состояния) от добавляемого только в конец **тегового классификатора** (`project:X`, `mnemos:decision`). Теговый слой остаётся append-only; этот слой — изменяемый жизненный цикл работы.
+Управление жизненным циклом workflow для памяти (vesma #96). Отделяет изменяемое **состояние workflow** (open → in-progress → done, blocked/resolved, терминальные состояния) от добавляемого только в конец **тегового классификатора** (`project:X`, `vesma:decision`). Теговый слой остаётся append-only; этот слой — изменяемый жизненный цикл работы.
 
 Диспетчеризация на основе `action` — тот же паттерн `action: enum`, что и у `vesma_tags`. Конечный автомат и пять guardrail применяются **на стороне сервера** в `MemoryManager.workflow_set`; этот инструмент (и REST `POST /memories/{id}/workflow`) — тонкие обёртки, которые не могут его обойти.
 

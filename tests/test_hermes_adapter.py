@@ -147,7 +147,7 @@ class TestSessionLifecycleE2E:
         assert turn.agent == AGENT
         assert f"project:{PROJECT}" in turn.tags
         assert f"agent:{AGENT}" in turn.tags
-        assert "mnemos:session" in turn.tags
+        assert "vesma:session" in turn.tags
         assert turn.metadata["session_id"] == SESSION
         assert turn.metadata["channel"] == "hermes-adapter"
         assert turn.metadata["turn"] == 1
@@ -169,7 +169,7 @@ class TestSessionLifecycleE2E:
             completed=["adapter verbs on contract"],
             in_progress=["plugin shim"],
         )
-        assert "mnemos:checkpoint" in checkpoint.tags
+        assert "vesma:checkpoint" in checkpoint.tags
         recalled = adapter.recall_checkpoints()
         assert len(recalled) == 1
         assert recalled[0]["id"] == checkpoint.id
@@ -194,7 +194,7 @@ class TestSessionLifecycleE2E:
         ]
         summary = adapter.session_end(messages)
         assert summary is not None
-        assert "mnemos:session" in summary.tags
+        assert "vesma:session" in summary.tags
         assert summary.metadata["session_id"] == SESSION
         assert "Key User Messages" in summary.content
 
@@ -371,14 +371,14 @@ class TestWriteChannel:
         memory = adapter.mirror_memory_write("add", "user", "Always answer in English.")
         assert memory is not None
         assert "agent:user" in memory.tags
-        assert "mnemos:rule" in memory.tags
+        assert "vesma:rule" in memory.tags
         assert memory.agent == "user"
         assert memory.metadata["mirror_of"] == "hermes-builtin-memory"
 
     def test_mirror_memory_write_uses_learning_subtype(self, adapter: HermesMemoryAdapter) -> None:
         memory = adapter.mirror_memory_write("add", "memory", "Gateway needs two replicas.")
         assert memory is not None
-        assert "mnemos:learning" in memory.tags
+        assert "vesma:learning" in memory.tags
         assert f"agent:{AGENT}" in memory.tags
 
     def test_mirror_ignores_non_add_actions(self, adapter: HermesMemoryAdapter) -> None:

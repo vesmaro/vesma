@@ -133,7 +133,8 @@ class TestRemember:
             AGENT,
             tags=[f"project:{PROJECT}", f"agent:{AGENT}", "mnemos:learning"],
         )
-        assert "mnemos:learning" in memory.tags
+        # Legacy-spelled input normalizes — storage carries the canon.
+        assert "vesma:learning" in memory.tags
 
 
 # ── recall → search + ISSUANCE SCAN (F1) ──────────────────────────────────────

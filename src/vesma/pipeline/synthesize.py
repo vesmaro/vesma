@@ -217,7 +217,7 @@ def synthesize_cluster(
     inherited_tags = [
         t for t in source_members[0].tags if not t.startswith(tuple(POLICY_TAG_PREFIXES))
     ]
-    tags = [*inherited_tags, "mnemos:synthesized"]
+    tags = [*inherited_tags, "vesma:synthesized"]
     # #250 F2b — no-federate propagates by ANY-member rule: one
     # secret-bearing member is enough for the synthesis to be born
     # excluded from all external exchange.

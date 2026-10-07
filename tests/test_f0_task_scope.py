@@ -79,7 +79,7 @@ PROJECT_B = "f0-other"
 AGENT = "f0-agent"
 AGENT_B = "f0-other-agent"
 
-VALID_BASE = ["project:x", "agent:y", "mnemos:learning"]
+VALID_BASE = ["project:x", "agent:y", "vesma:learning"]
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ class TestAnchorCompletionNewlineSweep:
         """The ``mnemos:`` family rides the same anchor: a trailing
         newline fails the format check in strict mode ('learning\\n' can
         never be a whitelisted subtype)."""
-        with pytest.raises(TagContractError, match="invalid mnemos: tag format"):
+        with pytest.raises(TagContractError, match="invalid subtype tag format"):
             validate_tag_contract([*VALID_BASE, "mnemos:learning\n"])
 
 

@@ -26,7 +26,7 @@ survive context resets and multiple agents can pick them up.
 
 ## STEPS
 
-1. **Check current state** (id from a search result or `mnemos:open-question`
+1. **Check current state** (id from a search result or `vesma:open-question`
    entry):
 
    ```text
@@ -55,6 +55,6 @@ survive context resets and multiple agents can pick them up.
 
 ## See also
 
-- Skill `vesma-write` — creating the `mnemos:open-question` entry first
+- Skill `vesma-write` — creating the `vesma:open-question` entry first
 - Skill `vesma-agent-recall` — finding who owns an open item
 

@@ -20,25 +20,28 @@ Vesma применяет структурированную схему тего�
 
 ---
 
-## Префикс хранения: `mnemos:` против входного алиаса `vesma:`
+## Префикс хранения: `vesma:` каноничен, `mnemos:` — старый алиас
 
-`mnemos:` — канонический префикс хранения, стабильный по контракту;
-`vesma:` принимается как входной алиас везде.
+`vesma:` — канонический префикс хранения (переключение канона 6.0):
+каждая новая запись пишется как `vesma:<subtype>`. Старое написание
+`mnemos:` принимается на входе везде и переписывается в канон.
 
-- **Вы печатаете** `vesma:<subtype>` — в CLI (`--tags`), в фильтрах тегов
-  HTTP API и в MCP-вызовах добавления. Vesma нормализует его в
-  `mnemos:<subtype>` до того, как что-то будет записано или сопоставлено.
-- **Хранилище сохраняет `mnemos:*`.** Префикс — замороженный формат
-  данных (решение 6.0, ArchCom 2026-10-03): экспорты, хранилища и
-  federation-трафик остаются байт-стабильными независимо от ребрендинга.
+- **Вы печатаете** любое написание — в CLI (`--tags`), в фильтрах тегов
+  HTTP API и в MCP-вызовах добавления. Vesma нормализует `mnemos:<subtype>`
+  в `vesma:<subtype>` до того, как что-то будет записано или сопоставлено.
+- **Хранилище держит `vesma:*`.** Существующие строки 5.x с тегами
+  `mnemos:*` пере-слагаются на месте мовером 6.0 из того же
+  релизного поезда, поэтому хранилища, экспорты и federation-трафик
+  сходятся к одному написанию.
 - **Неизвестные подтипы громко отклоняются** в любом написании:
-  `vesma:bogus` падает с `invalid vesma: alias ...` — точно так же,
-  как `mnemos:bogus`.
-- `vesma:no-federate` тоже нормализуется — маркер исключения всегда
-  хранится как `mnemos:no-federate` (байт-стабильный маркер доверия,
-  см. ниже).
-- Старый ввод продолжает работать без изменений: `mnemos:*` проходит
-  как есть, а старые теги `gcw:*` по-прежнему мигрируют при валидации.
+  `vesma:bogus` и `mnemos:bogus` падают с ошибкой
+  `invalid subtype ...`.
+- **Единственное исключение: `mnemos:no-federate` навсегда байт-стабилен**
+  (вердикт ArchCom 2026-10-03). Маркер исключения записывается и читается
+  ТОЛЬКО в этом написании; `vesma:no-federate` принимается на входе и
+  нормализуется в него; мовер 6.0 его никогда не пере-слагает (см. ниже).
+- Более старые теги `gcw:*` по-прежнему мигрируют при валидации —
+  в текущий канон.
 
 ---
 
@@ -151,9 +154,11 @@ A==C, закреплённая тестами на каждой поверхно
 ## `mnemos:no-federate` — маркер исключения из федерации
 
 `mnemos:no-federate` — это **маркер исключения**, а не когнитивная категория.
-Он живёт в пространстве имён подтипов `mnemos:` (поэтому проходит валидацию
-тег-контракта без нового префикса; напечатанный как `vesma:no-federate`,
-он нормализуется в тот же хранимый тег), но его семантика операционная, не
+Он сохраняет старое написание `mnemos:` как ЕДИНСТВЕННУЮ каноническую
+форму — байт-стабильный маркер доверия по вердикту ArchCom (2026-10-03):
+код пишет и читает ровно это написание, навсегда, и мовер 6.0 его никогда
+не пере-слагает. Напечатанный как `vesma:no-federate`, он нормализуется
+в тот же хранимый тег. Его семантика операционная, не
 когнитивная: запись с этим тегом **исключается из всего внешнего обмена** —
 и из batch export, и из mediated pull (федерация).
 
@@ -223,12 +228,12 @@ base64-последовательности), сканер:
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Валидация списка тегов (strict, выбрасывает исключение при нарушениях).
-# Вы печатаете алиас vesma: — результат несёт каноническую форму mnemos:.
+# Старый ввод mnemos: нормализуется — результат несёт каноническую форму vesma:.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "vesma:learning"],
+    ["project:myproject", "agent:copilot", "mnemos:learning"],
     strict=True,
 )
-# clean_tags == ["project:myproject", "agent:copilot", "mnemos:learning"]
+# clean_tags == ["project:myproject", "agent:copilot", "vesma:learning"]
 
 # Использование модели TagContract напрямую
 tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
@@ -276,19 +281,19 @@ HTTP-эндпоинт `POST /tags/rename`) массово переименовы
 
 ```bash
 # Сначала dry-run — только предпросмотр, ничего не записывается (по умолчанию)
-vesma tags rename --from gcw: --to mnemos: --dry-run
+vesma tags rename --from gcw: --to vesma: --dry-run
 
 # Применить переименование
-vesma tags rename --from gcw: --to mnemos: --no-dry-run
+vesma tags rename --from gcw: --to vesma: --no-dry-run
 
 # Ограничить конкретными подтипами
-vesma tags rename --from gcw: --to mnemos: --subtypes decision --subtypes learning --no-dry-run
+vesma tags rename --from gcw: --to vesma: --subtypes decision --subtypes learning --no-dry-run
 
 # Ограничить одним проектом / агентом
-vesma tags rename --from gcw: --to mnemos: --project vesma --no-dry-run
+vesma tags rename --from gcw: --to vesma: --project vesma --no-dry-run
 
 # Неверные подтипы отправлять в <to_prefix>legacy вместо пропуска
-vesma tags rename --from gcw: --to mnemos: --invalid-to-legacy --no-dry-run
+vesma tags rename --from gcw: --to vesma: --invalid-to-legacy --no-dry-run
 ```
 
 **Почему это безопасно:** переименование идёт через `SQLiteStore.update_fields`
@@ -321,7 +326,7 @@ external-content остаётся согласованным — в отличи
   "errors": [],
   "dry_run": false,
   "from_prefix": "gcw:",
-  "to_prefix": "mnemos:"
+  "to_prefix": "vesma:"
 }
 ```
 
@@ -395,7 +400,7 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 В ai-brain обязательной схемы тегов не было. Процесс миграции:
 
 1. Запустите `vesma migrate from-ai-brain` — копирует SQLite из ai-brain в хранилище Vesma.
-2. Существующие записи без `project:` / `agent:` получают добавленный тег `mnemos:legacy`
+2. Существующие записи без `project:` / `agent:` получают добавленный тег `vesma:legacy`
    и сохраняются с `strict_tags=False`.
 3. Проверьте контракт командой `vesma tags validate` (обход vault) или
    командой `vesma tags audit` — отчёт по всем записям SQLite-хранилища
@@ -421,8 +426,8 @@ mnemos.models.TagContractError
 |--------------------|---------|
 | `exactly one project:` | 0 или ≥2 тегов `project:` |
 | `exactly one agent:` | 0 или ≥2 тегов `agent:` |
-| `at least one mnemos:` | Нет тега `mnemos:` — реальный фрагмент ошибки валидатора |
-| `invalid mnemos: subtype` | Подтип не входит в допустимое множество |
+| `missing required tag: vesma:` | Нет тега `vesma:` — реальный фрагмент ошибки валидатора |
+| `invalid subtype '<имя>' in tag '<тег>'` | Подтип не входит в допустимое множество |
 | `invalid vesma: alias` | Тег с префиксом `vesma:`, подтип которого не входит в допустимое множество (см. входной алиас выше) |
 | `invalid slug for project:` | Slug содержит заглавные буквы или спецсимволы |
 | `invalid slug for agent:` | Slug содержит заглавные буквы или спецсимволы |

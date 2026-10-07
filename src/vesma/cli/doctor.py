@@ -715,8 +715,11 @@ def _check_tag_contract(settings: Any) -> CheckResult:
             continue
         has_project = any(t.startswith("project:") for t in tags)
         has_agent = any(t.startswith("agent:") for t in tags)
-        has_mnemos = any(t.startswith("mnemos:") for t in tags)
-        if not (has_project and has_agent and has_mnemos):
+        # Subtype tag in either spelling: canonical ``vesma:*`` (6.0+) or
+        # legacy ``mnemos:*`` (rows a 5.x build wrote before the 6.0 mover
+        # re-slugs them) — both are contract-conformant here.
+        has_subtype = any(t.startswith("vesma:") or t.startswith("mnemos:") for t in tags)
+        if not (has_project and has_agent and has_subtype):
             non_conformant += 1
 
     if non_conformant > 0:

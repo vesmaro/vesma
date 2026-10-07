@@ -216,7 +216,7 @@ curl -s http://127.0.0.1:8000/tags
 [
   {"tag": "project:vesma", "count": 142},
   {"tag": "agent:tech-writer", "count": 58},
-  {"tag": "mnemos:learning", "count": 41}
+  {"tag": "vesma:learning", "count": 41}
 ]
 ```
 
@@ -314,7 +314,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"]
   }'
 ```
 
@@ -323,7 +323,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
   "title": "Use uv, not pip",
-  "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+  "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
   "source": "manual",
   "memory_type": "note",
   "status": "raw",
@@ -470,7 +470,7 @@ curl -s -X POST http://127.0.0.1:8000/search \
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "Use uv, not pip",
     "content": "Use uv, not pip — it resolves transitive CVE closure correctly.",
-    "tags": ["project:vesma", "agent:tech-writer", "mnemos:learning"],
+    "tags": ["project:vesma", "agent:tech-writer", "vesma:learning"],
     "score": 0.812,
     "search_type": "hybrid"
   }
@@ -522,13 +522,13 @@ curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=vesma&l
 
 Эти эндпоинты зеркалируют плагин-инструменты `mnemos_save_context` и
 `mnemos_recall_context`. Они сохраняют и извлекают записи типа
-`session_context` с тегом `mnemos:checkpoint`, позволяя агенту восстановить
+`session_context` с тегом `vesma:checkpoint`, позволяя агенту восстановить
 рабочее состояние между сессиями или после компакции контекста.
 
 ### `POST /context/save` — сохранить чекпойнт сессии
 
 Формирует структурированный Markdown из переданных полей и сохраняет его как
-запись `SESSION_CONTEXT` с тегом `mnemos:checkpoint`. Зеркалирует плагин-инструмент
+запись `SESSION_CONTEXT` с тегом `vesma:checkpoint`. Зеркалирует плагин-инструмент
 `mnemos_save_context`.
 
 **Тело запроса**
@@ -606,7 +606,7 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Session checkpoint — 2026-07-07T12:00:00+00:00",
       "content": "# Session checkpoint — 2026-07-07T12:00:00+00:00\n\n## Goals\nЗакончить HTTP API доки для всех 15 инструментов\n",
-      "tags": ["project:vesma", "agent:user", "mnemos:checkpoint"],
+      "tags": ["project:vesma", "agent:user", "vesma:checkpoint"],
       "created_at": "2026-07-07T12:00:00+00:00"
     }
   ]
@@ -1009,7 +1009,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
-    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "vesma:learning"]
   }'
 ```
 
@@ -1087,7 +1087,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document \
     "text": "# Деплой\n\nЗапусти раскатку.\n\n# Откат\n\nВерни предыдущий релиз.",
     "doc_id": "dep-guide",
     "title": "Гайд по деплою",
-    "tags": ["project:vesma", "agent:tech-lead", "mnemos:learning"]
+    "tags": ["project:vesma", "agent:tech-lead", "vesma:learning"]
   }'
 ```
 

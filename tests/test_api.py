@@ -135,7 +135,7 @@ class TestMemories:
         )
         assert resp.status_code == 422
         detail = resp.json()["detail"]
-        assert "missing required tag: mnemos:<subtype>" in detail
+        assert "missing required tag: vesma:<subtype>" in detail
 
     def test_get_memory(self, client):
         # Create first
@@ -219,7 +219,7 @@ class TestIngestTagContract:
         )
         assert resp.status_code == 422
         detail = resp.json()["detail"]
-        assert "missing required tag: mnemos:<subtype>" in detail
+        assert "missing required tag: vesma:<subtype>" in detail
 
     def test_ingest_url_valid_tags_still_ingest(self, client):
         # Happy path: contract-valid tags ingest normally (201, mocked
@@ -263,7 +263,7 @@ class TestIngestTagContract:
         )
         assert resp.status_code == 422
         detail = resp.json()["detail"]
-        assert "missing required tag: mnemos:<subtype>" in detail
+        assert "missing required tag: vesma:<subtype>" in detail
 
     def test_ingest_document_valid_tags_still_ingest(self, client):
         # Happy path: contract-valid tags ingest normally (201, Ф3 shape).
@@ -664,9 +664,9 @@ class TestTags:
         # project:mnemos and agent:test both appear 3 times - must be first two
         top_counts = [it["count"] for it in items[:2]]
         assert all(c == 3 for c in top_counts)
-        # mnemos:learning appears 2 times, mnemos:decision 1 time - order preserved
-        learning = next(it for it in items if it["tag"] == "mnemos:learning")
-        decision = next(it for it in items if it["tag"] == "mnemos:decision")
+        # vesma:learning appears 2 times, vesma:decision 1 time - order preserved
+        learning = next(it for it in items if it["tag"] == "vesma:learning")
+        decision = next(it for it in items if it["tag"] == "vesma:decision")
         assert learning["count"] == 2
         assert decision["count"] == 1
         assert items.index(learning) < items.index(decision)
@@ -695,8 +695,10 @@ class TestVesmaTagInputAlias:
         )
         assert resp.status_code == 201, resp.text
         tags = resp.json()["tags"]
-        assert "mnemos:learning" in tags
-        assert not any(t.startswith("vesma:") for t in tags)
+        # The vesma:* input is already canonical — stored byte-identical.
+        assert "vesma:learning" in tags
+        assert "mnemos:learning" not in tags
+        assert not any(t.startswith("mnemos:") for t in tags)
 
     def test_create_no_federate_alias_normalizes(self, client):
         resp = client.post(
@@ -733,7 +735,7 @@ class TestVesmaTagInputAlias:
         assert resp.status_code == 200
         results = resp.json()
         assert len(results) == 1
-        assert "mnemos:decision" in results[0]["tags"]
+        assert "vesma:decision" in results[0]["tags"]
         # Legacy spelling sees the identical row set.
         resp_legacy = client.get("/memories?tags=mnemos:decision")
         assert resp_legacy.json() == results
@@ -854,7 +856,7 @@ class TestTagsAddRemoveTwins:
         body = resp.json()
         assert body["errors"], f"expected per-memory contract errors, got {body}"
         assert "mnemos:bogus_subtype" not in self._tags_of(client, mid)
-        assert "mnemos:decision" in self._tags_of(client, mid)  # store intact
+        assert "vesma:decision" in self._tags_of(client, mid)  # store intact
 
     def test_remove_twin_last_project_tag_blocked(self, client):
         """Removing the last ``project:`` tag breaks the tag contract —

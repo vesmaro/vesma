@@ -243,8 +243,9 @@ def add(
         "--tags",
         "-T",
         help=(
-            "Comma-separated tags. `mnemos:` is the canonical storage prefix, "
-            "stable by contract; `vesma:` is accepted as an input alias everywhere."
+            "Comma-separated tags. `vesma:` is the canonical storage prefix "
+            "(subtypes like vesma:decision); the legacy `mnemos:` spelling is "
+            "accepted as an input alias everywhere."
         ),
     ),
     file: Annotated[
@@ -287,8 +288,8 @@ def add(
     Useful for previewing how the M10 Context Filter will transform input
     before committing it to the store.
     """
-    # Input boundary (6.0.0): vesma:* aliases normalize to the stored
-    # mnemos:* form before anything downstream sees the tag list.
+    # Input boundary: legacy mnemos:* spellings normalize to the canonical
+    # vesma:* form before anything downstream sees the tag list.
     tag_list = (
         normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()]) if tags else []
     )
@@ -438,8 +439,8 @@ def search(
         "--tags",
         "-T",
         help=(
-            "Comma-separated tags to filter by. `mnemos:` is the canonical storage "
-            "prefix, stable by contract; `vesma:` is accepted as an input alias everywhere."
+            "Comma-separated tags to filter by. `vesma:` is the canonical storage "
+            "prefix; the legacy `mnemos:` spelling is accepted as an input alias."
         ),
     ),
     include_raw: bool = typer.Option(
@@ -472,8 +473,8 @@ def search(
     from vesma.models import MemoryStatus
 
     mgr = get_manager(config)
-    # Input boundary (6.0.0): normalize vesma:* aliases so a typed alias
-    # filters against the stored mnemos:* tags (exact-match filter).
+    # Input boundary: normalize legacy mnemos:* spellings so an old-style
+    # filter matches the canonical vesma:* tags (exact-match filter).
     tag_list = (
         normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()]) if tags else None
     )
@@ -771,7 +772,7 @@ def tags_rename(
         str,
         typer.Option(
             "--to",
-            help="Target prefix (e.g. 'mnemos:'). Must end with ':'",
+            help="Target prefix (e.g. 'vesma:'). Must end with ':'",
         ),
     ],
     subtypes: Annotated[
@@ -874,8 +875,8 @@ def _audit_heal_tags(raw_tags: str, project_col: str) -> tuple[list[str], list[s
     tags are never removed; only the missing tag-contract prefixes are
     appended. ``project:*`` heals to the row's ``project`` column value
     slug-normalized, or ``project:unsorted`` when the column is empty;
-    ``agent:*`` heals to ``agent:user``; ``mnemos:*`` heals to
-    ``mnemos:legacy``.
+    ``agent:*`` heals to ``agent:user``; the subtype tag heals to
+    ``vesma:legacy``.
 
     Returns ``(healed_tags, missing_prefixes, unparseable)`` where
     ``missing_prefixes`` is empty exactly when the row already conforms.
@@ -906,9 +907,9 @@ def _audit_heal_tags(raw_tags: str, project_col: str) -> tuple[list[str], list[s
     if not any(t.startswith("agent:") for t in healed):
         healed.append("agent:user")
         missing.append("agent:*")
-    if not any(t.startswith("mnemos:") for t in healed):
-        healed.append("mnemos:legacy")
-        missing.append("mnemos:*")
+    if not any(t.startswith("vesma:") or t.startswith("mnemos:") for t in healed):
+        healed.append("vesma:legacy")
+        missing.append("vesma:*")
     return healed, missing, unparseable
 
 
@@ -941,8 +942,9 @@ def tags_audit(
     """Audit memories for tag-contract conformance; optionally heal.
 
     Every entry needs at least one ``project:*``, one ``agent:*`` and one
-    ``mnemos:*`` tag (the same contract the doctor's tag-contract check
-    enforces); entries whose tags JSON is unparseable are flagged too.
+    subtype tag (``vesma:*`` canon; legacy ``mnemos:*`` counts — the same
+    contract the doctor's tag-contract check enforces); entries whose tags
+    JSON is unparseable are flagged too.
 
     Default (dry-run): report only. With ``--apply``: add the missing
     prefixes — never remove existing tags (idempotent by construction).
@@ -1036,7 +1038,7 @@ def tags_audit(
     if apply:
         plural = "y" if healed_count == 1 else "ies"
         console.print(f"[green]Healed:[/green] {healed_count} entr{plural}")
-        for prefix in ("project:*", "agent:*", "mnemos:*"):
+        for prefix in ("project:*", "agent:*", "vesma:*"):
             if prefix in tags_added:
                 console.print(f"  {prefix}: {tags_added[prefix]} tag(s) added")
         console.print(
@@ -1891,7 +1893,7 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 # ── migrate (M13) ──────────────────────────────────────────────────────────────
 # Subcommand tree:
 #   vesma migrate from-ai-brain   — migrate ai-brain data to Vesma format
-#   vesma migrate tags            — migrate gcw: tags → mnemos: tags
+#   vesma migrate tags            — migrate gcw: tags → vesma: tags
 
 _migrate_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -1963,10 +1965,10 @@ def migrate(
 def migrate_tags(
     config: str = ConfigOption,
 ) -> None:
-    """Migrate legacy gcw: tags to mnemos: tags in the database.
+    """Migrate legacy gcw: tags to the canonical vesma:* namespace.
 
     .. deprecated::
-        Use ``vesma tags rename --from gcw: --to mnemos: --no-dry-run``
+        Use ``vesma tags rename --from gcw: --to vesma: --no-dry-run``
         instead. This command now delegates to the safe ``tags_rename``
         path (plain UPDATE via ``update_fields``) so the FTS5 index stays
         consistent. The old raw-``sqlite3`` implementation in
@@ -1974,7 +1976,7 @@ def migrate_tags(
     """
     console.print(
         "[yellow]⚠ migrate tags is deprecated — use "
-        "`vesma tags rename --from gcw: --to mnemos: --no-dry-run` instead.[/yellow]"
+        "`vesma tags rename --from gcw: --to vesma: --no-dry-run` instead.[/yellow]"
     )
 
     mgr = get_manager(config)
@@ -1987,10 +1989,10 @@ def migrate_tags(
         console.print(f"[red]✗[/red] Database not found: {db_path}")
         raise typer.Exit(1)
 
-    with console.status("[bold green]Migrating gcw: → mnemos: tags (safe path)..."):
+    with console.status("[bold green]Migrating gcw: → vesma: tags (safe path)..."):
         report = mgr.tags_rename(
             from_prefix="gcw:",
-            to_prefix="mnemos:",
+            to_prefix="vesma:",
             dry_run=False,
             invalid_subtypes_to_legacy=True,
         )

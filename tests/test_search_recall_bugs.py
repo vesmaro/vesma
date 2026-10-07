@@ -303,10 +303,11 @@ class TestTagNormalization:
         assert "project:invalid.slug" not in result
 
     def test_lax_mode_preserves_valid_tags(self):
-        """Already-valid lowercase tags pass through unchanged."""
+        """Already-valid tags pass through; the legacy subtype spelling
+        normalizes to the canon even in lax mode."""
         tags = ["project:valid-proj", "agent:valid-agent", "mnemos:decision"]
         result = validate_tag_contract(tags, strict=False)
-        assert result == tags
+        assert result == ["project:valid-proj", "agent:valid-agent", "vesma:decision"]
 
 
 # ---------------------------------------------------------------------------

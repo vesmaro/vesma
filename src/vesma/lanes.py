@@ -32,7 +32,7 @@ hypothesis H2 surface (E0 §2.2). Lane order is fixed:
 
 Tag contract: CLOSED. ``area:`` is NOT added to
 ``ALLOWED_OPTIONAL_PREFIXES``; the closed ``VESMA_TAG_SUBTYPES`` set
-keeps ``mnemos:rule`` / ``mnemos:decision`` as the only lane selectors.
+keeps ``vesma:rule`` / ``vesma:decision`` as the only lane selectors.
 
 ── Cascade-ready contracts (fields only, no mechanics — R2) ──────────
 
@@ -122,8 +122,8 @@ _TAIL_SORT_INDEX: Final[int] = len(_LANE_SORT_INDEX)
 #: The governance tag selecting each deterministic lane (the closed M2
 #: tag contract stays the only selector — no ``area:`` prefix is added).
 GOVERNANCE_TAG_BY_LANE: Final[dict[Lane, str]] = {
-    Lane.RULES: "mnemos:rule",
-    Lane.DECISIONS: "mnemos:decision",
+    Lane.RULES: "vesma:rule",
+    Lane.DECISIONS: "vesma:decision",
 }
 
 #: All governance-selecting tags (the knowledge-lane exclusion set).
@@ -231,8 +231,8 @@ def governance_lanes_recall(
 
     Returns ``(hits, counts)`` where each hit is ``(memory, lane)`` in
     lane order (rules first, then decisions) with the deterministic SQL
-    order inside a lane. A row tagged BOTH ``mnemos:rule`` and
-    ``mnemos:decision`` is contract-legal (``validate_tag_contract``
+    order inside a lane. A row tagged BOTH ``vesma:rule`` and
+    ``vesma:decision`` is contract-legal (``validate_tag_contract``
     requires "at least one" subtype, not uniqueness) — it is emitted
     ONCE, into the FIRST lane in pinned order (rules), so neither the
     assembled blocks nor the telemetry can double-count it. The caller

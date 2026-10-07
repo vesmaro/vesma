@@ -49,7 +49,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
 | [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
-> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. The `mnemos:` prefix in tag namespaces is a data contract unchanged by the rebrand (6.0 decision) — renames of the project namespace do not touch it. `mnemos:` is the canonical storage prefix, stable by contract; `vesma:` is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
+> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `mnemos:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -293,7 +293,7 @@ vesma tags validate ~/.mnemos/vault
 
 ## `tags audit`
 
-Scan the SQLite store for tag-contract non-conformance and optionally heal. Every entry needs at least one `project:*`, one `agent:*` and one `mnemos:*` tag (the same contract the doctor's "Tag contract" check enforces); entries whose tags JSON is unparseable are flagged too.
+Scan the SQLite store for tag-contract non-conformance and optionally heal. Every entry needs at least one `project:*`, one `agent:*` and one `vesma:*` tag (the same contract the doctor's "Tag contract" check enforces); entries whose tags JSON is unparseable are flagged too.
 
 ```text
 vesma tags audit [--apply] [--limit N] [--json]
@@ -305,7 +305,7 @@ vesma tags audit [--apply] [--limit N] [--json]
 | `--limit / -l` | `0` | Cap the number of LISTED rows (`0` = list all). The scan always covers the whole store. |
 | `--json` | `false` | Emit the report as JSON (for scripting / CI). |
 
-Heal policy (idempotent by construction — a second `--apply` run heals nothing): missing `mnemos:*` → `mnemos:legacy`; missing `agent:*` → `agent:user`; missing `project:*` → the row's `project` column value slug-normalized (lowercase, spaces → hyphens), or `project:unsorted` when the column is empty.
+Heal policy (idempotent by construction — a second `--apply` run heals nothing): missing `vesma:*` → `vesma:legacy`; missing `agent:*` → `agent:user`; missing `project:*` → the row's `project` column value slug-normalized (lowercase, spaces → hyphens), or `project:unsorted` when the column is empty.
 
 ### Example
 
@@ -715,7 +715,7 @@ vesma migrate from-ai-brain [OPTIONS]
 The migrator:
 
 - Translates legacy `source` values (e.g. `telegram` → `mcp`).
-- **Patches the tag contract** — every legacy entry gets `project:legacy`, `agent:unknown`, `mnemos:legacy` added if missing.
+- **Patches the tag contract** — every legacy entry gets `project:legacy`, `agent:unknown`, `vesma:legacy` added if missing.
 - Preserves the original `status` (`raw` / `processing` / `processed` / `published` / `archived`).
 - Migrates `content_ru` / `content_en` columns into `metadata` (no data loss).
 - Migrates `parent_ids` into `metadata.parent_ids`.

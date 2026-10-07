@@ -62,9 +62,9 @@ ready-to-paste `mcp.json` snippet.
 ## Tag contract (summary)
 
 Every write must carry `project:`, `agent:`, and at least one
-`mnemos:*` tag. Full rules in `vesma-tag-contract`.
+`vesma:*` tag. Full rules in `vesma-tag-contract`.
 
-> **Note:** all new writes MUST use the `mnemos:*` tag prefix. The
+> **Note:** all new writes MUST use the `vesma:*` tag prefix. The
 > legacy `gcw:*` prefix is accepted as a deprecated alias for reading
 > legacy data — never create new `gcw:` tags. See `vesma-tag-contract`.
 

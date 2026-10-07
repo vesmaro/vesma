@@ -240,7 +240,7 @@ def test_template_exposes_core_tools() -> None:
 
 def test_template_states_tag_contract() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
-    for tag in ("project:", "agent:", "mnemos:"):
+    for tag in ("project:", "agent:", "vesma:"):
         assert tag in text, f"Configure section missing tag kind: {tag}"
 
 

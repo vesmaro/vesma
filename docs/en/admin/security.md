@@ -370,7 +370,7 @@ Tag filtering in `SQLiteStore.list_all` uses `tags LIKE '%"tag"%'` which
 matches on the JSON string. This is an **exact tag match** — the
 `%"tag"%` pattern ensures the tag is matched as a complete JSON string
 element, not as a substring of another tag. For example, filtering by
-`mnemos:decision` does not match `mnemos:decision-review`.
+`vesma:decision` does not match `vesma:decision-review`.
 
 The `get_all_tags` aggregate uses `json_each(memories.tags)` to iterate
 the JSON array directly — no string matching, no false positives.
@@ -400,7 +400,7 @@ vesma ingest url http://169.254.169.254/  # rejected, not stored
 git check-ignore -v config.yaml .env     # should list .gitignore:line
 
 # Confirm tag exact match
-vesma search --tags mnemos:decision         # does not match mnemos:decision-review
+vesma search --tags vesma:decision         # does not match vesma:decision-review
 ```
 
 ---

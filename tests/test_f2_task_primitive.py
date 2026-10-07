@@ -63,7 +63,7 @@ AGENT = "f2-agent"
 TASK = "f2-task"
 TASK_B = "f2-other"
 
-VALID_BASE = ["project:x", "agent:y", "mnemos:learning"]
+VALID_BASE = ["project:x", "agent:y", "vesma:learning"]
 
 
 # ---------------------------------------------------------------------------

@@ -395,11 +395,11 @@ def context_rewrite(
 
     # ── Store the original via the NORMAL knowledge-pipeline path ────────
     diff_verdict, extra_tags = _scan_diff(diff)
-    # mnemos:session — the original is live session material preserved
-    # verbatim; closest existing subtype. A dedicated mnemos:context-rewrite
+    # vesma:session — the original is live session material preserved
+    # verbatim; closest existing subtype. A dedicated context-rewrite
     # subtype would extend the shared tag-contract vocabulary (flagged for
     # ArchCom ratification in the #125 report instead of landing silently).
-    tags = [f"project:{project}", f"agent:{agent}", "mnemos:session", *extra_tags]
+    tags = [f"project:{project}", f"agent:{agent}", "vesma:session", *extra_tags]
     tags = validate_tag_contract(tags, strict=mgr.settings.vesma.strict_tag_contract)
 
     metadata: dict[str, Any] = {

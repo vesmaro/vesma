@@ -43,8 +43,8 @@ def test_heal_conformant_row_is_untouched() -> None:
 def test_heal_adds_exactly_the_missing_prefixes() -> None:
     """Only the missing prefixes are appended; existing tags survive."""
     healed, missing, _ = _audit_heal_tags('["project:p1", "agent:coder"]', "p1")
-    assert missing == ["mnemos:*"]
-    assert healed == ["project:p1", "agent:coder", "mnemos:legacy"]
+    assert missing == ["vesma:*"]
+    assert healed == ["project:p1", "agent:coder", "vesma:legacy"]
 
 
 def test_heal_project_from_column_slug_normalized() -> None:
@@ -65,8 +65,8 @@ def test_heal_corrupt_tags_json_is_flagged_and_fully_healed() -> None:
     """Unparseable tags JSON → non-conformant; heal = the three prefixes."""
     healed, missing, unparseable = _audit_heal_tags("{not json", "col")
     assert unparseable is True
-    assert missing == ["project:*", "agent:*", "mnemos:*"]
-    assert healed == ["project:col", "agent:user", "mnemos:legacy"]
+    assert missing == ["project:*", "agent:*", "vesma:*"]
+    assert healed == ["project:col", "agent:user", "vesma:legacy"]
 
 
 def test_heal_non_string_json_list_is_corrupt() -> None:
@@ -183,7 +183,7 @@ def test_audit_dry_run_json(audit_store: dict[str, Any]) -> None:
     assert "healed" not in payload
     by_snippet = {r["snippet"]: r for r in payload["rows"]}
     corrupt = by_snippet["corrupt tags row"]
-    assert corrupt["missing"] == ["project:*", "agent:*", "mnemos:*"]
+    assert corrupt["missing"] == ["project:*", "agent:*", "vesma:*"]
     assert corrupt["tags"] == "(unparseable)"
 
 
@@ -210,11 +210,11 @@ def test_audit_apply_adds_exactly_missing_prefixes(audit_store: dict[str, Any]) 
 
     # missing-all: all three prefixes, project from the column slug.
     tags_all = json.loads(_raw_tags(db, ids["missing-all"]))
-    assert tags_all == ["project:my-project", "agent:user", "mnemos:legacy"]
+    assert tags_all == ["project:my-project", "agent:user", "vesma:legacy"]
 
     # missing-mnemos: ONLY mnemos:legacy added, existing tags preserved.
     tags_mnemos = json.loads(_raw_tags(db, ids["missing-mnemos"]))
-    assert tags_mnemos == ["project:p1", "agent:coder", "mnemos:legacy"]
+    assert tags_mnemos == ["project:p1", "agent:coder", "vesma:legacy"]
 
     # missing-project: empty project column → project:unsorted.
     tags_project = json.loads(_raw_tags(db, ids["missing-project"]))
@@ -223,7 +223,7 @@ def test_audit_apply_adds_exactly_missing_prefixes(audit_store: dict[str, Any]) 
     # corrupt: unparseable → nothing salvageable → the three prefixes,
     # project from the (readable) column.
     tags_corrupt = json.loads(_raw_tags(db, ids["corrupt"]))
-    assert tags_corrupt == ["project:c1", "agent:user", "mnemos:legacy"]
+    assert tags_corrupt == ["project:c1", "agent:user", "vesma:legacy"]
 
 
 def test_audit_apply_is_idempotent(audit_store: dict[str, Any]) -> None:
@@ -249,5 +249,5 @@ def test_audit_apply_json_summary(audit_store: dict[str, Any]) -> None:
     assert payload["tags_added"] == {
         "project:*": 3,
         "agent:*": 2,
-        "mnemos:*": 3,
+        "vesma:*": 3,
     }
