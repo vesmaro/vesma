@@ -225,9 +225,9 @@ def _open_conn(db_path: Path, *, read_only: bool = False) -> sqlite3.Connection:
     never create WAL sidecars or trigger recovery on the source (review P3d).
     """
     if read_only:
-        conn = sqlite3.connect(_ro_uri(db_path), uri=True, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        return conn
+        ro_conn = sqlite3.connect(_ro_uri(db_path), uri=True, timeout=5.0)
+        ro_conn.row_factory = sqlite3.Row
+        return ro_conn
     conn: sqlite3.Connection | None = None
     try:
         conn = sqlite3.connect(str(db_path), timeout=5.0)
