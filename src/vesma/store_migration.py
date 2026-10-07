@@ -125,6 +125,11 @@ _MARKER_FILE_NAME = ".migrate-store-applied.json"
 _SQLITE_HEADER = b"SQLite format 3\x00"
 _QUIESCE_WAL_SAMPLE_SECONDS = 0.7
 _SIDECAR_SUFFIXES = ("-wal", "-shm")
+#: Everything the mover writes is store data (vault content, memories,
+#: config) — the project norm for secret-bearing surfaces is 0600/0700
+#: (cf. metrics/sink.py, agent_tokens.py), NEVER umask defaults (CWE-732).
+_PRIVATE_FILE_MODE = 0o600
+_PRIVATE_DIR_MODE = 0o700
 #: Home-root directories never carried as data siblings (flat pre-2.1 layout).
 _ROOT_NON_DATA_DIRS = frozenset({"vault", "logs", "cache"})
 #: Fields checksummed for the 10-sample identity check (privacy: only the
@@ -223,6 +228,16 @@ def _is_sqlite(path: Path) -> bool:
 
 def _is_sidecar(name: str) -> bool:
     return name.endswith(_SIDECAR_SUFFIXES)
+
+
+def _harden_dir(path: Path) -> None:
+    """Force 0700 on a directory the mover created (umask never widens it)."""
+    path.chmod(_PRIVATE_DIR_MODE)
+
+
+def _harden_file(path: Path) -> None:
+    """Force 0600 on a file the mover created (umask never widens it)."""
+    path.chmod(_PRIVATE_FILE_MODE)
 
 
 # ── Layout resolution ─────────────────────────────────────────────────────────
@@ -502,6 +517,7 @@ def _copy_sqlite(src: Path, dst: Path) -> None:
             target.close()
     finally:
         source.close()
+    _harden_file(dst)  # the backup-API copy must not inherit umask defaults
 
 
 def _copy_tree(src: Path, dst: Path) -> tuple[int, int]:
@@ -518,17 +534,20 @@ def _copy_tree(src: Path, dst: Path) -> tuple[int, int]:
     for root, _dirs, files in os.walk(src):
         root_path = Path(root)
         rel = root_path.relative_to(src)
-        (dst / rel).mkdir(parents=True, exist_ok=True)
+        dst_dir = dst / rel
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        _harden_dir(dst_dir)
         for name in files:
             if _is_sidecar(name):
                 continue
             src_file = root_path / name
-            dst_file = dst / rel / name
+            dst_file = dst_dir / name
             if _is_sqlite(src_file):
                 _copy_sqlite(src_file, dst_file)
                 via_backup += 1
             else:
                 shutil.copy2(src_file, dst_file)
+                _harden_file(dst_file)
             copied += 1
     return (copied, via_backup)
 
@@ -561,6 +580,8 @@ def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
     """Snapshot-gate (brief item 3): consistent copy + verification."""
     try:
         (snapshot_dir / "data").mkdir(parents=True)
+        _harden_dir(snapshot_dir)
+        _harden_dir(snapshot_dir / "data")
         _copy_sqlite(source.db_path, snapshot_dir / "data" / source.db_path.name)
         for item in _snapshot_data_files(source.data_dir, source.db_path.name):
             target = snapshot_dir / "data" / item.name
@@ -569,12 +590,14 @@ def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
                     _copy_sqlite(item, target)
                 else:
                     shutil.copy2(item, target)
+                    _harden_file(target)
             else:
                 _copy_tree(item, target)
         if source.vault_dir.is_dir():
             _copy_tree(source.vault_dir, snapshot_dir / "vault")
         if source.config_path.is_file():
             shutil.copy2(source.config_path, snapshot_dir / "config.yaml")
+            _harden_file(snapshot_dir / "config.yaml")
     except OSError as exc:
         raise SnapshotError(f"snapshot copy failed: {exc}") from exc
 
@@ -749,6 +772,7 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
     new_config.write_text(
         yaml.safe_dump(new_data, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
+    _harden_file(new_config)
     plan = ConfigPlan(
         source_config=old_path if old_path.is_file() else None,
         synthesized=synthesized,
@@ -766,9 +790,11 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
 def _materialize_target(snapshot: _Snapshot, staging: Path) -> dict[str, int]:
     """Build the 6.0 target from the verified snapshot; re-slag in place."""
     staging.mkdir(parents=True)
+    _harden_dir(staging)
     src_data = snapshot.layout.data_dir
     dst_data = staging / "data"
     dst_data.mkdir()
+    _harden_dir(dst_data)
     subtype_swaps = 0
     project_swaps = 0
     duplicates_removed = 0
@@ -831,6 +857,7 @@ def _materialize_target(snapshot: _Snapshot, staging: Path) -> dict[str, int]:
     _marker_file(dst_data).write_text(
         json.dumps(marker_doc, indent=2, sort_keys=True), encoding="utf-8"
     )
+    _harden_file(_marker_file(dst_data))
     return {
         "records": row_count,
         "subtype_swaps": subtype_swaps,

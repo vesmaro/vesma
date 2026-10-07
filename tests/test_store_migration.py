@@ -332,6 +332,38 @@ def test_apply_source_sidecars_and_sibling_dbs_move(store_home: Path, tmp_path: 
         conn.close()
 
 
+# ── P1-1 (security review): everything the mover writes stays private ────────
+
+
+def test_apply_target_and_snapshot_fully_private(store_home: Path, tmp_path: Path) -> None:
+    """Pin (CWE-732): no file or directory wider than 0600/0700 survives.
+
+    The mover materializes memories, vault content and the config — all
+    secret-bearing surfaces. Walk the FULL target and the rollback snapshot
+    and refuse any group/other permission bit.
+    """
+    import os
+
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 0, result.output
+    snapshots = list(target.parent.glob("migrate-snapshot-*"))
+    assert len(snapshots) == 1
+    checked_files = 0
+    for root in (target, snapshots[0]):
+        for dirpath, _dirnames, filenames in os.walk(root):
+            dir_mode = Path(dirpath).stat().st_mode
+            assert dir_mode & 0o077 == 0, f"directory too wide: {dirpath} ({oct(dir_mode)})"
+            for name in filenames:
+                file_mode = (Path(dirpath) / name).stat().st_mode
+                assert file_mode & 0o077 == 0, f"file too wide: {dirpath}/{name} ({oct(file_mode)})"
+                checked_files += 1
+    assert checked_files >= 7  # 2 dbs + siblings + notes + config + marker + vault files
+
+
 def test_second_run_on_migrated_store_politely_refuses(store_home: Path, tmp_path: Path) -> None:
     target = _target_of(store_home, tmp_path)
     first = runner.invoke(
