@@ -132,7 +132,10 @@ _SIDECAR_SUFFIXES = ("-wal", "-shm")
 #: (cf. metrics/sink.py, agent_tokens.py), NEVER umask defaults (CWE-732).
 _PRIVATE_FILE_MODE = 0o600
 _PRIVATE_DIR_MODE = 0o700
-#: Home-root directories never carried as data siblings (flat pre-2.1 layout).
+#: Home-root entries never carried as data siblings (flat pre-2.1 layout,
+#: where data_dir == home): vault/ migrates through its own branch,
+#: config.yaml is rewritten by migrate_config, logs/ and cache/ are not
+#: store data at all.
 _ROOT_NON_DATA_DIRS = frozenset({"vault", "logs", "cache"})
 #: Fields checksummed for the 10-sample identity check (privacy: only the
 #: digests are compared; values never leave the process).
@@ -561,12 +564,30 @@ class _Snapshot:
     stats: StoreStats  # stats of the SNAPSHOT copy (authoritative for the run)
 
 
-def _snapshot_data_files(data_dir: Path, main_db_name: str) -> list[Path]:
+def _is_non_data_entry(path: Path, *, flat_layout: bool) -> bool:
+    """True when a home-root entry never rides along as a data sibling.
+
+    Only the FLAT pre-2.1 layout (data_dir == home) puts ``vault/``,
+    ``logs/``, ``cache/`` and ``config.yaml`` next to the database; there
+    they are NOT data siblings — vault/ migrates through its own
+    ``vault_dir`` branch, config.yaml is rewritten by ``migrate_config``
+    (a stale legacy copy inside data/ would be a fork seed), logs/ and
+    cache/ are not store data. In a nested layout a ``data/vault`` stays
+    ordinary data. ONE filter for BOTH the plan listing and the
+    snapshot/materialize copies (cascade P2-2: plan must equal fact).
+    """
+    if not flat_layout:
+        return False
+    return path.name in _ROOT_NON_DATA_DIRS or path.name == "config.yaml"
+
+
+def _snapshot_data_files(data_dir: Path, main_db_name: str, *, flat_layout: bool) -> list[Path]:
     """Regular files in a data dir that ride along with the migration.
 
     Excludes the main db (copied explicitly), sqlite ``-wal``/``-shm``
-    sidecars (their content is folded in by the backup API) and the
-    idempotence marker.
+    sidecars (their content is folded in by the backup API), the
+    idempotence marker, and — flat layout only — the home-root non-data
+    entries (vault/logs/cache/config.yaml, see :func:`_is_non_data_entry`).
     """
     return [
         path
@@ -574,6 +595,7 @@ def _snapshot_data_files(data_dir: Path, main_db_name: str) -> list[Path]:
         if path.name != main_db_name
         and path.name != _MARKER_FILE_NAME
         and not _is_sidecar(path.name)
+        and not _is_non_data_entry(path, flat_layout=flat_layout)
         and (path.is_file() or path.is_dir())
     ]
 
@@ -585,7 +607,9 @@ def make_snapshot(source: _StoreLayout, snapshot_dir: Path) -> _Snapshot:
         _harden_dir(snapshot_dir)
         _harden_dir(snapshot_dir / "data")
         _copy_sqlite(source.db_path, snapshot_dir / "data" / source.db_path.name)
-        for item in _snapshot_data_files(source.data_dir, source.db_path.name):
+        for item in _snapshot_data_files(
+            source.data_dir, source.db_path.name, flat_layout=source.data_dir == source.home
+        ):
             target = snapshot_dir / "data" / item.name
             if item.is_file():
                 if _is_sqlite(item):
@@ -816,7 +840,9 @@ def _materialize_target(snapshot: _Snapshot, staging: Path) -> dict[str, int]:
     duplicates_removed = 0
     trust_markers_kept = 0
 
-    for item in _snapshot_data_files(src_data, LEGACY_DB_NAME):
+    for item in _snapshot_data_files(
+        src_data, LEGACY_DB_NAME, flat_layout=src_data == snapshot.layout.home
+    ):
         target = dst_data / item.name
         if item.is_file():
             if _is_sqlite(item):
@@ -1074,7 +1100,9 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
             via_backup_api=True,
         )
     ]
-    for path in _snapshot_data_files(layout.data_dir, layout.db_path.name):
+    for path in _snapshot_data_files(
+        layout.data_dir, layout.db_path.name, flat_layout=layout.data_dir == layout.home
+    ):
         if path.is_file():
             planned.append(
                 PlannedFile(
@@ -1084,7 +1112,7 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
                     via_backup_api=_is_sqlite(path),
                 )
             )
-        elif path.name not in _ROOT_NON_DATA_DIRS or layout.data_dir != layout.home:
+        else:
             total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
             planned.append(
                 PlannedFile(

@@ -332,6 +332,74 @@ def test_apply_source_sidecars_and_sibling_dbs_move(store_home: Path, tmp_path: 
         conn.close()
 
 
+# ── P2-2 (review): flat pre-2.1 layout — home-root non-data never leaks ──────
+
+
+def test_flat_layout_home_root_non_data_never_becomes_data(
+    store_home: Path, tmp_path: Path
+) -> None:
+    """Flat layout (db in the home root): vault/logs/cache/config.yaml are
+    NOT data siblings — not in the plan, not in the snapshot, not in
+    target/data; plan == fact; config.yaml migrates only via migrate_config.
+    """
+    import yaml
+
+    # Flatten to the pre-2.1 layout: the db moves to the home root.
+    (store_home / "data" / "mnemos.db").rename(store_home / "mnemos.db")
+    (store_home / "logs").mkdir()
+    (store_home / "logs" / "svc.log").write_text("log", encoding="utf-8")
+    (store_home / "cache").mkdir()
+    (store_home / "cache" / "junk.cache").write_text("c", encoding="utf-8")
+    (store_home / "config.yaml").write_text("mnemos:\n  db_name: mnemos.db\n", encoding="utf-8")
+
+    target = _target_of(store_home, tmp_path)
+    plan_result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--json"],
+    )
+    assert plan_result.exit_code == 0, plan_result.output
+    plan_payload = json.loads(plan_result.output)
+    planned_data = {
+        Path(f["target"]).relative_to(target).as_posix()
+        for f in plan_payload["planned_files"]
+        if f["target"].startswith(str(target / "data"))
+    }
+    assert "data/vesma.db" in planned_data
+    for leaked in ("data/config.yaml", "data/vault", "data/logs", "data/cache"):
+        assert leaked not in planned_data, leaked
+
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Plan == fact: planned data targets are EXACTLY what landed (marker aside).
+    actual_data = {
+        p.relative_to(target).as_posix()
+        for p in (target / "data").iterdir()
+        if p.name != ".migrate-store-applied.json"
+    }
+    assert planned_data == actual_data
+
+    # No dup anywhere: stale config.yaml, vault, logs, cache are not data.
+    assert not (target / "data" / "config.yaml").exists()
+    assert not (target / "data" / "vault").exists()
+    assert not (target / "data" / "logs").exists()
+    assert not (target / "data" / "cache").exists()
+    assert not (target / "logs").exists() and not (target / "cache").exists()
+    assert (target / "vault" / "a.txt").is_file()  # vault rides its own branch
+    cfg = yaml.safe_load((target / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["vesma"]["db_name"] == "vesma.db"  # the ONLY config is canonical
+
+    # The snapshot filters the same way (the leak used to start there).
+    snapshot = list(target.parent.glob("migrate-snapshot-*"))[0]
+    assert not (snapshot / "data" / "config.yaml").exists()
+    assert not (snapshot / "data" / "vault").exists()
+    assert (snapshot / "config.yaml").is_file()
+    assert (snapshot / "vault" / "a.txt").is_file()
+
+
 # ── P1-1 (security review): everything the mover writes stays private ────────
 
 
