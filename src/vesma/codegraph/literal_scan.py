@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from vesma.codegraph.file_surface import (
@@ -34,6 +35,7 @@ from vesma.codegraph.file_surface import (
     DENY_NAME_PREFIXES,
     DENY_NAME_SUFFIXES,
     VENDORED_DIR_NAMES,
+    dir_matches_exclude_globs,
 )
 
 #: Literal rows issued per fallback run (the service slices the first N
@@ -85,6 +87,7 @@ def scan_literals(
     time_budget_sec: float = LITERAL_SCAN_TIME_BUDGET_SEC,
     snippet_max_chars: int = LITERAL_SNIPPET_MAX_CHARS,
     match_cap: int = LITERAL_MATCH_CAP,
+    exclude_globs: Sequence[str] = (),
 ) -> tuple[list[LiteralMatch], bool]:
     """Case-insensitive substring scan over text files under ``root``.
 
@@ -93,6 +96,8 @@ def scan_literals(
     and the ``time_budget_sec`` wall clock. Returns ``(matches,
     truncated)`` — ``truncated`` is True when ANY cap fired early, so
     the caller never presents a capped scan as complete.
+    ``exclude_globs`` mirrors ``CodeGraphConfig.exclude_globs`` so the
+    fallback never surfaces content the indexer surface excludes.
     """
     needle = query.strip().casefold()
     if not needle:
@@ -102,8 +107,13 @@ def scan_literals(
     deadline = time.monotonic() + time_budget_sec
     scanned = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
         # Prune denied directories in place so os.walk skips them.
-        dirnames[:] = sorted(d for d in dirnames if not _denied_dir(d))
+        dirnames[:] = sorted(
+            d
+            for d in dirnames
+            if not _denied_dir(d) and not dir_matches_exclude_globs(rel_dir, d, exclude_globs)
+        )
         for entry in sorted(filenames):
             if scanned >= max_files or len(matches) >= match_cap:
                 truncated = True

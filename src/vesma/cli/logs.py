@@ -31,8 +31,15 @@ from vesma.storage.sqlite_store import SQLiteStore
 console = Console(width=200)
 
 logs_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="logs",
-    help="View pipeline traces (cluster, synthesize, publish, recall).",
+    help=(
+        "View pipeline traces (cluster, synthesize, publish, recall).\n\n"
+        "Reads the trace table the knowledge pipeline writes per stage: what "
+        "ran, on which memories, with what outcome. Filter by `--project`, "
+        "cap with `--limit`, cut off with `--since`, or keep watching with "
+        "`--follow`."
+    ),
     no_args_is_help=False,
 )
 
@@ -103,7 +110,13 @@ def logs_cmd(
         typer.Option("--config", "-c", help="Path to config.yaml"),
     ] = None,
 ) -> None:
-    """Show recent pipeline traces."""
+    """Show recent pipeline traces.
+
+    Prints the newest traces (default 50) as a table — timestamp, stage,
+    project and summary — newest first. Combine `--since`, `--project` and
+    `--limit` to narrow the window; `--follow` keeps polling for new traces
+    tail -f style until interrupted.
+    """
     settings = load_settings(config)
     settings.resolve_paths()
     store = SQLiteStore(settings.db_path)

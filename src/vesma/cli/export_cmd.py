@@ -25,8 +25,16 @@ from vesma.models import MemoryStatus, normalize_tag_aliases
 console = Console()
 
 export_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="export",
-    help="Export memories to a JSON or SQLite backup file.",
+    help=(
+        "Export memories to a JSON or SQLite backup file.\n\n"
+        "Writes a portable backup of the store: JSON (metadata, compactable "
+        "with federation payloads) or a full SQLite snapshot, optionally "
+        "compressed and AES-256-GCM encrypted. Filter the export by project, "
+        "agent, status, tags or date window; `--dry-run` validates without "
+        "writing. The counterpart is `vesma import`."
+    ),
     no_args_is_help=True,
 )
 
@@ -89,15 +97,20 @@ def export_cmd(
         str | None, typer.Option("--config", "-c", help="Path to config.yaml")
     ] = None,
 ) -> None:
-    """Export memories to a backup file (JSON metadata or SQLite snapshot)."""
+    """Export memories to a backup file (JSON metadata or SQLite snapshot).
+
+    Select the output with `--output`/`-o` and the format with `--format`
+    (json or sqlite); `--compress` and `--encrypt` (passphrase via
+    `--passphrase-file`) harden the artifact for off-machine storage. The
+    filter flags (`--project`, `--agent`, `--status`, `--tags`, `--since`,
+    `--until`) narrow what goes in; `--dry-run` checks inputs only.
+    """
     mgr = get_manager(config)
 
     # Input boundary (6.0.0): vesma:* aliases normalize to the stored
     # mnemos:* form before the export filter matches against row tags.
     tag_list = (
-        normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()])
-        if tags
-        else None
+        normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()]) if tags else None
     )
     filt = ExportFilter(
         project=project,

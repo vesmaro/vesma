@@ -21,8 +21,9 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | Subcommand | Purpose |
 |------------|---------|
 | [`add`](#add) | Create a new memory entry |
+| [`ingest`](#ingest) | Ingest external content: `ingest url URL` / `ingest file PATH` |
 | [`search`](#search) | Hybrid FTS5 + vector search |
-| [`recall`](#recall) | List recent memories, optionally per agent / per project |
+| [`recall`](#recall) | List recent memories; `recall agent` scopes to one agent |
 | [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
 | [`tags audit`](#tags-audit) | Scan for tag-contract non-conformance; `--apply` heals additively |
 | [`workflow`](#workflow) | Memory workflow lifecycle: `get` / `set` / `history` |
@@ -35,16 +36,18 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`mcp-server`](#mcp-server) | Start the MCP stdio server for VS Code Copilot |
 | [`migrate from-ai-brain`](#migrate-from-ai-brain) | One-shot import from a legacy `ai-brain` install |
 | [`auth`](#auth) | API bearer tokens (`auth token`) and TOTP 2FA (`auth totp`) |
-| [`integration`](integration-guide.md) | Deploy / verify the integration layer (dedicated page) |
+| [`integration`](#integration) | Deploy / verify the integration layer (`setup` / `update` / `verify` / `detect` / `uninstall`; full guide: [integration-guide.md](integration-guide.md)) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
-| [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` subcommands; checks: config, database, vault, …) |
-| [`update`](#update) | Check for updates / update the user-site install |
+| [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` / `service` subcommands; checks: config, database, vault, …) |
+| [`update`](#update) | Check for updates / update the user-site install (`check` / `apply` / `components` / `timer`) |
+| [`service`](#service) | Vesma service: `install` / `uninstall` + supervisor control (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`) |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
 | [`logs`](#logs) | View pipeline traces |
 | [`sync`](sync.md) | Federation batch sync export / import (dedicated page) |
 | [`meta-poll`](#meta-poll) | Federation metadata poll: run one poller pass manually (S2 phase 2) |
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
+| [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
 > The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. The `mnemos:` prefix in tag namespaces is a data contract unchanged by the rebrand (6.0 decision) — renames of the project namespace do not touch it. `mnemos:` is the canonical storage prefix, stable by contract; `vesma:` is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
 
@@ -99,7 +102,7 @@ All settings are env-overridable via the `VESMA_` prefix (canonical since 5.3). 
 
 ## `add`
 
-Create a new memory entry.
+Create a new memory entry (quick-capture). File and URL ingest are subcommands now — see [`ingest`](#ingest) (CLI-architecture rework W3: a subcommand names the function, a flag only configures it).
 
 ```text
 vesma add [CONTENT] [OPTIONS]
@@ -114,8 +117,10 @@ vesma add [CONTENT] [OPTIONS]
 | `--url / -u` | — | Fetch and ingest a URL. Requires tags. |
 | `--source / -s` | `cli` | Memory source enum: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `--type` | `note` | Memory type: `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
-| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. |
+| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. With `--file` (deprecated), previews the file's text. |
 | `--config / -c` | — | Path to `config.yaml`. |
+
+> **Deprecated flag forms: `--file / -f`, `--url / -u`.** The old flag forms still work as hidden deprecated aliases — identical behavior, plus a one-line `[deprecated]` hint on stderr. Use `vesma ingest file PATH` / `vesma ingest url URL` instead; the flags are not removed before 6.0.
 
 > **Tag contract.** Every entry must have `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. The CLI enforces this in strict mode (the default). See [tag-contract.md](tag-contract.md) for the full schema.
 
@@ -139,6 +144,56 @@ vesma add --url https://example.com/article --tags project:research agent:user v
 # From stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
   | vesma add --tags project:vesma agent:sre vesma:bug-pattern,severity:medium
+```
+
+---
+
+## `ingest`
+
+Ingest external content into the memory store: a web page or a local file's text. These subcommands carry the former `add --url` / `add --file` behavior (CLI-architecture rework W3).
+
+### `ingest url`
+
+Fetch a web page, extract the main text, and save it as a memory.
+
+```text
+vesma ingest url URL [OPTIONS]
+```
+
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `URL` (positional) | — | URL to fetch, extract, and save. |
+| `--tags / -T` | `""` | Comma-separated tags. Required (tag contract). |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### `ingest file`
+
+Save a local file's text content as a memory.
+
+```text
+vesma ingest file PATH [OPTIONS]
+```
+
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `PATH` (positional) | — | File whose text content is saved. |
+| `--title / -t` | auto | Short title. Auto-generated from content if omitted. |
+| `--tags / -T` | `""` | Comma-separated tags. |
+| `--source / -s` | `cli` | Memory source enum (same values as `add`). |
+| `--dry-run` | `false` | Validate tags and preview context-filter stats without saving. |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### Examples
+
+```bash
+# From a URL (fetches, extracts, saves)
+vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
+
+# From a file
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
+
+# Preview the filter stats for a file without saving
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
 ```
 
 ---
@@ -182,7 +237,7 @@ For richer query power over HTTP, use the API `POST /search` (see [http-api.md#s
 
 ## `recall`
 
-List recent memories, optionally scoped to an agent (M3) and / or a project.
+List recent memories, optionally scoped to a project. Per-agent recall is the `recall agent` subcommand (CLI-architecture rework W2: a subcommand names the function, a flag only configures it).
 
 ```text
 vesma recall [OPTIONS]
@@ -191,7 +246,6 @@ vesma recall [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--project / -p` | — | Project slug to filter on. |
-| `--agent / -a` | — | Agent slug to filter on. Enables M3 per-agent recall. |
 | `--limit / -l` | `10` | Maximum results. |
 | `--config / -c` | — | Path to `config.yaml`. |
 
@@ -204,10 +258,13 @@ When `--agent` is passed **without** a query, the result is the N most recent en
 vesma recall
 
 # Per-agent recall (M3)
-vesma recall --agent tech-writer
+vesma recall agent tech-writer
+
+# Query-scoped per-agent recall
+vesma recall agent sre "deploy checklist"
 
 # Combined
-vesma recall --agent sre --project vesma --limit 25
+vesma recall agent sre --project vesma --limit 25
 ```
 
 ---
@@ -362,15 +419,13 @@ vesma stats
 
 ## `fts`
 
-FTS5 index management. One action is currently defined: `rebuild`.
+FTS5 index maintenance — a subcommand group with one verb: `rebuild`.
 
 ```text
-vesma fts ACTION
+vesma fts rebuild
 ```
 
-| Argument | Description |
-|----------|-------------|
-| `ACTION` (positional) | `rebuild` — rebuild the FTS5 index and report the number of rows indexed. Any other value exits with an error. |
+The former positional form (`vesma fts ACTION`) is unchanged — the `rebuild` spelling is identical. Bare `vesma fts` shows the subcommand help; an unknown verb is a usage error (exit 2).
 
 ### Example
 
@@ -383,17 +438,22 @@ vesma fts rebuild
 
 ## `processor`
 
-Background processor (knowledge pipeline) management: inspect the queue, run a manual pass, or start / stop the background loop.
+Background processor (knowledge pipeline) control — a subcommand group: inspect the queue, run a manual pass, or start / stop the background loop.
 
 ```text
-vesma processor ACTION
+vesma processor status|run|start|stop
 ```
 
-| Argument | Description |
-|----------|-------------|
-| `ACTION` (positional) | `status` — queue depth, last processed timestamp, running flag. `run` — one synchronous pipeline pass (cluster → synthesize → quality gate → publish). `start` — start the background processor. `stop` — stop it. |
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Queue depth, last processed timestamp, running flag. |
+| `run` | One synchronous pipeline pass (cluster → synthesize → quality gate → publish). |
+| `start` | Start the background processor. |
+| `stop` | Stop it. |
 
 The `run` summary reports `clusters`, `synthesized`, `published`, and `failed_quality_gate` counts.
+
+The former positional form (`vesma processor ACTION`) is unchanged — the verb spellings are identical. Bare `vesma processor` shows the subcommand help; an unknown verb is a usage error (exit 2).
 
 ### Example
 
@@ -633,7 +693,7 @@ VESMA_AUTO_COLLECT=1 vesma mcp-server
 }
 ```
 
-See [mcp-tools.md](mcp-tools.md) for the full tool list and [getting-started.md#run-the-mcp-server](getting-started.md#connect-your-harness-mcp) for the VS Code wiring.
+See [mcp-tools.md](mcp-tools.md) for the full tool list and [integration-guide.md](integration-guide.md) for the harness wiring.
 
 ---
 
@@ -726,6 +786,65 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ---
 
+## `integration`
+
+Deploying and verifying the Vesma integration pack (instructions, skills, prompts, MCP registration) into agent harnesses detected on the machine (ADR-0035). `detect` prints the found harnesses and their paths; every deploy verb supports `--dry-run` and an alternate `--home` for cross-environment installs. The full guide with examples lives in the [integration guide](integration-guide.md).
+
+```text
+vesma integration detect [--home PATH]
+vesma integration setup [OPTIONS]
+vesma integration update [--target NAME] [--dry-run] [--home PATH]
+vesma integration verify [--target NAME] [--home PATH]
+vesma integration uninstall [--target NAME] [--dry-run] [--home PATH]
+```
+
+| Subcommand | Purpose |
+|------------|---------|
+| `detect` | Print detected agent harnesses and their deploy paths. Read-only — the pre-flight before `setup` / `update`; also how you check what a `--home` override sees. |
+| `setup` | The full host deployment in ONE prompt-free pass: pack files into ALL detected harnesses + MCP registration + agent MCP wiring. Idempotent — re-running refreshes stale files without duplicating. A failure on one target is reported loudly and never blocks the remaining targets (#448). |
+| `update` | Update already-deployed files to the current pack version; by the version stamp, only files carrying an outdated stamp are touched. |
+| `verify` | Compare deployed files against the shipped pack: `installed` (version) / `stale` / `missing`. Exit 0 when all current, 1 when any stale or missing. Health gate for the pack alongside `doctor`. |
+| `uninstall` | Remove ONLY files carrying the pack's version stamp (both generations); user-created files are never deleted. Also unregisters the pack's MCP-server entry (foreign entries are never touched). |
+
+`setup` options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--target / -t <name>` | all detected | Deploy only the named harness(es); repeatable (`all` accepted). |
+| `--dry-run` | `false` | Show what would be deployed without writing. |
+| `--no-mcp` | `false` | Skip MCP server registration. |
+| `--no-wire-agents` | `false` | Skip agent MCP wiring entirely. |
+| `--select a,b` | — | Narrow agent wiring to the named agents. |
+| `--precise` | `false` | Use individual `mnemos/mnemos_*` tool names instead of the `mnemos/*` wildcard. |
+| `--home <dir>` | `~` | Deploy into an alternate home directory (cross-environment installs). |
+
+`update`, `verify` and `uninstall` share the same `-t/--target`, `--dry-run` (except `verify`) and `--home` options with identical semantics.
+
+```bash
+# The pre-flight: what is detected and where the pack would deploy
+vesma integration detect
+
+# Full host deployment (files + MCP + agents), no prompts
+vesma integration setup
+
+# Show the deployment without writing
+vesma integration setup --dry-run
+
+# Only the named harnesses
+vesma integration setup --target copilot --target zcode
+
+# Verify after a package upgrade
+vesma integration verify
+
+# Refresh stale pack files
+vesma integration update --dry-run
+
+# Remove the pack (version-stamped files only)
+vesma integration uninstall --dry-run
+```
+
+---
+
 ## `completion`
 
 Install shell completion for the `vesma` CLI. Vesma ships its own completion engine (the hidden `vesma __complete` command): the installer writes per-shell scripts that introspect the live command tree, so commands, nested subcommands (any depth), option names and option/enum values all complete **with descriptions**. Descriptions are rendered by zsh and fish; bash's readline cannot render descriptions at all, so bash completes values only.
@@ -774,6 +893,7 @@ Run Vesma health checks: config, data dir, vault, SQLite DB, vector store, MCP s
 vesma doctor [OPTIONS]
 vesma doctor fix [--dry-run] [--json]
 vesma doctor paths [--json]
+vesma doctor service [--json]
 ```
 
 | Option | Default | Description |
@@ -790,16 +910,28 @@ Shows every path Vesma uses, resolved from config and environment:
 
 ```bash
 vesma doctor paths
-# Root:         ~/.mnemos
-# Data dir:     ~/.mnemos/data
-# Vault:        ~/.mnemos/vault
-# Logs:         ~/.mnemos/logs/vesma.log
-# Cache:        ~/.mnemos/cache
-# Completion:   ~/.mnemos/completion
-# MCP config:   ~/.config/Code/User/mcp.json
+# ── Paths ─────────────────────────────────────
+#   Root          ~/.mnemos
+#   Config        ~/.mnemos/config.yaml
+#   Data dir      ~/.mnemos/data
+#   DB            ~/.mnemos/data/mnemos.db
+#   Vault         ~/.mnemos/vault
+#   Logs          ~/.mnemos/logs/mnemos.log
+#   Cache         ~/.mnemos/cache
+#   Completion    ~/.mnemos/completion
+#   MCP config    ~/.config/Code/User/mcp.json
 ```
 
 Use this to verify the consolidated `~/.mnemos/` layout after upgrade or migration. With `--json`, the paths object is emitted for scripting.
+
+### `doctor service`
+
+Service installation check (layout v1 §3.10, DR-01…DR-13): component manifests, venvs, the unit, the environment. **Read-only by contract**: a finding carries severity OK / WARN / FAIL and a ready fix command, and the doctor never executes fixes itself. Exit codes: `0` = all OK, `1` = one or more FAIL, `2` = warnings only. `--json` emits the findings for scripting / CI.
+
+```bash
+vesma doctor service
+vesma doctor service --json
+```
 
 ### `doctor fix`
 
@@ -932,6 +1064,81 @@ Restart running clients (MCP / `serve`) after a successful update to pick up the
 
 ---
 
+## `service`
+
+Installing the Vesma service and driving the supervisor — nine verbs in one group (service-lifecycle v1). Installer verbs prepare files and the unit; client verbs (`status` / `health` / `start` / `stop` / `restart` / `logs`) talk to the running supervisor over its control socket.
+
+```text
+vesma service install
+vesma service uninstall [name] [--all]
+vesma service status [component] [--socket PATH]
+vesma service health [component] [--socket PATH]
+vesma service start {component} [--socket PATH]
+vesma service stop {component} [--force] [--socket PATH]
+vesma service restart {component} [--socket PATH]
+vesma service logs {component} [--follow] [--tail N] [--socket PATH]
+vesma service run [--socket PATH] [--config PATH]
+```
+
+| Verb | Purpose |
+|------|---------|
+| `install` | Install the service: component manifests, data dirs, venvs, the unit. |
+| `uninstall [name]` | Remove one component; with `--all`, the whole installation. |
+| `status [component]` | Live component state (or one component) as JSON. |
+| `health [component]` | Global and per-component health — the supervisor's own verdict. |
+| `start {component}` | Start a component (idempotent). |
+| `stop {component}` | Stop (idempotent); `--force` is the hard kill. |
+| `restart {component}` | Restart (NOT idempotent by contract). |
+| `logs {component}` | Recent component log lines; `--follow` streams. |
+| `run` | Run the service in the foreground: supervisor + control socket + in-process core. |
+
+### `service install`
+
+Idempotent — re-running regenerates every artifact; hand edits to the unit are overwritten by design (the "manual unit edit" threat model). Inside a container the filesystem hardening directives are loudly downgraded: a marker in the unit plus report lines.
+
+### `service uninstall`
+
+Removes only files the install flow owns (manifest, env file, venv). Component data dirs are operator data and are preserved. `--all` stops and disables the unit, removes it and all components.
+
+### Client verbs: `status` / `health` / `start` / `stop` / `restart` / `logs`
+
+All client verbs require a running supervisor (`vesma service run`); with a silent control socket they exit 1 with a hint. `--socket <path>` overrides the socket (tests, multi-instance machines).
+
+- `status` prints the live state (running / stopped / failed plus PID and uptime where available) as JSON for every installed component — or only the one named as the argument.
+- `health` is the supervisor's own verdict (healthz semantics): `OK` when the component process answers its readiness probe; `DEGRADED` / `FAIL` with the reason otherwise. Run it after `start` / `restart` to confirm the component actually came up.
+- `start` launches the component from its installed manifest. An already-running component is reported as-is instead of failing — start scripts can invoke it unconditionally. Confirm readiness with `vesma service health`.
+- `stop` stops gracefully first (SIGTERM, short grace period); `--force` skips the graceful phase and SIGKILLs after a short delay — for a wedged process only, since in-flight work is lost. An already-stopped component is reported as-is.
+- `restart` is a real stop-then-start cycle, not a no-op: unlike `start`/`stop` it is NOT idempotent — a retry after a lost response performs a second restart. Use it to reload a component after a config or manifest change.
+- `logs` prints the last `--tail` lines (default 100, cap 10000) from the component's log source, or keeps streaming new lines with `--follow` / `-f` until the component stops.
+
+### `service run`
+
+Run the service in the foreground: supervisor + control socket + in-process core. The memory-server core (the same app `vesma serve` runs) is embedded IN THIS PROCESS as the supervisor's own heart (service-lifecycle v1 §3.1): death of the core = death of the supervisor (fail-fast, exit 1, the systemd unit restarts — there is deliberately no core-restart mechanism). Board and children come from their manifests. Single-instance mode: when a live supervisor already answers on the socket, the command exits 0 with a message.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--socket` | socket default | Control socket override (tests). |
+| `--config / -c` | — | Path to `config.yaml` (bind/port of the core API). |
+
+```bash
+# Install (on the host — a systemd user unit)
+vesma service install
+
+# Run the service; the supervisor owns the state
+vesma service run
+
+# From another session: state, health, control
+vesma service status
+vesma service health
+vesma service start board
+vesma service logs board --follow
+vesma service stop board
+```
+
+Installation diagnostics — `vesma doctor service` (read-only, DR-01…DR-13).
+
+---
+
 ## `logs`
 
 View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table.
@@ -998,7 +1205,98 @@ vesma scanner run --full
 
 ### Related
 
-- [sync.md](sync.md#vesmano-federate-exclusion) — what `mnemos:no-federate` excludes
+- [sync.md](sync.md#mnemosno-federate-exclusion) — what `mnemos:no-federate` excludes
+
+---
+
+## `awareness`
+
+Operator surface for the native awareness heartbeat (ADR-0035): view and
+switch the delivery mode, and read the wave-0 gate metrics from the metrics
+sidecar — no manual YAML edit, no raw SQL.
+
+### `awareness get`
+
+Show `awareness.native_heartbeat_mode` twice: the RAW value as written in
+the resolved config file, and the EFFECTIVE value (the settings the next
+server start will load — env overrides included). When the canonical env
+override `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE` is set, the output names
+it (`config file > env` per the dual-source precedence).
+
+```bash
+vesma awareness get
+#   config file: /home/you/.mnemos/config.yaml
+#   awareness.native_heartbeat_mode: shadow
+#   effective: shadow
+```
+
+### `awareness set`
+
+Switch the heartbeat mode end-to-end:
+
+```bash
+vesma awareness set shadow   # off | shadow | canary | on
+```
+
+The value is validated against the born-final mode ladder — an unknown
+value is refused with the allowed list and nothing is written. The write
+is atomic (tmp + rename) and preserves every other mapping in the file
+(missing `awareness:` section is created additively). Because a running
+server reads the config once at startup, the command always prints the
+restart note; when the `vesma service` supervisor answers on its control
+socket, the output names the exact restart verb.
+
+| Mode | Meaning (ADR-0035) |
+|------|--------------------|
+| `off` *(default)* | The kill switch — the contour is fully inert. |
+| `shadow` | Wave 0: compose + events in the metrics sidecar, nothing rendered. |
+| `canary` | Wave 1: the envelope renders as the last `TextContent`. |
+| `on` | Wave 2: full delivery. |
+
+### `awareness stats`
+
+Print the wave-0 gate metrics read from the `awareness_events` table of the
+metrics sidecar (`<data_dir>/metrics.sqlite`) through the sink's own
+connection — no raw SQL:
+
+| Output | Meaning |
+|--------|---------|
+| `tool_call (denominator)` | Every dispatched MCP call — the funnel denominator. |
+| `peer_write` | Write-class calls (the freshness numerator's start stamp). |
+| `delta_available` / `heartbeat_delivery` | Probe hits and delivered tails, with the calm/delta split. |
+| `heartbeat_suppressed` | Deliveries suppressed, broken down by reason (`rate_cap`, `probe_error`, …). |
+| `tail token cost` | Sum and mean estimated tail tokens over the window's deliveries (budget input). |
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--window-hours / -w` | `24` | Window in hours (1..2160). |
+| `--project / -p` | — | Scope the funnel to one project slug. |
+| `--config / -c` | — | Path to `config.yaml`. |
+
+### Example
+
+```bash
+vesma awareness stats
+# awareness heartbeat — wave-0 funnel (window 24h)
+#   tool_call (denominator): 812
+#   peer_write: 23
+#   delta_available: 9
+#   heartbeat_delivery: 9
+#     — state: calm 2 / delta 7
+#   heartbeat_suppressed: 0
+#   conflict_hint_emitted: 1
+#   tail token cost: sum 640 over 9 deliveries (mean ~71)
+#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+```
+
+A missing sidecar prints a hint line and exits 0 (a broken metrics plane
+must not make console reads fatal). Output is aggregates-only — identity
+slugs never print (zero peer content, ADR-0035 CWE-359 posture).
+
+### Related
+
+- Mode ladder semantics: [mcp-tools.md](mcp-tools.md#native-awareness-heartbeat-adr-0035)
+- Decision record: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
 
 ---
 
@@ -1026,4 +1324,4 @@ The CLI does not return non-zero for "no results" — `vesma search` exits 0 wit
 
 ---
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-06_

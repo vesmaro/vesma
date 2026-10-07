@@ -1,0 +1,25 @@
+{
+  "name": "@vesmaro/vesma",
+  "version": "5.6.5",
+  "description": "Vesma — memory & knowledge server for AI agents (Vesmaro Project). VESMA = Vector-Environment Storage for Memory-Agents.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vesmaro/vesma.git"
+  },
+  "keywords": [
+    "mcp",
+    "memory",
+    "ai-agents",
+    "llm",
+    "knowledge-base",
+    "local-first"
+  ],
+  "files": [
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

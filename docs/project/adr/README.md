@@ -63,6 +63,12 @@ documented elsewhere, or anything that fits in a code comment.
 | [0032](0032-project-graph.md) | Project graph as memory — sidecar `code_graph.db`, memory-first, waves PG-0..PG-3 behind gates | Accepted (with conditions — owner green-light per wave) | 2026-09-28 |
 | [0033](0033-vesma-harness-layer.md) | Harness memory layer — owned by vesma, delivered via `vesma integration` | Accepted (conditional — two security-major merge gates) | 2026-10-01 |
 | [0034](0034-memory-engine-switch-protocol.md) | Memory-engine switch protocol — open vendor-neutral spec, reference implementation in vesma | Accepted (conditional — spec extraction gated by adoption; B1–B4 blocking controls) | 2026-10-01 |
+| [0035](0035-native-awareness-delivery.md) | Native awareness delivery — doorbell-heartbeat on every MCP response | Accepted (conditional) | 2026-10-01 |
+| [0036](0036-native-situational-awareness-canon.md) | Native situational awareness — canon, roster, and cortex integration (the E/C/R/X/S frame; extends ADR-0035, does not supersede it) | Accepted (conditional — 4 security clauses in PR #489; canary after a 1–2-week shadow soak) | 2026-10-05 |
+| [0037](0037-lineage-marks-engine-attachment-points.md) | lineage_marks — engine attachment points for the ratified canon schema (labeling-policy v1.1 §8.3; wiring plan + three canon↔engine divergences) | Proposed (owner ratification gate; doc-only) | 2026-10-06 |
+| [0038](0038-pg1-graph-walk.md) | PG-1 two-level graph walk — one walker, a separate `walk` section, work caps (extends ADR-0032; slices M1–M3) | Accepted (9 binding conditions) | 2026-10-06 |
+| [0042](0042-eyes-memory-transport.md) | vesma-eyes → memory transport: B-shim (gRPC-bidi proxy in mesh → kernel loopback); 8788 is a transitional leg, de-commissioned on B-shim acceptance (extends ADR-0014/0021/0025) | Accepted (5 binding conditions; phase A-then-B) | 2026-10-06 |
+| [0043](0043-awareness-machine-liveness.md) | Awareness machine-wide liveness — `scope="machine"` on `vesma_awareness`; «live» = a store write within window N=15 min; advisory-only, presence-not-lock; honest coverage marker; phases 5.6.x flag default-off → 5.7 exposure; OS-signals deferred with 5 Security conditions (extends ADR-0035/0036) | Accepted (ACCEPT WITH CONDITIONS — 6 binding conditions) | 2026-10-06 |
 
 ## Themes
 

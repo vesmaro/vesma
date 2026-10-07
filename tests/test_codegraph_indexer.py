@@ -174,6 +174,48 @@ class TestFileSurface:
 
 
 class TestFullIndex:
+    def test_decorated_definitions_are_indexed(self, store: CodeGraphStore, tmp_path: Path) -> None:
+        """A ``decorated_definition`` (any ``@decorator``-carrying
+        def/class — FastAPI endpoints, typer commands, dataclasses,
+        properties) must reach the graph. Regression for the surface
+        nodes card (vesma-graph-command-route-nodes): CLI commands and
+        REST endpoints are ALL decorated — without this leg the handler
+        side of every ``INVOKES``/``HANDLES`` edge is missing. PG1
+        holds: the decorator call's string arguments are never read."""
+        root = tmp_path / "decorated"
+        root.mkdir()
+        (root / "svc.py").write_text(
+            "def deco(fn):\n"
+            "    return fn\n"
+            "\n"
+            "\n"
+            '@deco("AKIAIOSFODNN7EXAMPLE")\n'
+            "def endpoint():\n"
+            "    return 1\n"
+            "\n"
+            "\n"
+            "class Box:\n"
+            "    @property\n"
+            "    def size(self):\n"
+            "        return 0\n",
+            encoding="utf-8",
+        )
+        result = index_project("proj", root, store, _FakeMainStore())
+        assert result.status == "ok"
+        names = {
+            (kind, qname)
+            for kind, qname in store._conn()
+            .execute("SELECT kind, qname FROM project_nodes WHERE kind IN ('Function','Method')")
+            .fetchall()
+        }
+        assert ("Function", "deco") in names
+        assert ("Function", "endpoint") in names  # decorated top-level def
+        assert ("Method", "Box.size") in names  # decorated method (qname is class-scoped)
+        # PG1: the decorator's string argument never entered the store
+        for (table,) in store._conn().execute("SELECT name FROM sqlite_master WHERE type='table'"):
+            for row in store._conn().execute(f"SELECT * FROM {table}"):
+                assert "AKIAIOSFODNN7EXAMPLE" not in str(row)
+
     def test_kinds_and_edges(self, store: CodeGraphStore, mini_repo: Path) -> None:
         result = index_project("proj", mini_repo, store, _FakeMainStore())
         assert result.status == "ok"

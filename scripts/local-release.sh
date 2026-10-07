@@ -19,26 +19,33 @@
 #   scripts/local-release.sh                  # full release
 #   scripts/local-release.sh --skip-verify    # skip verify (use after local-ci.sh)
 #   scripts/local-release.sh --dry-run        # print steps, no mutations
-#   scripts/local-release.sh --no-image       # wheel/sdist only, no container
 #   scripts/local-release.sh --no-release     # no GitHub Release creation
 #   scripts/local-release.sh --help
 #
+# NO --no-image (removed, owner directive 2026-10-05, card
+# vesma-ghcr-5x-parity): the container image is a MANDATORY part of any
+# release. Both image steps delegate to scripts/image-publish.sh — the
+# single image-phase implementation — and a missing builder, failed
+# build/smoke, or failed push is a HARD failure, never a silent skip.
+# The canonical train entry remains scripts/pypi-publish.sh --publish.
+#
 # Prereqs: on release tag, clean tree, venv with dev extras, gh CLI auth,
-# docker or buildah for image, python -m build available.
+# GHCR_TOKEN (classic PAT with write:packages) for the container image
+# push, podman/buildah/docker for the image, python -m build available.
 #
 # See: memory ef56d3b5 (CI billing), b9f022f8 (vesma local-CI workaround)
 
 set -euo pipefail
 
 # args
-SKIP_VERIFY=false; DRY_RUN=false; NO_IMAGE=false; NO_RELEASE=false
+SKIP_VERIFY=false; DRY_RUN=false; NO_RELEASE=false
 for arg in "$@"; do
   case "$arg" in
     --skip-verify) SKIP_VERIFY=true ;;
     --dry-run)     DRY_RUN=true ;;
-    --no-image)    NO_IMAGE=true ;;
+    --no-image)    echo "ERROR: --no-image is removed — the container image is a MANDATORY release artifact (owner directive 2026-10-05, card vesma-ghcr-5x-parity)." >&2; echo "  Wheels/sdist-only preparation run (publishes nothing): scripts/pypi-publish.sh" >&2; exit 2 ;;
     --no-release)  NO_RELEASE=true ;;
-    --help|-h) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
@@ -99,7 +106,7 @@ echo ""
 TOTAL=0
 $SKIP_VERIFY || TOTAL=$((TOTAL+1))
 TOTAL=$((TOTAL+1))
-$NO_IMAGE || TOTAL=$((TOTAL+2))
+TOTAL=$((TOTAL+2))   # image build+smoke, push+verify — unconditional (no skip path)
 $NO_RELEASE || TOTAL=$((TOTAL+1))
 IDX=0
 
@@ -124,41 +131,26 @@ else
   else record "Build wheel+sdist" "FAIL"; print_summary; fi
 fi
 
-# 3-4. container image
-if ! $NO_IMAGE; then
-  IMAGE="ghcr.io/vesmaro/vesma"
-  BT=""; command -v buildah >/dev/null 2>&1 && BT="buildah" || { command -v docker >/dev/null 2>&1 && BT="docker"; }
-  IDX=$((IDX+1))
-  if [[ -z "$BT" ]]; then skip_step $IDX $TOTAL "Build image" "no buildah/docker"
-  else
-    echo ""; echo "=== [$IDX/$TOTAL] Build image ($BT) ==="
-    if $DRY_RUN; then echo "→ DRY-RUN: $BT build -t $IMAGE:$VERSION -t $IMAGE:latest -f Containerfile ."; record "Build image" "SKIP"
-    else
-      set +e
-      [[ "$BT" == "buildah" ]] && buildah bud -t "$IMAGE:$VERSION" -t "$IMAGE:latest" -f Containerfile . || docker build -t "$IMAGE:$VERSION" -t "$IMAGE:latest" -f Containerfile .
-      rc=$?; set -e
-      [[ $rc -eq 0 ]] && { record "Build image" "PASS"; echo "→ $IMAGE:$VERSION + :latest"; } || { record "Build image" "FAIL"; print_summary; }
-    fi
-  fi
-  IDX=$((IDX+1))
-  if [[ -z "$BT" ]]; then skip_step $IDX $TOTAL "Push image" "no build tool"
-  else
-    echo ""; echo "=== [$IDX/$TOTAL] Push image to ghcr.io ==="
-    if $DRY_RUN; then echo "→ DRY-RUN: push $IMAGE:$VERSION + :latest"; record "Push image" "SKIP"
-    else
-      GH_TOKEN=$(gh auth token 2>/dev/null || true)
-      set +e
-      if [[ "$BT" == "buildah" ]]; then
-        [[ -n "$GH_TOKEN" ]] && echo "$GH_TOKEN" | buildah login -u Korrnals --password-stdin ghcr.io 2>/dev/null || true
-        buildah push "$IMAGE:$VERSION"; p1=$?; buildah push "$IMAGE:latest"; p2=$?
-      else
-        [[ -n "$GH_TOKEN" ]] && echo "$GH_TOKEN" | docker login ghcr.io -u Korrnals --password-stdin 2>/dev/null || true
-        docker push "$IMAGE:$VERSION"; p1=$?; docker push "$IMAGE:latest"; p2=$?
-      fi
-      set -e
-      [[ $p1 -eq 0 && $p2 -eq 0 ]] && { record "Push image" "PASS"; } || { record "Push image" "FAIL"; echo "  Auth: gh auth token | docker login ghcr.io -u Korrnals --password-stdin" >&2; print_summary; }
-    fi
-  fi
+# 3-4. container image — MANDATORY (owner directive 2026-10-05, card
+#      vesma-ghcr-5x-parity). Both steps delegate to scripts/image-publish.sh,
+#      the single image-phase implementation (builder discovery, version
+#      gates, gRPC stub regeneration, smoke, authfile login, skopeo
+#      explicit-transport push with podman/docker fallback, anonymous
+#      pull-flow verify). A missing builder, failed smoke, or failed push
+#      is a HARD failure here — never a silent skip.
+IDX=$((IDX+1))
+echo ""; echo "=== [$IDX/$TOTAL] Image build + smoke (mandatory — scripts/image-publish.sh) ==="
+if $DRY_RUN; then echo "→ DRY-RUN: scripts/image-publish.sh build"; record "Image build+smoke" "SKIP"
+else
+  set +e; bash "$SCRIPT_DIR/image-publish.sh" build; rc=$?; set -e
+  if [[ $rc -eq 0 ]]; then record "Image build+smoke" "PASS"; else record "Image build+smoke" "FAIL"; print_summary; fi
+fi
+IDX=$((IDX+1))
+echo ""; echo "=== [$IDX/$TOTAL] Image push + anonymous verify (mandatory — scripts/image-publish.sh) ==="
+if $DRY_RUN; then echo "→ DRY-RUN: scripts/image-publish.sh push"; record "Image push+verify" "SKIP"
+else
+  set +e; bash "$SCRIPT_DIR/image-publish.sh" push; rc=$?; set -e
+  if [[ $rc -eq 0 ]]; then record "Image push+verify" "PASS"; else record "Image push+verify" "FAIL"; print_summary; fi
 fi
 
 # 5. GitHub Release

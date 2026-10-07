@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Экспорт и импорт
 
 **🌐 Language / Язык:** [English](../../en/user/export-import.md) · Русский
@@ -122,7 +122,7 @@ vesma export --format json --encrypt --output backup.enc
 | Интерактивный ввод | (по умолчанию при `--encrypt`) | Ручные бэкапы |
 | Файл | `--passphrase-file /path/to/key` | CI / скрипты |
 
-Для HTTP API пароль передаётся в заголовке `X-Vesma-Passphrase` —
+Для HTTP API пароль передаётся в заголовке `X-Mnemos-Passphrase` —
 никогда в теле запроса — поэтому он не попадает в логи как параметр
 запроса.
 
@@ -152,6 +152,14 @@ vesma export --format json --since "$(date -u -d 'yesterday' +%Y-%m-%d)" \
 | **merge** | `--mode merge` (по умолчанию) | Вставляет памяти с отсутствующим ID; пропускает существующие (или обновляет с `--overwrite`). Проекты сливаются. Векторы регенерируются для опубликованных памятей. | Нет — идемпотентный |
 | **restore** | `--mode restore --confirm` | Стирает все памяти, векторы и проекты, затем импортирует. Для SQLite сырые файлы БД заменяются (после опционального бэкапа). | **Да — требует `--confirm`** |
 | **dry-run** | `--dry-run` | Валидирует файл экспорта без записи. Работает с обоими режимами. | Нет |
+
+> **Импорт недоверенного файла.** По умолчанию импорт трактуется как
+> **UNTRUSTED**-вход: server-minted canon-ключи (checkpoint-штампы,
+> canon-конверт checkpoint-типа, canon-warnings) вырезаются из
+> метаданных каждой записи — подделанный экспорт не может притвориться,
+> что сервер чеканил эти штампы сам. Клиентские task/decision/report
+> конверты сохраняются. Флаг `--trusted-restore` отключает вырезание —
+> оператор подтверждает, что файл — его собственный доверенный бэкап.
 
 ### merge — идемпотентный
 
@@ -253,6 +261,7 @@ vesma import SOURCE [OPTIONS]
 | `--dry-run` | выкл | Валидировать без записи |
 | `--passphrase-file` | (ввод) | Читать пароль расшифровки из файла |
 | `--backup-dir` | (нет) | Бэкап текущей БД сюда перед restore |
+| `--trusted-restore` | выкл | Оператор подтверждает доверенный self-бэкап: server-minted canon-ключи сохраняются дословно. Без флага импорт трактуется как UNTRUSTED и эти ключи вырезаются (см. «Режимы импорта»). |
 | `--config`, `-c` | (авто) | Путь к config.yaml |
 
 ---
@@ -291,9 +300,10 @@ vesma import SOURCE [OPTIONS]
 | `since` | string\|null | `null` | Нижняя граница ISO-даты |
 | `until` | string\|null | `null` | Верхняя граница ISO-даты |
 
-**Пароль шифрования** — передавайте через заголовок `X-Vesma-Passphrase`.
+**Пароль шифрования** — передавайте через заголовок `X-Mnemos-Passphrase`
+(историческое имя заголовка — формат-стабильное, не бренд).
 Если `encrypt: true` и заголовок отсутствует, эндпоинт вернёт `400` с
-`{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
+`{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
 
 **Ответ** — `StreamingResponse` с `Content-Disposition:
 attachment; filename="vesma-export.<suffix>"`. Суффикс зависит от
@@ -310,7 +320,7 @@ attachment; filename="vesma-export.<suffix>"`. Суффикс зависит о�
 | `overwrite` | query | bool | `false` | Обновлять существующие в merge |
 | `confirm` | query | bool | `false` | Обязательно для `restore` |
 | `dry_run` | query | bool | `false` | Валидировать без записи |
-| `X-Vesma-Passphrase` | header | string | (нет) | Пароль расшифровки |
+| `X-Mnemos-Passphrase` | header | string | (нет) | Пароль расшифровки |
 
 **Ответ** (`200 OK`):
 
@@ -355,7 +365,7 @@ vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
 vesma export --format json --project vesma --output vesma-project.json
 
 # Целевой инстанс
-vesma import mnemos-project.json --mode merge
+vesma import vesma-project.json --mode merge
 ```
 
 ### Периодический инкрементальный бэкап (cron)

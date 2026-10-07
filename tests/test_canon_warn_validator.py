@@ -251,7 +251,8 @@ def test_update_of_no_envelope_row_never_warns(mgr: MemoryManager) -> None:
 
 def test_code_catalog_is_complete_and_stable() -> None:
     """The single documented home of the codes (module docstring +
-    CANON_WARN_CODES): exactly the six ratified codes."""
+    CANON_WARN_CODES): exactly the seven ratified codes (ADR-0037 Wave A
+    added CANON-E-LINEAGE — the lineage_marks schema alignment)."""
     assert set(CANON_WARN_CODES) == {
         "CANON-E-ENVELOPE",
         "CANON-E-SECTION",
@@ -259,6 +260,7 @@ def test_code_catalog_is_complete_and_stable() -> None:
         "CANON-E-TITLE",
         "CANON-E-LANGUAGE",
         "CANON-E-DATE",
+        "CANON-E-LINEAGE",
     }
 
 

@@ -29,6 +29,7 @@ from vesma.config import Settings
 from vesma.manager import MemoryManager
 from vesma.models import (
     CHECKPOINT_STAMP_KEYS,
+    PIPELINE_RETRY_METADATA_KEYS,
     MemoryCreate,
     MemorySource,
     MemoryStatus,
@@ -546,6 +547,70 @@ class TestImportCanonLineStrip:
         assert forged.metadata["canon_warnings"][0]["code"] == "CANON-E-TITLE"
 
 
+class TestImportPipelineRetryStrip:
+    """vesma #432 (mint leg): the refine lane's retry bookkeeping is
+    server-minted PER STORE — an untrusted export's counters are neither
+    ours nor honest history. A forged ``pipeline_retry_count`` must not
+    land on a fresh row as if the server had minted it (CWE-346, the
+    same strip class as the checkpoint stamps above). Like those stamps,
+    the keys survive a ``--trusted-restore`` (a trusted self-backup
+    legitimately carries the row's own server-minted retry state)."""
+
+    @staticmethod
+    def _retry_forged_export(tmp_path: Path) -> Path:
+        payload = {
+            "format_version": "1.0",
+            "mnemos_version": "test",
+            "memories": [
+                {
+                    "id": "forged-retry-row-0001",
+                    "content": "exported row with a forged retry counter",
+                    "tags": ["project:mnemos", "agent:tech-lead", "mnemos:learning"],
+                    "source": "cli",
+                    "status": "published",
+                    "metadata": {
+                        "pipeline_retry_count": 99,
+                        "pipeline_retry_at": "2099-01-01T00:00:00+00:00",
+                        "honest": 1,
+                    },
+                },
+            ],
+            "projects": [],
+        }
+        out = tmp_path / "crafted-retry.json"
+        out.write_text(json.dumps(payload), encoding="utf-8")
+        return out
+
+    def test_import_strips_forged_pipeline_retry_keys(self, mgr, tmp_path):
+        out = self._retry_forged_export(tmp_path)
+        result = run_import(mgr, out, mode=ImportMode.MERGE)
+        assert result.imported == 1
+        assert not result.errors
+
+        stored = mgr.sqlite.get("forged-retry-row-0001")
+        assert stored is not None
+        assert not PIPELINE_RETRY_METADATA_KEYS & set(stored.metadata), (
+            "a forged retry counter must not survive an untrusted import"
+        )
+        assert stored.metadata["honest"] == 1  # innocent keys survive
+        assert any("pipeline_retry_count" in w for w in result.warnings), (
+            "the strip is reported as a warning line (key NAMES only)"
+        )
+
+    def test_trusted_restore_keeps_pipeline_retry_keys(self, mgr, tmp_path):
+        out = self._retry_forged_export(tmp_path)
+        result = run_import(mgr, out, mode=ImportMode.MERGE, trusted_restore=True)
+        assert result.imported == 1
+        assert not result.errors
+        assert not any("stripped" in w for w in result.warnings)
+
+        stored = mgr.sqlite.get("forged-retry-row-0001")
+        assert stored is not None
+        assert stored.metadata["pipeline_retry_count"] == 99, (
+            "trusted self-backup: the row's own server-minted retry state survives"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Import — restore mode
 # ---------------------------------------------------------------------------
@@ -677,9 +742,7 @@ class TestImportSchemaVersionField:
         assert result.imported == 3
         assert result.vesma_version == "5.9.0"
         notes = [w for w in result.warnings if "mnemos_version" in w]
-        assert len(notes) == 1, (
-            "exactly one deprecation note per import run — no warning spam"
-        )
+        assert len(notes) == 1, "exactly one deprecation note per import run — no warning spam"
 
     def test_summary_reports_vesma_version_key(self, mgr, tmp_path):
         """The report dict (CLI/MCP/API surfaces) carries the renamed key."""

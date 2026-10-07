@@ -34,7 +34,7 @@ def test_default_vault_path_is_consolidated() -> None:
 
 
 def test_default_data_dir_is_consolidated() -> None:
-    """Default data_dir should be ~/.mnemos/data, not ~/.vesmaro."""
+    """Default data_dir should be ~/.mnemos/data, not ~/.vesma."""
     cfg = VesmaConfig()
     assert str(cfg.data_dir) == "~/.mnemos/data"
 

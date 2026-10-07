@@ -63,7 +63,7 @@ flowchart LR
 
 | Требование | Детали |
 | --- | --- |
-| Версия vesma | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 4.0.0. |
+| Версия vesma | v2.12.1+ на **обоих** хостах (и эндпоинт mediated pull, и non-loopback стартовый guard появились в линейке v2.12); текущий релиз: 5.6.2. |
 | Конфиг peer B | `federation.enabled: true` (или непустой `federation.shared_projects` — сервер трактует пустой `shared_projects` как выключенную федерацию). |
 | Peer'ы peer B | Peer A сконфигурирован в `federation.peers` на peer B с `bearer_token_env`, `allowed_projects`, `allowed_types`, `rate_limit_per_minute`. См. [`federation.md`](federation.md) §1. |
 | SSH-доступ | Для cross-host-теста оператор имеет SSH-доступ к хосту peer B (используется, чтобы пробросить loopback-порт peer B на ноутбук). |
@@ -397,7 +397,7 @@ Rate limiter — per-peer скользящее 60-секундное окно с
 ### k. Полный roundtrip — pull, импорт, поиск на peer A
 
 Сохраните pull-ответ из шага f в файл, оберните массив `records` в
-compact-payload `mnemos.federation.v1` и импортируйте на ноутбуке.
+compact-payload `vesmaro.federation.v1` и импортируйте на ноутбуке.
 
 ```bash
 # On peer A (laptop) — save the pull response
@@ -413,7 +413,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 
 # Wrap the records as a compact payload. The compact payload shape is
 # documented in src/vesma/compact.py. A minimal wrapper:
-jq '{format_version: "mnemos.federation.v1", records: .records}' \
+jq '{format_version: "vesmaro.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
 # Import into peer A's vesma

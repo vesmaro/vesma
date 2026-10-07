@@ -43,8 +43,15 @@ from vesma.cli.integration import (
 console = Console()
 
 integration_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="integration",
-    help="Manage Vesma integration layer (instructions, skills, prompts, MCP).",
+    help=(
+        "Manage Vesma integration layer (instructions, skills, prompts, MCP).\n\n"
+        "Deploys and verifies the per-harness integration pack into detected "
+        "agent tools (instructions, skills, prompts, MCP registration). "
+        "`detect` prints what is installed; every deploy verb supports "
+        "`--dry-run` and an alternate `--home` for cross-environment installs."
+    ),
     no_args_is_help=True,
 )
 
@@ -250,7 +257,13 @@ def _run_agent_wiring(
 def detect_cmd(
     home: Annotated[Path | None, HomeOption] = None,
 ) -> None:
-    """Print detected agent harnesses and their deploy paths."""
+    """Print detected agent harnesses and their deploy paths.
+
+    Scans the machine for supported harnesses (editors, agent CLIs) and
+    shows, per harness, which integration targets exist and where their
+    files would deploy. Read-only — the pre-flight before an `install`
+    or `update` run, and the way to check what a `--home` override sees.
+    """
     cfg = load_targets(home=home)
     detected = cfg.detected()
 

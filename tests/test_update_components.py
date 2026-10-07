@@ -221,9 +221,10 @@ def test_cortex_component_reads_shipped_manifest() -> None:
     installed, path = updates_cli._cortex_component()
     assert installed.startswith("vesma-cortex-v1 (rev ")
     assert "trained " in installed
-    # The rev must be the SHIPPED manifest's weights hash — B2 manifests
-    # key it `sha256`, pre-B2 `weights_sha256`; an empty rev here means
-    # the component line silently degraded (465d33e merge-gate miss).
+    # The rev must be the SHIPPED manifest's weights hash — current
+    # manifests key it `sha256` (pre-B2: `weights_sha256`); an empty rev
+    # here means the component line silently degraded (the 465d33e
+    # merge-gate miss).
     manifest = updates_cli._cortex_manifest()
     sha = str(manifest.get("sha256") or manifest.get("weights_sha256") or "")
     assert sha, "shipped cortex manifest carries no weights hash"

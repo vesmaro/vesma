@@ -37,6 +37,7 @@ from vesma import __version__
 from vesma.canon_validate import (
     CanonViolationError,
     canon_envelope_is_client_authored,
+    strip_client_lineage_marks,
     validate_canon_record,
 )
 from vesma.config import Settings
@@ -47,6 +48,15 @@ from vesma.danger_detectors import DetectionResult, detect
 # collision (the function IS ``ingest_document`` on both sides; the
 # manager's method is the public surface, the module's function is the
 # single implementation).
+from vesma.decision_jev import resolve_decision_provider
+from vesma.decision_provider import (
+    CanonRecordView,
+    CanonState,
+    DecisionProvider,
+    DeterministicProvider,
+    IsDuplicateRequest,
+    MissingEvidenceError,
+)
 from vesma.docs_ingest import (
     DOC_CHUNK_CACHE_VERSION_META_KEY,
     DOC_SWEEP_STAMP_KEYS,
@@ -68,6 +78,7 @@ from vesma.models import (
     CHECKPOINT_STAMP_KEYS,
     CONTEXT_ADMISSIBLE_STATUSES,
     NO_FEDERATE_TAG,
+    PIPELINE_RETRY_METADATA_KEYS,
     AgentRecallQuery,
     Memory,
     MemoryCreate,
@@ -82,6 +93,7 @@ from vesma.models import (
     is_context_admissible,
     is_quarantined,
     render_retraction,
+    strip_pipeline_retry_keys,
 )
 from vesma.pipeline import (
     ClusterResult,
@@ -158,6 +170,21 @@ def _derive_feedback_event_id(
 # warning replaces the per-row flood.
 HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 
+
+class _SeamNotBuilt:
+    """The «decision seam not built YET» sentinel (ADR-0004 B0 seam).
+
+    A distinct type (NOT ``None``) so the lazily cached
+    ``_decision_seam_provider`` field can hold all three honest states:
+    not-built (``_NOT_BUILT``), resolved-but-disabled (``None``,
+    decision_provider=off) and the resolved provider. Truthiness of the
+    resolved provider is never consulted through the sentinel —
+    ``_decision_seam`` does the isinstance decode.
+    """
+
+
+_NOT_BUILT: Final[_SeamNotBuilt] = _SeamNotBuilt()
+
 # ADR-0019 B2b (review #163 follow-up F7) — INTERNAL lifecycle metadata
 # keys. The store writes them server-side (``json_set`` in
 # ``record_refine_failure`` / ``clear_refine_retry``); an external
@@ -182,15 +209,18 @@ HEAL_CONSECUTIVE_FAILURE_CUTOFF: Final[int] = 10
 # paths together with the forged stamps — a client must neither forge
 # warnings onto a clean record nor delete honest ones from a violating
 # record; only an actual content/metadata fix may clear them.
-INTERNAL_METADATA_KEYS: frozenset[str] = (
-    frozenset(
-        {
-            "pipeline_retry_count",  # lane-(a) attempt counter (refine)
-            "pipeline_retry_at",  # lane-(a) backoff gate (refine)
-        }
-    )
-    | CHECKPOINT_STAMP_KEYS
-)
+# vesma #432 (P3, mint leg of the #251 strip class): the refine lane's
+# retry bookkeeping (``PIPELINE_RETRY_METADATA_KEYS``, vocabulary in
+# ``vesma.models`` beside the checkpoint stamps) is SERVER-MINTED —
+# its single writer is the store's ``record_refine_failure`` /
+# ``clear_refine_retry`` (SQL ``json_set``, server-internal); no client
+# surface and no ``add()``/``update()`` caller legitimately mints these
+# keys. ``INTERNAL_METADATA_KEYS`` merge-back only protects EXISTING
+# values, so the create/update call sites additionally STRIP
+# client-supplied copies (below, via ``models.strip_pipeline_retry_keys``)
+# — a client must not mint retry state on a row that never had it
+# (CWE-346 spoofed source, same class as the forged checkpoint stamps).
+INTERNAL_METADATA_KEYS: frozenset[str] = PIPELINE_RETRY_METADATA_KEYS | CHECKPOINT_STAMP_KEYS
 
 # Cascade review SEC P2-2 (TL ruling: engine returns to ratified canon §2).
 # ADR-0003 obligation 3 was read over-broad in W2-S1: canon §2 defines
@@ -686,6 +716,95 @@ class MemoryManager:
         # (idempotent re-mints contribute nothing).
         self._graph_mint_stats: dict[str, int] = {}
         self._graph_mint_stats_lock: threading.Lock = threading.Lock()
+        # ADR-0004 B0 seam (card b0-provider-seam-wiring) — the lazily
+        # built decision provider behind the existing
+        # ``mnemos.decision_provider`` config. ``False`` here means «not
+        # built YET»; the ``None`` state means «resolved to seam-disabled
+        # (``"off"``)» — the one-shot construction in ``_decision_seam``
+        # stays honest without re-resolving the config on every write.
+        self._decision_seam_provider: DecisionProvider | None | _SeamNotBuilt = _NOT_BUILT
+        self._decision_seam_lock: threading.Lock = threading.Lock()
+
+    def _decision_seam(self) -> DecisionProvider | None:
+        """The live ADR-0004 provider seam (built lazily, once).
+
+        Resolves the EXISTING ``mnemos.decision_provider`` config through
+        :func:`vesma.decision_jev.resolve_decision_provider` —
+        ``"vesma"`` activates the bundled provider (W5d); the
+        deterministic default keeps the unchanged behavior (a baseline
+        provider that re-answers the exact step rule the minting path
+        always applied, still emitting its §3.9 telemetry). Fail-open
+        (inference-v1.md §7, config.py:173-181 contract): ANY resolution
+        exception degrades to the deterministic provider with a
+        machine-parseable warn — ingest is never blocked by the seam;
+        ``"off"`` resolves to ``None`` (call sites skip the probe).
+        Thread-safety mirrors ``self.embedder``: the minting path is
+        synchronous user-facing writes — the lock makes a concurrent
+        first probe build once.
+        """
+        provider = self._decision_seam_provider
+        if not isinstance(provider, _SeamNotBuilt):
+            return provider
+        with self._decision_seam_lock:
+            provider = self._decision_seam_provider
+            if not isinstance(provider, _SeamNotBuilt):
+                return provider
+            try:
+                resolved: DecisionProvider | None = resolve_decision_provider(
+                    self.settings.vesma,
+                    embedder_fingerprint=self._embedder_fingerprint(),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "code=DECISION-E-SEAM class=provider-class decision provider resolution "
+                    "failed, degrading to deterministic (ingest never blocked): %s",
+                    exc,
+                )
+                resolved = DeterministicProvider()
+            self._decision_seam_provider = resolved
+            return resolved
+
+    def _decision_provider_probe(
+        self, record_view: CanonRecordView, candidate_view: CanonRecordView, similarity: float
+    ) -> None:
+        """One live near-duplicate VERDICT probe (B0 telemetry capture).
+
+        Asks the configured provider «is-duplicate» over the prepared
+        pair state exactly as the ADR-0037 R1 seam prescribes it. §8.3
+        verdict/action split: the provider answers VERDICTS only — the
+        probe NEVER gates, weights or suppresses anything; the system
+        action stays with the existing minting logic until the Wave B
+        arbiter. The §3.9 DECISION line is emitted by the provider's own
+        evaluate (:func:`log_decision_telemetry`; the B0 collector joins
+        verdict/probability from it — b0-telemetry-plan.md criteria 3/5).
+
+        Fail-open (inference-v1.md §7): :class:`MissingEvidenceError` is
+        the QUESTION being unanswerable for EVERY provider (no measured
+        evidence) — the deterministic twin would raise it too — so the
+        probe skips quietly instead of fabricating; any OTHER exception
+        degrades to the deterministic step rule with a machine-parseable
+        warn. Ingest is never blocked: the caller already wraps this
+        call best-effort.
+        """
+        provider = self._decision_seam()
+        if provider is None:
+            return
+        state = CanonState(record=record_view, candidate=candidate_view, similarity=similarity)
+        try:
+            provider.evaluate(IsDuplicateRequest(), state)
+        except MissingEvidenceError:
+            return
+        except Exception as exc:
+            logger.warning(
+                "code=DECISION-E-PROBE class=verdict-class provider seam verdict degraded "
+                "to the deterministic step rule: %s",
+                exc,
+            )
+            try:
+                baseline = DeterministicProvider()
+                baseline.evaluate(IsDuplicateRequest(), state)
+            except Exception:
+                pass
 
     @property
     def embedder(self) -> EmbeddingProvider:
@@ -1139,7 +1258,10 @@ class MemoryManager:
         (warn/strict apply to them). Cascade review SEC P2-1: a
         client-supplied ``canon_warnings`` is stripped on the same
         non-trusted paths — ``_canon_gate`` is the single writer of that
-        key (see INTERNAL_METADATA_KEYS above).
+        key (see INTERNAL_METADATA_KEYS above). vesma #432: the refine
+        lane's retry bookkeeping (``PIPELINE_RETRY_METADATA_KEYS``) is
+        stripped unconditionally — its only writer is the store's
+        server-internal ``json_set``, never a create path.
 
         ``mint_relates_to`` (#322 review M2, TL decision) — minting
         fuel is ORGANIC USER WRITES only. Internal machine-driven
@@ -1199,6 +1321,22 @@ class MemoryManager:
                     forged,
                 )
                 data.metadata = {k: v for k, v in data.metadata.items() if k not in strip_keys}
+            # ── ADR-0037 Д5 (a separate pass AFTER the stamp strip): ────
+            # a client-supplied ``canon["lineage_marks"]`` array is forged
+            # evidence in the SAME server-minted trust class — only W1-W3
+            # (arbiter fold / split / other-envelope sighting) mint marks,
+            # so a forged array must never become an input to the
+            # merge-arbiter's destructive fold (CWE-346, the same strip
+            # class). Strips INSIDE both the client-authored envelope
+            # (which persisted above) and a checkpoint-type/malformed one
+            # is moot: the whole ``canon`` value is already gone.
+            cleaned_canon, marks_stripped = strip_client_lineage_marks(data.metadata.get("canon"))
+            if marks_stripped:
+                logger.warning(
+                    "generic create: stripped client-supplied lineage_marks "
+                    "(server-minted only, ADR-0037 Д5): keys=['canon.lineage_marks']"
+                )
+                data.metadata = {**data.metadata, "canon": cleaned_canon}
 
         # ── ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp is ────
         # server-minted too — only sweep_document_chunks may write
@@ -1217,6 +1355,23 @@ class MemoryManager:
             data.metadata = {
                 k: v for k, v in data.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
             }
+
+        # ── vesma #432 (mint leg): the refine retry bookkeeping is ──────
+        # server-minted too — its single writer is the STORE's
+        # ``record_refine_failure``/``clear_refine_retry`` (SQL
+        # ``json_set``, server-internal), never add(). Strip a
+        # client-supplied copy unconditionally: no trusted-caller flag
+        # exists because no add() caller is a legitimate minter of
+        # these keys (the same #251 strip class, CWE-346 — a forged
+        # counter on a fresh row would fabricate pipeline history).
+        cleaned_metadata, retry_forged = strip_pipeline_retry_keys(data.metadata)
+        if retry_forged:
+            logger.warning(
+                "generic create: stripped client-supplied pipeline retry metadata "
+                "(server-minted only, vesma #432): keys=%s",
+                retry_forged,
+            )
+            data.metadata = cleaned_metadata
 
         # ── Layer 1: write-path secrets scanner ───────────────────────────
         # Run before Memory construction so the tag is part of the persisted
@@ -1441,7 +1596,9 @@ class MemoryManager:
         # An external ``metadata=`` replaces the dict wholesale; the
         # server-owned pipeline bookkeeping (retry counter / backoff gate,
         # see INTERNAL_METADATA_KEYS) is merged back on top so a caller
-        # can neither reset a retry budget nor forge backoff state.
+        # can neither reset a retry budget nor forge backoff state —
+        # nor mint either key on a row that never had it (vesma #432:
+        # the client-supplied copies are stripped before the merge-back).
         if "metadata" in update_kwargs:
             # vesma #251 review P1: checkpoint stamps are server-minted —
             # drop any client-supplied copies BEFORE the merge-back so
@@ -1472,6 +1629,21 @@ class MemoryManager:
                     forged,
                 )
                 memory.metadata = {k: v for k, v in memory.metadata.items() if k not in strip_keys}
+            # ── ADR-0037 Д5 (a separate pass AFTER the stamp strip): ────
+            # a client-supplied ``canon["lineage_marks"]`` array is forged
+            # evidence (server-minted / arbitration-minted, W1-W3 only) —
+            # stripped inside the client-authored envelope that persisted
+            # above; for checkpoint-type/malformed ``canon`` the whole
+            # value is already gone (and the checkpoint merge-back below
+            # restores the minted envelope, whose marks stay intact).
+            cleaned_canon, marks_stripped = strip_client_lineage_marks(memory.metadata.get("canon"))
+            if marks_stripped:
+                logger.warning(
+                    "update: stripped client-supplied lineage_marks "
+                    "(server-minted only, ADR-0037 Д5): id=%s keys=['canon.lineage_marks']",
+                    memory_id[:8],
+                )
+                memory.metadata = {**memory.metadata, "canon": cleaned_canon}
             # ADR-0027 Ф3 (review round P3-1): the doc-sweep stamp joins
             # the server-minted class — strip a client-supplied
             # ``doc_swept_at`` (a forged release audit entry); the merge
@@ -1490,6 +1662,21 @@ class MemoryManager:
                 memory.metadata = {
                     k: v for k, v in memory.metadata.items() if k not in DOC_SWEEP_STAMP_KEYS
                 }
+            # vesma #432 (mint leg): the refine retry bookkeeping joins
+            # the server-minted class — strip client-supplied copies
+            # BEFORE the merge-back so they cannot land on a row that
+            # never had them either (the merge-back below then restores
+            # the row's own values: overwrite/mint are covered on both
+            # row states, the same #251 strip class, CWE-346).
+            cleaned_metadata, retry_forged = strip_pipeline_retry_keys(memory.metadata)
+            if retry_forged:
+                logger.warning(
+                    "update: stripped client-supplied pipeline retry metadata "
+                    "(server-minted only, vesma #432): id=%s keys=%s",
+                    memory_id[:8],
+                    retry_forged,
+                )
+                memory.metadata = cleaned_metadata
             internal = {
                 k: previous_metadata[k] for k in INTERNAL_METADATA_KEYS if k in previous_metadata
             }
@@ -3056,6 +3243,33 @@ class MemoryManager:
                 continue  # deleted between the index and the resolve
             resolved.append(SearchResult(memory=row, score=cosine, search_type="semantic"))
         minted = 0
+        # ── ADR-0004 B0 seam (card b0-provider-seam-wiring, live leg) ────
+        # The deterministic dup heuristic runs HERE — this selector pass
+        # IS the add-time near-duplicate path. Before the mint loop the
+        # configured decision provider gets ONE is-duplicate VERDICT
+        # probe over the TOP-qualified pair (the arbiter candidate of the
+        # future Wave B): §8.3 verdict/action split — the provider
+        # answers, the mint behavior stays byte-identical (A probe's
+        # verdict is telemetry, not a gate). Probe placement AFTER the
+        # selector (not per retrieval row) keeps the provider cost at
+        # <= 1 per write and covers exactly the pair the seam exists to
+        # instrument; the fail-open discipline lives in
+        # _decision_provider_probe.
+        survivors = select_auto_dedupe_candidates(memory, resolved)
+        if survivors:
+            top = survivors[0]
+            try:
+                self._decision_provider_probe(
+                    CanonRecordView.from_memory(memory),
+                    CanonRecordView.from_memory(top.memory),
+                    top.score,
+                )
+            except Exception as exc:  # pragma: no cover — _probe is fail-open already
+                logger.warning(
+                    "code=DECISION-E-PROBE class=verdict-class provider probe failed "
+                    "(non-fatal, ingest never blocked): %s",
+                    exc,
+                )
         # ── Review L1: orientation-aware mint idempotency. The PK
         # (from, to, kind) treats A→B and B→A as distinct rows, but for
         # MINTED fuel the pair is semantically undirected — a re-mint of
@@ -3069,7 +3283,7 @@ class MemoryManager:
             str(e["from_memory_id"])
             for e in self.sqlite.get_incoming_edges(memory.id, kind=AUTO_DEDUPE_EDGE_KIND)
         }
-        for candidate in select_auto_dedupe_candidates(memory, resolved):
+        for candidate in survivors:
             if candidate.memory.id in incoming_from:
                 logger.debug(
                     "graph auto-mint: reverse pair exists, skipping from=%s to=%s",
@@ -5946,7 +6160,7 @@ class MemoryManager:
 
     # ── Vitals (ADR-0026 phase A) ─────────────────────────────────────────
 
-    def record_assemble_vitals(self, result: dict[str, Any]) -> None:
+    def record_assemble_vitals(self, result: dict[str, Any]) -> int | None:
         """Record one assemble call into the vitals sidecar (non-fatal).
 
         Called by the two collection boundaries AFTER the result exists
@@ -5954,20 +6168,70 @@ class MemoryManager:
         ``pre_llm_call`` hook) — never from the assemble pipeline
         itself: S2 measures that verb directly and the wrapper must stay
         out of its path. All failure modes are swallowed by the sink.
+
+        Returns the assemble row id (the harness addresses it as
+        ``metrics_id`` when later reporting usage via
+        :meth:`record_usage_vitals` / the MCP ``vesma_usage_report``
+        tool), or ``None`` on refusal/failure/disabled plane.
         """
         store = self._vitals_store
         if store is None:
-            return
+            return None
         if "stats" not in result:
             # mode="async" returns a handle envelope, not an assembly —
             # recording it would poison the corpus with empty rows. The
             # real assembly lands (and is recorded) when the handle is
             # redeemed and returns the full result.
-            return
+            return None
         try:
-            store.record_assemble(result)
+            return store.record_assemble(result)
         except Exception:  # the plane must never surface
             logger.warning("vitals: boundary record failed (non-fatal)", exc_info=True)
+            return None
+
+    def record_usage_vitals(
+        self,
+        metrics_id: int,
+        *,
+        block_ids_touched: list[str],
+        tokens_out: int | None = None,
+        wrong_tool_flag: bool = False,
+    ) -> int | None:
+        """Record one harness usage report into the vitals sidecar (non-fatal).
+
+        Phase C loop closure (ADR-0026 §C): the caller is the harness —
+        after its model answered — reporting via the MCP
+        ``vesma_usage_report`` tool which injected blocks it used. The
+        server never self-reports usage. Hostile-input validation lives
+        ENTIRELY in the sink (``MetricsStore.record_usage``: opaque
+        single-line block ids <= 128 chars, <= 256 entries, tokens_out
+        int >= 0 or None, wrong_tool_flag strictly bool, range-bound
+        metrics_id, atomic FK refusal of unknown parents) — this wrapper
+        adds nothing and loosens nothing, it only keeps the guest
+        contract: everything the sink did not swallow is swallowed here
+        with a warning. Rollback on a partial write is the sink's job.
+
+        Returns the usage row id, or ``None`` when the plane is disabled
+        or the sink refused/failed the write (loud warning in the log).
+
+        NOTE: unlike :meth:`record_assemble_vitals` there is no
+        "stats"-envelope pre-check — a usage report carries no envelope
+        shape to filter on; a non-conforming payload simply never gets
+        past the sink's guards.
+        """
+        store = self._vitals_store
+        if store is None:
+            return None
+        try:
+            return store.record_usage(
+                metrics_id,
+                block_ids_touched=block_ids_touched,
+                tokens_out=tokens_out,
+                wrong_tool_flag=wrong_tool_flag,
+            )
+        except Exception:  # the plane must never surface
+            logger.warning("vitals: usage record failed (non-fatal)", exc_info=True)
+            return None
 
     def record_verb_vitals(
         self,

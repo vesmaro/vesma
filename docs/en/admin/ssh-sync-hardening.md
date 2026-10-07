@@ -1,12 +1,16 @@
 # Vesma — SSH Sync Hardening Checklist
 
 Auto-cron federation bridge (#104) — host/SSH layer hardening for the
-`mnemos-sync` automation between two vesma instances (A = source, B = target).
+batch-sync automation between two vesma instances (A = source, B = target).
+Names like `mnemos-sync` (the service user, directories, key comments) are a
+legacy spelling of the same installation and need no renaming; the script's
+env contract is `VESMARO_SYNC_*` (legacy `MNEMOS_SYNC_*` names map with a
+fallback, see `scripts/sync-peers.sh`).
 
 ## Scope, audience, related
 
 - **Scope:** the host/SSH layer that `scripts/sync-peers.sh` and the
-  `contrib/systemd/mnemos-sync.{service,timer}` units run on. This is NOT
+  `contrib/systemd/vesma-sync.{service,timer}` units run on. This is NOT
   vesma application code — vesma itself stays offline.
 - **Audience:** operators deploying the Phase 0 batch sync as an automated
   cron bridge. Assumes root on both A and B, both running Linux with systemd.
@@ -208,7 +212,7 @@ Ordered steps, A → B.
      sudo install -m 0755 contrib/systemd/vesma-import-wrapper.sh /usr/local/sbin/
 4. Create /var/log/vesma-sync.log owned by mnemos-sync (§6).
 5. Add the two restricted keys to ~/.ssh/authorized_keys (§2) — after A's
-   public keys exist (step A3 below).
+   public keys exist (step A1 below).
 6. Apply the sshd_config drop-in + firewall rule (§7). Reload sshd.
 
 # ── On A (source) ──────────────────────────────────────────────────────────
@@ -216,16 +220,17 @@ Ordered steps, A → B.
 4. Copy the two .pub files to B and add them to authorized_keys (step B5).
 5. Install scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-6. Provision /etc/vesma/sync.env from contrib/systemd/sync.env.example
+4. Provision /etc/mnemos/sync.env from contrib/systemd/sync.env.example —
+   the exact path the `EnvironmentFile=` of `vesma-sync.service` loads
    (replace every RFC-reserved dummy). Provision the passphrase via a
    systemd drop-in or LoadCredential — NOT in sync.env.
-7. Install the systemd units:
+5. Install the systemd units:
      sudo install -m 0644 contrib/systemd/vesma-sync.service /etc/systemd/system/
      sudo install -m 0644 contrib/systemd/vesma-sync.timer   /etc/systemd/system/
      sudo systemctl daemon-reload
 8. Dry-run first:  sudo VESMA_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
    (or run sync-peers.sh by hand with the env vars exported).
-9. Enable the timer:  sudo systemctl enable --now vesma-sync.timer
+7. Enable the timer:  sudo systemctl enable --now vesma-sync.timer
 ```
 
 ## Verification

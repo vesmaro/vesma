@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/admin/kubernetes-deployment.md) · Русский
 
-> Admin-руководство по развёртыванию полноценного сервера Vesma (Vesma)
+> Admin-руководство по развёртыванию полноценного Vesma-сервера
 > в любом кластере Kubernetes 1.25+ — ванильный K8s, K3s, kind, k0s — с помощью
 > helm-чарта (`deploy/helm/vesma/`): Deployment, Service, **Ingress**,
 > два PersistentVolumeClaim и секрет с TOTP-ключом.
@@ -32,11 +32,17 @@
 - Ingress-контроллер (в K3s Traefik установлен из коробки)
 - Образ контейнера, доступный кластеру — см. [Статус реестра образов](#статус-реестра-образов)
 
+> **Тег образа.** Chart pin'ит `image.tag` на `Chart.yaml appVersion`
+> (сегодня `4.3.0`). Для свежего релиза задавайте образ явно:
+> `--set image.tag=5.6.2` (все опубликованные теги —
+> `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x, latest`).
+
 ## Быстрый старт
 
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -47,6 +53,7 @@ K3s (Traefik и local-path — дефолты, ничего дополнител
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -132,20 +139,21 @@ helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
 
 ## Статус реестра образов
 
-Опубликованные образы живут в **`ghcr.io/vesmaro/vesmaro`** (org-неймспейс,
-перезалит из легаси-user-неймспейса в волне 4.3.0) и **публичные** — обычный
-pull работает без всяких креденшелов. `image.pullSecrets` остаётся доступным
-для приватных реестров и rate-limit'ов, но для этого образа не нужен.
+Опубликованные образы живут в **`ghcr.io/vesmaro/vesma`** (org-неймспейс) и
+**публичные** — обычный pull работает без всяких креденшелов.
+`image.pullSecrets` остаётся доступным для приватных реестров и
+rate-limit'ов, но для этого образа не нужен.
 
-Релизный конвейер пока таргетит легаси-имя `ghcr.io/korrnals/vesma` до
-миграции реестра в 5.0.0 (ADR-0031 / GWS card #331, фаза g); новые релизы
-в это время дотягиваются в org-неймспейс вручную.
+Релизный поезд (`scripts/pypi-publish.sh --publish` + обязательная
+image-фаза `scripts/image-publish.sh`) пушит при каждом релизе версионный
+тег и `:latest`; история реестра (легаси-неймспейсы, перезаливки) живёт в
+ADR-0031.
 
 ## Обновления и удаление
 
 ```bash
 helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=4.4.0              # тома с данными переживают обновления
+  --set image.tag=5.6.2              # тома с данными переживают обновления
 helm uninstall vesma -n vesma    # PVC сохраняются; при необходимости удалите явно
 ```
 

@@ -32,9 +32,15 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 doctor_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="doctor",
-    help="Run Vesma health checks (config, vault, DB, pending refine queue, MCP, "
-    "integration, completion, tags).",
+    help=(
+        "Run Vesma health checks (config, vault, DB, pending refine queue, MCP, "
+        "integration, completion, tags).\n\n"
+        "One pass over the local installation: every check reports PASS, WARN "
+        "or FAIL with a concrete fix hint. Exit 0 = healthy, 1 = at least one "
+        "FAIL, 2 = warnings only. `doctor paths` prints just the paths table."
+    ),
     no_args_is_help=False,
 )
 
@@ -536,6 +542,7 @@ def _check_completion() -> CheckResult:
             _completion_file_path,
             _parse_failure_line,
             _primary_prog_name,
+            _script_version,
         )
 
         primary = _primary_prog_name()
@@ -591,10 +598,38 @@ def _check_completion() -> CheckResult:
                 CheckStatus.WARN,
                 f"bash script does not bind `{primary}` — run `vesma completion bash`",
             )
+        # Staleness (UX-2): every generated script embeds the generating vesma
+        # version. A script written by an older vesma — or a pre-stamp install
+        # (version None) — keeps working, but may lag new engine behavior (the
+        # field case: a stale installed script broke at completion level 2).
+        # Every existing script file for every shell is checked; the fix is
+        # one command because the installer rewrites the scripts on each run.
+        stale: list[str] = []
+        for shell_name in ("bash", "zsh", "fish"):
+            stale_file = _completion_file_path(shell_name)
+            if not stale_file.exists():
+                continue
+            try:
+                installed_version = _script_version(stale_file.read_text(encoding="utf-8"))
+            except OSError:
+                installed_version = None
+            if installed_version != __version__:
+                stale.append(
+                    f"{shell_name} (installed: {installed_version or 'pre-versioned'}, "
+                    f"current: {__version__})"
+                )
+        if stale:
+            return CheckResult(
+                "Completion",
+                CheckStatus.WARN,
+                "stale completion script"
+                + ("s" if len(stale) > 1 else "")
+                + f": {'; '.join(stale)} — run `vesma completion` to refresh",
+            )
         return CheckResult(
             "Completion",
             CheckStatus.PASS,
-            f"bash completion installed ({script}, bound: {primary})",
+            f"bash completion installed ({script}, bound: {primary}, vesma {__version__})",
         )
     except Exception as exc:  # doctor reports, doesn't crash
         return CheckResult("Completion", CheckStatus.FAIL, f"check crashed: {exc}")
@@ -1214,9 +1249,97 @@ def doctor_paths(
 ) -> None:
     """Show the paths overview table (config, data dir, DB, vault, …).
 
-    Prints only the paths quick reference — no health checks run. Exit 0.
+    Prints only the paths quick reference — where every artifact lives —
+    without running any health checks. `--json` emits the same object for
+    scripting; always exits 0.
     """
     _run_paths_overview(json_output=json_output)
+
+
+# ── service installation checks (layout v1 §3.10, DR-01…DR-13) ───────────────
+
+
+def _render_service_findings(results: list[Any]) -> None:
+    """Render DR findings as a rich table (status / id / check / detail+fix)."""
+    table = Table(
+        title="Service Installation Check (DR-01…DR-13)",
+        show_header=True,
+        header_style="bold",
+    )
+    table.add_column("Status", style="bold", width=4)
+    table.add_column("ID", style="bold cyan", width=6)
+    table.add_column("Check")
+    table.add_column("Detail")
+
+    for f in results:
+        if f.severity.value == "OK":
+            icon = "[green]✓[/green]"
+        elif f.severity.value == "WARN":
+            icon = "[yellow]⚠[/yellow]"
+        else:
+            icon = "[red]✗[/red]"
+        detail = f.detail if not f.fix_command else f"{f.detail}\n[bold]fix:[/bold] {f.fix_command}"
+        table.add_row(icon, f.check_id, f.title, detail)
+    console.print(table)
+
+
+@doctor_app.command(name="service")
+def doctor_service(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit findings as JSON (for scripting / CI).",
+        ),
+    ] = False,
+) -> None:
+    """Check the service installation (layout v1 §3.10, DR-01…DR-13).
+
+    READ-ONLY by contract: findings carry severity OK/WARN/FAIL and a
+    ready fix command, but the doctor never executes fixes itself.
+    Exit codes: 0 = all OK, 1 = one or more FAIL, 2 = warnings only.
+    """
+    from vesma.service import doctor_checks
+    from vesma.service.errors import ManifestError
+
+    try:
+        findings = doctor_checks.run_service_checks()
+    except ManifestError as exc:  # fail-closed installation load
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    if json_output:
+        code = doctor_checks.exit_code(findings)
+        console.print_json(
+            json.dumps(
+                {
+                    "version": __version__,
+                    "checks": [
+                        {
+                            "check_id": f.check_id,
+                            "title": f.title,
+                            "severity": f.severity.value,
+                            "detail": f.detail,
+                            "fix_command": f.fix_command,
+                        }
+                        for f in findings
+                    ],
+                    "exit_code": code,
+                }
+            )
+        )
+        raise typer.Exit(code)
+
+    _render_service_findings(findings)
+    code = doctor_checks.exit_code(findings)
+    console.print()
+    if code == 0:
+        console.print("[green]Service installation is healthy.[/green]")
+    elif code == 2:
+        console.print("[yellow]⚠ Some checks warn — see above.[/yellow]")
+    else:
+        console.print("[red]✗ One or more checks failed — see above.[/red]")
+    raise typer.Exit(code)
 
 
 if __name__ == "__main__":  # pragma: no cover — manual invocation

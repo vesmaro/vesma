@@ -97,6 +97,12 @@ class FakeMainStore:
                 return
         self.projects.append(project)
 
+    def delete_project(self, project_id: str) -> bool:
+        """Remove by id OR name (the ghost-delete surface)."""
+        before = len(self.projects)
+        self.projects = [p for p in self.projects if project_id not in (p.id, p.name)]
+        return len(self.projects) < before
+
     def get_meta(self, key: str) -> str | None:
         return self.meta.get(key)
 
@@ -366,8 +372,15 @@ class TestToolHappyPaths:
 
     def test_schema_and_list_projects(self, indexed: CodeGraphService) -> None:
         schema = indexed.get_graph_schema(PROJECT, agent=AGENT)
-        assert schema["schema_version"] == 1
+        # Schema v2 (card vesma-graph-command-route-nodes): the
+        # Command/Route node kinds and the INVOKES/HANDLES edge kinds
+        # are part of the reported contract.
+        assert schema["schema_version"] == 2
         assert "Function" in schema["node_kinds"]
+        assert "Command" in schema["node_kinds"]
+        assert "Route" in schema["node_kinds"]
+        assert "INVOKES" in schema["edge_kinds"]
+        assert "HANDLES" in schema["edge_kinds"]
         assert schema["token_contract"]["bytes_per_token"] == 4
         assert schema["volumes"]["nodes"] > 0
         projects = indexed.list_graph_projects(agent=AGENT)["projects"]
@@ -623,6 +636,79 @@ class TestPGMechanics:
         assert graph_reads and all(r["actor"] == AGENT for r in graph_reads)
         assert all(r["session"] == "s1" for r in rows)
 
+    def test_first_search_marked_per_task_session(self, indexed: CodeGraphService) -> None:
+        # Card vesma-graph-audit-firstcall-marking: the FIRST search call
+        # of each task (actor+session scoped) carries details.first_search
+        # on its own audit row; later calls of the same task carry none
+        # (shape policy: absent, never null/empty). The marker makes the
+        # graph-first share computable from graph_audit rows alone
+        # (computing query: GraphAudit.has_search docstring).
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s2")
+        rows = [
+            r
+            for r in indexed._audit.recent(PROJECT)
+            if r["action"] == "graph-read" and r["reason"] == "search"
+        ]
+        assert [r["session"] for r in rows] == ["s2", "s1", "s1"]  # newest first
+        assert rows[0]["details"]["first_search"] is True  # s2's FIRST call
+        assert "first_search" not in rows[1]["details"]  # s1's SECOND call
+        assert rows[2]["details"]["first_search"] is True  # s1's FIRST call
+        # Scope is (actor, session): a second agent in the SAME session
+        # gets its own first-call marker.
+        indexed.search_graph(PROJECT, "Base", agent="other-agent", session="s1")
+        rows = [
+            r
+            for r in indexed._audit.recent(PROJECT)
+            if r["action"] == "graph-read" and r["reason"] == "search"
+        ]
+        assert rows[0]["actor"] == "other-agent"
+        assert rows[0]["details"]["first_search"] is True
+
+    def test_has_search_index_survives_reopen_and_serves_planner(
+        self, indexed: CodeGraphService
+    ) -> None:
+        # Card vesma-graph-audit-search-index: has_search ran a full
+        # graph_audit scan on EVERY search_graph call. The
+        # (action, reason, actor, session) index rides the idempotent
+        # schema init — create_schema() replays _SCHEMA on EVERY open,
+        # so existing stores pick it up without a version bump — and
+        # the planner serves the exact has_search SELECT from it.
+        indexed.search_graph(PROJECT, "Base", agent=AGENT, session="s1")
+        # a SECOND open of the SAME sidecar file (the existing-store path)
+        store2 = CodeGraphStore(Path(indexed.store.db_path).parent)
+        try:
+            audit_idx = {
+                str(r["name"])
+                for r in store2._conn().execute("PRAGMA index_list(graph_audit)").fetchall()
+            }
+            assert "idx_graph_audit_search" in audit_idx
+            plan = " | ".join(
+                str(r["detail"])
+                for r in store2._conn()
+                .execute(
+                    "EXPLAIN QUERY PLAN SELECT 1 FROM graph_audit "
+                    "WHERE action='graph-read' AND reason='search' "
+                    "AND actor=? AND session IS ? LIMIT 1",
+                    (AGENT, "s1"),
+                )
+                .fetchall()
+            )
+            # planner must name the index (often as a COVERING index);
+            # a bare "SCAN graph_audit" would mean the full-scan regression
+            assert "idx_graph_audit_search" in plan
+            assert "SCAN graph_audit" not in plan
+        finally:
+            store2.close()
+        # has_search semantics are unchanged with the index in place
+        audit = GraphAudit(indexed.store.db_path)
+        try:
+            assert audit.has_search(AGENT, "s1") is True
+            assert audit.has_search(AGENT, "s2") is False
+        finally:
+            audit.close()
+
     def test_attribution_is_a_binding(self, service: CodeGraphService) -> None:
         for bad in ("", "   ", None):
             with pytest.raises(GraphAttributionError):
@@ -805,6 +891,86 @@ class TestGhostRepoint:
             assert row["root_missing"] is True  # the ghost is visible
         finally:
             service.close()
+
+
+class TestGhostDelete:
+    """A ghost registration (root gone on disk) was UNDELETABLE: the
+    delete went through ``_resolve_root``, which refuses exactly the
+    missing-root state (confinement-refused). The delete now resolves
+    BY NAME/ID (the #450 repoint precedent): a live registration loses
+    only its derived index; a ghost is removed ENTIRELY — index AND
+    registration row — behind the evidence gate (``confirm=true`` plus
+    the ``confirm_name`` echo of the project name)."""
+
+    def test_delete_ghost_removes_registration(self, tmp_path: Path, mini_repo: Path) -> None:
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            service.index_project(PROJECT, agent=AGENT)
+            assert service.store.count_nodes(PROJECT) > 0
+            mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+
+            result = service.delete_graph_project(
+                PROJECT, agent=AGENT, confirm=True, confirm_name=PROJECT
+            )
+            assert result["status"] == "deleted"
+            assert result["ghost"] is True
+            assert result["deregistered"] is True
+            assert result["deleted_nodes"] > 0
+            # the sidecar subtree is gone...
+            assert service.store.count_nodes(PROJECT) == 0
+            # ...and so is the registration row (the ghost left the list)
+            assert main.get_project_by_name(PROJECT) is None
+            names = [p["project"] for p in service.list_graph_projects(agent=AGENT)["projects"]]
+            assert PROJECT not in names
+            rows = [r for r in service._audit.recent(PROJECT) if r["action"] == "delete"]
+            assert rows and rows[0]["details"]["ghost"] is True
+        finally:
+            service.close()
+
+    def test_delete_ghost_refused_without_confirmation(
+        self, tmp_path: Path, mini_repo: Path
+    ) -> None:
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+            with pytest.raises(GraphConfinementError, match="evidence gate"):
+                service.delete_graph_project(PROJECT, agent=AGENT)
+            # the refusal removed nothing: the ghost stays visible
+            assert main.get_project_by_name(PROJECT) is not None
+            row = next(
+                p
+                for p in service.list_graph_projects(agent=AGENT)["projects"]
+                if p["project"] == PROJECT
+            )
+            assert row["root_missing"] is True
+            refused = [r for r in service._audit.recent(PROJECT) if r["action"] == "delete-refused"]
+            assert refused, "expected the delete-refused audit row"
+        finally:
+            service.close()
+
+    def test_delete_ghost_refused_on_name_mismatch(self, tmp_path: Path, mini_repo: Path) -> None:
+        """``confirm=true`` alone is not the gate — the name echo is
+        the second factor."""
+        service, main = make_service(tmp_path, mini_repo)
+        try:
+            mini_repo.rename(mini_repo.with_name("repo-moved"))
+            with pytest.raises(GraphConfinementError, match="confirm_name"):
+                service.delete_graph_project(
+                    PROJECT, agent=AGENT, confirm=True, confirm_name="other"
+                )
+            assert main.get_project_by_name(PROJECT) is not None
+        finally:
+            service.close()
+
+    def test_delete_live_root_keeps_registration(self, service: CodeGraphService) -> None:
+        """Back-compat: a live-root delete is the v1 index purge — no
+        gate, the registration row stays."""
+        service.index_project(PROJECT, agent=AGENT)
+        result = service.delete_graph_project(PROJECT, agent=AGENT)
+        assert result["status"] == "deleted"
+        assert result["ghost"] is False
+        assert result["deregistered"] is False
+        assert service.main.get_project_by_name(PROJECT) is not None
 
 
 # ── #454: agent-side registration ────────────────────────────────────────────
@@ -1066,9 +1232,7 @@ class TestRegistrationHardening464:
     ) -> None:
         """P3-4: a symlink to ``$HOME`` resolves to the forbidden
         target — the string compare alone would let it register."""
-        monkeypatch.setattr(
-            "vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
-        )
+        monkeypatch.setattr("vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path))
         link = tmp_path / "home-link"
         link.symlink_to(tmp_path)
         assert _is_forbidden_root(str(link)) is True
@@ -1084,9 +1248,7 @@ class TestRegistrationHardening464:
     ) -> None:
         """P3-4: a ``..``-laden spelling of ``$HOME`` never passes the
         forbidden-root gate."""
-        monkeypatch.setattr(
-            "vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path)
-        )
+        monkeypatch.setattr("vesma.codegraph.service.Path.home", classmethod(lambda cls: tmp_path))
         assert _is_forbidden_root(f"{tmp_path}/sub/../../{tmp_path.name}") is True
 
 
@@ -1169,6 +1331,27 @@ class TestMcpLayer:
         )
         assert refused["code"] == "confinement-refused"
 
+    def test_delete_ghost_dispatch_passes_the_gate(self, tmp_path: Path, mini_repo: Path) -> None:
+        from vesma.mcp_server import _handle_graph
+
+        mgr = _fake_manager(tmp_path, mini_repo, enabled=True)
+        mini_repo.rename(mini_repo.with_name("repo-moved"))  # the ghost
+        # without the evidence gate: confinement-refused, row stays
+        refused = _handle_graph(
+            "vesma_delete_graph_project", mgr, {"project_id": PROJECT, "agent": AGENT}
+        )
+        assert refused["code"] == "confinement-refused"
+        assert mgr.sqlite.get_project_by_name(PROJECT) is not None
+        # with confirm + the name echo: ghost removed entirely
+        result = _handle_graph(
+            "vesma_delete_graph_project",
+            mgr,
+            {"project_id": PROJECT, "agent": AGENT, "confirm": True, "confirm_name": PROJECT},
+        )
+        assert result["status"] == "deleted"
+        assert result["ghost"] is True
+        assert mgr.sqlite.get_project_by_name(PROJECT) is None
+
     def test_index_via_mcp_handler(self, tmp_path: Path, mini_repo: Path) -> None:
         from vesma.mcp_server import _handle_graph
 
@@ -1240,8 +1423,10 @@ class TestRestTwins:
         resp = rest_client.get("/graph/schema", params={"agent": "tester"})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["schema_version"] == 1
+        assert body["schema_version"] == 2
         assert "Function" in body["node_kinds"]
+        assert "Command" in body["node_kinds"]
+        assert "Route" in body["node_kinds"]
 
     def test_index_status_search_twins(self, rest_client: TestClient) -> None:
         resp = rest_client.post(
@@ -1285,6 +1470,129 @@ class TestRestTwins:
     def test_flag_off_is_503(self, rest_client_disabled: TestClient) -> None:
         resp = rest_client_disabled.get("/graph/schema", params={"agent": "tester"})
         assert resp.status_code == 503
+
+
+class TestRestRegisterRepointTwins:
+    """REST twins for the #454 tail: ``POST /api/v1/graph/register``
+    (twin of ``mnemos_register_project``) and ``POST /api/v1/graph/repoint``
+    (twin of the ``vesma graph repoint`` CLI). Each twin gets the trio:
+    happy path, a confinement refusal mapped by ``_graph_call`` (403,
+    never a raw 500) and the attribution binding (400)."""
+
+    @staticmethod
+    def _make_repo(tmp_path: Path, name: str) -> Path:
+        """A minimal registerable root: packaging marker + one code file."""
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (repo / "mod.py").write_text("class Widget:\n    pass\n", encoding="utf-8")
+        return repo
+
+    def test_register_twin_happy_then_index(self, rest_client: TestClient, tmp_path: Path) -> None:
+        repo = self._make_repo(tmp_path, "reg-repo")
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restreg", "root": str(repo), "agent": "tester"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"project": "restreg", "status": "registered", "root": str(repo)}
+
+        # the registration is immediately usable by name — the whole point
+        # of the twin (the «graph tools answer not registered» hole)
+        idx = rest_client.post("/graph/index", json={"project_id": "restreg", "agent": "tester"})
+        assert idx.status_code == 200
+        assert idx.json()["status"] == "ok"
+
+    def test_register_twin_reuses_registered_root(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        """One root = one graph: a second name over the fixture's root
+        rides the existing registration instead of duplicating it."""
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "alias", "root": str(mini_repo), "agent": "tester"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "already-registered"
+        assert body["project"] == "restproj"
+
+    def test_register_twin_name_collision_is_403(
+        self, rest_client: TestClient, mini_repo: Path, tmp_path: Path
+    ) -> None:
+        """The existing registration wins: the same NAME at a DIFFERENT
+        root is a loud confinement refusal (repoint is the operator's
+        tool for moved roots), not a silent overwrite."""
+        other = self._make_repo(tmp_path, "collision-root")
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restproj", "root": str(other), "agent": "tester"},
+        )
+        assert resp.status_code == 403
+        assert "already registered at" in resp.json()["detail"]
+
+    def test_register_twin_missing_attribution_is_400(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        """PG7: an empty agent is an attribution-binding breach → 400
+        (the ``_graph_call`` family mapping), never a 500."""
+        resp = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "restreg", "root": str(mini_repo), "agent": ""},
+        )
+        assert resp.status_code == 400
+
+    def test_repoint_twin_ghost_happy_then_index(
+        self, rest_client: TestClient, tmp_path: Path
+    ) -> None:
+        repo = self._make_repo(tmp_path, "movable")
+        reg = rest_client.post(
+            "/api/v1/graph/register",
+            json={"project_id": "movable", "root": str(repo), "agent": "tester"},
+        )
+        assert reg.status_code == 200
+        idx0 = rest_client.post("/graph/index", json={"project_id": "movable", "agent": "tester"})
+        assert idx0.status_code == 200
+
+        moved = repo.with_name("movable-moved")
+        repo.rename(moved)  # the ghost: old root gone on disk
+        rep = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "movable", "new_root": str(moved), "agent": "tester"},
+        )
+        assert rep.status_code == 200
+        body = rep.json()
+        assert body["status"] == "repointed"
+        assert body["root"] == str(moved)
+
+        # the stale sidecar was purged; the next index rebuilds fresh
+        rebuilt = rest_client.post(
+            "/graph/index", json={"project_id": "movable", "agent": "tester"}
+        )
+        assert rebuilt.status_code == 200
+        assert rebuilt.json()["status"] == "ok"
+
+    def test_repoint_twin_live_root_is_403(
+        self, rest_client: TestClient, mini_repo: Path, tmp_path: Path
+    ) -> None:
+        """Ghost recovery only: a LIVE registration is never re-pointed
+        (move-root is not repoint) — loud 403 with the actionable text."""
+        other = self._make_repo(tmp_path, "live-alt")
+        resp = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "restproj", "new_root": str(other), "agent": "tester"},
+        )
+        assert resp.status_code == 403
+        assert "old root still exists" in resp.json()["detail"]
+
+    def test_repoint_twin_missing_attribution_is_400(
+        self, rest_client: TestClient, mini_repo: Path
+    ) -> None:
+        resp = rest_client.post(
+            "/api/v1/graph/repoint",
+            json={"project_id": "restproj", "new_root": str(mini_repo), "agent": ""},
+        )
+        assert resp.status_code == 400
 
 
 # ── the audit trail is inspectable (slice-5 surface) ─────────────────────────

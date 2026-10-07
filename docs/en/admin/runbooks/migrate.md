@@ -2,19 +2,21 @@
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/migrate.md)
 
-## Overview
-
-Migrate your existing ai-brain data (SQLite DB + vault) into Vesma format.
+Move your existing ai-brain data (SQLite DB + vault) into Vesma format. The
+source data is read-only — the importer never mutates it. Before migrating,
+install Vesma the supported way (`pip install vesma` / `vesma update apply`,
+see [install.md](install.md) — manual venvs are retired, the install flow
+creates the environment).
 
 ## Before you start
 
-1. **Backup your ai-brain data**:
-   ```bash
-   cp -r ~/.ai-brain ~/.ai-brain.backup-$(date +%Y%m%d)
-   cp -r ~/brain-vault ~/brain-vault.backup-$(date +%Y%m%d)
-   ```
+**Back up your ai-brain data** (the importer never writes to the source, but a
+copy before any migration is operational hygiene):
 
-2. **Install Vesma** (see `install.md`).
+```bash
+cp -r ~/.ai-brain ~/.ai-brain.backup-$(date +%Y%m%d)
+cp -r ~/brain-vault ~/brain-vault.backup-$(date +%Y%m%d)
+```
 
 ## Dry run
 
@@ -43,7 +45,8 @@ This will:
 
 ## Tag contract handling
 
-Legacy ai-brain entries without `project:` / `agent:` / `vesma:` tags get:
+Legacy ai-brain entries without `project:` / `agent:` / `mnemos:<subtype>`
+tags get:
 - `project:legacy`
 - `agent:unknown`
 - `mnemos:legacy`
@@ -54,11 +57,12 @@ After migration, review and retag important entries:
 vesma search legacy --tags project:legacy --limit 50
 ```
 
-## Migrating `gcw:` tags → `vesma:` tags
+## Migrating legacy `gcw:` tags → `mnemos:` tags
 
 If your store contains memories with the legacy `gcw:<subtype>` tag prefix
 (from the pre-2.7.8 GCW agent family), rename them in bulk to the canonical
-`vesma:<subtype>` prefix using the safe `tags rename` command:
+`mnemos:<subtype>` prefix using the safe `tags rename` command (tag contract:
+`project:` / `agent:` / `mnemos:<subtype>`):
 
 ```bash
 # Dry-run first — preview the change, nothing written (default)
@@ -70,7 +74,7 @@ vesma tags rename --from gcw: --to mnemos: --no-dry-run
 
 Notes:
 - `validate_tag_contract()` already auto-migrates valid `gcw:<subtype>` →
-  `vesma:<subtype>` on read, so `gcw:` tags are accepted as an alias. The
+  `mnemos:<subtype>` on read, so `gcw:` tags are accepted as an alias. The
   bulk rename is a one-time housekeeping step to canonicalise the stored tags.
 - Invalid `gcw:` subtypes (not in the whitelist) are skipped by default and
   counted in `skipped_invalid`. Pass `--invalid-to-legacy` to rename them to
@@ -84,7 +88,9 @@ Notes:
 - [ ] `vesma stats` shows expected memory count
 - [ ] `vesma search "hello"` returns results
 - [ ] Vault files visible in `~/.mnemos/vault/`
-- [ ] MCP server `mnemos_recall_context` works
+- [ ] The recall MCP tool works: canonical name
+      `mnemos_recall_context` (under configured branding it is advertised as
+      `vesma_recall_context`, via `VESMA_MCP_BRAND`)
 
 ## Upgrading across an embedder weights change
 
@@ -117,10 +123,14 @@ unaffected.
 If something goes wrong:
 
 ```bash
-# Restore from Vesma backup
+# Restore from a Vesma backup
 ls ~/.mnemos/data/*.backup-*
 cp ~/.mnemos/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.mnemos/data/mnemos.db
 
-# Or start fresh
-rm -rf ~/.mnemos/data ~/.mnemos/vault
+# Or restore from a JSON export — idempotent merge
+vesma import vesma-export.json --mode merge
 ```
+
+The last resort is wiping the store and re-running the migration
+(`rm -rf ~/.mnemos/data ~/.mnemos/vault`): a destructive move — do it only
+with a backup from [backup-restore.md](backup-restore.md).

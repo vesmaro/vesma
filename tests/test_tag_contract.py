@@ -304,17 +304,13 @@ class TestVesmaInputAlias:
     """
 
     def test_alias_normalized_to_mnemos(self):
-        result = validate_tag_contract(
-            ["project:x", "agent:y", "vesma:learning"], strict=True
-        )
+        result = validate_tag_contract(["project:x", "agent:y", "vesma:learning"], strict=True)
         assert "mnemos:learning" in result
         assert not any(t.startswith("vesma:") for t in result)
 
     def test_no_federate_alias_normalized(self):
         """The federation trust marker normalizes too — storage stays byte-stable."""
-        result = validate_tag_contract(
-            ["project:x", "agent:y", "vesma:no-federate"], strict=True
-        )
+        result = validate_tag_contract(["project:x", "agent:y", "vesma:no-federate"], strict=True)
         assert "mnemos:no-federate" in result
 
     def test_legacy_form_unchanged(self):
@@ -325,10 +321,9 @@ class TestVesmaInputAlias:
         """Normalized alias input produces the byte-identical tag list as legacy."""
         legacy = ["project:x", "agent:y", "mnemos:learning", "mnemos:no-federate"]
         alias = ["project:x", "agent:y", "vesma:learning", "vesma:no-federate"]
-        assert (
-            validate_tag_contract(normalize_tag_aliases(alias), strict=True)
-            == validate_tag_contract(list(legacy), strict=True)
-        )
+        assert validate_tag_contract(
+            normalize_tag_aliases(alias), strict=True
+        ) == validate_tag_contract(list(legacy), strict=True)
 
     def test_unknown_alias_subtype_refuses_loudly(self):
         with pytest.raises(TagContractError, match="invalid vesma: alias 'vesma:bogus'"):
@@ -348,7 +343,5 @@ class TestVesmaInputAlias:
         assert normalize_tag_aliases(["vesma:bogus"]) == ["vesma:bogus"]
 
     def test_alias_accepted_in_lax_mode(self):
-        result = validate_tag_contract(
-            ["project:x", "agent:y", "vesma:decision"], strict=False
-        )
+        result = validate_tag_contract(["project:x", "agent:y", "vesma:decision"], strict=False)
         assert "mnemos:decision" in result

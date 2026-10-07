@@ -38,7 +38,7 @@ help:
 	@echo "  make build-dist - Build wheel + sdist into dist/ (requires: pip install build)"
 	@echo "  make build-image - Build container image locally with podman"
 	@echo "  make push-image - Tag and push local image to ghcr.io/vesmaro/vesma (requires: podman login ghcr.io)"
-	@echo "  make pypi-publish - PyPI pipeline: name+version gates, build, twine check, smoke (upload needs scripts/pypi-publish.sh --publish)"
+	@echo "  make pypi-publish - PyPI pipeline: gates, build, twine check, smoke, BOTH channels (vesma + vesma-memory-server); upload needs scripts/pypi-publish.sh --publish"
 
 # Gate targets invoke the repo venv EXPLICITLY (.venv/bin/*), never bare
 # tool names through PATH (#337 / #335): a bare `pytest`/`ruff` resolves a
@@ -235,5 +235,14 @@ local-release:
 local-release-dry:
 	@bash scripts/run-release-local.sh --dry-run
 
+# Abolished (owner directive 2026-10-05, card vesma-ghcr-5x-parity):
+# every release train builds, smoke-tests and pushes the container image
+# (scripts/image-publish.sh, ordered by scripts/pypi-publish.sh --publish).
+# Kept as a loud error so old muscle memory fails visibly, never silently.
 local-release-no-image:
-	@bash scripts/local-release.sh --no-image
+	@echo "ERROR: image-less releases are abolished (owner directive 2026-10-05, card vesma-ghcr-5x-parity)."; \
+	echo "  Every release train now builds and pushes the container image:"; \
+	echo "    scripts/pypi-publish.sh --publish --full-smoke"; \
+	echo "  Wheels/sdist-only PREPARATION run (publishes nothing):"; \
+	echo "    scripts/pypi-publish.sh"; \
+	exit 2

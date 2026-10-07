@@ -13,12 +13,21 @@ itself, start at the [README](README.md) and the [docs](docs/README.md).
 ```bash
 git clone https://github.com/vesmaro/vesma.git
 cd vesma
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+uv sync --extra dev
+source .venv/bin/activate
 vesma --help        # sanity check
 ```
 
 - Python **3.11+** (`uv` recommended; plain `python -m venv` works too).
+- **`uv sync --extra dev` is the canonical bootstrap** — it builds the
+  environment strictly from `uv.lock`. This is MANDATORY for release
+  worktrees. Do NOT use `uv pip install -e ".[dev]"`: it re-resolves
+  fresh and ignores the lockfile — on the 5.5.0 release train it
+  silently pulled onnxruntime 1.30 (latest) instead of the locked 1.27.0,
+  broke the benchmark pin (B1) and drifted the cosine invariant by
+  5.4e-4. Deliberate dependency changes go through the
+  [dependency-updates runbook](docs/en/admin/runbooks/dependency-updates.md)
+  and re-lock `uv.lock` in a reviewed PR.
 - `[dev]` brings the quality-gate toolchain. The MCP SDK is a core dependency (ADR-0023); the `[mcp]` extra remains as an empty compatibility alias.
 - External LLM providers are separate extras (`ollama`, `openai`, `anthropic`, `gemini`) — install
   only what you exercise.
@@ -66,6 +75,10 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
   `<!-- version:… -->` marker blocks (the release pipeline rewrites versions inside them).
 - Frozen history: `docs/project/` (ADRs, reports, milestones) is not kept "current" — do not
   restate it, reference it.
+- **CHANGELOG entries target `[Unreleased]` only.** A wave's entries are never written directly
+  into an already-released version section, and released sections are never silently rewritten —
+  a correction is an explicit relocation with a dated correction marker (see the "Corrected
+  2026-10-03" subsection of [5.4.0] in [CHANGELOG.md](CHANGELOG.md)).
 
 ## Where things live
 

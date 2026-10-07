@@ -32,7 +32,7 @@ top of it.
 
 | Field | Default | Means |
 |---|---|---|
-| `peers` | `{}` | No peers configured — the Phase 2 server will refuse all pull requests. |
+| `peers` | `{}` | No peers configured — the server refuses all pull requests (fail-closed). |
 | `allowed_projects` | `[]` | The peer may pull **no** projects. |
 | `allowed_types` | `[]` | The peer may pull **no** record types. |
 | `["*"]` (either field) | — | Explicit wildcard — all projects in `shared_projects` / all record types. Never implicit. |
@@ -151,20 +151,22 @@ to peers, never included in `vesma export`. Like the moderation
 mapping table, it is a leak surface — replicating it would let a peer
 reconstruct another peer's query history.
 
-## 4. What's next — Phase 2
+## 4. Status — Phase 2 is in production
 
-Phase 1 ships the config shape, the enum, and the log. Phase 2 will:
+The federation server (B-side) and client (A-side) live in the codebase:
 
-1. Build the federation server (B-side) that reads `federation.peers`,
-   validates the per-peer bearer token from the named env var,
-   optionally pins the mTLS client cert, applies the per-peer ACL on
-   top of `shared_projects`, runs the moderation pipeline, checks the
-   access log for `ALREADY_EXHAUSTED`, and returns the sanitized
-   response with a `TriggerCode`.
-2. Build the federation client (A-side) that sends a pull request,
+1. **Server** — `handle_pull` in `src/vesmaro/federation_server.py` reads
+   `federation.peers`, validates the per-peer bearer token from the
+   named env var, optionally pins the mTLS client cert, applies the
+   per-peer ACL on top of `shared_projects`, runs the moderation
+   pipeline, checks the access log for `ALREADY_EXHAUSTED`, and returns
+   the sanitized response with a `TriggerCode`. HTTP route:
+   `POST /api/v1/federation/pull` (adapter `src/vesmaro/api/federation.py`).
+2. **Client** — `src/vesmaro/federation_client.py` sends a pull request,
    receives the `TriggerCode`, and dispatches — `is_terminal` /
    `should_fallback_to_local` decide whether to use the answer, refine
-   it, or fall back to local `mnemos_search`.
+   it, or fall back to local search. End-to-end verification:
+   [`federation-testing.md`](federation-testing.md).
 
 The Go binary that carries the gRPC transport lives in a separate
 repo (`vesma-mesh`) and is out of scope for this page.

@@ -30,7 +30,11 @@ from vesma import __version__
 from vesma.api.auth import router as auth_router
 from vesma.api.auth_store import AuthStore
 from vesma.api.federation import router as federation_router
-from vesma.api.middleware import AuthMiddleware, VitalsVerbMiddleware
+from vesma.api.middleware import (
+    AuthMiddleware,
+    DeprecationMiddleware,
+    VitalsVerbMiddleware,
+)
 from vesma.api.rate_limit import limiter
 from vesma.config import ApiConfig, Settings, load_settings
 from vesma.context_rewrite import ContextRewriteRateLimitError
@@ -218,6 +222,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         auth_store.close()
         if _manager is not None:
             _manager.close()
+        # Null the singleton WITH the close: get_manager() must never hand
+        # out a CLOSED manager to a later user (uvicorn in-process shutdown
+        # → a next lifespan cycle, incl. ServiceApp's shared mesh helper,
+        # issue #510). Same semantics as cli._manager.reset_manager().
+        globals()["_manager"] = None
 
 
 app = FastAPI(
@@ -247,12 +256,17 @@ def _tag_contract_error_handler(_request: Request, exc: TagContractError) -> JSO
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
-app.add_exception_handler(TagContractError, _tag_contract_error_handler)
+app.add_exception_handler(TagContractError, _tag_contract_error_handler)  # type: ignore[arg-type]
 
 # T-AUTH: auth middleware (runs after CORS, before routes)
 app.add_middleware(AuthMiddleware)
 # ADR-0026 phase A2 — REST verb boundary (innermost, route-template only).
 app.add_middleware(VitalsVerbMiddleware)
+# REST deprecation aliases (card vesma-rest-deprecation-middleware): root
+# API paths get Deprecation/Link headers pointing at /api/v1/* until 6.0
+# moves the routes physically. Orthogonal to the AuthMiddleware/VitalsVerb
+# bypass lists — no auth or vitals semantics change here.
+app.add_middleware(DeprecationMiddleware)
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
@@ -260,6 +274,15 @@ app.add_middleware(VitalsVerbMiddleware)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Liveness probe — process upness, nothing else.
+
+    Always unauthenticated (AuthMiddleware bypass list): supervisors
+    and load balancers poll it without a session. Never deprecated and
+    never relocated — ``/health`` stays at the root by design.
+
+    Answers ``{"status": "ok"}`` with HTTP 200 whenever the process is
+    serving.
+    """
     return {"status": "ok"}
 
 
@@ -424,10 +447,30 @@ async def metrics() -> dict[str, Any]:
 
 @app.post("/memories", response_model=Memory, status_code=201)
 async def create_memory(data: MemoryCreate) -> Memory:
+    """Create a memory — a thin wrapper over ``MemoryManager.add``.
+
+    The body is a ``MemoryCreate`` (``content`` required); ``tags`` must
+    satisfy the M2 tag contract (``project:<slug>``, ``agent:<slug>``
+    and a ``mnemos:<subtype>`` scope — validated per the
+    ``strict_tag_contract`` setting). ``project`` / ``agent`` are derived
+    from the tags and stored as denormalised columns for fast filtering.
+
+    Returns the full ``Memory`` with HTTP 201. A malformed body (unknown
+    enum value, ADR-0027 doc-grouping triple violation) is rejected with
+    422 by the request-validation layer; a tag-contract violation (a
+    missing required scope) maps to 422 with the SAME error string —
+    the in-file fix pattern (#422/#432 defect class: the contract
+    ``ValueError`` must not leak as a raw 500).
+    """
     mgr = get_manager()
     settings = mgr.settings
 
-    tags = validate_tag_contract(data.tags, strict=settings.vesma.strict_tag_contract)
+    try:
+        tags = validate_tag_contract(data.tags, strict=settings.vesma.strict_tag_contract)
+    except ValueError as exc:
+        # ``TagContractError`` (a ``ValueError``) is a client error, not a
+        # server fault — same mapping discipline as ``_tags_call`` below.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     data.tags = tags
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
@@ -495,6 +538,21 @@ async def list_memories(
     limit: int = Query(default=20, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[Memory]:
+    """List recent memories, newest first (``GET /memories``).
+
+    Filters AND together: ``status`` (a ``MemoryStatus`` value),
+    ``project`` / ``agent`` slugs, ``tags`` (comma-separated, exact
+    membership), ``task`` (ADR-0027 Phase 2 task scope — a bare slug,
+    byte-identical to appending ``task:<slug>`` to ``tags``) and
+    ``since`` / ``until`` ISO-8601 bounds on ``created_at``. Paging via
+    ``limit`` (cap 500) / ``offset``. Quarantined rows never appear in
+    listings (ADR-0019 §5), so a page may under-fill.
+
+    Errors: 422 for an unknown ``status`` value (the valid set is
+    echoed in the detail), 400 for an unsalvageable ``task`` slug —
+    the manager boundary's ``ValueError`` string passes through
+    unmodified (the #407 twin discipline).
+    """
     mgr = get_manager()
     status_enum: MemoryStatus | None = None
     if status:
@@ -951,6 +1009,96 @@ async def rename_tags(req: TagsRenameRequest) -> dict[str, Any]:
     )
 
 
+class TagsAddRequest(BaseModel):
+    """Request body for POST /api/v1/tags/add — mirrors ``mnemos_tags`` action="add"."""
+
+    tags: list[str]
+    dry_run: bool = True
+    project: str | None = None
+    agent: str | None = None
+
+
+class TagsRemoveRequest(BaseModel):
+    """Request body for POST /api/v1/tags/remove — mirrors ``mnemos_tags`` action="remove"."""
+
+    tags: list[str]
+    wildcard: bool = False
+    dry_run: bool = True
+    project: str | None = None
+    agent: str | None = None
+
+
+def _tags_call(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Run one bulk-tags operation, mapping contract errors to HTTP 422.
+
+    The #407 twin discipline, applied up front to the NEW routes (#454
+    tail; the #422/#432 defect class — contract ``ValueError`` leaking as
+    a raw 500 — is NOT carried into new code): a ``TagContractError`` (a
+    ``ValueError``) or any contract ``ValueError`` from the manager
+    boundary maps to 422 with the SAME error string, matching the
+    existing in-file fix pattern (``/context/rewrite`` maps tag-contract
+    violations to 422). Per-memory contract refusals are NOT errors
+    here: the manager reports them per row in the report's ``errors``
+    list (the uniform ``mnemos_tags`` report shape, MCP parity) — this
+    wrapper is the fail-closed net for anything that escapes that path.
+    """
+    try:
+        return fn()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/tags/add")
+async def add_tags(req: TagsAddRequest) -> dict[str, Any]:
+    """Append tags to every memory matching the project/agent filter.
+
+    REST twin of the ``mnemos_tags`` MCP tool with ``action="add"``
+    (#454 tail). Each tag must carry a prefix shape (contain ``":"``);
+    the resulting per-memory tag set is re-validated in strict mode by the
+    manager (the single enforcement path), so a contract-breaking tag is
+    rejected per memory in the report's ``errors`` list instead of
+    corrupting the store. ``dry_run=true`` by default — nothing is
+    written unless the caller explicitly sets ``dry_run=false``. When
+    neither ``project`` nor ``agent`` is set the operation spans ALL
+    memories — scope it deliberately.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    return _tags_call(
+        lambda: mgr.tags_add(
+            tags=req.tags,
+            dry_run=req.dry_run,
+            project=req.project,
+            agent=req.agent,
+        )
+    )
+
+
+@app.post("/api/v1/tags/remove")
+async def remove_tags(req: TagsRemoveRequest) -> dict[str, Any]:
+    """Remove tags from memories (exact match, or prefix match with ``wildcard``).
+
+    REST twin of the ``mnemos_tags`` MCP tool with ``action="remove"``.
+    With ``wildcard=true`` each entry is treated as a prefix (``["gcw:"]``
+    strips every ``gcw:*`` tag). The resulting per-memory tag set is
+    re-validated in strict mode by the manager: removing the last
+    ``project:`` / ``agent:`` / ``mnemos:`` tag is rejected per memory in
+    the report's ``errors`` list, never written. ``dry_run=true`` by
+    default. Idempotent: a second run reports ``changed=0``.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    return _tags_call(
+        lambda: mgr.tags_remove(
+            tags=req.tags,
+            wildcard=req.wildcard,
+            dry_run=req.dry_run,
+            project=req.project,
+            agent=req.agent,
+        )
+    )
+
+
 # ── Traces (M6) ────────────────────────────────────────────────────────────────
 
 
@@ -1069,7 +1217,7 @@ class RecallContextRequest(BaseModel):
 
 
 class AssembleContextRequest(BaseModel):
-    """Request body for POST /context/assemble — mirrors ``mnemos_assemble_context``.
+    """Request body for POST /context/assemble — mirrors ``vesma_assemble_context``.
 
     ADR-0017 D1 provider contract. ``mode`` carries both axes on one
     parameter: delivery (``sync`` default / ``async`` = store + handle) and
@@ -1184,7 +1332,7 @@ async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
 async def assemble_context(req: AssembleContextRequest) -> dict[str, Any]:
     """Assemble the model-facing context block (ADR-0017 D1, vesma #125).
 
-    Mirrors the ``mnemos_assemble_context`` MCP tool over the same manager
+    Mirrors the ``vesma_assemble_context`` MCP tool over the same manager
     path: fixed pipeline (recall → optional CCR expansion → filter →
     MANDATORY secret scan → CacheAligner → token budget), provenance on
     every injected block, per-block redaction counts and token stats.
@@ -1487,7 +1635,12 @@ async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
     mgr = get_manager()
     settings = mgr.settings
     url_clean = re.sub(r"(https?://)([^@]*@)", r"\1", req.url)
-    tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
+    try:
+        tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
+    except ValueError as exc:
+        # ``TagContractError`` (a ``ValueError``) is a client error, not a
+        # server fault — same mapping discipline as ``create_memory``.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     # P1 repair (review round): the len("agent") slice dropped the ':'
     # and stored ':a' in the denormalised column for tag agent:a —
@@ -1536,7 +1689,12 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
     doc_id = req.doc_id.strip()
     if not doc_id:
         raise HTTPException(status_code=422, detail="doc_id must be a non-empty string")
-    tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
+    try:
+        tags = validate_tag_contract(req.tags, strict=settings.vesma.strict_tag_contract)
+    except ValueError as exc:
+        # ``TagContractError`` (a ``ValueError``) is a client error, not a
+        # server fault — same mapping discipline as ``create_memory``.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
     agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
     result = mgr.ingest_document(
@@ -1796,6 +1954,7 @@ class GraphSearchRequest(BaseModel):
     cursor: int = 0
     max_output_tokens: int | None = None
     include_signature: bool = False
+    walk_cursor: int = 0
 
 
 class GraphTraceRequest(BaseModel):
@@ -1837,6 +1996,8 @@ class GraphDeleteRequest(BaseModel):
     agent: str
     session: str | None = None
     reason: str | None = None
+    confirm: bool = False
+    confirm_name: str | None = None
 
 
 def _graph_error_status(exc: Exception) -> int:
@@ -1914,6 +2075,7 @@ async def graph_search(req: GraphSearchRequest) -> dict[str, Any]:
             cursor=req.cursor,
             max_output_tokens=req.max_output_tokens,
             include_signature=req.include_signature,
+            walk_cursor=req.walk_cursor,
         )
     )
 
@@ -1992,10 +2154,82 @@ async def graph_projects(agent: str, session: str | None = None) -> dict[str, An
 
 @app.delete("/graph/projects/{project_id}")
 async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict[str, Any]:
-    """Twin of mnemos_delete_graph_project (the sidecar index, never the project)."""
+    """Twin of mnemos_delete_graph_project (index purge; a GHOST
+    registration — root missing on disk — is removed entirely behind
+    the confirm + confirm_name evidence gate)."""
     return _graph_call(
         lambda: _graph_service().delete_graph_project(
-            project_id, agent=req.agent, session=req.session, reason=req.reason
+            project_id,
+            agent=req.agent,
+            session=req.session,
+            reason=req.reason,
+            confirm=req.confirm,
+            confirm_name=req.confirm_name,
+        )
+    )
+
+
+class GraphRegisterRequest(BaseModel):
+    """Request body for POST /api/v1/graph/register — mirrors ``mnemos_register_project``."""
+
+    project_id: str
+    root: str
+    agent: str
+    session: str | None = None
+
+
+class GraphRepointRequest(BaseModel):
+    """Request body for POST /api/v1/graph/repoint — mirrors the ``vesma graph repoint`` CLI."""
+
+    project_id: str
+    new_root: str
+    agent: str
+    session: str | None = None
+    reason: str | None = None
+
+
+@app.post("/api/v1/graph/register")
+async def graph_register(req: GraphRegisterRequest) -> dict[str, Any]:
+    """Register a project root for the code graph — twin of
+    ``mnemos_register_project`` (#454; the agent-facing answer to
+    «graph tools answer not registered»).
+
+    Agent-scoped like the MCP tool: ``source="agent"``, so the operator
+    gate ``code_graph.agent_registration`` applies (refusal → 403 with
+    the actionable message). The operator path (never gated) remains the
+    ``vesma graph register`` CLI. Idempotent when the root is already
+    registered; confinement refusals (missing dir, no manifest marker,
+    ``$HOME``/fs-root, name collision on another root) → 403, audited.
+    """
+    return _graph_call(
+        lambda: _graph_service().register_project(
+            req.project_id,
+            req.root,
+            agent=req.agent,
+            session=req.session,
+        )
+    )
+
+
+@app.post("/api/v1/graph/repoint")
+async def graph_repoint(req: GraphRepointRequest) -> dict[str, Any]:
+    """Re-point a GHOST registration at its moved root — twin of the
+    ``vesma graph repoint`` CLI (#450).
+
+    Ghost recovery only: when the OLD root still exists on disk the
+    repoint is refused (403 — move-root is not repoint). The stale index
+    is purged (derived data) and rebuilt by the next
+    ``POST /graph/index``; the epoch bumps so consumers see the new
+    generation. One root = one graph: a new root already claimed by
+    another project is a loud 403.
+    """
+    return _graph_call(
+        lambda: _graph_service().repoint_project(
+            req.project_id,
+            req.new_root,
+            agent=req.agent,
+            session=req.session,
+            reason=req.reason,
         )
     )
 

@@ -41,8 +41,15 @@ from vesma.config import Settings, load_settings
 console = Console()
 
 agent_token_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="agent-token",
-    help="Manage W3 AgentGateway tokens (issue/rotate/revoke/list).",
+    help=(
+        "Manage W3 AgentGateway tokens (issue/rotate/revoke/list).\n\n"
+        "Short-lived Ed25519-signed tokens agents use to authenticate to "
+        "federation peers: `issue` mints one (plaintext shown once), `rotate` "
+        "replaces a live token with a grace window, `revoke` denylists "
+        "immediately, `list` shows metadata only."
+    ),
     no_args_is_help=True,
 )
 
@@ -93,7 +100,14 @@ def token_issue(
     ] = 8.0,
     config: ConfigOption = None,
 ) -> None:
-    """Mint a new agent token and print it ONCE (plaintext is never stored)."""
+    """Mint a new agent token and print it ONCE (plaintext is never stored).
+
+    Signs a token binding `--agent` (the subject) to `--node` (the gateway
+    it may call), scoped by comma-separated `--scope` grants (default
+    read-only) with a TTL capped at 24 hours (`--ttl-hours`, default 8 —
+    TM §3). Only the signed plaintext is printed; the store keeps issuance
+    metadata only, so copy it now.
+    """
     settings = _resolve_settings(config)
     store = AgentTokenStore(settings.db_path)
     try:
@@ -139,7 +153,13 @@ def token_rotate(
     ] = 5,
     config: ConfigOption = None,
 ) -> None:
-    """Rotate: new jti; the old token dies at the end of the grace window."""
+    """Rotate: new jti; the old token dies at the end of the grace window.
+
+    Issues a fresh token for `--agent` and lets the OLD one keep working for
+    `--grace-minutes` (default 5, TM §5) so in-flight jobs finish — after
+    the window the old jti is denylisted. Prints the new plaintext once;
+    the standard key-hygiene operation, run it per agent regularly.
+    """
     settings = _resolve_settings(config)
     store = AgentTokenStore(settings.db_path)
     try:
@@ -177,7 +197,13 @@ def token_revoke(
     ] = None,
     config: ConfigOption = None,
 ) -> None:
-    """Instant denylist write (TM §5): --jti for one token, --agent for all."""
+    """Instant denylist write (TM §5): --jti for one token, --agent for all.
+
+    Emergency kill switch — a revoked jti is rejected on sight, no grace
+    window. Exactly one of `--jti <id>` (a single token) or `--agent <id>`
+    (every live token of that agent) must be given; passing both is refused
+    loudly instead of silently favouring one.
+    """
     if agent is None and jti is None:
         console.print("[red]Provide --agent <id> (revoke all) or --jti <id> (revoke one).[/red]")
         raise typer.Exit(1)
@@ -205,7 +231,12 @@ def token_revoke(
 
 @agent_token_app.command("list")
 def token_list(config: ConfigOption = None) -> None:
-    """List issuance metadata (jti, scope, exp, status) — no token values."""
+    """List issuance metadata (jti, scope, exp, status) — no token values.
+
+    Audit view of every issued token: which agent, what grants, when it
+    expires, live or rotated/revoked. Secrets never appear here — use it to
+    find the `--jti` for a revoke or to spot tokens worth rotating.
+    """
     settings = _resolve_settings(config)
     store = AgentTokenStore(settings.db_path)
     try:

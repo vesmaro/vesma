@@ -89,6 +89,12 @@ dependencies = [
     # Pinned <2.0 to avoid breaking API changes in a major bump.
     "grpcio>=1.62,<2",
     "grpcio-tools>=1.62,<2",
+    # Component manifests (board card svc-w1-foundations, wave W1): strict
+    # JSON-Schema 2020-12 validation of `vesma.component/v1` manifests —
+    # contract specs/component-manifest/v1 (1.0.0-draft.2). Was transitive
+    # via mcp before; the manifest loader imports it directly, so it is a
+    # declared core dependency now (no phantom transitive imports).
+    "jsonschema>=4.21",
 ]
 
 [project.optional-dependencies]
@@ -193,7 +199,29 @@ mnemos-train = "vesma.train_entry:main"
 # training/ is excluded from BOTH sdist and wheel (ADR-0021 anti-scope:
 # training code is separated from the runtime; the runtime never learns).
 [tool.hatch.build.targets.sdist]
-exclude = ["scripts/run-release-local.sh", "scripts/local-ci", "benchmarks", "training"]
+# Machine-local scratch must never ride the sdist: hatchling selects by
+# .gitignore, so untracked-but-not-ignored top-level entries are swept in —
+# a foreign wt/ worktree dir carrying an absolute-path symlink polluted the
+# sdist AND crashed the tar data filter on the 5.6.2 train; the same class
+# came back as a feat/ native-worktree checkout with an absolute-path symlink
+# on the 5.6.3 train ([5/18] Build wheel+sdist). Pin the scratch names
+# (#481 precedent: artefact content independent of checkout state).
+exclude = [
+    "scripts/run-release-local.sh",
+    "scripts/local-ci",
+    "benchmarks",
+    "training",
+    "wt",
+    "feat",
+    "handoff",
+    "gen_wave*.sh",
+    "node-*.tar.xz",
+    # pypi-publish.sh editor backup and the machine-local .remember memory dir
+    # both rode the 5.6.3/5.6.4 sdists byte-identical to baseline — noise, not
+    # a leak, but the same untracked-sweep class as above. Pinned 2026-10-07.
+    "pyproject.toml.pypi-publish.bak",
+    ".remember",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vesma"]
@@ -210,7 +238,31 @@ exclude = ["benchmarks", "training"]
 # inside the wheel so `mnemos integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
 # `vesma/scripts/` — reachable via `importlib.resources.files("vesma") / "scripts"`.
-"scripts" = "vesma/scripts"
+#
+# Enumerated file-by-file, NOT as a directory mapping (#481): scripts/ contains
+# a machine-local symlink (run-release-local.sh, untracked since #481). A
+# directory force-include walks it — in source-tree wheel builds it leaked the
+# target's content into the artefact, and on any fresh clone the dangling
+# symlink crashed every build (hatchling os.stat). Enumeration pins wheel
+# content independent of checkout state; add new scripts here explicitly.
+# The list equals the sdist-visible scripts (release wheels are built FROM the
+# sdist): scripts/local-ci is sdist-excluded, so local-ci/run-all.sh ships in
+# no wheel — source-tree builds used to differ here (latent divergence, #481).
+"scripts/check_version.py" = "vesma/scripts/check_version.py"
+"scripts/deploy.sh" = "vesma/scripts/deploy.sh"
+"scripts/gen-proto.sh" = "vesma/scripts/gen-proto.sh"
+"scripts/install.sh" = "vesma/scripts/install.sh"
+"scripts/local-ci.sh" = "vesma/scripts/local-ci.sh"
+"scripts/local-release.sh" = "vesma/scripts/local-release.sh"
+"scripts/mcp-setup.sh" = "vesma/scripts/mcp-setup.sh"
+"scripts/publish-all.mjs" = "vesma/scripts/publish-all.mjs"
+"scripts/pypi-publish.sh" = "vesma/scripts/pypi-publish.sh"
+"scripts/release.sh" = "vesma/scripts/release.sh"
+"scripts/setup-distrobox.sh" = "vesma/scripts/setup-distrobox.sh"
+"scripts/smoke-federation.sh" = "vesma/scripts/smoke-federation.sh"
+"scripts/sync-peers.sh" = "vesma/scripts/sync-peers.sh"
+"scripts/sync-readme-version.sh" = "vesma/scripts/sync-readme-version.sh"
+"scripts/sync-version.mjs" = "vesma/scripts/sync-version.mjs"
 
 [tool.ruff]
 target-version = "py311"

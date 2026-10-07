@@ -12,7 +12,7 @@
 
 ## Overview
 
-One published image — `ghcr.io/vesmaro/vesmaro` — covers every path. Pick by target:
+One published image — `ghcr.io/vesmaro/vesma` — covers every path. Pick by target:
 
 | Path | Tool | When to use |
 |------|------|-------------|
@@ -43,12 +43,12 @@ and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesma
 Pull the released image and start it directly — nothing to build:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesmaro:4.3.0      # :latest tracks the newest release
+podman pull ghcr.io/vesmaro/vesma:5.6.2      # :latest tracks the newest release
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesmaro:4.3.0
+  ghcr.io/vesmaro/vesma:5.6.2
 ```
 
 `docker` works identically — swap `podman` for `docker`. The image includes
@@ -92,7 +92,7 @@ To activate Ollama as the embedding provider, set `embedding.provider: ollama`
 in the container config (see [Configuration](#configuration)).
 
 > The repo-root [`compose.yaml`](../../../../compose.yaml) also uses the published image —
-> it keeps the historic `vesma-*` resource names for existing podman-compose users.
+> it keeps the historic `mnemos-*` resource names for existing podman-compose users.
 > The build-from-source flow is described in
 > [Build from source](#build-from-source-fallback).
 
@@ -118,7 +118,7 @@ Full guide with values, TLS and troubleshooting:
 
 ## Run — Kubernetes-style pod (podman kube play)
 
-Vesma ships a Kubernetes-style pod manifest (`deploy/podman/kube/mnemos-pod.yaml`) compatible
+Vesma ships a Kubernetes-style pod manifest (`deploy/podman/kube/vesma-pod.yaml`) compatible
 with `podman kube play`. The manifest pulls the published image, injects the TOTP key from a
 podman secret, and defines health probes.
 
@@ -129,7 +129,7 @@ printf 'VESMA_API__TOTP_MASTER_KEY=<your-key>\n' \
   | podman secret create vesma-totp -
 podman volume create vesma-data
 podman volume create vesma-vault
-podman kube play deploy/podman/kube/mnemos-pod.yaml
+podman kube play deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut (creates volumes automatically before playing the manifest):
@@ -141,7 +141,7 @@ Shortcut (creates volumes automatically before playing the manifest):
 ### Stop
 
 ```bash
-podman kube down deploy/podman/kube/mnemos-pod.yaml
+podman kube down deploy/podman/kube/vesma-pod.yaml
 ```
 
 Shortcut:
@@ -155,9 +155,15 @@ Shortcut:
 ## Run — systemd (quadlet)
 
 The quadlet path installs a systemd **user** unit and manages the container as a persistent
-service. The unit references the published `ghcr.io/vesmaro/vesmaro:4.3.0`, pulled
+service. The unit references the published `ghcr.io/vesmaro/vesma:5.2.0`, pulled
 automatically; to run a local build instead, build the image first (see
 [Build from source](#build-from-source-fallback)) and set `Image=localhost/mnemos:latest` in the unit.
+
+> **The service name comes from the unit filename**, not from `ContainerName=`:
+> the quadlet file `mnemos.container` generates the `mnemos.service` unit
+> (while `ContainerName=mnemos` only overrides the podman container name).
+> The commands below manage `mnemos.service` — a legacy spelling of the same
+> Vesma installation.
 
 ### Set the TOTP key
 
@@ -182,14 +188,14 @@ This copies `deploy/podman/quadlet/mnemos.container` to `~/.config/containers/sy
 ### Start and enable
 
 ```bash
-systemctl --user start vesma
-systemctl --user enable vesma   # autostart on login
+systemctl --user start mnemos
+systemctl --user enable mnemos   # autostart on login
 ```
 
 ### Check status
 
 ```bash
-systemctl --user status vesma
+systemctl --user status mnemos
 ```
 
 ---
@@ -201,13 +207,14 @@ systemctl --user status vesma
 > need this section.
 
 ```bash
-podman build -t localhost/vesma:4.3.0 -f Containerfile .
+podman build -t localhost/vesma:5.6.2 -f Containerfile .
 ```
 
 The `Containerfile` uses `python:3.12-slim` as the base, installs the package (the MCP SDK rides in core),
 copies `config.container.yaml` as `/app/config.yaml`, and sets the serve command on port 8787.
 
-Makefile shortcut (builds `localhost/mnemos:latest`):
+Makefile shortcut (builds `localhost/mnemos:$(VERSION)` + `:latest` — the
+names used by `scripts/deploy.sh` / `make build-image`):
 
 ```bash
 make build-image
@@ -219,18 +226,20 @@ The deploy helper does the same:
 ./scripts/deploy.sh build
 ```
 
-**Pushing to ghcr.io (maintainers):** the release pipeline (`scripts/local-release.sh`)
-pushes the versioned tag and `:latest` on every release — GitHub Actions are disabled, and
-this script is the canonical path (see [ci-cd.md](ci-cd.md)). The pipeline currently targets
-the legacy `ghcr.io/korrnals/vesma` name (the flip is part of the 5.0.0 phase-g, GWS card
-#331); new releases are backfilled to the org namespace `ghcr.io/vesmaro/vesmaro` manually.
+**Pushing to ghcr.io (maintainers):** the release train is
+`scripts/pypi-publish.sh --publish`; its mandatory image phase
+(`scripts/image-publish.sh`) builds, smoke-tests and pushes the versioned tag
+plus `:latest` on every release (GitHub Actions are billing-locked, #117 — the
+train runs locally; see [ci-cd.md](ci-cd.md) and
+[pypi-publish.md](pypi-publish.md)). The pipeline targets the
+public `ghcr.io/vesmaro/vesma` name directly.
 Manual push, if ever needed (PAT with `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:4.3.0 ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:4.3.0
-podman push ghcr.io/vesmaro/vesmaro:latest
+podman tag localhost/vesma:5.6.2 ghcr.io/vesmaro/vesma:5.6.2
+podman push ghcr.io/vesmaro/vesma:5.6.2
+podman push ghcr.io/vesmaro/vesma:latest
 ```
 
 ---
@@ -313,12 +322,12 @@ Prints running containers (name, status, ports) and named volumes.
 
 - [kubernetes-deployment.md](../kubernetes-deployment.md) — Helm chart for real K8s/K3s clusters
 - [`deploy/README.md`](../../../../deploy/README.md) — all deployment paths at a glance
-- [install.md](install.md) — bare-metal / virtualenv install
+- [install.md](install.md) — bare-metal install (PyPI / uv / pipx)
 - [../security.md](../security.md) — threat model, auth model, SSRF guard
 - [../../user/getting-started.md](../../user/getting-started.md) — first run guide
 
 ---
 
 _Source files: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
-`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/mnemos-pod.yaml`,
+`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/vesma-pod.yaml`,
 `deploy/docker/`, `deploy/helm/vesma/`_

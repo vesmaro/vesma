@@ -141,13 +141,16 @@ def staleness_check(
     project: str,
     root: str | os.PathLike[str],
     store: CodeGraphStore,
+    config: CodeGraphConfig | None = None,
 ) -> StalenessReport:
     """Cheap staleness report: mtime+size classification only.
 
     No parsing, no writes, no epoch bump — the session-start path
-    (contract §3.2 trigger (c)) must stay read-only.
+    (contract §3.2 trigger (c)) must stay read-only. ``config`` feeds
+    ``CodeGraphConfig.exclude_globs``; without it the built-in defaults
+    apply (same surface as a default-config index).
     """
-    surface = FileSurface(root).collect()
+    surface = FileSurface(root, (config or CodeGraphConfig()).exclude_globs).collect()
     surface_paths = {sf.rel_path: sf.abs_path for sf in surface}
     unchanged, stale, removed = classify_files(surface_paths, store.get_file_records(project))
     total = len(unchanged) + len(stale)
@@ -220,7 +223,7 @@ def _index_serialized(
         return indexer.index_full(project, root)
 
     started = time.perf_counter()
-    surface = FileSurface(root).collect()
+    surface = FileSurface(root, indexer.config.exclude_globs).collect()
     indexer.check_limits(surface, root)
     surface_paths = {sf.rel_path: sf.abs_path for sf in surface}
     unchanged, stale, removed = classify_files(surface_paths, existing)

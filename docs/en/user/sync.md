@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Federation — Batch Sync (Phase 0)
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/sync.md)
@@ -14,7 +14,7 @@
 Batch sync lets two vesma instances share memories that belong to a
 curated set of **shared projects**. The flow is:
 
-1. **Export** — `vesma sync export` builds a `mnemos.federation.v1`
+1. **Export** — `vesma sync export` builds a `vesmaro.federation.v1`
    compact payload from memories in the configured `shared_projects`,
    runs the moderation pipeline on each, and writes the result to a
    file (optionally AES-256-GCM encrypted).
@@ -84,7 +84,7 @@ What the export does:
    (Layer 3) on each memory: `allow` → original content, `redact` →
    sanitized content, `refuse` → record excluded and counted.
 4. Writes the compact payload
-   (`{"schema": "mnemos.federation.v1", "records": [...], "stats": {...}}`)
+   (`{"schema": "vesmaro.federation.v1", "records": [...], "stats": {...}}`)
    to `--output`, optionally encrypted.
 
 Output summary:
@@ -111,8 +111,9 @@ export VESMA_EXPORT_PASSPHRASE="your-passphrase-here"
 vesma sync export --output sync.enc --encrypt
 ```
 
-The encrypted file carries an `VESMA1` magic header so the import side
-can detect it automatically.
+The encrypted file carries the `MNEMOS1` magic header (a historical
+string — format-stable, not a brand mark) so the import side can detect
+it automatically.
 
 ---
 
@@ -135,7 +136,7 @@ What the import does:
 1. Reads the file. If encrypted (magic header or `.enc` extension),
    reads the passphrase from the env var named by `--passphrase-env`
    (falls back to `VESMA_EXPORT_PASSPHRASE`).
-2. Parses JSON, validates `schema == "mnemos.federation.v1"`, parses
+2. Parses JSON, validates `schema == "vesmaro.federation.v1"`, parses
    each record into a `CompactRecord`.
 3. Validates each record (reuses the #86 import validation — content
    max length, tag contract, title length, schema drift, prompt-injection
@@ -150,7 +151,7 @@ Output summary:
 ```
 ✓ Imported: 11 records
   skipped: 1
-  format_version: mnemos.federation.v1
+  format_version: vesmaro.federation.v1
 ```
 
 ### Idempotency
@@ -227,7 +228,7 @@ Entry shapes (counters **only** — no raw content, no secrets, no PII):
 
 ```json
 {"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/vesma-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
-{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
+{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "vesmaro.federation.v1"}
 ```
 
 The audit log is the operational trail: which projects synced, how many
@@ -243,7 +244,7 @@ Records tagged `mnemos:no-federate` are excluded from sync export
 entirely. The tag is auto-added on write by the Layer 1 secrets scanner
 (#86) when a secret pattern is detected; owners can remove it with
 explicit confirmation via `MemoryManager.remove_no_federate()`. See
-[Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--federation-exclusion-marker)
+[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-federation-exclusion-marker)
 for the full lifecycle.
 
 Even without the tag, the moderation pipeline (Layer 3) runs on every
@@ -257,5 +258,5 @@ secret. See [Security — Federation defence-in-depth](../admin/security.md#11-f
 
 - [Export & Import](./export-import.md) — full backups (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — the three-layer model.
-- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--federation-exclusion-marker) — the exclusion marker.
+- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-federation-exclusion-marker) — the exclusion marker.
 - [MCP Tools](./mcp-tools.md) — `mnemos_export` / `mnemos_import` MCP tools (the MCP surface for full export/import).

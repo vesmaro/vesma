@@ -35,6 +35,19 @@ For the same capabilities over other transports, see [mcp-tools.md](mcp-tools.md
 - Standard HTTP status codes only — no custom error codes.
 - `200 OK` and `201 Created` carry a JSON body. `204 No Content` is used for deletes that return no body.
 
+### Route versioning — root paths are legacy aliases
+
+The canonical API location is **`/api/v1/<path>`**. The root-level routes (`/memories`, `/search`, `/context/*`, `/graph/*`, `/watch/*`, ...) currently serve without the prefix and are **legacy aliases** kept for backward compatibility. Every response served via a legacy alias carries:
+
+| Header | Meaning |
+|--------|---------|
+| `Deprecation: true` | This location is deprecated — migrate to the canonical path. |
+| `Link: </api/v1/<path>>; rel="suggested-version"` | The canonical location (matched by route template, so parameterised aliases resolve to their `/api/v1` counterpart). |
+
+No `Sunset` header is sent: RFC 8594 requires an absolute HTTP-date, and the removal date is not fixed yet — `Sunset` will be added once it is. Not deprecated: `/health` (liveness convention), the A2A Sessions API at `/v1` (its own versioned surface), and `/auth/*` (no `/api/v1` counterpart). In **Vesma 6.0** the routes move under `/api/v1` physically and the root aliases are removed — migrate before then.
+
+Breaking changes — alias removal, the physical move, and any request/response shape unification — are parked behind 6.0 and land in that one major (ArchCom canon, 2026-10-04). Note the documented near-duplicate: `GET /metrics` serves the legacy stats JSON body (see Health and metrics), while `GET /api/v1/metrics` serves the Prometheus text exposition. The ratified CLI/REST/MCP parity record — which surface exists for which user, and which gaps are `wontfix` — lives in [api-surface-parity.md](api-surface-parity.md).
+
 ---
 
 ## Status codes
@@ -46,11 +59,11 @@ For the same capabilities over other transports, see [mcp-tools.md](mcp-tools.md
 | `400` | Bad request (e.g. trying to publish a non-`processed` memory; project-graph budget refusal) |
 | `404` | Not found (memory_id, cluster_id, dlq_id, session_id, turn_id) |
 | `401` | Unauthorised (missing or invalid session token; only when `api.auth_enabled=true`) |
-| `403` | Forbidden — policy refusal: project-graph confinement (path escapes the registered root, or unregistered project, PG2) on `/graph/*` and `/watch/start` |
+| `403` | Forbidden — policy refusal: project-graph confinement (path escapes the registered root, or unregistered project, PG2) on `/graph/*` and `/watch/start`, plus the register/repoint refusals (name collision, live-root repoint, root claimed by another project) on `/api/v1/graph/register` and `/api/v1/graph/repoint` |
 | `413` | Payload too large — project-graph index limit breach (fail-closed, PG7) on `/graph/index` |
-| `422` | Unprocessable entity (Pydantic validation failure on the request body) |
+| `422` | Unprocessable entity (Pydantic validation failure on the request body; a tag-contract violation escaping the manager on `/api/v1/tags/*`) |
 | `500` | Internal server error (see server logs) |
-| `503` | Service unavailable — auth not initialised (fail-closed AuthMiddleware), or the project-graph master flag `code_graph.enabled` is off (operator gate on `/graph/*` and `/watch/start`) |
+| `503` | Service unavailable — auth not initialised (fail-closed AuthMiddleware), or the project-graph master flag `code_graph.enabled` is off (operator gate on `/graph/*`, `/api/v1/graph/*`, and `/watch/start`) |
 
 ---
 
@@ -152,7 +165,7 @@ Requires a valid session.
 
 ### `GET /health`
 
-Liveness probe.
+Liveness probe. Always unauthenticated — safe for load balancers and supervisors — and stays at the root when the API moves under `/api/v1` in 6.0.
 
 **Response 200**
 
@@ -224,6 +237,51 @@ Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (th
 
 **Response 200** — the rename report (preview or applied), including the `changed` count.
 
+### `POST /api/v1/tags/add` — bulk-append tags
+
+REST twin of the `mnemos_tags` MCP tool with `action="add"` (#454 — with this route and `/api/v1/tags/remove` below, the REST surface covers every grouped-tags action). Appends each tag to every memory matching the `project` / `agent` filter; the resulting per-memory tag set is re-validated in **strict** mode by the manager (the single enforcement path), so a contract-breaking tag (a duplicate `project:`, an invalid `mnemos:` subtype) is refused per memory in the report's `errors` list instead of corrupting the store. `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`. When neither filter is set the operation spans ALL memories — scope it deliberately.
+
+**Request body**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tags` | string[] | — | Tags to append; each must carry a prefix shape (contain `:`). |
+| `dry_run` | bool | `true` | Preview without writing. |
+| `project` / `agent` | string \| null | `null` | Scope the append to one project / agent. |
+
+**Response 200** — `{action, scanned, changed, added_tags, errors, dry_run}`. Per-memory contract refusals ride the `errors` list at 200 (MCP parity); a contract `ValueError` escaping the manager maps to `422` with the same message — never a raw 500.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/tags/add \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["severity:low"], "project": "vesma", "dry_run": false}'
+```
+
+### `POST /api/v1/tags/remove` — bulk-remove tags
+
+REST twin of `mnemos_tags` with `action="remove"`. Exact match by default; with `wildcard: true` each entry is treated as a prefix (`["gcw:"]` strips every `gcw:*` tag). Removing the last `project:` / `agent:` / `mnemos:` tag from a memory is a contract breach — refused per memory in the report's `errors` list, never written. Idempotent: a second run reports `changed=0`. `dry_run` defaults to `true`.
+
+**Request body**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tags` | string[] | — | Tags to remove (exact match, or prefix when `wildcard`). |
+| `wildcard` | bool | `false` | Treat each entry as a prefix match. |
+| `dry_run` | bool | `true` | Preview without writing. |
+| `project` / `agent` | string \| null | `null` | Scope the removal to one project / agent. |
+
+**Response 200** — `{action, scanned, changed, removed_tags, wildcard, errors, dry_run}`; error mapping as for `/api/v1/tags/add`.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/tags/remove \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["severity:low"], "project": "vesma", "dry_run": false}'
+```
+
 ---
 
 ## Memories CRUD
@@ -238,7 +296,7 @@ M2 tag contract is enforced server-side. The endpoint derives `project` and `age
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Primary text. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 | `source` | string | no | `manual` | One of `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | no | — | Origin URL. |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -282,7 +340,8 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) |
+| `422` | Malformed body — unknown enum value or ADR-0027 doc-grouping triple violation. |
+| `422` | Tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ### `GET /memories/{memory_id}` — read one
@@ -315,12 +374,16 @@ curl -s http://127.0.0.1:8000/memories/550e8400-e29b-41d4-a716-446655440000
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `status` | string | — | Filter by `MemoryStatus` enum value. |
+| `status` | string | — | Filter by `MemoryStatus` enum value. Unknown values → `422`. |
 | `project` | string | — | Restrict to a project slug. |
+| `agent` | string | — | Restrict to an agent slug. |
+| `tags` | string | — | Comma-separated tag list; a row must carry **all** of them (exact membership, AND). |
 | `task` | string | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Byte-identical to appending `task:<slug>` to `tags`; composes with `tags` by intersection. Invalid slugs → `400`. |
+| `since` / `until` | string | — | ISO-8601 lower / upper bound on `created_at` (inclusive). |
 | `limit` | int | `20` | Max rows. Hard cap `500`. |
+| `offset` | int | `0` | Rows to skip (paging with `limit`). |
 
-**Response 200** — array of [`Memory`](#memory-schema) (without `raw_content`).
+**Response 200** — array of [`Memory`](#memory-schema) (without `raw_content`). Quarantined rows never appear in listings (ADR-0019 §5), so a page may under-fill.
 
 **Example**
 
@@ -363,7 +426,7 @@ State-machine / guardrail violations return `409`. The manager is the single sou
 
 ---
 
-## Search
+## Search {#search}
 
 RRF fusion of FTS5 and vector legs. Only `published` memories are searched by default.
 
@@ -924,7 +987,7 @@ Mirrors the `mnemos_ingest_url` plugin tool.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | **yes** | HTTP/HTTPS URL to fetch. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 
 **Response 201**
 
@@ -951,7 +1014,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag (`project:`, `agent:`, or `vesma:`) or missing `url` |
+| `422` | Malformed body (missing `url`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | Fetch failure, extraction failure, or SQLite / vault write failure |
 
 ---
@@ -992,7 +1055,7 @@ keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Full document text to chunk and ingest. |
 | `doc_id` | string | **yes** | Logical document identity; stable across re-ingest. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
 | `title` | string | no | Optional document title. |
 | `source_url` | string | no | Optional provenance URL. |
 
@@ -1026,7 +1089,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 | Code | Cause |
 |------|-------|
-| `422` | Missing required tag, missing `text`/`doc_id`, or an empty `doc_id` |
+| `422` | Malformed body (missing `text`/`doc_id` or an empty `doc_id`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ---
@@ -1119,6 +1182,7 @@ Ranked name/qname/path search (exact > prefix > substring), token-contract windo
 | `kind` | string | no | — | Node-kind filter (`Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`). |
 | `limit` | int | no | `50` | Max ranked rows per page. |
 | `cursor` | int | no | `0` | Page cursor from the previous call. |
+| `walk_cursor` | int | no | `0` | Walk-section page cursor from the previous call (only meaningful when `code_graph.search_walk` is on — the flag-gated `walk` section, ADR-0038). |
 | `max_output_tokens` | int | no | `3200` | Output budget (128–1M). |
 | `include_signature` | bool | no | `false` | Include signature shapes (opt-in). |
 
@@ -1344,12 +1408,12 @@ curl -s "http://127.0.0.1:8000/graph/projects?agent=ci-runner"
 
 ### `DELETE /graph/projects/{project_id}` — drop a graph index
 
-Drop the project's graph INDEX (sidecar data only — never the project entity). The ONLY operation that clears the poisoned set (PG3). `agent` is a required query parameter; the request body carries optional `session` and `reason`.
+Drop the project's graph INDEX (sidecar data). A **live** registration keeps its project entity; a **ghost** registration (root missing on disk) is removed ENTIRELY — index and registration row — behind the evidence gate: body `confirm=true` plus `confirm_name` echoing the project name (a gate-less attempt answers `403 confinement-refused`). The ONLY operation that clears the poisoned set (PG3). `agent` is a required query parameter; the request body carries optional `session`, `reason`, `confirm`, `confirm_name`.
 
 **Response 200**
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
 
 **Example**
@@ -1359,6 +1423,55 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/vesma?agent=operator" \
   -H "Content-Type: application/json" \
   -d '{"reason": "reindex from scratch"}'
 ```
+
+### `POST /api/v1/graph/register` — register a project root
+
+Agent-facing registration — the answer to «graph tools answer not registered» (#454; the REST twin of `mnemos_register_project`). Confinement gates apply as on the auto path: the root must exist and carry a manifest marker (e.g. `pyproject.toml`) or `.git`, `$HOME`/fs-roots are refused, and the one-root-one-graph rule holds — a root already registered under another name is REUSED, never duplicated. A project name that already exists at a DIFFERENT root is a loud `403` (the existing registration wins; moved roots are the operator's `vesma graph repoint`). Mounted under `/api/v1` (canonical namespace for new routes).
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `project_id` | string | **yes** | Project name to register. |
+| `root` | string | **yes** | Absolute path to the project root on this machine. |
+| `agent` | string | **yes** | Caller identity (PG7 attribution binding). |
+| `session` | string | no | Session id for the audit trail. |
+
+**Response 200** — `{"project": "...", "status": "registered" | "already-registered", "root": "..."}` (reuse adds a `note`). Errors: `400` empty `agent` (attribution binding), `403` confinement refusal (missing dir, no marker, `$HOME`, name collision — audited), `503` graph flag off.
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/graph/register \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "vesma", "root": "/home/you/projects/vesma", "agent": "ci-runner"}'
+```
+
+### `POST /api/v1/graph/repoint` — re-point a ghost registration at its moved root
+
+REST twin of the `vesma graph repoint` CLI (#450). Ghost recovery only: the OLD root must be missing on disk (a live registration is refused with `403` — move-root is not repoint). The stale index is purged (derived, rebuildable data) and the epoch bumps; the next `POST /graph/index` rebuilds fresh at the new root. A new root already claimed by another project is a loud `403`. Refusals are audited.
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `project_id` | string | **yes** | The ghosted project name. |
+| `new_root` | string | **yes** | Absolute path of the moved root. |
+| `agent` | string | **yes** | Caller identity (PG7 attribution binding). |
+| `session` | string | no | Session id for the audit trail. |
+| `reason` | string | no | Free-form reason recorded in the audit row (default `graph-repoint`). |
+
+**Response 200** — `{"project": "...", "status": "repointed" | "unchanged", "root": "...", "purged_nodes": N, ...}`. Errors as for register (`400` attribution, `403` confinement/live-root/claimed-root, `503` flag off).
+
+**Example**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/graph/repoint \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": "vesma", "new_root": "/home/you/projects/vesma-new", "agent": "ci-runner", "reason": "repo moved"}'
+```
+
+> **#454 REST-twin tail closed (2026-10-04).** Every agent-facing graph mutation (`register`, `repoint`) and every grouped-tags action (`add`, `remove`) now has a REST twin alongside the existing `/graph/*` and `/tags/rename` routes; new routes mount under `/api/v1`.
 
 ---
 
@@ -1810,7 +1923,7 @@ If you need to generate a static client, fetch the schema and run [`openapi-gene
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json -o vesma-openapi.json
 npx @openapitools/openapi-generator-cli generate \
-  -i vesma-openapi.json -g typescript-fetch -o ./mnemos-client
+  -i vesma-openapi.json -g typescript-fetch -o ./vesma-client
 ```
 
 ---

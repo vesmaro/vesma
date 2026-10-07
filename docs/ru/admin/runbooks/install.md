@@ -25,16 +25,20 @@ uv tool install vesma
 pipx install vesma
 ```
 
-Скриптовый вариант (venv в `~/.mnemos/venv` + лаунчер в `~/.local/bin` +
-опциональная проводка VS Code):
+Другие каналы: npm (`npm install -g @vesmaro/vesma`) и ghcr-контейнер — см. блок
+«Контейнер» ниже. Обновление уже установленного Vesma — силами самой утилиты:
+`vesma update apply` (раздел «Обновление» ниже).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
-```
+> ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш — основной канал;
+> `pip install vesma` ставит этот проект). Доребрендинговый
+> `mnemos-memory-server` живёт до deprecation (заморожен на 5.2.0),
+> `vesma-memory-server` — наше живое зеркало-алиас. Таблица каналов:
+> [ранбук публикации в PyPI](pypi-publish.md).
 
-> ⚠️ **Имена.** Пакет на PyPI — `vesma` (голый слот, наш). Доребрендинговый
-> `mnemos-memory-server` живёт до deprecation; голый `pip install vesma` —
-> посторонний сторонний проект.
+> **venv — только install-флоу.** Ручное создание venv не входит ни в один рабочий
+> сценарий: сервисный слой ожидает venv, созданный `vesma service install`
+> (`~/.local/share/vesma/venv/` и `venvs/<name>/`). Старые ручные venv — легаси,
+> их вычистка описана в [getting-started.md](../../user/getting-started.md#вычистка-старых-установок).
 
 ## Конфигурация
 
@@ -53,31 +57,40 @@ embedding:
 Хранилище: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Зеркало vault:
 `~/.mnemos/vault/` (Obsidian-совместимый markdown).
 
-## Запуск MCP-сервера
+## Сервис (рекомендуется для постоянной работы)
 
-Добавьте в VS Code **User** или **Workspace** `mcp.json`:
-
-```jsonc
-{
-  "servers": {
-    "vesma": {
-      "type": "stdio",
-      "command": "vesma",
-      "args": ["mcp-server"]
-    }
-  }
-}
+```bash
+vesma service install                         # манифесты, data-каталоги, venv, юнит systemd user
+systemctl --user enable --now vesma.service   # автозапуск
+vesma service status && vesma service health  # живое состояние и вердикт здоровья
 ```
 
-Пресеты по харнесам (Claude Code, Cursor, OpenCode, Codex, Windsurf, ZCode, pi,
-Hermes): [`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md).
-Поведенческий пакет (инструкции / скиллы / промпты): `vesma integration setup`.
+Без systemd — `vesma service run` (супервайзер на переднем плане). Полный цикл
+глаголов (start/stop/restart/logs/uninstall) и диагностика установки
+(`vesma doctor service`) — в [getting-started.md](../../user/getting-started.md#сервис-vesma-service).
+
+## Подключение MCP
+
+**Ручная настройка MCP отменена** — не добавляйте блоки в `mcp.json` и родные
+конфиги харнесов руками. Единственный путь — утилита:
+
+```bash
+vesma integration setup              # все обнаруженные харнесы + wiring агентов, идемпотентно
+vesma integration setup -t copilot   # только один харнес
+```
+
+После обновления пакета освежите развёрнутое: `vesma integration update`.
+Копипаст-блоки для нестандартных харнесов (fallback, не основной путь):
+[`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md).
 
 ## Запуск HTTP API
 
 ```bash
 vesma serve  # uvicorn на 127.0.0.1:8787
 ```
+
+Когда работает сервис-супервайзер, ядро HTTP API уже встроено в него — отдельный
+`vesma serve` не нужен.
 
 ## Контейнер
 
@@ -100,8 +113,14 @@ podman-compose up -d
 ## Обновление
 
 ```bash
-pip install --upgrade vesma
+vesma update check    # отчёт по всем поверхностям, ничего не меняет
+vesma update apply    # pip user-site (+ npm best-effort), без промптов
 ```
+
+`apply` трогает только pip user-site (и npm, если установлен); прод-венвы,
+Go-бинарники и контейнеры никогда не обновляются автоматически. Недельная
+автоматизация: `vesma update timer install` (systemd user-таймер). Полная карта
+подкоманд — в [getting-started.md](../../user/getting-started.md#подкоманды-vesma-update).
 
 Схема хранилища мигрирует автоматически при первом запуске новой версии.
 Делайте бэкап `~/.mnemos/data/` перед мажорными обновлениями — см.
@@ -112,5 +131,7 @@ pip install --upgrade vesma
 ```bash
 vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
 vesma search "Hello"
-vesma recall --agent manual --project test
+vesma recall agent manual --project test
+vesma doctor          # база здоровья: конфиг, хранилище, MCP-транспорт, регистрации
+vesma doctor service  # сервис-установка по контракту layout v1 (DR-01…DR-13)
 ```

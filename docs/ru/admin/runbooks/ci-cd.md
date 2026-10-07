@@ -16,7 +16,7 @@ CI workflow (`.github/workflows/ci.yml`) запускается при кажд�
 | Job | Runner | Назначение |
 |---|---|---|
 | `verify` | `ubuntu-latest`, матрица Python 3.11 / 3.12 / 3.13 | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы `vesma --help` внутри образа |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы CLI внутри образа (сегодня — легаси-хук `mnemos --help`) |
 
 Job `verify` является **обязательной status check** для `main` (см.
 [Защита веток](#защита-веток)).
@@ -35,9 +35,9 @@ ruff check src/ tests/                                # lint
 ruff format --check src/ tests/                       # format
 mypy --strict src/vesma/                             # типы
 bandit -r src/ -f json -o bandit-report.json          # безопасность (статическая)
-pip-audit --ignore-vuln CVE-2026-45829                # безопасность (зависимости)
+pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146   # зависимости (два игнора, см. dependency-updates.md)
 pytest tests/ -q --tb=short                           # тесты
-pytest --cov=src/vesma --cov-fail-under=80 tests/ -q # gate по покрытию
+pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing tests/ -q   # gate по покрытию
 ```
 
 Эквивалент одной командой:
@@ -52,25 +52,28 @@ make verify
 
 ---
 
-## Воспроизведение CI локально через `act`
+## Воспроизведение CI локально
 
-[`act`](https://github.com/nektos/act) запускает workflow GitHub Actions в
-Docker локально. Байт-в-байт с GitHub-hosted runners не совпадает (использует
-меньший базовый образ), но ловит большинство синтаксических ошибок workflow и
-проблем с резолвингом зависимостей до push.
+**Основной локальный путь — `scripts/local-ci.sh`** (цели `make local-ci` /
+`make local-ci-build`): байт-в-байт репликация `verify`-job'а ci.yml — lint,
+format, mypy, bandit, pip-audit (с теми же ignore-флагами), pytest, coverage
+gate и doctor; `--build` добавляет сборку wheel/sdist как в release.yml.
+GitHub Actions заблокирован по billing (#117), поэтому merge- и release-гейты
+замыкаются этим скриптом; при возобновлении Actions он останется быстрым
+pre-push-санити.
+
+Локальная сборка образа с smoke-ом (то, что делает job `build-container`, —
+легаси-CI хук `mnemos --help` внутри образа):
 
 ```bash
-# Установка
-brew install act              # macOS
-sudo apt install act          # Debian/Ubuntu (часто старая версия — лучше бинарник)
-
-# Дефолтный runner — маленький образ; используйте 'medium' для большего соответствия:
-act -j verify --matrix python-version:3.12
+buildah bud -t mnemos:test .
+buildah from --name vesma-test mnemos:test
+buildah run vesma-test -- mnemos --help
 ```
 
-Если `act` падает на job'е `build-container`, запустите те же шаги вручную —
-`buildah` доступен из `apt` на большинстве дистрибутивов, а smoke-тест — просто
-`vesma --help` внутри собранного образа.
+[`act`](https://github.com/nektos/act) — альтернатива для прогонов workflow
+файла в Docker, когда Actions снова заработают; пока биллинг заблокирован,
+прогоны идут только через `local-ci.sh`.
 
 ---
 
@@ -169,11 +172,13 @@ Docker, чтобы избежать привилегированного кон�
 
 1. `apt-get install buildah`
 2. `buildah bud -t mnemos:test .` — сборка `Containerfile`
-3. `buildah from --name vesma-test mnemos:test` — запуск контейнера
-4. `buildah run vesma-test -- vesma --help` — smoke-тест (плюс вывод версии Python)
+3. `buildah from --name mnemos-test mnemos:test` — запуск контейнера
+4. `buildah run mnemos-test -- mnemos --help` — smoke-тест (плюс вывод версии Python)
 
-> Smoke-шаг запускает `vesma --help` внутри собранного образа, поэтому проверяет
-> CLI-точку входа, а не только базовый образ.
+> Smoke-шаг запускает CLI внутри собранного образа, поэтому проверяет
+> CLI-точку входа, а не только базовый образ. Имя `mnemos` — легаси-хук
+> точки входа, который в образе остаётся (двойной период до 6.0); canonical
+> CLI — `vesma`.
 
 При падении контейнерного job'а проверьте лог на:
 
@@ -217,11 +222,12 @@ Docker, чтобы избежать привилегированного кон�
 блока lint/format/type/security и перед тестовым шагом. Соглашения:
 
 1. Использовать `source .venv/bin/activate &&`, чтобы шаг выполнялся в проектном
-   venv (зависимости, установленные uv, живут там).
-2. Ничего не кэшировать — пусть `setup-python@v5` кэширует зависимости `pip` на
-   шаге кэша. Workflow уже закреплён на правильных extras `pyproject.toml`,
-   поэтому добавление инструмента означает добавление его в
-   `[project.optional-dependencies].dev`.
+   venv (зависимости, установленные uv, живут там; venv создаётся шагом
+   `uv venv` — только install-флоу, никаких ручных venv).
+2. Кэширование pip уже включено на шаге `setup-python` (`cache: pip`). Workflow
+   пинит ruff (`ruff>=0.15,<0.16`) под версию локального `make verify`,
+   поэтому новый инструмент = правка extras `[project.optional-dependencies].dev`
+   + при необходимости синхронный пин в шаге CI.
 3. Если шаг производит отчёт (например, `bandit-report.json`), загружайте его
    как артефакт с guard `if: failure()`, чтобы артефакт появлялся только при
    сбое.
@@ -240,10 +246,16 @@ python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 
 - **CD / deploy** — release-pipeline живёт в
   [`.github/workflows/release.yml`](../../../../.github/workflows/release.yml):
-  тег `v*.*.*` собирает wheel/sdist и прикрепляет их к GitHub Release, а также
-  пушит `ghcr.io/korrnals/vesma:$VERSION` + `:latest`. Заливка на PyPI —
-  отдельный шаг по [`pypi-publish.md`](pypi-publish.md); использование
-  контейнера — в [`container-deployment.md`](container-deployment.md).
+  тег `v*.*.*` должен собирать wheel/sdist, GitHub Release образ
+  `ghcr.io/vesmaro/vesma:$VERSION` + `:latest` (реестр исправлен с
+  доребрендингового имени `korrnals`), job `release-complete` считает релиз
+  незавершённым без любой из составляющей. Workflow заблокирован по billing
+  (#117) и не срабатывает — рабочий поезд релиза локальный:
+  `scripts/pypi-publish.sh --publish` с обязательной image-фазой
+  (`scripts/image-publish.sh`; см. [`pypi-publish.md`](pypi-publish.md),
+  «Container image»), а `scripts/local-release.sh` — устаревший fallback.
+  Использование контейнеров — в
+  [`container-deployment.md`](container-deployment.md).
 - **Self-hosted runner** — не нужен в текущем масштабе. GitHub-hosted
   `ubuntu-latest` достаточно быстр, а concurrency group держит затраты под
   контролем.

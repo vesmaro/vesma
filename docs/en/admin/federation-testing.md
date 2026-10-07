@@ -398,7 +398,7 @@ evict before continuing.
 ### k. Full roundtrip — pull, import, search on peer A
 
 Save the pull response from step f to a file, wrap the `records` array
-as a compact `mnemos.federation.v1` payload, and import it on the
+as a compact `vesmaro.federation.v1` payload, and import it on the
 laptop.
 
 ```bash
@@ -415,7 +415,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 
 # Wrap the records as a compact payload. The compact payload shape is
 # documented in src/vesma/compact.py. A minimal wrapper:
-jq '{format_version: "mnemos.federation.v1", records: .records}' \
+jq '{format_version: "vesmaro.federation.v1", records: .records}' \
   /tmp/pull-response.json > /tmp/compact-payload.json
 
 # Import into peer A's vesma

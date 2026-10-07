@@ -14,8 +14,29 @@ stable, package-qualified names. Importers use::
     from vesma._mesh_gen import core_pb2, core_pb2_grpc, fed_pb2
 
 instead of touching ``sys.path`` themselves. The generated directory
-location is resolved relative to the repo root (``federation/gen/python``)
-so the shim works both from a source checkout and after ``pip install -e``.
+location is resolved from this file's own path AND the
+``VESMA_MESH_GEN_DIR`` environment variable, in candidate order:
+
+1. **Env override** ``VESMA_MESH_GEN_DIR`` — authoritative when set (an
+   operator/diagnostic redirect must never be silently second-guessed);
+   when the named directory does not exist the resolution fails loudly
+   naming the variable, with NO fallback to the structural candidates.
+2. **Source-checkout layout** — ``src/vesma/_mesh_gen.py`` (also the
+   ``pip install -e`` shape): three ``parent`` hops reach the repo root,
+   stubs live at ``<repo>/federation/gen/python`` (issue #514 layout a).
+3. **Site-packages layout** — an installed wheel:
+   ``<venv>/lib/python3.14/site-packages/vesma/_mesh_gen.py`` (a
+   ``lib64`` symlink is resolved away first): two ``parent`` hops reach
+   ``site-packages``, stubs live at
+   ``<venv>/lib/python3.14/site-packages/federation/gen/python``
+   (issue #514 layout b; a wheel does NOT carry the gitignored stubs --
+   run ``bash scripts/gen-proto.sh`` from a source checkout and place
+   the generated directory as above, or point the env override at it).
+
+The first EXISTING candidate wins; when none exists the failure is a
+clear :class:`ImportError` enumerating every probed path and the
+generation command (issue #514: the old single-candidate resolution
+assumed the source-checkout depth and made wheel installs unfixable).
 
 This is the import strategy documented in :mod:`vesma.mesh_client`.
 Generated code is dynamically imported via :func:`importlib.import_module`,
@@ -28,16 +49,85 @@ proto-message construction sites in :mod:`vesma.mesh_client`.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from pathlib import Path
 from typing import Any, Final
 
+#: Environment override for the generated stubs directory (operators/
+#: diagnostics). Authoritative when set: see the resolution order in the
+#: module docstring; an unset-or-empty value leaves the structural
+#: candidates in charge.
+GEN_DIR_ENV_VAR: Final[str] = "VESMA_MESH_GEN_DIR"
+
+
+def _candidate_gen_dirs() -> tuple[Path, ...]:
+    """Structural candidates, in resolution order (source checkout first).
+
+    Candidate shapes (issue #514), derived from THIS file's location after
+    ``resolve()`` (follows ``lib64 -> lib`` symlinks in wheel installs):
+
+    - source checkout: ``<repo>/src/vesma/_mesh_gen.py`` ->
+      ``parents[2]`` == repo root (three ``parent`` hops: vesma -> src
+      -> ``<repo>``), stubs at ``<repo>/federation/gen/python``;
+    - site-packages: ``<venv>/lib/python3.14/site-packages/vesma/`` ->
+      ``parents[1]`` == ``site-packages`` (two ``parent`` hops), stubs at
+      ``<venv>/lib/python3.14/site-packages/federation/gen/python``.
+    """
+    here = Path(__file__).resolve()
+    return (
+        here.parent.parent.parent / "federation" / "gen" / "python",
+        here.parent.parent / "federation" / "gen" / "python",
+    )
+
+
+def _probed_listing(candidates: tuple[Path, ...]) -> str:
+    return "\n".join(f"  - {candidate}" for candidate in candidates)
+
+
+def _resolve_gen_dir() -> Path:
+    """First existing candidate wins; no candidate = loud ImportError.
+
+    The env override (``VESMA_MESH_GEN_DIR``) is checked FIRST and is
+    authoritative when set: a missing override directory is an error
+    naming the variable -- falling through to the structural candidates
+    would silently discard the operator's stated intent (the exact
+    diagnostic confusion the override exists to resolve).
+    """
+    env_value = os.environ.get(GEN_DIR_ENV_VAR, "").strip()
+    if env_value:
+        overridden = Path(env_value).expanduser()
+        if overridden.is_dir():
+            return overridden
+        raise ImportError(
+            f"{GEN_DIR_ENV_VAR}={env_value!r} — the directory does not exist. "
+            f"The override is authoritative (no silent fallback): fix the path "
+            f"(the directory must contain the generated modules, e.g. "
+            f"mnemos_core_api_pb2.py) or unset {GEN_DIR_ENV_VAR}."
+        )
+    candidates = _candidate_gen_dirs()
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    raise ImportError(
+        "gRPC generated stubs not found. Probed:\n"
+        f"{_probed_listing(candidates)}\n"
+        "Fix: from a source checkout run `bash scripts/gen-proto.sh`, then "
+        "either keep the stubs at <repo>/federation/gen/python (source "
+        "checkout) or place that directory next to site-packages "
+        "(wheel installs) — or point VESMA_MESH_GEN_DIR at the directory "
+        "containing mnemos_core_api_pb2.py."
+    )
+
+
 #: Absolute path to the gRPC-generated Python stubs directory.
 #:
-#: Resolved relative to this file: ``src/vesma/_mesh_gen.py`` ->
-#: ``../../federation/gen/python``. Kept as a resolved ``Path`` so the
-#: shim works regardless of the current working directory.
-_GEN_DIR: Path = Path(__file__).resolve().parent.parent.parent / "federation" / "gen" / "python"
+#: Resolved once at import time: the env override when set and existing,
+#: else the first existing structural candidate; no candidate at all is
+#: an :class:`ImportError` at import (fail-fast — the mesh legs cannot
+#: work without the stubs). Kept as a resolved ``Path`` so the shim works
+#: regardless of the current working directory.
+_GEN_DIR: Path = _resolve_gen_dir()
 
 
 def _ensure_gen_dir_on_path() -> None:

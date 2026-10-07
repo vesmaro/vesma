@@ -2244,6 +2244,139 @@ class TestInstructionPack:
         ).is_file(), "the sibling memory-ops instruction deploys alongside"
         assert mgr.verify("copilot").all_current, "deployed instructions verify current"
 
+    def test_memory_ops_instruction_awareness_canon(self) -> None:
+        """MNA slice mna-a-gate-canon: the awareness canon is pinned, not advice.
+
+        The G1 environment pre-flight, the G4 mechanical trigger + cross-silo
+        recipe, the «Обстановка вокруг» report block and the forensics
+        neighbor-sweep are CANON (owner directive 2026-10-05) — a silent edit
+        that drops any of them is an adoption regression, same guard shape
+        as the codegraph pin above.
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath(
+                "integrations", "instructions", "vesma-memory-ops.instructions.md"
+            )
+        )
+        text = path.read_text(encoding="utf-8")
+        # (a) G4 mechanical trigger + cross-silo recipe.
+        assert "MECHANICAL TRIGGER" in text, "G4 row must carry the mechanical trigger"
+        assert "Cross-silo sweep" in text, "the cross-silo sweep recipe must be canon"
+        # (b) G1 extension: awareness pre-flight + board read.
+        assert 'vesma_awareness(action="pre_flight"' in text, (
+            "session-start pre-flight must teach the awareness call"
+        )
+        assert "task:queue" in text, "the board read must be part of the pre-flight"
+        # (c) report block, (d) forensics gate.
+        assert "Обстановка вокруг" in text, "the report block must be canon"
+        assert "unknown actor" in text, "forensics sweep must gate the unknown-actor claim"
+        # SEC clauses (ArchCom 2026-10-05 amendment, mandatory).
+        assert "BY REFERENCE only" in text, "foreign-session content quoted by reference"
+        assert "CWE-74" in text, "the injection surface must be named"
+        assert "[unverified]" in text, "peer claims carry unverified markers"
+        assert "in MEMORY only" in text, "0-traces scoped to memory-only"
+        assert "mnemos:no-federate" in text, "awareness-derived records born no-federate"
+
+    def test_memory_ops_instruction_usage_loop_gates(self) -> None:
+        """Vitals wave 10: the G0a/G0b usage-loop gates are pinned as canon.
+
+        The usage loop (G0a assemble → model call → G0b usage report) is
+        canon for EVERY agent; a silent edit that reorders the rows or drops
+        either gate is an adoption regression, same guard shape as the
+        awareness-canon pin above. Order matters: G0a/G0b must sit BEFORE
+        the G1 row (session lifecycle order — memory enters the context
+        before it is recalled).
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath(
+                "integrations", "instructions", "vesma-memory-ops.instructions.md"
+            )
+        )
+        text = path.read_text(encoding="utf-8")
+        # Row order: G0a precedes G1 in the gate table.
+        g0a_pos = text.find("**G0a — Assemble**")
+        g0b_pos = text.find("**G0b — Usage report**")
+        g1_pos = text.find("**G1 — Recall**")
+        assert g0a_pos != -1, "the G0a Assemble gate row must exist"
+        assert g0b_pos != -1, "the G0b Usage-report gate row must exist"
+        assert g1_pos != -1, "the G1 row must still exist (untouched canon)"
+        assert g0a_pos < g1_pos, "G0a must come BEFORE the G1 row"
+        assert g0a_pos < g0b_pos, "G0a must precede G0b (assemble before report)"
+        assert g0b_pos < g1_pos, "G0b must come BEFORE the G1 row"
+        # The loop mechanics are taught: metrics_id remembered at G0a, the
+        # report call + empty-list legitimacy at G0b.
+        assert "usage_report.metrics_id" in text, (
+            "G0a must teach remembering usage_report.metrics_id"
+        )
+        assert "vesma_usage_report(metrics_id=" in text, (
+            "G0b must teach the vesma_usage_report call shape"
+        )
+        assert "empty list is legitimate" in text, "G0b must state the empty-list legitimacy"
+        assert "budget<=2048" in text, "G0a must teach the <=2048 token budget"
+        assert 'mode="sync"' in text, "G0a must teach mode=sync"
+
+    def test_context_lifecycle_skill_pins_usage_report(self) -> None:
+        """Vitals wave 10: the report leg of the usage loop lives in the skill.
+
+        The assemble leg was already documented (step 2); the post-model
+        report leg (vesma_usage_report) must be pinned too — the loop is
+        only canon when BOTH legs are named in the skill that teaches the
+        context lifecycle.
+        """
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "skills", "vesma-context-lifecycle.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert text.count("vesma_usage_report") >= 1, (
+            "the post-model usage-report leg must be documented (>=1 mention)"
+        )
+        assert "block_ids_touched" in text, "the report call shape must be shown"
+        assert "empty list is legitimate" in text, (
+            "empty-list legitimacy must be stated in the skill"
+        )
+        assert "opaque ordinals" in text, "opaque-ids note must survive edits"
+        # The assemble step must hand off the metrics_id to the report step.
+        assert "usage_report.metrics_id" in text, (
+            "the assemble step must point at usage_report.metrics_id"
+        )
+
+    def test_always_on_agents_md_awareness_canon(self) -> None:
+        """The always-loaded block carries the tightened G1/G4 rows and the report block."""
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "agents_md", "vesma-always-on.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "MECHANICAL TRIGGER" in text, "always-on G4 row must carry the trigger"
+        assert "vesma_awareness" in text, "always-on G1 row must name the pre-flight"
+        assert "Обстановка вокруг" in text, "always-on must pin the report block"
+        assert "unknown actor" in text, "always-on must pin the forensics gate"
+        # SEC clauses survive the compression (ArchCom 2026-10-05 amendment).
+        assert "BY REFERENCE" in text, "always-on must pin by-reference quoting"
+        assert "[unverified]" in text, "always-on must pin unverified markers"
+        assert "in MEMORY only" in text, "always-on must pin the 0-traces scope"
+        assert "mnemos:no-federate" in text, "always-on must pin the no-federate tag"
+
+    def test_always_on_agents_md_usage_loop(self) -> None:
+        """Vitals wave 10: the always-loaded block carries the G0 pair compressed."""
+        path = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("integrations", "agents_md", "vesma-always-on.md")
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "G0a" in text and "G0b" in text, "always-on block must name both usage-loop gates"
+        assert "usage_report.metrics_id" in text, (
+            "always-on G0a must point at the metrics_id handoff"
+        )
+
 
 class TestCanonPack:
     """W3a canon pack (vesmaro-canon v1.0.0) ships and deploys round-trip.

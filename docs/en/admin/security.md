@@ -394,7 +394,7 @@ These controls are documented in §9 and remain in force:
 vesma doctor --json | grep -i api_key   # should show SecretStr('**********')
 
 # Confirm SSRF rejection
-vesma add --url http://169.254.169.254/  # rejected, not stored
+vesma ingest url http://169.254.169.254/  # rejected, not stored
 
 # Confirm .gitignore covers secrets
 git check-ignore -v config.yaml .env     # should list .gitignore:line
@@ -499,7 +499,7 @@ into the federation batch-sync path. See
   calls `build_compact_payload()` which runs `moderate()` on every
   record: `allow` → original content in the compact summary, `redact` →
   sanitized content, `refuse` → record excluded and counted in
-  `records_refused`. The compact payload (`mnemos.federation.v1`) is
+  `records_refused`. The compact payload (`vesmaro.federation.v1`) is
   written to a file, optionally AES-256-GCM encrypted with a passphrase
   from `VESMA_EXPORT_PASSPHRASE` (never a CLI argument).
 - **Import** — `vesma sync import` reads the compact payload

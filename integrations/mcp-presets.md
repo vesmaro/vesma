@@ -9,16 +9,16 @@ Every MCP-capable harness connects to Vesma over the same stdio wire
 **Prerequisite — install Vesma (one command):**
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 ```
 
 > The MCP SDK is a core dependency (ADR-0023) — nothing extra to install.
 > Isolated variant (installs the `vesma` CLI on `PATH` without touching your
-> project environments): `uv tool install mnemos-memory-server` or
-> `pipx install mnemos-memory-server`.
+> project environments): `uv tool install vesma` or `pipx install vesma`.
 
-> ⚠️ The PyPI name is **`mnemos-memory-server`**. `pip install vesma` installs
-> an unrelated project that owns the `vesma` name on PyPI.
+> ⚠️ The PyPI name is **`vesma`** (the bare slot has been ours since the rebrand —
+> it is the primary channel). `mnemos-memory-server` remains live until deprecation
+> and installs the same server under the legacy name.
 
 No environment variables are required: the server defaults to
 `~/.mnemos/data` (store) and `~/.mnemos/vault` (Obsidian mirror) and creates
@@ -182,14 +182,8 @@ listings.
 
 ## VS Code Copilot
 
-Scripted path — merges into user- or workspace-scope `mcp.json` safely, never
-overwrites your other servers:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh | bash
-```
-
-Then **reload the VS Code window** (`Ctrl+Shift+P → Reload Window`).
+Native target (deploys the skill pack and registers MCP in one pass):
+`vesma integration setup --target copilot`. Manual path below.
 
 Manual path — add to VS Code **User** `mcp.json` (`~/.config/Code/User/mcp.json`
 on Linux/macOS) or the workspace `.vscode/mcp.json`:
@@ -223,7 +217,7 @@ Hermes does not use the stdio preset — it embeds Vesma **in-process** through
 a native `MemoryProvider` plugin (no server process at all):
 
 ```bash
-pip install mnemos-memory-server
+pip install vesma
 vesma integration setup --target hermes
 ```
 

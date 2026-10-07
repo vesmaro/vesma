@@ -66,6 +66,7 @@ from vesma.codegraph.languages import (
     is_test_file,
     language_for_path,
 )
+from vesma.codegraph.node_sources import run_node_sources
 from vesma.config import CodeGraphConfig
 from vesma.secrets_detector import detect_secrets
 from vesma.storage.code_graph_store import (
@@ -497,7 +498,13 @@ class PythonFileParser:
         extraction: _FileExtraction,
     ) -> None:
         """Single disciplined traversal: named children only; the
-        bodies of definitions recurse with the nested qname prefix."""
+        bodies of definitions recurse with the nested qname prefix.
+
+        A ``decorated_definition`` (card vesma-graph-command-route-nodes
+        fix: any ``@decorator``-carrying def/class — FastAPI endpoints,
+        typer commands, dataclasses, properties — is INVISIBLE to the
+        graph without this leg) descends into its inner definition
+        node; the decorator nodes themselves are never read (PG1)."""
         for child in block.named_children:
             ctype = child.type
             if ctype == "import_statement":
@@ -508,28 +515,55 @@ class PythonFileParser:
                 module = self._from_import(child, source)
                 if module is not None:
                     extraction.imports.append(module)
+            elif ctype == "decorated_definition":
+                for inner in child.named_children:
+                    if inner.type in (
+                        "class_definition",
+                        "function_definition",
+                        "type_alias_statement",
+                    ):
+                        self._define_and_descend(
+                            inner, source, project, rel_path, prefix, in_class, extraction
+                        )
             elif ctype in (
                 "class_definition",
                 "function_definition",
                 "type_alias_statement",
             ):
-                name_node = child.child_by_field_name("name")
-                if name_node is None:
-                    continue
-                name = _text(source, name_node)
-                self._define(child, name, source, project, rel_path, prefix, in_class, extraction)
-                body = child.child_by_field_name("body")
-                if body is not None:
-                    self._walk(
-                        body,
-                        source,
-                        project,
-                        rel_path,
-                        f"{prefix}{name}.",
-                        ctype == "class_definition" or in_class,
-                        extraction,
-                    )
+                self._define_and_descend(
+                    child, source, project, rel_path, prefix, in_class, extraction
+                )
             # comment/string/expression nodes: intentionally unread (PG1)
+
+    def _define_and_descend(
+        self,
+        child: Any,
+        source: bytes,
+        project: str,
+        rel_path: str,
+        prefix: str,
+        in_class: bool,
+        extraction: _FileExtraction,
+    ) -> None:
+        """Define one definition node, then recurse into its body with
+        the nested qname prefix (the shared leg for bare and decorated
+        definitions)."""
+        name_node = child.child_by_field_name("name")
+        if name_node is None:
+            return
+        name = _text(source, name_node)
+        self._define(child, name, source, project, rel_path, prefix, in_class, extraction)
+        body = child.child_by_field_name("body")
+        if body is not None:
+            self._walk(
+                body,
+                source,
+                project,
+                rel_path,
+                f"{prefix}{name}.",
+                child.type == "class_definition" or in_class,
+                extraction,
+            )
 
     def _define(
         self,
@@ -1149,11 +1183,25 @@ class ProjectIndexer:
         write — the previous graph survives untouched."""
         started = time.perf_counter()
         root = os.fspath(root)
-        surface = FileSurface(root).collect()
+        surface = FileSurface(root, self._config.exclude_globs).collect()
         self.check_limits(surface, root)
         result = IndexResult()
         _, extractions, records = self._parse_all(project, surface, result)
         nodes, edges = self._resolve(project, surface, extractions, root)
+        # Optional node-source extensions (the generic seam — the
+        # indexer knows the abstract contract only). Contributions ride
+        # the SAME atomic publish below: a project's graph is never
+        # half-parsed half-extension. A failing source contributes
+        # nothing and logs — the index itself never fails because of it.
+        # The path-scoped symbol map is the seam's handler-binding
+        # contract: store qnames are file-scoped, so (path, qname) is
+        # the exact address of a symbol.
+        symbols = {
+            rel: {q: n.id for q, n in ex.qname_to_node.items()} for rel, ex in extractions.items()
+        }
+        extra = run_node_sources(project, root, symbols)
+        nodes.extend(extra.nodes)
+        edges.extend(extra.edges)
         nodes.append(
             CodeGraphNode(
                 id=_node_id(project, "", "", 0),

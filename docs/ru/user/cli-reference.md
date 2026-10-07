@@ -21,8 +21,9 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | Субкоманда | Назначение |
 |------------|------------ |
 | [`add`](#add) | Создать новую запись в памяти |
+| [`ingest`](#ingest) | Ингест внешнего контента: `ingest url URL` / `ingest file PATH` |
 | [`search`](#search) | Гибридный поиск FTS5 + вектор |
-| [`recall`](#recall) | Список последних записей, опционально по агенту / проекту |
+| [`recall`](#recall) | Список последних записей; `recall agent` сужает до одного агента |
 | [`tags validate`](#tags-validate) | Проверить контракт тегов по всему vault |
 | [`tags audit`](#tags-audit) | Найти нарушения контракта тегов; `--apply` лечит (только добавление) |
 | [`workflow`](#workflow) | Жизненный цикл записи: `get` / `set` / `history` |
@@ -35,16 +36,24 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`mcp-server`](#mcp-server) | Запустить MCP stdio-сервер для VS Code Copilot |
 | [`migrate from-ai-brain`](#migrate-from-ai-brain) | Однократный импорт из устаревшей установки `ai-brain` |
 | [`auth`](#auth) | Bearer-токены (`auth token`) и TOTP 2FA (`auth totp`) |
-| [`integration`](integration-guide.md) | Развёртывание / проверка слоя интеграции (отдельная страница) |
+| [`integration`](#integration) | Развёртывание / проверка слоя интеграции (полный гайд: [integration-guide.md](integration-guide.md)) |
 | [`completion`](#completion) | Установка shell-автодополнения (bash / zsh / fish) |
-| [`doctor`](#doctor) | Диагностика установки (субкоманды `fix` / `paths`; проверки: конфиг, база, vault, …) |
-| [`update`](#update) | Проверка обновлений / обновление user-site-установки |
+| [`doctor`](#doctor) | Диагностика установки (субкоманды `fix` / `paths` / `service`; проверки: конфиг, база, vault, …) |
+| [`update`](#update) | Проверка обновлений / обновление user-site-установки (`check` / `apply` / `components` / `timer`) |
+| [`service`](#service) | Служба Vesma: `install` / `uninstall` + управление супервизором (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`) |
 | [`export`](export-import.md) | Экспорт записей в JSON / SQLite-бэкап (отдельная страница) |
 | [`import`](export-import.md) | Импорт записей из файла экспорта (отдельная страница) |
 | [`logs`](#logs) | Просмотр трассировок пайплайна |
 | [`sync`](sync.md) | Пакетная federation-синхронизация: export / import (отдельная страница) |
 | [`meta-poll`](#meta-poll) | Опрос метаданных федерации: один проход поллера вручную (S2 фаза 2) |
+| [`fetch`](#fetch) | Дозагрузка полных записей с пира федерации (S2 lazy fetch) |
 | [`scanner`](#scanner) | Фоновый сканер секретов: `run` / `status` |
+| [`graph`](#graph) | Жизненный цикл регистрации граф-проекта: `register` / `repoint` / `delete` |
+| [`agent-token`](#agent-token) | Токены W3 AgentGateway: `issue` / `rotate` / `revoke` / `list` |
+| [`backfill-embedding-ids`](#backfill-embedding-ids) | Проставить `memories.embedding_id` из векторного стора (search v2) |
+| [`edge-stats`](#edge-stats) | Обслуживание таблицы feedback-фидбека edge_stats: `stats` / `purge` |
+| [`memory`](#memory-status) | Статус подключения памяти по харнесам (`memory status`, ADR-0034) |
+| [`awareness`](#awareness) | Нативный awareness-heartbeat: `get` / `set` (переключение режима) / `stats` (метрики гейта) |
 
 > Группа `tags` также предоставляет `tags normalize` и `tags rename` (массовое переименование префиксов с dry-run); `migrate tags` — устаревший алиас для `vesma tags rename --from gcw: --to mnemos: --no-dry-run`. Префикс `mnemos:` в неймспейсе тегов — контракт данных, ребрендингом не изменяемый (решение 6.0) — переименования проектных неймспейсов его не затрагивают. `mnemos:` — канонический префикс хранения, стабильный по контракту; `vesma:` принимается как входной алиас везде (см. [tag-contract.md](tag-contract.md)).
 
@@ -99,7 +108,7 @@ VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное чита�
 
 ## `add`
 
-Создать новую запись в памяти.
+Создать новую запись в памяти (quick-capture). Ингест файлов и URL вынесен в сабкоманды — см. [`ingest`](#ingest) (реструктуризация CLI, волна W3: сабкоманда называет функцию, флаг только конфигурирует).
 
 ```text
 vesma add [CONTENT] [OPTIONS]
@@ -114,8 +123,10 @@ vesma add [CONTENT] [OPTIONS]
 | `--url / -u` | — | Получить и сохранить URL. Требует тегов. |
 | `--source / -s` | `cli` | Источник записи: `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `--type` | `note` | Тип записи: `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
-| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. |
+| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. С `--file` (устаревшим) — превью текста файла. |
 | `--config / -c` | — | Путь к `config.yaml`. |
+
+> **Устаревшие формы флагов: `--file / -f`, `--url / -u`.** Старые формы продолжают работать как скрытые депрекейтед-алиасы — поведение идентичное, плюс однострочный `[deprecated]`-хинт в stderr. Используйте `vesma ingest file PATH` / `vesma ingest url URL`; флаги не удаляются до 6.0.
 
 > **Контракт тегов.** Каждая запись должна иметь `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>`. CLI соблюдает это в strict-режиме (по умолчанию). Полная схема — в [tag-contract.md](tag-contract.md).
 
@@ -139,6 +150,56 @@ vesma add --url https://example.com/article --tags project:research agent:user v
 # Из stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
   | vesma add --tags project:vesma agent:sre vesma:bug-pattern,severity:medium
+```
+
+---
+
+## `ingest`
+
+Ингест внешнего контента в хранилище памяти: веб-страница или текст локального файла. Сабкоманды несут поведение бывших `add --url` / `add --file` (реструктуризация CLI, волна W3).
+
+### `ingest url`
+
+Загрузить веб-страницу, извлечь основной текст и сохранить как запись памяти.
+
+```text
+vesma ingest url URL [OPTIONS]
+```
+
+| Аргумент / Опция | По умолчанию | Описание |
+|------------------|-------------|---------- |
+| `URL` (позиционный) | — | URL для загрузки, извлечения и сохранения. |
+| `--tags / -T` | `""` | Теги через запятую. Обязательны (контракт тегов). |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### `ingest file`
+
+Сохранить текст локального файла как запись памяти.
+
+```text
+vesma ingest file PATH [OPTIONS]
+```
+
+| Аргумент / Опция | По умолчанию | Описание |
+|------------------|-------------|---------- |
+| `PATH` (позиционный) | — | Файл, чей текст сохраняется. |
+| `--title / -t` | авто | Краткий заголовок. Автогенерируется из контента, если не указан. |
+| `--tags / -T` | `""` | Теги через запятую. |
+| `--source / -s` | `cli` | Источник записи (те же значения, что у `add`). |
+| `--dry-run` | `false` | Проверить теги и показать статистику контекстного фильтра без сохранения. |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### Примеры
+
+```bash
+# Из URL (загружает, извлекает, сохраняет)
+vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
+
+# Из файла
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
+
+# Превью статистики фильтра для файла без сохранения
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
 ```
 
 ---
@@ -182,7 +243,7 @@ vesma search "decision" --limit 50
 
 ## `recall`
 
-Список последних записей, опционально ограниченный агентом (M3) и/или проектом.
+Список последних записей, опционально ограниченный проектом. Per-agent recall — сабкоманда `recall agent` (реструктуризация CLI W2: сабкоманда называет функцию, флаг только конфигурирует).
 
 ```text
 vesma recall [OPTIONS]
@@ -191,7 +252,6 @@ vesma recall [OPTIONS]
 | Опция | По умолчанию | Описание |
 |-------|-------------|---------- |
 | `--project / -p` | — | Slug проекта для фильтрации. |
-| `--agent / -a` | — | Slug агента для фильтрации. Активирует per-agent recall M3. |
 | `--limit / -l` | `10` | Максимум результатов. |
 | `--config / -c` | — | Путь к `config.yaml`. |
 
@@ -204,27 +264,29 @@ vesma recall [OPTIONS]
 vesma recall
 
 # Per-agent recall (M3)
-vesma recall --agent tech-writer
+vesma recall agent tech-writer
+
+# Per-agent recall с запросом
+vesma recall agent sre "deploy checklist"
 
 # Комбинированный
-vesma recall --agent sre --project vesma --limit 25
+vesma recall agent sre --project vesma --limit 25
 ```
 
 ---
 
 ## `tags validate`
 
-Проверить контракт тегов Vesma по всей существующей директории Vesma vault. Сообщает о записях, нарушающих схему M2.
+Проверить контракт тегов по всем файлам vault. Сканирует vault на теги, ломающие контракт, — неверное написание `project:`/`agent:`, заглавные буквы в слагах, пробелы вместо дефисов — и сообщает каждую нарушающую запись с причиной. Массовое исправление класса «регистр/пробелы» — парная команда `vesma tags normalize`.
 
 ```text
-vesma tags validate VAULT_PATH
+vesma tags validate VAULT_PATH [OPTIONS]
 ```
 
-| Аргумент | Описание |
+| Аргумент / Опция | Описание |
 |----------|---------- |
 | `VAULT_PATH` (позиционный) | Путь к директории Vesma vault (зеркало в markdown). |
-
-> **Статус.** Полная реализация сканирования vault ещё не подключена (`# TODO (M2): scan SQLite + vault markdown files`). Пока команда выводит заглушку. Для проверки тегов через SQLite используйте `vesma stats` и HTTP API `GET /memories?project=...`.
+| `--config / -c` | Путь к `config.yaml`. |
 
 ### Пример
 
@@ -338,39 +400,55 @@ vesma stats [OPTIONS]
 | Ключ | Значение |
 |------|--------- |
 | `status` | Всегда `ok` (сигнал живости) |
-| `version` | Версия Vesma (сейчас `4.0.0`) |
+| `version` | Версия Vesma (например `5.6.2`) |
+| `update_available` | Сводка проверки обновлений: `installed`, `latest`, `dist`, `update_available`, `checked_at` (кэш 24 ч) |
 | `data_dir` | Разрешённая директория данных |
 | `vault_path` | Разрешённая директория vault |
 | `total` | Общее количество записей (любой статус) |
 | `by_status` | Словарь `raw` / `processing` / `processed` / `published` / `archived` |
 | `vectors` | Количество векторов в локальном векторном индексе (`vectors.db`) |
+| `projects` | Словарь «slug проекта → число записей» |
+| `filter` | Состояние контекстного фильтра: `auto_filter`, счётчики `filtered`/`unfiltered`, средний процент сокращения, разбивка по профилям |
+| `embedding_status` | Провайдер эмбеддингов, число векторов, флаг деградации |
+| `processor` | Состояние конвейера знаний: глубины очередей, `pipeline_states`, время последней обработки |
+| `doc_chunk_cache_version` | Consumer-facing счётчик инвалидации doc-chunk-кэша CCR (ADR-0027) |
+| `search_health` | Доступность FTS и вектора, режим поиска, флаг осиротевших векторов |
 
 ### Пример
 
 ```bash
 vesma stats
 # status: ok
-# version: 4.0.0
-# data_dir: /home/you/.vesma/data
-# vault_path: /home/you/.vesma/vault
+# version: 5.6.2
+# update_available: {'installed': '5.6.2', 'latest': '5.6.2', 'dist': 'vesma-memory-server',
+#   'update_available': False, 'checked_at': '2026-10-06T10:04:51+00:00', 'stale': False}
+# data_dir: /home/you/.mnemos/data
+# vault_path: /home/you/.mnemos/vault
 # total: 142
-# by_status: {'raw': 5, 'processing': 0, 'processed': 12, 'published': 120, 'archived': 5}
-# vectors: 120
+# by_status: {'archived': 2, 'processed': 23, 'published': 117}
+# vectors: 117
+# projects: {'vesma': 97, 'gcw': 32, ...}
+# filter: {'auto_filter': True, 'filtered_count': 140, 'unfiltered_count': 2,
+#   'avg_reduction_pct': 0.83, 'by_profile': {'docs': 95, 'default': 44, 'code': 1}}
+# embedding_status: {'provider': 'nano', 'vectors_indexed': 117, 'degraded': False}
+# processor: {'queue_depth': 0, 'legacy_queue_depth': 0, 'refine_queue_depth': 0,
+#   'pipeline_states': {'legacy': 37, 'refined': 105}, 'last_processed_at': '...'}
+# doc_chunk_cache_version: 0
+# search_health: {'fts_available': True, 'vector_available': True, 'mode': 'hybrid',
+#   'orphaned_vectors': False}
 ```
 
 ---
 
 ## `fts`
 
-Управление FTS5-индексом. Сейчас определено одно действие: `rebuild`.
+Обслуживание FTS5-индекса — группа подкоманд с одним глаголом: `rebuild`.
 
 ```text
-vesma fts ACTION
+vesma fts rebuild
 ```
 
-| Аргумент | Описание |
-|----------|---------- |
-| `ACTION` (позиционный) | `rebuild` — пересобрать FTS5-индекс и сообщить число проиндексированных строк. Любое другое значение завершается ошибкой. |
+Прежняя позиционная форма (`vesma fts ACTION`) не изменилась — написание `rebuild` то же. Голая форма `vesma fts` показывает справку по подкомандам; неизвестный глагол — ошибка использования (exit 2).
 
 ### Пример
 
@@ -383,17 +461,22 @@ vesma fts rebuild
 
 ## `processor`
 
-Управление фоновым процессором (конвейером знаний): просмотр очереди, ручной проход, запуск и остановка фонового цикла.
+Управление фоновым процессором (конвейером знаний) — группа подкоманд: просмотр очереди, ручной проход, запуск и остановка фонового цикла.
 
 ```text
-vesma processor ACTION
+vesma processor status|run|start|stop
 ```
 
-| Аргумент | Описание |
-|----------|---------- |
-| `ACTION` (позиционный) | `status` — глубина очереди, время последней обработки, флаг запуска. `run` — один синхронный проход конвейера (cluster → synthesize → quality gate → publish). `start` — запустить фоновый процессор. `stop` — остановить. |
+| Подкоманда | Описание |
+|------------|---------- |
+| `status` | Глубина очереди, время последней обработки, флаг запуска. |
+| `run` | Один синхронный проход конвейера (cluster → synthesize → quality gate → publish). |
+| `start` | Запустить фоновый процессор. |
+| `stop` | Остановить. |
 
 Сводка `run` сообщает счётчики `clusters`, `synthesized`, `published` и `failed_quality_gate`.
+
+Прежняя позиционная форма (`vesma processor ACTION`) не изменилась — написания глаголов те же. Голая форма `vesma processor` показывает справку по подкомандам; неизвестный глагол — ошибка использования (exit 2).
 
 ### Пример
 
@@ -632,7 +715,7 @@ VESMA_AUTO_COLLECT=1 vesma mcp-server
 }
 ```
 
-Полный список инструментов — в [mcp-tools.md](mcp-tools.md), подключение к VS Code — в [getting-started.md#run-the-mcp-server](getting-started.md#подключите-ваш-харнес-mcp).
+Полный список инструментов — в [mcp-tools.md](mcp-tools.md), развертывание в харнес — в [integration-guide.md](integration-guide.md).
 
 ---
 
@@ -725,6 +808,65 @@ vesma auth token create --name "laptop" --expires 2027-01-01
 
 ---
 
+## `integration`
+
+Развёртывание и проверка интеграционного пака Vesma (инструкции, скиллы, промпты, MCP-регистрация) в обнаруженных на машине харнесах агентов (ADR-0035). `detect` печатает найденные харнессы и их пути; каждый развёртывающий глагол поддерживает `--dry-run` и альтернативный `--home` для кросс-окружений. Полный гайд с примерами — в [integration-guide.md](integration-guide.md).
+
+```text
+vesma integration detect [--home PATH]
+vesma integration setup [OPTIONS]
+vesma integration update [--target NAME] [--dry-run] [--home PATH]
+vesma integration verify [--target NAME] [--home PATH]
+vesma integration uninstall [--target NAME] [--dry-run] [--home PATH]
+```
+
+| Сабкоманда | Назначение |
+|------------|------------|
+| `detect` | Показать обнаруженные харнессы и пути развёртывания. Только чтение — префлайт перед `setup` / `update`; так же проверяется, что видит `--home`. |
+| `setup` | Полное развёртывание хоста в ОДИН непромптовый проход: файлы пака во ВСЕ обнаруженные харнессы + MCP-регистрация + подключение MCP-инструментов к агентам. Идемпотентно — повторный запуск обновляет устаревшие файлы, не дублируя. Сбой на одной цели сообщается громко и никогда не блокирует остальные (#448). |
+| `update` | Обновить уже развёрнутые файлы до текущей версии пака; по штампу версии трогаются только файлы с устаревшим штампом. |
+| `verify` | Сравнить развёрнутые файлы с поставляемым паком: `installed` (версия) / `stale` / `missing`. Exit 0 — всё актуально, 1 — есть stale или missing. Health-гейт для пака наравне с `doctor`. |
+| `uninstall` | Удалить ТОЛЬКО файлы со штампом версии пака (обеих поколений); созданные пользователем файлы никогда не удаляются. Также снимает зарегистрированную паком запись MCP-сервера (чужие записи не трогаются). |
+
+Опции `setup`:
+
+| Опция | По умолчанию | Описание |
+|-------|--------------|----------|
+| `--target / -t <имя>` | все обнаруженные | Развёртывание только в указанные харнессы; повторяемо (`all` принимается). |
+| `--dry-run` | `false` | Показать, что будет развёрнуто, без записи. |
+| `--no-mcp` | `false` | Пропустить MCP-регистрацию. |
+| `--no-wire-agents` | `false` | Пропустить подключение MCP-инструментов к агентам. |
+| `--select a,b` | — | Сузить подключение агентов до перечисленных имён. |
+| `--precise` | `false` | Использовать индивидуальные `mnemos/mnemos_*` имена инструментов вместо wildcard `mnemos/*`. |
+| `--home <каталог>` | `~` | Развёртывание в альтернативный домашний каталог (кросс-окружения). |
+
+У `update`, `verify`, `uninstall` общий набор `-t/--target`, `--dry-run` (кроме `verify`), `--home` — семантика та же.
+
+```bash
+# Префлайт: что найдено и куда развёлся бы пак
+vesma integration detect
+
+# Полное развёртывание хоста (файлы + MCP + агенты), без вопросов
+vesma integration setup
+
+# Показать развёртывание без записи
+vesma integration setup --dry-run
+
+# Только конкретные харнессы
+vesma integration setup --target copilot --target zcode
+
+# Проверить после обновления пакета
+vesma integration verify
+
+# Обновить устаревшие файлы пака
+vesma integration update --dry-run
+
+# Снять пак (только штампованные файлы)
+vesma integration uninstall --dry-run
+```
+
+---
+
 ## `completion`
 
 Установить shell-автодополнение для CLI `vesma`. Vesma использует собственный движок дополнения (скрытая команда `vesma __complete`): установщик пишет per-shell скрипты, которые опрашивают живое дерево команд, поэтому команды, вложенные подкоманды (любая глубина), имена опций и значения опций/enum дополняются **вместе с описаниями**. Описания показывают zsh и fish; readline в bash не умеет отображать описания вовсе — bash дополняет только значения.
@@ -773,6 +915,7 @@ vesma tags <TAB>
 vesma doctor [OPTIONS]
 vesma doctor fix [--dry-run] [--json]
 vesma doctor paths [--json]
+vesma doctor service [--json]
 ```
 
 | Опция | По умолчанию | Описание |
@@ -789,16 +932,28 @@ vesma doctor paths [--json]
 
 ```bash
 vesma doctor paths
-# Root:         ~/.mnemos
-# Data dir:     ~/.mnemos/data
-# Vault:        ~/.mnemos/vault
-# Logs:         ~/.mnemos/logs/vesma.log
-# Cache:        ~/.mnemos/cache
-# Completion:   ~/.mnemos/completion
-# MCP config:   ~/.config/Code/User/mcp.json
+# ── Paths ─────────────────────────────────────
+#   Root          ~/.mnemos
+#   Config        ~/.mnemos/config.yaml
+#   Data dir      ~/.mnemos/data
+#   DB            ~/.mnemos/data/mnemos.db
+#   Vault         ~/.mnemos/vault
+#   Logs          ~/.mnemos/logs/mnemos.log
+#   Cache         ~/.mnemos/cache
+#   Completion    ~/.mnemos/completion
+#   MCP config    ~/.config/Code/User/mcp.json
 ```
 
 Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции. С `--json` объект путей выводится для скриптов.
+
+### `doctor service`
+
+Проверка установки службы (layout v1 §3.10, DR-01…DR-13): манифесты компонентов, venv, юнит, окружение. **Read-only по контракту**: находка несёт серьёзность OK / WARN / FAIL и готовую команду исправления, но doctor сам ничего не исполняет. Коды выхода: `0` — всё OK, `1` — есть FAIL, `2` — только предупреждения. `--json` отдаёт находки для скриптов / CI.
+
+```bash
+vesma doctor service
+vesma doctor service --json
+```
 
 ### `doctor fix`
 
@@ -880,6 +1035,8 @@ vesma update components [--json]
 
 Устаревшие флаги-алиасы (каждый печатает одну строку `use: vesma update …` в stderr; stdout остаётся чистым): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Опции, поставленные ПЕРЕД словом сабкоманды, игнорируются с явной пометкой в stderr.
 
+Опция `--verbose` есть и на самой группе: `vesma update --verbose` печатает полный вывод pip вместо однострочной сводки по каждой поверхности (при отказе последние строки pip показываются в любом случае).
+
 Результат проверки кэшируется на 24 часа; если установленная версия новее закэшированного `latest` (сразу после само-обновления), кэш один раз синхронно перепроверяется. Если установленная версия новее всего опубликованного, отчёт пишет `newer than published latest (local build?)`.
 
 ### Строка pip-семейства алиасов
@@ -927,6 +1084,81 @@ vesma update components
 ```
 
 После успешного обновления перезапустите работающих клиентов (MCP / `serve`), чтобы подхватить новую версию.
+
+---
+
+## `service`
+
+Установка службы Vesma и управление супервизором — девять глаголов в одной группе (service-lifecycle v1). Инсталляторные глаголы готовят файлы и юнит; клиентские глаголы (`status` / `health` / `start` / `stop` / `restart` / `logs`) общаются с работающим супервизором по его control-сокету.
+
+```text
+vesma service install
+vesma service uninstall [name] [--all]
+vesma service status [component] [--socket PATH]
+vesma service health [component] [--socket PATH]
+vesma service start {component} [--socket PATH]
+vesma service stop {component} [--force] [--socket PATH]
+vesma service restart {component} [--socket PATH]
+vesma service logs {component} [--follow] [--tail N] [--socket PATH]
+vesma service run [--socket PATH] [--config PATH]
+```
+
+| Глагол | Назначение |
+|--------|----------- |
+| `install` | Установить службу: манифесты компонентов, каталоги данных, venv, юнит. |
+| `uninstall [name]` | Удалить один компонент; с `--all` — всю установку. |
+| `status [component]` | Live-состояние компонентов (или одного) в JSON. |
+| `health [component]` | Глобальное и покомпонентное здоровье — вердикт самого супервизора. |
+| `start {component}` | Запустить компонент (идемпотентно). |
+| `stop {component}` | Остановить (идемпотентно); `--force` — жёсткое убийство. |
+| `restart {component}` | Перезапустить (по контракту НЕ идемпотентно). |
+| `logs {component}` | Последние строки лога компонента; `--follow` — поток. |
+| `run` | Запустить службу в foreground: супервизор + control-сокет + in-process core. |
+
+### `service install`
+
+Идемпотентно — повторный запуск пересоздаёт каждый артефакт; ручные правки юнита перезаписываются by design (threat model «ручная правка юнита»). Внутри контейнера директивы filesystem hardening громко понижаются: маркер в юните плюс строки отчёта.
+
+### `service uninstall`
+
+Удаляет только файлы, которыми владеет install-флоу (манифест, env-файл, venv). Каталоги данных компонентов — операторские данные и сохраняются. `--all` останавливает и выключает юнит, удаляет его и все компоненты.
+
+### Клиентские глаголы: `status` / `health` / `start` / `stop` / `restart` / `logs`
+
+Все клиентские глаголы требуют работающего супервизора (`vesma service run`); при молчащем control-сокете — exit 1 с подсказкой. `--socket <path>` переопределяет сокет (тесты, мультиинстанс-машины).
+
+- `status` печатает live-состояние (running / stopped / failed плюс PID и uptime, где доступны) в JSON для каждого установленного компонента — или только для указанного аргументом.
+- `health` — вердикт супервизора (семантика healthz): `OK`, когда процесс компонента отвечает на readiness-пробу; `DEGRADED` / `FAIL` с причиной — иначе. Запускайте после `start` / `restart`, чтобы убедиться, что компонент реально поднялся.
+- `start` запускает компонент из его установленного манифеста. Уже запущенный компонент сообщается как есть, а не ошибкой — стартовые скрипты могут вызывать команду безусловно. Готовность подтверждайте `vesma service health`.
+- `stop` сначала останавливает мягко (SIGTERM, короткий grace-период); `--force` пропускает мягкую фазу и SIGKILL-ит после короткой задержки — только для зависшего процесса, так как невыполненная работа теряется. Уже остановленный компонент сообщается как есть.
+- `restart` — настоящий цикл stop-then-start, а не no-op: в отличие от `start`/`stop` он НЕ идемпотентен — повтор после потерянного ответа выполнит второй рестарт. Используйте для перезагрузки компонента после изменения конфига или манифеста.
+- `logs` печатает последние `--tail` строк (по умолчанию 100, потолок 10000) из источника логов компонента или держит поток новых строк с `--follow` / `-f`, пока компонент не остановится.
+
+### `service run`
+
+Запуск службы в foreground: супервизор + control-сокет + in-process core. Ядро memory-сервера (то же приложение, что запускает `vesma serve`) встроено В ЭТОТ ПРОЦЕСС как сердце супервизора (service-lifecycle v1 §3.1): смерть ядра = смерть супервизора (fail-fast, exit 1, юнит systemd перезапускает — механизма рестарта ядра нет намеренно). Board и дочерние компоненты едут из их манифестов. Режим single-instance: когда живой супервизор уже отвечает на сокете, команда завершается с exit 0 и сообщением.
+
+| Опция | По умолчанию | Описание |
+|-------|-------------|---------- |
+| `--socket` | дефолт сокета | Переопределение control-сокета (тесты). |
+| `--config / -c` | — | Путь к `config.yaml` (bind/port core API). |
+
+```bash
+# Установка (на хосте — юнит systemd user)
+vesma service install
+
+# Запуск службы; состоянием заведует супервизор
+vesma service run
+
+# Из другой сессии: состояние, здоровье, управление
+vesma service status
+vesma service health
+vesma service start board
+vesma service logs board --follow
+vesma service stop board
+```
+
+Диагностика установки — `vesma doctor service` (read-only, DR-01…DR-13).
 
 ---
 
@@ -996,7 +1228,99 @@ vesma scanner run --full
 
 ### Связанные ресурсы
 
-- [sync.md](sync.md#исключение-vesmano-federate) — что исключает `mnemos:no-federate`
+- [sync.md](sync.md#исключение-mnemosno-federate) — что исключает `mnemos:no-federate`
+
+---
+
+## `awareness`
+
+Операторская поверхность нативного awareness-heartbeat (ADR-0035): просмотр и
+переключение режима доставки, чтение метрик гейта волны-0 из metrics-sidecar —
+без ручной правки YAML и без сырого SQL.
+
+### `awareness get`
+
+Показывает `awareness.native_heartbeat_mode` дважды: «сырое» значение из
+найденного конфиг-файла и ЭФФЕКТИВНОЕ значение (настройки, которые загрузит
+следующий старт сервера — включая env-переопределения). Если задан
+канонический env-оверрайд `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE`, вывод его
+называет (файл > env по приоритету двух источников).
+
+```bash
+vesma awareness get
+#   config file: /home/you/.mnemos/config.yaml
+#   awareness.native_heartbeat_mode: shadow
+#   effective: shadow
+```
+
+### `awareness set`
+
+Переключает режим heartbeat end-to-end:
+
+```bash
+vesma awareness set shadow   # off | shadow | canary | on
+```
+
+Значение валидируется по рождающе-финальной лестнице режимов — неизвестное
+значение отклоняется со списком допустимых, и НИЧЕГО не записывается. Запись
+атомарна (tmp + rename) и сохраняет все остальные маппинги файла (отсутствующая
+секция `awareness:` создается аддитивно). Поскольку запущенный сервер читает
+конфиг один раз при старте, команда всегда печатает напоминание о рестарте;
+когда супервизор `vesma service` отвечает на control-сокете, в выводе назван
+точный рестарт-глагол.
+
+| Режим | Значение (ADR-0035) |
+|-------|--------------------|
+| `off` *(по умолчанию)* | Кил-свитч — контур полностью инертен. |
+| `shadow` | Волна 0: compose + события в metrics-sidecar, ничего не рендерится. |
+| `canary` | Волна 1: конверт рендерится последним `TextContent`. |
+| `on` | Волна 2: полная доставка. |
+
+### `awareness stats`
+
+Печатает метрики гейта волны-0 из таблицы `awareness_events` metrics-sidecar
+(`<data_dir>/metrics.sqlite`) через собственное подключение sink-а — без
+сырого SQL:
+
+| Вывод | Значение |
+|-------|--------- |
+| `tool_call (denominator)` | Каждый диспетчеризованный MCP-вызов — знаменатель воронки. |
+| `peer_write` | Вызовы класса записи (стартовая метка числителя свежести). |
+| `delta_available` / `heartbeat_delivery` | Срабатывания щупа и доставленные хвосты, с разрезом calm/delta. |
+| `heartbeat_suppressed` | Подавленные доставки, в разрезе причин (`rate_cap`, `probe_error`, …). |
+| `tail token cost` | Сумма и средний оценённый объём хвостов за окно (бюджетный вход). |
+
+| Опция | По умолчанию | Описание |
+|-------|-------------|---------- |
+| `--window-hours / -w` | `24` | Окно в часах (1..2160). |
+| `--project / -p` | — | Ограничить воронку одним slug-ом проекта. |
+| `--config / -c` | — | Путь к `config.yaml`. |
+
+### Пример
+
+```bash
+vesma awareness stats
+# awareness heartbeat — wave-0 funnel (window 24h)
+#   tool_call (denominator): 812
+#   peer_write: 23
+#   delta_available: 9
+#   heartbeat_delivery: 9
+#     — state: calm 2 / delta 7
+#   heartbeat_suppressed: 0
+#   conflict_hint_emitted: 1
+#   tail token cost: sum 640 over 9 deliveries (mean ~71)
+#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+```
+
+Отсутствующий sidecar печатает строку-подсказку и завершается с кодом 0
+(сломанная плоскость метрик не делает чтение с консоли фатальным). Вывод —
+только агрегаты: identity-slug-и никогда не печатаются (нулевой peer-контент,
+поза CWE-359 по ADR-0035).
+
+### Связанные ресурсы
+
+- Семантика лестницы режимов: [mcp-tools.md](mcp-tools.md#native-awareness-heartbeat-adr-0035)
+- Запись решения: [ADR-0035](../../project/adr/0035-native-awareness-delivery.md)
 
 ---
 
@@ -1024,4 +1348,4 @@ CLI не возвращает ненулевой код при «нет резу
 
 ---
 
-_Последнее обновление: 2026-10-01_
+_Последнее обновление: 2026-10-06_

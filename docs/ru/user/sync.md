@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Федерация — пакетная синхронизация (Phase 0)
 
 **🌐 Language / Язык:** English · [Русский](./sync.md)
@@ -15,7 +15,7 @@
 Пакетная синхронизация позволяет двум инстансам vesma обмениваться
 записями проектов из курируемого списка **shared_projects**. Поток:
 
-1. **Экспорт** — `vesma sync export` собирает `mnemos.federation.v1`
+1. **Экспорт** — `vesma sync export` собирает `vesmaro.federation.v1`
    compact-payload из записей проектов в `shared_projects`, пропускает
    каждую через moderation-pipeline и записывает результат в файл
    (опционально AES-256-GCM шифрование).
@@ -85,7 +85,7 @@ vesma sync export \
    `redact` → sanitized-контент, `refuse` → запись исключается и
    учитывается в счётчике.
 4. Записывает compact-payload
-   (`{"schema": "mnemos.federation.v1", "records": [...], "stats": {...}}`)
+   (`{"schema": "vesmaro.federation.v1", "records": [...], "stats": {...}}`)
    в `--output`, опционально зашифрованным.
 
 Сводка вывода:
@@ -112,8 +112,9 @@ export VESMA_EXPORT_PASSPHRASE="your-passphrase-here"
 vesma sync export --output sync.enc --encrypt
 ```
 
-Зашифрованный файл несёт magic-заголовок `VESMA1`, чтобы сторона
-импорта могла его автоматически определить.
+Зашифрованный файл несёт magic-заголовок `MNEMOS1` (историческая строка —
+формат-стабильная, не бренд), чтобы сторона импорта могла его
+автоматически определить.
 
 ---
 
@@ -136,7 +137,7 @@ vesma sync import /var/tmp/vesma-sync.json
 1. Читает файл. Если зашифрован (magic-заголовок или расширение `.enc`)
    — читает пароль из переменной, названной `--passphrase-env` (fallback
    на `VESMA_EXPORT_PASSPHRASE`).
-2. Парсит JSON, проверяет `schema == "mnemos.federation.v1"`, парсит
+2. Парсит JSON, проверяет `schema == "vesmaro.federation.v1"`, парсит
    каждую запись в `CompactRecord`.
 3. Валидирует каждую запись (переиспользует #86 import validation —
    длина контента, tag contract, длина title, schema drift,
@@ -151,7 +152,7 @@ vesma sync import /var/tmp/vesma-sync.json
 ```
 ✓ Imported: 11 records
   skipped: 1
-  format_version: mnemos.federation.v1
+  format_version: vesmaro.federation.v1
 ```
 
 ### Идемпотентность
@@ -227,7 +228,7 @@ JSONL-запись в `~/.mnemos/logs/sync-audit.jsonl`. Лог append-only —
 
 ```json
 {"timestamp": "2026-07-19T10:00:00Z", "action": "sync-export", "output": "/var/tmp/vesma-sync.json", "records_exported": 12, "records_refused": 1, "secrets_redacted": 3, "pii_anonymized": 2, "encrypted": false, "shared_projects": ["project-umbra", "project-vesma"]}
-{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "mnemos.federation.v1"}
+{"timestamp": "2026-07-19T10:05:00Z", "action": "sync-import", "source": "/var/tmp/vesma-sync.json", "records_imported": 11, "records_skipped": 1, "errors": [], "warnings": [], "encrypted": false, "format_version": "vesmaro.federation.v1"}
 ```
 
 Audit-лог — операционный след: какие проекты синхронизировались, сколько
@@ -243,19 +244,18 @@ Audit-лог — операционный след: какие проекты с
 синхронизации. Тег автоматически добавляется при записи сканером Layer 1
 (#86), когда детектируется секретный паттерн; владелец может снять его
 с явным подтверждением через `MemoryManager.remove_no_federate()`. См.
-[Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--маркер-исключения-из-федерации)
+[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации)
 для полного lifecycle.
 
 Даже без тега moderation-pipeline (Layer 3) прогоняет каждую запись при
 экспорте и отказывает записям, чей контент почти полностью
 secrets/PII — defence-in-depth, чтобы один пропущенный слой не утёк
 секрет. См. [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth).
-
 ---
 
 ## См. также
 
 - [Export & Import](./export-import.md) — полные бэкапы (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — трёхслойная модель.
-- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#vesmano-federate--маркер-исключения-из-федерации) — маркер исключения.
+- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации) — маркер исключения.
 - [MCP Tools](./mcp-tools.md) — `mnemos_export` / `mnemos_import` MCP-инструменты (MCP-поверхность для полного export/import).

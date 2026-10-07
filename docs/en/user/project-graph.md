@@ -33,8 +33,8 @@ Nodes and edges:
 
 | Kind | Examples |
 |------|----------|
-| **Nodes** | `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type` |
-| **Edges** | `CONTAINS_FILE`, `DEFINES`, `IMPORTS`, `CALLS`, `INHERITS`, `TESTS`, `USES` |
+| **Nodes** | `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type` — plus `Command` / `Route` on a defining repo (schema v2, [below](#cli-commands-and-rest-routes-in-the-graph-schema-v2)) |
+| **Edges** | `CONTAINS_FILE`, `DEFINES`, `IMPORTS`, `CALLS`, `INHERITS`, `TESTS`, `USES` — plus `INVOKES` / `HANDLES` (schema v2) |
 
 The `USES` edge is the honesty marker of the family: a call is recorded as
 `CALLS` only when the parser can prove the target; everything else that looks
@@ -76,6 +76,59 @@ through to a wrong parser. What the graph sees in a Go tree:
   (`F[T](...)`), dot- and blank-imports. The import path string is the only
   string content ever read, and only to resolve imports — it never reaches
   the store (PG1 holds for Go sources the same way it holds for Python).
+
+---
+
+## CLI commands and REST routes in the graph (schema v2)
+
+The engine's own surface is first-class graph data. When the indexed root
+**is a vesma checkout** — detected by the presence of the engine's `cli` /
+`api` package markers inside the root, never by a hardcoded path — a surface
+node-source extension contributes two more node kinds on every full index:
+
+| Kind | One node is | Example |
+|------|-------------|---------|
+| `Command` | one CLI invocation path: full command name, one-line help, option count, up to 16 compact `param → help` entries | `vesma graph delete` |
+| `Route` | one HTTP method + path: one-line description and the implementing endpoint's name | `GET /api/v1/metrics` |
+
+The data comes from the LIVE engine registries — the same typer/click tree
+the shell-completion engine walks (`vesma __complete`) and FastAPI's
+`app.routes` (every included router: sessions, auth, federation) — so there
+is no second parser to drift. Each node binds to its implementing function
+with an **`INVOKES`** (Command → handler) or **`HANDLES`** (Route →
+endpoint) edge whenever that function resolves in the indexed tree
+(import-path match first, then a unique dotted-suffix match for src-layouts;
+an unresolved handler gets NO edge — the unresolved-import honesty rule).
+
+Token economics (the reason this exists): "how do I delete a graph index"
+is ONE bounded search instead of an ~18.7k-token `--help` discovery:
+
+```
+mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
+→ 1 row: "vesma graph delete" · help: "Delete a project's graph index…"
+  options: 5 · params: {project, --force, --confirm-name, --agent, --reason}
+```
+
+Guards:
+
+- help strings are ONE-LINE only — full help text never rides a node;
+- every issued string passes the secrets detector (a hit drops the string,
+  never the node);
+- a root without the markers — any foreign repo — grows ZERO surface nodes:
+  the extension is registered once by the host and decided per-root;
+- `mnemos_project_graph_status` reports the per-kind `node_kinds` breakdown
+  so the contribution is visible, not assumed.
+
+**Cross-project agents:** commands and routes are code of the DEFINING repo.
+An agent working in another project queries them with `project_id` of the
+vesma repo's own project (the one whose registered root carries the engine),
+not of the agent's current project — then follows the `INVOKES`/`HANDLES`
+edge into the handler's code.
+
+**Existing indexes:** surface nodes land on the next FULL (re)index — the
+incremental classifier rebuilds the whole project on any file change, so
+touching a tracked file is enough; or drop the index
+(`mnemos_delete_graph_project`) and index fresh.
 
 ---
 
@@ -156,6 +209,9 @@ Behavior:
   node ids — they are file content, not graph nodes. A top-level
   `fallback_used: true` marker appears ONLY when the fallback ran (absent
   otherwise — the shape never carries null placeholders).
+  `total_matches` counts the whole answer: when the fallback answers, it
+  equals the number of literal rows returned (a non-empty fallback is
+  never reported as 0).
 - **Bounded.** The scan reuses the indexer's surface denylists
   (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles,
   secret-bearing file names are never opened), never follows symlinks,
@@ -171,6 +227,66 @@ Behavior:
 - **Knob.** `code_graph.literal_fallback` (default `true`) disables the
   leg; `search_graph` then stays symbol-only. The REST twin
   `POST /graph/search` inherits the whole behavior unchanged.
+
+---
+
+## The walk section: rent the neighborhood (PG-1, ADR-0038)
+
+A structural question — "what calls `X`, one or two hops out" — used to
+cost either a `mnemos_trace_path` call per symbol or opening whole files.
+When `code_graph.search_walk` is on, every symbol-hitting
+`mnemos_search_graph` call ALSO walks the hits' neighborhood and answers
+with a SEPARATE `walk` section:
+
+```json
+"walk": {
+  "origins": ["Base", "Base.greet", "make_base"],
+  "k": 3,
+  "nodes": [ { "id": "...", "qname": "Base", "kind": "Class", "path": "pkg/helper.py",
+               "start_line": 1, "end_line": 3, "depth": 0 }, "…"],
+  "edges": [ { "from": "...", "to": "...", "kind": "CALLS", "provenance": "tree-sitter" } ],
+  "truncated": false,
+  "epoch": 4,
+  "walk_cursor": 0,
+  "has_more": false,
+  "last_indexed_at": "2026-10-06T00:00:00+00:00"
+}
+```
+
+How it works:
+
+- **Separate, never mixed.** The walk is its own top-level section;
+  `results` keep the pinned search shape unchanged. The section appears
+  ONLY when it fired (symbol hits existed) — absent otherwise, never
+  null/empty (the `fallback_used` shape precedent). The literal-fallback
+  leg never walks (its rows carry no node ids).
+- **Origins = the quota.** `k = min(ceil(limit/5), limit//2)` top ranked
+  symbol hits become the walk origins (a pure function of `limit`).
+- **Two hops, both directions.** Nodes are PG1 metadata rows
+  (`id`/`qname`/`kind`/`path`/`start_line`/`end_line`/`depth`) — no
+  signatures, repo-relative paths — sorted by `(depth, qname)`. Edges
+  keep the trace contract (`from`/`to`/`kind`/`provenance`), walking
+  in+out per origin, depth ≤ 2, over the structural kinds
+  `CALLS` / `IMPORTS` / `INHERITS` / `USES` / `INVOKES` / `HANDLES`
+  (file-shape edges — `CONTAINS_FILE` / `DEFINES` / `TESTS` — stay out).
+- **Capped, honestly.** Per origin the shared walker enforces the
+  fanout cap (32) and the total-work cap (512 visited nodes)
+  INDEPENDENTLY of `k` + a project-boundary guard (an edge leaving the
+  project is skipped, not followed); any cap or boundary hit sets
+  `truncated: true` — the walk never pretends it showed everything.
+- **Fresh on arrival.** The section carries the graph `epoch` —
+  consumers invalidate on it; there is no TTL cache of walks.
+- **Own budget.** The walk `nodes` ride the same token contract
+  (4 bytes/token ceiling, whole-row drops) with their OWN
+  `walk_cursor` — paginate the section with `walk_cursor` the same way
+  `results` paginate with `cursor`.
+- **It prices itself.** Every walk execution writes a `search-walk` row
+  into the sidecar `graph_audit` with `out_tokens` (the answer cost) and
+  `avoided_bytes` (the source-file bytes behind the visited nodes the
+  agent would otherwise have opened whole).
+- **Knob.** `code_graph.search_walk` (default `false`) — the flag-off
+  period is the measured "search + read" baseline; turn the walk on
+  deliberately (env: `VESMA_CODE_GRAPH__SEARCH_WALK`).
 
 ---
 
@@ -255,6 +371,14 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
 - the stale index is **purged** (it describes the old tree — derived,
   rebuildable data), the auto-path suspension is lifted, and the next
   index run rebuilds fresh.
+
+A ghost can also be removed outright — `mnemos_delete_graph_project` (or
+`vesma graph delete <project>` on the CLI) drops the index and, behind the
+evidence gate (`confirm=true` + `confirm_name` echoing the project name;
+`--force --confirm-name <project>` on the CLI), the registration row
+itself. A gate-less attempt is refused and audited (`delete-refused`). A
+**live** registration (root exists on disk) keeps its row — the delete
+purges only the derived index.
 
 ---
 
@@ -342,6 +466,45 @@ for you:
 
 ---
 
+## Excluded directories (ephemeral surfaces)
+
+The indexer never enters ephemeral directories — dependency trees, build
+output, and git worktrees checked out INSIDE the registered root. The
+live case (defect 2026-10-03): a `wt/` worktree inside a project root was
+indexed like first-party sources — the file count doubled (376→746) and
+secret fixtures inside the worktree copy were re-poisoned on every index.
+
+Two layers apply, and the first one cannot be turned off:
+
+- **Built-in denylist** (matched at any nesting depth): `.git`, `.hg`,
+  `.svn`, `.tox`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`,
+  `__pycache__`, `venv`, `.venv`, `node_modules`, `dist`, `build`,
+  `target`, `site-packages`, `wt` (the `git worktree add wt/<name>`
+  convention), plus vendored trees (`vendor`, `vendored`, `third_party`,
+  `3rdparty`).
+- **`exclude_globs` knob** (`code_graph.exclude_globs`, default = the
+  ephemeral list above): prunes directories ON TOP of the denylist. A
+  bare name (`wt`) matches a directory of that name at any depth; an
+  entry containing `/` matches the repo-relative directory path
+  (`fnmatch` semantics). Setting the field REPLACES the default list —
+  but it can never lift the built-in denylist.
+
+```yaml
+code_graph:
+  exclude_globs:
+    - "wt"
+    - "gen/**"   # /-bearing globs match repo-relative dir paths
+```
+
+Environment override: `VESMA_CODE_GRAPH__EXCLUDE_GLOBS` (JSON array, e.g.
+`VESMA_CODE_GRAPH__EXCLUDE_GLOBS='["wt", "gen/**"]'`).
+
+The same exclusion drives the literal-fallback scan and the freshness
+beacon — a worktree that lands in the root after indexing never reads as
+"stale files" and never auto-triggers a reindex.
+
+---
+
 ## Configuration
 
 All flags live under `code_graph:` in `config.yaml` (see `config.example.yaml`).
@@ -353,6 +516,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `agent_registration` | `true` | Whether connected MCP agents may register roots via `vesma_register_project` (#464 — registration is a read-scope grant). `false` reserves registration to the operator CLI; a gated attempt is refused and audited (`manual-register-refused`). The `vesma graph register` path is never gated. |
 | `beacon` | `true` | One tail line in `assemble_context` output advertising graph freshness («indexed …, N/M files fresh — call vesma_search_graph»). Only when `enabled`. |
 | `literal_fallback` | `true` | Hybrid search (W-H): when a symbol search returns ZERO hits, a bounded read-only literal scan of the registered root answers `match_kind: "literal"` rows (path/line/snippet) with a `fallback_used: true` marker — every row PG4-redacted, poisoned paths never issue, scan caps at file count / 1 MiB per file / ~2 s. `false` keeps `search_graph` symbol-only. Env: `VESMA_CODE_GRAPH__LITERAL_FALLBACK`. |
+| `search_walk` | `false` | The separate `walk` section of `search_graph` (PG-1 M2, ADR-0038): when a symbol search hits, a two-level neighborhood walk (in+out, depth ≤ 2, quota `k = min(ceil(limit/5), limit//2)` origins, caps fanout 32 / total work 512 independent of `k`) answers the hits' surroundings as PG1 metadata rows in its own token-windowed section with its own `walk_cursor`, the graph `epoch` riding the payload, and a self-priced `search-walk` audit row (`out_tokens` / `avoided_bytes`). Never mixed into `results`; absent-when-empty; flag-off responses are byte-identical to the pre-walk shape. Env: `VESMA_CODE_GRAPH__SEARCH_WALK`. |
 | `auto_index` | `true` | Native auto-indexing (PG-0.5): MCP calls and `pre_llm_call` hints auto-register (manifest-gated) and index projects in the background. `false` keeps the manual tools. |
 | `auto_register_max_projects` | `64` | Global cap on auto-registered projects; past it, hints skip silently with an `auto-register-capped` audit row. |
 | `auto_reindex_min_interval_sec` | `300.0` | Minimum seconds between background auto (re)index runs per project. |
@@ -360,6 +524,7 @@ The surface is **on by default** (owner decision 2026-09-28).
 | `index_max_files` | `20000` | Hard cap on indexed files per project (fail-closed). |
 | `index_max_source_mb` | `500` | Hard cap on total source bytes per project, MiB (fail-closed). |
 | `secret_allowlist` | `[]` | Repo-relative path globs (`fnmatch`) whose files skip PG3 poison-marking at index time — the escape hatch for known-fake secret fixtures (test data, docs samples). The file is still indexed normally; a previously-poisoned allowlisted path is un-poisoned on the next index run (audited as `allowlist-unpoison`). The issuance scan (PG4) is never waived. Removing a glob is not retroactive: an un-poisoned file stays clean until its content changes and re-trips the detector at index time. `fnmatch` semantics: `*` also matches `/` (so `tests/*` reaches nested paths too). |
+| `exclude_globs` | `["wt", ".venv", "venv", "node_modules", "dist", "build", ".tox", ".git"]` | Directory globs excluded from the index surface ON TOP of the built-in denylist (see "Excluded directories" above). A bare name matches a directory at any nesting depth; a `/`-bearing entry matches the repo-relative directory path (`fnmatch`). Setting the field replaces the default list but never lifts the built-in denylist (`wt`, `node_modules`, `.git` & co. are never indexed). Env: `VESMA_CODE_GRAPH__EXCLUDE_GLOBS` (JSON array). |
 | `watch_max_registrations` | `8` | Global cap on active watch registrations per process. |
 | `watch_base_interval_sec` / `watch_interval_per_500_files` / `watch_max_interval_sec` | `5.0` / `1.0` / `60.0` | Adaptive poll interval: base + 1 s per 500 indexed files, capped. |
 
@@ -397,7 +562,9 @@ Environment overrides follow the canonical settings pattern:
 - **My project root moved on disk.** The registration goes ghost:
   `vesma_list_graph_projects` shows `root_missing: true`, indexing refuses.
   Repair with `vesma graph repoint <project> <new-root>` (#450) — the stale
-  index is purged and the next index rebuilds fresh.
+  index is purged and the next index rebuilds fresh. Not worth repairing?
+  Remove the ghost entirely: `vesma graph delete <project> --force
+  --confirm-name <project>`.
 - **A file changed after indexing.** Snippets come back with a `stale` marker
   instead of content; reindex (or let the watch poll do it) to refresh.
 - **How do I turn it all off?** `code_graph.enabled: false` — tools answer
@@ -423,6 +590,9 @@ _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 `src/vesma/codegraph/` (auto path: `autoindex.py`,
 `tests/test_codegraph_autoindex.py`); landed in PG-0 wave (#438),
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
-150cdfe). Feature map: [features.md](../features.md)._
+150cdfe). Surface nodes (schema v2): card vesma-graph-command-route-nodes,
+`src/vesmaro/codegraph/node_sources.py` (the seam) +
+`src/vesmaro/graph_surface_ext.py` (the engine's CLI/REST surface).
+Feature map: [features.md](../features.md)._
 
-_Last updated: 2026-10-03_
+_Last updated: 2026-10-04_

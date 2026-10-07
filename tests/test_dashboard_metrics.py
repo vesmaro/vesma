@@ -51,7 +51,17 @@ def tmp_settings():
 
 @pytest.fixture
 def client(tmp_settings):
-    """Yield a TestClient with an isolated MemoryManager per test."""
+    """Yield a TestClient with an isolated MemoryManager per test.
+
+    Isolation (card vesma-flaky-dashboard-combined-filters): the API
+    lifespan unconditionally starts the background processor; under
+    full-suite load its FIRST pipeline tick can be delayed until after
+    the test's POSTs and publish freshly added raw memories mid-test —
+    an order-dependent flake on every raw-status assertion. The fixture
+    stops the processor deterministically (event set + join — the loop
+    waits on that same event, so the thread is dead before the test
+    body runs); no sleeps, no retries, no production changes.
+    """
     mgr = MemoryManager(tmp_settings)
     mock_embedder = MagicMock()
     mock_embedder.embed.return_value = [0.1] * 384
@@ -67,6 +77,7 @@ def client(tmp_settings):
 
     api_main._manager = mgr
     with TestClient(test_app) as tc:
+        mgr.stop_background_processor()
         yield tc
     mgr.close()
     api_main._manager = None
@@ -382,6 +393,15 @@ class TestMemoryFilters:
         assert resp.status_code == 422
 
     def test_combined_filters(self, client):
+        """status+project+agent filters compose conjunctively.
+
+        Isolation requirement (card vesma-flaky-dashboard-combined-filters):
+        this test asserts on freshly added RAW memories — the background
+        processor must not run mid-test, or a pipeline tick would publish
+        them and flip the counts. The `client` fixture stops the
+        processor deterministically before the test body; do not bypass
+        the fixture for this test.
+        """
         _add_memory(
             client,
             "match",

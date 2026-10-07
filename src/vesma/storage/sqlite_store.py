@@ -3008,6 +3008,17 @@ class SQLiteStore:
             for r in conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
         ]
 
+    def delete_project(self, project_id: str) -> bool:
+        """Remove a project registration row (the ghost-delete surface,
+        #450 family): the row keyed by id OR unique name. Returns True
+        when a row was removed. The projects table carries no foreign
+        keys, so the delete cannot orphan referencing rows."""
+        conn = self._get_conn()
+        cur = conn.execute("DELETE FROM projects WHERE id=? OR name=?", (project_id, project_id))
+        conn.commit()
+        self._invalidate_caches()
+        return cur.rowcount > 0
+
     def _row_to_project(self, row: sqlite3.Row) -> Project:
         return Project(
             id=row["id"],

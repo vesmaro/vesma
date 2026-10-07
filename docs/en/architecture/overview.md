@@ -2,12 +2,21 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/architecture/overview.md)
 
+> This architecture snapshot is current for Vesma **5.6.2**. The normative
+> service-layer contracts (component-manifest, service-lifecycle,
+> control-socket, layout — all v1.0.0) live in the separate
+> [vesma-specs](https://github.com/vesmaro/vesma-specs) repository.
+
 ## Overview
 
 Vesma is a hybrid long-term memory system: a personal knowledge base and
 RAG store for AI agents. Primary access surfaces: CLI, HTTP API, MCP server,
-and an Obsidian-compatible vault. A Web UI is planned as a separate project
-([vesma-eyes](https://github.com/vesmaro/vesma-eyes)).
+and an Obsidian-compatible vault. On top of them sits the service layer: a
+component supervisor with a control socket and a systemd user unit
+(`vesma.service`) that keeps the core and the components alive. The
+supervisor's web panel is the `board` component; the separate frontend
+project ([vesma-eyes](https://github.com/vesmaro/vesma-eyes)) remains
+planned.
 
 ## Core Principles
 
@@ -15,42 +24,49 @@ and an Obsidian-compatible vault. A Web UI is planned as a separate project
 - **Semantic search**: vector embeddings over text data
 - **Hybrid search**: full-text search + vector similarity, relevance-ranked results
 - **Modularity**: core decoupled from interfaces; each interface is a thin adapter
-- **Local-first**: everything works locally, no mandatory cloud dependencies
-- **Extensibility**: plugin system for data sources and interfaces
+- **Local-first**: everything works locally, no mandatory cloud dependencies; network binds are loopback by default
+- **Spec-first**: contract specifications (vesma-specs) are ratified before/with the implementation, conformance runs verify the match
+- **Extensibility**: service-layer components attach via manifests, data sources via plugins
 
 ---
 
 ## Architecture (Layers)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    INTERFACES                            │
-│  ┌─────┐  ┌──────────────────────┐  ┌──────┐  ┌─────┐  │
-│  │ CLI │  │  Web UI              │  │ API  │  │ MCP │  │
-│  │Typer│  │  (planned,           │  │ REST │  │ Srv │  │
-│  │     │  │   vesma-eyes)        │  │      │  │     │  │
-│  └──┬──┘  └──────────┬───────────┘  └──┬───┘  └──┬──┘  │
-│     │               │               │          │       │
-├─────┴───────────────┴───────────────┴──────────┴───────┤
-│                    FastAPI (Core API)                    │
-│            GET/POST /memories, /search, /ingest         │
-├─────────────────────────────────────────────────────────┤
-│            CORE (MemoryManager, manager.py)             │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ │
-│  │MemoryManager │ │ SearchEngine │ │IngestionPipeline │ │
-│  │  CRUD ops    │ │ hybrid search│ │  parse & embed   │ │
-│  └──────┬───────┘ └──────┬───────┘ └────────┬─────────┘ │
-│         │                │                   │           │
-├─────────┴────────────────┴───────────────────┴──────────┤
-│                    STORAGE                               │
-│  ┌────────────────┐  ┌───────────────┐  ┌─────────────┐ │
-│  │ Obsidian Vault │  │  Vector index │  │  SQLite     │ │
-│  │ (markdown)     │  │  (vectors.db) │  │  (metadata) │ │
-│  └────────────────┘  └───────────────┘  └─────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│                    EMBEDDING                             │
-│ vesma-embed-v1 (bundled) / onnx / Ollama / sentence-tr. │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         INTERFACES                                │
+│  ┌─────┐  ┌──────────┐  ┌──────┐  ┌─────┐  ┌──────────────────┐  │
+│  │ CLI │  │ REST API │  │ MCP  │  │board│  │ federation (A2A, │  │
+│  │Typer│  │ FastAPI  │  │ stdio│  │(UI) │  │  pull, sync)     │  │
+│  └──┬──┘  └────┬─────┘  └──┬───┘  └──┬──┘  └────────┬─────────┘  │
+├─────┴──────────┴───────────┴─────────┴──────────────┴────────────┤
+│                    SERVICE LAYER (5.6)                            │
+│  systemd user unit vesma.service → Supervisor                     │
+│  ┌──────────────────┐  ┌───────────────────────────────────────┐ │
+│  │ Control socket    │  │ In-process core (the same FastAPI     │ │
+│  │ AF_UNIX, JSONL v1 │  │ app that vesma serve runs)            │ │
+│  └──────────────────┘  └───────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │ Manifest-driven children (component-manifest v1): board,   │  │
+│  │ metrics                                                     │  │
+│  └────────────────────────────────────────────────────────────┘  │
+├──────────────────────────────────────────────────────────────────┤
+│            CORE (MemoryManager, manager.py)                       │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐  │
+│  │MemoryManager │ │ SearchEngine │ │IngestionPipeline         │  │
+│  │  CRUD ops    │ │ hybrid search│ │  parse & embed           │  │
+│  └──────┬───────┘ └──────┬───────┘ └───────────┬──────────────┘  │
+├─────────┴────────────────┴─────────────────────┴─────────────────┤
+│                    STORAGE                                        │
+│  ┌────────────────┐  ┌───────────────┐  ┌─────────────────────┐  │
+│  │ Obsidian Vault │  │  Vector index │  │  SQLite             │  │
+│  │ (markdown)     │  │  (vectors.db) │  │  (metadata, A2A,    │  │
+│  │                │  │               │  │  CCR, project graph)│  │
+│  └────────────────┘  └───────────────┘  └─────────────────────┘  │
+├──────────────────────────────────────────────────────────────────┤
+│                    EMBEDDING                                      │
+│ vesma-embed-v1 (bundled) / onnx / Ollama / sentence-transformers  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -63,7 +79,7 @@ and an Obsidian-compatible vault. A Web UI is planned as a separate project
 | --- | --- | --- |
 | Obsidian Vault | Human-readable notes, markdown + frontmatter | Filesystem |
 | Vector index | Vector embeddings for semantic search | SQLite (`vectors.db`, local) |
-| SQLite | Metadata, tags, relationships, history, cache | SQLite + aiosqlite |
+| SQLite | Metadata, tags, relationships, history, A2A sessions, CCR cache, project graph | SQLite + aiosqlite (WAL) |
 
 **Obsidian compatibility**:
 - Each "memory" is a markdown file with YAML frontmatter (tags, source, created, etc.)
@@ -112,7 +128,7 @@ flowchart LR
     B --> C[Cache original\nSHA-256 keyed]
     C --> D[Embed marker\nin compressed output]
     D --> E[Compressed text\n+ marker]
-    F[mnemos_retrieve\nhash] --> G{query?}
+    F[vesma_retrieve\nhash] --> G{query?}
     G -->|no| H[Full original]
     G -->|yes| I[FTS5 snippets\nranked]
     C -.-> H
@@ -121,11 +137,11 @@ flowchart LR
 
 1. **Compress** — `apply_filter` runs the 5-stage pipeline (profile-aware: `log`, `terminal`, `code`, `docs`, `web`, `default`). Achieves 86–96% reduction on logs and JSON.
 2. **Cache** — the original uncompressed text is stored in `ccr_cache` keyed by its SHA-256 hash. Content-addressed: re-compressing the same text is a no-op.
-3. **Embed marker** — a short parseable marker is prepended to the compressed output:
+3. **Embed marker** — a short parseable marker is prepended to the compressed output. This is literal engine output, so it keeps the canonical tool name `mnemos_retrieve` (the legacy spelling in the byte output lives until 6.0):
    ```text
    [compressed: <hash> | <N>→<M> chars | retrieve via mnemos_retrieve]
    ```
-4. **Retrieve** — `mnemos_retrieve(hash)` returns the full original (zero data loss). `mnemos_retrieve(hash, query=...)` returns FTS5-ranked snippets within the cached original.
+4. **Retrieve** — `vesma_retrieve(hash)` (canonical name `mnemos_retrieve`) returns the full original (zero data loss). `vesma_retrieve(hash, query=...)` returns FTS5-ranked snippets within the cached original.
 
 #### Storage integration
 
@@ -216,11 +232,11 @@ cache_aligner:
   extract_tokens: true       # bare 20+ char opaque tokens
 ```
 
-When `cache_aligner.enabled` is `false`, `align_prefix()` returns the text unchanged with an empty `extracted` list. The MCP tool `mnemos_align_prefix` is the public surface; see [mcp-tools.md#mnemos_align_prefix](../user/mcp-tools.md#mnemos_align_prefix).
+When `cache_aligner.enabled` is `false`, `align_prefix()` returns the text unchanged with an empty `extracted` list. The MCP tool `vesma_align_prefix` (canonical name `mnemos_align_prefix`) is the public surface; see [mcp-tools.md#mnemos_align_prefix](../user/mcp-tools.md#mnemos_align_prefix).
 
 ### Output token reduction (P1-7)
 
-Output token reduction steers the caller's output style without changing what Vesma stores or returns. Three tools — `mnemos_add`, `mnemos_search`, `mnemos_recall_context` — accept two optional parameters:
+Output token reduction steers the caller's output style without changing what Vesma stores or returns. Three tools — `vesma_add`, `vesma_search`, `vesma_recall_context` (canonical names `mnemos_add`, `mnemos_search`, `mnemos_recall_context`) — accept two optional parameters:
 
 | Parameter | Values | Effect |
 |-----------|--------|--------|
@@ -248,57 +264,147 @@ See [mcp-tools.md#output-token-reduction-p1-7](../user/mcp-tools.md#output-token
 
 ---
 
-### 4. Data Sources (Ingestors)
+### 4. Service Layer (5.6)
+
+Since 5.6 the engine can run as a **service**: a supervisor keeps the core
+and the components alive under a systemd user unit. The
+[component-manifest v1](https://github.com/vesmaro/vesma-specs/tree/main/specs/component-manifest/v1),
+[service-lifecycle v1](https://github.com/vesmaro/vesma-specs/tree/main/specs/service-lifecycle/v1),
+[control-socket v1](https://github.com/vesmaro/vesma-specs/tree/main/specs/control-socket/v1) and
+[layout v1](https://github.com/vesmaro/vesma-specs/tree/main/specs/layout/v1)
+contracts are ratified at 1.0.0 in the vesma-specs repository.
+
+#### Process model
+
+`vesma service run` starts one installation:
+
+```mermaid
+flowchart TB
+    U["systemd user unit\nvesma.service"] --> S["Supervisor\n(vesma service run)"]
+    S -->|in-process, fail-fast| C["Memory core\n(the same FastAPI app\nthat vesma serve runs)"]
+    S -->|AF_UNIX control.sock| CS["Control socket\nJSONL protocol v1"]
+    CS -->|status/health/start/\nstop/restart/logs| CLI["vesma service …"]
+    S --> B["board — in-process\nweb panel, loopback\n127.0.0.1:8080"]
+    S --> M["metrics — child process\nPrometheus /metrics\n127.0.0.1:9110"]
+```
+
+- **Supervisor** — the lifecycle owner of every component: each child spawns in its own POSIX session (`setsid`, pgid == pid), a reaper thread leaves no zombies, `PR_SET_CHILD_SUBREAPER` is set, and the group-signal boundary protects the stop path. Restart policies follow the manifest tier: `core` restarts forever (exponential backoff, 30s cap, crash-loop alert after 10 attempts), `optional` lives under a rolling-window budget (5 restarts per 300s; exhaustion = one ERROR `event=degraded` line, then silent lazy retries). Start is topological over `depends_on` (independent components proceed in parallel), stop is reverse-topological — SIGTERM → manifest grace period → SIGKILL.
+- **In-process core** — the same FastAPI app `vesma serve` runs, embedded in the supervisor process as its heart (SL §3.1): death of the core = death of the supervisor (exit 1), and the unit restarts the whole installation. The multiprocess serve profile does not apply in service mode — the core is always a single process.
+- **Manifest-driven children** — every component is described by an `apiVersion: vesma.component/v1` manifest (strict validation, CM §4 error-code registry). Two pack manifests ship with the engine: `board` (an in-process web panel for the supervisor: component status, logs, manual control; loopback-only bind — anything wider fails config validation, fail-closed) and `metrics` (a child-process Prometheus exposition of engine vitals). User components install as drop-in manifests into `components.d/`, and every Python child gets its own venv.
+- **Control socket** — `AF_UNIX`/`SOCK_STREAM`, 0600 rights, at `${XDG_RUNTIME_DIR}/vesma/control.sock` (fallback `~/.local/state/vesma/run/` when `XDG_RUNTIME_DIR` is empty). JSONL envelope, version negotiation via `hello`, methods `status` / `health` / `start` / `stop` / `restart` / `logs` (+ `--follow`), an error-code registry (protocol / lifecycle / authz / infra), and `SO_PEERCRED` authentication. No TCP listener exists by construction. Client verbs: `vesma service status|health|start|stop|restart|logs [--socket PATH]`.
+- **Child FSM**: `stopped → starting → healthy` with the `degraded`, `backoff` and `blocked` branches; every transition is journalled as a structural line.
+
+#### Layout v1 — canonical paths
+
+Installation paths (do not confuse them with the memory-store legacy paths
+`~/.mnemos/` from the Configuration section):
+
+| Path | Mode | Purpose |
+|------|------|---------|
+| `~/.config/vesma/` | 0700 | service configuration root |
+| `~/.config/vesma/vesma.yaml` | — | shared config (`{config_path}`) |
+| `~/.config/vesma/components.d/` | 0700 | component manifest drop-in dir |
+| `~/.config/vesma/env/<name>.env` | 0600 | secret env files (fail-closed parsing) |
+| `~/.local/share/vesma/<name>/` | 0700 | component data |
+| `~/.local/share/vesma/venv/` | 0700 | engine (supervisor) venv |
+| `~/.local/share/vesma/venvs/<name>/bin` | 0700 | per-component Python venv (`{venv_bin}`) |
+| `${XDG_RUNTIME_DIR}/vesma/` | — | runtime: socket, pids; fallback `~/.local/state/vesma/run/` |
+| `~/.local/state/vesma/logs/<name>/` | — | files-under-state logs |
+| `~/.local/state/vesma/history/` | — | append-only supervisor journal |
+
+`vesma service install` creates everything listed, builds the venvs, deploys the pack manifests and generates the unit `~/.config/systemd/user/vesma.service` (ExecStart is one static line `<venv>/bin/vesma service run`; the generator version and downgrade markers are written into the unit). `vesma service uninstall [--all|COMPONENT]` reverses it. Inside containers (no real systemd) some sandbox directives of the unit are downgraded — every downgrade is marked with `# vesma:downgraded=` and checked against the DR-13 allowlist.
+
+#### `vesma doctor service` — the DR-01…DR-13 checks
+
+| ID | Check | What it catches |
+|----|-------|-----------------|
+| DR-01 | Rights/ownership of canonical dirs and env files | Deviation from the layout §3.2 modes (0700/0600), foreign ownership |
+| DR-02 | venv integrity | Rights, owner, freeze-vs-lock drift |
+| DR-03 | user-site leak | Clean-env import test: user-site must not leak into `sys.path` |
+| DR-04 | venv uniqueness across manifests | Two components sharing one venv |
+| DR-05 | Python version constraints | Declared `python.version` vs the actual interpreter |
+| DR-06 | venv ≠ engine venv; reserved names | A component venv colliding with the engine venv |
+| DR-07 | Unit drift | Installed `vesma.service` differs from the regenerated unit |
+| DR-08 | Control-socket liveness | Connect-probe + `hello`; no socket = supervisor not running (n/a) |
+| DR-09 | Health-port collisions | Two manifests claiming the same port |
+| DR-10 | Free space on canonical roots | WARN/FAIL thresholds on config/data/state volumes |
+| DR-11 | journald `Storage=persistent` | The supervisor journal survives a reboot |
+| DR-12 | venv read-only at runtime | `ReadOnlyPaths` in the unit; container downgrades are loud and documented |
+| DR-13 | Container downgrades within the allowlist | Only the listed sandbox-directive downgrades |
+
+---
+
+### 5. Data Sources (Ingestors)
 
 | Source | Method | Format |
 | --- | --- | --- |
 | Manual input | CLI / API | Text / Markdown |
 | Obsidian vault | File watcher (watchdog) | Markdown + frontmatter |
 | Web pages | URL → trafilatura/BeautifulSoup | HTML → clean text |
-| Files | Upload via API | PDF, TXT, MD, DOCX |
+| Files | `vesma ingest file` / API | TXT, MD, PDF (`pymupdf`), DOCX (`python-docx`) — the `[pdf]`, `[docx]` extras |
+| Documents (chunked) | `ingest_document` (MCP / REST) | Long documents, born-quarantined |
 | LLM chats | MCP / export | Dialogues |
 
-### 5. Interfaces
+### 6. Interfaces
 
 #### CLI (Typer)
 ```bash
 vesma add "Note about something important" --tags project:vesma agent:user mnemos:learning   # quick add
-vesma add --file ./document.pdf --tags project:vesma agent:user mnemos:learning              # from a file
-vesma add --url https://example.com --tags project:research agent:user mnemos:learning        # ingest a URL
+vesma ingest file ./document.pdf --tags project:vesma agent:user mnemos:learning             # from a file
+vesma ingest url https://example.com --tags project:research agent:user mnemos:learning      # ingest a URL
 vesma search "how to configure nginx"             # hybrid search (FTS5 + vector + RRF)
 vesma search "CVE" --project vesma --limit 20    # project-scoped search
-vesma recall --agent tech-writer --limit 20       # recent entries for an agent (M3)
+vesma recall agent tech-writer --limit 20         # recent entries for an agent
+vesma graph register myproj /path/to/root         # register a project-graph root
 vesma stats                                       # store statistics
-vesma serve                                       # start the HTTP API
+vesma serve                                       # start the HTTP API (foreground)
 vesma mcp-server                                  # start the MCP server (stdio)
+vesma service install                             # install the service (unit, venvs, manifests)
+vesma service status                              # component state tree
+vesma doctor                                      # health checks (+ doctor service, doctor paths)
+vesma update check                                # update surfaces on this machine
+vesma completion                                  # install shell completion
 ```
 
 #### REST API (FastAPI)
+
+Main endpoint groups (full catalogue in [http-api.md](../user/http-api.md)):
+
 ```
-POST   /memories                 — create entry
-GET    /memories                 — list (with pagination)
-GET    /memories/{id}            — get entry
-POST   /search                   — hybrid search
-POST   /ingest-url               — ingest / parse a URL
-GET    /tags                     — list tags
-POST   /reindex                  — re-index
-GET    /health                   — healthcheck
+GET    /health                            — healthcheck
+POST   /memories                          — create entry
+GET    /memories, /memories/{id}          — list, entry
+GET/POST/DELETE /memories/{id}/workflow   — workflow lifecycle
+POST   /search                            — hybrid search
+GET    /recall/agent/{name}               — per-agent recall
+GET    /tags, POST /tags/rename           — tags
+POST   /filter/{id}                       — run the context filter
+POST   /compress, /retrieve               — CCR
+POST   /context/save, /recall, /assemble, /rewrite — context operations
+POST   /hooks/{action}                    — lifecycle hooks
+POST   /ingest-url, /ingest-document      — ingest
+POST   /watch/start, /watch/stop, /watch/status     — project-graph watch poll
+GET    /api/v1/stats, /stats/timeseries, /api/v1/metrics, /metrics — stats and metrics
+POST   /reindex                           — re-index
+GET    /dlq, POST /dlq/{id}/retry         — dead-letter queue
 ```
+
+Two separate contracts sit on top: the [A2A Sessions API](a2a-sessions.md) (`/v1/sessions…`, M16) and the federated pull (`POST /api/v1/federation/pull`, per-peer bearer auth, ADR-0016).
 
 #### MCP Server
-Tools for Copilot / LLM agents (full catalogue in [mcp-tools.md](../user/mcp-tools.md)):
-- `mnemos_search` — hybrid semantic + full-text search over memory
-- `mnemos_add` — add a new entry
-- `mnemos_recall_context` — recall the session context block
-- `mnemos_list_tags` — list tags
-- `mnemos_ingest_url` — load a web page
 
-#### Web UI (planned — vesma-eyes)
+Tools for Copilot / LLM agents: **40 tools**, brand-primary manifest — with a brand configured (`VESMA_MCP_BRAND=vesma`, the default deploy channel) every tool is advertised under its `vesma_*` name; the canonical `mnemos_*` spellings remain accepted on the call path until 6.0 (the dual-prefix contract). Full catalogue in [mcp-tools.md](../user/mcp-tools.md); the main ones:
 
-A separate frontend project. Status: in development. Planned features:
-- Dashboard: statistics, recent entries, tag cloud
-- Search with filters
-- Note editor
+- `vesma_search` — hybrid semantic + full-text search over memory
+- `vesma_add` — add a new entry
+- `vesma_recall_context` / `vesma_save_context` — assemble / persist the session context
+- `vesma_assemble_context` — the context assembly pipeline (search → compress → filter → secret scan → cache align → token budget)
+- `vesma_awareness` — neighbour presence and project delta (ADR-0035/0036)
+- `vesma_index_project`, `vesma_search_graph` — the project graph (ADR-0032)
+
+#### Service CLI
+
+`vesma service install|uninstall|status|health|start|stop|restart|logs|run` — installation setup and the control plane (see the Service Layer section).
 
 ---
 
@@ -345,6 +451,8 @@ Main note content...
 
 ## Configuration
 
+Config file discovery (in priority order): explicit `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.mnemos/config.yaml`. Environment variables are canonically read with the `VESMA_` prefix (e.g. `VESMA_MNEMOS__DATA_DIR`); the deprecated `VESMARO_*` spelling stays accepted until 6.0 (the dual-prefix contract, ADR-0031).
+
 ```yaml
 # config.yaml
 vesma:
@@ -361,20 +469,27 @@ search:
   hybrid_alpha: 0.5                  # semantic search weight (0=FTS, 1=vector); 0.5 balances the RRF legs — at 0.7 vector dominance drowned FTS-rank-1 matches (issue #300)
 
 api:
-  host: 0.0.0.0
+  host: 127.0.0.1                    # loopback by default (zero-config profile, ADR-0017)
   port: 8787
 
 mcp:
   transport: stdio                   # stdio is the only implemented transport
 ```
 
+> Two path planes must not be confused: the **memory store** (vault, SQLite,
+> cache — `~/.mnemos/…` by default, legacy paths, governed by the `mnemos:`
+> section) and the **service installation** (unit, venvs, manifests — layout
+> v1, `~/.config/vesma/`, `~/.local/share/vesma/`,
+> `~/.local/state/vesma/`). See the Service Layer section.
+
 ---
 
 ## Roadmap
 
-> Snapshot of the original plan. Phases 1–2 (except PDF/DOCX parsing) have
-> shipped; Vesma is at 4.0.0. The authoritative current plan lives in
-> [PLAN.md](../../../PLAN.md).
+> Snapshot of the original plan (the MVP era). Phases 1–2 shipped in full
+> (including PDF/DOCX parsing); the service layer of Phase 3 shipped in 5.6
+> (CM/SL/CS/LY contracts ratified at 1.0.0). The authoritative current plan
+> lives in [PLAN.md](../../../PLAN.md).
 
 ### Phase 1 — MVP (shipped)
 - [x] Architecture and data models
@@ -385,18 +500,19 @@ mcp:
 - [x] Obsidian vault sync (read/write)
 - [x] REST API (FastAPI)
 
-### Phase 2 — Integrations
+### Phase 2 — Integrations (shipped)
 - [x] MCP server for Copilot
 - [x] Web scraping (ingest URLs)
-- [ ] PDF/DOCX parsing
+- [x] PDF/DOCX parsing (the `[pdf]` / `[docx]` extras)
 
-### Phase 3 — Advanced features
+### Phase 3 — Service layer and advanced features (service layer shipped)
+- [x] Service layer: supervisor, control socket, manifests, layout v1, doctor service (5.6, contracts v1.0.0)
+- [x] Project graph (ADR-0032, on by default)
+- [x] Export / Import
 - [ ] Web UI (vesma-eyes)
 - [ ] Auto-categorisation (LLM-powered)
-- [ ] Relationship graph between entries
 - [ ] Auto-summarisation of long documents
-- [x] Periodic consolidation (merge similar entries)
-- [x] Export / Import
+- [ ] Periodic consolidation (merge similar entries)
 
 ### Phase 4 — Scaling
 - [ ] Migration to PostgreSQL + pgvector (optional)

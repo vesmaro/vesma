@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -44,6 +46,7 @@ from vesma.decision_provider import (
     GoalOverlapRequest,
     IsDuplicateRequest,
     MissingEvidenceError,
+    NoFederateRecordError,
     Noul,
     RecordQualityRequest,
     Score,
@@ -469,6 +472,59 @@ def test_view_from_memory_projects_envelope_only() -> None:
     assert view.record_type == "checkpoint"
     dumped = json.dumps(view.__dict__)
     assert "quality_score" not in dumped and "embedding_id" not in dumped
+
+
+def test_no_federate_record_never_enters_prepared_state() -> None:
+    """DP-05 first line (spec §3.5, review-2): a ``no-federate`` record is
+    excluded BEFORE state assembly — the seam refuses the projection, so
+    a tagged row can never ride into a provider request (the tag binds
+    regardless of provider locality)."""
+    memory = Memory(
+        content="internal only — never federate",
+        title="t",
+        tags=["project:p", "agent:a", "mnemos:no-federate"],
+    )
+    with pytest.raises(NoFederateRecordError):
+        CanonRecordView.from_memory(memory)
+
+
+def test_provider_call_leaves_record_bytes_identical(
+    provider: DeterministicProvider,
+) -> None:
+    """DP-03 (checklist check): the record body is byte-identical before
+    and after the provider calls — the provider answers verdicts, it
+    never rewrites records."""
+    view = CanonRecordView(title="checkpoint", body="body " * 100, tags=("project:p",))
+    before = asdict(view)
+    provider.evaluate(RecordQualityRequest(), CanonState(record=view))
+    provider.evaluate(GoalOverlapRequest(), CanonState(record=view, candidate=view))
+    assert asdict(view) == before
+
+
+def test_every_answer_emits_machine_parseable_telemetry(
+    provider: DeterministicProvider, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DP-09 (spec §3.9): every answer logs ``decision primitive=…
+    provider=… question=…`` — «who took this decision» is answerable
+    from the log alone, no code access, no record content in the line."""
+    view = CanonRecordView(title="t", body="b")
+    with caplog.at_level(logging.INFO, logger="vesma.decision_provider"):
+        provider.evaluate(RecordQualityRequest(), CanonState(record=view))
+        provider.evaluate(
+            IsDuplicateRequest(), CanonState(record=view, candidate=view, similarity=0.99)
+        )
+    lines = [r.message for r in caplog.records if r.message.startswith("decision ")]
+    assert any(
+        "primitive=score" in line
+        and "provider=deterministic" in line
+        and "question=record-quality" in line
+        and "confidence=0.5" in line
+        for line in lines
+    )
+    assert any(
+        "primitive=noul" in line and "question=is-duplicate" in line and "probability=1.0" in line
+        for line in lines
+    )
 
 
 @pytest.mark.parametrize(

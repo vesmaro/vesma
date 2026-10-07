@@ -14,7 +14,7 @@ The tag contract:
 
 - Pins every entry to exactly **one project** and **one agent**
 - Optionally narrows the entry to **one task scope** (`task:`, ADR-0027)
-- Classifies the entry with at least **one Vesma subtype** (cognitive category)
+- Classifies the entry with at least **one `mnemos:` subtype** (cognitive category)
 - Enables per-agent recall (M3) and project-scoped cleanup
 - Prevents ambiguous dual-project entries (a common source of context pollution)
 
@@ -46,9 +46,9 @@ accepted as an input alias everywhere.
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory |
-| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category |
+| `mnemos:<subtype>` | see table below | **at least 1** | Cognitive category (a legacy prefix — the format-stable namespace; a valid tag is `mnemos:decision`, not `vesma:decision`). |
 
-### Vesma subtypes
+### `mnemos:` subtypes
 
 | Subtype | When to use |
 |---------|-------------|
@@ -59,6 +59,7 @@ accepted as an input alias everywhere.
 | `rule` | Hard constraints and invariants (from instructions files, etc.) |
 | `open-question` | Unresolved questions requiring future investigation |
 | `checkpoint` | Mid-session snapshots for compaction survival |
+| `synthesized` | Records synthesised by the knowledge pipeline (the synthesis worker, not an authoring agent) |
 | `legacy` | Migrated entries from ai-brain or pre-contract stores |
 | `no-federate` | **Exclusion marker** — record is excluded from all external exchange (batch export + mediated pull). See `mnemos:no-federate` below. |
 
@@ -259,7 +260,7 @@ mnemos_add(
 
 ---
 
-## Bulk tag rename (`gcw:` → `vesma:` and other prefix changes)
+## Bulk tag rename (`gcw:` → `mnemos:` and other prefix changes)
 
 The `vesma tags rename` command (and the equivalent `mnemos_tags_rename`
 MCP tool / `POST /tags/rename` HTTP endpoint) bulk-renames tags matching a
@@ -340,16 +341,16 @@ FTS5-safe `UPDATE` (the `memories_au` trigger fires), so the external-content
 index stays consistent. The contract gate differs by action:
 
 - `rename` validates in **lax** mode — it is a prefix swap (e.g.
-  `gcw:` → `vesma:`) that preserves required tags, so lax is the
+  `gcw:` → `mnemos:`) that preserves required tags, so lax is the
   non-corrupting mode there.
 - `remove` / `add` validate the resulting tag set in **strict** mode — a
   contract-breaking result (e.g. removing the last `project:` tag, or adding
-  an invalid `vesma:` subtype / a malformed slug) is rejected per memory with
+  an invalid `mnemos:` subtype / a malformed slug) is rejected per memory with
   an entry in `errors` and the write is **skipped** for that memory, rather
   than corrupting the store.
 
 ```
-mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
+mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
 mnemos_tags(action="remove", tags=["severity:high"], dry_run=False)
 mnemos_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
 mnemos_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
@@ -371,8 +372,8 @@ notice is added yet (that follows one release after the pilot lands).
 empty target as "magic". Because both validate the resulting set in strict
 mode, any contract-breaking result is rejected per memory with an entry in
 `errors` and the write is skipped for that memory: removing the last
-`project:`/`agent:`/`vesma:` tag, adding a second `project:` tag, adding an
-invalid `vesma:` subtype, adding a malformed slug, or adding a tag without a
+`project:`/`agent:`/`mnemos:` tag, adding a second `project:` tag, adding an
+invalid `mnemos:` subtype, adding a malformed slug, or adding a tag without a
 `:` prefix. `rename` stays lax (prefix swaps preserve required tags).
 
 ---
@@ -384,9 +385,10 @@ ai-brain had no required tag schema. Migrating:
 1. Run `vesma migrate from-ai-brain` — copies ai-brain SQLite to Vesma store.
 2. Existing entries without `project:` / `agent:` get tag `mnemos:legacy` appended
    and are stored with `strict_tags=False`.
-3. Check the contract with `vesma tags validate` (the full vault scan is
-   not yet wired in — inspect entries via `vesma stats` or `GET /memories`
-   meanwhile, see [cli-reference.md](cli-reference.md#tags-validate)).
+3. Check the contract with `vesma tags validate` (vault walk) or
+   `vesma tags audit` — a report over every SQLite store entry, with
+   `--apply` for additive healing (see
+   [cli-reference.md](cli-reference.md#tags-audit)).
 4. Edit entries manually to apply best-effort defaults
    (`project:unknown`, `agent:unknown`).
 5. Flip `strict_tag_contract=True` in `~/.mnemos/config.yaml` once clean.
@@ -407,7 +409,7 @@ Common messages:
 |-----------------|-------|
 | `exactly one project:` | 0 or ≥2 `project:` tags |
 | `exactly one agent:` | 0 or ≥2 `agent:` tags |
-| `at least one vesma:` | No `vesma:` tag present |
+| `at least one mnemos:` | No `mnemos:` tag present (the validator's real message fragment) |
 | `invalid mnemos: subtype` | Subtype not in allowed set |
 | `invalid vesma: alias` | A `vesma:`-spelled tag whose subtype is not in the allowed set (see the input alias above) |
 | `invalid slug for project:` | Slug contains uppercase or special chars |

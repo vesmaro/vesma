@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Export & Import
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/export-import.md)
@@ -115,9 +115,9 @@ prepended to the ciphertext so the file is self-contained for decryption.
 | Interactive prompt | (default when `--encrypt` is set) | Manual backups |
 | File | `--passphrase-file /path/to/key` | CI / scripting |
 
-For the HTTP API, the passphrase is sent in the `X-Vesma-Passphrase`
-header — never in the request body — so it is not logged as a request
-parameter.
+For the HTTP API, the passphrase is sent in the `X-Mnemos-Passphrase`
+header (a historical, format-stable name — not a brand mark) — never in
+the request body — so it is not logged as a request parameter.
 
 ---
 
@@ -144,6 +144,15 @@ daily snapshot.
 | **merge** | `--mode merge` (default) | Insert memories whose ID is absent; skip existing (or update with `--overwrite`). Projects are merged. Vectors regenerate for published memories. | No — idempotent |
 | **restore** | `--mode restore --confirm` | Wipe all memories, vectors, and projects, then import. For SQLite, raw DB files are replaced (after an optional backup). | **Yes — requires `--confirm`** |
 | **dry-run** | `--dry-run` | Validate the export file without writing anything. Works with both modes. | No |
+
+> **Untrusted imports.** By default an import is treated as
+> **UNTRUSTED** input: server-minted canon-line keys (checkpoint stamps,
+> the checkpoint-type canon envelope, gate-owned canon warnings) are
+> stripped from every imported row's metadata — a forged export file
+> must never land stamps as if the server had minted them itself.
+> Client task/decision/report envelopes persist. The
+> `--trusted-restore` flag skips the strip — the operator asserts the
+> export is a trusted self-backup.
 
 ### merge — idempotent
 
@@ -244,6 +253,7 @@ vesma import SOURCE [OPTIONS]
 | `--dry-run` | off | Validate without writing |
 | `--passphrase-file` | (prompt) | Read decryption passphrase from this file |
 | `--backup-dir` | (none) | Back up current DB here before restore |
+| `--trusted-restore` | off | Operator asserts the export is a trusted self-backup: server-minted canon keys are kept verbatim. Without the flag the import is UNTRUSTED and those keys are stripped (see Import modes). |
 | `--config`, `-c` | (auto) | Path to config.yaml |
 
 ---
@@ -282,9 +292,10 @@ Stream an export as a file download.
 | `since` | string\|null | `null` | ISO date lower bound |
 | `until` | string\|null | `null` | ISO date upper bound |
 
-**Encryption passphrase** — pass via the `X-Vesma-Passphrase` header.
-If `encrypt: true` and the header is missing, the endpoint returns
-`400` with `{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
+**Encryption passphrase** — pass via the `X-Mnemos-Passphrase` header
+(a historical, format-stable name — not a brand mark). If `encrypt:
+true` and the header is missing, the endpoint returns `400` with
+`{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
 
 **Response** — `StreamingResponse` with `Content-Disposition:
 attachment; filename="vesma-export.<suffix>"`. The suffix depends on
@@ -301,7 +312,7 @@ Upload an export file as multipart form data and import it.
 | `overwrite` | query | bool | `false` | Update existing in merge mode |
 | `confirm` | query | bool | `false` | Required for `restore` |
 | `dry_run` | query | bool | `false` | Validate without writing |
-| `X-Vesma-Passphrase` | header | string | (none) | Decryption passphrase |
+| `X-Mnemos-Passphrase` | header | string | (none) | Decryption passphrase |
 
 **Response** (`200 OK`):
 
@@ -346,7 +357,7 @@ vesma import backup-20260620.tar.gz.enc --mode restore --confirm \
 vesma export --format json --project vesma --output vesma-project.json
 
 # Target instance
-vesma import mnemos-project.json --mode merge
+vesma import vesma-project.json --mode merge
 ```
 
 ### Periodic incremental backup (cron)

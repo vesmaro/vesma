@@ -12,9 +12,10 @@ Covers:
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -24,6 +25,7 @@ from vesma.api import main as api_main
 from vesma.api.main import app, lifespan
 from vesma.config import Settings
 from vesma.manager import MemoryManager
+from vesma.models import TagContractError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -120,6 +122,21 @@ class TestMemories:
         assert data["content"] == "Test memory"
         assert "project:mnemos" in data["tags"]
 
+    def test_create_memory_missing_required_tag_maps_to_422(self, client):
+        # #422/#432 defect class: a tag-contract violation (missing the
+        # required mnemos: scope) is a CLIENT error — 422 carrying the
+        # contract error string, never a raw 500.
+        resp = client.post(
+            "/memories",
+            json={
+                "content": "Broken tags",
+                "tags": ["project:mnemos", "agent:reviewer"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
     def test_get_memory(self, client):
         # Create first
         create_resp = client.post(
@@ -171,6 +188,97 @@ class TestMemories:
         resp = client.get("/memories?status=raw")
         assert resp.status_code == 200
         assert all(m["status"] == "raw" for m in resp.json())
+
+
+# ---------------------------------------------------------------------------
+# Ingest tag-contract 422 mapping (#422/#432 defect class)
+# ---------------------------------------------------------------------------
+
+
+class TestIngestTagContract:
+    """The ingest routes must map a tag-contract ``ValueError`` to 422 —
+    same client-error discipline as ``create_memory`` — never a raw 500."""
+
+    # Hermeticity (card vesma-hermetic-ingest-url-tests): the SSRF guard
+    # resolves DNS for hostname URLs (socket.getaddrinfo) BEFORE the
+    # mocked httpx client is used — an offline run would turn these
+    # tests into failures. A PUBLIC literal IP passes the guard's
+    # literal branch (private/TEST-NET literals are refused) with NO
+    # DNS at all; the fetch itself is mocked, so nothing connects.
+    INGEST_HOST = "93.184.216.34"
+
+    def test_ingest_url_missing_required_tag_maps_to_422(self, client):
+        # A tag-contract violation (missing the required mnemos: scope) is
+        # a CLIENT error — 422 carrying the contract error string verbatim.
+        resp = client.post(
+            "/ingest-url",
+            json={
+                "url": f"https://{self.INGEST_HOST}/page",
+                "tags": ["project:test", "agent:test"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
+    def test_ingest_url_valid_tags_still_ingest(self, client):
+        # Happy path: contract-valid tags ingest normally (201, mocked
+        # fetch — no network, no DNS: public literal-IP host).
+        trafilatura_stub = MagicMock()
+        trafilatura_stub.extract.return_value = "extracted page content"
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch.dict(sys.modules, {"trafilatura": trafilatura_stub}),
+        ):
+            mock_client = MagicMock()
+            mock_resp = MagicMock()
+            mock_resp.text = "page body"
+            mock_resp.status_code = 200
+            mock_resp.headers = {}
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+
+            resp = client.post(
+                "/ingest-url",
+                json={
+                    "url": f"https://{self.INGEST_HOST}/docs",
+                    "tags": ["project:test", "agent:test", "mnemos:learning"],
+                },
+            )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["id"]
+        assert self.INGEST_HOST in data["url"]
+
+    def test_ingest_document_missing_required_tag_maps_to_422(self, client):
+        # Same discipline for the ADR-0027 document-ingest twin: the
+        # contract ValueError must surface as 422, not 500.
+        resp = client.post(
+            "/ingest-document",
+            json={
+                "text": "# A\n\nBody text.",
+                "doc_id": "tagcontract-doc",
+                "tags": ["project:test", "agent:test"],
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "missing required tag: mnemos:<subtype>" in detail
+
+    def test_ingest_document_valid_tags_still_ingest(self, client):
+        # Happy path: contract-valid tags ingest normally (201, Ф3 shape).
+        resp = client.post(
+            "/ingest-document",
+            json={
+                "text": "# A\n\nBody text.",
+                "doc_id": "tagcontract-doc",
+                "tags": ["project:test", "agent:test", "mnemos:learning"],
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["doc_id"] == "tagcontract-doc"
+        assert data["chunks_total"] >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -643,7 +751,164 @@ class TestVesmaTagInputAlias:
         results = resp.json()
         assert len(results) == 1
         assert "quuxly" in results[0]["content"]
-        resp_legacy = client.post(
-            "/search", json={"query": "quuxly", "tags": ["mnemos:learning"]}
-        )
+        resp_legacy = client.post("/search", json={"query": "quuxly", "tags": ["mnemos:learning"]})
         assert resp_legacy.json() == results
+
+
+# Bulk tags REST twins (#454 tail): /api/v1/tags/add, /api/v1/tags/remove
+# ---------------------------------------------------------------------------
+
+
+class TestTagsAddRemoveTwins:
+    """REST twins of the grouped ``vesma_tags`` MCP tool actions
+    ``add``/``remove`` (the #454 tail). Coverage per twin: happy path,
+    the contract surface (per-row refusals ride the report at 200 — MCP
+    parity; an escaping contract ``ValueError`` maps to 422, never a raw
+    500) and the project/agent filter scoping."""
+
+    def _seed(self, client: TestClient, agent: str = "twins-agent") -> str:
+        resp = client.post(
+            "/memories",
+            json={
+                "content": f"tags-twin seed {agent}",
+                "tags": ["project:twins-proj", f"agent:{agent}", "mnemos:decision"],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    def _tags_of(self, client: TestClient, memory_id: str) -> list[str]:
+        resp = client.get(f"/memories/{memory_id}")
+        assert resp.status_code == 200, resp.text
+        return list(resp.json()["tags"])
+
+    def test_add_twin_happy(self, client):
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "agent": "twins-agent",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["action"] == "add"
+        assert body["changed"] == 1
+        assert body["dry_run"] is False
+        assert "severity:low" in self._tags_of(client, mid)
+
+    def test_remove_twin_happy(self, client):
+        mid = self._seed(client)
+        client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        resp = client.post(
+            "/api/v1/tags/remove",
+            json={
+                "tags": ["severity:low"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["action"] == "remove"
+        assert body["changed"] == 1
+        assert "severity:low" not in self._tags_of(client, mid)
+
+    def test_add_twin_default_is_dry_run(self, client):
+        """Boundary: the write twin is inert unless the caller says
+        ``dry_run=false`` explicitly (same default as the MCP tool)."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={"tags": ["severity:low"], "project": "twins-proj"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert "severity:low" not in self._tags_of(client, mid)
+
+    def test_add_twin_contract_refusal_rides_the_report(self, client):
+        """An invalid ``mnemos:`` subtype is refused per memory and
+        reported in ``errors`` at HTTP 200 — MCP parity: the report is
+        the error channel, the store is not corrupted."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={
+                "tags": ["mnemos:bogus_subtype"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"], f"expected per-memory contract errors, got {body}"
+        assert "mnemos:bogus_subtype" not in self._tags_of(client, mid)
+        assert "mnemos:decision" in self._tags_of(client, mid)  # store intact
+
+    def test_remove_twin_last_project_tag_blocked(self, client):
+        """Removing the last ``project:`` tag breaks the tag contract —
+        refused per memory in the report, never written."""
+        mid = self._seed(client)
+        resp = client.post(
+            "/api/v1/tags/remove",
+            json={
+                "tags": ["project:twins-proj"],
+                "project": "twins-proj",
+                "dry_run": False,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"], f"expected contract refusals, got {body}"
+        assert "project:twins-proj" in self._tags_of(client, mid)  # not corrupted
+
+    def test_add_twin_escaping_contract_error_maps_to_422(self, client, monkeypatch):
+        """The #422/#432 defect class stays out of the new routes: a
+        ``TagContractError`` escaping the manager maps to 422 with the
+        same message, never a raw 500."""
+
+        def boom(*args: object, **kwargs: object) -> dict[str, object]:
+            raise TagContractError("tag must have a prefix (contain ':'): 'bogus'")
+
+        mgr = api_main._manager
+        assert mgr is not None
+        monkeypatch.setattr(mgr, "tags_add", boom)
+        resp = client.post("/api/v1/tags/add", json={"tags": ["severity:low"]})
+        assert resp.status_code == 422
+        assert "prefix" in resp.json()["detail"]
+
+    def test_remove_twin_escaping_contract_error_maps_to_422(self, client, monkeypatch):
+        def boom(*args: object, **kwargs: object) -> dict[str, object]:
+            raise ValueError("strict tag contract violated: no project: tag left")
+
+        mgr = api_main._manager
+        assert mgr is not None
+        monkeypatch.setattr(mgr, "tags_remove", boom)
+        resp = client.post("/api/v1/tags/remove", json={"tags": ["severity:low"]})
+        assert resp.status_code == 422
+        assert "contract" in resp.json()["detail"]
+
+    def test_agent_filter_scopes_the_operation(self, client):
+        """The ``agent`` filter passes through the route untouched: only
+        the scoped agent's memories change (the MCP surface semantics)."""
+        mid_a = self._seed(client, agent="agent-a")
+        mid_b = self._seed(client, agent="agent-b")
+        resp = client.post(
+            "/api/v1/tags/add",
+            json={"tags": ["severity:low"], "agent": "agent-a", "dry_run": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["changed"] == 1
+        assert "severity:low" in self._tags_of(client, mid_a)
+        assert "severity:low" not in self._tags_of(client, mid_b)

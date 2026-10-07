@@ -8,7 +8,7 @@ Vesma speaks the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP
 
 The server is defined in `src/vesma/mcp_server.py`. Every tool below is registered with the `@server.list_tools()` decorator and dispatched by `call_tool()`.
 
-For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp-server](getting-started.md#connect-your-harness-mcp). For programmatic access, the same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
+For a quick start, deploy through the [integration guide](integration-guide.md) (the deploy utility). The same capabilities are also available over HTTP — see [http-api.md](http-api.md). For the tag schema enforced by most tools, see [tag-contract.md](tag-contract.md).
 
 ---
 
@@ -23,6 +23,8 @@ For a quick start on wiring it into VS Code, see [getting-started.md#run-the-mcp
 | Encoding | UTF-8, JSON |
 
 The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on stdin.
+
+> **Tool prefix and branding.** The canonical tool names inside the code are `mnemos_*`; with `VESMA_MCP_BRAND=vesma` set, the manifest advertises them under the brand prefix `vesma_*` — and the client sees one set (owner ruling 2026-10-01: a doubled `mnemos_*`/`vesma_*` list confuses clients). The `mnemos_*` entries in the catalogue below are the legacy spellings, still ACCEPTED on the call path until 6.0; calls normalize to the canonical name before dispatch. The deprecated `VESMARO_MCP_BRAND` variable is accepted until 6.0 as well.
 
 ---
 
@@ -253,7 +255,7 @@ When `query` is omitted, the tool returns recent entries (recency-ordered). When
 ### Related
 
 - HTTP equivalent: [`GET /recall/agent/{name}`](http-api.md#get-recallagentname--agent-recall)
-- CLI equivalent: [`vesma recall --agent <slug>`](cli-reference.md#recall)
+- CLI equivalent: [`vesma recall agent <slug>`](cli-reference.md#recall-agent)
 
 ---
 
@@ -644,7 +646,7 @@ Fetch a web page, extract its main content (via `trafilatura`), and save it as a
 
 ### Related
 
-- CLI equivalent: [`vesma add --url <URL>`](cli-reference.md#add)
+- CLI equivalent: [`vesma ingest url <URL>`](cli-reference.md#ingest-url)
 - HTTP equivalent: [`POST /memories` with manual content](http-api.md#post-memories--create-memory)
 - HTTP equivalent: [`POST /ingest-url`](http-api.md#post-ingest-url--fetch-and-save-a-web-page)
 - Security: [security.md](../admin/security.md#2-ssrf-prevention-memorymanager_validate_url)
@@ -1017,7 +1019,16 @@ fixtures, not a waiver of the issuance scan (PG4).
 
 Search the project graph by name / qualified name / path (substring). Ranking BEFORE the budget cut: exact hits outrank prefix hits, prefix outranks substring. Token contract applies.
 
-**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
+**Hybrid literal fallback (W-H).** When the symbol graph returns ZERO hits, a bounded read-only literal scan of the registered project root answers content rows instead of an empty result: rows with `match_kind: "literal"` carry `path` / `line` / `snippet` (repo-relative, trimmed, ≤ 240 chars; max 20 rows; no node ids), and the payload gains a top-level `fallback_used: true` marker — present ONLY when the fallback ran (absent on symbol hits, never null). The scan reuses the indexer's denylists (`.git`, `.venv`, `node_modules`, vendored trees, dotfiles, secret-bearing names are never opened), never follows symlinks, skips binaries and files > 1 MiB, and stops at hard caps (file count / ~2 s — a capped scan is logged as incomplete). Every literal row passes the same PG4 secrets detector as snippet issuance: a finding drops the row; poisoned paths (PG3) never issue content; a scan that cannot complete safely degrades to a no-fallback empty answer. Symbol rows carry the additive `match_kind: "symbol"`. `total_matches` counts the WHOLE answer set — when the fallback answers, it counts the literal rows returned (a non-empty fallback is never reported as `total_matches: 0`). Disable with `code_graph.literal_fallback: false`. The REST twin `POST /graph/search` inherits all of it unchanged.
+
+**Flag-gated walk section (PG-1 M2, ADR-0038).** When `code_graph.search_walk` is on (default OFF — the flag-off period is the measured «search + read» baseline; with the flag off the response is byte-identical to the pre-walk shape), every symbol-hitting search ALSO answers a SEPARATE `walk` section — the hits' two-level neighbourhood, never mixed into `results`, present ONLY when it fired (symbol hits existed; the literal leg never walks):
+
+- **`origins`** — the quota `k = min(ceil(limit/5), limit//2)` top ranked symbol hits (a pure function of `limit`; the section also carries `k`).
+- **`nodes`** — PG1 metadata rows only (`id`/`qname`/`kind`/`path`/`start_line`/`end_line`/`depth`): no signatures, repo-relative paths, sorted `(depth, qname)`; the walk runs **in+out** from every origin (callers AND callees in one answer), depth ≤ 2, over the structural kinds `CALLS`/`IMPORTS`/`INHERITS`/`USES`/`INVOKES`/`HANDLES`.
+- **`edges`** — the traversed edges in trace contract form (`from`/`to`/`kind`/`provenance`), deduplicated across origins; riding outside the node budget, bounded by the walker caps (fanout 32 / total work 512 per origin walk, standing INDEPENDENTLY of `k`) and the project-boundary guard (an edge leaving the project is skipped, not followed) — any cap/boundary hit sets **`truncated: true`**.
+- **`epoch`** — the graph epoch rides the payload (consumers invalidate on it; no TTL cache exists).
+- **Own token window.** The `nodes` rows ride the same token contract under their OWN budget with their own **`walk_cursor`** / `has_more` (pass `walk_cursor` to page the section; strictly advancing, whole-row drops).
+- **Self-priced audit.** Every walk execution writes its own `search-walk` `graph_audit` row with the economics pair `out_tokens` (the issued answer cost at the 4 B/token ceiling) and `avoided_bytes` (the summed source-file sizes behind the visited nodes).
 
 ### Input
 
@@ -1030,6 +1041,7 @@ Search the project graph by name / qualified name / path (substring). Ranking BE
 | `kind` | string | no | — | Filter by node kind: one of `Project`, `File`, `Module`, `Class`, `Function`, `Method`, `Type`. |
 | `limit` | integer | no | `50` | Max ranked rows per page (hard page ceiling 200). |
 | `cursor` | integer | no | `0` | Page cursor from the previous call. |
+| `walk_cursor` | integer | no | `0` | Walk-section page cursor from the previous call (only meaningful when `code_graph.search_walk` is on). |
 | `max_output_tokens` | integer | no | `3200` | Output budget (128–1M). |
 | `include_signature` | boolean | no | `false` | Opt-in detail flag: include signature shapes. |
 
@@ -1075,7 +1087,7 @@ Literal-fallback response (W-H — the symbol graph had zero hits):
       "snippet": "name=\"vesma_search_graph\","
     }
   ],
-  "total_matches": 0,
+  "total_matches": 1,
   "cursor": 0,
   "has_more": false,
   "fallback_used": true,
@@ -1092,7 +1104,7 @@ Literal-fallback response (W-H — the symbol graph had zero hits):
 
 ## `vesma_trace_path`
 
-BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
+BFS over `project_edges` from one symbol. Resolution (W-H): an exact qname traces directly (byte-identical to the pre-W-H tool); a bare tail (e.g. `update_fields`) that resolves UNIQUELY also traces directly; an AMBIGUOUS tail answers a helpful, NOT error-shaped payload — a ranked `candidate_list` (qname / kind / path / start-end lines, max 10, `candidate_count` honest total) with `candidates: true` and a hint to re-run with the qualified name; an IDENTICAL-qname collision (the same qname defined in several files) answers the same candidate payload with a path/line disambiguation hint — never a silent first-pick; a missing symbol stays a clear not-found refusal. Depth ≤ 2 with a per-node fanout cap and a total-work cap (the ADR-0030 walk discipline). The token contract applies to the `nodes` section; the `edges` section rides outside the token budget, bounded only by the fanout/total caps and honestly marked `truncated` when hit (edge budgeting lands in PG-1, ADR-0032).
 
 ### Input
 
@@ -1360,7 +1372,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 }
 ```
 
-`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`.
+`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`, or remove the ghost outright with `mnemos_delete_graph_project` behind the evidence gate (`confirm=true` + `confirm_name`).
 
 ### Related
 
@@ -1370,7 +1382,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 
 ## `vesma_delete_graph_project`
 
-Drop a project's graph INDEX — the sidecar data only, never the project entity in the main DB. The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
+Drop a project's graph INDEX — the sidecar data (index subtree, poisoned set, freshness stamp). A **live** registration (root exists on disk) keeps its project entity in the main DB — the v1 contract. A **ghost** registration (registered root missing on disk) is removed ENTIRELY — index AND the registration row — behind the explicit evidence gate: `confirm=true` plus `confirm_name` echoing the project name (a gate-less attempt is refused with `confinement-refused` and audited as `delete-refused`). The ONLY operation that clears the poisoned set (PG3 «forever»). Audited with an optional reason.
 
 ### Input
 
@@ -1380,12 +1392,16 @@ Drop a project's graph INDEX — the sidecar data only, never the project entity
 | `agent` | string | **yes** | — | Caller identity (PG7). |
 | `session` | string | no | — | Optional session id for the audit trail. |
 | `reason` | string | no | — | Audit reason. |
+| `confirm` | boolean | no | `false` | Required `true` to delete a GHOST registration (root missing on disk). A live-root delete purges the index only and needs no gate. |
+| `confirm_name` | string | no | — | Echo of the project name — required together with `confirm` for a ghost. |
 
 ### Output
 
 ```json
-{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted" }
+{ "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
+
+`ghost: true` + `deregistered: true` mark the evidence-gated ghost removal — the registration row is gone; `mnemos_register_project` brings it back when needed. CLI twin: `vesma graph delete <project>` (ghosts: `--force --confirm-name <project>`).
 
 ### Related
 
@@ -2195,7 +2211,7 @@ The tail is one appended `TextContent` after the handler (never inline, lane=awa
 | `canary` | yes | yes | yes | Wave 1: team machines only, kill-switch ready. W1 additions: the optional `agent` argument on `vesma_search` / `vesma_recall_context` feeds the heartbeat identity (the most frequent calls used to stay identity-less), and the hooks channel (`vesma_hooks` / `POST /hooks/{action}`) composes awareness by DEFAULT — see `include_awareness` above. |
 | `on` | yes | yes | yes | Wave 2: the default flips only after the wave 0/1 gates close green. |
 
-Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
+Canonical env override: `VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE=shadow`. The operator CLI is the canonical way to switch the mode — `vesma awareness set <mode>` (validated write into the resolved config file) and `vesma awareness get` (raw vs effective value); `vesma awareness stats` reads the wave-0 funnel from the metrics sidecar without raw SQL. The rate cap knob `awareness.heartbeat_rate_limit_per_minute` (default 30, `0` disables) caps compositions per `(project, agent)` per minute; over-limit suppresses the tail with an event — never an error.
 
 ### The envelope (canary/on)
 

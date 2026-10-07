@@ -75,11 +75,21 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from vesma import __version__
+
 console = Console()
 
 completion_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="completion",
-    help="Install shell completion for vesma (auto-detect + auto-install).",
+    help=(
+        "Install shell completion for vesma (auto-detect + auto-install).\n\n"
+        "Installs the custom engine-backed scripts (`vesma __complete`): "
+        "commands, subcommands, options and option values at every level, "
+        "with descriptions shown by zsh and fish; bash completes values only "
+        "(its readline cannot render descriptions). Idempotent — re-running "
+        "rewrites the scripts (and refreshes their embedded version stamp)."
+    ),
     no_args_is_help=False,
 )
 
@@ -91,6 +101,29 @@ _SUPPORTED_SHELLS = ("bash", "zsh", "fish")
 # not rename the installed scripts); otherwise the brand default wins.
 _KNOWN_PROG_NAMES = ("vesma", "vesmaro", "mnemos")
 _DEFAULT_PROG_NAME = "vesma"
+
+
+# ── Version stamp (staleness detection) ───────────────────────────────────────
+# Every generated script embeds the generating vesma version as a machine-
+# readable header line. `vesma doctor` compares it against the running
+# version: a script written by an older vesma (or a pre-stamp install) is
+# STALE — it keeps working, but the doctor warns with the one-line fix
+# (`vesma completion <shell>` rewrites the scripts on every run).
+
+
+def _script_version_header() -> str:
+    """The version stamp line embedded in every generated script."""
+    return f"# vesma version: {__version__}"
+
+
+_VERSION_LINE_RE = re.compile(r"^#\s*vesma version:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def _script_version(text: str) -> str | None:
+    """The vesma version that generated ``text``, or None for pre-stamp
+    (legacy) scripts — None always counts as stale."""
+    match = _VERSION_LINE_RE.search(text)
+    return match.group(1) if match else None
 
 
 def _primary_prog_name() -> str:
@@ -181,6 +214,7 @@ def _bash_script(prog_names: list[str]) -> str:
     return f"""\
 # vesma bash completion — custom engine backed by `{prog_names[0]} __complete`.
 # Installed by `{prog_names[0]} completion bash`; rewritten on every run.
+{_script_version_header()}
 # NOTE: bash's readline cannot show candidate descriptions; values only.
 
 _{prog_names[0]}() {{
@@ -214,6 +248,7 @@ def _zsh_script(prog_names: list[str]) -> str:
 #compdef {bound}
 # vesma zsh completion — custom engine backed by `{prog_names[0]} __complete`.
 # Installed by `{prog_names[0]} completion zsh`; rewritten on every run.
+{_script_version_header()}
 # Source this file AFTER compinit in ~/.zshrc so compdef can bind.
 
 _{prog_names[0]}() {{
@@ -249,6 +284,7 @@ def _fish_script(prog_names: list[str]) -> str:
     blocks: list[str] = [
         f"# vesma fish completion — custom engine backed by `{prog_names[0]} __complete`.",
         f"# Installed by `{prog_names[0]} completion fish`; rewritten on every run.",
+        _script_version_header(),
         "",
         "function __vesma_complete",
         "    set -l toks (commandline -opc)",
@@ -598,6 +634,14 @@ def _write_script(path: Path, content: str) -> bool:
     return True
 
 
+def _richness_line(shell: str) -> str:
+    """Per-shell candidate richness, stated plainly at install time so the
+    user knows what Tab will (and will not) show before the next prompt."""
+    if shell == "bash":
+        return "Candidates: values only — bash readline cannot render descriptions."
+    return "Candidates show command and option descriptions."
+
+
 def _install(shell: str) -> bool:
     """Install completion for the given shell.
 
@@ -633,6 +677,7 @@ def _install(shell: str) -> bool:
             f"  [dim]Auto-sourced copies: "
             f"{', '.join(str(_fish_completions_file(p)) for p in _prog_names())}[/dim]"
         )
+        console.print(f"  [dim]{_richness_line(shell)}[/dim]")
         return True
 
     # bash/zsh: migrate ALL legacy forms, then ensure the canonical line.
@@ -645,6 +690,7 @@ def _install(shell: str) -> bool:
     if _is_installed(shell, rc):
         console.print(f"[green]✓[/green] Completion for {shell} installed at {script_file}")
         console.print(f"  [dim]Source line already present in {rc}[/dim]")
+        console.print(f"  [dim]{_richness_line(shell)}[/dim]")
         return True
 
     try:
@@ -662,6 +708,7 @@ def _install(shell: str) -> bool:
         return False
     console.print(f"[green]✓[/green] Installed {shell} completion → {script_file}")
     console.print(f"  [dim]Source line added to {rc}[/dim]")
+    console.print(f"  [dim]{_richness_line(shell)}[/dim]")
     console.print(f"  [dim]Restart your shell or run: source {rc}[/dim]")
     return True
 

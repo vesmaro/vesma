@@ -46,8 +46,15 @@ from vesma.cli.integration import (
 console = Console()
 
 memory_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="memory",
-    help="Memory-switch status surface (ADR-0034).",
+    help=(
+        "Memory-switch status surface (ADR-0034).\n\n"
+        "Read-only report of how each detected harness currently sources its "
+        "memory: the vesma pack attachment, the MCP registration (server "
+        "keys only, never values), and which built-in store markers exist. "
+        'The diagnostic for "which memory engine is my agent actually on?".'
+    ),
     no_args_is_help=True,
 )
 

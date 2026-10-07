@@ -1,6 +1,14 @@
-# Exclude symlinks to external repos (release-pipeline) — hatchling's
-# wheel force-include copies everything under scripts/, and broken
-# symlinks crash the build. The real scripts ship from source.
+# Container-build context exclusions. Keep this list DISJOINT from the
+# [tool.hatch.build.targets.wheel.force-include] enumeration in
+# pyproject.toml: force-include requires every listed file to exist in
+# the context, so excluding one breaks the image build with
+# "Forced include not found" (found the hard way on the v5.5.0 image,
+# card vesma-ghcr-5x-parity, 2026-10-05 — scripts/local-release.sh was
+# excluded here while being force-included there).
+#
+# scripts/run-release-local.sh — untracked machine-local symlink
+#   (#481); excluding it is safe, it ships in no wheel.
+# scripts/local-ci/run-all.sh — sdist-excluded, ships in no wheel
+#   (pyproject.toml force-include comment), safe to exclude.
 scripts/run-release-local.sh
 scripts/local-ci/run-all.sh
-scripts/local-release.sh

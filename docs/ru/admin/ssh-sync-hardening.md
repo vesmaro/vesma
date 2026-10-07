@@ -3,8 +3,12 @@
 **🌐 Language / Язык:** [English](../../en/admin/ssh-sync-hardening.md) · Русский
 
 Авто-cron-мост федерации (#104) — ужесточение хост/SSH-слоя для
-автоматизации `mnemos-sync` между двумя инстансами vesma
-(A = источник, B = цель).
+автоматизации пакетной синхронизации между двумя инстансами vesma
+(A = источник, B = цель). Имена вида `mnemos-sync` (пользователь,
+каталоги, ключ-комментарии) — легаси-неймс той же установки и
+переименования не требуют; env-контракт скрипта — `VESMARO_SYNC_*`
+(легаси-имена `MNEMOS_SYNC_*` маппируются с fallback'ом, см.
+`scripts/sync-peers.sh`).
 
 ## Область, аудитория, связанное
 
@@ -223,24 +227,25 @@ Match User mnemos-sync
      sudo install -m 0755 contrib/systemd/vesma-import-wrapper.sh /usr/local/sbin/
 4. Создайте /var/log/vesma-sync.log с владельцем mnemos-sync (§6).
 5. Добавьте два ограниченных ключа в ~/.ssh/authorized_keys (§2) — после
-   того, как публичные ключи A существуют (шаг A3 ниже).
+   того, как публичные ключи A существуют (шаг A1 ниже).
 6. Примените sshd_config drop-in + правило файрвола (§7). Перезагрузите sshd.
 
 # ── На A (источник) ──────────────────────────────────────────────────────
-3. Сгенерируйте два ключа Ed25519 (§3). chmod 600, владелец root (§4).
-4. Скопируйте два файла .pub на B и добавьте их в authorized_keys (шаг B5).
-5. Установите scripts/sync-peers.sh:
+1. Сгенерируйте два ключа Ed25519 (§3). chmod 600, владелец root (§4).
+2. Скопируйте два файла .pub на B и добавьте их в authorized_keys (шаг B5).
+3. Установите scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-6. Разверните /etc/vesma/sync.env из contrib/systemd/sync.env.example
+4. Разверните /etc/mnemos/sync.env из contrib/systemd/sync.env.example —
+   ровно этот путь читает `EnvironmentFile=` юнита `vesma-sync.service`
    (замените каждый RFC-зарезервированный dummy). Парольную фразу
    предоставьте через systemd drop-in или LoadCredential — НЕ в sync.env.
-7. Установите systemd-юниты:
+5. Установите systemd-юниты:
      sudo install -m 0644 contrib/systemd/vesma-sync.service /etc/systemd/system/
      sudo install -m 0644 contrib/systemd/vesma-sync.timer   /etc/systemd/system/
      sudo systemctl daemon-reload
 8. Сначала dry-run:  sudo VESMA_SYNC_DRY_RUN=1 systemctl start vesma-sync.service
    (или запустите sync-peers.sh руками с экспортированными переменными окружения).
-9. Включите таймер:  sudo systemctl enable --now vesma-sync.timer
+7. Включите таймер:  sudo systemctl enable --now vesma-sync.timer
 ```
 
 ## Проверка

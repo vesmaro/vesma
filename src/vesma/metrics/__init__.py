@@ -2,7 +2,7 @@
 
 The metrics.sqlite sidecar: one ``assemble_metrics`` row per assemble
 call plus its ``injection_blocks``, written at the boundaries (MCP
-``mnemos_assemble_context`` + the ``pre_llm_call`` hook) AFTER the
+``vesma_assemble_context`` + the ``pre_llm_call`` hook) AFTER the
 result exists. The assemble pipeline itself stays write-free — S2
 measures that verb directly and the corridor headroom is not eaten.
 

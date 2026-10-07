@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/admin/kubernetes-deployment.md)
 
-> Admin-tier guide for deploying the full Vesma (Vesma) server into any
+> Admin-tier guide for deploying the full Vesma server into any
 > Kubernetes 1.25+ cluster — vanilla K8s, K3s, kind, k0s — with the bundled
 > Helm chart (`deploy/helm/vesma/`): Deployment, Service, **Ingress**,
 > two PersistentVolumeClaims and the TOTP secret.
@@ -32,11 +32,17 @@ Health surface: unauthenticated `GET /health` (used by probes and `helm test`).
 - The container image reachable from the cluster — see
   [Image registry status](#image-registry-status)
 
+> **Image tag.** The chart pins `image.tag` to `Chart.yaml appVersion`
+> (currently `4.3.0`). For a fresh release pin the image explicitly:
+> `--set image.tag=5.6.2` (published tags —
+> `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x, latest`).
+
 ## Quick start
 
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -47,6 +53,7 @@ K3s (Traefik + local-path are the defaults, so nothing extra is needed):
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
+  --set image.tag=5.6.2 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -132,21 +139,21 @@ consistent procedure).
 
 ## Image registry status
 
-Published images live at **`ghcr.io/vesmaro/vesmaro`** (org namespace,
-backfilled from the legacy user namespace in the 4.3.0 wave) and are
+Published images live at **`ghcr.io/vesmaro/vesma`** (org namespace) and are
 **public** — plain pulls work with no credentials. `image.pullSecrets`
 remains available for private-registry setups or rate limits, but is not
 needed for this image.
 
-The release pipeline still targets the legacy `ghcr.io/korrnals/vesma` name
-until the 5.0.0 registry migration (ADR-0031 / GWS card #331, phase g); new
-releases are backfilled to the org namespace manually in the meantime.
+The release train (`scripts/pypi-publish.sh --publish` plus the mandatory
+`scripts/image-publish.sh` image phase) pushes the versioned tag plus
+`:latest` on every release; the registry history (legacy namespaces,
+re-pushes) lives in ADR-0031.
 
 ## Upgrades & uninstall
 
 ```bash
 helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=4.4.0              # data volumes survive upgrades
+  --set image.tag=5.6.2              # data volumes survive upgrades
 helm uninstall vesma -n vesma    # PVCs are kept; delete them explicitly if needed
 ```
 

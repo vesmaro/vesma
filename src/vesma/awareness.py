@@ -567,9 +567,7 @@ def _picture_rate_limit(mgr: MemoryManager) -> int:
     """
     vesma_cfg = getattr(getattr(mgr, "settings", None), "vesma", None)
     return int(
-        getattr(
-            vesma_cfg, "awareness_picture_rate_limit_per_minute", PICTURE_RATE_LIMIT_PER_MINUTE
-        )
+        getattr(vesma_cfg, "awareness_picture_rate_limit_per_minute", PICTURE_RATE_LIMIT_PER_MINUTE)
     )
 
 

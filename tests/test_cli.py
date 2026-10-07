@@ -71,7 +71,6 @@ def test_all_expected_commands_are_registered() -> None:
     expected = {
         "add",
         "search",
-        "recall",
         "stats",
         "serve",
         "mcp-server",
@@ -94,6 +93,8 @@ def test_all_expected_groups_are_registered() -> None:
     """Every public subcommand group must be registered on the Typer app."""
     expected_groups = {
         "tags",
+        "recall",
+        "ingest",
         "migrate",
         "auth",
         "integration",
@@ -915,7 +916,8 @@ class TestWorkflowCli:
         assert "in-progress" in populated.output
 
 
-# ── edge-stats maintenance (ADR-0030 A0, review #338 N2) ─────────────────────
+# ── edge-stats maintenance (ADR-0030 A0, review #338 N2; sub-app since the
+#    CLI-architecture rework W1 — the positional verb spellings are unchanged) ─
 
 
 class TestEdgeStatsCommand:
@@ -945,10 +947,409 @@ class TestEdgeStatsCommand:
         assert "dry run" in result.output
         assert "would purge: 0" in result.output
 
-    def test_unknown_action_exits_1(self, isolated_config: Path) -> None:
+    def test_help_lists_subcommands(self, isolated_config: Path) -> None:
+        """The sub-app help names both verbs (W1: a real typer sub-app)."""
+        result = runner.invoke(app, ["edge-stats", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "stats" in result.output
+        assert "purge" in result.output
+
+    def test_bare_form_shows_help_not_stats(self, isolated_config: Path) -> None:
+        """CHANGELOG'd delta: bare `vesma edge-stats` no longer runs `stats` —
+        it is a usage error showing the subcommand help."""
+        result = runner.invoke(app, ["edge-stats"])
+        assert result.exit_code == 2, result.output
+        assert "rows total" not in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: an unknown verb moved to typer's usage error path
+        (exit 2; was a custom message + exit 1 before the sub-app)."""
         result = runner.invoke(app, ["edge-stats", "vacuum"])
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
+
+
+# ── fts / processor sub-apps (CLI-architecture rework W1) ────────────────────
+#
+# The former positional-action commands are real typer sub-apps now. The
+# rework is textually compatible: the old spellings ARE the new subcommand
+# spellings, so every invoke below is simultaneously the legacy positional
+# form and the canonical subcommand form (no alias cycle was needed).
+
+
+class TestFtsSubapp:
+    def test_rebuild(self, isolated_config: Path) -> None:
+        """`vesma fts rebuild` — the one verb, legacy and canonical form alike."""
+        result = runner.invoke(app, ["fts", "rebuild"])
+        assert result.exit_code == 0, result.output
+        assert "FTS5 index rebuilt" in result.output
+
+    def test_help_names_rebuild(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["fts", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "rebuild" in result.output
+
+    def test_bare_form_shows_help(self, isolated_config: Path) -> None:
+        """Bare `vesma fts` is a usage error with the subcommand help
+        (was: missing-argument ACTION error — same exit code)."""
+        result = runner.invoke(app, ["fts"])
+        assert result.exit_code == 2, result.output
+        assert "rebuild" in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: exit 2 via typer (was a custom message + exit 1)."""
+        result = runner.invoke(app, ["fts", "compact"])
+        assert result.exit_code == 2, result.output
+        assert "compact" in result.output
+
+
+class TestProcessorSubapp:
+    def test_status_on_empty_store(self, isolated_config: Path) -> None:
+        """`vesma processor status` — the compatibility surface: the legacy
+        positional spelling IS the subcommand spelling."""
+        result = runner.invoke(app, ["processor", "status"])
+        assert result.exit_code == 0, result.output
+        assert "queue_depth: 0" in result.output
+        assert "running: False" in result.output
+
+    def test_run_on_empty_store(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "run"])
+        assert result.exit_code == 0, result.output
+        assert "clusters: 0" in result.output
+        assert "published: 0" in result.output
+
+    def test_stop_is_a_noop_when_not_running(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "stop"])
+        assert result.exit_code == 0, result.output
+        assert "stopped" in result.output
+
+    def test_help_lists_all_four_verbs(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor", "--help"])
+        assert result.exit_code == 0, result.output
+        for verb in ("status", "run", "start", "stop"):
+            assert verb in result.output
+
+    def test_bare_form_shows_help(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["processor"])
+        assert result.exit_code == 2, result.output
+        assert "status" in result.output
+
+    def test_unknown_verb_is_a_usage_error(self, isolated_config: Path) -> None:
+        """W1 delta: exit 2 via typer (was a custom message + exit 1)."""
+        result = runner.invoke(app, ["processor", "vacuum"])
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
+
+
+# ── recall group (CLI-architecture rework W2) ────────────────────────────────
+#
+# Bare `vesma recall` keeps its pre-W2 behavior (default command on a group
+# with invoke_without_command); per-agent recall moved to the canonical
+# subcommand `vesma recall agent SLUG [QUERY]`; the legacy `--agent` flag
+# stays as a hidden deprecated alias (identical behavior + stderr hint,
+# removal not before 6.0).
+
+
+def _seed_agent_memory(isolated_config: Path, content: str, agent: str) -> None:
+    """Save one RAW memory tagged to `agent` through the manager directly.
+
+    The denormalised ``project``/``agent`` columns are set the same way
+    the production ``MemoryManager.add`` path sets them — the recency
+    predicate is ``WHERE agent=?`` on the column, not on the tags.
+    """
+    from vesma.cli._manager import get_manager
+    from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+    mgr = get_manager(str(isolated_config))
+    mgr.sqlite.save(
+        Memory(
+            content=content,
+            title=content,
+            tags=["project:cli-smoke", f"agent:{agent}", "mnemos:test"],
+            source=MemorySource.CLI,
+            memory_type=MemoryType.NOTE,
+            # RAW is fine: the agent-recall paths apply no status filter.
+            status=MemoryStatus.RAW,
+            project="cli-smoke",
+            agent=agent,
+        )
+    )
+
+
+class TestRecallGroup:
+    def test_bare_form_unchanged(self, isolated_config: Path) -> None:
+        """Bare `vesma recall` still runs the context recall (exit 0, no hint)."""
+        result = runner.invoke(app, ["recall", "--limit", "5"])
+        assert result.exit_code == 0, result.output
+        assert "deprecated" not in result.output
+
+    def test_help_advertises_agent_subcommand_and_hides_flag(self, isolated_config: Path) -> None:
+        """`recall --help` names `agent`; the legacy --agent flag is hidden."""
+        result = runner.invoke(app, ["recall", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "agent" in result.output
+        assert "--agent" not in result.output, "the deprecated flag must be hidden"
+
+    def test_agent_subcommand_recency_path(self, isolated_config: Path) -> None:
+        """`vesma recall agent SLUG` lists the agent's entries (no query)."""
+        _seed_agent_memory(isolated_config, "w2 recall alpha entry", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "w2 recall alpha entry" in result.output
+
+    def test_agent_subcommand_query_path(self, isolated_config: Path) -> None:
+        """`vesma recall agent SLUG QUERY` narrows to query-matched entries."""
+        _seed_agent_memory(isolated_config, "w2 unique zebra marker query hit", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli", "w2 unique zebra marker"])
+        assert result.exit_code == 0, result.output
+        assert "w2 unique zebra marker query hit" in result.output
+
+    def test_agent_subcommand_empty_vault(self, isolated_config: Path) -> None:
+        """No entries for the agent → graceful 'No memories found.' (exit 0)."""
+        result = runner.invoke(app, ["recall", "agent", "nobody"])
+        assert result.exit_code == 0, result.output
+        assert "No memories found." in result.output
+
+    def test_agent_subcommand_scoped_by_project(self, isolated_config: Path) -> None:
+        """--project narrows the agent recall to that project."""
+        _seed_agent_memory(isolated_config, "w2 project scoped entry", "cli")
+        result = runner.invoke(app, ["recall", "agent", "cli", "--project", "other-project"])
+        assert result.exit_code == 0, result.output
+        assert "No memories found." in result.output
+
+    def test_agent_subcommand_requires_slug(self, isolated_config: Path) -> None:
+        """`vesma recall agent` without a slug is a usage error (exit 2)."""
+        result = runner.invoke(app, ["recall", "agent"])
+        assert result.exit_code == 2, result.output
+
+    def test_unknown_subcommand_is_a_usage_error(self, isolated_config: Path) -> None:
+        result = runner.invoke(app, ["recall", "vacuum"])
+        assert result.exit_code == 2, result.output
+        assert "vacuum" in result.output
+
+    def test_deprecated_agent_alias_hints_on_stderr_stdout_clean(
+        self, isolated_config: Path
+    ) -> None:
+        """`recall --agent` still works identically and prints the stderr hint."""
+        _seed_agent_memory(isolated_config, "w2 alias form entry", "cli")
+        result = runner.invoke(app, ["recall", "--agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "w2 alias form entry" in result.output, "the alias must keep working"
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma recall agent SLUG" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_options_before_subcommand_are_not_silently_dropped(
+        self, isolated_config: Path
+    ) -> None:
+        """`recall --project x agent SLUG` warns on stderr instead of dropping."""
+        result = runner.invoke(app, ["recall", "--project", "x", "agent", "cli"])
+        assert result.exit_code == 0, result.output
+        assert "options placed before the subcommand are ignored" in result.stderr
+
+
+# `vesma ingest url|file` (CLI-architecture rework W3): URL and file ingest
+# moved to the canonical subcommands; the legacy `add --url` / `add --file`
+# flag forms stay as hidden deprecated aliases (identical behavior + stderr
+# hint, removal not before 6.0). `vesma add <content>` remains the canonical
+# quick-capture.
+
+
+def _fake_ingested_memory(content: str) -> object:
+    """A real Memory model instance standing in for mgr.ingest_url's return."""
+    from vesma.models import Memory
+
+    return Memory(content=content, title=content)
+
+
+class TestIngestSubApp:
+    def test_top_level_help_advertises_ingest(self, isolated_config: Path) -> None:
+        """`vesma --help` lists the new `ingest` group."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0, result.output
+        assert "ingest" in result.output
+
+    def test_ingest_help_lists_url_and_file(self, isolated_config: Path) -> None:
+        """`vesma ingest --help` names both canonical subcommands."""
+        result = runner.invoke(app, ["ingest", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "url" in result.output
+        assert "file" in result.output
+
+    def test_ingest_no_args_shows_help(self, isolated_config: Path) -> None:
+        """Bare `vesma ingest` shows the group help (no_args_is_help)."""
+        result = runner.invoke(app, ["ingest"])
+        assert "Usage:" in result.output
+        assert "url" in result.output
+        assert "file" in result.output
+
+    def test_ingest_file_happy_path_saves_memory(self, isolated_config: Path) -> None:
+        """`vesma ingest file PATH` saves the file's text and reports the id."""
+        from vesma.cli._manager import get_manager
+
+        note = isolated_config.parent / "w3-note.md"
+        note.write_text("w3 ingest file happy path body\n", encoding="utf-8")
+        result = runner.invoke(app, ["ingest", "file", str(note)])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 ingest file happy path body" in result.output
+        mgr = get_manager(str(isolated_config))
+        saved = [m for m in mgr.sqlite.list_all(limit=100) if "happy path body" in m.content]
+        assert saved, "the memory must be in the vault"
+
+    def test_ingest_file_dry_run_previews_without_saving(self, isolated_config: Path) -> None:
+        """`vesma ingest file PATH --dry-run` prints filter stats, saves nothing."""
+        from vesma.cli._manager import get_manager
+
+        note = isolated_config.parent / "w3-dry.md"
+        note.write_text("w3 dry run body line\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "ingest",
+                "file",
+                str(note),
+                "--dry-run",
+                "--tags",
+                "project:test,agent:cli,mnemos:learning",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Filter preview" in result.output
+        assert "Saved" not in result.output
+        mgr = get_manager(str(isolated_config))
+        assert mgr.sqlite.list_all(limit=100) == []
+
+    def test_ingest_file_missing_file_clean_error(self, isolated_config: Path) -> None:
+        """A missing path is a clean exit-1 error, not a traceback."""
+        missing = isolated_config.parent / "does-not-exist.txt"
+        result = runner.invoke(app, ["ingest", "file", str(missing)])
         assert result.exit_code == 1, result.output
-        assert "Unknown action" in result.output
+        assert "Cannot read" in result.output
+        assert "Traceback" not in result.output
+
+    def test_ingest_file_binary_file_clean_error(
+        self, isolated_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A binary (non-UTF-8) file is a clean exit-1 error, not a traceback.
+
+        UnicodeDecodeError is a ValueError, not an OSError — it must be
+        caught explicitly. The preferred encoding is pinned so the decode
+        failure is hermetic regardless of the ambient locale.
+        """
+        monkeypatch.setattr("locale.getpreferredencoding", lambda do_setlocale: "utf-8")
+        blob = isolated_config.parent / "w3-blob.bin"
+        blob.write_bytes(b"\xff\xfe\x00\x01not-utf8")
+        result = runner.invoke(app, ["ingest", "file", str(blob)])
+        assert result.exit_code == 1, result.output
+        assert "Cannot read" in result.output
+        assert "Traceback" not in result.output
+
+    def test_ingest_file_requires_path(self, isolated_config: Path) -> None:
+        """`vesma ingest file` without a path is a usage error (exit 2)."""
+        result = runner.invoke(app, ["ingest", "file"])
+        assert result.exit_code == 2, result.output
+
+    def test_ingest_url_happy_path_saves_extracted_page(self, isolated_config: Path) -> None:
+        """`vesma ingest url URL` delegates to mgr.ingest_url (no live network)."""
+        from unittest.mock import patch
+
+        from vesma.manager import MemoryManager
+
+        with patch.object(
+            MemoryManager,
+            "ingest_url",
+            return_value=_fake_ingested_memory("w3 extracted page text"),
+        ) as mock_ingest:
+            result = runner.invoke(app, ["ingest", "url", "https://example.com/w3"])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 extracted page text" in result.output
+        mock_ingest.assert_called_once()
+        assert mock_ingest.call_args.args[0] == "https://example.com/w3"
+
+    def test_ingest_url_requires_url(self, isolated_config: Path) -> None:
+        """`vesma ingest url` without a URL is a usage error (exit 2)."""
+        result = runner.invoke(app, ["ingest", "url"])
+        assert result.exit_code == 2, result.output
+
+
+class TestAddIngestAliases:
+    def test_help_hides_deprecated_flags(self, isolated_config: Path) -> None:
+        """`add --help` must not advertise the retired --url/--file forms.
+
+        The options panel must not list them; the docstring's plain-text
+        mention of the old forms (alias policy) is expected and allowed.
+        """
+        result = runner.invoke(app, ["add", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "-u, --url" not in result.output, "the deprecated flag must be hidden"
+        assert "-f, --file" not in result.output, "the deprecated flag must be hidden"
+
+    def test_content_form_stays_canonical_and_hint_free(self, isolated_config: Path) -> None:
+        """`vesma add <content>` keeps working with no deprecation noise."""
+        result = runner.invoke(app, ["add", "w3 quick capture note"])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "deprecated" not in result.output
+        assert "deprecated" not in result.stderr
+
+    def test_url_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
+        """`add --url` keeps identical behavior + prints the stderr hint."""
+        from unittest.mock import patch
+
+        from vesma.manager import MemoryManager
+
+        with patch.object(
+            MemoryManager,
+            "ingest_url",
+            return_value=_fake_ingested_memory("w3 alias page body"),
+        ) as mock_ingest:
+            result = runner.invoke(app, ["add", "--url", "https://example.com/alias"])
+        assert result.exit_code == 0, result.output
+        mock_ingest.assert_called_once()
+        assert "Saved" in result.output
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma ingest url URL" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_file_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
+        """`add --file` keeps identical behavior + prints the stderr hint."""
+        note = isolated_config.parent / "w3-alias-note.md"
+        note.write_text("w3 file alias body\n", encoding="utf-8")
+        result = runner.invoke(app, ["add", "--file", str(note)])
+        assert result.exit_code == 0, result.output
+        assert "Saved" in result.output
+        assert "w3 file alias body" in result.output
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma ingest file PATH" in result.stderr
+        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+
+    def test_url_alias_dry_run_refused_as_before(self, isolated_config: Path) -> None:
+        """`add --url --dry-run` keeps its historical refusal (exit 1)."""
+        result = runner.invoke(app, ["add", "--url", "https://example.com/x", "--dry-run"])
+        assert result.exit_code == 1, result.output
+        assert "--dry-run is not supported with --url" in result.output
+
+    def test_file_alias_dry_run_still_previews(self, isolated_config: Path) -> None:
+        """`add --file --dry-run` keeps the preview behavior + the hint."""
+        note = isolated_config.parent / "w3-alias-dry.md"
+        note.write_text("w3 alias dry run body\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--file",
+                str(note),
+                "--dry-run",
+                "--tags",
+                "project:test,agent:cli,mnemos:learning",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Filter preview" in result.output
+        assert "Saved" not in result.output
+        assert "[deprecated]" in result.stderr
 
 
 class TestGraphLifecycleCli:
@@ -981,3 +1382,26 @@ class TestGraphLifecycleCli:
         result = runner.invoke(app, ["graph", "repoint", "cliproj", str(tmp_path / "nope")])
         assert result.exit_code == 1, result.output
         assert "refused" in result.output
+
+    def test_delete_ghost_with_evidence_gate(self, isolated_config: Path, tmp_path: Path) -> None:
+        """The ghost twin of the register/repoint lifecycle: --force plus
+        the --confirm-name echo removes the registration entirely."""
+        repo = self._repo(tmp_path, "cli-repo")
+        runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        repo.rename(repo.with_name("cli-repo-moved"))  # the ghost
+        result = runner.invoke(
+            app,
+            ["graph", "delete", "cliproj", "--force", "--confirm-name", "cliproj"],
+        )
+        assert result.exit_code == 0, result.output
+        assert "deleted" in result.output
+        assert "ghost registration removed" in result.output
+
+    def test_delete_ghost_refused_without_gate(self, isolated_config: Path, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path, "cli-repo")
+        runner.invoke(app, ["graph", "register", "cliproj", str(repo)])
+        repo.rename(repo.with_name("cli-repo-moved"))  # the ghost
+        result = runner.invoke(app, ["graph", "delete", "cliproj"])
+        assert result.exit_code == 1, result.output
+        assert "refused" in result.output
+        assert "evidence gate" in result.output

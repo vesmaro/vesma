@@ -1,11 +1,12 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Context Filter Guide
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/context-filter.md)
 
 The Context Filter is a five-stage pipeline that strips noise from raw
 content **before** it reaches a model. It runs automatically on every
-`mnemos_add` (when `auto_filter: true`) and can be re-run explicitly on
+memory write (`vesma add`, `vesma ingest url|file`, the `mnemos_add`
+MCP tool — when `auto_filter: true`) and can be re-run explicitly on
 existing memories via the `mnemos_filter` MCP tool or the `vesma filter`
 CLI command.
 
@@ -60,8 +61,9 @@ override it explicitly via `--profile` (CLI) or the `profile` argument
 
 ## Auto-filter on ingest
 
-When `auto_filter: true` (the default for new installs), every
-`mnemos_add` call runs the filter pipeline before storing the memory.
+When `auto_filter: true` (the default for new installs), every memory
+write (`vesma add`, `vesma ingest url|file`, MCP `mnemos_add`) runs the
+filter pipeline before storing the memory.
 
 ```yaml
 # config.yaml
@@ -266,5 +268,5 @@ argument (MCP `mnemos_filter`).
 ## See also
 
 - [Integration Guide](integration-guide.md) — behavioural instructions that tell agents *when* to filter.
-- [MCP Tools Reference](mcp-tools.md) — full `vesma_*` tool catalogue.
+- [MCP Tools Reference](mcp-tools.md) — the full tool catalogue (tool names carry the legacy `mnemos_` prefix).
 - [CLI Reference](cli-reference.md) — every `vesma` subcommand.

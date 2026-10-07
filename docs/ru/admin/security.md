@@ -387,7 +387,7 @@ fetch-failed фиксирует причину отклонения, а не с�
 vesma doctor --json | grep -i api_key   # должно показать SecretStr('**********')
 
 # Подтвердить отклонение SSRF
-vesma add --url http://169.254.169.254/  # отклонено, не сохранено
+vesma ingest url http://169.254.169.254/  # отклонено, не сохранено
 
 # Подтвердить покрытие секретов в .gitignore
 git check-ignore -v config.yaml .env     # должен указать .gitignore:line
@@ -494,7 +494,7 @@ key, database connection strings, и high-entropy base64-последовате�
   прогоняет `moderate()` на каждой записи: `allow` → оригинальный
   контент в compact-summary, `redact` → sanitized-контент, `refuse` →
   запись исключается и учитывается в `records_refused`. Compact-payload
-  (`mnemos.federation.v1`) записывается в файл, опционально
+  (`vesmaro.federation.v1`) записывается в файл, опционально
   AES-256-GCM зашифрованным с паролем из `VESMA_EXPORT_PASSPHRASE`
   (никогда из CLI-аргумента).
 - **Импорт** — `vesma sync import` читает compact-payload

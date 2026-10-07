@@ -303,10 +303,11 @@ async def test_manifest_vesma_only() -> None:
     Ф3 (epic #308): vesma_ingest_document joined the canonical set —
     the count pin moved 27 → 28 with it. ADR-0032 PG-0 slice 4: the 10
     project-graph tools joined — 28 → 39. 6.0.0 removed the legacy
-    ``mnemos_*`` spellings from the manifest and the call path."""
+    ``mnemos_*`` spellings from the manifest and the call path. Vitals
+    wave 9: vesma_usage_report joined — 39 → 40."""
     tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 39
+    assert len(names) == 40
     assert all(n.startswith("vesma_") for n in names)
     assert "vesma_search" in names
     assert "vesma_retrieve" in names

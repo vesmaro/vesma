@@ -39,12 +39,22 @@ import weakref
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from vesma.codegraph import incremental as incremental_mod
 from vesma.codegraph.audit import GraphAudit
 from vesma.codegraph.indexer import IndexLimitError, IndexResult
 from vesma.codegraph.literal_scan import LITERAL_ROW_CAP, scan_literals
+from vesma.codegraph.walker import (
+    WALK_FANOUT_CAP,
+    WALK_MAX_DEPTH,
+    WALK_TOTAL_WORK_CAP,
+    WalkLimitError,
+    validate_walk_limits,
+    walk_bfs,
+    walk_quota,
+)
 from vesma.config import CodeGraphConfig
 from vesma.secrets_detector import detect_secrets, findings_by_pattern
 from vesma.storage.code_graph_store import (
@@ -52,6 +62,7 @@ from vesma.storage.code_graph_store import (
     NODE_KINDS,
     CodeGraphStore,
     bump_project_graph_epoch,
+    read_project_graph_epoch,
 )
 
 if TYPE_CHECKING:
@@ -69,10 +80,13 @@ MAX_MAX_OUTPUT_TOKENS = 1_000_000
 BYTES_PER_TOKEN = 4
 
 #: Trace caps (tool 4) — the ADR-0030 walk pattern: per-node fanout cap
-#: bounds hub symbols, the total-work cap bounds the whole BFS.
-TRACE_MAX_DEPTH = 2
-TRACE_FANOUT_CAP = 32
-TRACE_TOTAL_WORK_CAP = 512
+#: bounds hub symbols, the total-work cap bounds the whole BFS. Since
+#: ADR-0038 M1 the caps LIVE in the shared walker
+#: (:mod:`vesma.codegraph.walker`) — these names are the
+#: service/schema aliases of the same numbers (one walker, one clamp).
+TRACE_MAX_DEPTH = WALK_MAX_DEPTH
+TRACE_FANOUT_CAP = WALK_FANOUT_CAP
+TRACE_TOTAL_WORK_CAP = WALK_TOTAL_WORK_CAP
 
 #: W-H trace disambiguation: the ranked tail-candidate list an AMBIGUOUS
 #: bare tail answers with (never more than this many rows).
@@ -81,8 +95,28 @@ TRACE_CANDIDATE_CAP = 10
 #: Search surface: hard row ceiling of ONE page regardless of budget.
 SEARCH_ROW_CAP = 200
 
-#: Sidecar schema version reported by ``get_graph_schema``.
-GRAPH_SCHEMA_VERSION = 1
+#: The M2 walk section (ADR-0038, card vesma-pg1-walk-m2-section).
+#: Default edge-kind filter of the walk: the structural kinds MINUS the
+#: pure-containment pairs (``CONTAINS_FILE``/``DEFINES``/``TESTS`` are
+#: file-shape edges the search results already describe; the walk is
+#: for CALLS/IMPORTS/INHERITS/USES/INVOKES/HANDLES — the navigation
+#: neighbourhood). ADR-0038 condition 2 keeps it a filter default, not
+#: a new vocabulary: the kinds are the store's CHECK-enforced set.
+SEARCH_WALK_EDGE_KINDS: tuple[str, ...] = (
+    "CALLS",
+    "IMPORTS",
+    "INHERITS",
+    "USES",
+    "INVOKES",
+    "HANDLES",
+)
+
+#: Sidecar schema version reported by ``get_graph_schema``. v2 (card
+#: vesma-graph-command-route-nodes): the ``Command``/``Route`` node
+#: kinds, the ``INVOKES``/``HANDLES`` edge kinds — must match
+#: ``vesma.storage.code_graph_store.SCHEMA_VERSION`` (the store
+#: CHECK-enforces the kinds; the tool layer reports them).
+GRAPH_SCHEMA_VERSION = 2
 
 #: Sidecar ``graph_meta`` key prefix for the auto-path suspension flag
 #: (PG-0.5 fix-slice, PR #443 review P2-2): set to ``1`` when a FIRST
@@ -205,7 +239,10 @@ class ProjectDirectory(Protocol):
     """Main-store surface the service is allowed to see: project
     registration (PG2) plus the meta surface the epoch helpers use.
     ``save_project`` joined in PG-0.5 — the auto-indexer's marker-gated
-    auto-registration writes through the same boundary (never raw SQL)."""
+    auto-registration writes through the same boundary (never raw SQL).
+    ``delete_project`` joined with the ghost-delete surface (#450
+    family) — the confirm-gated removal of a registration whose root
+    is gone on disk writes through the same boundary too."""
 
     def get_project(self, project_id: str) -> ProjectRecord | None: ...
 
@@ -214,6 +251,8 @@ class ProjectDirectory(Protocol):
     def list_projects(self) -> list[ProjectRecord]: ...
 
     def save_project(self, project: Project) -> None: ...
+
+    def delete_project(self, project_id: str) -> bool: ...
 
     def get_meta(self, key: str) -> str | None: ...
 
@@ -882,7 +921,7 @@ class CodeGraphService:
     # ── freshness (§3.2 trigger (c): cheap, read-only) ──────────────────────
 
     def _staleness_payload(self, graph_key: str, root: str) -> dict[str, Any]:
-        report = incremental_mod.staleness_check(graph_key, root, self._store)
+        report = incremental_mod.staleness_check(graph_key, root, self._store, self._config)
         return {
             "total_files": report.total_files,
             "fresh_percent": report.fresh_percent,
@@ -922,7 +961,9 @@ class CodeGraphService:
             key = registered.graph_key
             if self._store.count_files(key) == 0:
                 return None  # no index yet — nothing to advertise
-            report = incremental_mod.staleness_check(key, registered.root, self._store)
+            report = incremental_mod.staleness_check(
+                key, registered.root, self._store, self._config
+            )
             stale = len(report.changed_files)
             total = report.total_files
             fresh = max(total - stale, 0)
@@ -952,6 +993,11 @@ class CodeGraphService:
             "nodes": self._store.count_nodes(key),
             "edges": self._store.count_edges(key),
             "files": self._store.count_files(key),
+            # Per-kind breakdown (card vesma-graph-command-route-nodes):
+            # the total stays the headline; the breakdown makes the
+            # extension-contributed Command/Route kinds visible without
+            # a raw probe. Additive key.
+            "node_kinds": self._store.count_nodes_by_kind(key),
             "parse_errors": failures,
             "parse_error_count": len(failures),
             "poisoned_count": len(poisoned_paths),
@@ -985,14 +1031,19 @@ class CodeGraphService:
         cursor: int = 0,
         max_output_tokens: Any = None,
         include_signature: bool = False,
+        walk_cursor: int = 0,
     ) -> dict[str, Any]:
         """Substring search over name/qname/path; ranked rows under the
         token contract (exact name/qname hits outrank prefix hits,
         prefix outranks substring — ranking BEFORE the budget cut).
 
-        ``total_matches`` is the HONEST count of the predicate over the
-        whole graph (``CodeGraphStore.count_search_nodes``); the cursor
-        pages the top-``limit`` ranked slice (review 10173a2a-5).
+        ``total_matches`` is the HONEST count of the whole answer set:
+        on symbol hits it is the predicate count over the whole graph
+        (``CodeGraphStore.count_search_nodes``), the cursor paging the
+        top-``limit`` ranked slice (review 10173a2a-5); when the W-H
+        literal leg answers, it counts the literal rows instead — a
+        non-empty fallback is never reported as ``total_matches: 0``
+        (card vesma-graph-roughness-repeat1).
 
         W-H hybrid leg: on an EMPTY symbol result (and when
         ``code_graph.literal_fallback`` is on, default) a bounded
@@ -1001,7 +1052,23 @@ class CodeGraphService:
         redacted through the same PG4 secrets detector as snippet
         issuance, poisoned paths (PG3) never issuing content. The
         ``fallback_used: true`` marker is present ONLY when the
-        fallback ran (shape policy: absent, never null/empty)."""
+        fallback ran (shape policy: absent, never null/empty).
+
+        M2 walk section (ADR-0038, behind ``code_graph.search_walk``,
+        default OFF): when the flag is on AND the symbol search found
+        hits, a two-level walk over the hits' neighbourhood (direction
+        in+out from every origin, default edge kinds CALLS/IMPORTS/
+        INHERITS/USES/INVOKES/HANDLES, quota ``k`` origins —
+        :func:`walker.walk_quota` of ``limit``) is answered as a
+        SEPARATE ``walk`` section — PG1 node rows only, never mixed
+        into ``results``, present ONLY when it fired (absent-when-
+        empty, the ``fallback_used`` precedent). The section obeys the
+        same token contract with its OWN budget over ``walk_cursor``
+        (a per-section cursor: ``walk.has_more`` + strictly advancing
+        ``walk.walk_cursor``); the payload carries the graph ``epoch``
+        (condition 6 — consumers invalidate on it; no TTL cache).
+        With the flag off the response is byte-identical to the pre-M2
+        shape (PGT pin fixture)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
@@ -1012,6 +1079,8 @@ class CodeGraphService:
             raise GraphToolError(f"kind must be one of: {', '.join(NODE_KINDS)}")
         if not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0:
             raise GraphToolError("cursor must be a non-negative integer")
+        if not isinstance(walk_cursor, int) or isinstance(walk_cursor, bool) or walk_cursor < 0:
+            raise GraphToolError("walk_cursor must be a non-negative integer")
         total = self._store.count_search_nodes(key, query, kind=kind)
         matches = self._store.search_nodes(
             key, query, kind=kind, limit=min(max(int(limit), 1), SEARCH_ROW_CAP) * 2
@@ -1024,6 +1093,12 @@ class CodeGraphService:
         fallback_used = False
         if total == 0 and not rows and self._config.literal_fallback:
             rows, fallback_used = self._literal_fallback_rows(registered, query)
+            if fallback_used:
+                # Card vesma-graph-roughness-repeat1: the count reflects
+                # ALL returned rows — a non-empty literal leg is never
+                # reported as total_matches: 0 (the count tracked only
+                # the symbol-node predicate before).
+                total = len(rows)
         for row in rows:
             row.setdefault("match_kind", "symbol")
         # Detail flags are OPT-IN (§3.4): signatures ride only when asked.
@@ -1031,18 +1106,45 @@ class CodeGraphService:
             for row in rows:
                 row.pop("signature", None)
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, cursor)
+        # ── M2 walk section (ADR-0038 conditions 2/3/7/8) ────────────────────
+        # Fires ONLY behind code_graph.search_walk (default OFF) and ONLY
+        # on symbol hits — the literal leg never walks (no node ids to
+        # walk FROM). Flag-off path: this block is skipped entirely, the
+        # response below stays byte-identical to the pre-M2 shape (PGT
+        # pin fixtures, tests/data/codegraph_search_pin/).
+        walk_section: dict[str, Any] | None = None
+        if self._config.search_walk and not fallback_used:
+            walk_section = self._search_walk_section(
+                key,
+                rows,
+                limit=limit,
+                walk_cursor=walk_cursor,
+                max_output_tokens=max_output_tokens,
+                actor=actor,
+                sess=sess,
+            )
+        # Card vesma-graph-audit-firstcall-marking: the FIRST search of a
+        # task (actor+session scoped) is marked on its own audit row so
+        # the graph-first share stays computable from graph_audit rows
+        # alone (the computing query lives in GraphAudit.has_search).
+        # Shape policy: the marker rides ONLY the first row (absent on
+        # the rest — never null/empty).
+        first_search = not self._audit.has_search(actor, sess)
+        details: dict[str, Any] = {
+            "matches": len(rows),
+            "returned": len(page),
+            "total": total,
+            "literal_fallback": fallback_used,
+        }
+        if first_search:
+            details["first_search"] = True
         self._audit.record(
             key,
             "graph-read",
             actor,
             session=sess,
             reason="search",
-            details={
-                "matches": len(rows),
-                "returned": len(page),
-                "total": total,
-                "literal_fallback": fallback_used,
-            },
+            details=details,
         )
         payload: dict[str, Any] = {
             "project": key,
@@ -1055,7 +1157,153 @@ class CodeGraphService:
         }
         if fallback_used:  # shape policy: present only when it ran
             payload["fallback_used"] = True
+        if walk_section is not None:  # shape policy: absent-when-empty
+            payload["walk"] = walk_section
         return payload
+
+    def _search_walk_section(
+        self,
+        key: str,
+        rows: list[dict[str, Any]],
+        *,
+        limit: int,
+        walk_cursor: int,
+        max_output_tokens: Any,
+        actor: str,
+        sess: str | None,
+    ) -> dict[str, Any] | None:
+        """The ADR-0038 M2 ``walk`` section: a two-level neighbourhood
+        walk from the ranked symbol hits, answered SEPARATELY — never
+        mixed into ``results`` (condition 2).
+
+        Origins: the quota ``k = min(ceil(limit/5), limit//2)`` top
+        ranked symbol rows (:func:`walker.walk_quota` — a pure function
+        of ``limit``, condition 3). Direction ``both`` (in+out legs from
+        every origin — «who calls X» AND «what does X call» in one
+        answer), the default edge kinds :data:`SEARCH_WALK_EDGE_KINDS`
+        (the structural navigation kinds), depth
+        :data:`walker.WALK_MAX_DEPTH` — every limit fail-closed. The
+        shared walker (:func:`walker.walk_bfs`) bounds each origin's
+        walk with its own caps (fanout 32, total work 512 — they stand
+        INDEPENDENTLY of ``k``, condition 3); per-origin results merge
+        deterministically in ranked-origin order, deduplicating node
+        ids (first visit wins, keep-the-minimum-depth-by-rank-policy)
+        and edge triples (first traverse wins).
+
+        Payload shape: PG1 ``node_row`` rows only (no signatures,
+        repo-relative paths — condition 4) + the origin list + the
+        traversed edges + ``truncated`` + the graph ``epoch``
+        (condition 6 — freshness rides the payload, consumers
+        invalidate on it; no TTL cache). The ``nodes`` rows ride the
+        token contract under a per-section budget with their own
+        ``walk_cursor``; a budget that cannot fit even one walk row
+        drops the WHOLE section (the enrichment must never break the
+        search that already succeeded — logged, audited absent, honest).
+        Returns ``None`` when the walk did not fire (no origins —
+        absent-when-empty shape policy)."""
+        origin_rows = [r for r in rows if r.get("match_kind") == "symbol" and r.get("id")]
+        try:
+            quota_k = walk_quota(min(max(int(limit), 1), SEARCH_ROW_CAP))
+        except WalkLimitError:
+            quota_k = 0
+        if not origin_rows or quota_k <= 0:
+            return None
+        origins = origin_rows[:quota_k]
+
+        visited: dict[str, dict[str, Any]] = {}
+        edge_seen: set[tuple[str, str, str]] = set()
+        edges: list[dict[str, Any]] = []
+        truncated = False
+        for origin in origins:
+            node = SimpleNamespace(
+                id=origin["id"],
+                qname=origin["qname"],
+                kind=origin["kind"],
+                path=origin["path"],
+                start_line=origin["start_line"],
+                end_line=origin["end_line"],
+            )
+            walk = walk_bfs(
+                self._store,
+                key,
+                origin["id"],
+                node,
+                depth=WALK_MAX_DEPTH,
+                direction="both",
+                edge_kinds=SEARCH_WALK_EDGE_KINDS,
+            )
+            truncated = truncated or walk["truncated"]
+            for row in walk["rows"]:
+                if row["id"] not in visited:
+                    visited[row["id"]] = row
+            for edge in walk["edges"]:
+                trip = (edge["from"], edge["to"], edge["kind"])
+                if trip not in edge_seen:
+                    edge_seen.add(trip)
+                    edges.append(edge)
+        if not visited:
+            return None
+        walk_rows = sorted(
+            visited.values(),
+            key=lambda r: (r["depth"], str(r["qname"])),  # the pinned walker sort
+        )
+        try:
+            walk_page, walk_has_more, walk_next_cursor = window_rows(
+                walk_rows, max_output_tokens, walk_cursor
+            )
+        except GraphBudgetError:
+            # The walk is an enrichment over an already-successful
+            # search: a budget that cannot fit even one walk row would
+            # refuse the WHOLE answer (window_rows raises) — the section
+            # is dropped instead (absent-when-empty, the enrichment must
+            # never break the search) and the failure is loud: logged +
+            # the audit row carries truncated=true, priced at zero.
+            logger.warning(
+                "codegraph: walk section dropped for project %s — budget cannot fit one walk row",
+                key,
+            )
+            truncated = True
+            walk_page, walk_has_more, walk_next_cursor = [], False, walk_cursor
+        # Token economics (conditions 7-8): the walk prices itself.
+        # out_tokens — the serialized cost of EVERYTHING the section
+        # issued (node page + edges) at the deterministic 4 B/token
+        # ceiling; avoided_bytes — the summed graph_files size of the
+        # DISTINCT source files behind the VISITED nodes (M2 policy:
+        # the full visit set, not just the page — the neighbourhood
+        # discovery is what the agent would have paid file-reading for;
+        # M3 may refine the baseline).
+        walk_bytes = sum(_row_bytes(r) for r in walk_page) + sum(_row_bytes(e) for e in edges)
+        file_sizes = {rec.path: rec.size or 0 for rec in self._store.get_file_records(key)}
+        avoided = sum(
+            file_sizes.get(str(r["path"]), 0) for r in visited.values() if r.get("path") is not None
+        )
+        self._audit.record(
+            key,
+            "search-walk",
+            actor,
+            session=sess,
+            reason="search",
+            details={
+                "k": len(origins),
+                "nodes": len(walk_rows),
+                "edges": len(edges),
+                "returned": len(walk_page),
+                "truncated": truncated,
+                "out_tokens": (walk_bytes + BYTES_PER_TOKEN - 1) // BYTES_PER_TOKEN,
+                "avoided_bytes": avoided,
+            },
+        )
+        return {
+            "origins": [origin["qname"] for origin in origins],
+            "k": len(origins),
+            "nodes": walk_page,
+            "edges": edges,
+            "truncated": truncated,
+            "epoch": read_project_graph_epoch(self._main, key),
+            "walk_cursor": walk_next_cursor,
+            "has_more": walk_has_more,
+            "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
+        }
 
     def _literal_fallback_rows(
         self, registered: _RegisteredRoot, query: str
@@ -1076,6 +1324,7 @@ class CodeGraphService:
                 registered.root,
                 query,
                 max_files=self._config.index_max_files,
+                exclude_globs=self._config.exclude_globs,
             )
         except Exception:
             logger.warning(
@@ -1141,29 +1390,43 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
         depth: int = 2,
+        direction: str = "out",
+        edge_kinds: list[str] | tuple[str, ...] | None = None,
         max_output_tokens: Any = None,
     ) -> dict[str, Any]:
         """BFS over outgoing project_edges from a symbol — depth ≤ 2,
         per-node fanout cap, total-work cap (the ADR-0030 discipline).
 
+        Since ADR-0038 M1 the BFS core lives in the shared walker
+        (:mod:`vesma.codegraph.walker`) — this tool keeps its default
+        direction ``out`` and no kind filter, so the answers are
+        byte-identical to the pre-extraction tool (pinned by the
+        existing corpus plus the JSON pin fixture). ``direction``
+        (``in``/``both``) and ``edge_kinds`` are the opt-in M1 filters:
+        the fail-closed limits live in
+        :func:`walker.validate_walk_limits` (unknown direction/edge
+        kind, a non-list filter or a depth outside [1, 2] are
+        REFUSED — never a silently different walk).
+
         W-H resolution: an exact qname behaves byte-identically to the
         pre-W-H tool; a bare tail that resolves UNIQUELY traces
-        directly; an AMBIGUOUS tail answers with a ranked candidate
-        list (``candidates: true`` — a helpful payload, not an error)
-        and the hint to re-run with the qualified name; a missing
-        symbol stays a clear not-found refusal."""
+        directly; an AMBIGUOUS tail — and an identical-qname collision
+        (same qname, several files; card vesma-graph-roughness-repeat1)
+        — answers with a ranked candidate list (``candidates: true`` —
+        a helpful payload, not an error) and a disambiguation hint; a
+        missing symbol stays a clear not-found refusal."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
         registered = self._resolve_root(project_id)
         key = registered.graph_key
         if not isinstance(qname, str) or not qname.strip():
             raise GraphToolError("qname is required and must be a non-empty string")
-        if (
-            not isinstance(depth, int)
-            or isinstance(depth, bool)
-            or not 1 <= depth <= TRACE_MAX_DEPTH
-        ):
-            raise GraphToolError(f"depth must be an integer in [1, {TRACE_MAX_DEPTH}]")
+        try:
+            v_depth, v_direction, v_kinds = validate_walk_limits(
+                depth, direction, edge_kinds, max_depth=TRACE_MAX_DEPTH
+            )
+        except WalkLimitError as exc:
+            raise GraphToolError(str(exc)) from exc
         query = qname.strip()
         start, candidates = self._resolve_trace_start(key, query)
         if start is None:
@@ -1172,6 +1435,17 @@ class CodeGraphService:
                     f"symbol {query!r} not found in the project graph — "
                     "use search_graph to locate the exact qname"
                 )
+            # Card vesma-graph-roughness-repeat1: when every candidate
+            # shares ONE qname, the default re-run hint is a dead end —
+            # the collision hint points at the path/line disambiguator.
+            qnames = {c["qname"] for c in candidates}
+            hint = None
+            if len(candidates) > 1 and len(qnames) == 1:
+                hint = (
+                    "identical-qname collision — the candidates share one "
+                    "qualified name and differ by path/line; disambiguate via "
+                    "search_graph (path, start_line) before tracing"
+                )
             return self._trace_candidates_payload(
                 key,
                 query,
@@ -1179,44 +1453,18 @@ class CodeGraphService:
                 agent=actor,
                 session=sess,
                 max_output_tokens=max_output_tokens,
+                hint=hint,
             )
-        visited: dict[str, dict[str, Any]] = {
-            start.id: self._trace_node(start, 0),
-        }
-        edges_out: list[dict[str, Any]] = []
-        truncated = False
-        frontier = [start.id]
-        for level in range(1, depth + 1):
-            if not frontier or len(visited) >= TRACE_TOTAL_WORK_CAP:
-                truncated = truncated or bool(frontier)
-                break
-            next_frontier: list[str] = []
-            for node_id in frontier:
-                if len(visited) >= TRACE_TOTAL_WORK_CAP:
-                    truncated = True
-                    break
-                fanout = self._store.get_edges(key, from_id=node_id, limit=TRACE_FANOUT_CAP + 1)
-                if len(fanout) > TRACE_FANOUT_CAP:
-                    fanout = fanout[:TRACE_FANOUT_CAP]
-                    truncated = True
-                for edge in fanout:
-                    edges_out.append(
-                        {
-                            "from": edge.from_id,
-                            "to": edge.to_id,
-                            "kind": edge.kind,
-                            "provenance": edge.provenance,
-                        }
-                    )
-                    if edge.to_id in visited:
-                        continue
-                    target = self._store.get_node(edge.to_id)
-                    if target is None:  # cascade promise not yet materialized
-                        continue
-                    visited[edge.to_id] = self._trace_node(target, level)
-                    next_frontier.append(edge.to_id)
-            frontier = next_frontier
-        rows = sorted(visited.values(), key=lambda r: (r["depth"], str(r["qname"])))
+        walk = walk_bfs(
+            self._store,
+            key,
+            start.id,
+            start,
+            depth=v_depth,
+            direction=v_direction,
+            edge_kinds=v_kinds,
+        )
+        rows = walk["rows"]
         page, has_more, next_cursor = window_rows(rows, max_output_tokens, 0)
         self._audit.record(
             key,
@@ -1224,15 +1472,17 @@ class CodeGraphService:
             actor,
             session=sess,
             reason="trace",
-            details={"start": start.qname, "visited": len(rows), "edges": len(edges_out)},
+            # M1 keeps this audit row EXACTLY as today (start/visited/
+            # edges) — walk-event audit is M2/M3 scope (ADR-0038 §7/8).
+            details={"start": start.qname, "visited": len(rows), "edges": len(walk["edges"])},
         )
         return {
             "project": key,
             "start": start.qname,
-            "depth": depth,
+            "depth": v_depth,
             "nodes": page,
-            "edges": edges_out,
-            "truncated": truncated,
+            "edges": walk["edges"],
+            "truncated": walk["truncated"],
             "cursor": next_cursor,
             "has_more": has_more,
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
@@ -1261,20 +1511,57 @@ class CodeGraphService:
     ) -> tuple[Any | None, list[dict[str, Any]]]:
         """W-H trace resolution: exact/unique → ``(node, [])`` (the
         pre-W-H behavior, byte-identical for exact qnames); otherwise
-        ``(None, ranked tail candidates)`` — a UNIQUE tail candidate is
-        traced directly, an ambiguous set is answered with the
-        candidate list. A tail candidate matches on NAME (or dotted
-        qname tail) exactly — a tail resolution, never a substring
-        guess."""
+        ``(None, ranked candidates)`` — a UNIQUE tail candidate is
+        traced directly, an ambiguous tail set AND an identical-qname
+        collision (card vesma-graph-roughness-repeat1) are answered
+        with the candidate list. A tail candidate matches on NAME (or
+        dotted qname tail) exactly — a tail resolution, never a
+        substring guess."""
+        # Card vesma-graph-roughness-repeat1: an IDENTICAL-qname
+        # collision (several definitions sharing one qname — top-level
+        # functions of the same name in different files) follows the
+        # SAME ambiguity contract as a bare tail — a ranked candidate
+        # list, never a silent first-pick.
+        exact = self._store.get_nodes(project, qname=query, limit=2)
+        if len(exact) == 1:
+            return exact[0], []
+        if len(exact) > 1:
+            return None, self._qname_collision_candidates(exact)
         try:
             return self._resolve_symbol(project, query), []
         except GraphToolError:
             candidates = self._tail_candidates(project, query)
             if len(candidates) == 1:
-                exact = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=1)
-                if exact:
-                    return exact[0], []
+                # The resolved qname may itself be a collision (same
+                # dotted qname, several files) — same contract, no
+                # silent first-pick.
+                resolved = self._store.get_nodes(project, qname=candidates[0]["qname"], limit=2)
+                if len(resolved) == 1:
+                    return resolved[0], []
+                if len(resolved) > 1:
+                    return None, self._qname_collision_candidates(resolved)
             return None, candidates
+
+    @staticmethod
+    def _qname_collision_candidates(nodes: list[Any]) -> list[dict[str, Any]]:
+        """ALL candidates for an IDENTICAL-qname collision (one qname,
+        several definitions differing by path/line). Same row shape as
+        :meth:`_tail_candidates`; every row is an exact qname hit
+        (score 3) and the order is deterministic (path, then line) —
+        the payload caps the ISSUED list; the count stays honest."""
+        rows = [
+            {
+                "qname": n.qname,
+                "kind": n.kind,
+                "path": n.path,
+                "start_line": n.start_line,
+                "end_line": n.end_line,
+                "score": 3,  # exact qname hit, same scale as search_graph
+            }
+            for n in nodes
+        ]
+        rows.sort(key=lambda r: (-r.pop("score"), str(r["qname"]), str(r["path"]), r["start_line"]))
+        return rows
 
     def _tail_candidates(self, project: str, query: str) -> list[dict[str, Any]]:
         """ALL ranked exact-tail candidates for a failed trace
@@ -1310,10 +1597,12 @@ class CodeGraphService:
         agent: str,
         session: str | None,
         max_output_tokens: Any,
+        hint: str | None = None,
     ) -> dict[str, Any]:
-        """The AMBIGUOUS-tail answer: a helpful, NOT error-shaped
-        payload with the ranked candidate list (capped, count honest)
-        and the re-run hint."""
+        """The AMBIGUOUS answer (bare tail or identical-qname
+        collision): a helpful, NOT error-shaped payload with the ranked
+        candidate list (capped, count honest) and the re-run hint (the
+        default tail hint, or a caller-supplied collision hint)."""
         page, has_more, next_cursor = window_rows(
             candidates[:TRACE_CANDIDATE_CAP], max_output_tokens, 0
         )
@@ -1334,22 +1623,12 @@ class CodeGraphService:
             "has_more": has_more,
             "cursor": next_cursor,
             "hint": (
-                "ambiguous symbol tail — re-run trace_path with the "
+                hint
+                if hint is not None
+                else "ambiguous symbol tail — re-run trace_path with the "
                 "qualified name (qname) of the intended candidate"
             ),
             "last_indexed_at": self._store.get_meta(self._last_indexed_key(key)),
-        }
-
-    @staticmethod
-    def _trace_node(node: Any, depth: int) -> dict[str, Any]:
-        return {
-            "id": node.id,
-            "qname": node.qname,
-            "kind": node.kind,
-            "path": node.path,
-            "start_line": node.start_line,
-            "end_line": node.end_line,
-            "depth": depth,
         }
 
     # ── tool 5: get_file_outline ────────────────────────────────────────────
@@ -1632,6 +1911,13 @@ class CodeGraphService:
                 "fanout_cap": TRACE_FANOUT_CAP,
                 "total_work_cap": TRACE_TOTAL_WORK_CAP,
             },
+            "search_walk": {
+                "enabled": self._config.search_walk,
+                "max_depth": WALK_MAX_DEPTH,
+                "fanout_cap": WALK_FANOUT_CAP,
+                "total_work_cap": WALK_TOTAL_WORK_CAP,
+                "edge_kinds": list(SEARCH_WALK_EDGE_KINDS),
+            },
         }
         if project_id is not None:
             registered = self._resolve_root(project_id)
@@ -1716,30 +2002,91 @@ class CodeGraphService:
         agent: str,
         session: str | None = None,
         reason: str | None = None,
+        confirm: bool = False,
+        confirm_name: str | None = None,
     ) -> dict[str, Any]:
-        """Drop the INDEX (sidecar subtree + poisoned set + freshness
-        stamp) — never the project entity in the main DB. Audit first-
-        class event."""
+        """Drop a project's graph INDEX (sidecar subtree + poisoned set
+        + freshness stamp); a GHOST registration (registered root
+        missing on disk) is removed ENTIRELY — index AND the main-DB
+        registration row — behind an explicit evidence gate. Audit
+        first-class event.
+
+        The project is resolved BY NAME/ID — deliberately NOT through
+        ``_resolve_root``, which refuses exactly the missing-root state
+        a ghost delete must be able to remove (the #450 repoint
+        precedent). A LIVE registration (root exists) keeps the v1
+        contract: only the derived index is dropped, the registration
+        row stays. A ghost (no registered path, a non-absolute one, or
+        ``paths[0]`` gone on disk) is dead weight nothing can index —
+        the delete removes the row too, but only behind the evidence
+        gate: ``confirm=True`` AND ``confirm_name`` echoing the project
+        name (the mesh-RESTORE ``confirm`` hard-gate precedent). Every
+        ghost-gate refusal is audited (``delete-refused``, the #464
+        P3-2 audit-first-class precedent)."""
         self._ensure_enabled()
         actor, sess = self._require_attribution(agent, session)
-        registered = self._resolve_root(project_id)
-        key = registered.graph_key
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise GraphConfinementError("project_id is required and must be a non-empty string")
+        wanted = project_id.strip()
+        project = self._main.get_project(wanted) or self._main.get_project_by_name(wanted)
+        if project is None:
+            raise GraphConfinementError(
+                f"project {wanted!r} is not registered in the projects table "
+                f"(PG2: the graph indexes only registered roots){REGISTER_HINT}"
+            )
+        key = project.name
+        registered = [p for p in (project.paths or []) if isinstance(p, str) and p.strip()]
+        root = registered[0] if registered else None
+        ghost = root is None or not os.path.isabs(root) or not os.path.isdir(root)
+        if ghost and (not confirm or (confirm_name or "").strip() != key):
+            missing: list[str] = []
+            if not confirm:
+                missing.append("confirm=true")
+            if (confirm_name or "").strip() != key:
+                missing.append(f"confirm_name={key!r} (echo of the project name)")
+            self._audit.record(
+                key,
+                "delete-refused",
+                actor,
+                session=sess,
+                reason=reason,
+                details={"ghost": True, "gate": "missing " + " and ".join(missing)},
+            )
+            raise GraphConfinementError(
+                f"project {key!r} is a GHOST (registered root missing on disk); deleting "
+                f"the registration requires the evidence gate — pass {' and '.join(missing)}"
+            )
         deleted = self._store.purge_project(key)
         # The purge clears only the poisoned set + last_indexed stamp;
         # the auto-path suspension flag is this operation's to lift too
         # (fresh start — the next hint may auto-index from scratch).
         self._store.set_meta(auto_suspended_key(key), "0")
         bump_project_graph_epoch(self._main, key)
+        deregistered = False
+        if ghost:
+            deregistered = bool(self._main.delete_project(key))
         self._audit.record(
             key,
             "delete",
             actor,
             session=sess,
             reason=reason,
-            details={"deleted_nodes": deleted},
+            details={"deleted_nodes": deleted, "ghost": ghost},
         )
-        logger.info("codegraph: project graph %s deleted (%d nodes) by %s", key, deleted, actor)
-        return {"project": key, "deleted_nodes": deleted, "status": "deleted"}
+        logger.info(
+            "codegraph: project graph %s deleted (%d nodes%s) by %s",
+            key,
+            deleted,
+            ", registration removed" if deregistered else "",
+            actor,
+        )
+        return {
+            "project": key,
+            "deleted_nodes": deleted,
+            "status": "deleted",
+            "ghost": ghost,
+            "deregistered": deregistered,
+        }
 
 
 #: Beacon v1 (§3.5) budget discipline: the whole line is capped at 200
@@ -1808,9 +2155,26 @@ def _fit_beacon_line(project: str, tail: str) -> str:
 _SERVICE_REGISTRY: weakref.WeakKeyDictionary[Any, CodeGraphService] = weakref.WeakKeyDictionary()
 
 
+def _ensure_host_node_sources() -> None:
+    """Register the HOST's surface extension (card
+    vesma-graph-command-route-nodes): the engine's CLI commands and
+    REST routes as Command/Route nodes. The GENERIC service/indexer
+    never imports the concrete module from module scope — the wiring
+    does, lazily, and ANY failure degrades to a graph without surface
+    nodes (honest absence, the beacon degradation precedent). Idempotent
+    by source name."""
+    try:
+        from vesma.graph_surface_ext import register_surface_source
+
+        register_surface_source()
+    except Exception:
+        logger.debug("codegraph: vesma surface node-source unavailable", exc_info=True)
+
+
 def get_graph_service(manager: Any) -> CodeGraphService:
     """The service singleton for a manager (weak-keyed: a discarded
     manager takes its sidecar connections with it)."""
+    _ensure_host_node_sources()
     service = _SERVICE_REGISTRY.get(manager)
     if service is None:
         service = CodeGraphService(

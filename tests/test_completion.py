@@ -70,7 +70,7 @@ class TestCompleteEngine:
         out = run_complete("", "0")
         lines = out.splitlines()
         assert lines, "top-level completion must not be empty"
-        assert "add\tAdd a new memory entry." in lines
+        assert "add\tAdd a new memory entry (quick-capture)." in lines
         assert "search\tSearch long-term memory (hybrid FTS + vector)." in lines
         # Contract shape: value<TAB>description, no headers, no Rich markup.
         for line in lines:
@@ -623,3 +623,190 @@ class TestDoctorCompletionCheck:
         result = _check_completion()
         assert result.status == CheckStatus.PASS
         assert "does not parse" not in result.detail
+
+
+# ── UX-2 hotfix wave: version stamp, staleness, install richness, shim ────────
+
+
+class TestVersionStamp:
+    """Every generated script embeds the generating vesma version."""
+
+    @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
+    def test_scripts_embed_version(self, shell: str) -> None:
+        script = completion_mod._completion_script(shell)
+        stamp = completion_mod._script_version_header()
+        assert stamp in script, f"{shell} script missing version stamp"
+        assert completion_mod._script_version(script) == vesmaro_version()
+
+    def test_parse_round_trip_and_legacy_none(self) -> None:
+        assert completion_mod._script_version("# vesma version: 5.6.1\n") == "5.6.1"
+        assert completion_mod._script_version("# no stamp here\n") is None
+
+    def test_stamp_is_a_comment_line(self) -> None:
+        """The stamp must stay a comment in EVERY shell — never executed."""
+        stamp = completion_mod._script_version_header()
+        assert stamp.startswith("# ")
+
+
+def vesmaro_version() -> str:
+    from vesmaro import __version__
+
+    return __version__
+
+
+class TestEngineDescriptions:
+    """The custom engine emits value<TAB>description candidates (the UX-2
+    requirement: tab completion shows command + description)."""
+
+    def test_l1_commands_carry_descriptions(self) -> None:
+        candidates = dict(get_completions([""], 0))
+        assert "service" in candidates
+        assert candidates["service"], "L1 service candidate has an empty description"
+
+    def test_l2_service_verbs_carry_descriptions(self) -> None:
+        candidates = dict(get_completions(["service", ""], 1))
+        for verb in ("install", "uninstall", "status", "start"):
+            assert verb in candidates, f"service verb {verb} missing at L2"
+            assert candidates[verb], f"service verb {verb} has an empty description"
+
+    def test_l3_options_after_dash_carry_help(self) -> None:
+        candidates = dict(get_completions(["search", "-"], 1))
+        assert "--limit" in candidates
+        assert candidates["--limit"], "--limit option has an empty description"
+
+    def test_descriptions_reach_stdout_as_tab_lines(self) -> None:
+        result = runner.invoke(app, ["__complete", "service", "", "1"])
+        assert result.exit_code == 0
+        described = [ln for ln in result.output.splitlines() if "\t" in ln]
+        assert described, "engine printed no value<TAB>description lines"
+
+
+class TestDoctorCompletionStaleness:
+    """doctor Completion check: installed script version != running version
+    (or a pre-stamp script) → WARN with the one-command fix."""
+
+    def _install_bash(self) -> None:
+        assert runner.invoke(app, ["completion", "bash"]).exit_code == 0
+
+    def test_fresh_install_passes(self, fake_home: Path) -> None:
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        self._install_bash()
+        result = _check_completion()
+        assert result.status == CheckStatus.PASS
+
+    def test_stale_version_warns_with_fix_command(self, fake_home: Path) -> None:
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        self._install_bash()
+        script = _completion_file_path("bash")
+        script.write_text(
+            script.read_text(encoding="utf-8").replace(
+                completion_mod._script_version_header(), "# vesma version: 5.0.0"
+            ),
+            encoding="utf-8",
+        )
+        result = _check_completion()
+        assert result.status == CheckStatus.WARN
+        assert "stale" in result.detail
+        assert "5.0.0" in result.detail
+        assert "vesma completion" in result.detail
+
+    def test_pre_stamp_script_counts_as_stale(self, fake_home: Path) -> None:
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        self._install_bash()
+        script = _completion_file_path("bash")
+        text = script.read_text(encoding="utf-8")
+        script.write_text(
+            "\n".join(ln for ln in text.splitlines() if not ln.startswith("# vesma version:"))
+            + "\n",
+            encoding="utf-8",
+        )
+        result = _check_completion()
+        assert result.status == CheckStatus.WARN
+        assert "pre-versioned" in result.detail
+
+    def test_stale_zsh_reported_with_shell_name(self, fake_home: Path) -> None:
+        from vesmaro.cli.doctor import CheckStatus, _check_completion
+
+        self._install_bash()
+        assert runner.invoke(app, ["completion", "zsh"]).exit_code == 0
+        zsh_script = _completion_file_path("zsh")
+        zsh_script.write_text(
+            zsh_script.read_text(encoding="utf-8").replace(
+                completion_mod._script_version_header(), "# vesma version: 5.0.0"
+            ),
+            encoding="utf-8",
+        )
+        result = _check_completion()
+        assert result.status == CheckStatus.WARN
+        assert "zsh" in result.detail
+
+
+class TestInstallCompletionFlag:
+    """`vesma --install-completion` delegates to the custom installer — the
+    typer builtin (description-less scripts) can never install instead."""
+
+    def test_installs_for_detected_shell(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SHELL", "/bin/bash")
+        result = runner.invoke(app, ["--install-completion"])
+        assert result.exit_code == 0
+        assert _completion_file_path("bash").exists()
+        assert CANONICAL_BASH in (fake_home / ".bashrc").read_text(encoding="utf-8")
+
+    def test_stamps_installed_script(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SHELL", "/bin/bash")
+        runner.invoke(app, ["--install-completion"])
+        assert (
+            completion_mod._script_version(
+                _completion_file_path("bash").read_text(encoding="utf-8")
+            )
+            == vesmaro_version()
+        )
+
+    def test_undetectable_shell_exits_1(
+        self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SHELL", "/usr/bin/tcsh")
+        result = runner.invoke(app, ["--install-completion"])
+        assert result.exit_code == 1
+        assert "auto-detect" in result.output
+
+
+class TestInstallOutputRichness:
+    """The installer states which richness each shell got."""
+
+    def test_bash_states_values_only(self, fake_home: Path) -> None:
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0
+        assert "values only" in result.output
+
+    def test_zsh_states_descriptions(self, fake_home: Path) -> None:
+        result = runner.invoke(app, ["completion", "zsh"])
+        assert result.exit_code == 0
+        assert "descriptions" in result.output
+
+    def test_fish_states_descriptions(self, fake_home: Path) -> None:
+        result = runner.invoke(app, ["completion", "fish"])
+        assert result.exit_code == 0
+        assert "descriptions" in result.output
+
+
+class TestShellGlueDescriptionWiring:
+    """The generated glue actually renders descriptions: zsh via _describe,
+    fish via the -a engine call whose output fish renders natively."""
+
+    def test_zsh_uses_describe(self) -> None:
+        script = completion_mod._completion_script("zsh")
+        assert "_describe" in script
+        assert "word:desc" in script or "${word}:${desc}" in script
+
+    def test_fish_uses_engine_call(self) -> None:
+        script = completion_mod._completion_script("fish")
+        assert "complete -c" in script
+        assert "__vesma_complete" in script

@@ -55,8 +55,8 @@ rewrite lifecycle.
    vesma_assemble_context(session=<session-id>, project=<project-slug>,
                            file=<optional-path>, agent=<agent-slug>,
                            budget=2048, mode="sync")
-   # → assembled text, per-block provenance lines, redaction counts,
-   #   token stats
+     # → assembled text, per-block provenance lines, redaction counts,
+     #   token stats
    ```
 
    The fixed pipeline runs in order: hybrid RRF recall (published/processed
@@ -65,9 +65,34 @@ rewrite lifecycle.
    Prefer `mode="async"` on latency-sensitive paths: the first call returns
    a handle, fetch the block on a later call with `async_handle=<handle>`.
    Use `mode="code"` / `mode="prose"` to bias recall candidates to a stored
-   content type.
+   content type. The result carries `usage_report.metrics_id` — remember it;
+   the post-model usage report (step 3) closes the loop on it.
 
-3. **Report a context rewrite** (compaction, window slimming) — send the
+3. **Report the usage AFTER the model answered** — loop closure. If the
+   assemble step (step 2) yielded `usage_report.metrics_id`, report how the
+   injected block was used:
+
+   ```text
+   vesma_usage_report(metrics_id=<id from the assemble result>,
+                       block_ids_touched=["<id>:0", "<id>:2"],
+                       tokens_out=<output token count>)
+   # → usage recorded server-side; the assemble call being reported closes
+   ```
+
+   - `block_ids_touched` entries are **opaque ordinals** "<metrics_id>:<i>":
+     the metrics_id comes from the assemble result's
+     `usage_report.metrics_id`; derive `<i>` as the 0-based index of a used
+     block in the result's `blocks` list — the ordinals are composed, never
+     guessed, and not parsed or reordered.
+   - **An empty list is legitimate**: the model used nothing from the
+     injected block — still report it (an honest empty touches nothing and
+     keeps the closure metric truthful).
+   - `tokens_out` is optional; omit when the harness does not expose the
+     output token count.
+   - No assemble this turn → no metrics_id → no report call; never guess
+     a metrics_id.
+
+4. **Report a context rewrite** (compaction, window slimming) — send the
    ORIGINAL of the replaced block:
 
    ```text
@@ -84,7 +109,7 @@ rewrite lifecycle.
    advances it. Rehydrate later via `vesma_retrieve` or
    `vesma_assemble_context` — both re-scan and carry provenance.
 
-4. **Compress a tool output through the hook** (autocompression is
+5. **Compress a tool output through the hook** (autocompression is
    opt-in — pass `auto_compress=true` per call, or enable the
    `hooks.auto_compress` config knob):
 
@@ -102,7 +127,7 @@ rewrite lifecycle.
    project/agent/session/supersedes/content), so re-delivery cannot
    duplicate writes.
 
-6. **Keep assembly cache-friendly** (provider-agnostic cache discipline):
+7. **Keep assembly cache-friendly** (provider-agnostic cache discipline):
 
    - Assemble the context once per session, or on material memory
      change; mid-session re-assembly is reserved for significant

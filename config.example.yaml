@@ -105,6 +105,18 @@ code_graph:
   # issue content; scan caps: file count / 1 MiB per file / ~2s.
   # false keeps search_graph symbol-only.
   literal_fallback: true
+  # PG-1 M2 walk section of search_graph (ADR-0038): when ON, every
+  # symbol-hitting search ALSO answers a SEPARATE section
+  # walk: {origins, nodes, edges, truncated, epoch, walk_cursor/has_more}
+  # — the hits' neighbourhood (in+out from every origin, depth ≤ 2,
+  # quota k = min(ceil(limit/5), limit//2), caps fanout 32 / total work
+  # 512 standing independently of k, PG1 node rows only, never mixed
+  # into results, present only when it fired). Every walk execution
+  # writes its own search-walk audit row priced with out_tokens /
+  # avoided_bytes. Default OFF — the flag-off period is the «search +
+  # read» baseline the token-economics verdict compares against; the
+  # operator opts in deliberately.
+  search_walk: false
   # Watch poll (mnemos_watch_start / POST /watch/start): armed by default,
   # inert until an explicit registration; the master gate applies on top.
   watch: true
@@ -127,6 +139,15 @@ code_graph:
   # secret_allowlist:
   #   - "tests/**"
   #   - "benchmarks/**"
+  # Ephemeral-directory exclusion (defect 2026-10-03: a git worktree
+  # checked out INSIDE the registered root was indexed like first-party
+  # sources — duplicated symbols, re-poisoned fixtures). Directory globs
+  # pruned ON TOP of the built-in denylist: a bare name matches a
+  # directory of that name at ANY depth; an entry with "/" matches the
+  # repo-relative directory path (fnmatch). Setting the field REPLACES
+  # this default list — the built-in denylist (.git/wt/node_modules & co)
+  # can never be lifted. Env: VESMA_CODE_GRAPH__EXCLUDE_GLOBS (JSON).
+  exclude_globs: ["wt", ".venv", "venv", "node_modules", "dist", "build", ".tox", ".git"]
   # Watch poll: global registration cap + adaptive interval
   # base + 1s per 500 indexed files, capped.
   watch_max_registrations: 8

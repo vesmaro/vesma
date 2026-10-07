@@ -18,8 +18,8 @@ Connect — and it is there. No extra wiring required for anything in this table
 
 | Capability | What you get |
 |------------|--------------|
-| **Universal connectivity** | MCP server (38 tools, stdio) + REST API — any harness with MCP support connects in one line. Details: [mcp-tools.md](user/mcp-tools.md), [http-api.md](user/http-api.md) |
-| **Ready integrations** | zcode, the `~/.agents` standard (Claude Code, Codex, Continue, Qwen, and others), and pi — via `vesma integration`: universal deploy targets, one-line MCP presets, and a multi-harness doctor (`vesma doctor` checks MCP registration across known harnesses). See the [integration guide](user/integration-guide.md) |
+| **Universal connectivity** | MCP server (40 tools, stdio) + REST API — any harness with MCP support connects in one line. Details: [mcp-tools.md](user/mcp-tools.md), [http-api.md](user/http-api.md) |
+| **Ready integrations** | zcode, the `~/.agents` standard (Claude Code, Codex, Continue, Qwen, and others), pi, VS Code/Copilot — via `vesma integration setup`: universal deploy targets, one-line MCP presets, and a multi-harness doctor (`vesma doctor` checks MCP registration across known harnesses). See the [integration guide](user/integration-guide.md) |
 | **Skill pack** | 14+ memory skills deployed into your harnesses alongside the tools |
 | **Flexible memory** | Hybrid search (full-text + vector, rank fusion), the [tag contract](user/tag-contract.md), memory scoped per agent and per project, a [context filter](user/context-filter.md) with content-aware filter profiles (code / docs / web / logs …), and CCR compression — marker in context, original in memory, 70–90% token savings |
 | **Dynamic context assembly** | `assemble_context`: a search → compression → filter → secret scan → cache alignment → token budget pipeline, with provenance on every block |
@@ -29,7 +29,8 @@ Connect — and it is there. No extra wiring required for anything in this table
 | **Self-protection** | Injection and secret detectors on input and publication; every output is scanned; a full audit trail tied to each entry |
 | **Auto-pipeline** | A background processor: clustering, deduplication, quality gate, publication |
 | **Bundled embedding model** | `vesma-embed-v1` (~30 MB int8 ONNX) ships inside the wheel — hybrid vector search works fully offline, on CPU, with no downloads and no API keys |
-| **Packaging & delivery** | PyPI [`vesma`](https://pypi.org/project/vesma/) — pre-rebrand wheel `mnemos-memory-server` stays live until deprecation; (wheel bundles the integration pack and the model), npm `pi-vesma` + aliases, GHCR image `ghcr.io/vesmaro/vesmaro`, one-line installer script, benchmark framework S1–S4 in-repo |
+| **Service mode** | `vesma service` — a supervisor runs the core and components from manifests (`vesma service install` creates the systemd user unit, venvs and canonical layout directories; `vesma service status/health/logs` operate the tree; `vesma doctor service` — 13 installation checks DR-01…DR-13). Utility updates: `vesma update check|apply` + the weekly timer (`vesma update timer install`). Shell: `vesma completion` + `-h` at any level (since 5.6.2) |
+| **Packaging & delivery** | PyPI [`vesma`](https://pypi.org/project/vesma/) — pre-rebrand wheel `mnemos-memory-server` stays live until deprecation (the wheel bundles the integration pack and the model), npm `@vesmaro/vesma` + aliases, GHCR image `ghcr.io/vesmaro/vesma`, one-command updates via `vesma update apply`, benchmark framework S1–S4 in-repo |
 
 ### Project graph — the codebase becomes memory (5.1.0)
 

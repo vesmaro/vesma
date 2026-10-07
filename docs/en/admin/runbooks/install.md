@@ -25,13 +25,16 @@ uv tool install vesma
 pipx install vesma
 ```
 
-Scripted variant (venv at `~/.mnemos/venv` + launcher in `~/.local/bin` + optional VS Code wiring):
+Other channels: npm (`npm install -g @vesmaro/vesma`) and the ghcr container — see the
+"Container" section below. Updating an existing Vesma install is done by the utility
+itself: `vesma update apply` (the "Upgrade" section below).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
-```
+> ⚠️ **Names.** The PyPI package is `vesma` (bare slot, ours — the primary channel; `pip install vesma` installs this project). The pre-rebrand `mnemos-memory-server` stays published until deprecation (frozen at 5.2.0), and `vesma-memory-server` is our live mirror alias. Channel table: [PyPI publish runbook](pypi-publish.md).
 
-> ⚠️ **Names.** The PyPI package is `vesma` (bare slot, ours). Pre-rebrand `mnemos-memory-server` stays live until deprecation; the bare `pip install vesma` is an unrelated third-party project.
+> **venv — install flow only.** Creating a venv manually is not part of any workflow: the
+> service layer expects venvs created by `vesma service install` (`~/.local/share/vesma/venv/`
+> and `venvs/<name>/`). Old manual venvs are legacy — their cleanup is covered in
+> [getting-started.md](../../user/getting-started.md#cleaning-up-old-installations).
 
 ## Configuration
 
@@ -48,31 +51,41 @@ embedding:
 
 Store: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Vault mirror: `~/.mnemos/vault/` (Obsidian-compatible markdown; the `~/.mnemos/` paths are the shipped defaults — 5.x keeps this layout during the dual period).
 
-## Start MCP server
+## Service (recommended for long-running hosts)
 
-Add to your VS Code **User** or **Workspace** `mcp.json`:
-
-```jsonc
-{
-  "servers": {
-    "vesma": {
-      "type": "stdio",
-      "command": "vesma",
-      "args": ["mcp-server"]
-    }
-  }
-}
+```bash
+vesma service install                         # manifests, data dirs, venvs, the systemd user unit
+systemctl --user enable --now vesma.service   # autostart
+vesma service status && vesma service health  # live state and the health verdict
 ```
 
-Per-harness presets (Claude Code, Cursor, OpenCode, Codex, Windsurf, ZCode, pi, Hermes):
-[`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md). Behavioral pack (instructions
-/ skills / prompts): `vesma integration setup`.
+Without systemd — `vesma service run` (the supervisor in the foreground). The full verb
+set (start/stop/restart/logs/uninstall) and installation diagnostics
+(`vesma doctor service`) live in
+[getting-started.md](../../user/getting-started.md#service-vesma-service).
+
+## Connecting MCP
+
+**Manual MCP setup is cancelled** — do not paste blocks into `mcp.json` or the native
+harness configs by hand. The utility is the only path:
+
+```bash
+vesma integration setup              # all detected harnesses + agent wiring, idempotent
+vesma integration setup -t copilot   # one harness only
+```
+
+After a package upgrade, refresh what is deployed: `vesma integration update`.
+Copy-paste blocks for non-standard harnesses (a fallback, not the primary path):
+[`integrations/mcp-presets.md`](../../../../integrations/mcp-presets.md).
 
 ## Start HTTP API
 
 ```bash
 vesma serve  # uvicorn on 127.0.0.1:8787
 ```
+
+When the service supervisor is running, the HTTP API core is already embedded in it —
+a separate `vesma serve` is not needed.
 
 ## Container
 
@@ -83,7 +96,7 @@ Quick single-container start using the released image:
 
 ```bash
 podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
-  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesmaro:4.3.0  # 6.0.0: the only honoured spelling (older prefixes retired)
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:5.6.2  # 6.0.0: the only honoured spelling (older prefixes retired)
 ```
 
 Or with compose from the repo root:
@@ -95,8 +108,14 @@ podman-compose up -d
 ## Upgrade
 
 ```bash
-pip install --upgrade vesma
+vesma update check    # reports every update surface, changes nothing
+vesma update apply    # pip user-site (+ npm best-effort), prompt-free
 ```
+
+`apply` touches only the pip user-site (and npm, if installed); prod venvs, Go binaries
+and containers are never updated automatically. Weekly automation:
+`vesma update timer install` (a systemd user timer). The full subcommand map is in
+[getting-started.md](../../user/getting-started.md#the-vesma-update-subcommands).
 
 The store schema is migrated automatically on first start of the new version. Back up
 `~/.mnemos/data/` before major upgrades — see [backup-restore.md](backup-restore.md).
@@ -106,5 +125,7 @@ The store schema is migrated automatically on first start of the new version. Ba
 ```bash
 vesma add "Hello Vesma" --tags "project:test,agent:manual,mnemos:learning"
 vesma search "Hello"
-vesma recall --agent manual --project test
+vesma recall agent manual --project test
+vesma doctor          # the health gate: config, store, MCP transport, registrations
+vesma doctor service  # the service installation against the layout v1 contract (DR-01…DR-13)
 ```

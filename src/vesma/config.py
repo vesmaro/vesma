@@ -1008,6 +1008,27 @@ class MeshTCPConfig(BaseModel):
         return self
 
 
+#: Default directory-name globs excluded from the code-graph index
+#: surface (defect 2026-10-03: an ephemeral ``wt/`` git-worktree inside
+#: a registered root was walked like first-party sources — duplicate
+#: symbols in the graph, re-poisoned fixtures). A bare name matches a
+#: directory of that name at ANY nesting depth; an entry containing
+#: ``/`` matches the repo-relative directory path (``fnmatch``
+#: semantics, same as ``secret_allowlist``). The built-in
+#: ``file_surface.DENY_DIRS`` always applies too; this list is the
+#: operator-extensible complement.
+DEFAULT_EXCLUDE_DIR_GLOBS: tuple[str, ...] = (
+    "wt",  # git-worktree convention (git worktree add wt/<name>)
+    ".venv",
+    "venv",
+    "node_modules",
+    "dist",
+    "build",
+    ".tox",
+    ".git",
+)
+
+
 class CodeGraphConfig(BaseModel):
     """Project code graph indexer knobs (ADR-0032 PG-0, ArchCom 2026-09-28).
 
@@ -1024,7 +1045,8 @@ class CodeGraphConfig(BaseModel):
     ``VESMA_CODE_GRAPH__AUTO_REINDEX_MIN_INTERVAL_SEC`` /
     ``VESMA_CODE_GRAPH__AUTO_REGISTER_MAX_PROJECTS`` /
     ``VESMA_CODE_GRAPH__AGENT_REGISTRATION`` /
-    ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
+    ``VESMA_CODE_GRAPH__LITERAL_FALLBACK`` /
+    ``VESMA_CODE_GRAPH__SEARCH_WALK``.
 
     Fields:
         enabled: Master flag for the project-graph tool surface (the
@@ -1128,6 +1150,41 @@ class CodeGraphConfig(BaseModel):
             issue content. Default ON; set ``false`` to keep
             ``search_graph`` symbol-only. Env override:
             ``VESMA_CODE_GRAPH__LITERAL_FALLBACK``.
+        search_walk: The separate ``walk`` section of ``search_graph``
+            (PG-1 M2, ADR-0038 conditions 2/3/7/8; card
+            ``vesma-pg1-walk-m2-section``). When ON, every
+            ``search_graph`` call ALSO walks the graph neighbourhood of
+            the symbol hits (direction in+out from every hit, the
+            default edge kinds CALLS/IMPORTS/INHERITS/USES/INVOKES/
+            HANDLES, quota ``k = min(ceil(limit/5), limit//2)`` origins,
+            the walker caps fanout 32 / total work 512 standing
+            INDEPENDENTLY of k) and answers with a SEPARATE ``walk``
+            section — PG1 metadata rows only (no signatures), never
+            mixed into ``results``, present ONLY when it fired
+            (absent-when-empty, the ``fallback_used`` precedent);
+            flag-off responses stay byte-identical to the pre-M2 shape.
+            The walk carries the graph ``epoch`` (condition 6: freshness
+            rides the payload, no TTL cache) and writes its own
+            ``search-walk`` audit row with the token-economics pair
+            ``out_tokens`` / ``avoided_bytes`` (condition 7). Default
+            OFF — the flag-off period is the «search + read» baseline
+            the verdict metric compares against (condition 8); the
+            operator turns it on deliberately. Env override:
+            ``VESMA_CODE_GRAPH__SEARCH_WALK``.
+        exclude_globs: Directory-name globs excluded from the index
+            surface ON TOP of the built-in ``file_surface.DENY_DIRS``
+            denylist (defect 2026-10-03: a ``wt/`` git-worktree inside
+            a registered root was indexed like first-party sources —
+            376→746 duplicated files, re-poisoned fixtures). A bare
+            name (``"wt"``) matches a directory of that name at ANY
+            nesting depth; an entry containing ``/`` matches the
+            repo-relative directory path (``fnmatch`` semantics, same
+            as ``secret_allowlist``). Setting the field REPLACES the
+            default list (``DEFAULT_EXCLUDE_DIR_GLOBS``); the built-in
+            ``DENY_DIRS`` still applies and cannot be lifted —
+            ``.git``/``wt``/``node_modules`` & co. are never first-party
+            sources. Env override takes a JSON array:
+            ``VESMA_CODE_GRAPH__EXCLUDE_GLOBS='["wt", "gen/**"]'``.
     """
 
     enabled: bool = True
@@ -1144,11 +1201,20 @@ class CodeGraphConfig(BaseModel):
     # call (audited, reason ``allowlist-unpoison``). Default [] = today's
     # PG3 «навсегда» semantics, byte-identical.
     secret_allowlist: list[str] = Field(default_factory=list)
+    # Defect 2026-10-03: ephemeral directories (git worktrees, venvs,
+    # build output, dependency trees) are never first-party sources.
+    # Defaults to DEFAULT_EXCLUDE_DIR_GLOBS; replacing the list does
+    # NOT lift the built-in file_surface.DENY_DIRS (defense in depth).
+    exclude_globs: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDE_DIR_GLOBS))
     beacon: bool = True
     # W-H hybrid search: literal-content fallback on an EMPTY symbol
     # result (read-only bounded scan of the registered root; PG4-redacted
     # rows). Default ON; false keeps search_graph symbol-only.
     literal_fallback: bool = True
+    # PG-1 M2 (ADR-0038): the separate `walk` section of search_graph.
+    # Default OFF — the flag-off period is the «search + read» baseline
+    # the token-economics verdict compares against; the operator opts in.
+    search_walk: bool = False
     watch: bool = True
     auto_index: bool = True
     auto_reindex_min_interval_sec: float = Field(default=300.0, ge=0.0)
@@ -1169,7 +1235,7 @@ class VitalsConfig(BaseModel):
     with full content, so collection adds no exposure.
 
     The collection boundaries are EXHAUSTIVE: the MCP
-    ``mnemos_assemble_context`` handler and the ``pre_llm_call`` hook.
+    ``vesma_assemble_context`` handler and the ``pre_llm_call`` hook.
     REST ``POST /context/assemble`` is deliberately NOT a boundary —
     it is the multi-principal surface C3 exists to protect; do not add
     collection there without revisiting C3.

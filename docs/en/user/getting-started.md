@@ -2,66 +2,67 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
-> Complete first-run guide for Vesma — from a one-line install to your first memory, first search, and a connected agent harness.
+> The complete Vesma user lifecycle: install → service → integration →
+> doctor → updates → legacy cleanup. Current for release 5.6.2.
 
-Vesma is on PyPI — no cloning, no building, no venv knowledge required. This page walks you through the whole first run. Every command is runnable on a clean Linux / macOS / WSL2 box.
+Vesma is a standalone memory & knowledge server for AI agents. One utility —
+`vesma` — drives the whole cycle: installs the package, deploys the service,
+connects agent harnesses, checks health and updates itself. Every command on
+this page works on a clean Linux / macOS / WSL2 machine.
 
-For higher-level context, see [architecture overview](../architecture/overview.md). For every CLI subcommand, see [cli-reference.md](cli-reference.md). For every MCP tool, see [mcp-tools.md](mcp-tools.md). For every HTTP endpoint, see [http-api.md](http-api.md).
+The lifecycle:
+
+```mermaid
+flowchart LR
+    A[Install<br>pip / uv tool / npm / ghcr] --> B[Service<br>vesma service install + run]
+    B --> C[Integration<br>vesma integration setup]
+    C --> D[Verify<br>vesma doctor]
+    D -->|loop| E[Update<br>vesma update check → apply]
+    E --> B
+    F[Legacy install] -->|cleanup| A
+```
+
+For general context see the [architecture overview](../architecture/overview.md). The
+full CLI command reference lives in [cli-reference.md](cli-reference.md); every MCP
+tool is documented in [mcp-tools.md](mcp-tools.md), every HTTP endpoint in
+[http-api.md](http-api.md).
+
+> **5.6.2 tip.** `-h` works at every level — `vesma -h`, `vesma service -h`,
+> `vesma service start -h`. Forgot the flags — append `-h` to any command.
 
 ---
 
-## Install
+## Installation
 
-Vesma ships on PyPI as **`vesma`** (the bare slot is ours as of the rebrand). Pick the line that matches how you will use it:
+Vesma is published on PyPI as **`vesma`** (the bare slot has been ours since the
+rebrand). Pick a channel:
 
-| You want… | Install with | You get |
-|-----------|--------------|---------|
-| **Everything** — the usual case: the server plus the MCP surface your agent harness talks to | `pip install vesma` | server + `vesma` CLI + REST API + the MCP server |
-| The `vesma` command on `PATH`, project environments untouched | `uv tool install vesma` — or `pipx install vesma` | same as above, isolated |
-| External LLM enrichment as well | `pip install "vesma[ollama]"` — also `openai`, `anthropic`, `gemini` | + the chosen provider SDK |
+| Channel | Command | What you get |
+|---------|---------|--------------|
+| **pip** — the common case | `pip install vesma` | server + `vesma` CLI + REST API + MCP server |
+| **uv tool / pipx** — isolated | `uv tool install vesma` · `pipx install vesma` | same, with `vesma` on `PATH` and project environments untouched |
+| **npm** | `npm install -g @vesmaro/vesma` | CLI + MCP server from the npm channel |
+| **ghcr container** | see the block below | the server in one command, nothing installed into the system |
+| **`vesma update apply`** | for an existing Vesma install | updates the pip distribution via the utility itself (see [Updates](#updates)) |
 
-> **One package, nothing extra.** Since 4.1.0 the MCP SDK is a core dependency (ADR-0023) — the base
-> install serves agent harnesses out of the box, and the legacy `[mcp]` extra survives as an empty
-> no-op alias so older commands and snippets keep resolving. The `vesma-embed-v1` embedding model
-> (~30 MB) is bundled inside the wheel: search works fully offline, on CPU, with no downloads and
-> no API keys.
+Plus external LLM enrichment: `pip install "vesma[ollama]"` — also `openai`,
+`anthropic`, `gemini`.
 
-> ⚠️ **Names.** The product and CLI are `vesma` (`pip install vesma`). The pre-rebrand package
-> `mnemos-memory-server` remains live until deprecation and installs the same server
-> (`pip install "mnemos-memory-server[ollama]"` keeps working across the dual-period). The bare
-> `pip install vesma` is an unrelated third-party project — do not use it.
+> **One package, no extras.** Since 4.1.0 the MCP SDK is a core dependency (ADR-0023):
+> the base install serves agent harnesses out of the box, and the legacy `[mcp]`
+> extra remains an empty no-op alias so old commands and snippets keep working.
+> The `vesma-embed-v1` embedding model (~30 MB) ships inside the wheel: search works
+> fully offline, on CPU, with no downloads and no API keys.
 
-### Scripted variant (zero decisions)
+> ⚠️ **Names.** The product and the CLI are `vesma` (`pip install vesma`). The
+> pre-rebrand package `mnemos-memory-server` lives until deprecation and installs
+> the same server (`pip install "mnemos-memory-server[ollama]"` works through the
+> whole dual period). `vesma-memory-server` is our live mirror alias of the same code.
 
-The installer creates an isolated venv at `~/.mnemos/venv`, drops a `vesma` launcher into `~/.local/bin`, and offers to wire VS Code MCP and deploy the integration pack right in the same run:
+### Container in one command
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash
-```
-
-### Pinning and other channels
-
-| Method | Command |
-|--------|---------|
-| Pin a version | `pip install vesma==4.3.0` (*pre-rebrand pin: `mnemos-memory-server==4.1.0` stays installable until deprecation*) |
-| Container one-liner | `… install.sh \| bash -s -- --container` — see [container-deployment.md](../admin/runbooks/container-deployment.md) |
-| From source (contributors) | `git clone https://github.com/vesmaro/vesma && cd vesma && uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"` — see [CONTRIBUTING.md](../../../CONTRIBUTING.md) |
-
-<details>
-<summary><strong>Released wheel and pre-built container image</strong> — version-pinned channels</summary>
-
-**Released wheel** (pin a specific version):
-
-<!-- version:pip -->
-```bash
-pip install https://github.com/vesmaro/vesma/releases/download/v4.3.0/mnemos_memory_server-4.3.0-py3-none-any.whl
-```
-<!-- /version:pip -->
-
-<!-- deprecated-note: 5.x releases ship as the `vesma` wheel (bare PyPI slot); the legacy
-mnemos_memory_server-*.whl artifact name covers the 4.x line until deprecation. -->
-
-**Pre-built image** (published at `ghcr.io/vesmaro/vesmaro`; `docker` works too — swap `podman` for `docker`):
+The image is published to `ghcr.io/vesmaro/vesma`; `docker` works too — replace
+`podman` with `docker`:
 
 ```bash
 export VESMA_API__TOTP_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -71,50 +72,208 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:5.1.2
+  ghcr.io/vesmaro/vesma:5.6.5
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:4.3.0` (pinned) · `:latest` (rolling).
+Tags: `:5.6.5` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
 
-</details>
+### Pinning a version
 
-<details>
-<summary><strong>Optional extras</strong> — external LLM providers, only if you need them</summary>
-
-Vesma calls external LLMs for pipeline synthesis (M4) and enrichment — never for storing or searching. Install only what you need:
-
+<!-- version:pip -->
 ```bash
-uv pip install "vesma[ollama]"      # local Ollama (default provider)
-uv pip install "vesma[openai]"      # OpenAI / Azure OpenAI
-uv pip install "vesma[anthropic]"   # Anthropic Claude
-uv pip install "vesma[gemini]"      # Google Gemini
+pip install vesma==5.6.5
 ```
+<!-- /version:pip -->
 
-The default provider is `ollama` pointing at `http://localhost:11434`. See [config.example.yaml](../../../config.example.yaml) for the full provider list.
-
-</details>
+<!-- deprecated-note: the 4.x line shipped as mnemos_memory_server-*.whl; since 5.0.0 the release
+artifact is vesma-<version>-py3-none-any.whl (attached to the GitHub release and published on
+PyPI — `pip install vesma` installs the same wheel). -->
 
 ### Prerequisites
 
 | Tool | Version | Why |
 |------|---------|-----|
-| Python | ≥ 3.11 | Runtime floor (`pip` handles it — no manual venv needed) |
-| `uv` or `pipx` | latest | Optional, for the isolated tool install |
+| Python | ≥ 3.11 | Minimum runtime (solved via `pip` — no manual venv needed) |
+| `uv` or `pipx` | latest | Optional, for an isolated tool install |
 
-> **OS notes.** Vesma is developed on Linux (Arch, Fedora, Ubuntu 22.04+) and is regularly smoke-tested on macOS. Windows works through WSL2. The systemd unit in `contrib/systemd/` is Linux-only.
+> **OS note.** Vesma is developed on Linux (Arch, Fedora, Ubuntu 22.04+) and
+> regularly smoke-tested on macOS. Windows works through WSL2. The systemd unit in
+> `contrib/systemd/` is Linux-only.
 
-> **Hardware.** The bundled `vesma-embed-v1` runs comfortably on a single CPU core. No GPU. A 2 vCPU / 2 GB VM is enough for personal use.
+> **Hardware.** The bundled `vesma-embed-v1` runs comfortably on a single CPU core.
+> No GPU required. A 2 vCPU / 2 GB VM is enough for personal use.
+
+> **venv — install flow only.** Creating a venv manually (python -m venv, hand-renamed
+> directories like `venv-5.x`) is forbidden: the service layer expects venvs created by
+> `vesma service install` (`~/.local/share/vesma/venv/` and `venvs/<name>/`). Old manual
+> venvs are a sign of a legacy install — see
+> [Cleaning up old installations](#cleaning-up-old-installations).
 
 ---
 
-## First memory (CLI)
+## Service (`vesma service`)
+
+The service is the supervisor that drives the Vesma components over a control
+socket: the embedded memory core, the board and child components from manifests.
+It is also the right way to keep Vesma running on a machine (a systemd user unit).
+
+| Command | Purpose |
+|---------|---------|
+| `vesma service install` | Deploys the service: component manifests, data dirs, venvs, the systemd user unit. Idempotent — re-running regenerates every artifact (hand edits to the unit are overwritten by design) |
+| `vesma service run` | Runs the supervisor in the foreground: control socket + embedded core + components. Single-instance: when a live supervisor already answers on the socket, exits 0 |
+| `vesma service status [component]` | The component state tree (running/stopped/failed + PID, uptime) as JSON |
+| `vesma service health [component]` | The supervisor's own health verdict: OK / DEGRADED / FAIL with the reason. Use it after start/restart to confirm the component actually came up |
+| `vesma service start {component}` | Start a component (idempotent: already-running is not an error) |
+| `vesma service stop {component}` | Stop a component (idempotent); `--force` SIGKILLs a wedged process |
+| `vesma service restart {component}` | A real stop-then-start cycle (not idempotent by contract) — to reload a config or manifest change |
+| `vesma service logs {component}` | Recent component log lines (`--tail N`, default 100; `--follow`/`-f` streams until the source stops) |
+| `vesma service uninstall [name]` | Remove one component or the whole installation (`--all`). Only files the install flow owns are removed (manifest, env file, venv); **component data dirs are preserved** |
+
+The typical cycle:
+
+```bash
+vesma service install                 # manifests, dirs, venvs, the unit
+systemctl --user enable --now vesma.service   # autostart (unit at ~/.config/systemd/user/vesma.service)
+vesma service status                  # state tree — requires a live supervisor
+vesma service health                  # health verdict after the start
+vesma service logs core --follow      # tail a component's log
+```
+
+Without systemd (containers, manual mode) run the supervisor in the foreground:
+
+```bash
+vesma service run
+```
+
+Every client verb (status/health/start/stop/restart/logs) talks to the
+supervisor over the control socket `${XDG_RUNTIME_DIR}/vesma/control.sock`;
+`--socket` points at a non-default socket (tests, multi-instance machines).
+When the socket does not answer, the command exits with a hint to start
+`vesma service run`.
+
+Under systemd logs go to journald (`vesma service logs` is a journalctl filter
+by identifier); without systemd — to `~/.local/state/vesma/logs/<name>/` with
+10 MB × 5 rotation. The contract admits no "third place" for logs.
+
+---
+
+## Doctor
+
+`vesma doctor` is one command over the whole local installation:
+
+```bash
+vesma doctor
+```
+
+Every check prints PASS / WARN / FAIL with a concrete fix hint.
+Exit codes: `0` — healthy, `1` — at least one FAIL, `2` — warnings only.
+`--json` emits the results for scripts and CI.
+
+Three subcommands:
+
+| Command | Purpose |
+|---------|---------|
+| `vesma doctor fix` | Auto-repairs WARN-level findings: stale integration files → `integration update`, unwired agents → `integration setup`, missing MCP registration → registration. `--dry-run` previews what would be fixed without executing. FAIL-level checks are never auto-fixed |
+| `vesma doctor service` | Checks the service installation against the layout contract (DR-01…DR-13): rights and ownership of directories, venv integrity, user-site leaks, venv uniqueness, unit drift. Read-only: findings carry a ready fix command, but the doctor never executes anything itself |
+| `vesma doctor paths` | The paths table — where every artifact lives (config, data dir, DB, vault, cache, completion) — without running any checks |
+
+> **Legacy spelling.** The old `vesma doctor --fix` flag is still accepted but prints a
+> deprecation hint — since 5.6.2 the canon is `vesma doctor fix` (a subcommand).
+
+The full developer gate (contributors only): clone the repository,
+`uv sync --extra dev`, then `make verify` — ruff + mypy `--strict` +
+bandit + pip-audit + the test suite. If `pip-audit` complains about a pinned CVE,
+see the [dependency update runbook](../admin/runbooks/dependency-updates.md).
+
+---
+
+## Integration and MCP
+
+**Manual MCP setup is cancelled.** Do not paste blocks into `mcp.json` or the
+native harness configs by hand — the utility is the only path. (Old manual
+registration snippets you may find in earlier docs no longer need to be applied.)
+
+### Deployment
+
+```bash
+vesma integration setup
+```
+
+One non-interactive pass: detects every harness on this host, registers the MCP
+server in each supported one, deploys the behavioral pack (instructions, skills,
+prompt mode) and wires all agents. Idempotent: re-running refreshes stale files
+without duplicating. A failure on one target never blocks the remaining targets.
+
+| Flag | Effect |
+|------|--------|
+| `--target <name>` (`-t`, repeatable) | Only the named harnesses: `copilot`, `zcode`, `pi`, `hermes`, `claude-code`, `cursor`, `codex`, `windsurf`, `agents`… |
+| `--no-wire-agents` | Skip agent MCP wiring |
+| `--select a,b` | Wire only the named agents |
+| `--no-mcp` | Skip MCP server registration |
+| `--dry-run` | Show what would be deployed without writing |
+| `--home <path>` | Deploy into an alternate home (another container, a dotfiles checkout) |
+
+### Updating what is deployed
+
+After a package upgrade, refresh the deployed files:
+
+```bash
+vesma integration update            # all harnesses
+vesma integration update -t zcode   # one harness only
+```
+
+Only files carrying an outdated pack version stamp are touched. The other verbs
+of the group: `vesma integration detect` (what is detected and where it is
+deployed), `vesma integration verify` (compare deployed files against the
+shipped pack), `vesma integration uninstall` (removes only files carrying the
+pack's stamp).
+
+### Memory status
+
+At any moment you can see how memory is attached to every detected harness:
+
+```bash
+vesma memory status
+```
+
+A read-only report per harness: pack state (stamps), MCP registration (server
+keys only), local store markers and the active priority mode
+(`overlay+mirror` by default; ADR-0034).
+
+The full target and flag map is in the [integration guide](integration-guide.md);
+copy-paste blocks for non-standard harnesses live in
+[mcp-presets.md](../../../integrations/mcp-presets.md).
+
+---
+
+## Completion
+
+```bash
+vesma completion            # auto-detects $SHELL and installs
+vesma completion zsh        # explicit: bash / zsh / fish
+vesma completion --show-instructions   # manual install instructions, writes nothing
+```
+
+Installs the engine-backed scripts (`vesma __complete`): commands, subcommands,
+options and option values at every level, with candidate descriptions (zsh and
+fish show them; bash completes values only — its readline cannot render
+descriptions). Idempotent: re-running rewrites the scripts and refreshes their
+embedded version stamp.
+
+`vesma doctor` knows about the stamp: a stale completion script yields a WARN
+with the `vesma completion` fix command. Manual source lines for bashrc/zshrc —
+in `vesma completion --show-instructions`.
+
+---
+
+## Your first record (CLI)
 
 ```bash
 vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
@@ -134,13 +293,20 @@ Vesma automatically:
 
 The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). You always type the `vesma:` alias; `mnemos:` is the canonical storage prefix, stable by contract, and `vesma:` is accepted as an input alias everywhere — stored tags keep the canonical `mnemos:*` form.
 
-> **Note.** Newly added memories start in the `raw` state. The background processor (running in both MCP and HTTP API modes) automatically clusters, synthesises, quality-gates, and publishes them. The vector search index only includes `published` memories. To rebuild it manually: `vesma reindex` (CLI) or `POST /reindex` (HTTP API).
+> **Note.** Freshly added entries get the `raw` status. The background processor
+> (it runs in the MCP and HTTP API modes, and in a CLI-only deployment —
+> `vesma processor start`) automatically clusters, synthesizes, quality-checks and
+> publishes them. The vector search index only includes entries with the `published`
+> status. Rebuild it manually with `vesma reindex`.
 
----
+External content has its own subcommands (since 5.6.2): `vesma ingest url URL`
+(a web page) and `vesma ingest file PATH` (a local file), both with `--dry-run`
+to preview the context filter.
 
-## First search
+## Your first search
 
-Hybrid search combines SQLite FTS5 full-text with vector similarity and merges the rankings using Reciprocal Rank Fusion (RRF):
+Hybrid search combines SQLite FTS5 full-text with vector similarity and merges
+the rankings through Reciprocal Rank Fusion (RRF):
 
 ```bash
 vesma search "hello"
@@ -150,48 +316,44 @@ Useful flags:
 
 | Flag | Effect |
 |------|--------|
-| `--limit N` / `-l N` | Max results (default 10) |
+| `--limit N` / `-l N` | Maximum results (default 10) |
 | `--project P` / `-p P` | Restrict to a project slug |
+| `--tags T` | Filter by tags (comma-separated) |
+| `--published-only` | Only pipeline-published entries |
 
-For programmatic access with more options (vector weight, raw content, tag filter), use the HTTP API — see [http-api.md#search](http-api.md#search).
+For programmatic access with extended options (vector weight, raw content, tag
+filters) use the HTTP API — see [http-api.md](http-api.md).
 
 ---
 
-## Your codebase can become memory (project graph)
+## Your project indexes itself (the project graph)
 
-Besides sessions, Vesma can index a project's **code structure**: file
-outlines, symbol search, call tracing, secret-scanned snippets — with zero
-source bytes stored. This is the [project graph](project-graph.md), on by
-default — and since PG-0.5 **your project indexes itself**: the first MCP
-call (or `pre_llm_call` hook) an agent makes inside a directory carrying a
-packaging manifest (`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`,
-`setup.py`) auto-registers and indexes it in the background. No explicit
-call, no instruction, no skill.
+Vesma can also index a project's **code structure** — file outlines, symbol
+search, call tracing — with no source bytes stored. This is the
+[project graph](project-graph.md), on by default. Since PG-0.5 it needs no
+setup: **your project indexes itself**. The first MCP call (or a
+`pre_llm_call` hook) an agent makes inside a directory carrying a packaging
+manifest (`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml` or
+`setup.py`) auto-registers and indexes the project in the background
+(`auto_index`, audit reason `auto-first`). No explicit call, no instruction,
+no skill.
 
 What happens, in order:
 
 1. Work in your project as usual — an agent calls any MCP tool there.
 2. The first index runs in the background (`auto-first`); from then on a
-   beacon line in `assemble_context` output reports graph freshness.
-3. Check it: `mnemos_project_graph_status` — volumes, freshness, poisoned
-   count. (It needs the project's `project_id` — see
-   `mnemos_list_graph_projects`.)
+   beacon line in `assemble_context` output reports graph freshness on its own.
+3. Check it with `mnemos_project_graph_status` (look up the `project_id` with
+   `mnemos_list_graph_projects`).
 
-Prefer the explicit path? Register a root by hand
-(`mgr.sqlite.save_project(Project(name="myproj", paths=["/abs/path/to/myproj"]))`)
-and call `mnemos_index_project` with `project_id` and `agent` — that manual
-flow always stays available, and a successful manual index also lifts a
-suspended auto path.
-
-Don't want it? Two switches in `config.yaml`: `code_graph.auto_index: false`
-stops only the background auto path (manual tools keep working);
-`code_graph.enabled: false` turns the whole surface off — every graph call
-then answers `code: "disabled"`. Full walkthrough:
-[project-graph.md](project-graph.md).
+Don't want the auto path? Two switches in `config.yaml`:
+`code_graph.auto_index: false` stops only the background auto path (the manual
+graph tools keep working); `code_graph.enabled: false` turns the whole surface
+off. Full walkthrough: [project-graph.md](project-graph.md).
 
 ---
 
-## Connect your harness (MCP)
+## Running the HTTP API (optional)
 
 The MCP server is the primary integration surface: your agent harness spawns `vesma mcp-server` over stdio and gets the full `vesma_*` tool set. Pick your harness:
 
@@ -263,14 +425,18 @@ vesma serve --host 127.0.0.1 --port 8787
 
 | Endpoint | Purpose |
 |----------|---------|
-| `http://127.0.0.1:8787/health` | Liveness check |
-| `http://127.0.0.1:8787/metrics` | Stats (Prometheus-style) |
+| `http://127.0.0.1:8787/health` | Liveness probe |
+| `http://127.0.0.1:8787/metrics` | Statistics (Prometheus-style) |
 | `http://127.0.0.1:8787/docs` | Swagger UI |
 | `http://127.0.0.1:8787/v1/sessions` | A2A sessions API (M16) |
 
-> **Security.** The default bind is `127.0.0.1`. Do not expose this port without a reverse proxy with authentication in front — see [security.md](../admin/security.md).
+> **Security.** The default binds to `127.0.0.1`. Never expose the port without a
+> reverse proxy with authentication — see [security.md](../admin/security.md).
 
-Smoke-test it:
+When the service supervisor is running (`vesma service run` or the unit), the
+HTTP API core is already embedded in it — a separate `vesma serve` is not needed.
+
+Quick check:
 
 ```bash
 curl -s http://127.0.0.1:8787/health | jq
@@ -279,34 +445,18 @@ curl -s http://127.0.0.1:8787/health | jq
 
 ---
 
-## Verify your installation
-
-```bash
-vesma doctor
-```
-
-runs health checks over the store, config, MCP transport, and known harness registrations — and prints one PASS/WARN/FAIL line per check. `vesma doctor --fix` auto-resolves the common warnings (stale integration files, unwired agents, missing MCP registration).
-
-To run the full development gate (contributors only): clone the repo, `uv pip install -e ".[dev,mcp]"`, then `make verify` — ruff + mypy `--strict` + bandit + pip-audit + the test suite. If `pip-audit` complains about a pinned CVE, see the [dependency-updates runbook](../admin/runbooks/dependency-updates.md).
-
----
-
 ## Updates
 
-Vesma tells you when a newer release exists and updates itself with one command (issue #445).
-
-**Update check — on by default, quiet.** Vesma asks PyPI "is there a newer version?" with a single version-manifest GET (3s timeout, no telemetry, nothing posted), caches the answer for 24h in `<data_dir>/update-check.json`, and surfaces it in three places:
-
-| Where | What you see |
-|-------|--------------|
-| `mnemos_stats` (MCP) / `vesma stats` | the `update_available` object: `{installed, latest, dist, update_available, checked_at}` (or `null`) |
-| `vesma --version` | a stderr line: `update available: 5.2.0 (run 'vesma update --check')` |
-| Server start (`vesma serve`, `vesma mcp-server`) | one INFO line in the log |
-
-Offline machines are unaffected: a failed check serves the cached answer (marked stale) and never crashes anything. To turn the check off:
+**Update checking — enabled by default, silent.** Vesma asks PyPI "is there a
+newer version?" with a single GET of the version manifest (3 s timeout, no
+telemetry, nothing is sent), caches the answer for 24 hours in
+`<data_dir>/update-check.json` and surfaces it in `vesma stats`, in
+`vesma --version` (a stderr line) and as one INFO line at server start.
+Offline machines are fine: a failed check serves the cached answer (marked
+"stale") and never breaks anything. Turn the check off:
 
 ```bash
-VESMA_UPDATES_CHECK=off vesma serve      # hard env kill switch
+VESMA_UPDATES_CHECK=off vesma serve      # hard env kill-switch
 ```
 
 or in `config.yaml` (env equivalent: `VESMA_UPDATES__CHECK_ENABLED=false`):
@@ -316,60 +466,209 @@ updates:
   check_enabled: false
 ```
 
-**`vesma update` — one command per machine.** Without flags it reports every update surface found on this machine — the pip dist it would upgrade (installed vs latest), the global npm package `@vesmaro/vesma`, host prod-venvs, and the Go binaries:
+### The `vesma update` subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `vesma update check` | Reports every update surface of the machine. Never prompts, never applies — safe in pipes and CI |
+| `vesma update apply` | Apply the update now: pip `--user --upgrade` (+ npm best-effort). Never prompts — invoking `apply` IS the confirmation. `--to VERSION` pins/rolls back to a specific version. Every run appends a record to `~/.local/share/vesma/update-history.json` |
+| `vesma update components` | The component inventory: what is installed and how it updates. Local state only — no network. `--json` for scripts |
+| `vesma update timer install` | Install and enable the weekly systemd user timer (`vesma-update.timer`) — the automated check+apply pass |
+| `vesma update timer uninstall` | Remove the timer and its service unit |
+| `vesma update timer status` | Whether the timer is installed, whether it is enabled, when it last fired |
+
+Bare `vesma update` keeps the 5.2.0 behavior: report + an interactive apply
+prompt in a TTY. The old flag forms (`--check`, `--yes`, `--to`, `--scope`,
+`--install-timer`, `--uninstall-timer`) still work as hidden deprecated aliases
+with a stderr hint — write new scripts against the subcommands.
 
 ```bash
-vesma update            # or: vesma update --check
-vesma update --yes --scope=user    # pip install --user --upgrade <dist>, npm -g best-effort
-vesma update --to 5.1.1 --yes      # rollback / pin to a specific version
+vesma update check              # report only
+vesma update apply              # pip user-site (+ npm best-effort)
+vesma update apply --to 5.6.1   # rollback / version pin
+vesma update timer install      # weekly automation
 ```
 
-`--yes` touches only the pip user-site (and npm, when installed) — it never silently touches the production venvs, the Go binaries, or containers; those are report-only by design. Every run appends a record to `~/.local/share/vesma/update-history.json`. After an update, restart your agent harness / `vesma serve` to pick up the new version.
+`apply` touches only the pip user-site (and npm, if installed) — prod venvs,
+Go binaries and containers are never silently updated; they only appear in the
+report (marked `MANUAL GATE` / `report only`). After an update restart the agent
+harness / `vesma serve` / the service (`vesma service restart <component>`) to
+pick up the new version.
 
-**Fully automatic (optional).** A weekly systemd user timer runs the same update:
-
-```bash
-vesma update --install-timer      # writes ~/.config/systemd/user/vesma-update.{service,timer}, enables weekly + Persistent
-vesma update --uninstall-timer    # remove again
-```
-
-The unit templates live in [`contrib/vesma-update.service`](../../../contrib/vesma-update.service) / [`.timer`](../../../contrib/vesma-update.timer) — their header comments explain the distrobox adaptation (one `distrobox-enter` ExecStart per box, same pattern as the prod units) and what is never auto-updated.
+The timer unit templates live in
+[`contrib/vesma-update.service`](../../../contrib/vesma-update.service) /
+[`.timer`](../../../contrib/vesma-update.timer) — the file headers explain the
+distrobox adaptation (one `distrobox-enter` ExecStart per box) and what is never
+updated automatically.
 
 ---
 
-## Migrate from legacy ai-brain
+## Cleaning up old installations
 
-If you have an existing legacy `ai-brain` install (`~/.ai-brain/ai_brain.db` + `~/brain-vault/`), Vesma imports it in one command. Dry-run first:
+Installations from the rebrand and the pre-service-track era leave artifacts
+under old names on the machine. Two scenarios below. Before either one, record
+the current state: `vesma doctor paths` (where the config points),
+`vesma update components` (which distributions are installed).
+
+### Scenario A — clean the legacy, keep the database
+
+The database, the vault and the configs **stay in place**. Only the old-name
+mechanics are removed.
+
+**What to keep (do not delete):**
+
+| Path | What it is |
+|------|-----------|
+| `~/.mnemos/` | The engine store: `data/mnemos.db` (SQLite + vector index), `vault/` (Obsidian mirror), `config.yaml`, `logs/` |
+| `~/.config/vesma/` | Service-layer config: `vesma.yaml`, the `components.d/` manifests, `env/` secret files |
+| `~/.local/share/vesma/` | Component data + the engine and component venvs (`venv/`, `venvs/`) — owned by the install flow, never edit by hand |
+| `~/.local/state/vesma/` | Logs, the transition journal, the fallback runtime |
+| `~/.cache/vesma/` | Cache — regenerable, safe to delete at any moment (recreated on demand) |
+
+**What to remove:**
+
+```bash
+# 1. pip distributions under old names (keep one current dist; the list — vesma update components)
+pip uninstall mnemos-memory-server vesma-memory-server
+
+# 2. legacy mnemos-* units (systemd user)
+systemctl --user disable --now mnemos-*.service 2>/dev/null
+rm -i ~/.config/systemd/user/mnemos-*.service ~/.config/systemd/user/mnemos-*.timer
+systemctl --user daemon-reload
+
+# 3. old shell wrappers and old-name launchers
+rm -i ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+
+# 4. old completion scripts (the current ones are vesma.*; leave them)
+rm -i ~/.mnemos/completion/mnemos.*
+
+# 5. legacy venv directories with versions in the name (hand-created — NOT the canonical vesma/venv*)
+rm -ri ~/venv-5.x   # example: any manual venv of the old install
+```
+
+Then bring what remains up to date:
+
+```bash
+vesma completion            # regenerate the current completion scripts
+vesma integration update    # refresh the deployed pack
+vesma doctor                # the health gate — every check should be green
+vesma doctor service        # the service installation against the layout v1 contract
+```
+
+### Scenario B — full removal, nothing kept
+
+> ⚠️ **IRREVERSIBLE.** The `~/.mnemos/` store (database, vector index, vault,
+> logs), the service-layer configs and all component data are erased with no way
+> back. If the data matters at all — export first:
+> `vesma export backup.json` (see [export-import.md](export-import.md)).
+
+```bash
+# 1. a proper teardown of the service by the utility (stop + remove unit + artifacts)
+vesma service uninstall --all
+
+# 2. remove the update timer
+vesma update timer uninstall
+
+# 3. remove the behavioral pack from all harnesses (only files carrying the pack's stamp)
+vesma integration uninstall
+
+# 4. distributions and the global npm package
+pip uninstall vesma vesma-memory-server mnemos-memory-server
+npm uninstall -g @vesmaro/vesma 2>/dev/null
+
+# 5. service-layer units, if anything remains
+systemctl --user disable --now vesma.service 2>/dev/null
+rm -i ~/.config/systemd/user/vesma*.service ~/.config/systemd/user/vesma-update.{service,timer}
+systemctl --user daemon-reload
+
+# 6. the data and config directories — everything
+rm -ri ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
+
+# 7. launchers and completion scripts
+rm -i ~/.local/bin/vesma ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
+```
+
+Steps 1–3 go through the utility because only it knows the full list of its own
+artifacts; the manual directory removal is for leftovers of an already-gutted
+install.
+
+---
+
+## The legacy layer: how to recognize an old installation
+
+Signs of a legacy deployment (pre-service-track):
+
+| Sign | Where to look |
+|------|---------------|
+| venv directories with versions in the name (`venv-5.x`, `venv-4.3`), hand-created | home directory, `~/venv*`, paths from old units |
+| `mnemos-*.service` / `mnemos-*.timer` units in systemd user | `ls ~/.config/systemd/user/` |
+| shell wrappers `mnemos-*-unit.sh`, launchers `mnemos`, `mnemos-train` | `ls ~/.local/bin/` |
+| configs under old names in `~/.config` outside `vesma/` | `ls ~/.config/` |
+| a token env file outside the canonical location | the `env_file` path in old manifests/units |
+| logs in three places (journald + scattered files + the data dir) | old units, `~/.mnemos/logs/` |
+
+The migration table (canon — layout v1, §9): the single migration entry point is
+the **install flow** (`vesma service install`); hand-moving units and scripts is
+not supported.
+
+| Legacy | Canonical (layout v1) | Note |
+|--------|----------------------|------|
+| legacy configs under old names in `~/.config` | `~/.config/vesma/vesma.yaml` (the general config) + `~/.config/vesma/components.d/<name>.yaml` (per component) | the legacy name is not preserved: content is triaged by purpose |
+| scattered file logs ("logs in 3 places") | journald (systemd) / `~/.local/state/vesma/logs/<name>/` (non-systemd) | one place per mode; old files are archived by the operator and not continued |
+| a legacy token env file outside the canonical paths | `~/.config/vesma/env/<name>.env` (`0600`, fail-closed loading) | rotate the token when moving it |
+| data of the old deployment under test names | `~/.local/share/vesma/<name>/` | renaming is a separate engine wave |
+| legacy venv directories with versions in the name | `~/.local/share/vesma/venvs/<name>/` | one venv per python unit; recreated from the lock file, not moved |
+| artifacts of the retired orchestrator | discarded (not migrated) | — |
+| ad-hoc launchers (nohup scripts, shell wrappers) | discarded (not migrated) | launching = the supervisor driven by manifests |
+
+Migration order: 1) inventory — `vesma doctor service` (DR-01…DR-13 + the list
+of legacy paths) → 2) `vesma service install` creates the manifests / env files /
+venvs, data moves with owner and rights → 3) a green component conformance →
+4) discard the legacy mechanisms (disable + stop the old units, scenario A above).
+
+---
+
+## Migrating from legacy ai-brain
+
+If you have an old `ai-brain` installation (`~/.ai-brain/ai_brain.db` +
+`~/brain-vault/`), Vesma imports it in one command. Dry-run first:
 
 ```bash
 vesma migrate from-ai-brain --dry-run
 ```
 
-Read the summary, then run for real:
+Read the summary, then run it for real:
 
 ```bash
 vesma migrate from-ai-brain
 ```
 
-The migrator translates legacy source types, patches the tag contract (`project:legacy`, `agent:unknown`, `mnemos:legacy`), preserves entry statuses, and migrates the `content_ru` / `content_en` columns into `metadata` (no data loss). Use `--source PATH` and `--vault PATH` for non-default locations.
+The migrator translates legacy source types, fixes the tag contract
+(`project:legacy`, `agent:unknown`, `mnemos:legacy`), preserves entry statuses
+and moves the `content_ru` / `content_en` columns into `metadata` (no data
+loss). For non-standard locations use `--source PATH` and `--vault PATH`.
 
 ---
 
 ## Configuration
 
-Vesma reads `config.yaml` from the current directory or `~/.mnemos/config.yaml`. See [config.example.yaml](../../../config.example.yaml) for the full schema. The most useful knobs:
+Vesma reads `config.yaml` from the current directory or `~/.mnemos/config.yaml`.
+The full schema is in [config.example.yaml](../../../config.example.yaml). The most useful knobs:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `mnemos.data_dir` | `~/.mnemos/data` | SQLite store + vector index |
 | `mnemos.vault_path` | `~/.mnemos/vault` | Obsidian mirror |
-| `mnemos.strict_tag_contract` | `true` | Enforce the tag contract (set `false` only for legacy imports) |
+| `mnemos.strict_tag_contract` | `true` | Enforce the tag contract (`false` — legacy imports only) |
 | `embedding.provider` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
-| `search.hybrid_alpha` | `0.5` | Weight of the vector leg in RRF (0.0 = pure FTS, 1.0 = pure vector). Default re-tuned 0.7 → 0.5: leg balance stops vector dominance from drowning FTS-rank-1 matches (issue #300) |
-| `api.host` / `api.port` | `127.0.0.1` / `8787` | `vesma serve` defaults |
-| `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis & context filter |
+| `search.hybrid_alpha` | `0.5` | Vector leg weight in RRF (0.0 = pure FTS, 1.0 = pure vector) |
+| `api.host` / `api.port` | `127.0.0.1` / `8787` | Defaults for `vesma serve` |
+| `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis and the context filter |
 
-Any of these can be overridden by env vars (`VESMA_*`, with `__` for nesting; the 5.0–5.2 `VESMARO_*` spelling stays accepted until 6.0, the 4.x `MNEMOS_*` spelling is no longer read):
+Every one of them is overridden by environment variables (`VESMA_*`, `__` is the
+nesting separator; the 5.0–5.2 spelling `VESMARO_*` is accepted until 6.0, the
+4.x spelling `MNEMOS_*` is no longer read):
 
 ```bash
 VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
@@ -377,7 +676,7 @@ VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 
 ### Logging
 
-Vesma logs to `~/.mnemos/logs/mnemos.log` by default (rotating, 10 MB × 3 files):
+Vesma writes logs to `~/.mnemos/logs/mnemos.log` by default (rotation, 10 MB × 3 files):
 
 ```yaml
 logging:
@@ -387,36 +686,56 @@ logging:
   backup_count: 3
 ```
 
-CLI: `vesma --verbose serve` for DEBUG level, `vesma serve --log-file /path/to/log` to override.
+CLI: `vesma --verbose serve` for DEBUG level, `vesma serve --log-file /path/to/log`
+to override the path. Service component logs live separately — see
+[Service](#service-vesma-service).
 
 ---
 
 ## Troubleshooting
 
-### `vesma` command not found
+### The `vesma` command is not found
 
-If you installed with plain `pip` into a venv, the venv must be active. Prefer the isolated install (`uv tool` / `pipx` / `install.sh`) — it puts `vesma` on `PATH` in every shell (`~/.local/bin`; add it to `PATH` if your distro does not).
+If you installed with plain `pip` into a venv — the venv must be activated. Prefer
+an isolated install (`uv tool` / `pipx`) — it puts `vesma` on `PATH` in every
+shell (`~/.local/bin`; add the directory to `PATH` if your distribution does not
+do it).
 
-### `vesma mcp-server` fails with an import error about `mcp`
+### `vesma mcp-server` crashes with an `mcp` import error
 
-The install is broken, or a foreign `mcp` 1.x SDK shadows the bundled core one:
-`pip install --force-reinstall mnemos-memory-server` (the SDK is a core dependency since
-4.1.0 — ADR-0023; `vesma doctor` confirms the transport afterwards).
+The install is broken or a foreign `mcp` 1.x landed on top of the core SDK:
+`pip install --force-reinstall vesma` (the SDK has been a core dependency since
+4.1.0 — ADR-0023; after reinstall the transport is confirmed by `vesma doctor`).
+
+### `vesma service …` client verbs answer "control socket does not exist"
+
+The supervisor is not running. Start `vesma service run` (foreground) or the unit
+(`systemctl --user start vesma.service`), then retry. Installation diagnostics —
+`vesma doctor service`.
 
 ### Search returns only "raw" entries
 
-The vector index only includes `published` memories; new entries start `raw` and are published by the background processor. To publish immediately, set `status: "published"` on creation via the HTTP API, or let the pipeline run.
+The vector index only includes entries with the `published` status; fresh entries
+start as `raw` and are published by the background processor. To publish
+immediately, set `status: "published"` when creating via the HTTP API — or let
+the pipeline run (`vesma processor start` in a CLI-only deployment).
 
 ### `sqlite3.OperationalError: database is locked`
 
-Another `vesma` process (CLI, MCP, or HTTP) holds the write lock. SQLite uses WAL mode but only one writer is allowed at a time. Close the other process, or wait for its transaction to commit (default busy-timeout is 5 s). For multi-harness setups, give each harness its own data dir — see the one-owner-per-store note in the [integration guide](integration-guide.md).
+Another `vesma` process (CLI, MCP or HTTP) holds the write lock. SQLite uses
+WAL mode, but there is one writer at a time. Close the other process or wait for
+its transaction to commit (the default timeout is 5 s). For multi-harness
+installations give each harness its own data dir — see the "one owner per store"
+note in the [integration guide](integration-guide.md).
 
-### MCP server runs but no tools appear in the harness
+### The MCP server runs, but the tools do not appear in the harness
 
-1. Check the harness config parses (valid JSONC / TOML, no trailing commas).
-2. Restart the harness after editing its config.
-3. Probe the wire directly: `printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | vesma mcp-server` — a JSON-RPC reply with `"serverInfo":{"name":"vesma"...}` means the server side is fine. (The serverInfo name stays `vesma` across the dual-prefix period — it is part of the MCP registration contract.)
-4. Run `vesma doctor` — the MCP transport and registration checks point at the broken link.
+1. Check that the harness config parses (valid JSONC / TOML, no trailing commas).
+2. Restart the harness after any config change.
+3. Do not edit the config by hand — redeploy with the utility: `vesma integration setup`
+   (idempotent, refreshes stale files), then restart the harness again.
+4. Probe the wire directly: `printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.0"}}}\n' | vesma mcp-server` — a JSON-RPC reply with `"serverInfo":{"name":"vesma"...}` means the server side is fine.
+5. Run `vesma doctor` — the MCP transport and registration checks point at the broken link; `vesma doctor fix` repairs the WARN level.
 
 ---
 
@@ -426,15 +745,17 @@ Another `vesma` process (CLI, MCP, or HTTP) holds the write lock. SQLite uses WA
 |-----------------|------|
 | Connect a specific harness (VS Code, Claude Code, Cursor, OpenCode, Codex, Windsurf, pi, Hermes…) | [Connect Vesma to any harness](../../../integrations/mcp-presets.md) |
 | Deploy the behavioral pack (instructions / skills / prompts / agent wiring) | [integration-guide.md](integration-guide.md) |
+| Understand the service layer: manifests, supervisor, control socket | [architecture overview](../architecture/overview.md) |
 | See every CLI subcommand | [cli-reference.md](cli-reference.md) |
 | See every MCP tool | [mcp-tools.md](mcp-tools.md) |
 | See every HTTP endpoint | [http-api.md](http-api.md) |
-| Understand the system shape | [architecture overview](../architecture/overview.md) |
+| Have the engine index THIS repository's code graph for code search — it indexes itself (the `auto_index` config block: auto-register + auto-reindex) | [project-graph.md](project-graph.md) |
 | Read the tag schema | [tag-contract.md](tag-contract.md) |
-| Run an operational task | [admin/runbooks/install.md](../admin/runbooks/install.md) |
-| Review security boundaries | [security.md](../admin/security.md) |
-| See why a decision was made | [project/adr/](../../project/adr/) |
+| Dive into the project graph (symbol search, call tracing, auto-indexing) | [project-graph.md](project-graph.md) |
+| Perform an operational task | [admin/runbooks/install.md](../admin/runbooks/install.md) |
+| Review the security boundaries | [security.md](../admin/security.md) |
+| Learn why a decision was made | [project/adr/](../../project/adr/) |
 
 ---
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-06 (release 5.6.2)_

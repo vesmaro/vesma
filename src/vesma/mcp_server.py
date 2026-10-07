@@ -1191,7 +1191,10 @@ async def _canonical_tools() -> list[Tool]:
                 "handle, fetch it on a later call via async_handle) / code / "
                 "prose (filter recall candidates by stored content type). "
                 "Returns the assembled text, per-block provenance + redaction "
-                "counts, and token stats."
+                "counts, token stats, and 'usage_report': {'metrics_id': N} "
+                "(the addressee id for the vesma_usage_report tool the "
+                "harness calls AFTER its model answered; sync modes only — "
+                "an async handle envelope carries no metrics_id)."
             ),
             input_schema={
                 "type": "object",
@@ -1259,6 +1262,67 @@ async def _canonical_tools() -> list[Tool]:
                     },
                 },
                 "required": ["session", "project"],
+            },
+        ),
+        Tool(
+            name="vesma_usage_report",
+            description=(
+                "Phase C usage-loop closure (ADR-0026 §C) — call ONCE per "
+                "model turn, AFTER your model answered, to report how a "
+                "previous vesma_assemble_context injection was used. THE "
+                "CALLER IS THE HARNESS: the assembled window went into a "
+                "model call, and this report records what came of it — the "
+                "server never self-reports usage. Inputs: metrics_id = the "
+                "id from the assemble result's 'usage_report' key (the "
+                "assemble call being reported); block_ids_touched = the "
+                "opaque block ordinals "
+                "'\"<metrics_id>:<i>\"' exactly as they appeared in that "
+                "assemble result's blocks — empty list is LEGITIMATE "
+                "(the call used nothing); tokens_out = output token count "
+                "of the model turn (optional); wrong_tool_flag = true when "
+                "the call should not have gone to this tool at all "
+                "(optional, default false). Every report is validated "
+                "hostile-input style server-side and refused loudly on any "
+                "non-conforming shape (unknown metrics_id included)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "metrics_id": {
+                        "type": "integer",
+                        "description": (
+                            "Id of the assemble call being reported — the "
+                            "'usage_report' key of that call's "
+                            "vesma_assemble_context result."
+                        ),
+                    },
+                    "block_ids_touched": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Opaque injected-block ordinals "
+                            "'\"<metrics_id>:<i>\"' the model actually used, "
+                            "from the assemble result's blocks. An EMPTY "
+                            "list is a legitimate report (touched nothing)."
+                        ),
+                    },
+                    "tokens_out": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": (
+                            "Optional output token count of the model turn "
+                            "built on the injected window."
+                        ),
+                    },
+                    "wrong_tool_flag": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "True when the call should not have gone to this tool at all."
+                        ),
+                    },
+                },
+                "required": ["metrics_id", "block_ids_touched"],
             },
         ),
         Tool(
@@ -1783,11 +1847,18 @@ async def _canonical_tools() -> list[Tool]:
                 "root answers with match_kind:'literal' rows "
                 "(path/line/snippet, secrets-redacted) and a "
                 "fallback_used:true marker (absent on symbol hits; "
-                "disable via code_graph.literal_fallback). Token "
-                "contract: max_output_tokens 128-1M (default 3200), "
-                "whole-row drops, strictly advancing cursor, has_more; "
-                "signatures are opt-in via include_signature. Read-only, "
-                "audited per agent."
+                "disable via code_graph.literal_fallback). "
+                "Flag-gated walk section (ADR-0038, "
+                "code_graph.search_walk, default off): when enabled, a "
+                "separate walk: {origins, nodes, edges, truncated, "
+                "epoch, walk_cursor/has_more} section answers the "
+                "hits' neighbourhood (in+out, depth ≤ 2, PG1 rows, "
+                "never mixed into results; its own walk_cursor page). "
+                "Token contract: max_output_tokens 128-1M (default "
+                "3200), whole-row drops, strictly advancing cursor, "
+                "has_more (results cursor + the walk section's own "
+                "walk_cursor); signatures are opt-in via "
+                "include_signature. Read-only, audited per agent."
             ),
             input_schema={
                 "type": "object",
@@ -1810,6 +1881,11 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Page cursor from the previous call.",
+                    },
+                    "walk_cursor": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Walk-section page cursor from the previous call.",
                     },
                     "max_output_tokens": {
                         "type": "integer",
@@ -1980,10 +2056,13 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="vesma_delete_graph_project",
             description=(
-                "Drop a project's graph INDEX (sidecar data — never the "
-                "project entity in the main DB). The ONLY operation that "
-                "clears the poisoned set (PG3 'forever'). Audited with a "
-                "reason."
+                "Drop a project's graph INDEX (sidecar data). A LIVE "
+                "registration keeps its project entity in the main DB; "
+                "a GHOST registration (root missing on disk) is removed "
+                "ENTIRELY — index AND registration row — behind the "
+                "evidence gate: confirm=true plus confirm_name echoing "
+                "the project name. The ONLY operation that clears the "
+                "poisoned set (PG3 'forever'). Audited with a reason."
             ),
             input_schema={
                 "type": "object",
@@ -1992,6 +2071,21 @@ async def _canonical_tools() -> list[Tool]:
                     "agent": _GRAPH_AGENT_PROP,
                     "session": _GRAPH_SESSION_PROP,
                     "reason": {"type": "string", "description": "Audit reason (optional)."},
+                    "confirm": {
+                        "type": "boolean",
+                        "description": (
+                            "Required true to delete a GHOST registration "
+                            "(registered root missing on disk). A live-root "
+                            "delete purges the index only and needs no gate."
+                        ),
+                    },
+                    "confirm_name": {
+                        "type": "string",
+                        "description": (
+                            "Echo of the project name — required together "
+                            "with confirm for a ghost deletion."
+                        ),
+                    },
                 },
                 "required": ["project_id", "agent"],
             },
@@ -2972,13 +3066,71 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             # Vitals collection boundary (ADR-0026 phase A): record AFTER
             # the result exists — the pipeline itself stays write-free.
             # Non-fatal by contract; a no-op when the plane is disabled.
-            mgr.record_assemble_vitals(asm_result)
+            # Companion change of the usage-loop closure (wave 9): the
+            # assemble row id is surfaced INTO the result as an additive
+            # ``usage_report.metrics_id`` key so the harness can address
+            # this very assembly later via vesma_usage_report. Runtime
+            # data, not a schema column — born-final schema untouched.
+            asm_metrics_id = mgr.record_assemble_vitals(asm_result)
+            if asm_metrics_id is not None and "usage_report" not in asm_result:
+                asm_result["usage_report"] = {"metrics_id": asm_metrics_id}
             return asm_result
         except ValueError as exc:
             # Boundary validation (mode/budget/async_handle incl. the
             # session-bound handle check) — surface a clean error dict
             # instead of the generic exception path.
             return {"error": str(exc)}
+
+    # ── vesma_usage_report (phase C loop closure, wave 9) ──────────────────
+    if name == "vesma_usage_report":
+        # Boundary type guards (the vesma_assemble_context pattern:
+        # locals-suffixed, clean error dicts). NO sink validation is
+        # re-implemented or loosened here — these guards only keep
+        # malformed MCP payloads from reaching the manager as opaque
+        # junk; every hostile-input rule (id range, opaque single-line
+        # ids, caps, strictly-bool flag, atomic FK refusal) lives in
+        # MetricsStore.record_usage behind the non-fatal wrapper and
+        # stays the single source of truth.
+        ur_metrics_id = args.get("metrics_id")
+        if not isinstance(ur_metrics_id, int) or isinstance(ur_metrics_id, bool):
+            return {"error": "metrics_id must be an integer"}
+        ur_touched = args.get("block_ids_touched")
+        if not isinstance(ur_touched, list):
+            return {"error": "block_ids_touched must be a list of opaque block ordinals"}
+        ur_tokens_out = args.get("tokens_out")
+        if ur_tokens_out is not None and (
+            not isinstance(ur_tokens_out, int) or isinstance(ur_tokens_out, bool)
+        ):
+            return {"error": "tokens_out must be an integer when provided"}
+        ur_wrong_tool = args.get("wrong_tool_flag", False)
+        if not isinstance(ur_wrong_tool, bool):
+            return {"error": "wrong_tool_flag must be a boolean when provided"}
+        try:
+            usage_id = mgr.record_usage_vitals(
+                ur_metrics_id,
+                block_ids_touched=ur_touched,
+                tokens_out=ur_tokens_out,
+                wrong_tool_flag=ur_wrong_tool,
+            )
+        except ValueError as exc:
+            # belt-and-suspenders: the wrapper contract currently guarantees
+            # ValueError never escapes (it catches everything down to the
+            # sink); this surfaces a clean error dict if a future wrapper
+            # change re-raises. The live refusal path is usage_id is None.
+            return {"error": str(exc)}
+        if usage_id is None:
+            # The sink refused the whole write (unknown metrics_id,
+            # non-conforming block ids, tokens cap, ...) — the refusal is
+            # loud in the server log but the harness needs a
+            # machine-readable verdict too; the loop closure must be
+            # observable from the calling side. Detail stays in the log
+            # (the sink already logged it); here: one honest line.
+            return {
+                "error": (
+                    f"usage report refused — wrong shape or unknown metrics_id {ur_metrics_id}"
+                )
+            }
+        return {"status": "recorded", "usage_id": usage_id}
 
     # ── vesma_context_rewrite (ADR-0018, #125 Wave 2) ──────────────────────
     if name == "vesma_context_rewrite":
@@ -3200,6 +3352,7 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 kind=args.get("kind"),
                 limit=args.get("limit", 50),
                 cursor=args.get("cursor", 0),
+                walk_cursor=args.get("walk_cursor", 0),
                 max_output_tokens=args.get("max_output_tokens"),
                 include_signature=bool(args.get("include_signature", False)),
                 **common,
@@ -3268,7 +3421,11 @@ def _handle_graph(name: str, mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         if project_id is None:
             return bad("project_id", "a non-empty string")
         return get_graph_service(mgr).delete_graph_project(
-            project_id, reason=_optional_str(args.get("reason")), **common
+            project_id,
+            confirm=bool(args.get("confirm", False)),
+            confirm_name=_optional_str(args.get("confirm_name")),
+            reason=_optional_str(args.get("reason")),
+            **common,
         )
     except GraphToolError as exc:
         payload = {"error": str(exc)}

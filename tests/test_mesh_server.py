@@ -1331,9 +1331,7 @@ class TestReadMemory:
     ) -> None:
         """A moderation refuse is a SUCCESS with trigger_code=REFUSED."""
         record_id = self._list_one_fed_id(server)
-        monkeypatch.setattr(
-            "vesma.mesh_server.build_compact_record", lambda *args, **kwargs: None
-        )
+        monkeypatch.setattr("vesma.mesh_server.build_compact_record", lambda *args, **kwargs: None)
         stub = _stub(server)
         response = stub.ReadMemory(
             _mesh_gen.core_pb2.ReadMemoryRequest(record_id=record_id),
@@ -1360,9 +1358,7 @@ def _token_mint_deps(settings: Settings) -> tuple[AgentTokenStore, Any]:
     """
     settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     key = load_or_create_signing_key(
-        signing_key_path(
-            settings.vesma.data_dir, override=settings.federation.agent_token_key_path
-        )
+        signing_key_path(settings.vesma.data_dir, override=settings.federation.agent_token_key_path)
     )
     return AgentTokenStore(settings.db_path), key
 

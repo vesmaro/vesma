@@ -2,7 +2,7 @@
 
 The wave-1 resolver assumed the indexing root IS the only sys.path
 entry. When a src-layout tree is indexed at the package directory
-(``root=src/vesma``), absolute imports ``vesmaro.*`` produced ZERO
+(``root=src/vesma``), absolute imports ``vesma.*`` produced ZERO
 IMPORTS edges — the module's dotted path from the root is one segment
 shorter than the import alias. These tests pin the dotted-tail
 fallback: alias and module qname must match as dotted suffixes in one

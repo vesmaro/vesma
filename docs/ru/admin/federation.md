@@ -151,20 +151,22 @@ sanitized-контента).
 moderation mapping-таблица, это поверхность утечки — репликация позволила
 бы peer'у восстановить историю запросов другого peer'а.
 
-## 4. Что дальше — Phase 2
+## 4. Статус — Phase 2 в продакшене
 
-Phase 1 поставляет форму конфига, enum и журнал. Phase 2:
+Сервер федерации (сторона B) и клиент (сторона A) живут в кодовой базе:
 
-1. Построит сервер федерации (сторона B), который читает
+1. **Сервер** — `handle_pull` в `src/vesmaro/federation_server.py` читает
    `federation.peers`, валидирует per-peer bearer-токен из именованной
    переменной окружения, опционально пиннит mTLS-сертификат клиента,
    применяет per-peer ACL поверх `shared_projects`, прогоняет moderation
    pipeline, проверяет журнал доступа на `ALREADY_EXHAUSTED` и возвращает
-   sanitized-ответ с `TriggerCode`.
-2. Построит клиент федерации (сторона A), который отправляет pull-запрос,
+   sanitized-ответ с `TriggerCode`. HTTP-маршрут:
+   `POST /api/v1/federation/pull` (адаптер `src/vesmaro/api/federation.py`).
+2. **Клиент** — `src/vesmaro/federation_client.py` отправляет pull-запрос,
    получает `TriggerCode` и диспетчеризует — `is_terminal` /
    `should_fallback_to_local` решают, использовать ответ, уточнить его
-   или уйти в локальный `mnemos_search`.
+   или уйти в локальный поиск. Сквозная проверка —
+   [`federation-testing.md`](federation-testing.md).
 
 Go-бинарник, несущий gRPC-транспорт, живёт в отдельном репозитории
 (`vesma-mesh`) и вне области этой страницы.

@@ -1,4 +1,4 @@
-"""Phase A2 integration tests — the verb ledger inside vesmaro.
+"""Phase A2 integration tests — the verb ledger inside vesma.
 
 The deep ledger contract (quantiles, C5 meta gates, exposition format)
 is pinned in mnemos-vitals (master). This suite verifies the WIRING:
@@ -200,7 +200,7 @@ class TestCliBoundary:
 
         cli_settings = _settings(tmp_path)
         monkeypatch.setattr("vesma.config.load_settings", lambda _cfg=None: cli_settings)
-        monkeypatch.setattr("sys.argv", ["vesmaro", "--version"])
+        monkeypatch.setattr("sys.argv", ["vesma", "--version"])
         from vesma.cli.main import cli_main
 
         with pytest.raises(SystemExit) as excinfo:

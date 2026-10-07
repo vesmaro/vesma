@@ -45,12 +45,17 @@ logger = logging.getLogger(__name__)
 #: the refusal reason rides the row's ``reason`` field, matching the
 #: ``auto-register-capped`` precedent (a refusal the operator cannot
 #: see is a silent scope event).
+#: ``search-walk`` joined in PG-1 M2 (ADR-0038 conditions 7-8): every
+#: search_walk execution writes its OWN row with the details (nodes /
+#: edges / k / truncated) PLUS the token-economics pair ``out_tokens``
+#: and ``avoided_bytes`` — the walk prices itself from day one.
 AUDIT_ACTIONS = (
     "index",
     "reindex",
     "delete",
     "snippet-read",
     "graph-read",
+    "search-walk",
     "auto-register",
     "auto-register-reused",
     "auto-register-capped",
@@ -59,6 +64,7 @@ AUDIT_ACTIONS = (
     "manual-register-refused",
     "repoint",
     "repoint-refused",
+    "delete-refused",
 )
 
 
@@ -121,6 +127,45 @@ class GraphAudit:
         except sqlite3.Error:
             logger.exception("graph audit write failed (project=%s action=%s)", project, action)
             raise
+
+    def has_search(self, actor: str, session: str | None) -> bool:
+        """True when a prior ``search`` graph-read row exists for this
+        (actor, session) pair — NULL-safe, so a session-less caller is
+        scoped by the actor alone (card vesma-graph-audit-firstcall-
+        marking). The searcher asks BEFORE recording: a ``False`` answer
+        marks the task's FIRST search call, which the row then carries
+        as ``details.first_search``.
+
+        The marker makes the graph-first share computable from
+        graph_audit rows ALONE:
+
+        ```sql
+        -- Share of graph-using tasks whose FIRST search was answered
+        -- from symbols (productive graph-first), per actor:
+        SELECT actor,
+               100.0 * SUM(CASE
+                   WHEN json_extract(details, '$.first_search') = 1
+                    AND json_extract(details, '$.literal_fallback') = 0
+                    AND json_extract(details, '$.total') > 0
+                   THEN 1 ELSE 0 END)
+               / COUNT(DISTINCT actor || ':' || COALESCE(session, ''))
+               AS graph_first_share_pct
+        FROM graph_audit
+        WHERE action = 'graph-read' AND reason = 'search'
+        GROUP BY actor;
+        ```
+        """
+        row = (
+            self._conn()
+            .execute(
+                "SELECT 1 FROM graph_audit "
+                "WHERE action='graph-read' AND reason='search' "
+                "AND actor=? AND session IS ? LIMIT 1",
+                (actor, session),
+            )
+            .fetchone()
+        )
+        return row is not None
 
     def recent(self, project: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """Newest audit rows (debug/eyes surface; never source bytes)."""
