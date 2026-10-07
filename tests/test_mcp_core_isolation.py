@@ -70,7 +70,9 @@ def test_mcp_server_itself_declares_its_imports() -> None:
 def test_cli_import_does_not_pull_mcp_sdk() -> None:
     """Runtime isolation: importing the CLI entry must not load the SDK."""
     code = (
-        "import sys, mnemos, vesma.cli.main\n"
+        # 6.0.0: the legacy `import mnemos` shim is gone — the canonical
+        # package is `vesma`; the guard imports it to pin the CLI entry path.
+        "import sys, vesma, vesma.cli.main\n"
         "loaded = [m for m in sys.modules if m == 'mcp' or m.startswith('mcp.')]\n"
         "assert not loaded, f'mcp SDK loaded by CLI import: {loaded}'\n"
     )
