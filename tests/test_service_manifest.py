@@ -168,7 +168,7 @@ class TestBundledPackManifests:
             .read_text(encoding="utf-8")
         )
         jsonschema.Draft202012Validator.check_schema(schema)
-        assert SCHEMA_CONTRACT_VERSION == "1.1.0-draft"
+        assert SCHEMA_CONTRACT_VERSION == "1.1.0"
         assert SUPPORTED_API_VERSIONS == ("vesma.component/v1",)
 
     def test_vendored_schema_is_byte_identical_vendor(self) -> None:
@@ -182,7 +182,7 @@ class TestBundledPackManifests:
             .read_text(encoding="utf-8")
         )
         assert "$comment" not in schema
-        assert "1.1.0-draft" in SCHEMA_VENDORED_PROVENANCE
+        assert "1.1.0" in SCHEMA_VENDORED_PROVENANCE
         assert "e006c30939154528806df098054426b80e67dc41" in SCHEMA_VENDORED_PROVENANCE
 
 

@@ -55,9 +55,9 @@ from vesmaro.service.errors import (
 
 logger = logging.getLogger("vesmaro.service.manifest")
 
-#: Contract version of the vendored schema (specs repo, 1.1.0-draft,
+#: Contract version of the vendored schema (specs repo, 1.1.0,
 #: additive launch.python block — CM §3.5.1, issue #515).
-SCHEMA_CONTRACT_VERSION = "1.1.0-draft"
+SCHEMA_CONTRACT_VERSION = "1.1.0"
 
 #: Provenance of the vendored schema file
 #: (``vesmaro/service/schemas/component-manifest.schema.json``): a
@@ -71,8 +71,8 @@ SCHEMA_VENDORED_PROVENANCE = (
     "commit e006c30939154528806df098054426b80e67dc41 "
     "(blob e9654fd5fb59cee36a8d1c72f24ac2cc9812472b), "
     "file specs/component-manifest/v1/schema/component-manifest.schema.json "
-    "(1.1.0-draft: launch.python block), contract component-manifest "
-    "1.1.0-draft; byte-identical copy — re-vendor by verbatim copy + "
+    "(1.1.0: launch.python block), contract component-manifest "
+    "1.1.0; byte-identical copy — re-vendor by verbatim copy + "
     "SCHEMA_CONTRACT_VERSION bump"
 )
 

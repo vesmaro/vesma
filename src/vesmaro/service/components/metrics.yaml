@@ -1,5 +1,5 @@
 # Pack manifest (engine-shipped): metrics child process.
-# Contract: specs/component-manifest/v1 (1.1.0-draft, CM §3.5.1). The argv
+# Contract: specs/component-manifest/v1 (1.1.0, CM §3.5.1). The argv
 # runs the engine's own exposition module (vesmaro.metrics.exposer.__main__)
 # from the component venv; the HTTP surface it opens is probed by
 # health.http. The requirement pin carries the {engine_version}

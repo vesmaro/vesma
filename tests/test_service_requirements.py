@@ -1,4 +1,4 @@
-"""CM §3.5.1 (1.1.0-draft) — ``launch.python.requirements`` mechanism.
+"""CM §3.5.1 (1.1.0) — ``launch.python.requirements`` mechanism.
 
 Covers (card svc-8788-board-face-v2 / issue #515):
 - manifest validation: exact-pin policy (URL/file:/range/wildcard
