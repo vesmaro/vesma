@@ -133,6 +133,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 - [HTTP API Reference](user/http-api.md) — every endpoint, request / response shape, error code.
 - [CLI Reference](user/cli-reference.md) — every `vesma` subcommand with flags, defaults, and examples.
 - [Tag Contract](user/tag-contract.md) — the M2 schema enforced on every memory (`project:`, `agent:`, `vesma:`).
+- [Migrating to 6.0](user/migration-6-0.md) — the 5.6.x → 6.0 upgrade: `vesma migrate-store`, configs, MCP, Python.
 - [Context Filter](user/context-filter.md) — the five-stage noise stripper (dedup, noise, extract, compress, tokens) with profiles and auto-filter.
 
 ---

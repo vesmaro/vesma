@@ -157,6 +157,7 @@ vesma integration setup
 - [Справочник HTTP API](user/http-api.md) — все эндпоинты, форматы запросов и ответов, коды ошибок.
 - [Справочник CLI](user/cli-reference.md) — все подкоманды `vesma` с флагами, значениями по умолчанию и примерами.
 - [Контракт тегов](user/tag-contract.md) — схема M2, обязательная для каждой записи (`project:`, `agent:`, `vesma:`).
+- [Переход на 6.0](user/migration-6-0.md) — обновление 5.6.x → 6.0: `vesma migrate-store`, конфиги, MCP, Python.
 - [Контекстный фильтр](user/context-filter.md) — пятиступенчатый очиститель шума (dedup, noise, extract, compress, tokens) с профилями и автофильтром.
 
 ---
