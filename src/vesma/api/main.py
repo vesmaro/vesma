@@ -244,14 +244,16 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 
-def _tag_contract_error_handler(_request: Request, exc: TagContractError) -> JSONResponse:
+def _tag_contract_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     """A refused tag set answers 422 with the contract message, never a 500.
 
     6.0.0 input alias: the ``vesma:*`` alias normalizes at every input
     boundary, and an UNKNOWN alias subtype (or any other contract
     violation) must refuse LOUDLY but cleanly — the same caller-facing
     discipline as the #407 task-boundary 400s: the contract error string
-    reaches the client, a raw traceback does not.
+    reaches the client, a raw traceback does not. (Registered for
+    TagContractError only; the annotation is the Starlette handler
+    protocol's Exception, which mypy --strict requires.)
     """
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 

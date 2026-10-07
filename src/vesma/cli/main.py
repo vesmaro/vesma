@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from vesma.cli._manager import get_manager
+from vesma.cli.migrate_store_cmd import migrate_store
 from vesma.config import find_config_file, load_settings
 from vesma.logging_setup import setup_logging
 from vesma.models import (
@@ -1905,6 +1906,12 @@ _migrate_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(_migrate_app, name="migrate")
+
+# ── migrate-store (B3, 6.0.0 #9) ──────────────────────────────────────────────
+#   vesma migrate-store --from <5.x home> --to <6.0 home> [--apply]
+# Top-level name deliberately distinct from the M13 `vesma migrate` tree
+# above (mover contract point 11: the ai-brain path keeps working untouched).
+app.command(name="migrate-store")(migrate_store)
 
 _DEFAULT_AI_BRAIN_SOURCE = Path("~/.ai-brain").expanduser()
 _DEFAULT_BRAIN_VAULT = Path("~/brain-vault").expanduser()
