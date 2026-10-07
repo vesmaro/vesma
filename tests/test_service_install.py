@@ -20,7 +20,7 @@ from vesmaro.service import install as install_mod
 from vesmaro.service import layout, unitgen
 from vesmaro.service.errors import CLAMP_VIOLATION, MANIFEST_SCHEMA_INVALID, ManifestError
 from vesmaro.service.install import InstallError, install, uninstall
-from vesmaro.service.manifest import load_bundled_manifest
+from vesmaro.service.manifest import bundled_manifest_path, load_bundled_manifest
 
 
 @pytest.fixture
@@ -373,11 +373,26 @@ class TestPinPolicy:
         install_mod._validate_pin("vesma==5.4.0")
         install_mod._validate_pin("pydantic==2.14.2")
 
-    def test_bundled_requirements_use_engine_package(self) -> None:
-        from vesmaro import __version__
+    def test_bundled_metrics_requirements_come_from_manifest(self) -> None:
+        """CM §3.5.1: the bundled metrics manifest carries the engine pin
+        with the {engine_version} placeholder; the loader expands it to
+        the running engine's version (one mechanism for bundled and
+        hand-authored python children alike)."""
 
-        assert install_mod._bundled_requirements("metrics") == (f"vesma=={__version__}",)
-        assert install_mod._bundled_requirements("board") == ()
+        from vesmaro import __version__
+        from vesmaro.service.manifest import load_manifest
+
+        manifest = load_manifest(bundled_manifest_path("metrics"))
+
+        manifest = load_manifest(bundled_manifest_path("metrics"))
+        assert manifest.launch_python_requirements() == ("vesma=={engine_version}",)
+        expanded = install_mod._effective_requirements(manifest)
+        assert expanded == (f"vesma=={__version__}",)
+
+    def test_board_has_no_requirements(self) -> None:
+        from vesmaro.service.manifest import load_manifest
+
+        assert load_manifest(bundled_manifest_path("board")).launch_python_requirements() == ()
 
     def test_unknown_python_child_component_refused(
         self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -412,7 +427,7 @@ class TestPinPolicy:
             encoding="utf-8",
         )
         monkeypatch.setattr(install_mod.unitgen, "container_detect", lambda *a, **k: False)
-        with pytest.raises(InstallError, match="no requirement set"):
+        with pytest.raises(ManifestError, match=r"MUST pin its dependencies"):
             install()
 
 

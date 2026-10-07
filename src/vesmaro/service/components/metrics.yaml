@@ -1,7 +1,11 @@
 # Pack manifest (engine-shipped): metrics child process.
-# Contract: specs/component-manifest/v1 (1.0.0-draft.2). The argv runs the
-# engine's own exposition module (vesmaro.metrics.exposer.__main__) from
-# the component venv; the HTTP surface it opens is probed by health.http.
+# Contract: specs/component-manifest/v1 (1.1.0-draft, CM §3.5.1). The argv
+# runs the engine's own exposition module (vesmaro.metrics.exposer.__main__)
+# from the component venv; the HTTP surface it opens is probed by
+# health.http. The requirement pin carries the {engine_version}
+# placeholder — the ONLY placeholder allowed inside requirements — which
+# the install flow expands to the running engine's version at install
+# time, so a bundled manifest never drifts from the release train.
 apiVersion: vesma.component/v1
 kind: child-process
 metadata:
@@ -13,6 +17,9 @@ metadata:
     repo: https://github.com/vesmaro/vesma
     license: Apache-2.0
 launch:
+  python:
+    requirements:
+      - "vesma=={engine_version}"
   argv:
     - "{venv_bin}/python"
     - "-m"

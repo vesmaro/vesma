@@ -11,11 +11,15 @@ install-generated lock, PyPI-only sources, drift check after install —
 and BEFORE reuse: an existing venv whose freeze no longer matches its
 lock is rebuilt from scratch (a hand ``pip install`` into the venv is
 never laundered into the lock by a reinstall).
-For the bundled ``metrics`` component the requirement is the engine
-package itself (``vesma==<engine version>``) — its argv runs
-``vesmaro.metrics.exposer`` from the component venv. ``board`` is
-in-process and has NO component venv by design (it lives on the engine
-venv, layout §3.8b).
+Requirements come FROM THE MANIFEST (CM §3.5.1, ``launch.python.requirements``):
+exact pins only, PyPI-only sources; a python child without requirements
+is a loud install error (there is no silent empty venv). The bundled
+``metrics`` component pins ``vesma=={engine_version}`` — the
+``{engine_version}`` placeholder is allowed ONLY inside requirements and
+expands to the running engine's version at install time (a static pin in
+a pack manifest would drift with every release). ``board`` is in-process
+and has NO component venv by design (it lives on the engine venv, layout
+§3.8b).
 
 ``pip --require-hashes`` is a SHOULD (layout §3.8) — deliberately skipped
 for v1, see ``_install_component_venv`` for the TODO.
@@ -33,6 +37,7 @@ import subprocess  # nosec B404 - subprocess needed for venv/pip/systemctl with 
 import sys
 import tempfile
 from pathlib import Path
+from typing import Final
 
 from vesmaro.service import layout, unitgen
 from vesmaro.service.errors import ManifestError
@@ -50,8 +55,37 @@ def _engine_version() -> str:
     return __version__
 
 
-def _bundled_requirements(name: str) -> tuple[str, ...]:
-    return (f"vesma=={_engine_version()}",) if name == "metrics" else ()
+#: The placeholder allowed ONLY inside ``launch.python.requirements`` (CM
+#: §3.5.1): it expands to the running engine's version at install time so
+#: a bundled manifest's engine pin tracks the release train. Anywhere else
+#: (argv, version fields) it is an unknown placeholder and stays rejected.
+#: NOTE: ``{engine_version}`` is deliberately NOT in the argv placeholder
+#: allowlist of :mod:`vesmaro.service.placeholders` — the supervisor must
+#: never see it (requirements are consumed by THIS module only).
+REQUIREMENTS_PLACEHOLDER: Final[str] = "engine_version"
+
+
+def _effective_requirements(manifest: ComponentManifest) -> tuple[str, ...]:
+    """The manifest's requirements with placeholders expanded (install time).
+
+    The source of truth is the manifest itself (CM §3.5.1) — bundled and
+    hand-authored python children take the same path. A venv-referencing
+    component with NO requirements section is refused loudly: an empty
+    venv is always a configuration mistake (fail-closed, LY-08).
+    """
+
+    raw_requirements = manifest.launch_python_requirements()
+    if not raw_requirements:
+        raise InstallError(
+            f"component {manifest.name!r} references {{venv_bin}} but declares no "
+            "launch.python.requirements — CM §3.5.1: a python child MUST pin "
+            "its dependencies with exact 'name==version' requirements"
+        )
+    engine_version = _engine_version()
+    expanded: list[str] = []
+    for line in raw_requirements:
+        expanded.append(line.replace("{" + REQUIREMENTS_PLACEHOLDER + "}", engine_version))
+    return tuple(expanded)
 
 
 #: LY-08: a lock/input line MUST be an exact ``name==version`` pin; URL /
@@ -296,13 +330,7 @@ def _install_component_venv(manifest: ComponentManifest, report: list[str]) -> P
     skipped deliberately in v1, do not re-add silently as "done".
     """
     name = manifest.name
-    requirements = _bundled_requirements(name)
-    if not requirements:
-        raise InstallError(
-            f"component {name!r} references {{venv_bin}} but the v1 install "
-            "flow has no requirement set for it — the v1 pack installs only "
-            f"{sorted(BUNDLED_COMPONENTS)}"
-        )
+    requirements = _effective_requirements(manifest)
     for line in requirements:
         _validate_pin(line)
     venv_dir = layout.component_venv_dir(name)

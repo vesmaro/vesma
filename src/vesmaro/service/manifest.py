@@ -47,6 +47,7 @@ from vesmaro.service.errors import (
     MANIFEST_SCHEMA_INVALID,
     NAME_DUPLICATED,
     PLACEHOLDER_UNKNOWN,
+    REQUIREMENTS_INVALID,
     SECRET_IN_VARS,
     SHELL_IN_ARGV,
     ManifestError,
@@ -54,8 +55,9 @@ from vesmaro.service.errors import (
 
 logger = logging.getLogger("vesmaro.service.manifest")
 
-#: Contract version of the vendored schema (specs repo, draft.2).
-SCHEMA_CONTRACT_VERSION = "1.0.0-draft.2"
+#: Contract version of the vendored schema (specs repo, 1.1.0-draft,
+#: additive launch.python block — CM §3.5.1, issue #515).
+SCHEMA_CONTRACT_VERSION = "1.1.0-draft"
 
 #: Provenance of the vendored schema file
 #: (``vesmaro/service/schemas/component-manifest.schema.json``): a
@@ -65,11 +67,13 @@ SCHEMA_CONTRACT_VERSION = "1.0.0-draft.2"
 #: re-vendor diff against the specs file stays empty: copy verbatim, bump
 #: ``SCHEMA_CONTRACT_VERSION``, update this constant.
 SCHEMA_VENDORED_PROVENANCE = (
-    "specs repo vesma-specs @ d30e668a9ebdfe32274fc08b30d3be18862ec602, "
+    "specs repo vesma-specs, branch spec/cm-1-1-0-python-requirements, "
+    "commit e006c30939154528806df098054426b80e67dc41 "
+    "(blob e9654fd5fb59cee36a8d1c72f24ac2cc9812472b), "
     "file specs/component-manifest/v1/schema/component-manifest.schema.json "
-    "(last touched by 7419679e5c44242bdb5b4e66aad23946191dad8a), contract "
-    "component-manifest 1.0.0-draft.2; byte-identical copy — re-vendor by "
-    "verbatim copy + SCHEMA_CONTRACT_VERSION bump"
+    "(1.1.0-draft: launch.python block), contract component-manifest "
+    "1.1.0-draft; byte-identical copy — re-vendor by verbatim copy + "
+    "SCHEMA_CONTRACT_VERSION bump"
 )
 
 #: apiVersion values this loader accepts (CM §3.2: rejections MUST name
@@ -132,6 +136,14 @@ _RESTART_MAX_MAX_MS = 5 * 60 * 1000
 _RESTART_ATTEMPTS_MIN = 3
 
 _DURATION_MULTIPLIERS_MS = {"ms": 1, "s": 1000, "m": 60_000, "h": 3_600_000}
+
+#: CM §3.5.1: a requirements entry MUST be an EXACT ``name==version`` pin
+#: (``{engine_version}`` may replace the version); URL / ``file:`` / range
+#: / wildcard specs are rejected — the same pin discipline as LY §3.8 for
+#: lock lines (LY-08), fail-closed at manifest load time.
+_REQUIREMENT_PIN_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*==(\{engine_version\}|[A-Za-z0-9][A-Za-z0-9.+!-]*)$"
+)
 
 _MANIFEST_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -203,10 +215,26 @@ class Env:
 
 
 @dataclasses.dataclass(frozen=True)
+class LaunchPython:
+    """``launch.python`` — the python-child declaration (CM §3.5.1).
+
+    ``requirements`` — EXACT ``name==version`` pins (LY §3.8 rules: URLs,
+    ``file:``, ranges and wildcards are rejected, PyPI-only sources);
+    the only expandable token inside a requirement is
+    ``{engine_version}`` (bundled manifests track the release train),
+    expanded at install time, never by the supervisor.
+    """
+
+    version: str | None = None
+    requirements: tuple[str, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
 class Launch:
     argv: list[str]
     cwd: str | None = None
     env: Env | None = None
+    python: LaunchPython | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -309,6 +337,18 @@ class ComponentManifest:
     def name(self) -> str:
         return self.metadata.name
 
+    def launch_python_requirements(self) -> tuple[str, ...]:
+        """``launch.python.requirements`` (CM §3.5.1), ``()`` when absent.
+
+        The install flow's single source of truth for a python child's
+        venv contents — bundled and hand-authored alike. Raw lines,
+        placeholders NOT expanded (install-time concern, see install).
+        """
+
+        if self.launch is None or self.launch.python is None:
+            return ()
+        return self.launch.python.requirements
+
 
 # ── Builders (schema-validated shapes; defensive anyway) ──────────────
 
@@ -342,10 +382,20 @@ def _build_launch(raw: dict[str, Any]) -> Launch:
             vars={str(k): str(v) for k, v in (env_raw.get("vars") or {}).items()},
             env_file=env_raw.get("env_file"),
         )
+    python_raw = raw.get("python")
+    python = (
+        LaunchPython(
+            version=python_raw.get("version"),
+            requirements=tuple(str(r) for r in python_raw.get("requirements", [])),
+        )
+        if isinstance(python_raw, dict)
+        else None
+    )
     return Launch(
         argv=[str(a) for a in raw.get("argv", [])],
         cwd=raw.get("cwd"),
         env=env,
+        python=python,
     )
 
 
@@ -755,6 +805,85 @@ def _check_depends(
         )
 
 
+def _check_requirements(doc: dict[str, Any]) -> None:
+    """CM §3.5.1 normative rules for ``launch.python.requirements``.
+
+    The schema enforces the SHAPE (array of pin-pattern strings); this
+    check carries the rules the schema cannot express precisely and
+    yields the dedicated code + JSON-path (CM §4: the receiver gets the
+    field path, not a raw schema dump):
+
+    - every entry is an EXACT ``name==version`` pin — URLs, ``file:``,
+      ranges and wildcards are rejected (the LY §3.8/LY-08 discipline
+      applied at manifest load time, not just at pip time);
+    - the declaration is SYMMETRIC and cross-field (fail-closed): a
+      ``{venv_bin}`` reference in ``launch.argv`` with no requirements
+      entries (a ``python`` block, a ``requirements`` list, or both
+      missing) leaves the venv unpinned — always a configuration
+      mistake; entries without a ``{venv_bin}`` reference are a dead
+      declaration (no venv would ever be created → nothing installed);
+    - ``python.requirements`` is only meaningful for child-process
+      manifests (in-process components live on the engine venv — a
+      requirements block outside ``launch`` is unknown to the schema and
+      rejected there).
+    """
+
+    launch = _opt_dict(doc, "launch")
+    if launch is None:
+        return
+    argv = launch.get("argv")
+    # The symmetry branches need a well-formed argv (list of strings); a
+    # malformed one is the SHELL_IN_ARGV/schema pass's domain — that code
+    # must win, not a requirements-echo of a shape error.
+    argv_well_formed = isinstance(argv, list) and all(isinstance(arg, str) for arg in argv)
+    has_venv_ref = False
+    if argv_well_formed:
+        assert isinstance(argv, list)
+        has_venv_ref = any("{venv_bin}" in arg for arg in argv)
+    requirements_raw: Any = None
+    has_python_block = False
+    python_raw = _opt_dict(launch, "python")
+    if python_raw is not None:
+        has_python_block = True
+        requirements_raw = python_raw.get("requirements")
+    has_entries = isinstance(requirements_raw, list) and bool(requirements_raw)
+    if has_entries:
+        for position, line in enumerate(requirements_raw):
+            if not isinstance(line, str):
+                continue  # schema's domain
+            if _REQUIREMENT_PIN_RE.match(line) is None:
+                raise ManifestError(
+                    REQUIREMENTS_INVALID,
+                    f"$.launch.python.requirements[{position}]",
+                    f"requirement {line!r} is not an exact 'name==version' pin — "
+                    "CM §3.5.1: dependencies are pinned with '==' and sourced from "
+                    "PyPI only; URLs, file: specs, ranges and wildcards are "
+                    "rejected; the only substitution is {engine_version}",
+                    fix_hint="use the form 'name==1.2.3' (or "
+                    "'name=={engine_version}' for the engine package itself)",
+                )
+        if argv_well_formed and not has_venv_ref:
+            raise ManifestError(
+                REQUIREMENTS_INVALID,
+                "$.launch.python.requirements",
+                "requirements are declared but launch.argv never references "
+                "{venv_bin} — the venv would never be created and the pins "
+                "would never be installed (dead declaration)",
+            )
+        return
+    if has_python_block:
+        return  # a shape-legal python block without requirements: schema's domain
+    if argv_well_formed and has_venv_ref:
+        raise ManifestError(
+            REQUIREMENTS_INVALID,
+            "$.launch.python.requirements",
+            "launch.argv references {venv_bin} but launch.python.requirements "
+            "is absent — CM §3.5.1: a python child MUST pin its dependencies; "
+            "an unpinned venv is always a configuration mistake",
+            fix_hint="add launch.python.requirements with exact 'name==version' pins",
+        )
+
+
 # ── Public API ────────────────────────────────────────────────────────
 
 
@@ -802,6 +931,7 @@ def load_manifest(
     _check_secret_in_vars(doc)
     _check_restart_clamps(doc)
     _check_env_file_placement(doc, manifest_path)
+    _check_requirements(doc)
     _check_schema(doc)
 
     metadata = _build_metadata(doc.get("metadata") or {})
