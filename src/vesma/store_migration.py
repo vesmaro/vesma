@@ -517,7 +517,8 @@ def quiesce_problems(
             finally:
                 conn.close()
         except sqlite3.OperationalError as exc:
-            if "readonly" in str(exc):
+            message = str(exc)
+            if "readonly" in message or "read-only" in message:
                 warnings.append(
                     f"{db_path}: source is on a read-only filesystem — the "
                     "write-lock probe was skipped (nothing can write there)"
@@ -914,6 +915,10 @@ def _materialize_target(snapshot: _Snapshot, staging: Path) -> dict[str, int]:
                 _copy_sqlite(item, target)
             else:
                 shutil.copy2(item, target)
+                # Harden HERE too (residual P3), not only at snapshot time:
+                # the 0600 must be enforced at every write, never relied on
+                # transitively from the snapshot copy's preserved mode.
+                _harden_file(target)
         else:
             _copy_tree(item, target)
 
@@ -1138,7 +1143,15 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
         raise UsageError(f"--to exists: {target_home} — choose a fresh target")
 
     layout = _resolve_layout(source_home)
-    stats = read_store_stats(layout.db_path, read_only=True)
+    try:
+        stats = read_store_stats(layout.db_path, read_only=True)
+    except (OSError, sqlite3.Error) as exc:
+        # A source that vanishes or fails between layout resolution and the
+        # stats read must be a typed usage error (residual P3), not a raw
+        # traceback.
+        raise UsageError(
+            f"source database unreadable while planning: {layout.db_path}: {exc}"
+        ) from exc
     if is_already_migrated(layout):
         raise AlreadyMigratedError(
             f"source {source_home} already carries the vesma:* namespace "

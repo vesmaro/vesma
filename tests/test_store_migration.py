@@ -146,6 +146,10 @@ def store_home(tmp_path: Path) -> Path:
     finally:
         metrics.close()
 
+    # A PLAIN file at the data-dir top level: the privacy pin (os.walk over
+    # target + snapshot) must exercise the non-sqlite copy paths too.
+    (data / "readme.txt").write_text("plain top-level data file", encoding="utf-8")
+
     notes = data / "notes"
     notes.mkdir()
     (notes / "note1.txt").write_text("note body", encoding="utf-8")
@@ -983,10 +987,18 @@ def test_dry_run_skips_quiesce_probe_apply_still_gates(store_home: Path, tmp_pat
         holder.close()
 
 
+@pytest.mark.parametrize(
+    "sqlite_message",
+    [
+        "attempt to write a readonly database",  # SQLite spelling (one word)
+        "attempt to write a read-only database",  # alternative spelling
+    ],
+)
 def test_quiesce_readonly_reported_honestly_not_as_locked(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sqlite_message: str
 ) -> None:
-    """Pin (P3e): a 'readonly database' error is a warning, NEVER 'locked'.
+    """Pin (P3e + residual): BOTH 'readonly' spellings are honest warnings,
+    NEVER 'locked'.
 
     The chmod -w route cannot reproduce this deterministically (SQLite's
     BEGIN IMMEDIATE may still take the lock on a 0444 file), so the
@@ -1005,7 +1017,7 @@ def test_quiesce_readonly_reported_honestly_not_as_locked(
 
     def fake_connect(path: Any, *args: Any, **kwargs: Any) -> Any:
         if str(path) == str(db) and "mode=ro" not in str(path):
-            raise sqlite3.OperationalError("attempt to write a readonly database")
+            raise sqlite3.OperationalError(sqlite_message)
         return real_connect(path, *args, **kwargs)
 
     monkeypatch.setattr(sqlite3, "connect", fake_connect)
@@ -1014,6 +1026,28 @@ def test_quiesce_readonly_reported_honestly_not_as_locked(
     assert any("read-only filesystem" in w for w in warnings)
     assert not any("database is locked" in w for w in warnings)
     assert not any("not quiescent" in w for w in warnings)
+
+
+def test_stats_failure_during_planning_is_usage_error(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin (residual P3): a source failing between layout resolution and the
+    stats read is a typed exit 2 naming the path, not a raw traceback."""
+    real_connect = sqlite3.connect
+
+    def failing_connect(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if "mnemos.db" in str(path):
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(path, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", failing_connect)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(app, ["migrate-store", "--from", str(store_home), "--to", str(target)])
+    assert result.exit_code == 2
+    assert "unreadable while planning" in _output(result)
+    assert "mnemos.db" in _output(result)
+    assert not list(target.parent.glob("*.staging-*"))
+    assert not list(target.parent.glob("migrate-snapshot-*"))
 
 
 def test_readonly_source_still_migrates(store_home: Path, tmp_path: Path) -> None:
