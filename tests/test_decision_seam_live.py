@@ -65,7 +65,7 @@ def mgr():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         settings = Settings(
-            mnemos={
+            vesma={  # 6.0 clean-slate: the section is ``vesma`` (mnemos= rejected)
                 "vault_path": str(tmp / "vault"),
                 "data_dir": str(tmp / "data"),
                 "db_name": "test.db",
@@ -119,7 +119,7 @@ def _vesma_mgr_with_real_embedder(mode: str) -> tuple[MemoryManager, tempfile.Te
     tmpdir = tempfile.TemporaryDirectory()
     tmp = Path(tmpdir.name)
     settings = Settings(
-        mnemos={
+        vesma={  # 6.0 clean-slate: the section is ``vesma`` (mnemos= rejected)
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
@@ -264,7 +264,7 @@ def test_probe_never_changes_mint_behavior() -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             settings = Settings(
-                mnemos={
+                vesma={  # 6.0 clean-slate: the section is ``vesma`` (mnemos= rejected)
                     "vault_path": str(tmp / "vault"),
                     "data_dir": str(tmp / "data"),
                     "db_name": "test.db",

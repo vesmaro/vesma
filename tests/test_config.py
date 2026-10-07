@@ -36,3 +36,23 @@ def test_federation_project_lists_reject_degenerate_slugs() -> None:
     # Legitimate values still construct: normal slugs, per-peer wildcard.
     FederationConfig(shared_projects=["alpha", "beta"])
     PeerConfig(bearer_token_env="T", allowed_projects=["*", "alpha"])
+
+
+def test_legacy_config_spellings_rejected_clean_slate(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """6.0 clean-slate contract: the pre-rebrand spellings are REJECTED, not
+    silently accepted — the ``mnemos=`` Settings section dies on
+    ``extra=forbid``, and the retired ``VESMARO_*``/``MNEMOS_*`` env
+    prefixes (#471 dual-read period) never reach the model again. The only
+    canonical spellings are the ``vesma`` section and the ``VESMA_`` prefix."""
+    import pytest
+    from pydantic import ValidationError
+
+    from vesma.config import Settings
+
+    with pytest.raises(ValidationError, match="mnemos"):
+        Settings(mnemos={"vault_path": "/tmp/vault"})  # type: ignore[call-arg]
+
+    monkeypatch.delenv("VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE", raising=False)
+    monkeypatch.setenv("VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE", "canary")
+    monkeypatch.setenv("MNEMOS_AWARENESS__NATIVE_HEARTBEAT_MODE", "canary")
+    assert Settings().awareness.native_heartbeat_mode == "off"

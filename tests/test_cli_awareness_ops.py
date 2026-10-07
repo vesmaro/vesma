@@ -43,13 +43,14 @@ def ops_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     reset_manager()
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        f"mnemos:\n"
+        # 6.0 clean-slate: the config section is ``vesma`` (``mnemos:`` is
+        # rejected by extra=forbid); VESMA_CONFIG is the only config-path env.
+        f"vesma:\n"
         f"  vault_path: {tmp_path / 'vault'}\n"
         f"  data_dir: {tmp_path / 'data'}\n"
         f"  db_name: t.db\n"
     )
     monkeypatch.setenv("VESMA_CONFIG", str(cfg))
-    monkeypatch.setenv("VESMARO_CONFIG", str(cfg))
     yield cfg
     reset_manager()
 
@@ -66,7 +67,6 @@ def load_settings_for(cfg: Path) -> Any:
 
     prev = os.environ.get("VESMA_CONFIG")
     os.environ["VESMA_CONFIG"] = str(cfg)
-    os.environ.pop("VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE", None)
     os.environ.pop("VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE", None)
     try:
         return load_settings(str(cfg))
@@ -81,13 +81,13 @@ def _seed_sidecar(data_dir: Path) -> MetricsStore:
     """Real sink writes into the exact sidecar path ``stats`` reads."""
     store = MetricsStore(data_dir / "metrics.sqlite")
     store.record_awareness_event(
-        kind="tool_call", project=PROJ, agent="a1", session="s1", meta={"tool": "mnemos_search"}
+        kind="tool_call", project=PROJ, agent="a1", session="s1", meta={"tool": "vesma_search"}
     )
     store.record_awareness_event(
-        kind="tool_call", project=PROJ, agent="a2", session="s2", meta={"tool": "mnemos_add"}
+        kind="tool_call", project=PROJ, agent="a2", session="s2", meta={"tool": "vesma_add"}
     )
     store.record_awareness_event(
-        kind="peer_write", project=PROJ, agent="a2", session="s2", meta={"tool": "mnemos_add"}
+        kind="peer_write", project=PROJ, agent="a2", session="s2", meta={"tool": "vesma_add"}
     )
     store.record_awareness_event(kind="delta_available", project=PROJ, agent="a1", meta={})
     store.record_awareness_event(
@@ -100,7 +100,7 @@ def _seed_sidecar(data_dir: Path) -> MetricsStore:
             "tokens_est": 118,
             "cursor_before": None,
             "cursor_after": "2026-10-01T12:00:00+00:00",
-            "tool": "mnemos_search",
+            "tool": "vesma_search",
         },
     )
     store.record_awareness_event(
@@ -113,7 +113,7 @@ def _seed_sidecar(data_dir: Path) -> MetricsStore:
         kind="heartbeat_suppressed", project=PROJ2, agent="a3", meta={"reason": "rate_cap"}
     )
     store.record_awareness_event(
-        kind="conflict_hint_emitted", project=PROJ, agent="a1", meta={"tool": "mnemos_search"}
+        kind="conflict_hint_emitted", project=PROJ, agent="a1", meta={"tool": "vesma_search"}
     )
     return store
 
@@ -157,7 +157,6 @@ class TestModeGet:
     ) -> None:
         reset_manager()
         monkeypatch.delenv("VESMA_CONFIG", raising=False)
-        monkeypatch.delenv("VESMARO_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)
         # the home fallback (~/.mnemos/config.yaml) must also point away
         monkeypatch.setenv("HOME", str(tmp_path))
@@ -188,7 +187,6 @@ class TestModeSet:
         self, ops_config: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         reset_manager()
-        monkeypatch.delenv("VESMARO_AWARENESS__NATIVE_HEARTBEAT_MODE", raising=False)
         monkeypatch.delenv("VESMA_AWARENESS__NATIVE_HEARTBEAT_MODE", raising=False)
         assert runner.invoke(app, ["awareness", "set", "shadow"]).exit_code == 0
         reset_manager()

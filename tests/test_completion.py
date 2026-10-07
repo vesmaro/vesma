@@ -636,7 +636,7 @@ class TestVersionStamp:
         script = completion_mod._completion_script(shell)
         stamp = completion_mod._script_version_header()
         assert stamp in script, f"{shell} script missing version stamp"
-        assert completion_mod._script_version(script) == vesmaro_version()
+        assert completion_mod._script_version(script) == package_version()
 
     def test_parse_round_trip_and_legacy_none(self) -> None:
         assert completion_mod._script_version("# vesma version: 5.6.1\n") == "5.6.1"
@@ -648,8 +648,8 @@ class TestVersionStamp:
         assert stamp.startswith("# ")
 
 
-def vesmaro_version() -> str:
-    from vesmaro import __version__
+def package_version() -> str:
+    from vesma import __version__
 
     return __version__
 
@@ -689,14 +689,14 @@ class TestDoctorCompletionStaleness:
         assert runner.invoke(app, ["completion", "bash"]).exit_code == 0
 
     def test_fresh_install_passes(self, fake_home: Path) -> None:
-        from vesmaro.cli.doctor import CheckStatus, _check_completion
+        from vesma.cli.doctor import CheckStatus, _check_completion
 
         self._install_bash()
         result = _check_completion()
         assert result.status == CheckStatus.PASS
 
     def test_stale_version_warns_with_fix_command(self, fake_home: Path) -> None:
-        from vesmaro.cli.doctor import CheckStatus, _check_completion
+        from vesma.cli.doctor import CheckStatus, _check_completion
 
         self._install_bash()
         script = _completion_file_path("bash")
@@ -713,7 +713,7 @@ class TestDoctorCompletionStaleness:
         assert "vesma completion" in result.detail
 
     def test_pre_stamp_script_counts_as_stale(self, fake_home: Path) -> None:
-        from vesmaro.cli.doctor import CheckStatus, _check_completion
+        from vesma.cli.doctor import CheckStatus, _check_completion
 
         self._install_bash()
         script = _completion_file_path("bash")
@@ -728,7 +728,7 @@ class TestDoctorCompletionStaleness:
         assert "pre-versioned" in result.detail
 
     def test_stale_zsh_reported_with_shell_name(self, fake_home: Path) -> None:
-        from vesmaro.cli.doctor import CheckStatus, _check_completion
+        from vesma.cli.doctor import CheckStatus, _check_completion
 
         self._install_bash()
         assert runner.invoke(app, ["completion", "zsh"]).exit_code == 0
@@ -766,7 +766,7 @@ class TestInstallCompletionFlag:
             completion_mod._script_version(
                 _completion_file_path("bash").read_text(encoding="utf-8")
             )
-            == vesmaro_version()
+            == package_version()
         )
 
     def test_undetectable_shell_exits_1(

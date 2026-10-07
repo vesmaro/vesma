@@ -30,7 +30,7 @@ from vesma.manager import MemoryManager
 
 def _settings(tmp: Path) -> Settings:
     settings = Settings(
-        mnemos={
+        vesma={  # 6.0 clean-slate: the section is ``vesma`` (mnemos= rejected)
             "vault_path": str(tmp / "vault"),
             "data_dir": str(tmp / "data"),
             "db_name": "test.db",
