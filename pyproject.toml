@@ -216,6 +216,11 @@ exclude = [
     "handoff",
     "gen_wave*.sh",
     "node-*.tar.xz",
+    # pypi-publish.sh editor backup and the machine-local .remember memory dir
+    # both rode the 5.6.3/5.6.4 sdists byte-identical to baseline — noise, not
+    # a leak, but the same untracked-sweep class as above. Pinned 2026-10-07.
+    "pyproject.toml.pypi-publish.bak",
+    ".remember",
 ]
 
 [tool.hatch.build.targets.wheel]
