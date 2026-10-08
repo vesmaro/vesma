@@ -471,7 +471,11 @@ def update_cmd(
         result = mgr.update(name, dry_run=dry_run)
         _print_deploy_result(result, dry_run=dry_run)
 
-    console.print("\n[green]✓[/green] Update complete.")
+    # cli-audit 2026-10-08 (P3): a dry run must not claim completion.
+    if dry_run:
+        console.print("\n[cyan]✓[/cyan] Preview complete — nothing written.")
+    else:
+        console.print("\n[green]✓[/green] Update complete.")
 
 
 @integration_app.command(name="verify")
@@ -583,7 +587,8 @@ def uninstall_cmd(
             console.print(f"  {icon} MCP: {result.mcp_note}")
 
         if result.removed:
-            console.print(f"  [green]Removed ({len(result.removed)}):[/green]")
+            removed_label = "Would remove" if dry_run else "Removed"
+            console.print(f"  [green]{removed_label} ({len(result.removed)}):[/green]")
             for p in result.removed:
                 console.print(f"    ✗ {p}")
             total_removed += len(result.removed)
@@ -599,7 +604,17 @@ def uninstall_cmd(
             total_skipped += len(result.skipped_user_files)
 
     prefix = "[dry-run] " if dry_run else ""
-    console.print(
-        f"\n{prefix}[green]✓[/green] Uninstall complete: "
-        f"{total_removed} files removed, {total_skipped} user files preserved."
-    )
+    if dry_run:
+        # cli-audit 2026-10-08 (P1 #8): a dry run used to claim "Uninstall
+        # complete: 119 files removed" while nothing was deleted — the plan
+        # and the done-deed must never share one wording.
+        console.print(
+            f"\n[cyan]✓[/cyan] Dry run complete: would remove {total_removed} files, "
+            f"{total_skipped} user files would be preserved (nothing deleted — "
+            "re-run without --dry-run to apply)."
+        )
+    else:
+        console.print(
+            f"\n{prefix}[green]✓[/green] Uninstall complete: "
+            f"{total_removed} files removed, {total_skipped} user files preserved."
+        )

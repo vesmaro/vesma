@@ -1364,7 +1364,13 @@ class TestCLISetupUpdateUninstall:
             app, ["integration", "uninstall", "--target", "test-harness", "--dry-run"]
         )
         assert result.exit_code == 0
-        assert "3 files removed" in result.output
+        # cli-audit 2026-10-08 (P1 #8): the dry run must print the PLAN
+        # ("would remove ..."), never claim the deed ("files removed") —
+        # the files are verified intact on disk after a dry run.
+        assert "would remove 3 files" in result.output
+        assert "nothing deleted" in result.output
+        assert "Uninstall complete" not in result.output
+        assert mgr.verify("test-harness").stale_count == 0  # files still deployed
 
     def test_integration_setup_all_targets_no_detection(
         self,
