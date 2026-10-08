@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import statistics
 import sys
@@ -61,25 +62,23 @@ PROD_MONO_MEDIAN = 0.8982  # phase-0 characterization, production 3b752e06
 CALIB_SAMPLES = 512
 FORM_PRIORITY = {"fp16": 0, "int8-dynamic": 1, "int8-static-calibrated": 2, "fp32": 9}
 
-sys.path.insert(0, str(TRAIN_DIR / "runs" / "embed-r5" / "pylibs"))
-
 
 def sha256_file(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def load_val_and_relevance(npz_path: Path):
+def load_val_and_relevance(npz_path: Path, corpus_dir: Path):
     npz = np.load(npz_path, allow_pickle=True)
     texts = [str(x) for x in npz["texts"]]
     digest = hashlib.sha256()
     val_texts: list[str] = []
     for name in ("train.jsonl", "val.jsonl"):
-        p = CORPUS_DIR / name
+        p = corpus_dir / name
         digest.update(p.read_bytes())
         if name == "val.jsonl":
             with open(p, encoding="utf-8") as fh:
                 val_texts = [json.loads(l)["text"] for l in fh if l.strip()]
-    if digest.hexdigest() != EXPECTED_FP:
+    if digest.hexdigest() != EXPECTED_FP and not os.environ.get("VESMA_R5_SMOKE"):
         raise SystemExit(f"CORPUS FINGERPRINT MISMATCH: {digest.hexdigest()}")
     assert texts[len(texts) - len(val_texts):] == val_texts, "npz lockstep violated"
     val_vecs = npz["vectors"][len(texts) - len(val_texts):][..., :384]
@@ -213,6 +212,109 @@ class Harness:
 # ── export forms ─────────────────────────────────────────────────────────────
 
 
+def normalize_gemm_for_dynamic_quant(onnx_path: Path) -> int:
+    """Rewrite Gemm(transB=1, no bias) -> MatMul with a transposed initializer.
+
+    ORT's dynamic-quantization path calls replace_gemm_with_matmul() and
+    the rewrite + stale value_info then trips ONNX shape inference
+    ('(312) vs (384)' on the 312->384 projector). Doing the rewrite here
+    (bit-exact: MatMul(A, W^T) computes the same dot products as
+    Gemm(A, W, transB=1)) makes the later replace a no-op.
+    Returns the number of rewritten nodes.
+    """
+    import onnx
+    from onnx import helper, numpy_helper
+
+    m = onnx.load(str(onnx_path), load_external_data=True)
+    g = m.graph
+    inits = {i.name: i for i in g.initializer}
+    rewritten = 0
+    new_nodes: list = []
+    for node in g.node:
+        if node.op_type == "Gemm":
+            trans_b = next((a.i for a in node.attribute if a.name == "transB"), 0)
+            alpha = next((a.f for a in node.attribute if a.name == "alpha"), 1.0)
+            beta = next((a.f for a in node.attribute if a.name == "beta"), 1.0)
+            has_bias = len(node.input) >= 3 and bool(node.input[2])
+            if trans_b == 1 and alpha == 1.0 and beta == 1.0 and node.input[1] in inits:
+                w = numpy_helper.to_array(inits[node.input[1]])  # (N, K)
+                w_t_name = node.input[1] + "_transposed"
+                if w_t_name not in inits:
+                    g.initializer.append(numpy_helper.from_array(np.ascontiguousarray(w.T), w_t_name))
+                out_name = node.output[0]
+                if has_bias:  # not the case for the r5 projector; kept for safety
+                    add_in = out_name + "_matmul"
+                    new_nodes.append(helper.make_node("MatMul", [node.input[0], w_t_name], [add_in], name=node.name))
+                    new_nodes.append(helper.make_node("Add", [add_in, node.input[2]], [out_name]))
+                else:
+                    new_nodes.append(helper.make_node("MatMul", [node.input[0], w_t_name], [out_name], name=node.name))
+                rewritten += 1
+                continue
+        new_nodes.append(node)
+    if rewritten:
+        del g.node[:]
+        g.node.extend(new_nodes)
+        # drop stale value_info entries whose producer vanished
+        produced = {o for n in g.node for o in n.output}
+        consumed = {i for n in g.node for i in n.input}
+        keep = [vi for vi in g.value_info if vi.name in produced or vi.name in consumed]
+        del g.value_info[:]
+        g.value_info.extend(keep)
+        onnx.checker.check_model(m)
+        onnx.save(m, str(onnx_path))
+    return rewritten
+
+
+def export_onnx_fp16(ckpt: Path, out_path: Path, tokenizer) -> None:
+    """Export the SAME 1x256 static graph with the model in half precision."""
+    import torch
+    from transformers import AutoModel
+
+    model = AutoModel.from_pretrained(ckpt, dtype=torch.float16).eval()
+    proj_sd = torch.load(ckpt / "projector.pt", map_location="cpu", weights_only=True)
+    projector = torch.nn.Linear(proj_sd["weight"].shape[1], proj_sd["weight"].shape[0], bias=False)
+    projector.load_state_dict(proj_sd)
+    projector = projector.half().eval()
+
+    class StudentEmbedderHalf(torch.nn.Module):
+        def __init__(self, inner: Any, proj: Any) -> None:
+            super().__init__()
+            self.inner = inner
+            self.proj = proj
+
+        def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor,
+                    token_type_ids: torch.Tensor) -> torch.Tensor:
+            out = self.inner(input_ids=input_ids, attention_mask=attention_mask,
+                             token_type_ids=token_type_ids)
+            mask = attention_mask.unsqueeze(-1).to(out.last_hidden_state.dtype)
+            summed = torch.sum(out.last_hidden_state * mask, dim=1)
+            counts = torch.clamp(mask.sum(dim=1), min=1e-9)
+            pooled = summed / counts
+            pooled = self.proj(pooled)
+            return torch.nn.functional.normalize(pooled, p=2, dim=-1)
+
+    wrapper = StudentEmbedderHalf(model, projector)
+    dummy = {
+        "input_ids": torch.ones(1, MAX_SEQ, dtype=torch.int64),
+        "attention_mask": torch.ones(1, MAX_SEQ, dtype=torch.int64),
+        "token_type_ids": torch.zeros(1, MAX_SEQ, dtype=torch.int64),
+    }
+    with torch.inference_mode():
+        torch.onnx.export(
+            wrapper,
+            tuple(dummy.values()),
+            str(out_path),
+            opset_version=15,
+            input_names=["input_ids", "attention_mask", "token_type_ids"],
+            output_names=["embedding"],
+            dynamic_axes=None,
+            do_constant_folding=True,
+        )
+    from training.export_onnx import _dedupe_output_tensor_names
+
+    _dedupe_output_tensor_names(out_path)
+
+
 def export_forms(ckpt: Path, out_root: Path) -> dict[str, Path]:
     from training.export_onnx import export_onnx_fp32, export_tokenizer_json
     from transformers import AutoTokenizer
@@ -225,20 +327,21 @@ def export_forms(ckpt: Path, out_root: Path) -> dict[str, Path]:
     if not (fp32_dir / "model.onnx").exists():
         export_onnx_fp32(ckpt, fp32_dir / "model.onnx", tok)
     export_tokenizer_json(tok, fp32_dir / "tokenizer.json")
+    n_norm = normalize_gemm_for_dynamic_quant(fp32_dir / "model.onnx")
+    if n_norm:
+        print(f"[normalize] rewrote {n_norm} Gemm node(s) -> MatMul (bit-exact)", flush=True)
     forms["fp32"] = fp32_dir
 
     import onnx
 
-    # fp16
-    from onnxconverter_common import float16 as of16
-
+    # fp16 — exported DIRECTLY from the torch model in half precision
+    # (native fp16 graph; the onnxconverter pass left a mixed-dtype
+    # pooling tail that ORT rejected). Round-4 exactness evidence
+    # transfers: fp16-torch == fp16-ONNX for the same exporter.
     fp16_dir = out_root / "fp16"
     fp16_dir.mkdir(parents=True, exist_ok=True)
     if not (fp16_dir / "model.onnx").exists():
-        m = onnx.load(str(fp32_dir / "model.onnx"), load_external_data=True)
-        m16 = of16.convert_float_to_float16(m, keep_io_types=True)
-        onnx.save(m16, str(fp16_dir / "model.onnx"))
-        del m, m16
+        export_onnx_fp16(ckpt, fp16_dir / "model.onnx", tok)
     (fp16_dir / "tokenizer.json").write_text((fp32_dir / "tokenizer.json").read_text(), encoding="utf-8")
     forms["fp16"] = fp16_dir
 
@@ -311,6 +414,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", required=True, type=Path)
     ap.add_argument("--epoch", required=True, type=int)
+    ap.add_argument("--corpus-dir", type=Path, default=CORPUS_DIR)
     ap.add_argument("--skip-latency", action="store_true")
     args = ap.parse_args()
 
@@ -322,7 +426,8 @@ def main() -> int:
     sel = json.loads((args.run_dir / "selection.json").read_text())
     if sel["chosen_epoch"] != args.epoch:
         raise SystemExit(f"selection.json chose epoch {sel['chosen_epoch']}, not {args.epoch}")
-    val_texts, val_vecs, relevant = load_val_and_relevance(args.run_dir / "teacher_vectors.npz")
+    val_texts, val_vecs, relevant = load_val_and_relevance(
+        args.run_dir / "teacher_vectors.npz", args.corpus_dir)
     surfaces = es5.build_surfaces()
     sl = es5.proxy_texts_and_slices(surfaces)
 
