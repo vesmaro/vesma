@@ -96,7 +96,7 @@ Quick single-container start using the released image:
 
 ```bash
 podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
-  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:5.6.2  # 6.0.0: the only honoured spelling (older prefixes retired)
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:6.0.0  # 6.0.0: the only honoured spelling (older prefixes retired)
 ```
 
 Or with compose from the repo root:

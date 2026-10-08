@@ -21,11 +21,11 @@ Full documentation:
 
 - **TOTP master key** — required in any non-loopback deployment. Generate:
   `openssl rand -hex 32`. An empty key is rejected at startup.
-- **Image**: published at `ghcr.io/vesmaro/vesma` (tags `5.2.0`, `latest`;
-  **public** — anonymous pulls, backfilled from the legacy
-  `ghcr.io/korrnals/mnemos` user namespace). The release pipeline targets
-  the legacy name until 5.0.0 phase-g (GWS card #331); new releases are
-  backfilled manually in the meantime.
+- **Image**: published at `ghcr.io/vesmaro/vesma` (tags `6.0.0`, `latest`;
+  **public** — anonymous pulls; namespace was backfilled from the legacy
+  `ghcr.io/korrnals/mnemos` user namespace in the 4.3.0 wave). Since the
+  2026-10-05 directive the release train publishes the image synchronously
+  with every release — versioned tag plus `latest`, no manual backfill.
 - **Data**: two volumes — `/data` (SQLite + vector index) and `/vault`
   (Obsidian markdown mirror). Health surface: unauthenticated `GET /health`.
 

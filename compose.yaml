@@ -16,7 +16,7 @@
 
 services:
   vesma:
-    image: ghcr.io/vesmaro/vesma:${VESMA_IMAGE_TAG:-5.1.2}
+    image: ghcr.io/vesmaro/vesma:${VESMA_IMAGE_TAG:-6.0.0}
     container_name: vesma
     restart: unless-stopped
     ports:

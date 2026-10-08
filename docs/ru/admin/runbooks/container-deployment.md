@@ -43,12 +43,12 @@
 Скачайте опубликованный образ и запустите сразу — собирать ничего не нужно:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesma:5.6.2      # :latest указывает на свежий релиз
+podman pull ghcr.io/vesmaro/vesma:6.0.0      # :latest указывает на свежий релиз
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesmaro:4.3.0
+  ghcr.io/vesmaro/vesma:6.0.0
 ```
 
 `docker` работает идентично — замените `podman` на `docker`. В образ встроен
@@ -155,7 +155,7 @@ Shortcut:
 ## Запуск — systemd (quadlet)
 
 Путь через quadlet устанавливает systemd **user**-юнит и управляет контейнером как постоянным
-сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:5.2.0`, образ скачивается
+сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:6.0.0`, образ скачивается
 автоматически; для локальной сборки соберите образ заранее (см.
 [Сборка из исходников](#сборка-из-исходников-фолбэк)) и укажите
 `Image=localhost/vesma:latest` в юните.
@@ -208,7 +208,7 @@ systemctl --user status vesma
 > пользователям этот раздел не нужен.
 
 ```bash
-podman build -t localhost/vesma:5.6.2 -f Containerfile .
+podman build -t localhost/vesma:6.0.0 -f Containerfile .
 ```
 
 `Containerfile` использует `python:3.12-slim` в качестве базового образа, устанавливает пакет (MCP SDK едет в core),
@@ -238,8 +238,8 @@ make build-image
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:5.6.2 ghcr.io/vesmaro/vesma:5.6.2
-podman push ghcr.io/vesmaro/vesma:5.6.2
+podman tag localhost/vesma:6.0.0 ghcr.io/vesmaro/vesma:6.0.0
+podman push ghcr.io/vesmaro/vesma:6.0.0
 podman push ghcr.io/vesmaro/vesma:latest
 ```
 
