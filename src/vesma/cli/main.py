@@ -617,7 +617,7 @@ def recall_agent(
 
 # ── tags (M2) ─────────────────────────────────────────────────────────────────
 # Subcommand tree:
-#   vesma tags validate <vault>   — validate tag contract across a vault
+#   vesma tags validate   — validate the tag contract across the live store
 
 _tags_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -636,22 +636,91 @@ app.add_typer(_tags_app, name="tags")
 
 @_tags_app.command(name="validate")
 def tags_validate(
-    vault: Annotated[Path, typer.Argument(help="Path to Vesma vault directory")],
+    vault: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Deprecated positional — accepted for backward compatibility; "
+            "the scan always covers the live store from --config."
+        ),
+    ] = None,
     config: str = ConfigOption,
 ) -> None:
-    """Validate tag contract across an existing vault. Reports non-conformant entries.
+    """Validate the tag contract across the live store. Exit 1 on violations.
 
-    Scans the vault for tags that break the contract — wrong `project:`/
-    `agent:` spelling, uppercase slugs, spaces instead of hyphens — and
-    reports each offending entry with its reason. Pair with `vesma tags
-    normalize` for the bulk fix of the case/spacing class.
+    Every entry needs at least one `project:*`, one `agent:*` and one
+    subtype tag (`vesma:*`; legacy `mnemos:*` counts) — the same contract
+    the doctor's tag-contract check and `vesma tags audit` enforce. Each
+    non-conformant entry is reported with its id, current tags and the
+    missing prefixes. Exits 1 when violations exist (CI-friendly), 0 on a
+    clean store. Pair with `vesma tags audit --apply` for the bulk heal.
     """
 
-    console.print(f"[bold]Validating tag contract in:[/bold] {vault}")
-    # TODO (M2): scan SQLite + vault markdown files
+    if vault is not None:
+        console.print(
+            "[dim]note: the positional vault path is not used — validation runs "
+            "against the live store from --config (same scan as `vesma tags audit`)."
+            "[/dim]"
+        )
+
+    mgr = get_manager(config)
+
+    rows: list[tuple[Any, ...]] = []
+    db_path = mgr.sqlite.db_path
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT id, content, title, tags, project FROM memories ORDER BY created_at DESC"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                rows = []  # fresh/empty store — nothing to validate
+            else:
+                console.print(f"[red]✗ Tag validation failed:[/red] {exc}")
+                raise typer.Exit(1) from exc
+        except sqlite3.Error as exc:
+            console.print(f"[red]✗ Tag validation failed:[/red] {exc}")
+            raise typer.Exit(1) from exc
+        finally:
+            conn.close()
+
+    findings: list[dict[str, Any]] = []
+    for mem_id, content, title, raw_tags, project_col in rows:
+        _, missing, unparseable = _audit_heal_tags(str(raw_tags or ""), str(project_col or ""))
+        if not missing:
+            continue
+        if unparseable:
+            tags_display = "(unparseable)"
+        else:
+            try:
+                tags_display = ", ".join(json.loads(raw_tags)) if raw_tags else ""
+            except (json.JSONDecodeError, TypeError):
+                tags_display = "(unparseable)"
+        snippet = f"{title or content or ''}".strip().replace("\n", " ")
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "…"
+        findings.append(
+            {"id": str(mem_id), "snippet": snippet, "tags": tags_display, "missing": missing}
+        )
+
     console.print(
-        "[yellow]Full vault scan not yet implemented (M2 storage layer pending).[/yellow]"
+        f"[bold]Validating tag contract:[/bold] {len(rows):,} entries scanned, "
+        f"{len(findings):,} non-conformant"
     )
+    if not findings:
+        console.print("[green]✓ All entries conform to the tag contract.[/green]")
+        return
+
+    table = Table(title="Tag contract violations")
+    table.add_column("ID", style="cyan")
+    table.add_column("Entry", style="white", max_width=60)
+    table.add_column("Tags", style="dim")
+    table.add_column("Missing", style="red")
+    for f in findings:
+        table.add_row(f["id"][:8] + "…", f["snippet"], f["tags"], ", ".join(f["missing"]))
+    console.print(table)
+    console.print("[yellow]Heal with: vesma tags audit --apply[/yellow]")
+    raise typer.Exit(1)
 
 
 @_tags_app.command(name="normalize")
