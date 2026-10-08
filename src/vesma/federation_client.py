@@ -10,7 +10,7 @@ the caller decides. This keeps the client testable without a live
 would need a manager to fall back, the manager is per-project, and
 the fallback is a policy decision, not a transport concern).
 
-КП-2 (contract §3.2): A timeout 2s → local ``mnemos_search``, partial
+КП-2 (contract §3.2): A timeout 2s → local ``vesma_search``, partial
 result. The client enforces the timeout via ``httpx`` and signals
 fallback through ``PullResult.fell_back_to_local=True``.
 
@@ -127,7 +127,7 @@ def _pull_from_peer_impl(
       ``PullResult(trigger_code, records, fell_back_to_local=False)``.
     * Timeout / connection refused → КП-2 fallback:
       ``PullResult(trigger_code=OFFLINE_LITE, records=[], fell_back_to_local=True)``.
-      The caller runs local ``mnemos_search``.
+      The caller runs local ``vesma_search``.
     * 403 → ``PullResult(trigger_code=REFUSED, records=[], fell_back_to_local=True)``.
     * 429 → ``PullResult(trigger_code=REFUSED, records=[], fell_back_to_local=True)``.
     * Unknown peer → fail-closed:

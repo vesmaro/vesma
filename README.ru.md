@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD041 MD033 -->
 <p align="center">
-  <img src="docs/assets/mnemos-banner.svg" alt="Vesma — сервер памяти и знаний для AI-агентов" width="100%">
+  <img src="docs/assets/vesma-banner.svg" alt="Vesma — сервер памяти и знаний для AI-агентов" width="100%">
 </p>
 
 <h1 align="center">Vesma</h1>
@@ -12,8 +12,6 @@
 
 <p align="center">
   <a href="https://pypi.org/project/vesma/"><img src="https://img.shields.io/pypi/v/vesma?label=pypi&color=3776ab" alt="PyPI"></a>
-  <!-- deprecated-note: legacy PyPI package mnemos-memory-server (published until deprecation) -->
-  <!-- <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a> -->
   <a href="https://www.npmjs.com/package/@vesmaro/vesma"><img src="https://img.shields.io/npm/v/@vesmaro%2Fvesma?label=npm&color=cb3837" alt="npm"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache-2.0"></a>
@@ -108,11 +106,11 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 
 ```bash
 # systemd user-сервис (предпочтительно для постоянно работающего хоста)
-# легаси-имя ассета — unit-файл остаётся mnemos.container до деплой-волны
-cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
+# легаси-имя ассета — unit-файл остаётся vesma.container до деплой-волны
+cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesma.env (оба имени переменной), затем:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
-# quadlet выводит имя unit из имени файла — пока это mnemos.service
+# quadlet выводит имя unit из имени файла — пока это vesma.service
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
 ```
@@ -214,7 +212,7 @@ vesma search "помнит между сессиями"
 | 🧹 | **Контекстный фильтр** | Пятиступенчатая очистка шума из логов / stdout до того, как что-то попадёт в модель |
 | 🗜️ | **Обратимое сжатие (CCR)** | Сжатие большого контента без потери данных — оригиналы кэшируются в SQLite, извлекаются по хеш-маркеру |
 | 🧷 | **CacheAligner** | Перенос динамического контента (таймстампы, UUID, session id, токены) в хвост, чтобы KV-кэши провайдеров (Anthropic `cache_control`, OpenAI prefix caching) попадали между запросами |
-| 🪶 | **Сокращение токенов вывода** | Опциональные параметры `verbosity` / `effort` на `mnemos_add` / `mnemos_search` / `mnemos_recall_context` (имена MCP-тулов — неизменный wire-контракт) управляют стилем вывода вызывающей стороны — обратно совместимо, значения по умолчанию — no-op |
+| 🪶 | **Сокращение токенов вывода** | Опциональные параметры `verbosity` / `effort` на `vesma_add` / `vesma_search` / `vesma_recall_context` (имена MCP-тулов — неизменный wire-контракт) управляют стилем вывода вызывающей стороны — обратно совместимо, значения по умолчанию — no-op |
 | 📂 | **Path-scoped rules** | Ингест правил проекта и применение их по пути файла |
 | 🗂️ | **Obsidian vault** | Markdown-зеркало, которое люди могут листать, править и грепать |
 
@@ -261,7 +259,7 @@ Vesma работает с любым агентским харнесом с по
   ([подробнее](docs/ru/user/integration-guide.md#hermes-agent)).
 
 Общий контракт — [схема тегов](docs/ru/user/tag-contract.md) — `project:<slug>`, `agent:<slug>`
-и хотя бы один `mnemos:<subtype>` (неймспейс тегов — неизменный контракт данных) — обязательна для каждой записи памяти.
+и хотя бы один `vesma:<subtype>` (неймспейс тегов — неизменный контракт данных) — обязательна для каждой записи памяти.
 
 ---
 
@@ -361,9 +359,9 @@ HTTP-поверхность также открывает **A2A Sessions API** �
 | [features.md](docs/ru/features.md) | Что работает из коробки, что частично, что в планах |
 | [architecture/overview.md](docs/ru/architecture/overview.md) | Устройство системы, модель данных, конечные автоматы, границы безопасности |
 | [cli-reference.md](docs/ru/user/cli-reference.md) | Все подкоманды `vesma` с флагами, значениями по умолчанию, примерами |
-| [mcp-tools.md](docs/ru/user/mcp-tools.md) | Все инструменты `mnemos_*`, доступные агентским харнесам (имена тулов — неизменный MCP wire-контракт) |
+| [mcp-tools.md](docs/ru/user/mcp-tools.md) | Все инструменты `vesma_*`, доступные агентским харнесам (имена тулов — неизменный MCP wire-контракт) |
 | [http-api.md](docs/ru/user/http-api.md) | Все HTTP-эндпоинты (CRUD памяти, workflow, хуки, A2A Sessions) |
-| [tag-contract.md](docs/ru/user/tag-contract.md) | Схема тегов `project:` / `agent:` / `mnemos:` (неймспейс — неизменный контракт данных), обязательная для каждой записи памяти |
+| [tag-contract.md](docs/ru/user/tag-contract.md) | Схема тегов `project:` / `agent:` / `vesma:` (неймспейс — неизменный контракт данных), обязательная для каждой записи памяти |
 | [security.md](docs/ru/admin/security.md) | Модель угроз, SSRF-защита, FTS5 escape, модель аутентификации |
 | [kubernetes-deployment.md](docs/ru/admin/kubernetes-deployment.md) | Helm-чарт для кластеров K8s/K3s: ингресс, хранилище, TLS, TOTP-секрет |
 | [runbooks/](docs/ru/admin/runbooks/) | Установка, миграция, резервное копирование / восстановление, обновление зависимостей, развёртывание в контейнере |
@@ -375,16 +373,10 @@ HTTP-поверхность также открывает **A2A Sessions API** �
 
 ## 📖 Легенда
 
-> В «Теогонии» Гесиода **Мнемосина** (Μνημοσύνη) — титанида памяти. Она, от Зевса, родила девять муз и
-> через них сделала возможным воспоминание мира. Её имя — корень слова *мнемонический*, и к ней
-> обращается каждый певец, поэт и философ, прежде чем начать.
-
-Это программное обеспечение создано для той же задачи: **сделать воспоминание
-возможным для тех, кто мыслит.** Раздел легенды ниже хранит память о доребрендинговом
-имени — сам продукт теперь идёт под именем **Vesma**. AI-агенты, не привязанные ни к одному разговору, теряют всё, что было
+**Vesma** создан для одной задачи: **сделать воспоминание
+возможным для тех, кто мыслит.** AI-агенты, не привязанные ни к одному разговору, теряют всё, что было
 до. Vesma даёт им место, куда это можно положить — структурированно, с поиском, по контракту — чтобы
-то, что они узнали, не исчезало с закрытием сессии. Музы, в конце концов, были не для богов. Они были
-для песен.
+то, что они узнали, не исчезало с закрытием сессии.
 
 ---
 

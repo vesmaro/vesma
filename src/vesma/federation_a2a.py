@@ -136,7 +136,7 @@ def build_share_finding_payload(response: PullResponse) -> dict[str, Any]:
 
     Contract §3.3: the payload carries ``ttl_class="ephemeral"`` as a
     policy marker. The A-side agent body is responsible for NOT
-    persisting these records via ``mnemos_add`` — this is a policy,
+    persisting these records via ``vesma_add`` — this is a policy,
     not a technical enforcement.
     """
     return {
@@ -176,7 +176,7 @@ def handle_share_finding(
             received from B. Both share the ``trigger_code`` +
             ``records`` fields.
         local_search: Optional callable ``(query: str) -> list`` that
-            runs the local ``mnemos_search`` fallback. Called when the
+            runs the local ``vesma_search`` fallback. Called when the
             trigger code signals fallback (``REFUSED``, ``OFFLINE_LITE``)
             or when the pull fell back to local transport. When
             ``None``, the caller is responsible for running the
@@ -187,11 +187,11 @@ def handle_share_finding(
         A dict describing the action A should take:
 
         * ``{"action": "use", "records": [...]}`` — use the records in
-          context (contract §3.3: do NOT call ``mnemos_add``).
+          context (contract §3.3: do NOT call ``vesma_add``).
         * ``{"action": "noop", "trigger_code": "ALREADY_EXHAUSTED"}`` —
           reuse the previous answer (contract §9).
         * ``{"action": "fallback_local", "trigger_code": <code>,
-          "local_results": [...]}`` — run local ``mnemos_search``
+          "local_results": [...]}`` — run local ``vesma_search``
           (КП-2). ``local_results`` is present only when ``local_search``
           was provided.
     """

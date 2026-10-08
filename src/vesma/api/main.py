@@ -333,94 +333,94 @@ def _prometheus_text(mgr: MemoryManager) -> str:
     vectors = data["vectors"]
     sessions = data["sessions"]
     lines: list[str] = []
-    lines.append("# HELP mnemos_memories_total Total number of memories in storage")
-    lines.append("# TYPE mnemos_memories_total gauge")
-    lines.append(f"mnemos_memories_total {vol['memories_total']}")
-    lines.append("# HELP mnemos_memories_by_status Memories by status")
-    lines.append("# TYPE mnemos_memories_by_status gauge")
+    lines.append("# HELP vesma_memories_total Total number of memories in storage")
+    lines.append("# TYPE vesma_memories_total gauge")
+    lines.append(f"vesma_memories_total {vol['memories_total']}")
+    lines.append("# HELP vesma_memories_by_status Memories by status")
+    lines.append("# TYPE vesma_memories_by_status gauge")
     for s, c in vol["by_status"].items():
-        lines.append(f'mnemos_memories_by_status{{status="{s}"}} {c}')
-    lines.append("# HELP mnemos_memories_by_project Memories by project")
-    lines.append("# TYPE mnemos_memories_by_project gauge")
+        lines.append(f'vesma_memories_by_status{{status="{s}"}} {c}')
+    lines.append("# HELP vesma_memories_by_project Memories by project")
+    lines.append("# TYPE vesma_memories_by_project gauge")
     for p, c in vol["by_project"].items():
-        lines.append(f'mnemos_memories_by_project{{project="{p}"}} {c}')
-    lines.append("# HELP mnemos_memories_by_agent Memories by agent")
-    lines.append("# TYPE mnemos_memories_by_agent gauge")
+        lines.append(f'vesma_memories_by_project{{project="{p}"}} {c}')
+    lines.append("# HELP vesma_memories_by_agent Memories by agent")
+    lines.append("# TYPE vesma_memories_by_agent gauge")
     for a, c in vol["by_agent"].items():
-        lines.append(f'mnemos_memories_by_agent{{agent="{a}"}} {c}')
-    lines.append("# HELP mnemos_memories_by_type Memories by memory_type")
-    lines.append("# TYPE mnemos_memories_by_type gauge")
+        lines.append(f'vesma_memories_by_agent{{agent="{a}"}} {c}')
+    lines.append("# HELP vesma_memories_by_type Memories by memory_type")
+    lines.append("# TYPE vesma_memories_by_type gauge")
     for t, c in vol["by_type"].items():
-        lines.append(f'mnemos_memories_by_type{{type="{t}"}} {c}')
-    lines.append("# HELP mnemos_filter_avg_reduction_pct Average filter reduction percentage")
-    lines.append("# TYPE mnemos_filter_avg_reduction_pct gauge")
-    lines.append(f"mnemos_filter_avg_reduction_pct {filt['avg_reduction_pct']}")
-    lines.append("# HELP mnemos_filter_filtered_total Memories with clean_content populated")
-    lines.append("# TYPE mnemos_filter_filtered_total gauge")
-    lines.append(f"mnemos_filter_filtered_total {filt['filtered_total']}")
-    lines.append("# HELP mnemos_pipeline_processed_total Total processed memories")
-    lines.append("# TYPE mnemos_pipeline_processed_total counter")
-    lines.append(f"mnemos_pipeline_processed_total {pipe['processed_total']}")
-    lines.append("# HELP mnemos_pipeline_dlq_depth Current DLQ depth")
-    lines.append("# TYPE mnemos_pipeline_dlq_depth gauge")
-    lines.append(f"mnemos_pipeline_dlq_depth {pipe['dlq_depth']}")
-    lines.append("# HELP mnemos_search_requests_total Total search requests since restart")
-    lines.append("# TYPE mnemos_search_requests_total counter")
-    lines.append(f"mnemos_search_requests_total {search['requests_total']}")
+        lines.append(f'vesma_memories_by_type{{type="{t}"}} {c}')
+    lines.append("# HELP vesma_filter_avg_reduction_pct Average filter reduction percentage")
+    lines.append("# TYPE vesma_filter_avg_reduction_pct gauge")
+    lines.append(f"vesma_filter_avg_reduction_pct {filt['avg_reduction_pct']}")
+    lines.append("# HELP vesma_filter_filtered_total Memories with clean_content populated")
+    lines.append("# TYPE vesma_filter_filtered_total gauge")
+    lines.append(f"vesma_filter_filtered_total {filt['filtered_total']}")
+    lines.append("# HELP vesma_pipeline_processed_total Total processed memories")
+    lines.append("# TYPE vesma_pipeline_processed_total counter")
+    lines.append(f"vesma_pipeline_processed_total {pipe['processed_total']}")
+    lines.append("# HELP vesma_pipeline_dlq_depth Current DLQ depth")
+    lines.append("# TYPE vesma_pipeline_dlq_depth gauge")
+    lines.append(f"vesma_pipeline_dlq_depth {pipe['dlq_depth']}")
+    lines.append("# HELP vesma_search_requests_total Total search requests since restart")
+    lines.append("# TYPE vesma_search_requests_total counter")
+    lines.append(f"vesma_search_requests_total {search['requests_total']}")
     lines.append(
-        "# HELP mnemos_search_cross_project_requests_total "
+        "# HELP vesma_search_cross_project_requests_total "
         "Search requests in the explicit global (cross-project) mode since restart"
     )
-    lines.append("# TYPE mnemos_search_cross_project_requests_total counter")
+    lines.append("# TYPE vesma_search_cross_project_requests_total counter")
     lines.append(
-        f"mnemos_search_cross_project_requests_total {search['cross_project_requests_total']}"
+        f"vesma_search_cross_project_requests_total {search['cross_project_requests_total']}"
     )
-    lines.append("# HELP mnemos_search_avg_latency_ms Average search latency in ms")
-    lines.append("# TYPE mnemos_search_avg_latency_ms gauge")
-    lines.append(f"mnemos_search_avg_latency_ms {search['avg_latency_ms']}")
+    lines.append("# HELP vesma_search_avg_latency_ms Average search latency in ms")
+    lines.append("# TYPE vesma_search_avg_latency_ms gauge")
+    lines.append(f"vesma_search_avg_latency_ms {search['avg_latency_ms']}")
     lines.append(
-        "# HELP mnemos_search_graph_supersedes_enriched_requests_total "
+        "# HELP vesma_search_graph_supersedes_enriched_requests_total "
         "Search requests whose page the unconditional supersedes leg enriched since restart"
     )
-    lines.append("# TYPE mnemos_search_graph_supersedes_enriched_requests_total counter")
+    lines.append("# TYPE vesma_search_graph_supersedes_enriched_requests_total counter")
     lines.append(
-        "mnemos_search_graph_supersedes_enriched_requests_total "
+        "vesma_search_graph_supersedes_enriched_requests_total "
         f"{search['graph_supersedes_enriched_requests_total']}"
     )
     lines.append(
-        "# HELP mnemos_search_graph_walk_enriched_requests_total "
+        "# HELP vesma_search_graph_walk_enriched_requests_total "
         "Search requests whose page the flag-gated relates_to walk enriched since restart"
     )
-    lines.append("# TYPE mnemos_search_graph_walk_enriched_requests_total counter")
+    lines.append("# TYPE vesma_search_graph_walk_enriched_requests_total counter")
     lines.append(
-        "mnemos_search_graph_walk_enriched_requests_total "
+        "vesma_search_graph_walk_enriched_requests_total "
         f"{search['graph_walk_enriched_requests_total']}"
     )
     # ADR-0030 A0 (issue #322) — relates_to auto-minting rate telemetry
     # (in-memory counters, since restart; '' buckets unscoped writes).
     graph = data["graph"]
     lines.append(
-        "# HELP mnemos_graph_auto_dedupe_edges_total "
+        "# HELP vesma_graph_auto_dedupe_edges_total "
         "relates_to edges minted by the auto-dedupe rule since restart"
     )
-    lines.append("# TYPE mnemos_graph_auto_dedupe_edges_total counter")
-    lines.append(f"mnemos_graph_auto_dedupe_edges_total {graph['auto_dedupe_edges_total']}")
+    lines.append("# TYPE vesma_graph_auto_dedupe_edges_total counter")
+    lines.append(f"vesma_graph_auto_dedupe_edges_total {graph['auto_dedupe_edges_total']}")
     lines.append(
-        "# HELP mnemos_graph_auto_dedupe_edges_by_project "
+        "# HELP vesma_graph_auto_dedupe_edges_by_project "
         "Auto-minted relates_to edges by project since restart"
     )
-    lines.append("# TYPE mnemos_graph_auto_dedupe_edges_by_project counter")
+    lines.append("# TYPE vesma_graph_auto_dedupe_edges_by_project counter")
     for p, c in graph["auto_dedupe_edges_by_project"].items():
-        lines.append(f'mnemos_graph_auto_dedupe_edges_by_project{{project="{p}"}} {c}')
-    lines.append("# HELP mnemos_vectors_indexed_total Indexed vectors")
-    lines.append("# TYPE mnemos_vectors_indexed_total gauge")
-    lines.append(f"mnemos_vectors_indexed_total {vectors['indexed_total']}")
-    lines.append("# HELP mnemos_sessions_active Active sessions (updated within 24h)")
-    lines.append("# TYPE mnemos_sessions_active gauge")
-    lines.append(f"mnemos_sessions_active {sessions['active']}")
-    lines.append("# HELP mnemos_sessions_total Total sessions")
-    lines.append("# TYPE mnemos_sessions_total gauge")
-    lines.append(f"mnemos_sessions_total {sessions['total']}")
+        lines.append(f'vesma_graph_auto_dedupe_edges_by_project{{project="{p}"}} {c}')
+    lines.append("# HELP vesma_vectors_indexed_total Indexed vectors")
+    lines.append("# TYPE vesma_vectors_indexed_total gauge")
+    lines.append(f"vesma_vectors_indexed_total {vectors['indexed_total']}")
+    lines.append("# HELP vesma_sessions_active Active sessions (updated within 24h)")
+    lines.append("# TYPE vesma_sessions_active gauge")
+    lines.append(f"vesma_sessions_active {sessions['active']}")
+    lines.append("# HELP vesma_sessions_total Total sessions")
+    lines.append("# TYPE vesma_sessions_total gauge")
+    lines.append(f"vesma_sessions_total {sessions['total']}")
     return "\n".join(lines) + "\n"
 
 
@@ -453,7 +453,7 @@ async def create_memory(data: MemoryCreate) -> Memory:
 
     The body is a ``MemoryCreate`` (``content`` required); ``tags`` must
     satisfy the M2 tag contract (``project:<slug>``, ``agent:<slug>``
-    and a ``mnemos:<subtype>`` scope — validated per the
+    and a ``vesma:<subtype>`` scope — validated per the
     ``strict_tag_contract`` setting). ``project`` / ``agent`` are derived
     from the tags and stored as denormalised columns for fast filtering.
 
@@ -966,7 +966,7 @@ class TagCount(BaseModel):
 
 
 class TagsRenameRequest(BaseModel):
-    """Request body for POST /tags/rename — mirrors ``mnemos_tags_rename``."""
+    """Request body for POST /tags/rename — mirrors ``vesma_tags_rename``."""
 
     from_prefix: str
     to_prefix: str
@@ -993,7 +993,7 @@ async def list_tags() -> list[TagCount]:
 async def rename_tags(req: TagsRenameRequest) -> dict[str, Any]:
     """Bulk rename tags matching ``from_prefix:<subtype>`` → ``to_prefix:<subtype>``.
 
-    Mirrors the ``mnemos_tags_rename`` MCP tool and the ``vesma tags rename``
+    Mirrors the ``vesma_tags_rename`` MCP tool and the ``vesma tags rename``
     CLI command. Safe: uses ``update_fields`` (plain UPDATE) so the FTS5
     external-content index stays consistent. ``dry_run=true`` by default —
     nothing is written unless the caller explicitly sets ``dry_run=false``.
@@ -1012,7 +1012,7 @@ async def rename_tags(req: TagsRenameRequest) -> dict[str, Any]:
 
 
 class TagsAddRequest(BaseModel):
-    """Request body for POST /api/v1/tags/add — mirrors ``mnemos_tags`` action="add"."""
+    """Request body for POST /api/v1/tags/add — mirrors ``vesma_tags`` action="add"."""
 
     tags: list[str]
     dry_run: bool = True
@@ -1021,7 +1021,7 @@ class TagsAddRequest(BaseModel):
 
 
 class TagsRemoveRequest(BaseModel):
-    """Request body for POST /api/v1/tags/remove — mirrors ``mnemos_tags`` action="remove"."""
+    """Request body for POST /api/v1/tags/remove — mirrors ``vesma_tags`` action="remove"."""
 
     tags: list[str]
     wildcard: bool = False
@@ -1041,7 +1041,7 @@ def _tags_call(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     existing in-file fix pattern (``/context/rewrite`` maps tag-contract
     violations to 422). Per-memory contract refusals are NOT errors
     here: the manager reports them per row in the report's ``errors``
-    list (the uniform ``mnemos_tags`` report shape, MCP parity) — this
+    list (the uniform ``vesma_tags`` report shape, MCP parity) — this
     wrapper is the fail-closed net for anything that escapes that path.
     """
     try:
@@ -1054,7 +1054,7 @@ def _tags_call(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
 async def add_tags(req: TagsAddRequest) -> dict[str, Any]:
     """Append tags to every memory matching the project/agent filter.
 
-    REST twin of the ``mnemos_tags`` MCP tool with ``action="add"``
+    REST twin of the ``vesma_tags`` MCP tool with ``action="add"``
     (#454 tail). Each tag must carry a prefix shape (contain ``":"``);
     the resulting per-memory tag set is re-validated in strict mode by the
     manager (the single enforcement path), so a contract-breaking tag is
@@ -1080,11 +1080,11 @@ async def add_tags(req: TagsAddRequest) -> dict[str, Any]:
 async def remove_tags(req: TagsRemoveRequest) -> dict[str, Any]:
     """Remove tags from memories (exact match, or prefix match with ``wildcard``).
 
-    REST twin of the ``mnemos_tags`` MCP tool with ``action="remove"``.
+    REST twin of the ``vesma_tags`` MCP tool with ``action="remove"``.
     With ``wildcard=true`` each entry is treated as a prefix (``["gcw:"]``
     strips every ``gcw:*`` tag). The resulting per-memory tag set is
     re-validated in strict mode by the manager: removing the last
-    ``project:`` / ``agent:`` / ``mnemos:`` tag is rejected per memory in
+    ``project:`` / ``agent:`` / ``vesma:`` tag is rejected per memory in
     the report's ``errors`` list, never written. ``dry_run=true`` by
     default. Idempotent: a second run reports ``changed=0``.
     """
@@ -1172,7 +1172,7 @@ def _http_remind_secs() -> int:
 
 
 class SaveContextRequest(BaseModel):
-    """Request body for POST /context/save — mirrors ``mnemos_save_context``.
+    """Request body for POST /context/save — mirrors ``vesma_save_context``.
 
     Fields accept either a string or a list of strings. When a list is
     provided, items are joined with newlines to form the markdown section
@@ -1201,13 +1201,13 @@ class SaveContextRequest(BaseModel):
     task: str | None = None
     # vesma-canon v1.0.0 (ADR-0003 obligation 4) — the per-call
     # override of the server-configured checkpoint body language
-    # (``mnemos.checkpoint_language``); validated at the manager
+    # (``vesma.checkpoint_language``); validated at the manager
     # boundary (canon enum, ValueError → 400).
     language: Literal["ru", "en"] | None = None
 
 
 class RecallContextRequest(BaseModel):
-    """Request body for POST /context/recall — mirrors ``mnemos_recall_context``."""
+    """Request body for POST /context/recall — mirrors ``vesma_recall_context``."""
 
     project: str
     query: str | None = None
@@ -1245,7 +1245,7 @@ class AssembleContextRequest(BaseModel):
 async def save_context(req: SaveContextRequest) -> dict[str, Any]:
     """Save a session checkpoint memory tagged ``vesma:checkpoint``.
 
-    Mirrors the ``mnemos_save_context`` MCP tool: identity validation,
+    Mirrors the ``vesma_save_context`` MCP tool: identity validation,
     session→agent binding (mismatch → 409), issuer-keyed dedup and the
     trivial-reject all live in ``MemoryManager.save_checkpoint``; this
     endpoint only maps errors to HTTP codes (ValueError → 400).
@@ -1284,7 +1284,7 @@ async def save_context(req: SaveContextRequest) -> dict[str, Any]:
 async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
     """Recall the most recent checkpoint memories for a project.
 
-    Mirrors the ``mnemos_recall_context`` MCP tool: the project slug is
+    Mirrors the ``vesma_recall_context`` MCP tool: the project slug is
     normalized at the manager's query boundary (vesma #400) and an
     unsalvageable slug raises ``ValueError`` there — mapped to HTTP 400
     here, mirroring the save twin's mapping above.
@@ -1304,7 +1304,7 @@ async def recall_context(req: RecallContextRequest) -> dict[str, Any]:
             "message": "No context found. Start by saving context with POST /context/save.",
         }
     # ADR-0018 P1-b review (F2a): channel symmetry — the MCP twin
-    # mnemos_recall_context scans at issuance, so this endpoint does too
+    # vesma_recall_context scans at issuance, so this endpoint does too
     # (both echoed strings: content and title; refuse mode drops the
     # checkpoint, logged with the memory id).
     checkpoints = []
@@ -1364,7 +1364,7 @@ async def assemble_context(req: AssembleContextRequest) -> dict[str, Any]:
 
 
 class ContextRewriteRequest(BaseModel):
-    """Request body for POST /context/rewrite — mirrors ``mnemos_context_rewrite``."""
+    """Request body for POST /context/rewrite — mirrors ``vesma_context_rewrite``."""
 
     content: str
     project: str
@@ -1379,7 +1379,7 @@ class ContextRewriteRequest(BaseModel):
 async def context_rewrite(req: ContextRewriteRequest) -> dict[str, Any]:
     """Handle one ``on_context_rewrite`` lifecycle event (ADR-0018, #125 W2).
 
-    Mirrors the ``mnemos_context_rewrite`` MCP tool over the same manager
+    Mirrors the ``vesma_context_rewrite`` MCP tool over the same manager
     path: the original of the replaced context block is stored to LTM via
     the normal knowledge pipeline (raw → published gating, write-path
     secret scan), idempotent by content-addressed event key, version-less
@@ -1413,7 +1413,7 @@ async def context_rewrite(req: ContextRewriteRequest) -> dict[str, Any]:
 
 
 class HooksRequest(BaseModel):
-    """Request body for POST /hooks/{action} — mirrors ``mnemos_hooks``.
+    """Request body for POST /hooks/{action} — mirrors ``vesma_hooks``.
 
     One shared body for the three actions (they share the mandatory
     session/project/agent identity spine); per-action fields are
@@ -1451,7 +1451,7 @@ class HooksRequest(BaseModel):
 async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
     """Run one lifecycle hook (ADR-0017 D1 / ADR-0018, #125 Wave 3).
 
-    Mirrors the ``mnemos_hooks`` MCP tool over the same manager path via
+    Mirrors the ``vesma_hooks`` MCP tool over the same manager path via
     the shared ``dispatch_hook`` router: ``pre_llm_call`` (assemble the
     pre-model-call injection block, sync), ``on_session_start`` (recall
     recent checkpoints, scanned at issuance on this channel),
@@ -1492,7 +1492,7 @@ async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
 
 
 class CompressRequest(BaseModel):
-    """Request body for POST /compress — mirrors ``mnemos_compress``."""
+    """Request body for POST /compress — mirrors ``vesma_compress``."""
 
     text: str
     profile: str | None = None
@@ -1504,7 +1504,7 @@ class CompressRequest(BaseModel):
 
 
 class RetrieveRequest(BaseModel):
-    """Request body for POST /retrieve — mirrors ``mnemos_retrieve``."""
+    """Request body for POST /retrieve — mirrors ``vesma_retrieve``."""
 
     hash: str
     query: str | None = None
@@ -1526,7 +1526,7 @@ class RetrieveRequest(BaseModel):
 async def compress_content(req: CompressRequest) -> dict[str, Any]:
     """Compress ``text`` via CCR and cache the original.
 
-    Mirrors the ``mnemos_compress`` MCP tool. Returns the CCR result dict
+    Mirrors the ``vesma_compress`` MCP tool. Returns the CCR result dict
     (compressed text, hash, sizes, reduction, marker, …). Optional
     ``agent``/``session`` record the caller as the cache entry issuer
     (A2 marker provenance).
@@ -1546,7 +1546,7 @@ async def compress_content(req: CompressRequest) -> dict[str, Any]:
 async def retrieve_content(req: RetrieveRequest) -> dict[str, Any]:
     """Retrieve a CCR-cached original (or FTS5 snippets when ``query`` is set).
 
-    Mirrors the ``mnemos_retrieve`` MCP tool. Issued content is scanned for
+    Mirrors the ``vesma_retrieve`` MCP tool. Issued content is scanned for
     secrets (ADR-0018 P0): matched spans are redacted in the response
     (``redactions`` counts them; ``redacted_patterns`` gives per-pattern
     counts); the stored original is never mutated. An optional ``project``
@@ -1575,7 +1575,7 @@ async def retrieve_content(req: RetrieveRequest) -> dict[str, Any]:
 
 @app.get("/auto-collect")
 async def auto_collect_status() -> dict[str, Any]:
-    """Compaction signal vector — mirrors ``mnemos_auto_collect_status``.
+    """Compaction signal vector — mirrors ``vesma_auto_collect_status``.
 
     Returns the in-process call counter / elapsed-time signals plus
     client-populated heuristic slots. The ``recommendation`` field is
@@ -1619,7 +1619,7 @@ async def auto_collect_status() -> dict[str, Any]:
 
 
 class IngestUrlRequest(BaseModel):
-    """Request body for POST /ingest-url — mirrors ``mnemos_ingest_url``."""
+    """Request body for POST /ingest-url — mirrors ``vesma_ingest_url``."""
 
     url: str
     tags: list[str]
@@ -1629,7 +1629,7 @@ class IngestUrlRequest(BaseModel):
 async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
     """Fetch a web page, extract main text, and save it as a RAW memory.
 
-    Mirrors the ``mnemos_ingest_url`` MCP tool. Credentials embedded in the
+    Mirrors the ``vesma_ingest_url`` MCP tool. Credentials embedded in the
     URL are stripped before storage (OWASP A02). Tags are validated through
     the project's tag contract.
     """
@@ -1656,7 +1656,7 @@ async def ingest_url(req: IngestUrlRequest) -> dict[str, Any]:
 
 
 class IngestDocumentRequest(BaseModel):
-    """Request body for POST /ingest-document — mirrors ``mnemos_ingest_document``.
+    """Request body for POST /ingest-document — mirrors ``vesma_ingest_document``.
 
     ADR-0027 invariant 8: the ingested document is UNTRUSTED CONTENT.
     The chunks are born quarantined (excluded from every issuance path)
@@ -1677,7 +1677,7 @@ class IngestDocumentRequest(BaseModel):
 async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
     """Ingest a document as chunked, born-quarantined memory rows (Ф3).
 
-    Mirrors the ``mnemos_ingest_document`` MCP tool. Chunks are born
+    Mirrors the ``vesma_ingest_document`` MCP tool. Chunks are born
     quarantined (ADR-0027 invariant 8) and swept at completion; a
     re-ingest of the same ``doc_id`` replaces the rows and bumps the
     ccr_cache doc-chunk version in the same transaction (invariant 4).
@@ -1724,7 +1724,7 @@ async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
 
 
 class WatchStartRequest(BaseModel):
-    """Request body for POST /watch/start — mirrors ``mnemos_watch_start``."""
+    """Request body for POST /watch/start — mirrors ``vesma_watch_start``."""
 
     project_id: str
     agent: str
@@ -1735,7 +1735,7 @@ class WatchStartRequest(BaseModel):
 async def watch_start(req: WatchStartRequest) -> dict[str, Any]:
     """Register a project's code graph for the in-process watch poll.
 
-    Mirrors the ``mnemos_watch_start`` MCP tool (ADR-0032 §3.2): checks the
+    Mirrors the ``vesma_watch_start`` MCP tool (ADR-0032 §3.2): checks the
     project's indexed files by mtime+size on an adaptive interval and
     reindexes on ACTUAL changes — audited with reason ``watch``. Requires the
     operator flags ``code_graph.enabled`` and ``code_graph.watch``; refuses
@@ -1753,7 +1753,7 @@ async def watch_start(req: WatchStartRequest) -> dict[str, Any]:
 async def watch_stop(project_id: str | None = None) -> dict[str, Any]:
     """Stop one watch registration (by project_id) or ALL of them.
 
-    Mirrors the ``mnemos_watch_stop`` MCP tool. Idempotent.
+    Mirrors the ``vesma_watch_stop`` MCP tool. Idempotent.
     """
     _track_http_call()
     mgr = get_manager()
@@ -1765,7 +1765,7 @@ async def watch_stop(project_id: str | None = None) -> dict[str, Any]:
 async def watch_status() -> dict[str, Any]:
     """Return watch registrations and the last poll outcome per project.
 
-    Mirrors the ``mnemos_watch_status`` MCP tool; ``running`` stays
+    Mirrors the ``vesma_watch_status`` MCP tool; ``running`` stays
     top-level for existing consumers.
     """
     _track_http_call()
@@ -1932,7 +1932,7 @@ async def api_import(
 
 
 # ── Project graph API (ADR-0032 §3.3 — REST twins of the 10 MCP tools) ───────
-# Surface parity canon: every mnemos_<tool> has a /graph/ twin riding the
+# Surface parity canon: every vesma_<tool> has a /graph/ twin riding the
 # SAME app, so the ADR-0014 auth contour (AuthMiddleware) applies unchanged.
 # The policy layers (PG2 confinement, token contract, PG3/PG4/PG7) live in
 # CodeGraphService — these routes are thin adapters, as the MCP handlers are.
@@ -2045,7 +2045,7 @@ def _graph_service() -> Any:
 
 @app.post("/graph/index")
 async def graph_index(req: GraphIndexRequest) -> dict[str, Any]:
-    """Twin of mnemos_index_project."""
+    """Twin of vesma_index_project."""
     return _graph_call(
         lambda: _graph_service().index_project(
             req.project_id,
@@ -2059,13 +2059,13 @@ async def graph_index(req: GraphIndexRequest) -> dict[str, Any]:
 
 @app.get("/graph/status/{project_id}")
 async def graph_status(project_id: str, agent: str, session: str | None = None) -> dict[str, Any]:
-    """Twin of mnemos_project_graph_status."""
+    """Twin of vesma_project_graph_status."""
     return _graph_call(lambda: _graph_service().status(project_id, agent=agent, session=session))
 
 
 @app.post("/graph/search")
 async def graph_search(req: GraphSearchRequest) -> dict[str, Any]:
-    """Twin of mnemos_search_graph."""
+    """Twin of vesma_search_graph."""
     return _graph_call(
         lambda: _graph_service().search_graph(
             req.project_id,
@@ -2084,7 +2084,7 @@ async def graph_search(req: GraphSearchRequest) -> dict[str, Any]:
 
 @app.post("/graph/trace")
 async def graph_trace(req: GraphTraceRequest) -> dict[str, Any]:
-    """Twin of mnemos_trace_path."""
+    """Twin of vesma_trace_path."""
     return _graph_call(
         lambda: _graph_service().trace_path(
             req.project_id,
@@ -2099,7 +2099,7 @@ async def graph_trace(req: GraphTraceRequest) -> dict[str, Any]:
 
 @app.post("/graph/outline")
 async def graph_outline(req: GraphOutlineRequest) -> dict[str, Any]:
-    """Twin of mnemos_get_file_outline."""
+    """Twin of vesma_get_file_outline."""
     return _graph_call(
         lambda: _graph_service().get_file_outline(
             req.project_id,
@@ -2114,7 +2114,7 @@ async def graph_outline(req: GraphOutlineRequest) -> dict[str, Any]:
 
 @app.post("/graph/snippet")
 async def graph_snippet(req: GraphSnippetRequest) -> dict[str, Any]:
-    """Twin of mnemos_get_code_snippet."""
+    """Twin of vesma_get_code_snippet."""
     return _graph_call(
         lambda: _graph_service().get_code_snippet(
             req.project_id,
@@ -2130,7 +2130,7 @@ async def graph_snippet(req: GraphSnippetRequest) -> dict[str, Any]:
 
 @app.post("/graph/coverage")
 async def graph_coverage(req: GraphCoverageRequest) -> dict[str, Any]:
-    """Twin of mnemos_check_graph_coverage."""
+    """Twin of vesma_check_graph_coverage."""
     return _graph_call(
         lambda: _graph_service().check_coverage(
             req.project_id, req.paths, agent=req.agent, session=req.session
@@ -2142,7 +2142,7 @@ async def graph_coverage(req: GraphCoverageRequest) -> dict[str, Any]:
 async def graph_schema(
     agent: str, project_id: str | None = None, session: str | None = None
 ) -> dict[str, Any]:
-    """Twin of mnemos_get_graph_schema."""
+    """Twin of vesma_get_graph_schema."""
     return _graph_call(
         lambda: _graph_service().get_graph_schema(project_id, agent=agent, session=session)
     )
@@ -2150,13 +2150,13 @@ async def graph_schema(
 
 @app.get("/graph/projects")
 async def graph_projects(agent: str, session: str | None = None) -> dict[str, Any]:
-    """Twin of mnemos_list_graph_projects."""
+    """Twin of vesma_list_graph_projects."""
     return _graph_call(lambda: _graph_service().list_graph_projects(agent=agent, session=session))
 
 
 @app.delete("/graph/projects/{project_id}")
 async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict[str, Any]:
-    """Twin of mnemos_delete_graph_project (index purge; a GHOST
+    """Twin of vesma_delete_graph_project (index purge; a GHOST
     registration — root missing on disk — is removed entirely behind
     the confirm + confirm_name evidence gate)."""
     return _graph_call(
@@ -2172,7 +2172,7 @@ async def graph_delete_project(project_id: str, req: GraphDeleteRequest) -> dict
 
 
 class GraphRegisterRequest(BaseModel):
-    """Request body for POST /api/v1/graph/register — mirrors ``mnemos_register_project``."""
+    """Request body for POST /api/v1/graph/register — mirrors ``vesma_register_project``."""
 
     project_id: str
     root: str
@@ -2193,7 +2193,7 @@ class GraphRepointRequest(BaseModel):
 @app.post("/api/v1/graph/register")
 async def graph_register(req: GraphRegisterRequest) -> dict[str, Any]:
     """Register a project root for the code graph — twin of
-    ``mnemos_register_project`` (#454; the agent-facing answer to
+    ``vesma_register_project`` (#454; the agent-facing answer to
     «graph tools answer not registered»).
 
     Agent-scoped like the MCP tool: ``source="agent"``, so the operator

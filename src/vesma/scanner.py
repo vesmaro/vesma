@@ -203,7 +203,7 @@ class BackgroundScanner:
         self._thread = threading.Thread(
             target=self._loop,
             daemon=True,
-            name="mnemos-scanner",
+            name="vesma-scanner",
         )
         self._thread.start()
         logger.info(

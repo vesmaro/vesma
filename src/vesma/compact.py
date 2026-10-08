@@ -513,7 +513,7 @@ def build_compact_payload(
 # or a record mirrored from a peer (origin_peer=<peer A2A id>). It carries
 # NO content: no summary, no key points (a record's existence is itself an
 # inference surface — position paper §4, session-2 design). Rows live in
-# the SQLite ``federation_index`` table, OUTSIDE ``mnemos_search``.
+# the SQLite ``federation_index`` table, OUTSIDE ``vesma_search``.
 
 #: Metadata-record schema version — mirrors
 #: ``federation.proto::MetadataRecord.schema_version`` (distinct from

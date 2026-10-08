@@ -449,7 +449,7 @@ class TestScannerLifecycle:
             assert scanner.running is True
             assert scanner._thread is not None
             assert scanner._thread.daemon is True
-            assert scanner._thread.name == "mnemos-scanner"
+            assert scanner._thread.name == "vesma-scanner"
         finally:
             scanner.stop()
         assert scanner.running is False

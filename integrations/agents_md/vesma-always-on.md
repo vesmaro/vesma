@@ -1,7 +1,7 @@
 # Vesma memory — always-on gates (G0 + G1–G4)
 
 You have persistent shared memory through the `vesma_*` MCP tools (server
-builds before 6.0 still accept the legacy `mnemos_*` input names). Follow
+builds before 6.0 still accept the legacy `vesma_*` input names). Follow
 these gates in every session, unprompted. Skipping a gate is an operational
 failure, not a style issue. Full canon: the pack's `vesma-memory-ops`
 instruction and the `vesma-*` skills.

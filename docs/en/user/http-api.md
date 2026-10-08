@@ -181,8 +181,8 @@ Prometheus-style metrics (M5 observability). Currently returns the same shape as
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.vesma/data",
-  "vault_path": "/home/you/.vesma/vault",
+  "data_dir": "/home/you/.mnemos/data",
+  "vault_path": "/home/you/.mnemos/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -222,7 +222,7 @@ curl -s http://127.0.0.1:8000/tags
 
 ### `POST /tags/rename` — bulk rename a tag prefix
 
-Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → vesma migration case). Mirrors the `mnemos_tags_rename` MCP tool and `vesma tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
+Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (the GCW → vesma migration case). Mirrors the `vesma_tags_rename` MCP tool and `vesma tags rename` CLI. Safe by construction: plain `UPDATE` (the FTS5 external-content index stays consistent), and `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`.
 
 **Request body**
 
@@ -239,7 +239,7 @@ Renames every tag matching `from_prefix:<subtype>` → `to_prefix:<subtype>` (th
 
 ### `POST /api/v1/tags/add` — bulk-append tags
 
-REST twin of the `mnemos_tags` MCP tool with `action="add"` (#454 — with this route and `/api/v1/tags/remove` below, the REST surface covers every grouped-tags action). Appends each tag to every memory matching the `project` / `agent` filter; the resulting per-memory tag set is re-validated in **strict** mode by the manager (the single enforcement path), so a contract-breaking tag (a duplicate `project:`, an invalid `mnemos:` subtype) is refused per memory in the report's `errors` list instead of corrupting the store. `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`. When neither filter is set the operation spans ALL memories — scope it deliberately.
+REST twin of the `vesma_tags` MCP tool with `action="add"` (#454 — with this route and `/api/v1/tags/remove` below, the REST surface covers every grouped-tags action). Appends each tag to every memory matching the `project` / `agent` filter; the resulting per-memory tag set is re-validated in **strict** mode by the manager (the single enforcement path), so a contract-breaking tag (a duplicate `project:`, an invalid `vesma:` subtype) is refused per memory in the report's `errors` list instead of corrupting the store. `dry_run` defaults to `true` — nothing is written unless the caller passes `dry_run: false`. When neither filter is set the operation spans ALL memories — scope it deliberately.
 
 **Request body**
 
@@ -261,7 +261,7 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/tags/add \
 
 ### `POST /api/v1/tags/remove` — bulk-remove tags
 
-REST twin of `mnemos_tags` with `action="remove"`. Exact match by default; with `wildcard: true` each entry is treated as a prefix (`["gcw:"]` strips every `gcw:*` tag). Removing the last `project:` / `agent:` / `mnemos:` tag from a memory is a contract breach — refused per memory in the report's `errors` list, never written. Idempotent: a second run reports `changed=0`. `dry_run` defaults to `true`.
+REST twin of `vesma_tags` with `action="remove"`. Exact match by default; with `wildcard: true` each entry is treated as a prefix (`["gcw:"]` strips every `gcw:*` tag). Removing the last `project:` / `agent:` / `vesma:` tag from a memory is a contract breach — refused per memory in the report's `errors` list, never written. Idempotent: a second run reports `changed=0`. `dry_run` defaults to `true`.
 
 **Request body**
 
@@ -296,7 +296,7 @@ M2 tag contract is enforced server-side. The endpoint derives `project` and `age
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Primary text. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 | `source` | string | no | `manual` | One of `manual`, `web`, `file`, `mcp`, `obsidian`, `cli`, `rule`, `synthesized`. |
 | `source_url` | string | no | — | Origin URL. |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`, `session_context`. |
@@ -341,7 +341,7 @@ curl -s -X POST http://127.0.0.1:8000/memories \
 | Code | Cause |
 |------|-------|
 | `422` | Malformed body — unknown enum value or ADR-0027 doc-grouping triple violation. |
-| `422` | Tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
+| `422` | Tag-contract violation (missing `project:`, `agent:`, or `vesma:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ### `GET /memories/{memory_id}` — read one
@@ -518,7 +518,7 @@ curl -s "http://127.0.0.1:8000/recall/agent/cr-security-reviewer?project=vesma&l
 
 ## Session context (save / recall)
 
-These endpoints mirror the `mnemos_save_context` and `mnemos_recall_context`
+These endpoints mirror the `vesma_save_context` and `vesma_recall_context`
 plugin tools. They store and retrieve `session_context` memories tagged
 `vesma:checkpoint`, enabling an agent to restore its working state across
 sessions or after context compaction.
@@ -527,7 +527,7 @@ sessions or after context compaction.
 
 Builds structured Markdown from the supplied fields and stores it as a
 `SESSION_CONTEXT` memory tagged `vesma:checkpoint`. Mirrors the
-`mnemos_save_context` plugin tool.
+`vesma_save_context` plugin tool.
 
 **Request body**
 
@@ -583,7 +583,7 @@ curl -s -X POST http://127.0.0.1:8000/context/save \
 ### `POST /context/recall` — recall session context
 
 Returns the most recent checkpoint memories for a project, optionally
-filtered by a sub-query. Mirrors the `mnemos_recall_context` plugin tool.
+filtered by a sub-query. Mirrors the `vesma_recall_context` plugin tool.
 
 **Request body**
 
@@ -635,13 +635,13 @@ curl -s -X POST http://127.0.0.1:8000/context/recall \
 
 ### `POST /context/assemble` — assemble the pre-LLM-call context block
 
-Mirrors the `mnemos_assemble_context` MCP tool over the same manager path
+Mirrors the `vesma_assemble_context` MCP tool over the same manager path
 (vesma #125, Wave 1). Fixed pipeline: hybrid RRF recall (entry-invariant
 status gate — only `published`/`processed` surface) → optional CCR marker
 expansion → context filter → **mandatory** secret scan (per-block redaction
 counts; refuse mode drops the block) → CacheAligner → token budget. Every
 injected block carries a provenance line
-`[mnemos:<id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso>]`
+`[vesma:<id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso>]`
 (`pipeline=` is omitted on legacy rows with NULL pipeline_state).
 `retrieved=` is session-scoped (#282): stamped on the session's first
 assembly and stable across all later assemblies of the same session, so
@@ -681,11 +681,11 @@ curl -s -X POST http://127.0.0.1:8000/context/assemble \
   -d '{"session": "sess-42", "project": "vesma", "file": "src/manager.py", "budget": 1024}'
 ```
 
-Full field-by-field documentation: [`mcp-tools.md` → `mnemos_assemble_context`](mcp-tools.md#mnemos_assemble_context).
+Full field-by-field documentation: [`mcp-tools.md` → `vesma_assemble_context`](mcp-tools.md#vesma_assemble_context).
 
 ### `POST /context/rewrite` — report a context rewrite (ADR-0018)
 
-Mirrors the `mnemos_context_rewrite` MCP tool over the same manager path
+Mirrors the `vesma_context_rewrite` MCP tool over the same manager path
 (vesma #125, Wave 2). The harness reports that it rewrote a block of its
 working context; the original is stored to LTM through the normal
 knowledge pipeline (enters `raw`, context-reachable only after the
@@ -713,7 +713,7 @@ version-less (replacement lineage is an optional `supersedes` edge).
   (`{"to_memory_id", "edge_created"}` or `null`), and `ccr_marker` when
   `include_marker=true`. No version or ordering fields — by design.
 - `429` — write-quota exceeded: more than
-  `mnemos.context_rewrite_rate_limit_per_minute` (default 30) STORED
+  `vesma.context_rewrite_rate_limit_per_minute` (default 30) STORED
   events for this `(project, session)` in the last minute. Deduplicated
   re-deliveries consume no quota.
 - `422` — boundary validation failure (empty required fields, blank
@@ -732,14 +732,14 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
        "include_marker": true}'
 ```
 
-Full field-by-field documentation: [`mcp-tools.md` → `mnemos_context_rewrite`](mcp-tools.md#mnemos_context_rewrite).
+Full field-by-field documentation: [`mcp-tools.md` → `vesma_context_rewrite`](mcp-tools.md#vesma_context_rewrite).
 
 ---
 
 ## Lifecycle hooks (ADR-0017 D1 / ADR-0018, #125 Wave 3)
 
 One parametric route over the three lifecycle hooks — the REST twin of the
-grouped `mnemos_hooks` MCP tool (both call the same `dispatch_hook` router).
+grouped `vesma_hooks` MCP tool (both call the same `dispatch_hook` router).
 Identity (`session`, `project`, `agent`) is mandatory on every call; for
 `post_tool_call` it is the A2 register N2 mandate — the compress call always
 threads the caller's `(agent, session)` onto the cache row so strict marker
@@ -791,9 +791,9 @@ envelope with `compressed_text`/`marker` to substitute (or the off-envelope
 `{auto_compress: false, compressed: false}` when not enabled). With
 `include_awareness=true`, `pre_llm_call` additionally returns an `awareness`
 meta key and the rendered awareness + operational-picture sections ride the
-`text` tail (see [`mcp-tools.md` → `mnemos_awareness`](mcp-tools.md#mnemos_awareness)).
+`text` tail (see [`mcp-tools.md` → `vesma_awareness`](mcp-tools.md#vesma_awareness)).
 Full
-field-by-field documentation: [`mcp-tools.md` → `mnemos_hooks`](mcp-tools.md#mnemos_hooks).
+field-by-field documentation: [`mcp-tools.md` → `vesma_hooks`](mcp-tools.md#vesma_hooks).
 
 ---
 
@@ -809,7 +809,7 @@ Typical reduction is 70–90% on logs.
 
 Compresses `text` via CCR, caches the original, and returns the compressed
 text plus a marker containing the hash. Content shorter than ~500 chars is
-returned as-is (not cached). Mirrors the `mnemos_compress` plugin tool.
+returned as-is (not cached). Mirrors the `vesma_compress` plugin tool.
 
 **Request body**
 
@@ -853,7 +853,7 @@ Retrieves the original uncompressed content for a CCR marker hash. If
 `query` is omitted, returns the full original. If `query` is provided,
 returns FTS5-ranked snippets from within the cached original — useful when
 the original is large and only a few lines are relevant. Mirrors the
-`mnemos_retrieve` plugin tool.
+`vesma_retrieve` plugin tool.
 
 **Request body**
 
@@ -937,7 +937,7 @@ curl -s -X POST http://127.0.0.1:8000/retrieve \
 Returns the in-process call counter / elapsed-time signals plus
 client-populated heuristic slots. The `recommendation` field is
 `"save_checkpoint"` when either the call counter or the elapsed-time signal
-exceeds its threshold, else `"ok"`. Mirrors the `mnemos_auto_collect_status`
+exceeds its threshold, else `"ok"`. Mirrors the `vesma_auto_collect_status`
 plugin tool.
 
 **Response 200**
@@ -980,14 +980,14 @@ curl -s http://127.0.0.1:8000/auto-collect
 Fetches a web page, extracts its main text (via trafilatura), and saves it
 as a `RAW` memory. Credentials embedded in the URL are stripped before
 storage (OWASP A02). Tags are validated through the project's tag contract.
-Mirrors the `mnemos_ingest_url` plugin tool.
+Mirrors the `vesma_ingest_url` plugin tool.
 
 **Request body**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | **yes** | HTTP/HTTPS URL to fetch. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 
 **Response 201**
 
@@ -1014,7 +1014,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-url \
 
 | Code | Cause |
 |------|-------|
-| `422` | Malformed body (missing `url`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
+| `422` | Malformed body (missing `url`), or tag-contract violation (missing `project:`, `agent:`, or `vesma:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | Fetch failure, extraction failure, or SQLite / vault write failure |
 
 ---
@@ -1046,7 +1046,7 @@ version key **in the same SQLite transaction**. Honest scope: the key is a
 `doc_chunk_cache_version`, the same posture as `graph_epoch`); any
 assembly-cache consumer must read it. No in-repo consumer keys on it yet.
 
-Mirrors the `mnemos_ingest_document` plugin tool. `POST /ingest-url`
+Mirrors the `vesma_ingest_document` plugin tool. `POST /ingest-url`
 keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
 
 **Request body**
@@ -1055,7 +1055,7 @@ keeps its single-row pre-Phase-3 semantics — the boundary is deliberate.
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Full document text to chunk and ingest. |
 | `doc_id` | string | **yes** | Logical document identity; stable across re-ingest. |
-| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `mnemos:<subtype>`. |
+| `tags` | string[] | **yes** | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>`. |
 | `title` | string | no | Optional document title. |
 | `source_url` | string | no | Optional provenance URL. |
 
@@ -1089,7 +1089,7 @@ curl -s -X POST http://127.0.0.1:8000/ingest-document   -H "Content-Type: applic
 
 | Code | Cause |
 |------|-------|
-| `422` | Malformed body (missing `text`/`doc_id` or an empty `doc_id`), or tag-contract violation (missing `project:`, `agent:`, or `mnemos:` tag) — the contract error message is returned verbatim in `detail`. |
+| `422` | Malformed body (missing `text`/`doc_id` or an empty `doc_id`), or tag-contract violation (missing `project:`, `agent:`, or `vesma:` tag) — the contract error message is returned verbatim in `detail`. |
 | `500` | SQLite / vault write failure |
 
 ---
@@ -1426,7 +1426,7 @@ curl -s -X DELETE "http://127.0.0.1:8000/graph/projects/vesma?agent=operator" \
 
 ### `POST /api/v1/graph/register` — register a project root
 
-Agent-facing registration — the answer to «graph tools answer not registered» (#454; the REST twin of `mnemos_register_project`). Confinement gates apply as on the auto path: the root must exist and carry a manifest marker (e.g. `pyproject.toml`) or `.git`, `$HOME`/fs-roots are refused, and the one-root-one-graph rule holds — a root already registered under another name is REUSED, never duplicated. A project name that already exists at a DIFFERENT root is a loud `403` (the existing registration wins; moved roots are the operator's `vesma graph repoint`). Mounted under `/api/v1` (canonical namespace for new routes).
+Agent-facing registration — the answer to «graph tools answer not registered» (#454; the REST twin of `vesma_register_project`). Confinement gates apply as on the auto path: the root must exist and carry a manifest marker (e.g. `pyproject.toml`) or `.git`, `$HOME`/fs-roots are refused, and the one-root-one-graph rule holds — a root already registered under another name is REUSED, never duplicated. A project name that already exists at a DIFFERENT root is a loud `403` (the existing registration wins; moved roots are the operator's `vesma graph repoint`). Mounted under `/api/v1` (canonical namespace for new routes).
 
 **Request body**
 
@@ -1477,7 +1477,7 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/graph/repoint \
 
 ## Watch poll (project graph, ADR-0032 §3.2)
 
-These endpoints manage the in-process watch poll: a single cooperative thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes. They mirror the `mnemos_watch_start`, `mnemos_watch_stop`, and `mnemos_watch_status` MCP tools.
+These endpoints manage the in-process watch poll: a single cooperative thread checks the project's indexed files by mtime+size on an adaptive interval and reindexes on actual changes. They mirror the `vesma_watch_start`, `vesma_watch_stop`, and `vesma_watch_status` MCP tools.
 
 > **Changed.** The former directory-watcher form (`paths=` / `scan=` / `include_rules=`) was an unimplemented stub and is gone — those fields are no longer accepted. `POST /watch/start` requires the graph flags (on by default since 2026-09-28) plus an existing index; an explicit `code_graph.enabled: false` yields `503`, an unregistered project `403`.
 

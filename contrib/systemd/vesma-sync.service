@@ -1,20 +1,20 @@
 [Unit]
 Description=Vesma — auto-cron federation bridge (#104) sync-peers.sh
-Documentation=file:///usr/share/doc/mnemos/admin/ssh-sync-hardening.md
+Documentation=file:///usr/share/doc/vesma/admin/ssh-sync-hardening.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=mnemos-sync
-Group=mnemos-sync
-EnvironmentFile=/etc/mnemos/sync.env
+User=vesma-sync
+Group=vesma-sync
+EnvironmentFile=/etc/vesma/sync.env
 ExecStart=/usr/local/sbin/sync-peers.sh
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
-ReadWritePaths=/var/lib/mnemos-sync /var/log/vesma-sync.log
+ReadWritePaths=/var/lib/vesma-sync /var/log/vesma-sync.log
 StandardOutput=journal
 StandardError=journal
 

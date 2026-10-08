@@ -216,11 +216,9 @@ else
 fi
 
 # ── Drop a launcher into ~/.local/bin (no venv activation needed) ──
-# Only the canonical `vesma` launcher goes onto the user's PATH. The
-# deprecated `mnemos` alias still ships INSIDE the venv (<venv>/bin/mnemos),
-# so legacy scripts keep working without the installer promoting the
-# pre-rebrand name globally (alias retires no earlier than 6.0 —
-# pyproject [project.scripts]).
+# Only the canonical `vesma` launcher goes onto the user's PATH. 6.0 is
+# the clean sheet: no legacy alias entry points ship (pyproject
+# [project.scripts] carries `vesma` and `vesma-train` only).
 LINKED=false
 if [[ "$NO_VENV" == false && -x "$VESMA_BIN" ]]; then
   mkdir -p "$LOCAL_BIN"
@@ -239,12 +237,12 @@ fi
 # ── Optional: VS Code MCP integration ─────────────────────────────
 setup_mcp() {
   info "Setting up VS Code MCP integration…"
-  if curl -fsSL "https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh" \
+  if curl -fsSL "https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/mcp-setup.sh" \
        | bash -s -- --command "$VESMA_BIN"; then
     ok "VS Code MCP integration ready — reload your VS Code window."
   else
     warn "MCP setup didn't complete. Run it later:"
-    printf "    curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh | bash\n"
+    printf "    curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/mcp-setup.sh | bash\n"
   fi
 }
 
@@ -329,12 +327,12 @@ echo "  • Run 'vesma integration setup' to deploy behavioral instructions to y
 echo "  • Run 'vesma doctor' to verify your installation"
 echo ""
 ok "Try it:"
-printf "    vesma add 'Hello' --tags project:test,agent:setup,mnemos:learning\n"
+printf "    vesma add 'Hello' --tags project:test,agent:setup,vesma:learning\n"
 printf "    vesma search 'Hello'\n"
 if [[ "$MCP_DONE" == false ]]; then
   echo ""
   info "Enable VS Code MCP integration later:"
-  printf "    curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh | bash\n"
+  printf "    curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/mcp-setup.sh | bash\n"
 fi
 
 if [[ "$INSTRUCTIONS_DONE" == false ]]; then

@@ -56,7 +56,7 @@ podman run -d --name vesma \
 если только вы не хотите переопределить настройки. TOTP-мастер-ключ обязателен
 (вшитый конфиг биндится на `0.0.0.0`). Каноническое имя переменной —
 `VESMA_API__TOTP_MASTER_KEY`: 6.0.0 завершила двойной период чтения, написания
-4.x `MNEMOS_API__*` и 5.0–5.2 `VESMARO_API__*` больше не читаются (ADR-0031).
+4.x `VESMA_API__*` и 5.0–5.2 `VESMARO_API__*` больше не читаются (ADR-0031).
 
 Проверка:
 
@@ -92,7 +92,7 @@ docker exec vesma-ollama ollama pull nomic-embed-text
 в конфиге контейнера (см. [Конфигурация](#конфигурация)).
 
 > Корневой [`compose.yaml`](../../../../compose.yaml) тоже использует опубликованный образ —
-> он сохраняет исторические имена ресурсов `mnemos-*` для существующих пользователей
+> он сохраняет исторические имена ресурсов `vesma-*` для существующих пользователей
 > podman-compose. Про сборку из исходников см.
 > [Сборка из исходников](#сборка-из-исходников-фолбэк).
 
@@ -158,18 +158,18 @@ Shortcut:
 сервисом. Юнит ссылается на опубликованный `ghcr.io/vesmaro/vesma:5.2.0`, образ скачивается
 автоматически; для локальной сборки соберите образ заранее (см.
 [Сборка из исходников](#сборка-из-исходников-фолбэк)) и укажите
-`Image=localhost/mnemos:latest` в юните.
+`Image=localhost/vesma:latest` в юните.
 
 > **Имя сервиса задаётся именем файла-юнита**, а не `ContainerName=`:
-> quadlet-файл `mnemos.container` генерирует юнит
-> `mnemos.service` (а `ContainerName=mnemos` переопределяет только имя
-> контейнера у podman). Команды ниже управляют именно `mnemos.service`;
+> quadlet-файл `vesma.container` генерирует юнит
+> `vesma.service` (а `ContainerName=vesma` переопределяет только имя
+> контейнера у podman). Команды ниже управляют именно `vesma.service`;
 > это легаси-неймс той же установки Vesma.
 
 ### Задать TOTP-ключ
 
 Юнит читает ключ из `~/.vesma.env` (`EnvironmentFile`), править юнит не нужно.
-6.0.0 читает только каноническое написание `VESMA_API__*` (4.x `MNEMOS_API__*` /
+6.0.0 читает только каноническое написание `VESMA_API__*` (4.x `VESMA_API__*` /
 5.0–5.2 `VESMARO_API__*` выведены из обращения, ADR-0031):
 
 ```bash
@@ -183,20 +183,20 @@ printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesma.env
 ./scripts/deploy.sh quadlet
 ```
 
-Копирует `deploy/podman/quadlet/mnemos.container` в `~/.config/containers/systemd/` и выполняет
+Копирует `deploy/podman/quadlet/vesma.container` в `~/.config/containers/systemd/` и выполняет
 `systemctl --user daemon-reload`.
 
 ### Запуск и автозапуск
 
 ```bash
-systemctl --user start mnemos
-systemctl --user enable mnemos   # автозапуск при входе в систему
+systemctl --user start vesma
+systemctl --user enable vesma   # автозапуск при входе в систему
 ```
 
 ### Проверка статуса
 
 ```bash
-systemctl --user status mnemos
+systemctl --user status vesma
 ```
 
 ---
@@ -215,7 +215,7 @@ podman build -t localhost/vesma:5.6.2 -f Containerfile .
 копирует `config.container.yaml` как `/app/config.yaml` и задаёт serve-команду на
 порту 8787.
 
-Shortcut через Makefile (собирает `localhost/mnemos:$(VERSION)` + `:latest` —
+Shortcut через Makefile (собирает `localhost/vesma:$(VERSION)` + `:latest` —
 имена берёт из `scripts/deploy.sh` / `make build-image`):
 
 ```bash
@@ -331,5 +331,5 @@ podman inspect --format '{{.State.Health.Status}}' vesma
 ---
 
 _Исходные файлы: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
-`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/vesma-pod.yaml`,
+`deploy/podman/quadlet/vesma.container`, `deploy/podman/kube/vesma-pod.yaml`,
 `deploy/docker/`, `deploy/helm/vesma/`_

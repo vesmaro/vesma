@@ -45,7 +45,7 @@ This will:
 
 ## Tag contract handling
 
-Legacy ai-brain entries without `project:` / `agent:` / `mnemos:<subtype>`
+Legacy ai-brain entries without `project:` / `agent:` / `vesma:<subtype>`
 tags get:
 - `project:legacy`
 - `agent:unknown`
@@ -57,12 +57,12 @@ After migration, review and retag important entries:
 vesma search legacy --tags project:legacy --limit 50
 ```
 
-## Migrating legacy `gcw:` tags → `mnemos:` tags
+## Migrating legacy `gcw:` tags → `vesma:` tags
 
 If your store contains memories with the legacy `gcw:<subtype>` tag prefix
 (from the pre-2.7.8 GCW agent family), rename them in bulk to the canonical
-`mnemos:<subtype>` prefix using the safe `tags rename` command (tag contract:
-`project:` / `agent:` / `mnemos:<subtype>`):
+`vesma:<subtype>` prefix using the safe `tags rename` command (tag contract:
+`project:` / `agent:` / `vesma:<subtype>`):
 
 ```bash
 # Dry-run first — preview the change, nothing written (default)
@@ -74,7 +74,7 @@ vesma tags rename --from gcw: --to vesma: --no-dry-run
 
 Notes:
 - `validate_tag_contract()` already auto-migrates valid `gcw:<subtype>` →
-  `mnemos:<subtype>` on read, so `gcw:` tags are accepted as an alias. The
+  `vesma:<subtype>` on read, so `gcw:` tags are accepted as an alias. The
   bulk rename is a one-time housekeeping step to canonicalise the stored tags.
 - Invalid `gcw:` subtypes (not in the whitelist) are skipped by default and
   counted in `skipped_invalid`. Pass `--invalid-to-legacy` to rename them to
@@ -87,10 +87,9 @@ Notes:
 
 - [ ] `vesma stats` shows expected memory count
 - [ ] `vesma search "hello"` returns results
-- [ ] Vault files visible in `~/.mnemos/vault/`
-- [ ] The recall MCP tool works: canonical name
-      `mnemos_recall_context` (under configured branding it is advertised as
-      `vesma_recall_context`, via `VESMA_MCP_BRAND`)
+- [ ] Vault files visible in `~/.vesma/vault/`
+- [ ] The recall MCP tool works: `vesma_recall_context` (the only
+      registered spelling in 6.0)
 
 ## Upgrading across an embedder weights change
 
@@ -124,13 +123,13 @@ If something goes wrong:
 
 ```bash
 # Restore from a Vesma backup
-ls ~/.mnemos/data/*.backup-*
-cp ~/.mnemos/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.mnemos/data/mnemos.db
+ls ~/.vesma/data/*.backup-*
+cp ~/.vesma/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.vesma/data/mnemos.db
 
 # Or restore from a JSON export — idempotent merge
 vesma import vesma-export.json --mode merge
 ```
 
 The last resort is wiping the store and re-running the migration
-(`rm -rf ~/.mnemos/data ~/.mnemos/vault`): a destructive move — do it only
+(`rm -rf ~/.vesma/data ~/.vesma/vault`): a destructive move — do it only
 with a backup from [backup-restore.md](backup-restore.md).

@@ -165,8 +165,8 @@ class TestAgentsMdBlock:
         """A crashed update may leave BEGIN/END versions unpaired — still one block."""
         content = (
             USER_HEADER
-            + f"<!-- mnemos:integration:v1.0.0 BEGIN -->\n{BLOCK_BODY}"
-            + "<!-- mnemos:integration:v1.0.1 END -->\n"
+            + f"<!-- vesma:integration:v1.0.0 BEGIN -->\n{BLOCK_BODY}"
+            + "<!-- vesma:integration:v1.0.1 END -->\n"
             + USER_FOOTER
         )
         cleaned, version = strip_agents_md_block(content)
@@ -517,7 +517,7 @@ class TestOpenCodeTarget:
         tuned = {"VESMA_DATA_DIR": "/custom/data"}
         cfg_path.write_text(
             json.dumps(
-                {"mcp": {"mnemos": {"type": "local", "command": ["old"], "environment": tuned}}}
+                {"mcp": {"vesma": {"type": "local", "command": ["old"], "environment": tuned}}}
             ),
             encoding="utf-8",
         )

@@ -435,13 +435,13 @@ class TestUsageExposition:
         store.record_usage(mids[0], block_ids_touched=[f"{mids[0]}:0"], tokens_out=120)
         store.record_usage(mids[1], block_ids_touched=[], wrong_tool_flag=True)
         text = render_exposition(store)
-        assert "# TYPE mnemos_usage_loop_rate gauge" in text
-        assert "mnemos_usage_assemble_calls_total 3" in text
-        assert "mnemos_usage_closed_calls_total 2" in text
-        assert f"mnemos_usage_loop_rate {2 / 3}" in text
-        assert "mnemos_usage_reports_total 2" in text
-        assert "mnemos_usage_wrong_tool_rate 0.5" in text
-        assert "mnemos_usage_tokens_out_total 120" in text
+        assert "# TYPE vesma_usage_loop_rate gauge" in text
+        assert "vesma_usage_assemble_calls_total 3" in text
+        assert "vesma_usage_closed_calls_total 2" in text
+        assert f"vesma_usage_loop_rate {2 / 3}" in text
+        assert "vesma_usage_reports_total 2" in text
+        assert "vesma_usage_wrong_tool_rate 0.5" in text
+        assert "vesma_usage_tokens_out_total 120" in text
 
     def test_report_driven_rates_exact(self, store: MetricsStore):
         """wrong_tool_rate counts per REPORT, not per assemble call."""
@@ -450,27 +450,27 @@ class TestUsageExposition:
         store.record_usage(mids[1], block_ids_touched=[], wrong_tool_flag=True)
         store.record_usage(mids[2], block_ids_touched=[])
         text = render_exposition(store)
-        assert "mnemos_usage_reports_total 3" in text
-        assert "mnemos_usage_wrong_tool_rate 0.6666666666666666" in text
+        assert "vesma_usage_reports_total 3" in text
+        assert "vesma_usage_wrong_tool_rate 0.6666666666666666" in text
 
     def test_no_assemble_calls_family_absent_not_zero(self, store: MetricsStore):
         text = render_exposition(store)
-        assert "mnemos_usage_loop_rate " not in text  # absent, never 0.0
-        assert "mnemos_usage_assemble_calls_total " not in text
+        assert "vesma_usage_loop_rate " not in text  # absent, never 0.0
+        assert "vesma_usage_assemble_calls_total " not in text
         assert (
             "mnemos_usage"
-            not in text.split("# HELP mnemos_verb_calls_total")[1].split(
-                "# HELP mnemos_usage_loop_rate"
+            not in text.split("# HELP vesma_verb_calls_total")[1].split(
+                "# HELP vesma_usage_loop_rate"
             )[0]
         )  # verb family unchanged in front of the usage block
 
     def test_assemble_without_reports_loop_series_only(self, store: MetricsStore):
         make_assemble(store)  # assemble exists, no harness responses
         text = render_exposition(store)
-        assert "mnemos_usage_loop_rate 0.0" in text  # real zero: 0 closed of 1 call
-        assert "mnemos_usage_closed_calls_total 0" in text
-        assert "mnemos_usage_reports_total" not in text  # no reports -> no rate
-        assert "mnemos_usage_wrong_tool_rate" not in text
+        assert "vesma_usage_loop_rate 0.0" in text  # real zero: 0 closed of 1 call
+        assert "vesma_usage_closed_calls_total 0" in text
+        assert "vesma_usage_reports_total" not in text  # no reports -> no rate
+        assert "vesma_usage_wrong_tool_rate" not in text
 
     def test_touched_series_absent_while_kappa_pending(self, store: MetricsStore):
         """The structural kappa gate: informational signal is NOT scrapable."""
@@ -478,7 +478,7 @@ class TestUsageExposition:
         store.record_usage(mid, block_ids_touched=[f"{mid}:0"], tokens_out=10)
         text = render_exposition(store)
         assert kappa_calibration_pending() is True
-        assert "mnemos_usage_touched_share" not in text
+        assert "vesma_usage_touched_share" not in text
         assert "touched" not in text  # no series, no HELP line — nothing to promote
 
     def test_usage_family_absent_on_broken_sidecar(self, tmp_path: Path):
@@ -491,14 +491,14 @@ class TestUsageExposition:
         mid = make_assemble(store)  # project="demo" recorded on the assemble row
         store.record_usage(mid, block_ids_touched=[f"{mid}:0"])
         text = render_exposition(store)
-        usage_family = text.split("# HELP mnemos_usage_loop_rate")[1]
+        usage_family = text.split("# HELP vesma_usage_loop_rate")[1]
         assert "demo" not in usage_family  # bearing verb never leaks
         assert "{" not in usage_family and "}" not in usage_family
 
     def test_usage_gauges_render_before_host_volume_gauges(self, store: MetricsStore):
         make_assemble(store)
         text = render_exposition(store, gauges={"memories_total": 7})
-        usage_pos = text.find("mnemos_usage_loop_rate")
+        usage_pos = text.find("vesma_usage_loop_rate")
         gauges_pos = text.find("memories_total 7")
         assert 0 < usage_pos < gauges_pos  # appended after verb planes
 

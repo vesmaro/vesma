@@ -92,7 +92,7 @@ pip install vesma==5.6.5
 ```
 <!-- /version:pip -->
 
-<!-- deprecated-note: the 4.x line shipped as mnemos_memory_server-*.whl; since 5.0.0 the release
+<!-- deprecated-note: the 4.x line shipped as vesma_memory_server-*.whl; since 5.0.0 the release
 artifact is vesma-<version>-py3-none-any.whl (attached to the GitHub release and published on
 PyPI — `pip install vesma` installs the same wheel). -->
 
@@ -343,8 +343,8 @@ What happens, in order:
 1. Work in your project as usual — an agent calls any MCP tool there.
 2. The first index runs in the background (`auto-first`); from then on a
    beacon line in `assemble_context` output reports graph freshness on its own.
-3. Check it with `mnemos_project_graph_status` (look up the `project_id` with
-   `mnemos_list_graph_projects`).
+3. Check it with `vesma_project_graph_status` (look up the `project_id` with
+   `vesma_list_graph_projects`).
 
 Don't want the auto path? Two switches in `config.yaml`:
 `code_graph.auto_index: false` stops only the background auto path (the manual
@@ -531,16 +531,16 @@ mechanics are removed.
 # 1. pip distributions under old names (keep one current dist; the list — vesma update components)
 pip uninstall mnemos-memory-server vesma-memory-server
 
-# 2. legacy mnemos-* units (systemd user)
-systemctl --user disable --now mnemos-*.service 2>/dev/null
-rm -i ~/.config/systemd/user/mnemos-*.service ~/.config/systemd/user/mnemos-*.timer
+# 2. legacy vesma-* units (systemd user)
+systemctl --user disable --now vesma-*.service 2>/dev/null
+rm -i ~/.config/systemd/user/vesma-*.service ~/.config/systemd/user/vesma-*.timer
 systemctl --user daemon-reload
 
 # 3. old shell wrappers and old-name launchers
-rm -i ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
 
 # 4. old completion scripts (the current ones are vesma.*; leave them)
-rm -i ~/.mnemos/completion/mnemos.*
+rm -i ~/.mnemos/completion/vesma.*
 
 # 5. legacy venv directories with versions in the name (hand-created — NOT the canonical vesma/venv*)
 rm -ri ~/venv-5.x   # example: any manual venv of the old install
@@ -585,7 +585,7 @@ systemctl --user daemon-reload
 rm -ri ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
 
 # 7. launchers and completion scripts
-rm -i ~/.local/bin/vesma ~/.local/bin/mnemos ~/.local/bin/mnemos-*
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma ~/.local/bin/vesma-*
 rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
 ```
 
@@ -602,8 +602,8 @@ Signs of a legacy deployment (pre-service-track):
 | Sign | Where to look |
 |------|---------------|
 | venv directories with versions in the name (`venv-5.x`, `venv-4.3`), hand-created | home directory, `~/venv*`, paths from old units |
-| `mnemos-*.service` / `mnemos-*.timer` units in systemd user | `ls ~/.config/systemd/user/` |
-| shell wrappers `mnemos-*-unit.sh`, launchers `mnemos`, `mnemos-train` | `ls ~/.local/bin/` |
+| `vesma-*.service` / `vesma-*.timer` units in systemd user | `ls ~/.config/systemd/user/` |
+| shell wrappers `vesma-*-unit.sh`, launchers `vesma`, `vesma-train` | `ls ~/.local/bin/` |
 | configs under old names in `~/.config` outside `vesma/` | `ls ~/.config/` |
 | a token env file outside the canonical location | the `env_file` path in old manifests/units |
 | logs in three places (journald + scattered files + the data dir) | old units, `~/.mnemos/logs/` |
@@ -658,17 +658,17 @@ The full schema is in [config.example.yaml](../../../config.example.yaml). The m
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `mnemos.data_dir` | `~/.mnemos/data` | SQLite store + vector index |
-| `mnemos.vault_path` | `~/.mnemos/vault` | Obsidian mirror |
-| `mnemos.strict_tag_contract` | `true` | Enforce the tag contract (`false` — legacy imports only) |
+| `vesma.data_dir` | `~/.mnemos/data` | SQLite store + vector index |
+| `vesma.vault_path` | `~/.mnemos/vault` | Obsidian mirror |
+| `vesma.strict_tag_contract` | `true` | Enforce the tag contract (`false` — legacy imports only) |
 | `embedding.provider` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Vector leg weight in RRF (0.0 = pure FTS, 1.0 = pure vector) |
 | `api.host` / `api.port` | `127.0.0.1` / `8787` | Defaults for `vesma serve` |
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis and the context filter |
 
 Every one of them is overridden by environment variables (`VESMA_*`, `__` is the
-nesting separator; the 5.0–5.2 spelling `VESMARO_*` is accepted until 6.0, the
-4.x spelling `MNEMOS_*` is no longer read):
+nesting separator; retired as of 6.0.0 is the 5.0–5.2 spelling (`VESMARO_*`), the
+4.x spelling `VESMA_*` is no longer read):
 
 ```bash
 VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"

@@ -115,7 +115,7 @@ prepended to the ciphertext so the file is self-contained for decryption.
 | Interactive prompt | (default when `--encrypt` is set) | Manual backups |
 | File | `--passphrase-file /path/to/key` | CI / scripting |
 
-For the HTTP API, the passphrase is sent in the `X-Mnemos-Passphrase`
+For the HTTP API, the passphrase is sent in the `X-Vesma-Passphrase`
 header (a historical, format-stable name — not a brand mark) — never in
 the request body — so it is not logged as a request parameter.
 
@@ -201,10 +201,10 @@ Every JSON export carries two version markers in its metadata:
 | Field | Meaning |
 |-------|---------|
 | `format_version` | The export schema version (currently `1.0`). Bumped when the JSON structure changes in a breaking way. |
-| `vesma_version` | The Vesma version that produced the export. Renamed from `mnemos_version` in 6.0.0 — the importer still accepts the legacy `mnemos_version` key from pre-6.0 exports (one deprecation note per import). |
+| `vesma_version` | The Vesma version that produced the export. Renamed from `vesma_version` in 6.0.0 — the importer still accepts the legacy `vesma_version` key from pre-6.0 exports (one deprecation note per import). |
 
 > `vesma:` is the canonical storage prefix (6.0 flip); the legacy
-> `mnemos:` spelling is accepted on import and normalized to the canon.
+> `vesma:` spelling is accepted on import and normalized to the canon.
 > Tag values inside an export are always stored (and imported) in the
 > canonical `vesma:*` form — see [tag-contract.md](tag-contract.md).
 
@@ -292,10 +292,10 @@ Stream an export as a file download.
 | `since` | string\|null | `null` | ISO date lower bound |
 | `until` | string\|null | `null` | ISO date upper bound |
 
-**Encryption passphrase** — pass via the `X-Mnemos-Passphrase` header
+**Encryption passphrase** — pass via the `X-Vesma-Passphrase` header
 (a historical, format-stable name — not a brand mark). If `encrypt:
 true` and the header is missing, the endpoint returns `400` with
-`{"detail": "Encryption requested but X-Mnemos-Passphrase header is missing."}`.
+`{"detail": "Encryption requested but X-Vesma-Passphrase header is missing."}`.
 
 **Response** — `StreamingResponse` with `Content-Disposition:
 attachment; filename="vesma-export.<suffix>"`. The suffix depends on
@@ -312,7 +312,7 @@ Upload an export file as multipart form data and import it.
 | `overwrite` | query | bool | `false` | Update existing in merge mode |
 | `confirm` | query | bool | `false` | Required for `restore` |
 | `dry_run` | query | bool | `false` | Validate without writing |
-| `X-Mnemos-Passphrase` | header | string | (none) | Decryption passphrase |
+| `X-Vesma-Passphrase` | header | string | (none) | Decryption passphrase |
 
 **Response** (`200 OK`):
 

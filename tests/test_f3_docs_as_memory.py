@@ -732,7 +732,7 @@ class TestSurfaceSmoke:
         names = [t.name for t in tools]
         assert "vesma_ingest_document" in names
         # 27 canonical + Ф3 document tool + 11 project-graph tools (+#454 register)
-        # + mnemos_usage_report (vitals wave 9, harness-authored usage loop)
+        # + vesma_usage_report (vitals wave 9, harness-authored usage loop)
         assert len(names) == 40
 
         result = await mcp_server._dispatch(

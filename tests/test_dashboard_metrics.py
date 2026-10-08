@@ -232,20 +232,20 @@ class TestPrometheusMetrics:
         assert "text/plain" in resp.headers.get("content-type", "")
         text = resp.text
         # Prometheus exposition format markers
-        assert "# HELP mnemos_memories_total" in text
-        assert "# TYPE mnemos_memories_total gauge" in text
-        assert "mnemos_memories_total" in text
-        assert "mnemos_memories_by_status" in text
-        assert "mnemos_memories_by_project" in text
-        assert "mnemos_pipeline_processed_total" in text
-        assert "mnemos_search_requests_total" in text
+        assert "# HELP vesma_memories_total" in text
+        assert "# TYPE vesma_memories_total gauge" in text
+        assert "vesma_memories_total" in text
+        assert "vesma_memories_by_status" in text
+        assert "vesma_memories_by_project" in text
+        assert "vesma_pipeline_processed_total" in text
+        assert "vesma_search_requests_total" in text
         # A9 (ArchCom 2026-08-27): the explicit global-mode counter is
         # exported next to the search total, same exposition format.
-        assert "# HELP mnemos_search_cross_project_requests_total" in text
-        assert "# TYPE mnemos_search_cross_project_requests_total counter" in text
-        assert "mnemos_search_cross_project_requests_total 0" in text
-        assert "mnemos_vectors_indexed_total" in text
-        assert "mnemos_sessions_total" in text
+        assert "# HELP vesma_search_cross_project_requests_total" in text
+        assert "# TYPE vesma_search_cross_project_requests_total counter" in text
+        assert "vesma_search_cross_project_requests_total 0" in text
+        assert "vesma_vectors_indexed_total" in text
+        assert "vesma_sessions_total" in text
 
     def test_metrics_has_labels(self, client):
         _add_memory(
@@ -255,8 +255,8 @@ class TestPrometheusMetrics:
         )
         text = client.get("/api/v1/metrics").text
         # Label format: metric{label="value"} number
-        assert 'mnemos_memories_by_project{project="mnemos"}' in text
-        assert 'mnemos_memories_by_agent{agent="tech-lead"}' in text
+        assert 'vesma_memories_by_project{project="mnemos"}' in text
+        assert 'vesma_memories_by_agent{agent="tech-lead"}' in text
 
 
 # ---------------------------------------------------------------------------
@@ -462,8 +462,8 @@ class TestSearchInstrumentation:
         text = client.get("/api/v1/metrics").text
         # The counter line should show at least 1
         for line in text.splitlines():
-            if line.startswith("mnemos_search_requests_total ") and not line.startswith("#"):
+            if line.startswith("vesma_search_requests_total ") and not line.startswith("#"):
                 value = int(line.split()[-1])
                 assert value >= 1
                 return
-        pytest.fail("mnemos_search_requests_total metric line not found")
+        pytest.fail("vesma_search_requests_total metric line not found")

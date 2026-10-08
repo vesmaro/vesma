@@ -76,9 +76,9 @@ def export_cmd(
         typer.Option(
             "--tags",
             help=(
-                "Comma-separated tags to filter by. `mnemos:` is the canonical "
-                "storage prefix, stable by contract; `vesma:` is accepted as an "
-                "input alias everywhere."
+                "Comma-separated tags to filter by. `vesma:` is the canonical "
+                "storage prefix, stable by contract; `mnemos:` is accepted as an "
+                "input alias everywhere (dual-accept window, ADR-0044)."
             ),
         ),
     ] = None,

@@ -156,40 +156,51 @@ class TestProgBinding:
         assert _primary_prog_name() == "vesma"
 
     def test_primary_from_argv0_when_real_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesmaro", "completion", "bash"])
-        assert _primary_prog_name() == "vesmaro"
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesma", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
 
-    def test_prog_names_vesmaro_always_mnemos_only_when_on_path(
+    def test_legacy_binary_names_are_not_recognized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """6.0 clean sheet: retired alias binaries fall back to the brand
+        default and are never registered as completion program names."""
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/vesmaro", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/mnemos", "completion", "bash"])
+        assert _primary_prog_name() == "vesma"
+
+    def test_prog_names_single_primary_even_with_legacy_binaries_on_path(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(shutil, "which", lambda name: None)
-        assert _prog_names() == ["vesma", "vesmaro"]
+        """Legacy aliases (vesmaro/mnemos) are never added, even when such a
+        binary exists on PATH — exactly one program name is registered."""
         monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
-        assert _prog_names() == ["vesma", "vesmaro", "mnemos"]
+        assert _prog_names() == ["vesma"]
 
 
 # ── Installer: script content pins ────────────────────────────────────────────
 
 
 class TestScriptContent:
-    def test_bash_script_binds_primary_and_alias_and_engine(self, fake_home: Path) -> None:
+    def test_bash_script_binds_primary_and_engine(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "bash"])
         assert result.exit_code == 0
         script = _completion_file_path("bash").read_text(encoding="utf-8")
         assert "_vesma()" in script
         assert "__complete" in script
         assert "COMP_WORDS" in script and "COMP_CWORD" in script
-        # Both the primary binary and the legacy alias are bound.
-        assert "complete -F _vesma vesma vesmaro" in script
+        # Exactly the primary binary is bound — no legacy aliases.
+        assert "complete -F _vesma vesma" in script
+        assert "vesmaro" not in script
+        assert "mnemos" not in script
 
-    def test_zsh_script_uses_describe_and_binds_aliases(self, fake_home: Path) -> None:
+    def test_zsh_script_uses_describe_and_binds_primary(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "zsh"])
         assert result.exit_code == 0
         script = _completion_file_path("zsh").read_text(encoding="utf-8")
-        assert script.startswith("#compdef vesma vesmaro")
+        assert script.startswith("#compdef vesma\n")
         assert "_describe" in script  # zsh SHOWS the descriptions
         assert "__complete" in script
-        assert "compdef _vesma vesma vesmaro" in script
+        assert "compdef _vesma vesma" in script
+        assert "vesmaro" not in script and "mnemos" not in script
 
     def test_fish_script_per_name_with_native_pairs(self, fake_home: Path) -> None:
         result = runner.invoke(app, ["completion", "fish"])
@@ -198,10 +209,10 @@ class TestScriptContent:
         assert primary.exists()
         text = primary.read_text(encoding="utf-8")
         assert "complete -c vesma -f -a '(__vesma_complete)'" in text
-        assert "complete -c vesmaro -f -a '(__vesma_complete)'" in text
         assert "__complete" in text
-        # Legacy alias gets its own auto-sourced file.
-        assert _fish_completions_file("vesmaro").exists()
+        # Legacy aliases get NO auto-sourced copies (clean sheet).
+        assert _fish_completions_file("vesmaro").exists() is False
+        assert _fish_completions_file("mnemos").exists() is False
 
     def test_scripts_rewritten_every_run(self, fake_home: Path) -> None:
         runner.invoke(app, ["completion", "bash"])
@@ -294,19 +305,80 @@ class TestInstallerRc:
         _fish_completions_file("vesma").write_text("", encoding="utf-8")
         assert _is_installed("fish", _rc_path("fish"))
 
-    def test_remove_old_entries_keeps_non_completion_lines(self, fake_home: Path) -> None:
+    def test_remove_keeps_foreign_content_anchors_to_our_legacy_forms(
+        self, fake_home: Path
+    ) -> None:
+        """SEC cascade P3: the removal rules are anchored to OUR legacy forms.
+
+        A bare path mention in a user comment, a foreign tool sourcing its OWN
+        completion dir, and a foreign ``--show-completion`` eval are foreign
+        content — never removed. Only lines shaped like OUR legacy entries
+        (source/eval/``[ -f``/``# Added by`` + ``~/.mnemos/completion/``, or a
+        vesma/vesmaro/mnemos ``--show-completion`` eval) go.
+        """
         rc = fake_home / ".bashrc"
         rc.write_text(
             "export PATH=$PATH:/usr/local/bin\n"
-            "# a user comment mentioning mnemos/completion/ is migrated away\n"
-            "alias ll='ls -la'\n",
+            "# a user comment mentioning mnemos/completion/ stays put\n"
+            "alias ll='ls -la'\n"
+            'eval "$(mytool --show-completion bash)"\n'
+            "source ~/mytools/mnemos/completion/other.bash\n",
             encoding="utf-8",
         )
         _remove_old_completion_entries(rc, "bash")
         content = rc.read_text(encoding="utf-8")
         assert "export PATH" in content
         assert "alias ll" in content
-        assert "mnemos/completion/" not in content
+        # Foreign content survives verbatim.
+        assert "# a user comment mentioning mnemos/completion/ stays put" in content
+        assert 'eval "$(mytool --show-completion bash)"' in content
+        assert "source ~/mytools/mnemos/completion/other.bash" in content
+
+    def test_foreign_if_block_with_path_mention_survives_and_rc_parses(
+        self, fake_home: Path
+    ) -> None:
+        """A foreign if-block whose comment mentions the legacy path is kept —
+        the whole construct must survive and the rc must still parse."""
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "# my notes: the old mnemos/completion/ layout was different\n"
+            "if [ -d ~/projects/legacy-thing ]; then\n"
+            "    export LEGACY_THING=1  # refers to mnemos/completion/ docs\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        _remove_old_completion_entries(rc, "bash")
+        content = rc.read_text(encoding="utf-8")
+        assert "legacy-thing" in content
+        assert "LEGACY_THING=1" in content
+        assert "fi" in content  # the foreign block is intact
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+    def test_our_legacy_forms_removed_foreign_kept_and_rc_parses(self, fake_home: Path) -> None:
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            'eval "$(vesmaro --show-completion bash)"\n'
+            'eval "$(mnemos --show-completion bash)"\n'
+            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
+            "&& source ~/.mnemos/completion/vesmaro.bash\n"
+            "# Added by `vesma completion` (bash)\n"
+            'eval "$(mytool --show-completion bash)"\n'
+            "alias ll='ls -la'\n",
+            encoding="utf-8",
+        )
+        _remove_old_completion_entries(rc, "bash")
+        content = rc.read_text(encoding="utf-8")
+        # OUR legacy forms are gone.
+        assert "vesmaro --show-completion" not in content
+        assert "mnemos --show-completion" not in content
+        assert "~/.mnemos/completion/vesmaro.bash" not in content
+        assert "# Added by `vesma completion`" not in content
+        # Foreign content survives; rc still parses.
+        assert 'eval "$(mytool --show-completion bash)"' in content
+        assert "alias ll" in content
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
 
 
 # ── Wave W-I: rc integrity — block-aware migration + syntax validation ───────

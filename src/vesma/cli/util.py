@@ -164,7 +164,6 @@ def _print_verify_result(result: VerifyResult) -> None:
             DeployStatus.CURRENT: "green",
             DeployStatus.STALE: "yellow",
             DeployStatus.MISSING: "red",
-            DeployStatus.OLD_STAMP: "yellow",
             DeployStatus.SKIPPED: "dim",
         }.get(f.status, "white")
         table.add_row(
@@ -232,7 +231,7 @@ def _resolve_agents_to_wire(
         return selected
 
     if wire_all:
-        return [agent for agent in agents if not agent.has_mnemos and not agent.uses_tool_profile]
+        return [agent for agent in agents if not agent.has_vesma and not agent.uses_tool_profile]
 
     # No selection — wire nothing (the caller handles the interactive prompt).
     return []
@@ -311,9 +310,9 @@ def setup_cmd(
         bool,
         typer.Option("--no-mcp", help="Skip MCP server registration"),
     ] = False,
-    mnemos_bin: Annotated[
+    vesma_bin: Annotated[
         str | None,
-        typer.Option("--mnemos-bin", help="Path to the vesma executable for MCP registration"),
+        typer.Option("--vesma-bin", help="Path to the vesma executable for MCP registration"),
     ] = None,
     wire_agents: Annotated[
         bool,
@@ -349,7 +348,7 @@ def setup_cmd(
         bool,
         typer.Option(
             "--precise",
-            help="Use individual mnemos/mnemos_* tool names instead of mnemos/* wildcard.",
+            help="Use individual vesma/vesma_* tool names instead of vesma/* wildcard.",
         ),
     ] = False,
     home: Annotated[Path | None, HomeOption] = None,
@@ -373,8 +372,8 @@ def setup_cmd(
       the named agents.
     * ``--all`` — accepted for backward compatibility; wiring already covers
       all unwired agents, so it is a no-op.
-    * ``--precise`` — use individual ``mnemos/mnemos_*`` tokens instead of
-      the ``mnemos/*`` wildcard.
+    * ``--precise`` — use individual ``vesma/vesma_*`` tokens instead of
+      the ``vesma/*`` wildcard.
     * ``--no-mcp``, ``--dry-run``, ``--home`` — unchanged.
 
     There is NO interactive prompt anywhere in the default path (owner
@@ -404,7 +403,7 @@ def setup_cmd(
                 name,
                 dry_run=dry_run,
                 register_mcp=not no_mcp,
-                mnemos_bin=mnemos_bin,
+                vesma_bin=vesma_bin,
             )
         except Exception as exc:
             console.print(f"[red]✗ Target {name}: {exc}[/red]")
@@ -428,9 +427,7 @@ def setup_cmd(
                 to_wire = _resolve_agents_to_wire(agents, select=select_agents, wire_all=False)
             else:
                 to_wire = [
-                    agent
-                    for agent in agents
-                    if not agent.has_mnemos and not agent.uses_tool_profile
+                    agent for agent in agents if not agent.has_vesma and not agent.uses_tool_profile
                 ]
             if to_wire:
                 _run_agent_wiring(to_wire, mode=mode, dry_run=dry_run)
@@ -462,7 +459,7 @@ def update_cmd(
     """Update already-deployed files to the current package version.
 
     Uses the version stamp to detect stale files. Only files carrying an
-    outdated mnemos-integration stamp are touched.
+    outdated vesma-integration stamp are touched.
     """
     targets = _resolve_targets(target, home)
     if not targets:
@@ -513,12 +510,6 @@ def verify_cmd(
             has_issues = True
             console.print(
                 f"  [yellow]{result.stale_count} stale, {result.missing_count} missing[/yellow]"
-            )
-        if result.old_stamp_count > 0:
-            console.print(
-                f"  [yellow]{result.old_stamp_count} old-stamp "
-                f"(legacy mnemos-integration marker — `vesma integration update` "
-                f"re-stamps)[/yellow]"
             )
 
     # ── Agent wiring section (informational — does not affect exit code) ────

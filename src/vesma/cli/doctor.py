@@ -248,7 +248,7 @@ def _check_mcp_transport() -> CheckResult:
             "MCP transport",
             CheckStatus.FAIL,
             f"MCP transport broken: {exc}; reinstall the package "
-            "(pip install --force-reinstall mnemos-memory-server) — mcp>=2.0,<3.0 is a "
+            "(pip install --force-reinstall vesma) — mcp>=2.0,<3.0 is a "
             "core dependency since 4.1.0",
         )
     except AttributeError as exc:
@@ -258,7 +258,7 @@ def _check_mcp_transport() -> CheckResult:
             CheckStatus.FAIL,
             f"MCP transport broken: {exc!r} — the installed mcp SDK version "
             "does not match vesma.mcp_server (expects mcp>=2.0,<3.0); "
-            "reinstall the package (pip install --force-reinstall mnemos-memory-server) "
+            "reinstall the package (pip install --force-reinstall vesma) "
             "or fix the installed mcp SDK version",
         )
     except Exception as exc:  # doctor reports, doesn't crash
@@ -266,7 +266,7 @@ def _check_mcp_transport() -> CheckResult:
             "MCP transport",
             CheckStatus.FAIL,
             f"MCP transport broken: unexpected {type(exc).__name__}: {exc}; "
-            "reinstall mnemos-memory-server (mcp>=2.0,<3.0 is core since 4.1.0)",
+            "reinstall vesma (mcp>=2.0,<3.0 is core since 4.1.0)",
         )
 
 
@@ -284,12 +284,13 @@ def mcp_sdk_version() -> str:
 
 
 def _mcp_keys_seen(path: Path, mcp_format: str | None) -> frozenset[str] | None:
-    """Server key generations present in a registry MCP config file.
+    """Vesma server keys present in a registry MCP config file.
 
     Returns ``None`` when the file exists but cannot be parsed (corrupt
     JSON/TOML, non-UTF-8) — the check must not claim evidence either
-    way. Otherwise a subset of {``vesma``, ``mnemos``}: both key
-    generations count during the dual period until 6.0 (#467).
+    way. Otherwise a subset of {``vesma``}: 6.0 is the clean sheet — the
+    legacy ``mnemos`` key is foreign data and never counts as ours (#467
+    dual period closed with the 5.x line).
 
     The lookup shape comes from the target's registry ``mcp.format`` —
     never guessed from the filename: ``codex`` is TOML with servers
@@ -298,7 +299,7 @@ def _mcp_keys_seen(path: Path, mcp_format: str | None) -> frozenset[str] | None:
     top-level ``mcp`` key; every other JSON format uses the top-level
     ``mcpServers``.
     """
-    from vesma.cli.integration import CODEX_MCP_ROOT, MCP_LEGACY_SERVER_KEY, MCP_SERVER_KEY
+    from vesma.cli.integration import CODEX_MCP_ROOT, MCP_SERVER_KEY
 
     try:
         text = path.read_text(encoding="utf-8")
@@ -328,7 +329,47 @@ def _mcp_keys_seen(path: Path, mcp_format: str | None) -> frozenset[str] | None:
 
     if not isinstance(servers, dict):
         return frozenset()
-    return frozenset(k for k in (MCP_SERVER_KEY, MCP_LEGACY_SERVER_KEY) if k in servers)
+    return frozenset(k for k in (MCP_SERVER_KEY,) if k in servers)
+
+
+def _legacy_mcp_key_present(path: Path, mcp_format: str | None) -> bool:
+    """Whether a legacy ``mnemos`` server entry sits in the config file.
+
+    Diagnostics only (rebrand sweep v2, Zone A): the legacy key is foreign
+    data — it never counts as a vesma registration — but the doctor names
+    it so the operator can clean the stale entry up. Unparseable files
+    answer ``False`` (nothing to claim).
+    """
+    from vesma.cli.integration import CODEX_MCP_ROOT
+
+    legacy_key = "mnemos"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    servers: Any = None
+    if mcp_format == "codex":
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            return False
+        servers = data.get(CODEX_MCP_ROOT)
+    else:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return False
+        if isinstance(data, dict):
+            if mcp_format == "zcode":
+                mcp = data.get("mcp")
+                servers = mcp.get("servers") if isinstance(mcp, dict) else None
+            elif mcp_format == "opencode":
+                servers = data.get("mcp")
+            else:
+                servers = data.get("mcpServers")
+
+    return isinstance(servers, dict) and legacy_key in servers
 
 
 def _check_mcp_server() -> CheckResult:
@@ -336,13 +377,13 @@ def _check_mcp_server() -> CheckResult:
 
     Registry-driven (ADR-0024 — no hardcoded paths): every target in
     ``integrations/targets.yaml`` that declares an ``mcp.config`` is
-    scanned with its declared format. Both key generations count (dual
-    period until 6.0): the brand-primary ``vesma`` key and the legacy
-    ``mnemos`` key. The pi target has no server key — its deployed
-    TypeScript bridge IS the registration. Report-only: this check
-    never writes or migrates configs.
+    scanned with its declared format. Only the ``vesma`` key counts as a
+    registration (6.0 clean sheet); a stale legacy ``mnemos`` entry is
+    reported as a diagnostic so the operator can remove it. The pi target
+    has no server key — its deployed TypeScript bridge IS the
+    registration. Report-only: this check never writes or migrates configs.
     """
-    from vesma.cli.integration import MCP_LEGACY_SERVER_KEY, MCP_SERVER_KEY, load_targets
+    from vesma.cli.integration import MCP_SERVER_KEY, load_targets
 
     try:
         cfg = load_targets()
@@ -374,17 +415,17 @@ def _check_mcp_server() -> CheckResult:
         seen = _mcp_keys_seen(path, target.mcp_format)
         if seen is None:
             notes.append(f"{target.name}: config unreadable ({path})")
-        elif MCP_SERVER_KEY in seen and MCP_LEGACY_SERVER_KEY in seen:
-            notes.append(f"{target.name}: vesma + legacy mnemos keys ({path})")
-            vesma_seen = True
         elif MCP_SERVER_KEY in seen:
             notes.append(f"{target.name}: vesma key ({path})")
             vesma_seen = True
-        elif MCP_LEGACY_SERVER_KEY in seen:
-            notes.append(f"{target.name}: legacy mnemos key ({path})")
-            legacy_seen = True
         else:
             notes.append(f"{target.name}: config without a vesma entry ({path})")
+        if seen is not None and _legacy_mcp_key_present(path, target.mcp_format):
+            notes.append(
+                f"{target.name}: stale legacy mnemos key — no longer supported, "
+                "re-run `vesma integration setup` to register under vesma"
+            )
+            legacy_seen = True
 
     # Legacy well-known VS Code surface (wave W-B, #467): the fix path's
     # MCP fallback registers the server here for targets without their own
@@ -401,22 +442,16 @@ def _check_mcp_server() -> CheckResult:
         elif MCP_SERVER_KEY in seen:
             notes.append(f"vscode (legacy): vesma key ({vscode_cfg})")
             vesma_seen = True
-        elif MCP_LEGACY_SERVER_KEY in seen:
-            notes.append(f"vscode (legacy): legacy mnemos key ({vscode_cfg})")
-            legacy_seen = True
         else:
             notes.append(f"vscode (legacy): config without a vesma entry ({vscode_cfg})")
+        if seen is not None and _legacy_mcp_key_present(vscode_cfg, None):
+            notes.append("vscode (legacy): stale legacy mnemos key — no longer supported")
+            legacy_seen = True
 
     if vesma_seen:
         extra = f" ({absent} registry surface(s) absent)" if absent else ""
-        return CheckResult("MCP server", CheckStatus.PASS, "; ".join(notes) + extra)
-    if legacy_seen:
-        return CheckResult(
-            "MCP server",
-            CheckStatus.PASS,
-            "; ".join(notes)
-            + " — LEGACY mnemos key only; re-run `vesma integration setup` to migrate to vesma",
-        )
+        suffix = " — stale legacy mnemos key present (see notes)" if legacy_seen else ""
+        return CheckResult("MCP server", CheckStatus.PASS, "; ".join(notes) + extra + suffix)
     if mcp_surfaces == 0:
         # The pack declares no MCP-config surfaces at all (minimal/fake
         # packs, MCP-less registries): nothing to verify, never a warning —
@@ -700,7 +735,8 @@ def _check_tag_contract(settings: Any) -> CheckResult:
     try:
         conn = sqlite3.connect(str(db_path))
         try:
-            # tags is stored as JSON array; we check for project:/agent:/mnemos: prefixes.
+            # tags is stored as JSON array; we check for project:/agent:/vesma:
+            # prefixes (the legacy mnemos:* spelling counts in the window).
             rows = conn.execute("SELECT tags FROM memories").fetchall()
         finally:
             conn.close()
@@ -961,7 +997,7 @@ def _fix_integration_stale() -> tuple[bool, str]:
 
 
 def _fix_agent_wiring() -> tuple[bool, str]:
-    """Wire mnemos/* into all unwired Copilot agents."""
+    """Wire vesma/* into all unwired Copilot agents."""
     from vesma.cli.agent_wiring import detect_agents, wire_agents
     from vesma.cli.util import _resolve_agents_to_wire
 

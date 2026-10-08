@@ -24,7 +24,7 @@ For a quick start, deploy through the [integration guide](integration-guide.md) 
 
 The server does not bind any port. Stop it with `Ctrl+C` or by sending EOF on stdin.
 
-> **Tool prefix and branding.** The canonical tool names inside the code are `mnemos_*`; with `VESMA_MCP_BRAND=vesma` set, the manifest advertises them under the brand prefix `vesma_*` — and the client sees one set (owner ruling 2026-10-01: a doubled `mnemos_*`/`vesma_*` list confuses clients). The `mnemos_*` entries in the catalogue below are the legacy spellings, still ACCEPTED on the call path until 6.0; calls normalize to the canonical name before dispatch. The deprecated `VESMARO_MCP_BRAND` variable is accepted until 6.0 as well.
+> **Tool naming (6.0 clean sheet).** The server registers and accepts the canonical `vesma_*` names ONLY — the legacy `mnemos_*`/`vesmaro_*` spellings and the `VESMA_MCP_BRAND`/`VESMARO_MCP_BRAND` manifest brand switch were removed together with the 5.x line. Clients that allowlisted the old spellings must switch to `vesma_*`; a harness pinning the old brand gets a loud naming error pointing at this guide.
 
 ---
 
@@ -85,7 +85,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Text to remember. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `mnemos:<subtype>` spelling is accepted as an input alias). |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `vesma:<subtype>` spelling is accepted as an input alias). |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | no | auto | One of `log`, `terminal`, `code`, `docs`, `web`, `default`. Drives M10 context filter. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -1156,16 +1156,16 @@ Ambiguous-tail response (W-H — a helpful payload, not an error):
   "candidates": true,
   "candidate_list": [
     {
-      "qname": "vesmaro.models.Project.update_fields",
+      "qname": "vesma.models.Project.update_fields",
       "kind": "Method",
-      "path": "src/vesmaro/models.py",
+      "path": "src/vesma/models.py",
       "start_line": 210,
       "end_line": 240
     },
     {
-      "qname": "vesmaro.store.Row.update_fields",
+      "qname": "vesma.store.Row.update_fields",
       "kind": "Method",
-      "path": "src/vesmaro/store.py",
+      "path": "src/vesma/store.py",
       "start_line": 88,
       "end_line": 96
     }
@@ -1372,7 +1372,7 @@ Registered projects joined with their index status (volumes, poisoned count, `la
 }
 ```
 
-`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`, or remove the ghost outright with `mnemos_delete_graph_project` behind the evidence gate (`confirm=true` + `confirm_name`).
+`root_missing: true` (#450) marks a **ghost**: the registered root is gone on disk (moved/renamed), so indexing is stuck — fix it with `vesma graph repoint <project> <new-root>`, or remove the ghost outright with `vesma_delete_graph_project` behind the evidence gate (`confirm=true` + `confirm_name`).
 
 ### Related
 
@@ -1401,7 +1401,7 @@ Drop a project's graph INDEX — the sidecar data (index subtree, poisoned set, 
 { "project": "vesma", "deleted_nodes": 2143, "status": "deleted", "ghost": false, "deregistered": false }
 ```
 
-`ghost: true` + `deregistered: true` mark the evidence-gated ghost removal — the registration row is gone; `mnemos_register_project` brings it back when needed. CLI twin: `vesma graph delete <project>` (ghosts: `--force --confirm-name <project>`).
+`ghost: true` + `deregistered: true` mark the evidence-gated ghost removal — the registration row is gone; `vesma_register_project` brings it back when needed. CLI twin: `vesma graph delete <project>` (ghosts: `--force --confirm-name <project>`).
 
 ### Related
 
@@ -1520,8 +1520,8 @@ Same shape as the CLI `vesma stats` command — see [cli-reference.md#stats](cli
 {
   "status": "ok",
   "version": "4.0.0",
-  "data_dir": "/home/you/.vesma/data",
-  "vault_path": "/home/you/.vesma/vault",
+  "data_dir": "/home/you/.mnemos/data",
+  "vault_path": "/home/you/.mnemos/vault",
   "total": 142,
   "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
   "vectors": 120
@@ -1970,7 +1970,7 @@ Fixed pipeline, in order (recorded verbatim in `stats.stages`):
 Every injected block carries a provenance line, exact format:
 
 ```text
-[mnemos:<memory-id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso8601>]
+[vesma:<memory-id> project=<slug> status=<status> origin=<source> pipeline=<phase> v=<n> retrieved=<iso8601>]
 ```
 
 `pipeline=` is omitted when the row's `pipeline_state` is NULL (legacy rows).
@@ -2000,7 +2000,7 @@ the block prefix is byte-stable for harness-side KV caching.
   "file": null,
   "mode": "sync",
   "content_type": null,
-  "text": "[mnemos:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]\nDeployment guide…",
+  "text": "[vesma:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]\nDeployment guide…",
   "blocks": [
     {
       "memory_id": "3f2a…",
@@ -2009,7 +2009,7 @@ the block prefix is byte-stable for harness-side KV caching.
       "score": 0.0114,
       "search_type": "hybrid",
       "content_type": "prose",
-      "provenance": "[mnemos:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]",
+      "provenance": "[vesma:3f2a… project=my-project status=published retrieved=2026-08-27T10:00:00+00:00]",
       "content": "Deployment guide…",
       "tokens": 96,
       "redactions": 1,
@@ -2097,9 +2097,9 @@ Semantics (ADR-0018, verbatim):
 
 ### Notes
 
-- **Boundary validation** — empty `content`/`project`/`agent`, blank optional strings, a tag-contract violation (strict mode), a size-cap violation (`content` > `mnemos.context_rewrite_max_content_chars`, default 1 MiB; `diff` > `mnemos.context_rewrite_max_diff_chars`, default 256 KiB), or a `supersedes` target **not found in the caller's project** returns an `{"error": …}` dict (REST twin answers 422). The supersedes message deliberately does not distinguish "no such memory" from "memory of another project" — no global existence oracle.
-- **Write-surface rate limit** — `mnemos.context_rewrite_rate_limit_per_minute` (default 30, 0 disables) counts STORED events per `(project, session)` in a rolling minute; over-limit returns `{"error": …, "rate_limited": true}` (REST 429). Deduplicated re-deliveries perform no write and consume no quota — retry storms stay harmless.
-- **Stored tags** — `project:<slug>`, `agent:<slug>`, `vesma:session` (closest existing subtype for live session material; a dedicated `mnemos:context-rewrite` subtype is a tag-contract vocabulary change deferred to the committee), plus `mnemos:no-federate` on any secret hit.
+- **Boundary validation** — empty `content`/`project`/`agent`, blank optional strings, a tag-contract violation (strict mode), a size-cap violation (`content` > `vesma.context_rewrite_max_content_chars`, default 1 MiB; `diff` > `vesma.context_rewrite_max_diff_chars`, default 256 KiB), or a `supersedes` target **not found in the caller's project** returns an `{"error": …}` dict (REST twin answers 422). The supersedes message deliberately does not distinguish "no such memory" from "memory of another project" — no global existence oracle.
+- **Write-surface rate limit** — `vesma.context_rewrite_rate_limit_per_minute` (default 30, 0 disables) counts STORED events per `(project, session)` in a rolling minute; over-limit returns `{"error": …, "rate_limited": true}` (REST 429). Deduplicated re-deliveries perform no write and consume no quota — retry storms stay harmless.
+- **Stored tags** — `project:<slug>`, `agent:<slug>`, `vesma:session` (closest existing subtype for live session material; a dedicated `vesma:context-rewrite` subtype is a tag-contract vocabulary change deferred to the committee), plus `mnemos:no-federate` on any secret hit.
 - **Provenance metadata** — `metadata["source"] = "context-rewrite"`, `rewrite_session`, `rewrite_event_key`, and (when supplied) `rewrite_diff` + `rewrite_diff_scan_verdict`.
 - **Single-tenant trust model** — the harness is trusted software; the provider guarantees storage, scanning, gating and provenance, not replacement policy (pinned zones, budgets and replace-event emission stay harness-side).
 
@@ -2282,7 +2282,7 @@ Federation defence-in-depth (#86) is inherited automatically because the tool wr
   "params": {
     "name": "vesma_export",
     "arguments": {
-      "output_path": "/tmp/mnemos-backup.json",
+      "output_path": "/tmp/vesma-backup.json",
       "format": "json",
       "project": "vesma",
       "compress": "gzip"
@@ -2297,7 +2297,7 @@ For an encrypted full snapshot:
 {
   "name": "vesma_export",
   "arguments": {
-    "output_path": "/tmp/mnemos-snapshot.tar.gz",
+    "output_path": "/tmp/vesma-snapshot.tar.gz",
     "format": "sqlite",
     "encrypt": true
   }
@@ -2357,7 +2357,7 @@ Import validation (#86) is inherited automatically: schema drift, oversized cont
   "params": {
     "name": "vesma_import",
     "arguments": {
-      "source_path": "/tmp/mnemos-backup.json",
+      "source_path": "/tmp/vesma-backup.json",
       "mode": "merge",
       "overwrite": false
     }
@@ -2371,7 +2371,7 @@ Restore (destructive) with confirmation:
 {
   "name": "vesma_import",
   "arguments": {
-    "source_path": "/tmp/mnemos-snapshot.tar.gz",
+    "source_path": "/tmp/vesma-snapshot.tar.gz",
     "mode": "restore",
     "confirm": true
   }

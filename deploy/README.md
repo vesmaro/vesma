@@ -7,8 +7,8 @@ Deployment assets for the Vesma (Vesma) memory server, grouped by target:
 | [`helm/vesma/`](helm/vesma/) | **Kubernetes / K3s** (any 1.25+ cluster) | `helm install vesma deploy/helm/vesma --set auth.totpMasterKey=$(openssl rand -hex 32)` — Deployment + Service + **Ingress** + 2×PVC + Secret |
 | [`docker/`](docker/) | **Docker / Docker Compose** (pre-built image) | `cp .env.example .env && docker compose up -d` (podman-compose compatible) |
 | [`podman/quadlet/`](podman/quadlet/) | **Podman** as a systemd user unit | copy unit + `systemctl --user start vesma` |
-| [`podman/kube/`](podman/kube/) | **Podman** `kube play` (single-host pod) | `podman kube play deploy/podman/kube/mnemos-pod.yaml` |
-| [`../../compose.yaml`](../compose.yaml) | Compose from the repo root (published image, historic `mnemos-*` names) | `TOTP_MASTER_KEY=$(openssl rand -hex 32) docker compose up -d` |
+| [`podman/kube/`](podman/kube/) | **Podman** `kube play` (single-host pod) | `podman kube play deploy/podman/kube/vesma-pod.yaml` |
+| [`../../compose.yaml`](../compose.yaml) | Compose from the repo root (published image, `vesma-*` resource names) | `TOTP_MASTER_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 Full documentation:
 

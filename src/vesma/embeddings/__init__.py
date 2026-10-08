@@ -62,7 +62,7 @@ class EmbeddingProvider(ABC):
 # ── vesma-embed: the bundled distilled embedder (ADR-0021 NM-1) ───────────────
 
 #: Bundled artifact directory name (src/vesma/models/<name>/ inside the
-#: wheel, reachable via importlib.resources). NOTE: ``mnemos/models/`` is a
+#: wheel, reachable via importlib.resources). NOTE: ``vesma/models/`` is a
 #: DATA directory, deliberately NOT a Python package — ``vesma.models``
 #: remains the ``models.py`` module; a directory without ``__init__.py``
 #: never shadows it at import time.
@@ -93,7 +93,7 @@ def _mnema_artifact_dir(model: str) -> Path:
 
     ``model`` is either (a) a filesystem path to a ``.onnx`` file — the
     tokenizer is then expected as ``tokenizer.json`` next to it — or
-    (b) a bundled artifact name resolved under ``mnemos/models/``.
+    (b) a bundled artifact name resolved under ``vesma/models/``.
 
     Raises FileNotFoundError (fail-loud at the boundary) when neither
     resolves; callers that prefer degradation own the try/except.
@@ -156,7 +156,7 @@ class NanoProvider(EmbeddingProvider):
     """The bundled vesma-embed model (ADR-0021 NM-1; provider key ``nano``).
 
     Loads the int8-quantized ONNX artifact shipped inside the package
-    (``mnemos/models/<name>/``): 384-dim, multilingual (RU+EN), L2-
+    (``vesma/models/<name>/``): 384-dim, multilingual (RU+EN), L2-
     normalized. Mean-pooling and L2 normalization are part of the ONNX
     graph — the provider must NOT re-pool or re-normalize the output.
 

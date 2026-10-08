@@ -24,7 +24,7 @@ literals (ISO timestamps, UUIDs, ``sess-``/``session:`` ids, bare hex/base64
 tokens of sufficient entropy). Code identifiers, file paths, and prose are
 not mangled. CCR markers (``[compressed: <hash> | …]``) are ATOMIC
 protected regions in EVERY profile — a marker whose hash is relocated to
-the trailing block is unreadable and breaks the ``mnemos_retrieve``
+the trailing block is unreadable and breaks the ``vesma_retrieve``
 round-trip (vesma #282).
 
 Determinism: same input always produces the same output (patterns are
@@ -95,11 +95,11 @@ _PROFILE_SKIP: dict[str, set[str]] = {
 
 # vesma #282 — CCR markers are ATOMIC: protected from extraction in ALL
 # profiles. A marker `[compressed: <hash> | N→M chars | retrieve via
-# mnemos_retrieve]` carries a 64-hex hash that _TOKEN_RE happily matches
+# vesma_retrieve]` carries a 64-hex hash that _TOKEN_RE happily matches
 # in token-extracting profiles (log/terminal/web/default) — the hash would
 # be relocated to the trailing Dynamic-context block, destroying the marker
 # line and with it the model's ability to read the hash for
-# mnemos_retrieve. The span (from `vesma.ccr`, the single source of truth
+# vesma_retrieve. The span (from `vesma.ccr`, the single source of truth
 # for the marker shape) is collected FIRST and any dynamic span of ANY kind
 # overlapping it is dropped, so the marker stays byte-identical in place.
 
@@ -221,7 +221,7 @@ def align(
     skip = profile_skip | skip_kinds if profile_skip and skip_kinds else profile_skip or skip_kinds
     # vesma #282 — CCR marker spans are protected BEFORE any dynamic
     # pattern runs (all profiles, no profile can opt out): a relocated
-    # marker hash breaks the mnemos_retrieve round-trip.
+    # marker hash breaks the vesma_retrieve round-trip.
     protected = _protected_marker_spans(text)
     spans = _extract_spans(text, skip, protected=protected)
     if not spans:

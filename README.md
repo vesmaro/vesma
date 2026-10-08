@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD041 MD033 -->
 <p align="center">
-  <img src="docs/assets/mnemos-banner.svg" alt="Vesma — memory &amp; knowledge server for AI agents" width="100%">
+  <img src="docs/assets/vesma-banner.svg" alt="Vesma — memory &amp; knowledge server for AI agents" width="100%">
 </p>
 
 <h1 align="center">Vesma</h1>
@@ -12,8 +12,6 @@
 
 <p align="center">
   <a href="https://pypi.org/project/vesma/"><img src="https://img.shields.io/pypi/v/vesma?label=pypi&color=3776ab" alt="PyPI"></a>
-  <!-- deprecated-note: legacy PyPI package mnemos-memory-server (published until deprecation) -->
-  <!-- <a href="https://pypi.org/project/mnemos-memory-server/"><img src="https://img.shields.io/pypi/v/mnemos-memory-server?label=pypi&color=3776ab" alt="PyPI"></a> -->
   <a href="https://www.npmjs.com/package/@vesmaro/vesma"><img src="https://img.shields.io/npm/v/@vesmaro%2Fvesma?label=npm&color=cb3837" alt="npm"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776ab" alt="Python"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache-2.0"></a>
@@ -108,11 +106,11 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 
 ```bash
 # systemd user service (preferred for a long-running host)
-# legacy-named asset — unit file stays mnemos.container until the deploy wave renames it
-cp deploy/podman/quadlet/mnemos.container ~/.config/containers/systemd/
+# legacy-named asset — unit file stays vesma.container until the deploy wave renames it
+cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesma.env (both env spellings), then:
 podman pull ghcr.io/vesmaro/vesma:4.3.0  # контейнерные образы публикуются по LTS; кодовая линия 5.x — сначала PyPI/npm  # container images publish per-LTS; the 5.x code line is PyPI/npm-first
-# quadlet derives the unit name from the file name — the unit is mnemos.service for now
+# quadlet derives the unit name from the file name — the unit is vesma.service for now
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
 ```
@@ -214,7 +212,7 @@ control surfaces, and a storage layer you can read with your own eyes.
 | 🧹 | **Context filter** | Five-stage noise stripper for logs / stdout before anything hits a model |
 | 🗜️ | **Reversible compression (CCR)** | Compress large content with zero data loss — originals cached in SQLite, retrievable via hash marker |
 | 🧷 | **CacheAligner** | Relocate dynamic content (timestamps, UUIDs, session ids, tokens) to the tail so provider KV caches (Anthropic `cache_control`, OpenAI prefix caching) hit across requests |
-| 🪶 | **Output token reduction** | Optional `verbosity` / `effort` params on `mnemos_add` / `mnemos_search` / `mnemos_recall_context` (MCP tool names — unchanged wire contract) steer the caller's output style — backward compatible, defaults are a no-op |
+| 🪶 | **Output token reduction** | Optional `verbosity` / `effort` params on `vesma_add` / `vesma_search` / `vesma_recall_context` (MCP tool names — unchanged wire contract) steer the caller's output style — backward compatible, defaults are a no-op |
 | 📂 | **Path-scoped rules** | Ingest project rules and apply them by file path |
 | 🗂️ | **Obsidian vault** | A markdown mirror humans can browse, edit, and grep |
 
@@ -260,7 +258,7 @@ pick the strongest one your harness supports:
   then `vesma integration setup --target hermes` ([details](docs/en/user/integration-guide.md#hermes-agent)).
 
 The shared contract is the [tag schema](docs/en/user/tag-contract.md) — `project:<slug>`, `agent:<slug>`,
-and at least one `mnemos:<subtype>` (tag namespace — unchanged wire contract) — that every memory entry must carry.
+and at least one `vesma:<subtype>` (tag namespace — unchanged wire contract) — that every memory entry must carry.
 
 ---
 
@@ -360,9 +358,9 @@ conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/
 | [features.md](docs/en/features.md) | What works out of the box, what is partial, what is planned |
 | [architecture/overview.md](docs/en/architecture/overview.md) | System shape, data model, state machines, security boundaries |
 | [cli-reference.md](docs/en/user/cli-reference.md) | Every `vesma` subcommand with flags, defaults, examples |
-| [mcp-tools.md](docs/en/user/mcp-tools.md) | Every `mnemos_*` tool exposed to agent harnesses (tool names — unchanged MCP wire contract) |
+| [mcp-tools.md](docs/en/user/mcp-tools.md) | Every `vesma_*` tool exposed to agent harnesses (tool names — unchanged MCP wire contract) |
 | [http-api.md](docs/en/user/http-api.md) | Every HTTP endpoint (memory CRUD, workflow, hooks, A2A Sessions) |
-| [tag-contract.md](docs/en/user/tag-contract.md) | The `project:` / `agent:` / `mnemos:` tag schema (namespace — unchanged data contract) enforced on every memory |
+| [tag-contract.md](docs/en/user/tag-contract.md) | The `project:` / `agent:` / `vesma:` tag schema (namespace — unchanged data contract) enforced on every memory |
 | [security.md](docs/en/admin/security.md) | Threat model, SSRF guard, FTS5 escape, auth model |
 | [kubernetes-deployment.md](docs/en/admin/kubernetes-deployment.md) | Helm chart for K8s/K3s clusters: ingress, storage, TLS, TOTP secret |
 | [contrib/node-install/](contrib/node-install/) | `vesma-node` — one-command bare-metal node bundle: venv + mesh binary + units, with adopt / atomic pair upgrade / uninstall |
@@ -375,12 +373,7 @@ conversations that survive restarts. See [a2a-sessions.md](docs/en/architecture/
 
 ## 📖 The lore
 
-> In Hesiod's *Theogony*, **Mnemosyne** (Μνημοσύνη) is the Titaness of memory — she who, by Zeus, gave
-> birth to the nine Muses and through them made the world's remembering possible. Her name is the root of
-> *mnemonic*, and she is what every singer, poet, and philosopher prays to before they begin.
-
-The lore section below preserves the memory of the pre-rebrand name — the product itself now sails
-under **Vesma**, carrying the same task: **to make remembering possible for
+**Vesma** carries one task: **to make remembering possible for
 the things that think.** AI agents, unmoored from any single conversation, lose everything that came
 before. Vesma gives them a place to lay it down — structured, searchable, governed by contract — so that
 what they learn does not vanish with the closing of a session. The Muses, after all, were not for the

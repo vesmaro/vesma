@@ -95,7 +95,7 @@ class MeshUnimplementedError(MeshError):
 
     Expected from the M2 mesh stub and from any RPC not yet wired on the
     Go side. Callers should degrade gracefully (e.g. fall back to local
-    :func:`mnemos_search`) rather than retrying — retrying an
+    :func:`vesma_search`) rather than retrying — retrying an
     ``UNIMPLEMENTED`` RPC is a waste of budget.
     """
 
@@ -248,7 +248,7 @@ class MeshClient:
                 moderation-processed by the peer of origin; Vesma may
                 apply its own import validation (#86) on top.
             import_mode: ``"MERGE"`` (default) or ``"RESTORE"``. Mirrors
-                the :func:`mnemos_import` MCP tool modes. ``"RESTORE"`` is
+                the :func:`vesma_import` MCP tool modes. ``"RESTORE"`` is
                 destructive and requires ``confirm=True`` (hard gate).
             confirm: Required ``True`` when ``import_mode="RESTORE"``,
                 ignored otherwise. Vesma rejects ``RESTORE`` without

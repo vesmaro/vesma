@@ -104,7 +104,7 @@ Token economics (the reason this exists): "how do I delete a graph index"
 is ONE bounded search instead of an ~18.7k-token `--help` discovery:
 
 ```
-mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
+vesma_search_graph(project_id="vesma", query="graph delete", kind="Command")
 → 1 row: "vesma graph delete" · help: "Delete a project's graph index…"
   options: 5 · params: {project, --force, --confirm-name, --agent, --reason}
 ```
@@ -116,7 +116,7 @@ Guards:
   never the node);
 - a root without the markers — any foreign repo — grows ZERO surface nodes:
   the extension is registered once by the host and decided per-root;
-- `mnemos_project_graph_status` reports the per-kind `node_kinds` breakdown
+- `vesma_project_graph_status` reports the per-kind `node_kinds` breakdown
   so the contribution is visible, not assumed.
 
 **Cross-project agents:** commands and routes are code of the DEFINING repo.
@@ -128,7 +128,7 @@ edge into the handler's code.
 **Existing indexes:** surface nodes land on the next FULL (re)index — the
 incremental classifier rebuilds the whole project on any file change, so
 touching a tracked file is enough; or drop the index
-(`mnemos_delete_graph_project`) and index fresh.
+(`vesma_delete_graph_project`) and index fresh.
 
 ---
 
@@ -233,9 +233,9 @@ Behavior:
 ## The walk section: rent the neighborhood (PG-1, ADR-0038)
 
 A structural question — "what calls `X`, one or two hops out" — used to
-cost either a `mnemos_trace_path` call per symbol or opening whole files.
+cost either a `vesma_trace_path` call per symbol or opening whole files.
 When `code_graph.search_walk` is on, every symbol-hitting
-`mnemos_search_graph` call ALSO walks the hits' neighborhood and answers
+`vesma_search_graph` call ALSO walks the hits' neighborhood and answers
 with a SEPARATE `walk` section:
 
 ```json
@@ -372,7 +372,7 @@ Gates (loud refusals, audited as action `repoint`, reason `graph-repoint`):
   rebuildable data), the auto-path suspension is lifted, and the next
   index run rebuilds fresh.
 
-A ghost can also be removed outright — `mnemos_delete_graph_project` (or
+A ghost can also be removed outright — `vesma_delete_graph_project` (or
 `vesma graph delete <project>` on the CLI) drops the index and, behind the
 evidence gate (`confirm=true` + `confirm_name` echoing the project name;
 `--force --confirm-name <project>` on the CLI), the registration row
@@ -591,8 +591,8 @@ _Sources: ADR-0032 (project graph as memory); `docs/en/user/mcp-tools.md`
 `tests/test_codegraph_autoindex.py`); landed in PG-0 wave (#438),
 graphs-on-by-default (#440), native auto-indexing PG-0.5 (re-landed
 150cdfe). Surface nodes (schema v2): card vesma-graph-command-route-nodes,
-`src/vesmaro/codegraph/node_sources.py` (the seam) +
-`src/vesmaro/graph_surface_ext.py` (the engine's CLI/REST surface).
+`src/vesma/codegraph/node_sources.py` (the seam) +
+`src/vesma/graph_surface_ext.py` (the engine's CLI/REST surface).
 Feature map: [features.md](../features.md)._
 
 _Last updated: 2026-10-04_

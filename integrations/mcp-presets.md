@@ -170,7 +170,7 @@ That deploys:
 - `~/.pi/agent/skills/<name>/SKILL.md` — the skill pack, nested layout
 
 Restart Pi (or run `/reload` inside a session) and the `vesma_*` tools
-appear; `/vesma` reconnects the bridge on demand (legacy alias: `/mnemos`).
+appear; `/vesma` reconnects the bridge on demand (legacy alias: `/vesma`).
 Manual fallback — copy
 `integrations/extensions/vesma-mcp.ts` from the repo into
 `~/.pi/agent/extensions/`. Override the server binary with the

@@ -171,7 +171,7 @@ class FederationAccessLog:
     def query_recent(self, peer_id: str, *, since: datetime) -> list[AccessLogEntry]:
         """Return all entries for a peer since a UTC timestamp.
 
-        Used for audit reports — e.g. "what did peer mnemos-A pull in
+        Used for audit reports — e.g. "what did peer vesma-A pull in
         the last 24h?". Naive timestamps are assumed to be UTC (the
         log stores UTC); callers should pass a UTC-aware datetime.
         """
@@ -180,7 +180,7 @@ class FederationAccessLog:
     def count_by_trigger_code(self, peer_id: str, *, since: datetime) -> dict[TriggerCode, int]:
         """Aggregate entry counts per trigger code for a peer since a UTC time.
 
-        Used for metrics/audit — e.g. "peer mnemos-A: 12 EXHAUSTIVE, 3
+        Used for metrics/audit — e.g. "peer vesma-A: 12 EXHAUSTIVE, 3
         PARTIAL, 1 REFUSED in the last 24h". Returns all five trigger
         codes keyed by the enum (zero-filled) so the caller does not
         have to handle missing keys.

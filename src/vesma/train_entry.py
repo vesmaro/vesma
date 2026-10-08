@@ -1,4 +1,4 @@
-"""Entry point for the `mnemos-train` console script (ADR-0021 NM track).
+"""Entry point for the `vesma-train` console script (ADR-0021 NM track).
 
 `training/` is a repo-local top-level package, deliberately excluded from the
 wheel (training happens outside the server runtime — ADR-0021 anti-scope).
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 _FAIL_MSG = (
-    "mnemos-train is not available in this installation: the training package "
+    "vesma-train is not available in this installation: the training package "
     "lives in the repository (training/) and is excluded from the server wheel "
     "by design (ADR-0021). Run from a repository checkout "
     "(pip install -e '.[training]' or a mounted toolbox container), "

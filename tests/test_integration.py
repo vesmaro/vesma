@@ -31,7 +31,6 @@ from vesma.cli.integration import (
     IntegrationManager,
     Target,
     TargetsConfig,
-    has_legacy_stamp,
     load_engine_manifest,
     load_targets,
     make_stamp,
@@ -165,7 +164,7 @@ class TestStamping:
         assert make_stamp("1.2.0") == "<!-- vesma-integration: v1.2.0 -->"
 
     def test_read_stamp_extracts_version(self) -> None:
-        content = "<!-- mnemos-integration: v1.2.0 -->\n# Some file\n"
+        content = "<!-- vesma-integration: v1.2.0 -->\n# Some file\n"
         assert read_stamp(content) == "1.2.0"
 
     def test_read_stamp_returns_none_when_absent(self) -> None:
@@ -192,7 +191,7 @@ class TestStamping:
         assert stamp_idx > fm_end_idx
 
     def test_stamp_content_replaces_existing_stamp(self) -> None:
-        content = "<!-- mnemos-integration: v1.1.0 -->\n# Title\n"
+        content = "<!-- vesma-integration: v1.1.0 -->\n# Title\n"
         stamped = stamp_content(content, "1.2.0")
         assert read_stamp(stamped) == "1.2.0"
         assert "v1.1.0" not in stamped
@@ -213,14 +212,13 @@ class TestStamping:
     def test_stamp_self_heals_stamp_before_frontmatter(self) -> None:
         """A stamp placed *before* the opening ``---`` (the regression that
         caused ``description is required``) must be moved after the block."""
-        broken = "<!-- mnemos-integration: v1.1.0 -->\n---\nname: x\ndescription: y\n---\n# body\n"
+        broken = "<!-- vesma-integration: v1.1.0 -->\n---\nname: x\ndescription: y\n---\n# body\n"
         healed = stamp_content(broken, "1.2.0")
         assert healed.startswith("---")
         assert read_stamp(healed) == "1.2.0"
         assert "v1.1.0" not in healed
-        # stamp migration: legacy input re-stamps to the current generation
+        # Misplaced input is re-stamped at the canonical position.
         assert "vesma-integration: v1.2.0" in healed
-        assert "mnemos-integration" not in healed
         lines = healed.splitlines()
         fm_end = next(i for i, line in enumerate(lines) if line.strip() == "---" and i > 0)
         stamp_idx = next(i for i, line in enumerate(lines) if "integration: v" in line)
@@ -656,7 +654,7 @@ class TestStampingEdgeCases:
 
     def test_read_stamp_from_multiline_content(self) -> None:
         """Stamp can be read from content where it's not on the first line."""
-        content = "#!/bin/bash\n<!-- mnemos-integration: v0.9.0 -->\necho hi\n"
+        content = "#!/bin/bash\n<!-- vesma-integration: v0.9.0 -->\necho hi\n"
         assert read_stamp(content) == "0.9.0"
 
     def test_make_stamp_different_versions(self) -> None:
@@ -1136,7 +1134,7 @@ class TestSetupMCP:
         monkeypatch.setattr(
             IntegrationManager, "_find_mcp_setup_script", staticmethod(lambda: None)
         )
-        result = manager.setup(detected_target, register_mcp=True, mnemos_bin="/nonexistent/mnemos")
+        result = manager.setup(detected_target, register_mcp=True, vesma_bin="/nonexistent/mnemos")
         assert result.deployed_count == 3
         assert result.mcp_registered is False
         assert result.mcp_note != ""
@@ -1887,17 +1885,17 @@ class TestUniversalTargets:
             ),
             encoding="utf-8",
         )
-        ok, note = universal_manager.register_mcp("zcode", mnemos_bin="/bin/mnemos")
+        ok, note = universal_manager.register_mcp("zcode", vesma_bin="/bin/vesma")
         assert ok, note
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         assert data["plugins"]["enabledPlugins"]["github"] is True  # untouched
         assert data["mcp"]["servers"]["other"] == {"command": "x"}  # untouched
         entry = data["mcp"]["servers"]["vesma"]  # brand-primary server key
-        assert entry["command"] == "/bin/mnemos"
+        assert entry["command"] == "/bin/vesma"
         assert entry["args"] == ["mcp-server"]
         assert entry["env"]["VESMA_DATA_DIR"] == str(fake_home / ".mnemos/data")
 
-    def test_register_mcp_zcode_preserves_existing_env(
+    def test_register_mcp_zcode_preserves_legacy_foreign_entry(
         self, universal_manager: IntegrationManager, fake_home: Path
     ) -> None:
         import json
@@ -1918,26 +1916,27 @@ class TestUniversalTargets:
             ),
             encoding="utf-8",
         )
-        ok, _ = universal_manager.register_mcp("zcode", mnemos_bin="/bin/mnemos")
+        ok, _ = universal_manager.register_mcp("zcode", vesma_bin="/bin/vesma")
         assert ok
         servers = json.loads(cfg_path.read_text(encoding="utf-8"))["mcp"]["servers"]
-        # stamp migration: the legacy "mnemos" key moves to the brand-primary key
-        assert "mnemos" not in servers
+        # 6.0 clean sheet: the legacy "mnemos" key is foreign data —
+        # preserved untouched, never adopted or migrated.
+        assert servers["mnemos"]["command"] == "old"
+        assert servers["mnemos"]["env"]["VESMA_DATA_DIR"] == "/custom/data"
         entry = servers["vesma"]
-        assert entry["env"]["VESMA_DATA_DIR"] == "/custom/data"  # user tuning kept
         assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(fake_home / ".mnemos/vault")
-        assert entry["command"] == "/bin/mnemos"  # command refreshed
+        assert entry["command"] == "/bin/vesma"
 
     def test_register_mcp_agents_creates_file(
         self, universal_manager: IntegrationManager, fake_home: Path
     ) -> None:
         import json
 
-        ok, note = universal_manager.register_mcp("agents", mnemos_bin="/bin/mnemos")
+        ok, note = universal_manager.register_mcp("agents", vesma_bin="/bin/vesma")
         assert ok, note
         cfg_path = fake_home / ".agents" / "mcp.json"
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert data["mcpServers"]["vesma"]["command"] == "/bin/mnemos"
+        assert data["mcpServers"]["vesma"]["command"] == "/bin/vesma"
 
     def test_update_removes_orphaned_nested_skill(
         self, universal_manager: IntegrationManager
@@ -2539,8 +2538,8 @@ class TestSchemasPack:
     Canon JSON Schemas deploy BYTE-IDENTICAL (an inline HTML-comment stamp
     would make them invalid JSON for schema validators), with ownership
     carried by the stamped sidecar manifest
-    ``vesma-schemas.manifest.json`` (legacy name ``mnemos-schemas.manifest.json``
-    still recognized during the stamp-migration window). The tests pin:
+    ``vesma-schemas.manifest.json`` (clean sheet — the only name that
+    proves ownership). The tests pin:
 
     * vendored files exist in the shipped pack and parse as JSON;
     * the full deploy → verify → drift/stale → update → uninstall lifecycle
@@ -2831,7 +2830,7 @@ class TestSchemasPack:
         foreign_schema = schemas_dir / "drifted-copy.schema.json"
         foreign_schema.write_text('{"not": "ours"}\n', encoding="utf-8")
         stamped_orphan = schemas_dir / "orphan.schema.json"
-        stamped_orphan.write_text("<!-- mnemos-integration: v0.0.1 -->\n{}\n", encoding="utf-8")
+        stamped_orphan.write_text("<!-- vesma-integration: v0.0.1 -->\n{}\n", encoding="utf-8")
         uninstall = schemas_manager.uninstall(target)
         schemas_removed = {p for p in uninstall.removed if p.parent == schemas_dir}
         assert schemas_removed == {schemas_dir / name for name in self.CANON_SCHEMA_NAMES} | {
@@ -3085,39 +3084,35 @@ class TestPackSafetyContract:
             )
 
 
-# ── Stamp migration: dual-pattern recognition + OLD_STAMP status ─────────────
+# ── Stamps: clean sheet — one generation recognized, legacy is foreign ───────
 
 
-class TestStampMigration:
-    """Dual-pattern stamps (ArchCom 2026-10-01, item 4).
+class TestStampCleanSheet:
+    """Stamp recognition is vesma-only (rebrand sweep v2, Zone A).
 
-    ``read_stamp`` recognizes both ``vesma-integration`` (current) and
-    ``mnemos-integration`` (legacy) markers; the first deploy/update
-    re-stamps legacy files; ``verify`` reports legacy markers with the
-    dedicated OLD_STAMP status.
+    ``read_stamp`` recognizes ONLY ``vesma-integration``; files carrying a
+    legacy ``mnemos-integration`` marker are not provably ours — verify
+    reports them as not-ours, update never touches them, uninstall never
+    deletes them (the redeploy of the pack is the migration step).
     """
 
     LEGACY = "<!-- mnemos-integration: v1.2.0 -->"
     CURRENT = "<!-- vesma-integration: v1.2.0 -->"
 
-    def test_read_stamp_accepts_both_generations(self) -> None:
-        assert read_stamp("<!-- mnemos-integration: v1.0.0 -->\nbody\n") == "1.0.0"
+    def test_read_stamp_accepts_current_generation_only(self) -> None:
         assert read_stamp("<!-- vesma-integration: v1.0.0 -->\nbody\n") == "1.0.0"
+        assert read_stamp("<!-- mnemos-integration: v1.0.0 -->\nbody\n") is None
         assert read_stamp("no stamp\n") is None
-
-    def test_has_legacy_stamp_distinguishes_generations(self) -> None:
-        assert has_legacy_stamp(self.LEGACY)
-        assert not has_legacy_stamp(self.CURRENT)
 
     def test_make_stamp_emits_current_generation_only(self) -> None:
         assert "mnemos-integration" not in make_stamp("9.9.9")
 
-    def test_deploy_over_legacy_stamp_restamps(
+    def test_legacy_stamped_file_is_foreign_to_verify_uninstall(
         self, manager: IntegrationManager, detected_target: str
     ) -> None:
         deploy = manager.deploy(detected_target)
         assert deploy.deployed_count > 0
-        # Simulate a deployment from a pre-rebrand pack: rewrite one deployed
+        # Simulate a deployment from a pre-6.0 pack: rewrite one deployed
         # file's stamp to the legacy generation.
         deployed = [f.destination for f in deploy.files if f.destination.is_file()]
         victim = deployed[0]
@@ -3125,18 +3120,31 @@ class TestStampMigration:
         legacy_text = text.replace(make_stamp("1.2.0"), self.LEGACY)
         victim.write_text(legacy_text, encoding="utf-8")
 
+        # Verify: not ours.
         verify = manager.verify(detected_target)
-        old_rows = [f for f in verify.files if f.destination == victim]
-        assert old_rows and old_rows[0].status is DeployStatus.OLD_STAMP
+        rows = [f for f in verify.files if f.destination == victim]
+        assert rows and rows[0].status is DeployStatus.SKIPPED
+        assert "no vesma stamp" in (rows[0].note or "")
 
-        # First update re-stamps to the current generation.
+        # Uninstall never deletes it — it survives as a user file.
+        result = manager.uninstall(detected_target)
+        assert victim not in result.removed, "legacy-stamped file is foreign — never deleted"
+        assert victim.exists()
+
+        # A foreign-legacy ORPHAN (a legacy-stamped file NOT in the current
+        # pack) is never orphan-removed either. update() DOES overwrite
+        # in-pack paths (the redeploy is the migration step for pack paths),
+        # so the orphan assertion rides the same update as the re-stamp.
+        orphan = victim.parent / "legacy-orphan.md"
+        orphan.write_text(f"{self.LEGACY}\nold content\n", encoding="utf-8")
         manager.update(detected_target)
+        assert orphan.exists(), "legacy-stamped orphan survives update (not ours)"
+
+        # After the update the in-pack path carries the current generation.
         assert make_stamp("1.2.0") in victim.read_text(encoding="utf-8")
         assert self.LEGACY not in victim.read_text(encoding="utf-8")
-        verify2 = manager.verify(detected_target)
-        assert all(f.status is not DeployStatus.OLD_STAMP for f in verify2.files)
 
-    def test_agents_md_legacy_block_reported_old_stamp_and_restamped(self, tmp_path: Path) -> None:
+    def test_agents_md_legacy_block_is_refused_not_duplicated(self, tmp_path: Path) -> None:
         pack = tmp_path / "integrations"
         (pack / "agents_md").mkdir(parents=True)
         (pack / "agents_md" / "vesma-always-on.md").write_text(
@@ -3167,24 +3175,24 @@ class TestStampMigration:
         content = dest.read_text(encoding="utf-8")
         assert "vesma:integration:v2.0.0 BEGIN" in content
 
-        # Legacy-generation block (pre-rebrand pack) → verify reports OLD_STAMP;
-        # deploy splices it in place into the current generation.
+        # A legacy-generation block (pre-6.0 pack) is foreign content: the
+        # deploy REFUSES with a migration hint instead of appending a second
+        # (contradictory) block next to it.
         legacy_block = (
             "<!-- mnemos:integration:v2.0.0 BEGIN -->\nold gates\n"
             "<!-- mnemos:integration:v2.0.0 END -->\n"
         )
         dest.write_text("User rules here.\n" + legacy_block, encoding="utf-8")
-        result = mgr.verify("agentic")
+        result = mgr.deploy("agentic")
         agents_rows = [f for f in result.files if f.destination == dest]
-        assert agents_rows and agents_rows[0].status is DeployStatus.OLD_STAMP
+        assert agents_rows and agents_rows[0].status is DeployStatus.SKIPPED
+        assert "legacy mnemos:integration block" in (agents_rows[0].note or "")
 
-        mgr.deploy("agentic")
         updated = dest.read_text(encoding="utf-8")
-        assert "mnemos:integration" not in updated
-        assert "vesma:integration:v2.0.0 BEGIN" in updated
-        assert updated.startswith("User rules here.\n")
+        assert "vesma:integration" not in updated, "no duplicate block injected"
+        assert "mnemos:integration" in updated, "legacy block left for manual migration"
 
-    def test_uninstall_recognizes_legacy_stamps(
+    def test_uninstall_leaves_legacy_stamps_alone(
         self, manager: IntegrationManager, detected_target: str
     ) -> None:
         manager.deploy(detected_target)
@@ -3197,11 +3205,16 @@ class TestStampMigration:
             encoding="utf-8",
         )
         result = manager.uninstall(detected_target)
-        assert victim in result.removed, "legacy-stamped file is still ours — removed"
+        assert victim not in result.removed, "legacy stamp does not prove ownership"
 
 
-class TestSchemasManifestMigration:
-    """Legacy manifest file name is recognized, migrated on update, removed on uninstall."""
+class TestSchemasManifestCleanSheet:
+    """Only the current manifest name carries ownership (clean sheet).
+
+    A legacy-named ``mnemos-schemas.manifest.json`` is foreign data: never
+    migrated, never owned, never deleted. Deploy writes the current-name
+    manifest beside it; uninstall removes only the current-name manifest.
+    """
 
     @pytest.fixture
     def schemas_env(self, tmp_path: Path) -> tuple[IntegrationManager, Path, Path]:
@@ -3213,76 +3226,61 @@ class TestSchemasManifestMigration:
         dest_dir = home / ".zcode" / "schemas"
         return mgr, home, dest_dir
 
-    def test_legacy_manifest_migrates_on_deploy(
+    def test_deploy_writes_current_manifest_and_keeps_legacy_file(
         self, schemas_env: tuple[IntegrationManager, Path, Path]
     ) -> None:
-        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
-
         mgr, _, dest_dir = schemas_env
         dest_dir.mkdir(parents=True, exist_ok=True)
-        legacy = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
+        legacy = dest_dir / "mnemos-schemas.manifest.json"
         legacy.write_text("<!-- mnemos-integration: v8.0.0 -->\n{}\n", encoding="utf-8")
 
         result = mgr.deploy("zcode")
-        assert not legacy.exists(), "legacy manifest removed after migration"
         new_manifest = dest_dir / SCHEMAS_MANIFEST_NAME
         assert new_manifest.is_file(), "current-name manifest written"
-        assert any(
-            f.destination == legacy and f.status is DeployStatus.UPDATED for f in result.files
-        ), "migration reported as UPDATED row"
-        # No OLD_STAMP rows after the migration deploy.
-        verify = mgr.verify("zcode")
-        assert all(f.status is not DeployStatus.OLD_STAMP for f in verify.files)
-
-    def test_verify_reports_legacy_manifest_old_stamp(
-        self, schemas_env: tuple[IntegrationManager, Path, Path]
-    ) -> None:
-        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
-
-        mgr, _, dest_dir = schemas_env
-        mgr.deploy("zcode")
-        # Downgrade the manifest to the legacy name + legacy stamp.
-        new_manifest = dest_dir / SCHEMAS_MANIFEST_NAME
-        legacy = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
-        legacy.write_text(
-            new_manifest.read_text(encoding="utf-8").replace(
-                make_stamp("9.9.9"), "<!-- mnemos-integration: v9.9.9 -->"
-            ),
-            encoding="utf-8",
+        assert legacy.exists(), "legacy-named manifest is foreign — never deleted"
+        assert all(f.destination != legacy for f in result.files), (
+            "the legacy file is not a reported row"
         )
-        new_manifest.unlink()
 
-        verify = mgr.verify("zcode")
-        old_rows = [f for f in verify.files if f.status is DeployStatus.OLD_STAMP]
-        assert old_rows, "legacy-only manifest reported OLD_STAMP"
-
-        mgr.update("zcode")
-        assert new_manifest.is_file() and not legacy.exists()
-
-    def test_uninstall_removes_both_manifest_names(
+    def test_verify_without_current_manifest_reports_missing(
         self, schemas_env: tuple[IntegrationManager, Path, Path]
     ) -> None:
-        from vesma.cli.integration import LEGACY_SCHEMAS_MANIFEST_NAME
+        mgr, _, dest_dir = schemas_env
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        legacy = dest_dir / "mnemos-schemas.manifest.json"
+        legacy.write_text("<!-- mnemos-integration: v8.0.0 -->\n{}\n", encoding="utf-8")
 
+        verify = mgr.verify("zcode")
+        manifest_rows = [
+            f for f in verify.files if f.destination == dest_dir / SCHEMAS_MANIFEST_NAME
+        ]
+        assert manifest_rows and manifest_rows[0].status is DeployStatus.MISSING
+        assert "no sidecar manifest" in (manifest_rows[0].note or "")
+
+    def test_uninstall_removes_current_manifest_only(
+        self, schemas_env: tuple[IntegrationManager, Path, Path]
+    ) -> None:
         mgr, _, dest_dir = schemas_env
         mgr.deploy("zcode")
-        legacy = dest_dir / LEGACY_SCHEMAS_MANIFEST_NAME
+        legacy = dest_dir / "mnemos-schemas.manifest.json"
         legacy.write_text("<!-- mnemos-integration: v8.0.0 -->\n{}\n", encoding="utf-8")
         result = mgr.uninstall("zcode")
         removed_names = {p.name for p in result.removed}
         assert SCHEMAS_MANIFEST_NAME in removed_names
-        assert LEGACY_SCHEMAS_MANIFEST_NAME in removed_names
+        assert "mnemos-schemas.manifest.json" not in removed_names
+        assert legacy.exists(), "legacy manifest survives uninstall"
 
 
 # ── SEC-major #2: uninstall removes the MCP entry the pack registered ────────
 
 
 class TestUnregisterMcp:
-    """``unregister_mcp`` removes ONLY the pack's own MCP entries.
+    """``unregister_mcp`` removes ONLY the pack's own MCP entry.
 
     Ownership rules pinned here (ArchCom 2026-10-01, security-major #2):
-    only the pack's server keys (``vesma`` + legacy ``mnemos``) are
-    considered; a key is removed only when its entry points at the memory
+    only the pack's ``vesma`` key is considered (6.0 clean sheet — a legacy
+    ``mnemos`` entry is foreign data); a key is removed only when its entry
+    points at the memory
     server; a foreign entry under the same key (or any other key) is never
     touched.
     """
@@ -3369,7 +3367,9 @@ class TestUnregisterMcp:
         for key in path:
             node = node[key]
         assert "vesma" not in node, "our brand-primary entry removed"
-        assert "mnemos" not in node, "our legacy entry removed"
+        assert node["mnemos"] == dict(self.OUR_ENTRY, command="/usr/bin/mnemos"), (
+            "legacy-key entry is foreign data — preserved untouched"
+        )
         assert node["other-tool"] == self.FOREIGN_ENTRY, "foreign entry untouched"
         assert data["top"] == {"keep": True}, "unrelated config keys preserved"
 
@@ -3625,7 +3625,7 @@ class TestSetupDefaultAll:
     ) -> None:
         import frontmatter
 
-        from vesma.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMA_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3638,10 +3638,13 @@ class TestSetupDefaultAll:
 
         assert result.exit_code == 0, result.output
         one = frontmatter.load(agents / "one.agent.md")
-        assert VESMARO_WILDCARD in one.metadata["tools"]
-        # Already wired / tool_profile agents are never touched.
+        assert VESMA_WILDCARD in one.metadata["tools"]
+        # A stale pre-6.0 mnemos/* token is dropped and replaced by the
+        # canonical wildcard (one-time migration aid); tool_profile agents
+        # are never touched.
         two = frontmatter.load(agents / "two.agent.md")
-        assert two.metadata["tools"] == ["other/*", "mnemos/*"]
+        assert two.metadata["tools"] == ["other/*", VESMA_WILDCARD]
+        assert "mnemos/*" not in two.metadata["tools"]
         three = frontmatter.load(agents / "three.agent.md")
         assert three.metadata["tools"] == ["read"]
 
@@ -3665,7 +3668,7 @@ class TestSetupDefaultAll:
         """``--wire-agents --all`` / ``--select`` keep working (backward compat)."""
         import frontmatter
 
-        from vesma.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMA_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3675,14 +3678,14 @@ class TestSetupDefaultAll:
 
         result = runner.invoke(app, ["integration", "setup", "--no-mcp", "--wire-agents", "--all"])
         assert result.exit_code == 0, result.output
-        assert VESMARO_WILDCARD in frontmatter.load(agents / "one.agent.md").metadata["tools"]
+        assert VESMA_WILDCARD in frontmatter.load(agents / "one.agent.md").metadata["tools"]
 
     def test_legacy_select_narrows_wiring(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import frontmatter
 
-        from vesma.cli.agent_wiring import VESMARO_WILDCARD
+        from vesma.cli.agent_wiring import VESMA_WILDCARD
 
         pack, _root = _MultiTargetHome.build(tmp_path)
         agents = tmp_path / "agents"
@@ -3694,8 +3697,8 @@ class TestSetupDefaultAll:
             app, ["integration", "setup", "--no-mcp", "--wire-agents", "--select", "two"]
         )
         assert result.exit_code == 0, result.output
-        assert VESMARO_WILDCARD in frontmatter.load(agents / "two.agent.md").metadata["tools"]
-        assert VESMARO_WILDCARD not in frontmatter.load(agents / "one.agent.md").metadata["tools"]
+        assert VESMA_WILDCARD in frontmatter.load(agents / "two.agent.md").metadata["tools"]
+        assert VESMA_WILDCARD not in frontmatter.load(agents / "one.agent.md").metadata["tools"]
 
 
 class TestIssue448MultiTargetOnePass:
@@ -4246,7 +4249,7 @@ class TestCodexTarget:
 
     def test_register_mcp_codex_creates_config(self, codex_env: tuple) -> None:
         mgr, home, cfg_path = codex_env
-        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert ok, note
         data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
         entry = data["mcp_servers"]["vesma"]
@@ -4258,7 +4261,7 @@ class TestCodexTarget:
         mgr, _, cfg_path = codex_env
         cfg_path.write_text(self.USER_CONFIG, encoding="utf-8")
 
-        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert ok, note
 
         merged = cfg_path.read_text(encoding="utf-8")
@@ -4276,30 +4279,32 @@ class TestCodexTarget:
             '[mcp_servers.vesma]\ncommand = "old"\nenv = { VESMA_DATA_DIR = "/custom/data" }\n',
             encoding="utf-8",
         )
-        ok, _ = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, _ = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert ok
         entry = tomllib.loads(cfg_path.read_text(encoding="utf-8"))["mcp_servers"]["vesma"]
         assert entry["env"]["VESMA_DATA_DIR"] == "/custom/data"  # user tuning kept
         assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(home / ".mnemos/vault")
         assert entry["command"] == "/bin/vesma"  # command refreshed
 
-    def test_register_mcp_codex_migrates_legacy_key(self, codex_env: tuple) -> None:
+    def test_register_mcp_codex_keeps_legacy_foreign_table(self, codex_env: tuple) -> None:
         mgr, _, cfg_path = codex_env
         cfg_path.write_text(
             '[mcp_servers.mnemos]\ncommand = "/usr/bin/mnemos"\nargs = ["mcp-server"]\n',
             encoding="utf-8",
         )
-        ok, _ = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, _ = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert ok
         data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
-        assert "mnemos" not in data["mcp_servers"]  # legacy key migrated
+        # 6.0 clean sheet: the legacy table is foreign data — preserved
+        # verbatim; the vesma entry is created alongside it.
+        assert data["mcp_servers"]["mnemos"]["command"] == "/usr/bin/mnemos"
         assert data["mcp_servers"]["vesma"]["command"] == "/bin/vesma"
 
     def test_register_mcp_codex_idempotent(self, codex_env: tuple) -> None:
         mgr, _, cfg_path = codex_env
-        assert mgr.register_mcp("codex", mnemos_bin="/bin/vesma")[0]
+        assert mgr.register_mcp("codex", vesma_bin="/bin/vesma")[0]
         first = cfg_path.read_text(encoding="utf-8")
-        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert ok
         assert "already registered" in note
         assert cfg_path.read_text(encoding="utf-8") == first
@@ -4307,7 +4312,7 @@ class TestCodexTarget:
     def test_register_mcp_codex_refuses_corrupt_toml(self, codex_env: tuple) -> None:
         mgr, _, cfg_path = codex_env
         cfg_path.write_text("[broken\nthis is = not toml", encoding="utf-8")
-        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert not ok
         assert "cannot parse" in note
         assert cfg_path.read_text(encoding="utf-8") == "[broken\nthis is = not toml"
@@ -4316,7 +4321,7 @@ class TestCodexTarget:
         mgr, _, cfg_path = codex_env
         original = 'mcp_servers = { vesma = { command = "x" } }\n'
         cfg_path.write_text(original, encoding="utf-8")
-        ok, note = mgr.register_mcp("codex", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("codex", vesma_bin="/bin/vesma")
         assert not ok
         assert "not a plain TOML table" in note
         assert cfg_path.read_text(encoding="utf-8") == original
@@ -4463,7 +4468,7 @@ class TestH2JsonTargets:
 
     def test_cursor_register_mcp_creates_config(self, h2_env: tuple) -> None:
         mgr, home = h2_env
-        ok, note = mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        ok, note = mgr.register_mcp("cursor", vesma_bin="/bin/vesma")
         assert ok, note
         data = json.loads((home / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
         assert data["mcpServers"]["vesma"]["command"] == "/bin/vesma"
@@ -4481,7 +4486,7 @@ class TestH2JsonTargets:
             ),
             encoding="utf-8",
         )
-        ok, _ = mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        ok, _ = mgr.register_mcp("cursor", vesma_bin="/bin/vesma")
         assert ok
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         assert data["other"] == {"setting": True}
@@ -4491,7 +4496,7 @@ class TestH2JsonTargets:
     def test_cursor_uninstall_keeps_foreign_server(self, h2_env: tuple) -> None:
         mgr, home = h2_env
         cfg_path = home / ".cursor" / "mcp.json"
-        mgr.register_mcp("cursor", mnemos_bin="/bin/vesma")
+        mgr.register_mcp("cursor", vesma_bin="/bin/vesma")
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         data["mcpServers"]["another"] = {"command": "x"}
         cfg_path.write_text(json.dumps(data), encoding="utf-8")
@@ -4506,7 +4511,7 @@ class TestH2JsonTargets:
 
     def test_claude_code_agents_md_and_mcp(self, h2_env: tuple) -> None:
         mgr, home = h2_env
-        result = mgr.setup("claude-code", mnemos_bin="/bin/vesma")
+        result = mgr.setup("claude-code", vesma_bin="/bin/vesma")
         assert result.mcp_registered
 
         claude_md = home / ".claude" / "CLAUDE.md"
@@ -4530,7 +4535,7 @@ class TestH2JsonTargets:
             ),
             encoding="utf-8",
         )
-        ok, _ = mgr.register_mcp("claude-code", mnemos_bin="/bin/vesma")
+        ok, _ = mgr.register_mcp("claude-code", vesma_bin="/bin/vesma")
         assert ok
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         assert data["numStartups"] == 7  # Claude Code's own state preserved
@@ -4543,7 +4548,7 @@ class TestH2JsonTargets:
         claude_md = home / ".claude" / "CLAUDE.md"
         user_content = "# My standing rules\n\nAlways answer in English.\n"
         claude_md.write_text(user_content, encoding="utf-8")
-        mgr.setup("claude-code", mnemos_bin="/bin/vesma")
+        mgr.setup("claude-code", vesma_bin="/bin/vesma")
         result = mgr.uninstall("claude-code")
         assert claude_md.read_text(encoding="utf-8") == user_content
         assert result.mcp_unregistered
@@ -4556,7 +4561,7 @@ class TestH2JsonTargets:
         assert windsurf is not None
         assert windsurf.deploy_map == {}  # no file-based artefacts by design
 
-        result = mgr.setup("windsurf", mnemos_bin="/bin/vesma")
+        result = mgr.setup("windsurf", vesma_bin="/bin/vesma")
         assert result.mcp_registered
         cfg_path = home / ".codeium" / "windsurf" / "mcp_config.json"
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
@@ -4577,7 +4582,7 @@ class TestH2JsonTargets:
     def test_windsurf_unregister_keeps_foreign(self, h2_env: tuple) -> None:
         mgr, home = h2_env
         cfg_path = home / ".codeium" / "windsurf" / "mcp_config.json"
-        mgr.register_mcp("windsurf", mnemos_bin="/bin/vesma")
+        mgr.register_mcp("windsurf", vesma_bin="/bin/vesma")
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         data["mcpServers"]["other-engine"] = {"command": "node"}
         cfg_path.write_text(json.dumps(data), encoding="utf-8")

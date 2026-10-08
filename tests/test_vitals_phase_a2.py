@@ -185,7 +185,7 @@ class TestExpositionEndpoint:
                 resp = client.get("/api/v1/metrics")
             assert resp.status_code == 200
             text = resp.text
-            assert "mnemos_verb_calls_total" in text
+            assert "vesma_verb_calls_total" in text
             assert 'verb="vesma_add"' in text
             # RL-S2: project slug never leaks into exposition
             assert "vitals-t" not in text

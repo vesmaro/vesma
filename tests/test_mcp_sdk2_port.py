@@ -138,7 +138,7 @@ def test_check_mcp_transport_broken_import_is_loud_fail(
     result = _check_mcp_transport()
     assert result.status == CheckStatus.FAIL, result.detail
     assert result.detail.startswith("MCP transport broken:")
-    assert "reinstall" in result.detail and "mnemos-memory-server" in result.detail, (
+    assert "reinstall" in result.detail and "force-reinstall vesma" in result.detail, (
         "must name the reinstall remediation"
     )
     assert "mcp>=2.0,<3.0" in result.detail, "must name the SDK floor/cap"

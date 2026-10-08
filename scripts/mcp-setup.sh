@@ -2,7 +2,7 @@
 # scripts/mcp-setup.sh — register Vesma as an MCP server in VS Code
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/mcp-setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/mcp-setup.sh | bash
 #   curl -fsSL .../mcp-setup.sh | bash -s -- --scope workspace
 #   curl -fsSL .../mcp-setup.sh | bash -s -- --scope user --data-dir ~/.mnemos --vault ~/vesma-vault
 #
@@ -20,7 +20,7 @@ set -euo pipefail
 SCOPE="user"
 DATA_DIR="${HOME}/.mnemos/data"
 VAULT_PATH="${HOME}/.mnemos/vault"
-MNEMOS_CMD=""
+VESMA_CMD=""
 AUTO_COLLECT=false
 FORCE=false
 DRY_RUN=false
@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
     --scope)        SCOPE="$2"; shift 2 ;;
     --data-dir)     DATA_DIR="$2"; shift 2 ;;
     --vault)        VAULT_PATH="$2"; shift 2 ;;
-    --command)      MNEMOS_CMD="$2"; shift 2 ;;
+    --command)      VESMA_CMD="$2"; shift 2 ;;
     --auto-collect) AUTO_COLLECT=true; shift ;;
     --force)        FORCE=true; shift ;;
     --dry-run)      DRY_RUN=true; shift ;;
@@ -51,15 +51,15 @@ done
 
 [[ "$SCOPE" != "user" && "$SCOPE" != "workspace" ]] && die "--scope must be 'user' or 'workspace'"
 
-if [[ -z "$MNEMOS_CMD" ]]; then
-  candidate="${HOME}/.mnemos/venv/bin/mnemos"
+if [[ -z "$VESMA_CMD" ]]; then
+  candidate="${HOME}/.mnemos/venv/bin/vesma"
   if [[ -x "$candidate" ]]; then
-    MNEMOS_CMD="$candidate"; info "Found vesma at: ${MNEMOS_CMD}"
+    VESMA_CMD="$candidate"; info "Found vesma at: ${VESMA_CMD}"
   elif command -v vesma &>/dev/null; then
-    MNEMOS_CMD="$(command -v vesma)"; info "Found vesma on PATH: ${MNEMOS_CMD}"
+    VESMA_CMD="$(command -v vesma)"; info "Found vesma on PATH: ${VESMA_CMD}"
   fi
 fi
-[[ -z "$MNEMOS_CMD" ]] && die "vesma executable not found. Install first: curl -fsSL https://raw.githubusercontent.com/vesmaro/vesmaro/main/scripts/install.sh | bash"
+[[ -z "$VESMA_CMD" ]] && die "vesma executable not found. Install first: curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh | bash"
 
 case "$(uname -s)" in
   Darwin)  VSCODE_USER_DIR="${HOME}/Library/Application Support/Code/User" ;;
@@ -85,7 +85,7 @@ if [[ ! -f "$MCP_FILE" ]]; then
   "servers": {
     "vesma": {
       "type": "stdio",
-      "command": "${MNEMOS_CMD}",
+      "command": "${VESMA_CMD}",
       "args": ["mcp-server"],
       "env": {
         "VESMA_DATA_DIR": "${DATA_DIR}",
@@ -116,7 +116,7 @@ import json
 with open('$MCP_FILE') as f:
     cfg = json.load(f)
 cfg.setdefault('servers', {})['vesma'] = {
-    'type': 'stdio', 'command': '$MNEMOS_CMD', 'args': ['mcp-server'],
+    'type': 'stdio', 'command': '$VESMA_CMD', 'args': ['mcp-server'],
     'env': {'VESMA_DATA_DIR': '$DATA_DIR', 'VESMA_VAULT__VAULT_PATH': '$VAULT_PATH'$([ "$AUTO_COLLECT" == true ] && echo ", 'VESMA_AUTO_COLLECT': '1'")}
 }
 print(json.dumps(cfg, indent=2))
@@ -127,7 +127,7 @@ import json
 with open('$MCP_FILE') as f:
     cfg = json.load(f)
 cfg.setdefault('servers', {})['vesma'] = {
-    'type': 'stdio', 'command': '$MNEMOS_CMD', 'args': ['mcp-server'],
+    'type': 'stdio', 'command': '$VESMA_CMD', 'args': ['mcp-server'],
     'env': {'VESMA_DATA_DIR': '$DATA_DIR', 'VESMA_VAULT__VAULT_PATH': '$VAULT_PATH'$([ "$AUTO_COLLECT" == true ] && echo ", 'VESMA_AUTO_COLLECT': '1'")}
 }
 with open('$MCP_FILE', 'w') as f:
@@ -141,7 +141,7 @@ with open('$MCP_FILE', 'w') as f:
       info "[dry-run] Would insert vesma entry."
     else
       sed -i.bak "/\"servers\"[[:space:]]*:[[:space:]]*{/a\\
-    \"vesma\": { \"type\": \"stdio\", \"command\": \"${MNEMOS_CMD}\", \"args\": [\"mcp-server\"], \"env\": { \"VESMA_DATA_DIR\": \"${DATA_DIR}\", \"VESMA_VAULT__VAULT_PATH\": \"${VAULT_PATH}\" } },
+    \"vesma\": { \"type\": \"stdio\", \"command\": \"${VESMA_CMD}\", \"args\": [\"mcp-server\"], \"env\": { \"VESMA_DATA_DIR\": \"${DATA_DIR}\", \"VESMA_VAULT__VAULT_PATH\": \"${VAULT_PATH}\" } },
 " "$MCP_FILE"
       ok "Inserted 'vesma' into ${MCP_FILE} (backup: ${MCP_FILE}.bak)"
     fi
@@ -150,7 +150,7 @@ fi
 
 echo ""
 printf '%s✓%s  MCP server registered.\n' "$GREEN" "$NC"
-printf "    Command:  %s mcp-server\n" "$MNEMOS_CMD"
+printf "    Command:  %s mcp-server\n" "$VESMA_CMD"
 printf "    Data dir: %s\n" "$DATA_DIR"
 printf "    Vault:    %s\n" "$VAULT_PATH"
 [[ "$AUTO_COLLECT" == true ]] && printf "    Auto-collect: enabled\n"

@@ -25,9 +25,9 @@ ours and is the primary channel (`pyproject.toml` `name = "vesma"`),
 `mnemos-memory-server` stays published, frozen at 5.2.0 until deprecation.
 All three carry the "(Vesmaro Project)" summary.
 
-Since 5.0.0 the import package is `vesmaro` (a `mnemos` compat shim still
-ships) and the CLIs are `vesmaro` (canonical), `vesma` (short hook) and
-`mnemos` (deprecated alias). Only the installable/PyPI name and the
+Since 5.0.0 the import package is `vesma` (a `vesma` compat shim still
+ships) and the CLIs are `vesma` (canonical), `vesma` (short hook) and
+`vesma` (deprecated alias). Only the installable/PyPI name and the
 Python import name differ. Since the 5.5.0 train the pipeline publishes
 BOTH live channels in one run: `scripts/pypi-publish.sh` reads the
 primary name from `pyproject.toml`, then substitutes the mirror name
@@ -47,7 +47,7 @@ verified table above; no `v0.1.1` exists in the release list):
 | Name | PyPI status (2026-09-01, as recorded) | Occupied by |
 | --- | --- | --- |
 | `vesma` | ❌ recorded taken (v0.1.1) | "Memory for agentic AI" — Tyson Chan |
-| `mnemos-memory` | ❌ taken (v0.6.0) | "Biomimetic memory architectures for LLMs" |
+| `vesma-memory` | ❌ taken (v0.6.0) | "Biomimetic memory architectures for LLMs" |
 | `mnemos-memory-server` | ✅ free then | — chosen first, frozen at 5.2.0 after the rebrand |
 | `vesma-server` / `vesma-mcp` / `vesma-ai` / `vesma-agent-memory` | ✅ free then | — |
 
@@ -110,7 +110,7 @@ isolated `dist/<normalized-name>/` and re-runs the gates. The restore is
 verified with `git diff` after every substitution — a failed restore is a
 hard error, so `pyproject.toml` can never be left modified, crash or not.
 A stale `pyproject.toml.pypi-publish.bak` from a killed run is refused at
-startup. Mirror dists share the import package (`vesmaro`) and the CLI
+startup. Mirror dists share the import package (`vesma`) and the CLI
 entry points — only the distribution name differs.
 
 ### Gates
@@ -125,8 +125,8 @@ entry points — only the distribution name differs.
 | G4 | smoke-installed package version == `pyproject.toml` version (per dist) | always (artifact proof) |
 
 G4 verifies the post-rebrand wheel layout: it checks the installed
-`vesmaro` package resources (`integrations/`, `scripts/`), not the
-deprecated `mnemos` shim.
+`vesma` package resources (`integrations/`, `scripts/`), not the
+deprecated `vesma` shim.
 
 G0 stays as a hard safety net now that the projects are live: a rebuild of
 an already-published version fails cleanly BEFORE any upload attempt
@@ -182,7 +182,7 @@ Credentials and toolchain:
 
 - `GHCR_TOKEN` — classic PAT with `repo` + `write:packages`, exported in
   the moment (never written to disk or history). `GHCR_USER` defaults to
-  `vesmaro`.
+  `vesma`.
 - Builder: `podman` → `buildah` → `docker` (override with
   `VESMA_IMAGE_BUILDER`). Smoke runner: `podman` → `docker`
   (`VESMA_IMAGE_RUNNER`). Pusher: `skopeo`

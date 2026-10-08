@@ -10,7 +10,7 @@ receive pinned schemas natively from the engine deploy
 - **Do not edit.** JSON cannot carry comments, so provenance lives here
   instead of a header inside the files. The deployed copies are
   byte-identical to the pin tag; the engine deploy stamps ownership via a
-  sidecar manifest (`mnemos-schemas.manifest.json`), never inline.
+  sidecar manifest (`vesma-schemas.manifest.json`), never inline.
 
 ## Provenance per file (sha256 at the pin tag)
 

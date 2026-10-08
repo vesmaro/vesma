@@ -12,7 +12,7 @@ Type=simple
 @@USER_LINE@@
 EnvironmentFile=-@@ENVFILE@@
 @@MKDIR_LINE@@
-ExecStart=@@VENV@@/bin/mnemos serve --config @@CONF@@
+ExecStart=@@VENV@@/bin/vesma serve --config @@CONF@@
 # Wait for /health before systemd marks the unit started.
 ExecStartPost=/bin/sh -c 'i=0; while [ $i -lt 30 ]; do curl -sf -m 2 http://127.0.0.1:@@PORT@@/health >/dev/null && exit 0; i=$((i+1)); sleep 2; done; exit 1'
 TimeoutStartSec=150

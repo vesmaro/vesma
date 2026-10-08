@@ -23,7 +23,7 @@
 #   VESMA_SYNC_PASSPHRASE_ENV     — NAME of env var holding the passphrase
 #
 # Optional env:
-#   VESMA_SYNC_PEER_USER           — ssh user on B (default: mnemos-sync)
+#   VESMA_SYNC_PEER_USER           — ssh user on B (default: vesma-sync)
 #   VESMA_SYNC_DRY_RUN             — "1" logs commands only, no writes/ssh
 #   VESMA_SYNC_SOURCE_CONFIG       — path to A's vesma config.yaml
 #   VESMA_SYNC_REMOTE_FILE         — basename on B (default: vesma-sync-<ts>.json)
@@ -42,7 +42,7 @@
 #
 # Exit codes:
 #   0 — export + transfer + import all green
-#   1 — a sync step failed (mnemos/rsync/ssh returned non-zero)
+#   1 — a sync step failed (vesma/rsync/ssh returned non-zero)
 #   2 — env-var validation failed (script not configured)
 
 set -euo pipefail
@@ -86,11 +86,11 @@ if [[ ${#_missing[@]} -gt 0 ]]; then
 fi
 
 # ── optional env with defaults ───────────────────────────────────────────────
-PEER_USER="${VESMA_SYNC_PEER_USER:-mnemos-sync}"
+PEER_USER="${VESMA_SYNC_PEER_USER:-vesma-sync}"
 DRY_RUN="${VESMA_SYNC_DRY_RUN:-0}"
 SOURCE_CONFIG="${VESMA_SYNC_SOURCE_CONFIG:-}"
-REMOTE_FILE="${VESMA_SYNC_REMOTE_FILE:-mnemos-sync-$(date -u +%Y%m%dT%H%M%SZ).json}"
-MNEMOS_BIN="${VESMA_SYNC_VESMA_BIN:-}"
+REMOTE_FILE="${VESMA_SYNC_REMOTE_FILE:-vesma-sync-$(date -u +%Y%m%dT%H%M%SZ).json}"
+VESMA_BIN="${VESMA_SYNC_VESMA_BIN:-}"
 
 # Normalize VESMA_SYNC_ENCRYPT to a boolean string.
 case "${VESMA_SYNC_ENCRYPT}" in
@@ -113,11 +113,11 @@ if [[ "$ENCRYPT" == "true" ]]; then
 fi
 
 # Discover the vesma CLI on A if not set.
-if [[ -z "$MNEMOS_BIN" ]]; then
+if [[ -z "$VESMA_BIN" ]]; then
     if command -v vesma >/dev/null 2>&1; then
-        MNEMOS_BIN="$(command -v vesma)"
-    elif [[ -x "$(dirname "$0")/../.venv/bin/mnemos" ]]; then
-        MNEMOS_BIN="$(cd "$(dirname "$0")/.." && pwd)/.venv/bin/mnemos"
+        VESMA_BIN="$(command -v vesma)"
+    elif [[ -x "$(dirname "$0")/../.venv/bin/vesma" ]]; then
+        VESMA_BIN="$(cd "$(dirname "$0")/.." && pwd)/.venv/bin/vesma"
     else
         _err "vesma CLI not found on PATH and no .venv next to the script."
         _err "set VESMA_SYNC_VESMA_BIN in /etc/vesma/sync.env."
@@ -157,14 +157,14 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ── 1. SOURCE: export on A ───────────────────────────────────────────────────
-_log "step 1/3 — export on A: ${MNEMOS_BIN} ${_export_args[*]}"
+_log "step 1/3 — export on A: ${VESMA_BIN} ${_export_args[*]}"
 if [[ "$DRY_RUN" == "1" ]]; then
     _log "dry-run: skipping actual export."
 else
     # vesma sync export reads the passphrase from $VESMA_SYNC_PASSPHRASE_ENV
     # (the NAME), which must be set in this process's environment.
     set +e
-    "$MNEMOS_BIN" "${_export_args[@]}"
+    "$VESMA_BIN" "${_export_args[@]}"
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then

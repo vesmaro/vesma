@@ -4,7 +4,7 @@ Operator/agent commands around the PG2 registration table:
 
 * ``vesma graph register <project> <root>`` — register a project root
   without the Python REPL (the agent-facing twin of the
-  ``mnemos_register_project`` MCP tool, #454).
+  ``vesma_register_project`` MCP tool, #454).
 * ``vesma graph repoint <project> <new-root>`` — re-point a GHOST
   registration (root moved on disk) at its new location, purging the
   stale index (#450).
@@ -95,7 +95,7 @@ def register_cmd(
         f"[green]{result['status']}[/green] project {result['project']!r} "
         f"at {result['root']}" + (f" — {result['note']}" if result.get("note") else "")
     )
-    console.print("[dim]next: vesma mcp / mnemos_index_project to build the graph[/dim]")
+    console.print("[dim]next: vesma mcp / vesma_index_project to build the graph[/dim]")
 
 
 @graph_app.command(name="repoint")

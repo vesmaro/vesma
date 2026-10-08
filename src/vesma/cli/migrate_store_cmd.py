@@ -188,9 +188,10 @@ def _print_report(report: MigrationReport) -> None:
     for warning in report.warnings:
         console.print(f"  [yellow]warning: {warning}[/yellow]")
     console.print(
-        "\n  [yellow]Note:[/yellow] the 6.0 code at this release reads mnemos:* "
-        "canonically; point the service at the new home only together with the "
-        "canonical-prefix code wave (see ADR-0044)."
+        "\n  [yellow]Note:[/yellow] the canonical tag namespace is vesma:* "
+        "(legacy mnemos:* accepted on input; the mnemos:no-federate trust "
+        "marker stays byte-stable). Point the service at the new home only "
+        "together with this canonical-prefix code wave (see ADR-0044)."
     )
 
 

@@ -1,4 +1,4 @@
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 # Руководство по интеграции
 
 **🌐 Language / Язык:** [English](../../en/user/integration-guide.md) · Русский
@@ -67,7 +67,7 @@ integrations/
 Каждый разворачиваемый файл несёт safety-контракт пака (вспомненное — данные,
 а не инструкции; без эксфильтрации; ноль секретов; локальный канон харнеса
 приоритетен) и версионный штамп `vesma-integration`. Легаси-штампы
-`mnemos-integration` распознаются в миграционное окно и переклеиваются
+`vesma-integration` распознаются в миграционное окно и переклеиваются
 первым `vesma integration update`.
 ```
 
@@ -191,7 +191,7 @@ vesma integration setup --target pi
 ```bash
 vesma integration setup --target zcode \
   --home /var/home/you/.distrobox/other-box/home \
-  --vesma-bin /path/to/mnemos-wrapper \
+  --vesma-bin /path/to/vesma-wrapper \
   --no-wire-agents
 ```
 
@@ -229,7 +229,7 @@ vesma integration verify
 - Все файлы инструкций присутствуют с валидным frontmatter (`applyTo: '**'`).
 - Все файлы скиллов присутствуют с `name:` и `description:`.
 - Файл промпт-режима присутствует с `mode:` и `tools:`.
-- Версионный штамп `<!-- mnemos-integration: v2.0.0 -->` в каждом файле.
+- Версионный штамп `<!-- vesma-integration: v2.0.0 -->` в каждом файле.
 - Нет ссылок на `ai-brain` (кроме комментария "adapted from" в промпте).
 
 Код выхода `0` = все проверки пройдены. Ненулевой = файлы отсутствуют или
@@ -360,15 +360,15 @@ vesma integration verify
 
 Контекстный фильтр — пятиступенчатый конвейер (dedup, noise, extract,
 compress, tokens), который очищает сырой контент от шума до того, как он
-попадёт к модели. Запускается автоматически при каждом `mnemos_add`, когда
+попадёт к модели. Запускается автоматически при каждом `vesma_add`, когда
 `auto_filter: true` (по умолчанию для новых установок).
 
 Ключевые поверхности:
 
-- **Автофильтр при приёме** — `mnemos_add` сохраняет `raw_content` +
+- **Автофильтр при приёме** — `vesma_add` сохраняет `raw_content` +
   `clean_content` + `filter_stats`. Поиск и recall возвращают
   `clean_content`, если он есть.
-- **MCP-инструмент `mnemos_filter`** — явная перефильтрация существующей
+- **MCP-инструмент `vesma_filter`** — явная перефильтрация существующей
   записи (переопределение профиля, задание бюджета токенов).
 - **CLI `vesma filter`** — `vesma filter <id>` для одной записи,
   `vesma filter --all` для бэкфилла нефильтрованных записей.
@@ -387,7 +387,7 @@ compress, tokens), который очищает сырой контент от 
 В vesma есть две выделенные поверхности для интеграции харнессов и
 автоматизации (ADR-0017 D1 / ADR-0018, vesma #125 Wave 3):
 
-- **Хуки жизненного цикла** — групповой MCP-инструмент `mnemos_hooks` и
+- **Хуки жизненного цикла** — групповой MCP-инструмент `vesma_hooks` и
   REST-близнец `POST /hooks/{action}` с тремя действиями: `pre_llm_call`
   (собрать контекстный блок для инъекции перед вызовом модели — передайте
   `context_hint` = о чём вызов, и опционально `task` = «голый» slug задачи,
@@ -398,7 +398,7 @@ compress, tokens), который очищает сырой контент от 
   через CCR и возвращается `compressed_text` с маркером в голове для
   подстановки в ваше окно). Идентичность (`session`/`project`/`agent`)
   обязательна на каждом вызове хука. Полный справочник:
-  [mcp-tools.md → `mnemos_hooks`](mcp-tools.md#mnemos_hooks)
+  [mcp-tools.md → `vesma_hooks`](mcp-tools.md#vesma_hooks)
   / [http-api.md → Хуки жизненного цикла](http-api.md).
 - **`VesmaSDK`** (`from vesma.sdk import VesmaSDK`) — тонкая типизированная
   Python-обёртка над `MemoryManager` для in-process адаптеров:
@@ -613,7 +613,7 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 
 ## Контракт тегов
 
-Каждый вызов `mnemos_add` и `mnemos_ingest_url` должен содержать:
+Каждый вызов `vesma_add` и `vesma_ingest_url` должен содержать:
 
 - **ровно один** `project:<slug>`
 - **ровно один** `agent:<slug>` (или `agent:user`)
@@ -627,7 +627,7 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 
 ## Hermes Agent
 
-Vesma предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `mnemos.adapters.hermes.HermesMemoryAdapter` — фасад `VesmaSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
+Vesma предоставляет нативный плагин `MemoryProvider` для [Hermes Agent](https://hermes-agent.nousresearch.com/) от Nous Research. После миграции на контракт провайдера ADR-0017 D1 (#125 W5) плагин работает **in-process на контракте**: каждая операция с памятью идёт через `vesma.adapters.hermes.HermesMemoryAdapter` — фасад `VesmaSDK` плюс хуки жизненного цикла (`pre_llm_call` / `on_session_start` / `post_tool_call`) — вниз к одному `MemoryManager`. Легаси-путь с самодельным HTTP (urllib-клиент, TOTP-логин, circuit breaker, обходной auto-publish) удалён.
 
 ### Установка
 
@@ -655,25 +655,25 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 
 ### Инструменты
 
-Плагин экспонирует инструменты `vesma_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`VesmaSDK.remember` / `recall`, хуки) вместо сырого HTTP. `mnemos_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
+Плагин экспонирует инструменты `vesma_*` как нативные инструменты Hermes — теперь поверх контрактных глаголов (`VesmaSDK.remember` / `recall`, хуки) вместо сырого HTTP. `vesma_align_prefix` (P1-5 CacheAligner) остаётся **MCP-only** — выравнивание применяется внутри пайплайна сборки, отдельного глагола менеджера нет.
 
 | Инструмент | Поверхность контракта |
 |------------|----------------------|
-| `mnemos_search` | `VesmaSDK.recall` (скан выдачи) |
-| `mnemos_add` | `VesmaSDK.remember` (контракт тегов на канале) |
-| `mnemos_recall_context` | recall чекпоинтов + скан канала |
-| `mnemos_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
-| `mnemos_agent_recall` | агентский recall + скан канала |
-| `mnemos_list_recent` | `MemoryManager.list_recent` (скан только заголовков) |
-| `mnemos_list_tags` | `MemoryManager.list_tags` |
-| `mnemos_stats` | `VesmaSDK.stats` (срез проекта) |
-| `mnemos_auto_collect_status` | in-process счётчик вызовов (та же форма) |
-| `mnemos_ingest_url` | `MemoryManager.ingest_url` |
-| `mnemos_compress` | хук `post_tool_call` (идентичность N2) |
-| `mnemos_retrieve` | `MemoryManager.retrieve_content` (agent+session) |
-| `mnemos_watch_start` | `MemoryManager.watch_start` |
-| `mnemos_watch_stop` | `MemoryManager.watch_stop` |
-| `mnemos_watch_status` | `MemoryManager.watch_status` |
+| `vesma_search` | `VesmaSDK.recall` (скан выдачи) |
+| `vesma_add` | `VesmaSDK.remember` (контракт тегов на канале) |
+| `vesma_recall_context` | recall чекпоинтов + скан канала |
+| `vesma_save_context` | `VesmaSDK.remember` (`vesma:checkpoint`) |
+| `vesma_agent_recall` | агентский recall + скан канала |
+| `vesma_list_recent` | `MemoryManager.list_recent` (скан только заголовков) |
+| `vesma_list_tags` | `MemoryManager.list_tags` |
+| `vesma_stats` | `VesmaSDK.stats` (срез проекта) |
+| `vesma_auto_collect_status` | in-process счётчик вызовов (та же форма) |
+| `vesma_ingest_url` | `MemoryManager.ingest_url` |
+| `vesma_compress` | хук `post_tool_call` (идентичность N2) |
+| `vesma_retrieve` | `MemoryManager.retrieve_content` (agent+session) |
+| `vesma_watch_start` | `MemoryManager.watch_start` |
+| `vesma_watch_stop` | `MemoryManager.watch_stop` |
+| `vesma_watch_status` | `MemoryManager.watch_status` |
 
 ### Конфигурация
 
@@ -712,7 +712,7 @@ Vesma предоставляет нативный плагин `MemoryProvider` 
 Каждый файл в слое интеграции несёт версионный штамп:
 
 ```html
-<!-- mnemos-integration: v2.0.0 -->
+<!-- vesma-integration: v2.0.0 -->
 ```
 
 Это позволяет `vesma integration verify` обнаруживать устаревшие файлы после

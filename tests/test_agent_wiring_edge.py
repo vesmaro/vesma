@@ -33,8 +33,8 @@ import pytest
 from typer.testing import CliRunner
 
 from vesma.cli.agent_wiring import (
-    VESMARO_TOOLS,
-    VESMARO_WILDCARD,
+    VESMA_TOOLS,
+    VESMA_WILDCARD,
     WireStatus,
     detect_agents,
     verify_agents,
@@ -137,7 +137,7 @@ class TestFrontmatterEdgeCases:
         assert len(infos) == 1
         info = infos[0]
         assert info.has_tools is False
-        assert info.has_mnemos is False
+        assert info.has_vesma is False
         # Name falls back to filename.
         assert info.name == "no-frontmatter.agent.md"
 
@@ -173,7 +173,7 @@ class TestFrontmatterEdgeCases:
 
         post = frontmatter.load(directory / "commented.agent.md")
         assert post.metadata["name"] == "GCW: Commented Agent"
-        assert VESMARO_WILDCARD in _tools_from_post(post)
+        assert VESMA_WILDCARD in _tools_from_post(post)
 
     def test_multiline_tools_block(self, tmp_path: Path) -> None:
         """Multi-line YAML block-style ``tools:`` array is parsed correctly."""
@@ -196,13 +196,13 @@ class TestFrontmatterEdgeCases:
 
         infos = detect_agents(directory)
         assert infos[0].tools_count == 3
-        assert infos[0].has_mnemos is False
+        assert infos[0].has_vesma is False
 
         result = wire_agent(directory / "block-tools.agent.md", mode="wildcard")
         assert result.status == WireStatus.WIRED
 
         post = frontmatter.load(directory / "block-tools.agent.md")
-        assert VESMARO_WILDCARD in _tools_from_post(post)
+        assert VESMA_WILDCARD in _tools_from_post(post)
         # Original tools preserved.
         assert "read" in _tools_from_post(post)
         assert "execute" in _tools_from_post(post)
@@ -224,7 +224,7 @@ class TestFrontmatterEdgeCases:
         assert result.status == WireStatus.WIRED
 
         post = frontmatter.load(directory / "flow-tools.agent.md")
-        assert VESMARO_WILDCARD in _tools_from_post(post)
+        assert VESMA_WILDCARD in _tools_from_post(post)
 
     def test_tools_as_string_not_list(self, tmp_path: Path) -> None:
         """``tools`` as a string (malformed) → treated as no-tools, no crash."""
@@ -249,7 +249,7 @@ class TestFrontmatterEdgeCases:
         post = frontmatter.load(directory / "string-tools.agent.md")
         tools = _tools_from_post(post)
         assert isinstance(tools, list)
-        assert VESMARO_WILDCARD in tools
+        assert VESMA_WILDCARD in tools
 
     def test_empty_frontmatter(self, tmp_path: Path) -> None:
         """Empty frontmatter (``---\\n---``) → name falls back to filename."""
@@ -302,8 +302,8 @@ class TestConcurrentWiring:
         post = frontmatter.load(path)
         tools = _tools_from_post(post)
         assert isinstance(tools, list)
-        assert VESMARO_WILDCARD in tools
-        for tool in VESMARO_TOOLS:
+        assert VESMA_WILDCARD in tools
+        for tool in VESMA_TOOLS:
             assert tool in tools
         # Original tools preserved.
         assert "read" in tools
@@ -327,7 +327,7 @@ class TestConcurrentWiring:
         assert r2.status == WireStatus.ALREADY_WIRED
 
         post = frontmatter.load(path)
-        assert _tools_from_post(post).count(VESMARO_WILDCARD) == 1
+        assert _tools_from_post(post).count(VESMA_WILDCARD) == 1
 
 
 # ── File permissions ──────────────────────────────────────────────────────────
@@ -410,7 +410,7 @@ class TestLargeAgentCount:
         infos = detect_agents(directory)
         assert len(infos) == 100
         # All should be unwired (no mnemos tools).
-        assert all(not info.has_mnemos for info in infos)
+        assert all(not info.has_vesma for info in infos)
 
     def test_verify_100_agents_counts(self, tmp_path: Path) -> None:
         """verify_agents correctly counts 100 agents with mixed states."""
@@ -427,7 +427,7 @@ class TestLargeAgentCount:
             _write_agent(
                 directory,
                 f"wired-{i:03d}.agent.md",
-                tools=["read", VESMARO_WILDCARD],
+                tools=["read", VESMA_WILDCARD],
             )
         for i in range(10):
             _write_agent(
@@ -466,19 +466,19 @@ class TestWildcardToPreciseMigration:
             directory,
             "migrate.agent.md",
             name="GCW: Migrate",
-            tools=["read", "search", VESMARO_WILDCARD],
+            tools=["read", "search", VESMA_WILDCARD],
         )
 
         result = wire_agent(path, mode="precise")
         assert result.status == WireStatus.WIRED
-        assert len(result.tools_added) == len(VESMARO_TOOLS)
+        assert len(result.tools_added) == len(VESMA_TOOLS)
 
         post = frontmatter.load(path)
         tools = _tools_from_post(post)
         # Wildcard preserved.
-        assert VESMARO_WILDCARD in tools
+        assert VESMA_WILDCARD in tools
         # All precise tokens added.
-        for tool in VESMARO_TOOLS:
+        for tool in VESMA_TOOLS:
             assert tool in tools
         # Original tools preserved.
         assert "read" in tools
@@ -492,7 +492,7 @@ class TestWildcardToPreciseMigration:
             directory,
             "migrate2.agent.md",
             name="GCW: Migrate 2",
-            tools=["read", VESMARO_WILDCARD],
+            tools=["read", VESMA_WILDCARD],
         )
 
         wire_agent(path, mode="precise")
@@ -542,7 +542,7 @@ class TestCliSelectEdgeCases:
         assert result.exit_code == 0, result.output
         # Real agent should NOT be wired (was not selected).
         post = frontmatter.load(directory / "real-agent.agent.md")
-        assert VESMARO_WILDCARD not in _tools_from_post(post)
+        assert VESMA_WILDCARD not in _tools_from_post(post)
 
     def test_select_already_wired_agent_skips(
         self,
@@ -556,7 +556,7 @@ class TestCliSelectEdgeCases:
             directory,
             "wired.agent.md",
             name="GCW: Wired",
-            tools=["read", VESMARO_WILDCARD],
+            tools=["read", VESMA_WILDCARD],
         )
         monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", directory)
         monkeypatch.setattr("vesma.cli.util.DEFAULT_AGENTS_DIR", directory)
@@ -582,7 +582,7 @@ class TestCliSelectEdgeCases:
         # of the tools list content).
         post = frontmatter.load(directory / "wired.agent.md")
         assert _tools_from_post(post) == original_tools
-        assert _tools_from_post(post).count(VESMARO_WILDCARD) == 1
+        assert _tools_from_post(post).count(VESMA_WILDCARD) == 1
 
 
 # ── Doctor: PASS case ─────────────────────────────────────────────────────────
@@ -603,7 +603,7 @@ class TestDoctorPassCase:
             directory,
             "wired.agent.md",
             name="GCW: Wired",
-            tools=["read", VESMARO_WILDCARD],
+            tools=["read", VESMA_WILDCARD],
         )
         _write_agent(
             directory,
@@ -638,7 +638,7 @@ class TestVerifyOutputFormat:
             directory,
             "wired.agent.md",
             name="GCW: Wired",
-            tools=["read", VESMARO_WILDCARD],
+            tools=["read", VESMA_WILDCARD],
         )
         _write_agent(
             directory,

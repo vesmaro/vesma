@@ -153,42 +153,42 @@ they do not raise an error, so the dashboard can degrade gracefully.
 Returns Prometheus text exposition format for scraping by Grafana /
 Prometheus. Content-Type is `text/plain; version=0.0.4; charset=utf-8`.
 
-**Available metrics** (the names carry the legacy `mnemos_` prefix —
+**Available metrics** (the names carry the legacy `vesma_` prefix —
 format-stable identifiers, not a brand statement; renaming them would
 break existing dashboards):
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `mnemos_memories_total` | gauge | — | Total memories in storage |
-| `mnemos_memories_by_status` | gauge | `status` | Memories by status |
-| `mnemos_memories_by_project` | gauge | `project` | Memories by project |
-| `mnemos_memories_by_agent` | gauge | `agent` | Memories by agent |
-| `mnemos_memories_by_type` | gauge | `type` | Memories by memory_type |
-| `mnemos_filter_avg_reduction_pct` | gauge | — | Average filter reduction percentage |
-| `mnemos_filter_filtered_total` | gauge | — | Memories with `clean_content` populated |
-| `mnemos_pipeline_processed_total` | counter | — | Total processed memories |
-| `mnemos_pipeline_dlq_depth` | gauge | — | Current DLQ depth |
-| `mnemos_search_requests_total` | counter | — | Search requests since restart |
-| `mnemos_search_cross_project_requests_total` | counter | — | Cross-project (explicit global-mode) requests since restart |
-| `mnemos_search_avg_latency_ms` | gauge | — | Average search latency in ms |
-| `mnemos_search_graph_supersedes_enriched_requests_total` | counter | — | Searches enriched from the graph (since restart) |
-| `mnemos_search_graph_walk_enriched_requests_total` | counter | — | Searches enriched by a graph walk (since restart) |
-| `mnemos_graph_auto_dedupe_edges_total` | counter | — | `relates_to` edges dropped by auto-dedupe (since restart) |
-| `mnemos_graph_auto_dedupe_edges_by_project` | counter | `project` | Auto-dedupe-dropped `relates_to` edges, per project |
-| `mnemos_vectors_indexed_total` | gauge | — | Indexed vectors |
-| `mnemos_sessions_active` | gauge | — | Active sessions (updated within 24h) |
-| `mnemos_sessions_total` | gauge | — | Total sessions |
+| `vesma_memories_total` | gauge | — | Total memories in storage |
+| `vesma_memories_by_status` | gauge | `status` | Memories by status |
+| `vesma_memories_by_project` | gauge | `project` | Memories by project |
+| `vesma_memories_by_agent` | gauge | `agent` | Memories by agent |
+| `vesma_memories_by_type` | gauge | `type` | Memories by memory_type |
+| `vesma_filter_avg_reduction_pct` | gauge | — | Average filter reduction percentage |
+| `vesma_filter_filtered_total` | gauge | — | Memories with `clean_content` populated |
+| `vesma_pipeline_processed_total` | counter | — | Total processed memories |
+| `vesma_pipeline_dlq_depth` | gauge | — | Current DLQ depth |
+| `vesma_search_requests_total` | counter | — | Search requests since restart |
+| `vesma_search_cross_project_requests_total` | counter | — | Cross-project (explicit global-mode) requests since restart |
+| `vesma_search_avg_latency_ms` | gauge | — | Average search latency in ms |
+| `vesma_search_graph_supersedes_enriched_requests_total` | counter | — | Searches enriched from the graph (since restart) |
+| `vesma_search_graph_walk_enriched_requests_total` | counter | — | Searches enriched by a graph walk (since restart) |
+| `vesma_graph_auto_dedupe_edges_total` | counter | — | `relates_to` edges dropped by auto-dedupe (since restart) |
+| `vesma_graph_auto_dedupe_edges_by_project` | counter | `project` | Auto-dedupe-dropped `relates_to` edges, per project |
+| `vesma_vectors_indexed_total` | gauge | — | Indexed vectors |
+| `vesma_sessions_active` | gauge | — | Active sessions (updated within 24h) |
+| `vesma_sessions_total` | gauge | — | Total sessions |
 
 **Example output** (excerpt):
 
 ```prometheus
-# HELP mnemos_memories_total Total number of memories in storage
-# TYPE mnemos_memories_total gauge
-mnemos_memories_total 1248
-# HELP mnemos_memories_by_status Memories by status
-# TYPE mnemos_memories_by_status gauge
-mnemos_memories_by_status{status="published"} 980
-mnemos_memories_by_status{status="processed"} 210
+# HELP vesma_memories_total Total number of memories in storage
+# TYPE vesma_memories_total gauge
+vesma_memories_total 1248
+# HELP vesma_memories_by_status Memories by status
+# TYPE vesma_memories_by_status gauge
+vesma_memories_by_status{status="published"} 980
+vesma_memories_by_status{status="processed"} 210
 ```
 
 ### Prometheus scrape config
@@ -205,8 +205,8 @@ scrape_configs:
 loopback binds** (a local Prometheus agent scraping `localhost` needs no
 credentials). On non-loopback binds (`api.host` other than a loopback
 address) both `/api/v1/metrics` and `/metrics` require an authenticated
-session — the exposition exports `mnemos_memories_by_project` /
-`mnemos_memories_by_agent` gauges, so unauthenticated remote access is a
+session — the exposition exports `vesma_memories_by_project` /
+`vesma_memories_by_agent` gauges, so unauthenticated remote access is a
 reconnaissance-grade surface (CWE-200). A remote scraper authenticates
 with a bearer header:
 

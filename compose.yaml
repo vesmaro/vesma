@@ -1,22 +1,23 @@
-# Vesmaro (Mnemos) — compose deployment from the repo root
+# Vesma — compose deployment from the repo root
 #
 # Uses the published image — NO local build required.
-# The canonical single-host path is deploy/docker/ (same image, vesmaro-*
-# resource names); this root file keeps the historic mnemos-* names for
-# existing podman-compose users.
+# The canonical single-host path is deploy/docker/ (same image, vesma-*
+# resource names). The 6.0 sweep renamed the pre-6.0 mnemos-*/vesmaro-*
+# container and volume names to vesma-*; existing deployments keep their
+# old volumes on disk — re-create or rename them before upgrading.
 #
 # Запуск:    TOTP_MASTER_KEY=$(openssl rand -hex 32) docker compose up -d
 #            (podman-compose тоже подходит; ключ можно положить в .env рядом)
-# Логи:      docker compose logs -f mnemos
+# Логи:      docker compose logs -f vesma
 # Остановка: docker compose down
 #
 # С Ollama:  docker compose --profile ollama up -d
-#            затем: docker exec mnemos-ollama ollama pull nomic-embed-text
+#            затем: docker exec vesma-ollama ollama pull nomic-embed-text
 
 services:
-  mnemos:
+  vesma:
     image: ghcr.io/vesmaro/vesma:${VESMA_IMAGE_TAG:-5.1.2}
-    container_name: mnemos
+    container_name: vesma
     restart: unless-stopped
     ports:
       - "8787:8787"
@@ -27,8 +28,8 @@ services:
       - VESMA_API__TOTP_MASTER_KEY=${TOTP_MASTER_KEY:?set TOTP_MASTER_KEY, e.g. openssl rand -hex 32}
       - VESMA_CONFIG=/app/config.yaml
     volumes:
-      - mnemos-data:/data
-      - mnemos-vault:/vault
+      - vesma-data:/data
+      - vesma-vault:/vault
       - ./config.container.yaml:/app/config.yaml:ro
     healthcheck:
       # Unauthenticated /health endpoint; kept CLI-independent on purpose
@@ -42,7 +43,7 @@ services:
   # Optional: local Ollama for embeddings (CPU mode)
   ollama:
     image: docker.io/ollama/ollama:latest
-    container_name: mnemos-ollama
+    container_name: vesma-ollama
     profiles:
       - ollama
     restart: unless-stopped
@@ -52,6 +53,6 @@ services:
       - ollama-data:/root/.ollama
 
 volumes:
-  mnemos-data:
-  mnemos-vault:
+  vesma-data:
+  vesma-vault:
   ollama-data:

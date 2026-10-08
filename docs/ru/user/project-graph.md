@@ -110,7 +110,7 @@ src-layout; неразрешённый обработчик ребра НЕ по
 `--help`:
 
 ```
-mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
+vesma_search_graph(project_id="vesma", query="graph delete", kind="Command")
 → 1 строка: "vesma graph delete" · help: "Delete a project's graph index…"
   options: 5 · params: {project, --force, --confirm-name, --agent, --reason}
 ```
@@ -124,7 +124,7 @@ mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
 - корень без маркеров — любой чужой репозиторий — не получает НИ ОДНОГО
   surface-узла: extension регистрируется хостом один раз, а решение
   принимается по каждому корню;
-- `mnemos_project_graph_status` показывает разбивку `node_kinds` по видам —
+- `vesma_project_graph_status` показывает разбивку `node_kinds` по видам —
   вклад extension виден, а не предполагается.
 
 **Агентам из других проектов:** команды и роуты — это код ОПРЕДЕЛЯЮЩЕГО
@@ -136,7 +136,7 @@ mnemos_search_graph(project_id="vesma", query="graph delete", kind="Command")
 **Существующие индексы:** surface-узлы появляются при следующем ПОЛНОМ
 (пере)индексе — инкрементальный классификатор перестраивает весь проект
 при любом изменении файла, достаточно `touch` любого отслеживаемого
-файла; либо удалите индекс (`mnemos_delete_graph_project`) и
+файла; либо удалите индекс (`vesma_delete_graph_project`) и
 проиндексируйте заново.
 
 ---
@@ -246,8 +246,8 @@ mgr.sqlite.save_project(Project(name="vesma", paths=["/home/you/vesma"]))
 ## Секция walk: аренда окрестности (PG-1, ADR-0038)
 
 Структурный вопрос — «кто вызывает `X`, один-два хопа» — раньше стоил либо
-вызова `mnemos_trace_path` на каждый символ, либо чтения файлов целиком.
-Когда `code_graph.search_walk` включён, каждый `mnemos_search_graph` с
+вызова `vesma_trace_path` на каждый символ, либо чтения файлов целиком.
+Когда `code_graph.search_walk` включён, каждый `vesma_search_graph` с
 символьными совпадениями СЛЕДУЕТ дополнительно обходить окрестность хитов и
 отвечать ОТДЕЛЬНОЙ секцией `walk`:
 
@@ -392,7 +392,7 @@ vesma graph repoint <project> <new-root>
   пересобираемые данные), приостановка авто-пути снимается, следующий
   запуск индексации собирает граф заново.
 
-Призрак можно и удалить совсем — `mnemos_delete_graph_project` (или
+Призрак можно и удалить совсем — `vesma_delete_graph_project` (или
 `vesma graph delete <project>` в CLI) сносит индекс, а за evidence-гейтом
 (`confirm=true` + `confirm_name`, эхо имени проекта; в CLI `--force
 --confirm-name <project>`) и саму строку регистрации. Попытка без гейта
@@ -617,8 +617,8 @@ _Источники: ADR-0032 (граф проектов как память); `
 `tests/test_codegraph_autoindex.py`); поставлено волнами PG-0 (#438),
 graphs-on-by-default (#440), нативная авто-индексация PG-0.5 (re-land
 150cdfe). Surface-узлы (схема v2): карточка vesma-graph-command-route-nodes,
-`src/vesmaro/codegraph/node_sources.py` (шов) +
-`src/vesmaro/graph_surface_ext.py` (CLI/REST-поверхность движка).
+`src/vesma/codegraph/node_sources.py` (шов) +
+`src/vesma/graph_surface_ext.py` (CLI/REST-поверхность движка).
 Карта фич: [features.md](../features.md)._
 
 _Обновлено: 2026-10-04_

@@ -154,42 +154,42 @@ GET /api/v1/stats/timeseries?metric=memories_added&range=30d&granularity=day
 Возвращает Prometheus text exposition для скрейпинга Grafana / Prometheus.
 Content-Type: `text/plain; version=0.0.4; charset=utf-8`.
 
-**Доступные метрики** (имена несут легаси-префикс `mnemos_` —
+**Доступные метрики** (имена несут легаси-префикс `vesma_` —
 формат-стабильные идентификаторы, не бренд; переименование ломало бы
 существующие дашборды):
 
 | Метрика | Тип | Метки | Описание |
 |---------|-----|-------|----------|
-| `mnemos_memories_total` | gauge | — | Всего памятей в хранилище |
-| `mnemos_memories_by_status` | gauge | `status` | Памяти по статусу |
-| `mnemos_memories_by_project` | gauge | `project` | Памяти по проекту |
-| `mnemos_memories_by_agent` | gauge | `agent` | Памяти по агенту |
-| `mnemos_memories_by_type` | gauge | `type` | Памяти по memory_type |
-| `mnemos_filter_avg_reduction_pct` | gauge | — | Средний процент сокращения фильтром |
-| `mnemos_filter_filtered_total` | gauge | — | Памяти с заполненным `clean_content` |
-| `mnemos_pipeline_processed_total` | counter | — | Всего обработанных памятей |
-| `mnemos_pipeline_dlq_depth` | gauge | — | Текущая глубина DLQ |
-| `mnemos_search_requests_total` | counter | — | Запросов поиска с перезапуска |
-| `mnemos_search_cross_project_requests_total` | counter | — | Кросс-проектных поисков (глобальный режим) с перезапуска |
-| `mnemos_search_avg_latency_ms` | gauge | — | Средняя задержка поиска в мс |
-| `mnemos_search_graph_supersedes_enriched_requests_total` | counter | — | Поисков, обогащённых из графа (с перезапуска) |
-| `mnemos_search_graph_walk_enriched_requests_total` | counter | — | Поисков, обогащённых обходом графа (с перезапуска) |
-| `mnemos_graph_auto_dedupe_edges_total` | counter | — | Рёбер `relates_to`, снятых авто-дедупликацией (с перезапуска) |
-| `mnemos_graph_auto_dedupe_edges_by_project` | counter | `project` | Рёбра `relates_to`, снятые авто-дедупликацией, по проекту |
-| `mnemos_vectors_indexed_total` | gauge | — | Индексированных векторов |
-| `mnemos_sessions_active` | gauge | — | Активных сессий (обновлены за 24ч) |
-| `mnemos_sessions_total` | gauge | — | Всего сессий |
+| `vesma_memories_total` | gauge | — | Всего памятей в хранилище |
+| `vesma_memories_by_status` | gauge | `status` | Памяти по статусу |
+| `vesma_memories_by_project` | gauge | `project` | Памяти по проекту |
+| `vesma_memories_by_agent` | gauge | `agent` | Памяти по агенту |
+| `vesma_memories_by_type` | gauge | `type` | Памяти по memory_type |
+| `vesma_filter_avg_reduction_pct` | gauge | — | Средний процент сокращения фильтром |
+| `vesma_filter_filtered_total` | gauge | — | Памяти с заполненным `clean_content` |
+| `vesma_pipeline_processed_total` | counter | — | Всего обработанных памятей |
+| `vesma_pipeline_dlq_depth` | gauge | — | Текущая глубина DLQ |
+| `vesma_search_requests_total` | counter | — | Запросов поиска с перезапуска |
+| `vesma_search_cross_project_requests_total` | counter | — | Кросс-проектных поисков (глобальный режим) с перезапуска |
+| `vesma_search_avg_latency_ms` | gauge | — | Средняя задержка поиска в мс |
+| `vesma_search_graph_supersedes_enriched_requests_total` | counter | — | Поисков, обогащённых из графа (с перезапуска) |
+| `vesma_search_graph_walk_enriched_requests_total` | counter | — | Поисков, обогащённых обходом графа (с перезапуска) |
+| `vesma_graph_auto_dedupe_edges_total` | counter | — | Рёбер `relates_to`, снятых авто-дедупликацией (с перезапуска) |
+| `vesma_graph_auto_dedupe_edges_by_project` | counter | `project` | Рёбра `relates_to`, снятые авто-дедупликацией, по проекту |
+| `vesma_vectors_indexed_total` | gauge | — | Индексированных векторов |
+| `vesma_sessions_active` | gauge | — | Активных сессий (обновлены за 24ч) |
+| `vesma_sessions_total` | gauge | — | Всего сессий |
 
 **Пример вывода** (фрагмент):
 
 ```prometheus
-# HELP mnemos_memories_total Total number of memories in storage
-# TYPE mnemos_memories_total gauge
-mnemos_memories_total 1248
-# HELP mnemos_memories_by_status Memories by status
-# TYPE mnemos_memories_by_status gauge
-mnemos_memories_by_status{status="published"} 980
-mnemos_memories_by_status{status="processed"} 210
+# HELP vesma_memories_total Total number of memories in storage
+# TYPE vesma_memories_total gauge
+vesma_memories_total 1248
+# HELP vesma_memories_by_status Memories by status
+# TYPE vesma_memories_by_status gauge
+vesma_memories_by_status{status="published"} 980
+vesma_memories_by_status{status="processed"} 210
 ```
 
 ### Конфиг скрейпинга Prometheus
@@ -207,7 +207,7 @@ loopback-биндах** (локальному Prometheus-агенту, скре�
 учётные данные не нужны). На не-loopback биндах (`api.host` — не loopback
 адрес) оба эндпоинта `/api/v1/metrics` и `/metrics` требуют
 аутентифицированную сессию: экспозиция отдаёт гейджи
-`mnemos_memories_by_project` / `mnemos_memories_by_agent`, поэтому
+`vesma_memories_by_project` / `vesma_memories_by_agent`, поэтому
 неаутентифицированный удалённый доступ — разведывательная поверхность
 (CWE-200). Удалённый скрейпер аутентифицируется bearer-заголовком:
 

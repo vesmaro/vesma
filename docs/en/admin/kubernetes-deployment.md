@@ -89,7 +89,7 @@ supported ways, in order of preference:
 3. **Values file** — never commit the real value; keep it out of git.
 
 The key is injected under a single canonical env name,
-`VESMA_API__TOTP_MASTER_KEY` (6.0.0 retired the 4.x `MNEMOS_API__TOTP_MASTER_KEY`
+`VESMA_API__TOTP_MASTER_KEY` (6.0.0 retired the 4.x `VESMA_API__TOTP_MASTER_KEY`
 and 5.0–5.2 `VESMARO_API__TOTP_MASTER_KEY` spellings — the ADR-0031 dual-read
 period is over). If you upgrade the chart across those rebrand boundaries,
 migrate the secret key name in the same change.

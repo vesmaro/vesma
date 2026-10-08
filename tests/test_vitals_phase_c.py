@@ -13,7 +13,7 @@ suite). This suite verifies the WIRING, mirroring the phase A/A2 pattern:
   - NO-DATA semantics are live through the manager: a fresh deploy has
     zero ``usage_reports`` rows and the analytics report loud NO-DATA —
     never silent zeros, never exceptions into a scraper/host;
-  - RL-S2: the ``/api/v1/metrics`` exposition's ``mnemos_usage_*``
+  - RL-S2: the ``/api/v1/metrics`` exposition's ``vesma_usage_*``
     family carries NO project/endpoint/principal labels — global
     aggregates only.
 
@@ -221,7 +221,7 @@ class TestManagerNoData:
 
 class TestEndpointExposition:
     def test_usage_family_on_endpoint_label_free_and_no_data_absent(self, tmp_path: Path):
-        """RL-S2 on the live endpoint: the mnemos_usage_* family carries
+        """RL-S2 on the live endpoint: the vesma_usage_* family carries
         zero labels; on a fresh deploy it is ABSENT (NO-DATA ≠ 0); a
         project slug recorded by the assemble boundary never leaks."""
         manager = _manager(_settings(tmp_path))
@@ -236,10 +236,10 @@ class TestEndpointExposition:
                 resp = client.get("/api/v1/metrics")
             assert resp.status_code == 200
             text = resp.text
-            assert "mnemos_usage_loop_rate 0.0" in text  # one call, zero reports
+            assert "vesma_usage_loop_rate 0.0" in text  # one call, zero reports
             assert "vesma_usage_reports_total" not in text  # NO-DATA absent
             assert "vitals-c" not in text  # project slug never crosses to Prometheus
-            usage_family = text.split("# HELP mnemos_usage_loop_rate")[1]
+            usage_family = text.split("# HELP vesma_usage_loop_rate")[1]
             assert "{" not in usage_family and "}" not in usage_family
         finally:
             manager.close()

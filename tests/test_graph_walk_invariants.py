@@ -677,8 +677,8 @@ class TestWalkAcceptanceTelemetry:
         }, "fixture: both legs enriched the page"
 
         text = _prometheus_text(fuel_manager)
-        assert "# HELP mnemos_search_graph_walk_enriched_requests_total" in text
-        assert "# TYPE mnemos_search_graph_walk_enriched_requests_total counter" in text
-        assert "mnemos_search_graph_walk_enriched_requests_total 1" in text
-        assert "# HELP mnemos_search_graph_supersedes_enriched_requests_total" in text
-        assert "mnemos_search_graph_supersedes_enriched_requests_total 1" in text
+        assert "# HELP vesma_search_graph_walk_enriched_requests_total" in text
+        assert "# TYPE vesma_search_graph_walk_enriched_requests_total counter" in text
+        assert "vesma_search_graph_walk_enriched_requests_total 1" in text
+        assert "# HELP vesma_search_graph_supersedes_enriched_requests_total" in text
+        assert "vesma_search_graph_supersedes_enriched_requests_total 1" in text

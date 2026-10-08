@@ -55,7 +55,7 @@ podman run -d --name vesma \
 `config.container.yaml` baked in as `/app/config.yaml` — no config mount is
 required unless you want to override settings. The TOTP master key is
 mandatory (the baked config binds to `0.0.0.0`). The canonical env name is
-`VESMA_API__TOTP_MASTER_KEY` — 6.0.0 retired the 4.x `MNEMOS_API__*` and
+`VESMA_API__TOTP_MASTER_KEY` — 6.0.0 retired the 4.x `VESMA_API__*` and
 5.0–5.2 `VESMARO_API__*` spellings (ADR-0031 dual period is over).
 
 Verify:
@@ -92,7 +92,7 @@ To activate Ollama as the embedding provider, set `embedding.provider: ollama`
 in the container config (see [Configuration](#configuration)).
 
 > The repo-root [`compose.yaml`](../../../../compose.yaml) also uses the published image —
-> it keeps the historic `mnemos-*` resource names for existing podman-compose users.
+> it keeps the historic `vesma-*` resource names for existing podman-compose users.
 > The build-from-source flow is described in
 > [Build from source](#build-from-source-fallback).
 
@@ -157,19 +157,19 @@ Shortcut:
 The quadlet path installs a systemd **user** unit and manages the container as a persistent
 service. The unit references the published `ghcr.io/vesmaro/vesma:5.2.0`, pulled
 automatically; to run a local build instead, build the image first (see
-[Build from source](#build-from-source-fallback)) and set `Image=localhost/mnemos:latest` in the unit.
+[Build from source](#build-from-source-fallback)) and set `Image=localhost/vesma:latest` in the unit.
 
 > **The service name comes from the unit filename**, not from `ContainerName=`:
-> the quadlet file `mnemos.container` generates the `mnemos.service` unit
-> (while `ContainerName=mnemos` only overrides the podman container name).
-> The commands below manage `mnemos.service` — a legacy spelling of the same
+> the quadlet file `vesma.container` generates the `vesma.service` unit
+> (while `ContainerName=vesma` only overrides the podman container name).
+> The commands below manage `vesma.service` — a legacy spelling of the same
 > Vesma installation.
 
 ### Set the TOTP key
 
 The unit reads the key from `~/.vesma.env` (`EnvironmentFile`), so no unit
 editing is needed. 6.0.0 reads the canonical `VESMA_API__*` spelling only
-(4.x `MNEMOS_API__*` / 5.0–5.2 `VESMARO_API__*` are retired, ADR-0031):
+(4.x `VESMA_API__*` / 5.0–5.2 `VESMARO_API__*` are retired, ADR-0031):
 
 ```bash
 KEY=$(openssl rand -hex 32)
@@ -182,20 +182,20 @@ printf 'VESMA_API__TOTP_MASTER_KEY=%s\n' "$KEY" > ~/.vesma.env
 ./scripts/deploy.sh quadlet
 ```
 
-This copies `deploy/podman/quadlet/mnemos.container` to `~/.config/containers/systemd/` and runs
+This copies `deploy/podman/quadlet/vesma.container` to `~/.config/containers/systemd/` and runs
 `systemctl --user daemon-reload`.
 
 ### Start and enable
 
 ```bash
-systemctl --user start mnemos
-systemctl --user enable mnemos   # autostart on login
+systemctl --user start vesma
+systemctl --user enable vesma   # autostart on login
 ```
 
 ### Check status
 
 ```bash
-systemctl --user status mnemos
+systemctl --user status vesma
 ```
 
 ---
@@ -213,7 +213,7 @@ podman build -t localhost/vesma:5.6.2 -f Containerfile .
 The `Containerfile` uses `python:3.12-slim` as the base, installs the package (the MCP SDK rides in core),
 copies `config.container.yaml` as `/app/config.yaml`, and sets the serve command on port 8787.
 
-Makefile shortcut (builds `localhost/mnemos:$(VERSION)` + `:latest` — the
+Makefile shortcut (builds `localhost/vesma:$(VERSION)` + `:latest` — the
 names used by `scripts/deploy.sh` / `make build-image`):
 
 ```bash
@@ -329,5 +329,5 @@ Prints running containers (name, status, ports) and named volumes.
 ---
 
 _Source files: `Containerfile`, `compose.yaml`, `config.container.yaml`, `scripts/deploy.sh`,
-`deploy/podman/quadlet/mnemos.container`, `deploy/podman/kube/vesma-pod.yaml`,
+`deploy/podman/quadlet/vesma.container`, `deploy/podman/kube/vesma-pod.yaml`,
 `deploy/docker/`, `deploy/helm/vesma/`_

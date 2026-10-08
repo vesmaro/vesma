@@ -23,7 +23,7 @@ some sections below keep the Phase 1/Phase 2 wording.
 
 Phase 1 extends `FederationConfig` (`src/vesma/config.py`) with a
 `peers: dict[str, PeerConfig]` map. Each peer is keyed by its A2A id
-(for example `mnemos-A`) and describes what that peer is allowed to
+(for example `vesma-A`) and describes what that peer is allowed to
 pull. The global `federation.shared_projects` whitelist stays as the
 top-level filter; per-peer `allowed_projects` is a subset filter on
 top of it.
@@ -61,7 +61,7 @@ federation:
     - vesma
     - project-umbra
   peers:
-    mnemos-A:
+    vesma-A:
       bearer_token_env: VESMA_FED_PEER_A_TOKEN
       allowed_projects:
         - vesma
@@ -91,15 +91,15 @@ code.
 | `EXHAUSTIVE` | B gave the full sanitized answer | Use it; do not repeat the request for the same topic. |
 | `ALREADY_EXHAUSTED` | B already answered `EXHAUSTIVE` on this topic (checked via the access log) | Reuse the prior answer; do not re-query. |
 | `PARTIAL` | Answer is partial (records missing or moderation redacted a portion) | Refine the query (different topic/angle); do not repeat verbatim. |
-| `REFUSED` | B refused — content cannot be shared even after redaction | Do not repeat; fall back to local `mnemos_search` (КП-2). |
-| `OFFLINE_LITE` | B online in reduced mode (e.g. moderation partially offline) | Use the partial result; supplement with local `mnemos_search`. |
+| `REFUSED` | B refused — content cannot be shared even after redaction | Do not repeat; fall back to local `vesma_search` (КП-2). |
+| `OFFLINE_LITE` | B online in reduced mode (e.g. moderation partially offline) | Use the partial result; supplement with local `vesma_search`. |
 
 Two helpers:
 
 - `is_terminal(code)` — `True` for `EXHAUSTIVE`, `ALREADY_EXHAUSTED`,
   `REFUSED` (A should not re-query the same topic).
 - `should_fallback_to_local(code)` — `True` for `REFUSED`,
-  `OFFLINE_LITE` (A falls back to local `mnemos_search`).
+  `OFFLINE_LITE` (A falls back to local `vesma_search`).
 
 Phase 1 defines the enum and the two helpers. Phase 2 wires the codes
 into the server (returned in the payload) and the client (dispatched on
@@ -155,14 +155,14 @@ reconstruct another peer's query history.
 
 The federation server (B-side) and client (A-side) live in the codebase:
 
-1. **Server** — `handle_pull` in `src/vesmaro/federation_server.py` reads
+1. **Server** — `handle_pull` in `src/vesma/federation_server.py` reads
    `federation.peers`, validates the per-peer bearer token from the
    named env var, optionally pins the mTLS client cert, applies the
    per-peer ACL on top of `shared_projects`, runs the moderation
    pipeline, checks the access log for `ALREADY_EXHAUSTED`, and returns
    the sanitized response with a `TriggerCode`. HTTP route:
-   `POST /api/v1/federation/pull` (adapter `src/vesmaro/api/federation.py`).
-2. **Client** — `src/vesmaro/federation_client.py` sends a pull request,
+   `POST /api/v1/federation/pull` (adapter `src/vesma/api/federation.py`).
+2. **Client** — `src/vesma/federation_client.py` sends a pull request,
    receives the `TriggerCode`, and dispatches — `is_terminal` /
    `should_fallback_to_local` decide whether to use the answer, refine
    it, or fall back to local search. End-to-end verification:

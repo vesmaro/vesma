@@ -61,12 +61,12 @@ assemblies MUST read this counter and treat a change as a full
 invalidation; until then the counter is an exposed, bumped, test-pinned
 contract — not a wired defence.
 
-Boundary with the existing single-URL ingest: ``mnemos_ingest_url``
-(REST ``POST /ingest-url``, CLI ``vesma add --url`` — legacy CLI name) keeps its
+Boundary with the existing single-URL ingest: ``vesma_ingest_url``
+(REST ``POST /ingest-url``, CLI ``vesma add --url``) keeps its
 pre-Ф3 semantics UNTOUCHED — a fetched page saved as ONE memory row
 through the ordinary visibility policy, no born-quarantine. The
 document path is the SEPARATE ``ingest_document`` surface (MCP
-``mnemos_ingest_document``, REST ``POST /ingest-document``); the
+``vesma_ingest_document``, REST ``POST /ingest-document``); the
 existing tool is not retroactively quarantined.
 
 Zero migration: chunk rows are ordinary ``memories`` rows carrying the

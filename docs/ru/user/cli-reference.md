@@ -64,9 +64,9 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 Большинство субкоманд принимают флаг `--config / -c` с путём к YAML-файлу. Порядок поиска:
 
 1. Аргумент `--config` (если указан)
-2. Переменная окружения `$VESMA_CONFIG` (канон с 5.3; написания 5.0–5.2 `VESMA_CONFIG` и 4.x `MNEMOS_CONFIG` с 6.0.0 больше не читаются)
+2. Переменная окружения `$VESMA_CONFIG` (канон с 5.3; написания 5.0–5.2 `VESMA_CONFIG` и 4.x `VESMA_CONFIG` с 6.0.0 больше не читаются)
 3. `./config.yaml` в текущей рабочей директории
-4. `~/.mnemos/config.yaml`
+4. `~/.vesma/config.yaml`
 
 ```bash
 vesma --help
@@ -76,7 +76,7 @@ vesma add --help
 Остальные глобальные флаги — только `--version / -V` (показать версию) и `--verbose / -v` (DEBUG-логирование для `vesma serve` и `vesma mcp-server`). Чтобы изменить уровень логирования на постоянной основе, задайте `logging.level` в конфиге или переменную окружения:
 
 ```bash
-VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное читаемое написание (6.0.0 вывела из обращения VESMARO_* эпохи 5.0–5.2 и MNEMOS_* эпохи 4.x)
+VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное читаемое написание (6.0.0 вывела из обращения VESMARO_* эпохи 5.0–5.2 и VESMA_* эпохи 4.x)
 ```
 
 ---
@@ -88,8 +88,8 @@ VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное чита�
 | Переменная (канон) | По умолчанию | Назначение |
 |------------|-------------|------------ |
 | `VESMA_CONFIG` | — | Путь к `config.yaml` |
-| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | БД SQLite + векторный индекс (каноническая форма) |
-| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Директория зеркала Obsidian (каноническая форма) |
+| `VESMA_VESMA__DATA_DIR` | `~/.vesma/data` | БД SQLite + векторный индекс (каноническая форма) |
+| `VESMA_VESMA__VAULT_PATH` | `~/.vesma/vault` | Директория зеркала Obsidian (каноническая форма) |
 | `VESMA_VESMA__STRICT_TAG_CONTRACT` | `true` | Соблюдение схемы тегов M2 |
 | `VESMA_API__HOST` | `127.0.0.1` | Адрес по умолчанию для `vesma serve` |
 | `VESMA_API__PORT` | `8787` | Порт по умолчанию для `vesma serve` |
@@ -100,7 +100,7 @@ VESMA_LOGGING__LEVEL=DEBUG vesma serve      # единственное чита�
 | `VESMA_AUTO_COLLECT` | `0` | Установите `1` для включения режима auto-collect MCP |
 | `VESMA_LOGGING__LEVEL` | `INFO` | Уровень логирования Python |
 
-> **Выведенные из обращения написания: `VESMARO_*` (5.0–5.2) и `MNEMOS_*` (4.x).** Таблица выше перечисляет канонические имена `VESMA_*` — с 6.0.0 читается только они (двойной период ADR-0031 завершён; экспорт только устаревшего написания даёт значение по умолчанию). Короткие формы `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` — совместимые алиасы #139 для вложенных канонических имён; при конфликте вложенный канон побеждает.
+> **Выведенные из обращения написания: `VESMARO_*` (5.0–5.2) и `VESMA_*` (4.x).** Таблица выше перечисляет канонические имена `VESMA_*` — с 6.0.0 читается только они (двойной период ADR-0031 завершён; экспорт только устаревшего написания даёт значение по умолчанию). Короткие формы `VESMA_DATA_DIR` / `VESMA_VAULT__VAULT_PATH` — совместимые алиасы #139 для вложенных канонических имён; при конфликте вложенный канон побеждает.
 
 > **Устаревшие алиасы.** Короткие формы появились до вложенного именования и сохранены для совместимости (#139). Работают обе формы. При конфликте каноническое имя переменной — как и явное значение в конфиг-файле — имеет приоритет над алиасом; алиас лишь заполняет пробел, который иначе достался бы значению по умолчанию.
 
@@ -193,13 +193,13 @@ vesma ingest file PATH [OPTIONS]
 
 ```bash
 # Из URL (загружает, извлекает, сохраняет)
-vesma ingest url https://example.com/article --tags "project:research,agent:user,mnemos:learning"
+vesma ingest url https://example.com/article --tags "project:research,agent:user,vesma:learning"
 
 # Из файла
-vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,mnemos:decision"
+vesma ingest file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,vesma:decision"
 
 # Превью статистики фильтра для файла без сохранения
-vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,mnemos:decision"
+vesma ingest file ~/notes/architecture.md --dry-run --tags "project:vesma,agent:tech-lead,vesma:decision"
 ```
 
 ---
@@ -291,7 +291,7 @@ vesma tags validate VAULT_PATH [OPTIONS]
 ### Пример
 
 ```bash
-vesma tags validate ~/.mnemos/vault
+vesma tags validate ~/.vesma/vault
 ```
 
 ---
@@ -422,8 +422,8 @@ vesma stats
 # version: 5.6.2
 # update_available: {'installed': '5.6.2', 'latest': '5.6.2', 'dist': 'vesma-memory-server',
 #   'update_available': False, 'checked_at': '2026-10-06T10:04:51+00:00', 'stale': False}
-# data_dir: /home/you/.mnemos/data
-# vault_path: /home/you/.mnemos/vault
+# data_dir: /home/you/.vesma/data
+# vault_path: /home/you/.vesma/vault
 # total: 142
 # by_status: {'archived': 2, 'processed': 23, 'published': 117}
 # vectors: 117
@@ -626,7 +626,7 @@ vesma serve --host 0.0.0.0 --port 8000
 vesma serve --host 127.0.0.1 --port 9000 --config /etc/vesma/config.yaml
 
 # Включить файловое логирование без правки конфига
-vesma serve --log-file ~/.mnemos/logs/serve.log
+vesma serve --log-file ~/.vesma/logs/serve.log
 ```
 
 Полная поверхность HTTP API документирована в [http-api.md](http-api.md). Swagger UI доступен по адресу `http://HOST:PORT/docs`.
@@ -649,7 +649,7 @@ vesma meta-poll [OPTIONS]
 По каждому пиру команда вызывает mesh-CLI (`mnemos-mesh sync-meta --config <mesh.yaml> --peer <id> --json [--since <rev>]`), парсит JSON-страницу и импортирует записи in-process через гейтовый upsert (`upsert_index_entries` с `sender_peer_id`): действуют no-federate-тег, title-блоклист, origin-guard и LWW-разрешение конфликтов. **Только метаданные**: путь опроса трогает `federation_index` и таблицу watermark'ов поллера, но никогда `memories` и пайплайн. Успешный проход печатает строку вида:
 
 ```text
-✓ peer=mnemos-B fetched=12 accepted=10 rejected_by_gate=1 stale=1 pages=1 latest_rev=47
+✓ peer=vesma-B fetched=12 accepted=10 rejected_by_gate=1 stale=1 pages=1 latest_rev=47
 ```
 
 Код выхода `1`, если хотя бы один опрошенный пир упал (ненулевой exit CLI, битый JSON, таймаут) — ошибка фиксируется в `federation_poll_state.last_error` и повторяется на следующем проходе; watermark (`since_rev`) двигается только при успехе.
@@ -763,8 +763,32 @@ vesma migrate from-ai-brain --source /tmp/restore/.ai-brain --vault /tmp/restore
 ```
 
 При наличии `Errors: N` список `summary.errors` (выводится в stderr на уровне DEBUG) укажет, какие строки упали. Как правило, это строки с повреждённой схемой — их можно игнорировать или исправить вручную в SQLite.
-
 ---
+
+## `migrate-store`
+
+Переносит хранилище 5.x в макет 6.0: `vesma.db`, канонические теги `vesma:*`, слаг `project:vesma`, секция конфига `vesma:`, дом `~/.vesma/` (ADR-0044). **Только явно**: `--from` и `--to` обязательны — discovery никогда не выбирает хранилище за вас. **По умолчанию dry-run**: без `--apply` команда печатает план (пути и счётчики) и ничего не пишет. Гейты безопасности на `--apply`: сначала снимается и проверяется снапшот через SQLite backup-API; живой сокет или удерживаемая блокировка БД — громкий отказ; trust-маркер `mnemos:no-federate` остаётся байт-стабильным (никогда не переписывается); отчёт печатает только пути и числа, никогда содержимое записей. Повторный запуск на уже мигрировавшем хранилище — ГРОМКИЙ ОТКАЗ (код выхода 7, `AlreadyMigratedError`, запинен тестами store-migration), никакой тихой повторной мутации.
+
+### Опции
+
+| Опция | Описание |
+|---|---|
+| `--from PATH` | **Обязательна.** Явный исходный дом хранилища (например, `~/.mnemos`). |
+| `--to PATH` | **Обязательна.** Явный целевой дом хранилища (макет 6.0, например `~/.vesma`). Не должен существовать вовсе — любой уже существующий таргет (даже пустой каталог) отказывается на этапе плана. |
+| `--apply` | Выполнить миграцию. Без неё: read-only план. |
+| `--json` | Машиночитаемый отчёт (только пути и числа). |
+
+### Пример
+
+```
+$ vesma migrate-store --from ~/.mnemos --to ~/.vesma          # только план
+$ vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply  # выполнение (повторный запуск откажет с кодом 7)
+```
+
+### См. также
+
+- [ADR о миграции хранилища](../../project/adr/0044-store-migration.md)
+- [Ранбук миграции](../admin/runbooks/migrate.md)
 
 ## `auth`
 
@@ -837,7 +861,7 @@ vesma integration uninstall [--target NAME] [--dry-run] [--home PATH]
 | `--no-mcp` | `false` | Пропустить MCP-регистрацию. |
 | `--no-wire-agents` | `false` | Пропустить подключение MCP-инструментов к агентам. |
 | `--select a,b` | — | Сузить подключение агентов до перечисленных имён. |
-| `--precise` | `false` | Использовать индивидуальные `mnemos/mnemos_*` имена инструментов вместо wildcard `mnemos/*`. |
+| `--precise` | `false` | Использовать индивидуальные `vesma/vesma_*` имена инструментов вместо wildcard `vesma/*`. |
 | `--home <каталог>` | `~` | Развёртывание в альтернативный домашний каталог (кросс-окружения). |
 
 У `update`, `verify`, `uninstall` общий набор `-t/--target`, `--dry-run` (кроме `verify`), `--home` — семантика та же.
@@ -871,7 +895,7 @@ vesma integration uninstall --dry-run
 
 Установить shell-автодополнение для CLI `vesma`. Vesma использует собственный движок дополнения (скрытая команда `vesma __complete`): установщик пишет per-shell скрипты, которые опрашивают живое дерево команд, поэтому команды, вложенные подкоманды (любая глубина), имена опций и значения опций/enum дополняются **вместе с описаниями**. Описания показывают zsh и fish; readline в bash не умеет отображать описания вовсе — bash дополняет только значения.
 
-Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.mnemos/completion/vesma.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc` — размещайте её после `compinit`; fish автоматически подхватывает свою директорию дополнений). Скрипты привязываются к имени вызванного бинарника (`vesma`) плюс легаси-псевдонимы, реально присутствующие на PATH (`vesmaro`, и `mnemos`, если установлен), — Tab работает для любого способа вызова. Идемпотентно — каждый запуск перезаписывает скрипты и оставляет ровно одну каноническую строку source, мигрируя ВСЕ легаси-формы: старые строки `eval "$(… --show-completion …)"`, однострочники и `if [ -f … ]; then source …; fi` блоки до ребрендинга (`mnemos.bash`/`vesmaro.bash`), устаревшие комментарии-маркеры.
+Без аргументов оболочка определяется автоматически из `$SHELL`, скрипт дополнения записывается в `~/.vesma/completion/vesma.<shell>`, а в rc-файл добавляется одна защищённая строка `source` (`~/.bashrc` / `~/.zshrc` — размещайте её после `compinit`; fish автоматически подхватывает свою директорию дополнений). Скрипты привязываются к имени вызванного бинарника (`vesma`) плюс легаси-псевдонимы, реально присутствующие на PATH (`vesma`, и `vesma`, если установлен), — Tab работает для любого способа вызова. Идемпотентно — каждый запуск перезаписывает скрипты и оставляет ровно одну каноническую строку source, мигрируя ВСЕ легаси-формы: старые строки `eval "$(… --show-completion …)"`, однострочники и `if [ -f … ]; then source …; fi` блоки до ребрендинга (`vesma.bash`/`vesma.bash`), устаревшие комментарии-маркеры.
 
 Гарантии целостности: правки rc выполняются с учётом блоков и с валидацией. Миграция легаси-форм работает с целыми shell-конструкциями — найденная строка `if …; then` удаляет весь блок if/then(/else)/fi целиком, а осиротевшие управляющие строки (`fi`, `then`, `else`, `done`), оставшиеся от старых частичных правок, тоже вычищаются, поэтому наполовину удалённый легаси-блок больше не может сломать разбор остатка rc (rc с ошибкой разбора молча отключает всё, что ниже повреждения, — включая автодополнение). После каждой записи rc результат проверяется через `bash -n` (или `zsh -n`, если установлен zsh; fish проверки не требует), и при отказе разбора исходное содержимое восстанавливается байт-в-байт, а установщик завершается с ненулевым кодом. `vesma doctor` сообщает о том же повреждении как предупреждение Completion с точным номером и текстом сбойной строки.
 
@@ -888,7 +912,7 @@ vesma completion [SHELL] [OPTIONS]
 
 ```bash
 vesma completion bash
-# ✓ Installed bash completion → /home/you/.mnemos/completion/vesma.bash
+# ✓ Installed bash completion → /home/you/.vesma/completion/vesma.bash
 #   Source line added to /home/you/.bashrc
 #   Restart your shell or run: source /home/you/.bashrc
 ```
@@ -924,7 +948,7 @@ vesma doctor service [--json]
 
 Коды выхода: `0` — все проверки пройдены (проверки со статусом `skip` — неприменимы к этой машине — считаются пройденными), `1` — одна или несколько провалены, `2` — только предупреждения.
 
-> У `doctor` нет опции `--config`; конфиг читается из `$VESMA_CONFIG` (написания `VESMA_CONFIG` эпохи 5.0–5.2 и `MNEMOS_CONFIG` эпохи 4.x с 6.0.0 больше не читаются) или стандартного пути поиска (`./config.yaml`, `~/.mnemos/config.yaml`).
+> У `doctor` нет опции `--config`; конфиг читается из `$VESMA_CONFIG` (написания `VESMA_CONFIG` эпохи 5.0–5.2 и `VESMA_CONFIG` эпохи 4.x с 6.0.0 больше не читаются) или стандартного пути поиска (`./config.yaml`, `~/.vesma/config.yaml`).
 
 ### `doctor paths`
 
@@ -933,18 +957,18 @@ vesma doctor service [--json]
 ```bash
 vesma doctor paths
 # ── Paths ─────────────────────────────────────
-#   Root          ~/.mnemos
-#   Config        ~/.mnemos/config.yaml
-#   Data dir      ~/.mnemos/data
-#   DB            ~/.mnemos/data/mnemos.db
-#   Vault         ~/.mnemos/vault
-#   Logs          ~/.mnemos/logs/mnemos.log
-#   Cache         ~/.mnemos/cache
-#   Completion    ~/.mnemos/completion
+#   Root          ~/.vesma
+#   Config        ~/.vesma/config.yaml
+#   Data dir      ~/.vesma/data
+#   DB            ~/.vesma/data/mnemos.db
+#   Vault         ~/.vesma/vault
+#   Logs          ~/.vesma/logs/mnemos.log
+#   Cache         ~/.vesma/cache
+#   Completion    ~/.vesma/completion
 #   MCP config    ~/.config/Code/User/mcp.json
 ```
 
-Используйте для проверки консолидированной структуры `~/.mnemos/` после обновления или миграции. С `--json` объект путей выводится для скриптов.
+Используйте для проверки консолидированной структуры `~/.vesma/` после обновления или миграции. С `--json` объект путей выводится для скриптов.
 
 ### `doctor service`
 
@@ -1248,7 +1272,7 @@ vesma scanner run --full
 
 ```bash
 vesma awareness get
-#   config file: /home/you/.mnemos/config.yaml
+#   config file: /home/you/.vesma/config.yaml
 #   awareness.native_heartbeat_mode: shadow
 #   effective: shadow
 ```
@@ -1309,7 +1333,7 @@ vesma awareness stats
 #   heartbeat_suppressed: 0
 #   conflict_hint_emitted: 1
 #   tail token cost: sum 640 over 9 deliveries (mean ~71)
-#   sidecar: /home/you/.mnemos/data/metrics.sqlite
+#   sidecar: /home/you/.vesma/data/metrics.sqlite
 ```
 
 Отсутствующий sidecar печатает строку-подсказку и завершается с кодом 0

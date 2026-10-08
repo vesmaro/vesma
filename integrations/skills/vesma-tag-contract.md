@@ -28,7 +28,7 @@ on it.
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory (use `agent:user` for user-authored) |
-| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `mnemos:<subtype>` accepted on input) |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `vesma:<subtype>` accepted on input) |
 
 ### Vesma subtypes (whitelist)
 
@@ -96,7 +96,7 @@ Unknown prefixes not listed here are **rejected** in strict mode.
 
 - **Never omit required tags.** If you do not know the project or agent,
   determine it before writing. Do not guess.
-- **Do not invent new `mnemos:` subtypes.** Propose additions via PR to the tag
+- **Do not invent new `vesma:` subtypes.** Propose additions via PR to the tag
   contract.
 - **One `project:` per entry.** If a learning spans projects, write one
   entry per project, or use `project:shared` if genuinely cross-project.

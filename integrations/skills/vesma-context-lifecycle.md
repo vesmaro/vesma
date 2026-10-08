@@ -159,7 +159,7 @@ rewrite lifecycle.
   lineage is the `supersedes` edge. Pass `supersedes` when you know the
   memory id of the replaced block.
 - **Trust the provenance line.** Injected blocks carry
-  `[mnemos:<id> project=… status=… v=<n> retrieved=<iso>]` — surface it,
+  `[vesma:<id> project=… status=… v=<n> retrieved=<iso>]` — surface it,
   don't strip it; it is what makes later rehydration auditable.
 
 ## See also

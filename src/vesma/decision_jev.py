@@ -41,7 +41,7 @@ preregistration addendum, 2026-09-29) — the calibration runner reports
 the set alongside the metrics.
 
 Default-off, enforced twice: the config default is
-``mnemos.decision_provider="deterministic"`` (zero I/O), and even with
+``vesma.decision_provider="deterministic"`` (zero I/O), and even with
 ``"jev"`` the factory refuses the activation BEFORE any network attempt
 when the key env var is missing — with a machine-parseable
 ``code=JEV-E-CONFIG class=provider-class`` warn (§4 -CONFIG: the config

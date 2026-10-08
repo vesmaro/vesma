@@ -14,7 +14,7 @@ Vesma применяет структурированную схему тего�
 
 - Привязывает каждую запись ровно к **одному проекту** и **одному агенту**
 - Опционально сужает запись до **одной task-области** (`task:`, ADR-0027)
-- Классифицирует запись хотя бы **одним `mnemos:`-подтипом** (когнитивная категория)
+- Классифицирует запись хотя бы **одним `vesma:`-подтипом** (когнитивная категория)
 - Обеспечивает per-agent recall (M3) и очистку в рамках проекта
 - Предотвращает неоднозначные записи с двумя проектами (частый источник загрязнения контекста)
 
@@ -51,9 +51,9 @@ Vesma применяет структурированную схему тего�
 |-----|--------|----------------|------------ |
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **ровно 1** | Привязывает запись к кодовой базе / инициативе |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **ровно 1** | Агент, создавший запись |
-| `mnemos:<subtype>` | см. таблицу ниже | **не менее 1** | Когнитивная категория (легаси-префикс — формат-стабильное пространство имён; примером валидного тега служит `mnemos:decision`, не `vesma:decision`). |
+| `vesma:<subtype>` | см. таблицу ниже | **не менее 1** | Когнитивная категория (легаси-префикс — формат-стабильное пространство имён; примером валидного тега служит `vesma:decision`, не `vesma:decision`). |
 
-### Подтипы `mnemos:`
+### Подтипы `vesma:`
 
 | Подтип | Когда использовать |
 |--------|-------------------|
@@ -135,7 +135,7 @@ A==C, закреплённая тестами на каждой поверхно
   `list_recent(task=)` (REST `GET /memories?task=`), `agent_recall`
   (`task` в `AgentRecallQuery`). В комбинации с `tags=` пересекаются
   (должны выполняться оба).
-- **Запись:** `save_checkpoint(task=)` (MCP `mnemos_save_context` /
+- **Запись:** `save_checkpoint(task=)` (MCP `vesma_save_context` /
   REST `POST /context/save`) штампует тег `task:<slug>` на единой
   границе сохранения — максимум одна задача на запись (инвариант
   zero-or-one).
@@ -167,13 +167,13 @@ A==C, закреплённая тестами на каждой поверхно
 Тег добавляется автоматически **сканером секретов на write-path**
 (Слой 1 defence-in-depth федерации, см.
 [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth)).
-Когда `mnemos_add` (или HTTP `POST /memories`, или `ingest_url`, или
+Когда `vesma_add` (или HTTP `POST /memories`, или `ingest_url`, или
 `ingest_path_scoped_rules`) получает контент, совпадающий с известным паттерном
 секрета (AWS-ключи, GitHub-токены, Slack-токены, OpenAI/Anthropic-ключи,
 JWT, PEM private keys, database connection strings, high-entropy
 base64-последовательности), сканер:
 
-1. Обнаруживает паттерн через `mnemos.secrets_detector.detect_secrets`.
+1. Обнаруживает паттерн через `vesma.secrets_detector.detect_secrets`.
 2. Добавляет `mnemos:no-federate` в список тегов (идемпотентно — если тег
    уже присутствует, он не дублируется).
 3. Логирует только имена паттернов и счётчики — **никогда** сырые
@@ -191,11 +191,11 @@ base64-последовательности), сканер:
 - Повторно сканирует контент после удаления. Если секрет всё ещё присутствует,
   тег **добавляется автоматически заново**, а отчёт помечает
   `re_detected=True`. Владелец должен сначала редアクтировать контент (см.
-  `mnemos.secrets_detector.redact_content`), чтобы permanently удалить тег.
+  `vesma.secrets_detector.redact_content`), чтобы permanently удалить тег.
 
-### Отличие от (несуществующего) `mnemos:no-export`
+### Отличие от (несуществующего) `vesma:no-export`
 
-Тега `mnemos:no-export` **не существует**. Более ранняя идея была
+Тега `vesma:no-export` **не существует**. Более ранняя идея была
 переименована в `mnemos:no-federate`, поскольку то же исключение должно
 покрывать **оба** пути — и batch export, и mediated pull. Один тег для
 обоих путей. `mnemos:no-federate` полностью заменяет идею `no-export`.
@@ -209,7 +209,7 @@ base64-последовательности), сканер:
 - Все три обязательных семейства тегов должны присутствовать.
 - `TagContractError` выбрасывается, если любой обязательный тег отсутствует, некорректен
   или дублируется.
-- Используется в `mnemos_add` (MCP-инструмент) и `Memory(strict_tags=True)`.
+- Используется в `vesma_add` (MCP-инструмент) и `Memory(strict_tags=True)`.
 
 ### Lax-режим (`strict_tag_contract=False`, для миграций)
 
@@ -228,9 +228,9 @@ base64-последовательности), сканер:
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Валидация списка тегов (strict, выбрасывает исключение при нарушениях).
-# Старый ввод mnemos: нормализуется — результат несёт каноническую форму vesma:.
+# Старый ввод vesma: нормализуется — результат несёт каноническую форму vesma:.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "mnemos:learning"],
+    ["project:myproject", "agent:copilot", "vesma:learning"],
     strict=True,
 )
 # clean_tags == ["project:myproject", "agent:copilot", "vesma:learning"]
@@ -239,7 +239,7 @@ clean_tags = validate_tag_contract(
 tc = TagContract(tags=["project:myproject", "agent:copilot", "vesma:decision"])
 print(tc.project)       # "myproject"
 print(tc.agent)         # "copilot"
-print(tc.mnemos_subtypes)  # {"decision"}
+print(tc.vesma_subtypes)  # {"decision"}
 
 # С (опциональным) тегом task-области
 tc = TagContract(
@@ -262,7 +262,7 @@ m = Memory(
 ## Использование через MCP
 
 ```
-mnemos_add(
+vesma_add(
     content="Discovered timing issue in FTS5 query planner.",
     tags=["project:vesma", "agent:copilot", "vesma:bug-pattern"],
     project="vesma",
@@ -272,9 +272,9 @@ mnemos_add(
 
 ---
 
-## Массовое переименование тегов (`gcw:` → `mnemos:` и другие смены префикса)
+## Массовое переименование тегов (`gcw:` → `vesma:` и другие смены префикса)
 
-Команда `vesma tags rename` (и эквивалентные MCP-инструмент `mnemos_tags_rename` /
+Команда `vesma tags rename` (и эквивалентные MCP-инструмент `vesma_tags_rename` /
 HTTP-эндпоинт `POST /tags/rename`) массово переименовывает теги, соответствующие
 исходному префиксу, в целевой префикс по всем существующим записям. Это безопасная
 замена устаревшей команды `vesma migrate tags`.
@@ -332,9 +332,9 @@ external-content остаётся согласованным — в отличи
 
 ---
 
-## Сгруппированный инструмент тегов: `mnemos_tags` (rename / remove / add)
+## Сгруппированный инструмент тегов: `vesma_tags` (rename / remove / add)
 
-`mnemos_tags` — **пилот** по консолидации MCP-инструментов через диспетчер
+`vesma_tags` — **пилот** по консолидации MCP-инструментов через диспетчер
 `action: enum` (vesma #97). Он объединяет три массовых операции над тегами
 за одним именем инструмента, выбор действия — параметром `action` — **не**
 через dot-нотацию и **не** через `oneOf`/дискриминированные объединения
@@ -344,7 +344,7 @@ external-content остаётся согласованным — в отличи
 
 | Действие | Что делает | Ключевые параметры |
 | --- | --- | --- |
-| `rename` | То же, что `mnemos_tags_rename` (префикс → префикс) | `from_prefix`, `to_prefix`, `subtypes`, `invalid_subtypes_to_legacy` |
+| `rename` | То же, что `vesma_tags_rename` (префикс → префикс) | `from_prefix`, `to_prefix`, `subtypes`, `invalid_subtypes_to_legacy` |
 | `remove` | Удалить точные теги (или при `wildcard=true` — по префиксу) | `tags[]`, `wildcard` |
 | `add` | Добавить теги ко всем записям, подходящим под фильтр `project`/`agent` | `tags[]`, `project`, `agent` |
 
@@ -355,22 +355,22 @@ external-content остаётся согласованным — в отличи
 контракта зависит от действия:
 
 - `rename` проверяет в **мягком (lax)** режиме — это замена префикса
-  (напр. `gcw:` → `mnemos:`), сохраняющая обязательные теги, поэтому lax там
+  (напр. `gcw:` → `vesma:`), сохраняющая обязательные теги, поэтому lax там
   не портит данные.
 - `remove` / `add` проверяют результирующий набор тегов в **строгом (strict)**
   режиме — результат, нарушающий контракт (напр. удаление последнего тега
-  `project:`, либо добавление недопустимого подтипа `mnemos:` / искажённого
+  `project:`, либо добавление недопустимого подтипа `vesma:` / искажённого
   slug), отклоняется по каждой записи с записью в `errors`, и запись для
   этой памяти **пропускается**, вместо того чтобы портить хранилище.
 
 ```
-mnemos_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:", dry_run=False)
-mnemos_tags(action="remove", tags=["severity:high"], dry_run=False)
-mnemos_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
-mnemos_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
+vesma_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:", dry_run=False)
+vesma_tags(action="remove", tags=["severity:high"], dry_run=False)
+vesma_tags(action="remove", tags=["gcw:"], wildcard=True, dry_run=False)
+vesma_tags(action="add", tags=["severity:high"], project="vesma", dry_run=False)
 ```
 
-**Отчёты:** `rename` возвращает структуру `mnemos_tags_rename` (`scanned`,
+**Отчёты:** `rename` возвращает структуру `vesma_tags_rename` (`scanned`,
 `renamed`, `changed`, `skipped_invalid`, …), где `changed` равен `renamed`
 и добавлен для единообразной формы отчёта во всех действиях. `remove`
 возвращает `{action, scanned, changed, removed_tags, wildcard, errors,
@@ -378,8 +378,8 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 Все три идемпотентны (повторный запуск вернёт `changed=0`).
 
 **Алиас (без ломающих изменений):** устаревший MCP-инструмент
-`mnemos_tags_rename` продолжает работать — внутри он маршрутизируется в
-`mnemos_tags(action="rename")`, поэтому существующие вызовы и ссылки в
+`vesma_tags_rename` продолжает работать — внутри он маршрутизируется в
+`vesma_tags(action="rename")`, поэтому существующие вызовы и ссылки в
 `.agent.md` не меняются. Предупреждение об устаревании пока не добавляется
 (оно появится через один релиз после пилота).
 
@@ -388,8 +388,8 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 проверяют результирующий набор в строгом режиме, любой результат,
 нарушающий контракт, отклоняется по каждой записи с записью в `errors`,
 и запись для этой памяти пропускается: удаление последнего тега
-`project:`/`agent:`/`mnemos:`, добавление второго тега `project:`,
-добавление недопустимого подтипа `mnemos:`, искажённого slug или тега без
+`project:`/`agent:`/`vesma:`, добавление второго тега `project:`,
+добавление недопустимого подтипа `vesma:`, искажённого slug или тега без
 префикса `:`. `rename` остаётся в мягком режиме (замена префикса сохраняет
 обязательные теги).
 
@@ -415,7 +415,7 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
 ## Справка по TagContractError
 
 ```
-mnemos.models.TagContractError
+vesma.models.TagContractError
 ```
 
 Выбрасывается функцией `validate_tag_contract(..., strict=True)` и `TagContract(strict=True)`.

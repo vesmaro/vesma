@@ -38,7 +38,7 @@ RUN mkdir -p /gen && python -m grpc_tools.protoc -I. \
 FROM docker.io/library/python:3.12-slim AS base
 
 LABEL maintainer="abyss"
-LABEL description="Mnemos: hybrid long-term memory system for AI agents"
+LABEL description="Vesma: hybrid long-term memory system for AI agents"
 LABEL org.opencontainers.image.source="https://github.com/vesmaro/vesmaro"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.revision="3c8f270"
@@ -87,16 +87,16 @@ RUN mkdir -p /data /vault
 
 # Container config (0.0.0.0 bind + auth + CORS; TOTP master key via env)
 COPY config.container.yaml /app/config.yaml
-ENV MNEMOS_CONFIG=/app/config.yaml
+ENV VESMA_CONFIG=/app/config.yaml
 
 EXPOSE 8787
 
 # /health is auth-exempt (api middleware bypass list). Port comes from
 # the runtime env so the check stays correct when the operator overrides
-# it (vesmaro-node container-install mounts its own config with a custom
+# it (vesma-node container-install mounts its own config with a custom
 # port). python3 is in the base image; no curl needed.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python3 -c 'import os,urllib.request; urllib.request.urlopen("http://127.0.0.1:%s/health" % os.environ.get("MNEMOS_API__PORT", os.environ.get("VESMARO_API__PORT", "8787")), timeout=4)'
+  CMD python3 -c 'import os,urllib.request; urllib.request.urlopen("http://127.0.0.1:%s/health" % os.environ.get("VESMA_API__PORT", "8787"), timeout=4)'
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["mnemos", "serve"]
+CMD ["vesma", "serve"]

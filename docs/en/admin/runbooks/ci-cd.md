@@ -16,7 +16,7 @@ every pull request targeting `main`, and on a weekly drift check
 | Job | Runner | Purpose |
 |---|---|---|
 | `verify` | `ubuntu-latest`, Python 3.11 / 3.12 / 3.13 matrix | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
-| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and the CLI works in-image (today the legacy hook `mnemos --help`) |
+| `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and the CLI works in-image (today the legacy hook `vesma --help`) |
 
 The `verify` job is the **required status check** for `main` (see
 [Branch protection](#branch-protection)).
@@ -37,7 +37,7 @@ mypy --strict src/vesma/                             # types
 bandit -r src/ -f json -o bandit-report.json          # security (static)
 pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146   # security (deps; two ignores, see dependency-updates.md)
 pytest tests/ -q --tb=short                           # tests
-pytest --cov=src/vesmaro --cov-fail-under=80 --cov-report=term-missing tests/ -q   # coverage gate
+pytest --cov=src/vesma --cov-fail-under=80 --cov-report=term-missing tests/ -q   # coverage gate
 ```
 
 The single-shot equivalent:
@@ -63,12 +63,12 @@ through this script; once Actions resume it remains as a fast pre-push
 sanity check.
 
 A local image build with smoke (what the `build-container` job does — the
-legacy `mnemos --help` hook inside the image):
+legacy `vesma --help` hook inside the image):
 
 ```bash
-buildah bud -t mnemos:test .
-buildah from --name vesma-test mnemos:test
-buildah run vesma-test -- mnemos --help
+buildah bud -t vesma:test .
+buildah from --name vesma-test vesma:test
+buildah run vesma-test -- vesma --help
 ```
 
 [`act`](https://github.com/nektos/act) is the alternative for running the
@@ -175,13 +175,13 @@ of Docker to avoid the privileged-container requirement on GitHub-hosted
 runners. Steps:
 
 1. `apt-get install buildah`
-2. `buildah bud -t mnemos:test .` — builds the `Containerfile`
-3. `buildah from --name mnemos-test mnemos:test` — starts a container
-4. `buildah run mnemos-test -- mnemos --help` — smoke test (plus Python version printout)
+2. `buildah bud -t vesma:test .` — builds the `Containerfile`
+3. `buildah from --name vesma-test vesma:test` — starts a container
+4. `buildah run vesma-test -- vesma --help` — smoke test (plus Python version printout)
 
 > The smoke step runs the CLI (plus a Python version print) inside
 > the built image, so it validates the CLI entrypoint, not just the base image.
-> The name `mnemos` is the legacy entry-point hook still shipped in the image
+> The name `vesma` is the legacy entry-point hook still shipped in the image
 > (dual period until 6.0); the canonical CLI is `vesma`.
 
 If the container job fails, inspect the log for:

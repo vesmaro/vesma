@@ -606,7 +606,7 @@ def recall_agent(
 
     Without QUERY: the N most recent entries for the agent (created_at
     desc). With QUERY: hybrid search scoped to the agent's entries
-    (raw included). Same data the MCP tool mnemos_agent_recall returns.
+    (raw included). Same data the MCP tool vesma_agent_recall returns.
     """
     mgr = get_manager(config)
     results = mgr.agent_recall(
@@ -1901,7 +1901,7 @@ _migrate_app = typer.Typer(
     help=(
         "Migrate data from other memory systems.\n\n"
         "One-shot importers for supported sources — currently `from-ai-brain` "
-        "(the historical ~/.ai-brain layout) and `tags` (gcw: tag → mnemos: "
+        "(the historical ~/.ai-brain layout) and `tags` (gcw: tag → vesma: "
         "tag renaming). Each importer reports what it converted; source data "
         "is read, never modified."
     ),
@@ -1972,7 +1972,7 @@ def migrate_tags(
         instead. This command now delegates to the safe ``tags_rename``
         path (plain UPDATE via ``update_fields``) so the FTS5 index stays
         consistent. The old raw-``sqlite3`` implementation in
-        ``cli.migrate.migrate_gcw_to_mnemos_tags`` is no longer called.
+        ``cli.migrate.migrate_gcw_to_vesma_tags`` is no longer called.
     """
     console.print(
         "[yellow]⚠ migrate tags is deprecated — use "
@@ -2377,7 +2377,7 @@ app.add_typer(scanner_app, name="scanner")
 # ── graph (project-graph registration lifecycle, #450/#454) ───────────────────
 # Subcommand tree:
 #   vesma graph register <project> <root>   — register a root (agent twin of
-#                                             mnemos_register_project, #454)
+#                                             vesma_register_project, #454)
 #   vesma graph repoint <project> <root>    — re-point a ghost registration
 #                                             whose root moved on disk (#450)
 #   vesma graph delete <project>            — drop the graph index; a ghost

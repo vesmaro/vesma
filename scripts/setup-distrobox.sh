@@ -1,16 +1,16 @@
 #!/bin/bash
-# Mnemos: setup dedicated distrobox container
+# Vesma: setup dedicated distrobox container
 # Run from host: ./scripts/setup-distrobox.sh
 set -euo pipefail
 
 CONTAINER_NAME="vesma"
 IMAGE="docker.io/library/ubuntu:24.04"
-MNEMOS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VESMA_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "=== Mnemos: Creating distrobox container ==="
+echo "=== Vesma: Creating distrobox container ==="
 echo "Container: $CONTAINER_NAME"
 echo "Image:     $IMAGE"
-echo "Project:   $MNEMOS_DIR"
+echo "Project:   $VESMA_DIR"
 echo ""
 
 # Create container if it doesn't exist
@@ -31,7 +31,7 @@ echo "=== Setting up Python environment inside container ==="
 # Run setup inside the container
 distrobox enter "$CONTAINER_NAME" -- bash -c "
     set -euo pipefail
-    cd '$MNEMOS_DIR'
+    cd '$VESMA_DIR'
 
     echo '--- Installing system packages ---'
     sudo apt-get update -qq
@@ -61,7 +61,7 @@ distrobox enter "$CONTAINER_NAME" -- bash -c "
     echo ''
     echo 'Usage:'
     echo '  distrobox enter $CONTAINER_NAME'
-    echo '  cd $MNEMOS_DIR && source .venv/bin/activate'
+    echo '  cd $VESMA_DIR && source .venv/bin/activate'
     echo '  vesma --help'
     echo ''
     echo 'Or run as container:'

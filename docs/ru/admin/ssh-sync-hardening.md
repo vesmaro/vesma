@@ -4,16 +4,15 @@
 
 Авто-cron-мост федерации (#104) — ужесточение хост/SSH-слоя для
 автоматизации пакетной синхронизации между двумя инстансами vesma
-(A = источник, B = цель). Имена вида `mnemos-sync` (пользователь,
-каталоги, ключ-комментарии) — легаси-неймс той же установки и
-переименования не требуют; env-контракт скрипта — `VESMARO_SYNC_*`
-(легаси-имена `MNEMOS_SYNC_*` маппируются с fallback'ом, см.
-`scripts/sync-peers.sh`).
+(A = источник, B = цель). Установка именуется `vesma-sync`
+(пользователь, каталоги, ключ-комментарии); env-контракт скрипта —
+`VESMA_SYNC_*` (написания 5.x `VESMARO_SYNC_*`/`MNEMOS_SYNC_*`
+выведены из обращения, см. `scripts/sync-peers.sh`).
 
 ## Область, аудитория, связанное
 
 - **Область:** хост/SSH-слой, на котором работают `scripts/sync-peers.sh` и
-  юниты `contrib/systemd/mnemos-sync.{service,timer}`. Это НЕ код приложения
+  юниты `contrib/systemd/vesma-sync.{service,timer}`. Это НЕ код приложения
   vesma — сам vesma остаётся офлайн.
 - **Аудитория:** операторы, разворачивающие пакетную синхронизацию Phase 0
   как автоматизированный cron-мост. Подразумеваются root на обеих машинах
@@ -37,7 +36,7 @@ ssh. Украденный SSH-ключ даёт атакующему тольк�
 
 ## Пункты ужесточения
 
-### 1. Выделенный пользователь `mnemos-sync` на B
+### 1. Выделенный пользователь `vesma-sync` на B
 
 Создайте системного пользователя без shell и с home под `/var/lib`. Этот
 пользователь владеет директорией `incoming/` и ограниченным
@@ -45,14 +44,14 @@ ssh. Украденный SSH-ключ даёт атакующему тольк�
 
 ```bash
 sudo useradd --system --shell /usr/sbin/nologin \
-    --home /var/lib/mnemos-sync --create-home mnemos-sync
-sudo install -d -o mnemos-sync -g mnemos-sync -m 0750 /var/lib/mnemos-sync/incoming
-sudo install -d -o mnemos-sync -g mnemos-sync -m 0700 /var/lib/mnemos-sync/.ssh
+    --home /var/lib/vesma-sync --create-home vesma-sync
+sudo install -d -o vesma-sync -g vesma-sync -m 0750 /var/lib/vesma-sync/incoming
+sudo install -d -o vesma-sync -g vesma-sync -m 0700 /var/lib/vesma-sync/.ssh
 ```
 
 Директория `incoming/` (`0750`) — куда rsync доставляет payload'ы.
 Директория `.ssh/` (`0700`) хранит `authorized_keys`. У пользователя
-`mnemos-sync` нет ни пароля, ни shell — вход только по ключу, через два
+`vesma-sync` нет ни пароля, ни shell — вход только по ключу, через два
 ограниченных ключа (§2).
 
 ### 2. `authorized_keys` на B с ограничениями `command=""`
@@ -63,17 +62,17 @@ allow-лист `from=""`, `no-pty` и все виды forwarding выключе�
 охраняемая команда.
 
 ```text
-# ~/.ssh/authorized_keys for mnemos-sync on B
+# ~/.ssh/authorized_keys for vesma-sync on B
 
 # PUSH key — rsync delivery (rsync-wrapper.sh restricts dest to incoming/)
 from="192.0.2.5",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding,\
 command="/usr/local/sbin/rsync-wrapper.sh" \
-ssh-ed25519 AAAA... mnemos-sync-push@A
+ssh-ed25519 AAAA... vesma-sync-push@A
 
 # TRIGGER key — import invocation (vesma-import-wrapper.sh pins passphrase-env)
 from="192.0.2.5",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding,\
 command="/usr/local/sbin/vesma-import-wrapper.sh" \
-ssh-ed25519 AAAA... mnemos-sync-trigger@A
+ssh-ed25519 AAAA... vesma-sync-trigger@A
 ```
 
 Конкретные реализации:
@@ -98,8 +97,8 @@ ssh-ed25519 AAAA... mnemos-sync-trigger@A
 
 ```bash
 sudo install -d -o root -g root -m 0750 /etc/vesma
-sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "mnemos-sync-push@A"
-sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "mnemos-sync-trigger@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key    -N "" -C "vesma-sync-push@A"
+sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "vesma-sync-trigger@A"
 ```
 
 | Вариант | Два ключа (выбрано) | Один общий ключ |
@@ -115,7 +114,7 @@ sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-trigger-key -N "" -C "mnemos-sync-
 ### 4. Хранение ключей на A
 
 Приватные ключи лежат в `/etc/vesma/` с `chmod 600`, владелец
-`root:root`. Юнит `vesma-sync.service` работает от `mnemos-sync`, но
+`root:root`. Юнит `vesma-sync.service` работает от `vesma-sync`, но
 ключи читаются согласно `User=` юнита systemd — скорректируйте, если ваша
 политика требует, чтобы сервисный пользователь владел ключами. Либо
 храните ключи в связке ключей ОС (keyring) или в секрет-менеджере (Vault,
@@ -136,7 +135,7 @@ sudo chown root:root /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
 
 ```text
 1. Сгенерируйте новый ключ Ed25519 на A (§3):
-     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "mnemos-sync-push@A-rotN"
+     sudo ssh-keygen -t ed25519 -f /etc/vesma/sync-push-key-new -N "" -C "vesma-sync-push@A-rotN"
 2. Добавьте новый .pub в authorized_keys на B (§2) — во время переключения
    оставьте СТАРУЮ строку на месте, чтобы неудавшаяся ротация не сломала cron.
 3. Проверьте: запустите sync-peers.sh вручную с VESMA_SYNC_DRY_RUN=1 против
@@ -155,15 +154,15 @@ sudo chown root:root /etc/vesma/sync-push-key /etc/vesma/sync-trigger-key
 поэтому украденный ключ не может его обойти.
 
 ```bash
-sudo install -o mnemos-sync -g mnemos-sync -m 0640 /dev/null /var/log/vesma-sync.log
+sudo install -o vesma-sync -g vesma-sync -m 0640 /dev/null /var/log/vesma-sync.log
 # Optional: logrotate entry for /var/log/vesma-sync.log
 ```
 
 Формы строк лога (см. `rsync-wrapper.sh` и `vesma-import-wrapper.sh`):
 
 ```text
-[2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json
-[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/mnemos-sync/incoming/mnemos-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
+[2026-07-21T12:00:00Z] rsync-wrapper src=192.0.2.5 ACCEPT dest=/var/lib/vesma-sync/incoming/vesma-sync-20260721T120000Z.json
+[2026-07-21T12:00:05Z] vesma-import-wrapper src=192.0.2.5 ACCEPT source=/var/lib/vesma-sync/incoming/vesma-sync-20260721T120000Z.json passphrase-env=VESMA_EXPORT_PASSPHRASE dry_run=0
 [2026-07-21T12:01:00Z] rsync-wrapper src=192.0.2.5 REJECT destination outside INCOMING_DIR: /etc/passwd
 ```
 
@@ -171,19 +170,19 @@ sudo install -o mnemos-sync -g mnemos-sync -m 0640 /dev/null /var/log/vesma-sync
 rsyslog:
 
 ```text
-# /etc/rsyslog.d/mnemos-sync.conf
-:syslogtag, contains, "mnemos-sync"  /var/log/vesma-sync.log
+# /etc/rsyslog.d/vesma-sync.conf
+:syslogtag, contains, "vesma-sync"  /var/log/vesma-sync.log
 & stop
 ```
 
 ### 7. Сеть — allow-лист `from=""` + файрвол
 
 Два слоя ограничивают, кто может достучаться до SSH-поверхности
-`mnemos-sync`:
+`vesma-sync`:
 
 1. **`from=""` в `authorized_keys`** (§2) — ключом может воспользоваться
    только IP A.
-2. **Правило файрвола** — до `sshd` для пользователя `mnemos-sync` вообще
+2. **Правило файрвола** — до `sshd` для пользователя `vesma-sync` вообще
    может достучаться только IP A.
 
 ```bash
@@ -192,13 +191,13 @@ sudo nft add rule inet filter input tcp dport 22 ip saddr 192.0.2.5 accept
 sudo nft add rule inet filter input tcp dport 22 drop
 ```
 
-Пример `sshd_config` — ограничьте пользователя `mnemos-sync` обёртками и
+Пример `sshd_config` — ограничьте пользователя `vesma-sync` обёртками и
 выключите для него все виды forwarding:
 
 ```text
-# /etc/ssh/sshd_config.d/mnemos-sync.conf
-Match User mnemos-sync
-    AllowUsers mnemos-sync
+# /etc/ssh/sshd_config.d/vesma-sync.conf
+Match User vesma-sync
+    AllowUsers vesma-sync
     PermitTTY no
     AllowAgentForwarding no
     X11Forwarding no
@@ -219,13 +218,13 @@ Match User mnemos-sync
 
 ```text
 # ── На B (цель) ──────────────────────────────────────────────────────────
-1. Создайте пользователя mnemos-sync (§1):
-     sudo useradd --system --shell /usr/sbin/nologin --home /var/lib/mnemos-sync --create-home mnemos-sync
+1. Создайте пользователя vesma-sync (§1):
+     sudo useradd --system --shell /usr/sbin/nologin --home /var/lib/vesma-sync --create-home vesma-sync
 2. Создайте incoming/ и .ssh/ с правильными режимами (§1).
 3. Установите обёртки:
      sudo install -m 0755 contrib/systemd/rsync-wrapper.sh         /usr/local/sbin/
      sudo install -m 0755 contrib/systemd/vesma-import-wrapper.sh /usr/local/sbin/
-4. Создайте /var/log/vesma-sync.log с владельцем mnemos-sync (§6).
+4. Создайте /var/log/vesma-sync.log с владельцем vesma-sync (§6).
 5. Добавьте два ограниченных ключа в ~/.ssh/authorized_keys (§2) — после
    того, как публичные ключи A существуют (шаг A1 ниже).
 6. Примените sshd_config drop-in + правило файрвола (§7). Перезагрузите sshd.
@@ -235,7 +234,7 @@ Match User mnemos-sync
 2. Скопируйте два файла .pub на B и добавьте их в authorized_keys (шаг B5).
 3. Установите scripts/sync-peers.sh:
      sudo install -m 0755 scripts/sync-peers.sh /usr/local/sbin/
-4. Разверните /etc/mnemos/sync.env из contrib/systemd/sync.env.example —
+4. Разверните /etc/vesma/sync.env из contrib/systemd/sync.env.example —
    ровно этот путь читает `EnvironmentFile=` юнита `vesma-sync.service`
    (замените каждый RFC-зарезервированный dummy). Парольную фразу
    предоставьте через systemd drop-in или LoadCredential — НЕ в sync.env.
@@ -254,10 +253,10 @@ Match User mnemos-sync
 
 | Тест | Ожидаемо | Отказ означает |
 | --- | --- | --- |
-| `ssh -i sync-push-key mnemos-sync@B` (без команды) | отказ — "no command provided — interactive shell refused." (код 2) | `command=""` не задан в authorized_keys |
-| `ssh -i sync-push-key mnemos-sync@B "cat /etc/passwd"` | отказ — "non-rsync command refused" (код 2) | rsync-wrapper.sh не является `command=""` |
+| `ssh -i sync-push-key vesma-sync@B` (без команды) | отказ — "no command provided — interactive shell refused." (код 2) | `command=""` не задан в authorized_keys |
+| `ssh -i sync-push-key vesma-sync@B "cat /etc/passwd"` | отказ — "non-rsync command refused" (код 2) | rsync-wrapper.sh не является `command=""` |
 | `rsync -e "ssh -i sync-push-key" file B:/etc/passwd` | отказ — "destination outside INCOMING_DIR" (код 2) | сломана проверка пути в rsync-wrapper.sh |
-| `ssh -i sync-trigger-key mnemos-sync@B "vesma sync export ..."` | отказ — "non-import command refused" (код 2) | сломан guard vesma-import-wrapper.sh |
+| `ssh -i sync-trigger-key vesma-sync@B "vesma sync export ..."` | отказ — "non-import command refused" (код 2) | сломан guard vesma-import-wrapper.sh |
 | `VESMA_SYNC_DRY_RUN=1 bash scripts/sync-peers.sh` (с env) | код выхода 0, в stderr логируются `vesma sync export`, `rsync`, `ssh` | расхождение env-контракта скрипта |
 | `tail /var/log/vesma-sync.log` после реального прогона | строки ACCEPT с src IP + меткой времени | хелпер аудита не пишет |
 

@@ -731,7 +731,7 @@ class TagContract(BaseModel):
     project: str = ""
     agent: str = ""
     task: str = ""
-    mnemos_subtypes: frozenset[str] = Field(default_factory=frozenset, exclude=True)
+    vesma_subtypes: frozenset[str] = Field(default_factory=frozenset, exclude=True)
 
     @model_validator(mode="after")
     def _validate_and_extract(self) -> TagContract:
@@ -752,7 +752,7 @@ class TagContract(BaseModel):
                 # Only the byte-stable ``mnemos:no-federate`` marker can
                 # survive validation under the legacy spelling.
                 subtypes.add(tag[len(LEGACY_TAG_PREFIX) :])
-        self.mnemos_subtypes = frozenset(subtypes)
+        self.vesma_subtypes = frozenset(subtypes)
         return self
 
 

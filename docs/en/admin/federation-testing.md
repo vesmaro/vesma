@@ -96,7 +96,7 @@ value to a config file or a repository.
 ```bash
 # Generate a test bearer token (32 bytes, base64)
 TEST_TOKEN=$(openssl rand -base64 32)
-echo "VESMA_FED_PEER_MNEMOS_A_TOKEN=$TEST_TOKEN"
+echo "VESMA_FED_PEER_VESMA_A_TOKEN=$TEST_TOKEN"
 ```
 
 ---
@@ -128,7 +128,7 @@ present in your checkout, run the steps manually.
    for inst in a b; do
      mkdir -p "/tmp/vesma-fed-$inst/data" "/tmp/vesma-fed-$inst/vault"
      cat > "/tmp/vesma-fed-$inst/config.yaml" <<EOF
-   mnemos:
+   vesma:
      data_dir: /tmp/vesma-fed-$inst/data
      vault_path: /tmp/vesma-fed-$inst/vault
    EOF
@@ -251,8 +251,8 @@ federation:
   shared_projects:
     - cross-memory-test
   peers:
-    mnemos-A:
-      bearer_token_env: VESMA_FED_PEER_MNEMOS_A_TOKEN
+    vesma-A:
+      bearer_token_env: VESMA_FED_PEER_VESMA_A_TOKEN
       allowed_projects:
         - cross-memory-test
       allowed_types:
@@ -273,7 +273,7 @@ Restart `vesma serve` with the token in the environment:
 
 ```bash
 # On peer B (remote host)
-VESMA_FED_PEER_MNEMOS_A_TOKEN=<token-from-§2> vesma serve --port 8101
+VESMA_FED_PEER_VESMA_A_TOKEN=<token-from-§2> vesma serve --port 8101
 ```
 
 The server reads the token from the env var named in
@@ -303,7 +303,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   -H "Authorization: Bearer <token-from-§2>" \
   -H "Content-Type: application/json" \
   -d '{
-    "peer_id": "mnemos-A",
+    "peer_id": "vesma-A",
     "query": "mediated pull verified",
     "project_scope": "cross-memory-test",
     "include_content": true
@@ -317,7 +317,7 @@ Expect:
 - HTTP `200`
 - `trigger_code: "EXHAUSTIVE"`
 - `records` array non-empty (one entry for the seed record from step b)
-- `records[0].source_agent` matches peer B's self id (`mnemos-B` by
+- `records[0].source_agent` matches peer B's self id (`vesma-B` by
   default; there is no env override — a different id is set via the
   `self_agent_id` parameter in code)
 - `ttl_class: "ephemeral"` — a policy hint; the server does not enforce
@@ -332,7 +332,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   -H "Authorization: Bearer <token-from-§2>" \
   -H "Content-Type: application/json" \
   -d '{
-    "peer_id": "mnemos-A",
+    "peer_id": "vesma-A",
     "query": "mediated pull verified",
     "project_scope": "cross-memory-test",
     "include_content": true
@@ -357,7 +357,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:18101/api/v1/
   -H "Authorization: Bearer <token-from-§2>" \
   -H "Content-Type: application/json" \
   -d '{
-    "peer_id": "mnemos-A",
+    "peer_id": "vesma-A",
     "query": "anything",
     "project_scope": "secret-project-not-allowed",
     "include_content": true
@@ -379,7 +379,7 @@ for i in $(seq 1 40); do
     -H "Authorization: Bearer <token-from-§2>" \
     -H "Content-Type: application/json" \
     -d '{
-      "peer_id": "mnemos-A",
+      "peer_id": "vesma-A",
       "query": "rate-limit-probe-'$i'",
       "project_scope": "cross-memory-test",
       "include_content": false
@@ -407,7 +407,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
   -H "Authorization: Bearer <token-from-§2>" \
   -H "Content-Type: application/json" \
   -d '{
-    "peer_id": "mnemos-A",
+    "peer_id": "vesma-A",
     "query": "mediated pull verified roundtrip",
     "project_scope": "cross-memory-test",
     "include_content": true
@@ -431,7 +431,7 @@ vesma search "mediated pull verified" --project cross-memory-test
 ```
 
 The imported record should appear, with provenance from peer B
-(`fed:mnemos-B:<uuid>` prefix on the record id).
+(`fed:vesma-B:<uuid>` prefix on the record id).
 
 ### l. Idempotency — re-import the same payload
 
@@ -456,8 +456,8 @@ skipped, never overwritten.
 
 3. Delete the test token from peer B's environment (it was set inline
    in the serve command, so killing the process clears it; if it was
-   exported, `unset VESMA_FED_PEER_MNEMOS_A_TOKEN`).
-4. Remove the `mnemos-A` peer entry from peer B's `config.yaml`, or
+   exported, `unset VESMA_FED_PEER_VESMA_A_TOKEN`).
+4. Remove the `vesma-A` peer entry from peer B's `config.yaml`, or
    replace it with the production config.
 5. Optionally withdraw the test memory on peer B. There is no
    `vesma delete` CLI verb — the supported path is the workflow

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# rsync-wrapper.sh — restricted rsync server guard for mnemos-sync on B (#104).
+# rsync-wrapper.sh — restricted rsync server guard for vesma-sync on B (#104).
 #
-# Pinned in ~mnemos-sync/.ssh/authorized_keys via command="" for the PUSH key
+# Pinned in ~vesma-sync/.ssh/authorized_keys via command="" for the PUSH key
 # (ssh-sync-hardening.md §2). SSH invokes this wrapper instead of a shell; the
 # real rsync server command arrives in $SSH_ORIGINAL_COMMAND. This wrapper:
 #
@@ -17,7 +17,7 @@
 # Install: chmod 0755, place at /usr/local/sbin/rsync-wrapper.sh, pin in
 # authorized_keys as:
 #   command="/usr/local/sbin/rsync-wrapper.sh",no-pty,no-agent-forwarding,... \
-#   ssh-ed25519 AAAA... mnemos-sync-push@A
+#   ssh-ed25519 AAAA... vesma-sync-push@A
 #
 # Exit codes: 0 success, 1 rsync failed, 2 policy violation / parse error.
 
@@ -25,9 +25,9 @@ set -euo pipefail
 
 # ── config ────────────────────────────────────────────────────────────────────
 # INCOMING_DIR MUST match VESMA_SYNC_REMOTE_IMPORT_DIR on A and the dir
-# created per ssh-sync-hardening.md §1. Override via /etc/mnemos/rsync-wrapper.env
+# created per ssh-sync-hardening.md §1. Override via /etc/vesma/rsync-wrapper.env
 # if your layout differs.
-INCOMING_DIR="${VESMA_SYNC_INCOMING_DIR:-/var/lib/mnemos-sync/incoming}"
+INCOMING_DIR="${VESMA_SYNC_INCOMING_DIR:-/var/lib/vesma-sync/incoming}"
 AUDIT_LOG="${VESMA_SYNC_AUDIT_LOG:-/var/log/vesma-sync.log}"
 RSYNC_BIN="${RSYNC_BIN:-rsync}"
 

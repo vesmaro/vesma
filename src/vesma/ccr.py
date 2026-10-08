@@ -13,13 +13,15 @@ Pipeline
    keyed by its SHA-256 hash. The hash is content-addressed, so
    re-compressing the same text is a no-op.
 3. **Retrieve** — embed a short parseable marker in the compressed output.
-   The LLM calls ``mnemos_retrieve(hash)`` to fetch the full original back
-   (zero data loss) or ``mnemos_retrieve(hash, query=...)`` for FTS5-ranked
+   The LLM calls ``vesma_retrieve(hash)`` to fetch the full original back
+   (zero data loss) or ``vesma_retrieve(hash, query=...)`` for FTS5-ranked
    snippets within the cached original.
 
 Marker format
 -------------
 ``[compressed: <hash> | <N>→<M> chars | retrieve via mnemos_retrieve]``
+(the tool name inside the marker is a byte-stable stored-format constant —
+see the marker comment below)
 
 The marker is the *only* overhead added on top of the filtered content.
 It is short, parseable, and LLM-friendly. Its full span
@@ -48,6 +50,10 @@ logger = logging.getLogger(__name__)
 # Exported (vesma #282): the CacheAligner consumes this SAME pattern to
 # treat CCR marker spans as atomic protected regions — never duplicate the
 # shape in another module (single source of truth for what a marker is).
+# The marker is written INTO stored content — a byte-stable data format
+# (same class as MNEMOS1 / the ``[mnemos:<id>`` provenance header): the
+# legacy tool spelling inside it is a format constant, not a naming tail;
+# a spelling rewrite would strand markers already persisted by 5.x rows.
 CCR_MARKER_RE: re.Pattern[str] = re.compile(
     r"\[compressed:\s*(?P<hash>[0-9a-f]{64})\s*\|"
     r"\s*(?P<orig>\d+)→(?P<comp>\d+)\s*chars\s*\|"

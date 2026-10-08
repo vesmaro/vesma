@@ -23,7 +23,7 @@ entries and tags, reprocess the raw queue when it grows.
 - **After heavy write bursts** — a growing `queue_depth` means the pipeline
   is behind; reprocess to flush.
 - **Tag hygiene** — `vesma_list_tags()` reveals typos and near-duplicates
-  (`project:mnemos` vs `project:Project-Vesma`).
+  (`project:vesma` vs `project:Project-Vesma`).
 
 ## STEPS
 
@@ -54,8 +54,8 @@ entries and tags, reprocess the raw queue when it grows.
    `vesma_tags_rename` (same engine, prefix→prefix, idempotent):
 
    ```text
-   vesma_tags_rename(from_prefix="gcw:", to_prefix="mnemos:", dry_run=true)
-   vesma_tags(action="rename", from_prefix="gcw:", to_prefix="mnemos:",
+   vesma_tags_rename(from_prefix="gcw:", to_prefix="vesma:", dry_run=true)
+   vesma_tags(action="rename", from_prefix="gcw:", to_prefix="vesma:",
                dry_run=true)
    ```
 

@@ -1,7 +1,7 @@
 """Pydantic models for the A2A Sessions API (M16).
 
 These models are deliberately isolated from the rest of the Vesma models
-to keep the A2A contract (per ``docs/a2a/mnemos-requirements.md``) stable
+to keep the A2A contract (per ``docs/a2a/vesma-requirements.md``) stable
 and reviewable in one place.  They mirror the requirements document 1:1:
 
   * ``Role``  — the four valid role strings for a turn.

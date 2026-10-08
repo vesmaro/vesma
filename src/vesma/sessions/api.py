@@ -148,7 +148,7 @@ async def get_turn(
     # B008: FastAPI's standard idiom for declaring query params with
     # defaults is ``Query(default=<value>)`` in the signature; this is a
     # known false positive of B008, identical to the pattern used in
-    # ``mnemos/api/main.py``.
+    # ``vesma/api/main.py``.
     mode: LoadMode = Query(default=LoadMode.SUMMARY),  # noqa: B008
 ) -> TurnRead:
     """Return one turn in ``summary`` mode (default) or ``full`` mode.
