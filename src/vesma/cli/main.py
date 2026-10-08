@@ -458,6 +458,17 @@ def ingest_file(
 
 # ── search ─────────────────────────────────────────────────────────────────────
 
+#: Built-in relevance floor for the CLI `search` (cli-audit 2026-10-08 P1
+#: #9), calibrated against the BUNDLED nano embedder (measured 2026-10-09):
+#: a garbage query's raw cosine lands ≈ 0.47-0.63 (the model is
+#: anisotropic (everything correlates) correlates), a genuinely related text ≈ 0.88.
+#: 0.70 cuts the garbage band with margin while keeping related hits.
+#: Override per call with --threshold, per machine with
+#: ``search.min_relevance`` in the config; --threshold 0 disables the gate.
+#: (Other embedders have different scales — hashing fixtures are
+#: orthogonal at 0.0 — hence the knob, not a hardcoded universal.)
+_DEFAULT_SEARCH_RELEVANCE = 0.70
+
 
 @app.command()
 def search(
@@ -491,6 +502,18 @@ def search(
             "Takes precedence over --include-raw."
         ),
     ),
+    threshold: Annotated[
+        float | None,
+        typer.Option(
+            "--threshold",
+            help=(
+                "Minimum semantic (vector-leg cosine) relevance for a result with "
+                "no lexical match. Default: search.min_relevance from the config, "
+                "else a calibrated floor for the bundled embedder. 0 disables the "
+                "gate (pure ranking, garbage queries return the whole store)."
+            ),
+        ),
+    ] = None,
     config: str = ConfigOption,
 ) -> None:
     """Search long-term memory (hybrid FTS + vector).
@@ -499,6 +522,11 @@ def search(
     MCP/HTTP surfaces (published-only by default), the interactive CLI must
     complete the first add → search roundtrip from a clean install with no
     running server and no pipeline pass yet (ADR-0017 Phase 0).
+
+    A relevance gate drops results that carry no lexical (FTS) match and
+    whose raw semantic similarity is below the threshold — a garbage query
+    says "no relevant results" instead of returning the whole store with
+    near-zero scores.
     """
     from vesma.models import MemoryStatus
 
@@ -517,6 +545,35 @@ def search(
         include_raw=include_raw,
         status=status_enum,
     )
+
+    # cli-audit 2026-10-08 (P1 #9): the fused RRF score is rank-based —
+    # even a garbage query surfaces the whole store at ≈0.008 and "no
+    # results" is unreachable. Gate on the raw vector cosine: a row with
+    # NO lexical (FTS) match must clear the semantic floor to surface.
+    effective_threshold = threshold
+    if effective_threshold is None:
+        effective_threshold = (
+            mgr.settings.search.min_relevance
+            if mgr.settings.search.min_relevance > 0
+            else _DEFAULT_SEARCH_RELEVANCE
+        )
+    if effective_threshold > 0 and results:
+        relevant = [
+            r
+            for r in results
+            if r.vector_score is None or r.vector_score >= effective_threshold
+        ]
+        if not relevant and results:
+            best = max(r.vector_score for r in results if r.vector_score is not None)
+            console.print(
+                f"[yellow]No relevant results[/yellow] — best semantic score "
+                f"{best:.3f} is below the relevance threshold "
+                f"{effective_threshold:.2f} "
+                "(lower it with --threshold, or pass 0 to disable the gate)."
+            )
+            return
+        results = relevant
+
     if not results:
         console.print("[yellow]No results found.[/yellow]")
         return
