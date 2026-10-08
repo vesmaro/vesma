@@ -69,7 +69,7 @@ def _clear_compat_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _no_config(tmp_path: Path) -> Path:
     """A config path that does not exist — keeps load_settings off the real
-    ``~/.mnemos/config.yaml`` and ``./config.yaml``."""
+    ``~/.vesma/config.yaml`` and ``./config.yaml``."""
     return tmp_path / "no-config.yaml"
 
 
@@ -175,8 +175,8 @@ class TestDefaultsAndEdges:
         _clear_compat_env(monkeypatch)
         settings = load_settings(config_path=_no_config(tmp_path))
         home = Path.home()
-        assert settings.vesma.data_dir == (home / ".mnemos" / "data").resolve()
-        assert settings.vesma.vault_path == (home / ".mnemos" / "vault").resolve()
+        assert settings.vesma.data_dir == (home / ".vesma" / "data").resolve()
+        assert settings.vesma.vault_path == (home / ".vesma" / "vault").resolve()
 
     def test_empty_alias_is_treated_as_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -184,7 +184,7 @@ class TestDefaultsAndEdges:
         _clear_compat_env(monkeypatch)
         monkeypatch.setenv("VESMA_DATA_DIR", "")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".vesma" / "data").resolve()
 
 
 # ── Drift guard: mcp-setup.sh writes exactly the shimmed names ─────────────

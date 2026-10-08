@@ -10,7 +10,15 @@ from pathlib import Path
 from typing import Any, Final, Literal
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from click import ClickException
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
@@ -18,12 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 class VesmaConfig(BaseModel):
-    # Consolidated layout (v2.1): everything lives under ~/.mnemos/.
-    # Old scattered paths (~/mnemos-vault, ~/.mnemos as data_dir) are
-    # auto-migrated by ``Settings.migrate_layout()`` on first load.
-    vault_path: Path = Path("~/.mnemos/vault")
-    data_dir: Path = Path("~/.mnemos/data")
-    db_name: str = "mnemos.db"
+    # Consolidated layout: everything lives under ~/.vesma/ (the 6.x
+    # canonical home; the 5.x-era ~/.mnemos home is migrated only by the
+    # explicit ``vesma migrate-store`` mover — never auto-touched).
+    # Old scattered paths (~/mnemos-vault, a db at the ~/.vesma root) are
+    # still auto-consolidated by ``Settings.migrate_layout()`` on first load.
+    vault_path: Path = Path("~/.vesma/vault")
+    data_dir: Path = Path("~/.vesma/data")
+    db_name: str = "vesma.db"
     # M2: tag contract enforcement
     strict_tag_contract: bool = True
     # M10: auto-run the context filter on ingest (vesma_add / manager.add).
@@ -194,7 +204,7 @@ class LoggingConfig(BaseModel):
     """
 
     level: str = "INFO"  # DEBUG | INFO | WARNING | ERROR
-    log_file: Path = Path("~/.mnemos/logs/mnemos.log")
+    log_file: Path = Path("~/.vesma/logs/vesma.log")
     max_file_size_mb: int = Field(default=10, ge=1, le=1024)
     backup_count: int = Field(default=3, ge=0, le=100)
     format: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -783,11 +793,11 @@ class FederationConfig(BaseModel):
             per-peer ``allowed_projects`` is a subset filter on top.
         access_log_path: Optional override for the B-side federation
             access log location (contract §10). When ``None`` (default)
-            the log falls back to ``~/.mnemos/logs/federation-access.jsonl``
+            the log falls back to ``~/.vesma/logs/federation-access.jsonl``
             (see :data:`vesma.federation_access_log.DEFAULT_LOG_PATH`).
             Set to an absolute path (e.g. ``/data/federation-access.jsonl``)
             to place the log on a persistent volume — useful for
-            containerised deployments where ``~/.mnemos`` is ephemeral.
+            containerised deployments where ``~/.vesma`` is ephemeral.
             The log is never replicated, never exported, never synced
             (leak surface, contract §10 "Где хранится").
         index_title_blocklist: Q10.9 title-regex patterns (Python ``re``,
@@ -1542,18 +1552,22 @@ class Settings(BaseSettings):
         return self.vesma.data_dir / self.vesma.db_name
 
     def migrate_layout(self) -> list[str]:
-        """Migrate scattered old paths to the consolidated ``~/.mnemos/`` layout.
+        """Consolidate scattered paths inside the canonical ``~/.vesma/`` home.
 
         Detection rules (all idempotent — only moves if old exists AND new doesn't):
 
-        * Old data dir ``~/.mnemos`` containing ``mnemos.db`` (and optionally
-          ``vectors.db``) → moved to ``~/.mnemos/data/``.
-        * Old vault ``~/mnemos-vault/`` → moved to ``~/.mnemos/vault/``.
+        * A database sitting at the ``~/.vesma`` root (``vesma.db`` — or the
+          6.0.0-era default ``mnemos.db``) with siblings → moved to
+          ``~/.vesma/data/``.
+        * Old vault ``~/mnemos-vault/`` → moved to ``~/.vesma/vault/``.
 
-        The config file ``~/.mnemos/config.yaml`` stays in place — it was
-        already at the root. If the old ``~/.mnemos`` dir contained a
-        ``config.yaml``, it is left in place (the new layout keeps config at
-        the root, not under ``data/``).
+        The LEGACY 5.x home ``~/.mnemos`` is deliberately NOT touched here —
+        migrating it is the explicit ``vesma migrate-store`` mover's job
+        (ADR-0044: the v2.1 auto-run precedent caused startup races, and the
+        fork-refusal gate steers users to the mover instead).
+
+        The config file ``~/.vesma/config.yaml`` stays in place — it lives at
+        the home root, not under ``data/``.
 
         Returns a list of human-readable descriptions of what was moved
         (empty if nothing was migrated).
@@ -1563,19 +1577,22 @@ class Settings(BaseSettings):
         new_data = self.vesma.data_dir
         new_vault = self.vesma.vault_path
 
-        # ── Data dir migration ────────────────────────────────────────────
-        # Old layout: ~/.mnemos/mnemos.db (and vectors.db) directly under root.
-        # New layout: ~/.mnemos/data/mnemos.db
-        # Only migrate if the *default* data_dir is in use (i.e. the user
+        # ── Data dir consolidation ────────────────────────────────────────
+        # Flat layout: vesma.db (or the 6.0.0-era mnemos.db) directly under
+        # the home root. Canonical: ~/.vesma/data/<db>.
+        # Only consolidate if the *default* data_dir is in use (i.e. the user
         # hasn't overridden it to a custom path). If data_dir was overridden
         # via config/env, we respect that and skip migration.
-        old_data_root = home / ".mnemos"
-        default_new_data = (home / ".mnemos" / "data").resolve()
+        old_data_root = home / ".vesma"
+        default_new_data = (home / ".vesma" / "data").resolve()
+        root_db = next(
+            (name for name in (LEGACY_DB_FILENAME, "vesma.db") if (old_data_root / name).exists()),
+            None,
+        )
         if (
             new_data == default_new_data
-            and old_data_root.is_dir()
-            and (old_data_root / "mnemos.db").exists()
-            and not (new_data / "mnemos.db").exists()
+            and root_db is not None
+            and not (new_data / root_db).exists()
         ):
             new_data.mkdir(parents=True, exist_ok=True)
             for item in old_data_root.iterdir():
@@ -1591,9 +1608,9 @@ class Settings(BaseSettings):
 
         # ── Vault migration ───────────────────────────────────────────────
         # Old layout: ~/mnemos-vault/
-        # New layout: ~/.mnemos/vault/
+        # New layout: ~/.vesma/vault/
         old_vault = home / "mnemos-vault"
-        default_new_vault = (home / ".mnemos" / "vault").resolve()
+        default_new_vault = (home / ".vesma" / "vault").resolve()
         if new_vault == default_new_vault and old_vault.is_dir() and not new_vault.exists():
             new_vault.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(old_vault), str(new_vault))
@@ -1609,14 +1626,14 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
     Zero-config support (ADR-0017 Phase 0, D6): a ``None`` return means no
     user config exists anywhere on the search path, so ``load_settings``
     falls back to the built-in safe defaults (loopback bind, storage under
-    ``~/.mnemos/``). Surfaces such as ``vesma serve`` use this to tell the
+    ``~/.vesma/``). Surfaces such as ``vesma serve`` use this to tell the
     zero-config profile apart from an explicit config.
 
     Search order (identical to :func:`load_settings`):
       1. Explicit config_path argument
       2. VESMA_CONFIG env var
       3. ./config.yaml in cwd
-      4. ~/.mnemos/config.yaml
+      4. ~/.vesma/config.yaml
 
     Env handling for ``vesma.data_dir`` / ``vesma.vault_path`` (per field,
     high → low; full contract in ``Settings.settings_customise_sources``):
@@ -1630,7 +1647,7 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
         candidates: list[Path | None] = [
             Path(env_config) if env_config else None,
             Path.cwd() / "config.yaml",
-            Path.home() / ".mnemos" / "config.yaml",
+            Path.home() / ".vesma" / "config.yaml",
         ]
     else:
         candidates = [Path(config_path)]
@@ -1641,6 +1658,200 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
     return None
 
 
+# ── Legacy home detection + fork refusal (ADR-0044 gate 5) ────────────────────
+
+#: The 5.x-era store home. NEVER written by the 6.x code — only read by the
+#: detection helpers below and migrated only by the explicit
+#: ``vesma migrate-store`` mover.
+LEGACY_HOME_DIRNAME: str = ".mnemos"
+#: The 6.x canonical store home (every default lives under it).
+CANONICAL_HOME_DIRNAME: str = ".vesma"
+#: The 6.0.0-era default database name (superseded by the home flip; still
+#: recognized for consolidation inside ~/.vesma).
+LEGACY_DB_FILENAME: str = "mnemos.db"
+
+#: The one-line fix hint every legacy surface prints (fork refusal, legacy
+#: config diagnostics, `vesma update` detection). Exact spelling is part of
+#: the UX contract — tests pin it.
+MIGRATE_HINT: str = "vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply"
+
+
+def legacy_home(home: Path | None = None) -> Path:
+    """The 5.x-era store home (``~/.mnemos``) for the given (or real) home."""
+    base = home if home is not None else Path.home()
+    return base / LEGACY_HOME_DIRNAME
+
+
+def canonical_home(home: Path | None = None) -> Path:
+    """The 6.x canonical store home (``~/.vesma``) for the given (or real) home."""
+    base = home if home is not None else Path.home()
+    return base / CANONICAL_HOME_DIRNAME
+
+
+def _store_db_names(home_dir: Path) -> list[Path]:
+    """Memories-database candidates inside a store home (mover parity).
+
+    Same four candidates :mod:`vesma.store_migration._resolve_layout`
+    recognizes — a plain ``exists()`` check each, no sqlite open.
+    """
+    data = home_dir / "data"
+    return [
+        data / LEGACY_DB_FILENAME,
+        home_dir / LEGACY_DB_FILENAME,
+        data / "vesma.db",
+        home_dir / "vesma.db",
+    ]
+
+
+def _dir_has_entries(path: Path) -> bool:
+    """True when ``path`` is a directory holding at least one entry."""
+    try:
+        next(iter(path.iterdir()))
+    except (OSError, StopIteration):
+        return False
+    return True
+
+
+def legacy_home_is_substantial(home: Path | None = None) -> bool:
+    """True when the legacy ``~/.mnemos`` home carries SUBSTANTIAL content.
+
+    "Substantial" (ADR-0044 fork-refusal gate 5): a memories database (any
+    name the mover recognizes), a non-empty ``data/``, a non-empty ``vault/``,
+    or a ``config.yaml``. Logs-only / cache-only leftovers do NOT block — a
+    stale directory must not hold the 6.x clean sheet hostage.
+    """
+    legacy = legacy_home(home)
+    if not legacy.is_dir():
+        return False
+    if any(db.is_file() for db in _store_db_names(legacy)):
+        return True
+    if (legacy / "config.yaml").is_file():
+        return True
+    if _dir_has_entries(legacy / "data"):
+        return True
+    return _dir_has_entries(legacy / "vault")
+
+
+def canonical_home_is_fresh(home: Path | None = None) -> bool:
+    """True when the canonical ``~/.vesma`` home does not hold a store yet.
+
+    Fresh = missing, or present with no memories database and no config.yaml
+    (stray logs/cache siblings do not count as a store). A migrated or
+    otherwise materialized home is NOT fresh — the fork gate must never
+    refuse on it (the 2026-10-08 production shape: both homes exist, the
+    canonical one is the mover's output).
+    """
+    target = canonical_home(home)
+    if not target.is_dir():
+        return True
+    if any(db.is_file() for db in _store_db_names(target)):
+        return False
+    return not (target / "config.yaml").is_file()
+
+
+class LegacyStoreForkRefused(ClickException):
+    """Zero-config use of a fresh ``~/.vesma`` refused (ADR-0044 gate 5).
+
+    Raised by :func:`load_settings` ONLY in the pure zero-config profile —
+    no explicit ``config_path`` argument, no ``VESMA_CONFIG``, no
+    ``./config.yaml`` — when a substantial legacy ``~/.mnemos`` home exists
+    and the canonical ``~/.vesma`` is fresh. An explicit config anywhere is
+    the operator's call and is never refused.
+
+    Subclasses ``click.ClickException`` so EVERY CLI command surfaces the
+    refusal as a one-line ``Error: …`` with exit code 1 instead of a raw
+    traceback. ``code`` is the stable diagnostic token doctor prints.
+    """
+
+    code: str = "legacy-home"
+
+    def __init__(self, legacy: Path, hint: str = MIGRATE_HINT) -> None:
+        self.legacy = legacy
+        self.hint = hint
+        super().__init__(
+            f"refusing to start on a fresh {canonical_home()} while a legacy "
+            f"store exists at {legacy} (no silent store split, ADR-0044 "
+            f"gate 5) — migrate first: {hint}"
+        )
+
+
+class LegacyConfigError(ClickException):
+    """A legacy-era config file was loaded (section ``mnemos:`` or flat
+    old-era keys that now live inside a section).
+
+    Raised by :func:`load_settings` instead of the raw pydantic
+    ``extra_forbidden`` error, with the migration hint attached. Key NAMES
+    are reported; values are never printed (privacy contract).
+    """
+
+    code: str = "legacy-config"
+
+    def __init__(self, detail: str, hint: str = MIGRATE_HINT) -> None:
+        self.hint = hint
+        super().__init__(
+            f"legacy config detected ({detail}) — run `{hint}`; or move the "
+            "keys into the canonical `vesma:`/section layout manually"
+        )
+
+
+def _legacy_section_field_names() -> frozenset[str]:
+    """Field names of every Settings section model (the "old-era flat key"
+    universe: a 5.x flat key was today's section field)."""
+    names: set[str] = set()
+    for field in Settings.model_fields.values():
+        annotation = field.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            names.update(annotation.model_fields)
+    return frozenset(names)
+
+
+def _legacy_config_error(exc: ValidationError) -> LegacyConfigError | None:
+    """Map a pydantic ``extra_forbidden`` validation error onto the typed
+    legacy-config error, or return ``None`` when nothing legacy is involved
+    (a genuine typo stays a raw pydantic error — honest diagnostics)."""
+    extras = [
+        str(err["loc"][0])
+        for err in exc.errors()
+        if err.get("type") == "extra_forbidden" and len(err.get("loc", ())) == 1
+    ]
+    if not extras:
+        return None
+    known = _legacy_section_field_names()
+    legacy_keys = sorted(key for key in extras if key in known)
+    legacy_section = "mnemos" in extras
+    parts: list[str] = []
+    if legacy_section:
+        parts.append("section `mnemos:`")
+    if legacy_keys:
+        parts.append("legacy top-level keys: " + ", ".join(legacy_keys))
+    if not parts:
+        return None
+    return LegacyConfigError("; ".join(parts))
+
+
+def _enforce_fork_refusal(
+    *,
+    explicit_config: str | Path | None,
+    found: Path | None,
+) -> None:
+    """ADR-0044 gate 5 — refuse a fresh canonical home over a legacy store.
+
+    Fires ONLY in the pure zero-config profile (nothing was passed and
+    nothing was found anywhere on the search path). Any explicit config
+    choice — argument, ``VESMA_CONFIG``, ``./config.yaml`` — is the
+    operator's call and is honored as-is.
+    """
+    if explicit_config is not None or found is not None:
+        return
+    if os.environ.get("VESMA_CONFIG", "").strip():
+        return
+    if not legacy_home_is_substantial():
+        return
+    if not canonical_home_is_fresh():
+        return
+    raise LegacyStoreForkRefused(legacy_home())
+
+
 def load_settings(config_path: str | Path | None = None) -> Settings:
     """Load settings from YAML config file with env var overrides.
 
@@ -1648,13 +1859,23 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
       1. Explicit config_path argument
       2. VESMA_CONFIG env var
       3. ./config.yaml in cwd
-      4. ~/.mnemos/config.yaml
+      4. ~/.vesma/config.yaml
 
     When no config file is found (zero-config profile), the built-in
     defaults apply: loopback-only API bind (127.0.0.1:8787), storage
-    auto-created under ``~/.mnemos/``, FTS5 lexical recall active with or
+    auto-created under ``~/.vesma/``, FTS5 lexical recall active with or
     without an embedding provider (vector leg degrades non-fatally).
     See :func:`find_config_file` for programmatic detection.
+
+    Legacy-era guards:
+
+    * A config file carrying the 5.x ``mnemos:`` section or old-era flat
+      keys (e.g. a top-level ``graph_walk``) raises :class:`LegacyConfigError`
+      with the ``vesma migrate-store`` hint — never the raw pydantic
+      ``extra_forbidden`` traceback.
+    * The pure zero-config profile over a substantial legacy ``~/.mnemos``
+      home raises :class:`LegacyStoreForkRefused` (ADR-0044 gate 5) instead
+      of silently forking a fresh ``~/.vesma`` store.
     """
     found = find_config_file(config_path)
     config_data: dict[str, Any] = {}
@@ -1662,7 +1883,14 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         with found.open() as fh:
             config_data = yaml.safe_load(fh) or {}
 
-    settings = Settings(**config_data)
+    try:
+        settings = Settings(**config_data)
+    except ValidationError as exc:
+        legacy = _legacy_config_error(exc)
+        if legacy is not None:
+            raise legacy from exc
+        raise
+    _enforce_fork_refusal(explicit_config=config_path, found=found)
     settings.resolve_paths()
     settings.migrate_layout()
     settings.apply_runtime_env()

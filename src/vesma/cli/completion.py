@@ -21,7 +21,7 @@ making the installer report "already installed".
 
 File layout::
 
-    ~/.mnemos/
+    ~/.vesma/
       ├── data/
       ├── vault/
       ├── logs/
@@ -145,8 +145,8 @@ def _prog_names() -> list[str]:
 
 
 def _completion_dir() -> Path:
-    """Directory holding the generated scripts: ``~/.mnemos/completion``."""
-    return Path.home() / ".mnemos" / "completion"
+    """Directory holding the generated scripts: ``~/.vesma/completion``."""
+    return Path.home() / ".vesma" / "completion"
 
 
 def _completion_file_path(shell: str) -> Path:

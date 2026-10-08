@@ -74,13 +74,17 @@ def _check_config() -> CheckResult:
         settings = load_settings()
         settings.resolve_paths()
     except Exception as exc:  # doctor must report, not crash
-        return CheckResult("Config", CheckStatus.FAIL, f"load failed: {exc}")
+        # Typed legacy-era guards carry a stable diagnostic code — print it
+        # with the message so the fix hint is greppable (home-flip contract).
+        code = getattr(exc, "code", None)
+        detail = f"{code}: load failed: {exc}" if code else f"load failed: {exc}"
+        return CheckResult("Config", CheckStatus.FAIL, detail)
     # cli-audit 2026-10-08 (P1 #10): the reported path must be the file
     # load_settings ACTUALLY loaded (VESMA_CONFIG → ./config.yaml →
-    # ~/.mnemos/config.yaml), not a hardcoded guess.
+    # ~/.vesma/config.yaml), not a hardcoded guess.
     from vesma.config import find_config_file
 
-    cfg_path = find_config_file() or Path.home() / ".mnemos" / "config.yaml"
+    cfg_path = find_config_file() or Path.home() / ".vesma" / "config.yaml"
     return CheckResult(
         "Config",
         CheckStatus.PASS,
@@ -94,7 +98,7 @@ def _check_data_dir(settings: Any) -> CheckResult:
     data_dir = settings.vesma.data_dir
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
-        test_file = data_dir / ".mnemos_doctor_write_test"
+        test_file = data_dir / ".vesma_doctor_write_test"
         test_file.write_text("ok", encoding="utf-8")
         test_file.unlink()
     except OSError as exc:
@@ -116,7 +120,7 @@ def _check_vault(settings: Any) -> CheckResult:
     vault = settings.vesma.vault_path
     try:
         vault.mkdir(parents=True, exist_ok=True)
-        test_file = vault / ".mnemos_doctor_write_test"
+        test_file = vault / ".vesma_doctor_write_test"
         test_file.write_text("ok", encoding="utf-8")
         test_file.unlink()
     except OSError as exc:
@@ -859,13 +863,13 @@ def _collect_paths(settings: Any) -> dict[str, str]:
     config's paths — with ``VESMA_CONFIG`` active the table mixed two
     worlds. Everything now derives from the one resolved source: the
     config file ``load_settings`` actually loaded (VESMA_CONFIG → cwd →
-    ~/.mnemos), with ~/.mnemos as the zero-config fallback root.
+    ~/.vesma), with ~/.vesma as the zero-config fallback root.
     """
     home = Path.home()
     from vesma.config import find_config_file
 
     resolved_config = find_config_file()
-    root = resolved_config.parent if resolved_config is not None else home / ".mnemos"
+    root = resolved_config.parent if resolved_config is not None else home / ".vesma"
     mcp_cfg = home / ".config" / "Code" / "User" / "mcp.json"
 
     # Use ~ abbreviation for display where possible.

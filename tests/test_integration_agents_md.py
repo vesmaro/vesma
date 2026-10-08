@@ -482,7 +482,7 @@ class TestOpenCodeTarget:
         assert entry["type"] == "local"
         assert entry["command"][1] == "mcp-server"
         assert entry["enabled"] is True
-        assert entry["environment"]["VESMA_DATA_DIR"] == str(manager.home / ".mnemos/data")
+        assert entry["environment"]["VESMA_DATA_DIR"] == str(manager.home / ".vesma/data")
 
     def test_register_mcp_opencode_preserves_existing_content(
         self, manager: IntegrationManager, opencode_target: Target
@@ -527,9 +527,7 @@ class TestOpenCodeTarget:
 
         entry = json.loads(cfg_path.read_text(encoding="utf-8"))["mcp"]["vesma"]
         assert entry["environment"]["VESMA_DATA_DIR"] == "/custom/data"
-        assert entry["environment"]["VESMA_VAULT__VAULT_PATH"] == str(
-            manager.home / ".mnemos/vault"
-        )
+        assert entry["environment"]["VESMA_VAULT__VAULT_PATH"] == str(manager.home / ".vesma/vault")
         assert entry["command"][0] != "old"  # command refreshed from pack defaults
 
     def test_register_mcp_opencode_idempotent(

@@ -109,12 +109,12 @@ def test_doctor_json_includes_vintage_verdict(
     """The vintage verdict reaches the scripting surface (``--json``)."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
-    cfg = tmp_path / ".mnemos" / "config.yaml"
+    cfg = tmp_path / ".vesma" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
         f"vesma:\n"
-        f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
-        f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
+        f"  vault_path: {tmp_path / '.vesma' / 'vault'}\n"
+        f"  data_dir: {tmp_path / '.vesma' / 'data'}\n"
     )
     settings = Settings()
     settings.resolve_paths()

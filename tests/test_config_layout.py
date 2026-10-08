@@ -1,9 +1,10 @@
 """Tests for consolidated directory layout, migration, and logging config.
 
 Covers:
-- New default paths (~/.mnemos/data, ~/.mnemos/vault, ~/.mnemos/logs)
+- Canonical default paths (~/.vesma/data, ~/.vesma/vault, ~/.vesma/logs)
 - LoggingConfig defaults and overrides
-- migrate_layout() — old → new path migration (idempotent, non-destructive)
+- migrate_layout() — root-db/vault consolidation inside ~/.vesma
+  (idempotent, non-destructive; the legacy ~/.mnemos home is NEVER touched)
 - resolve_paths() — log_file resolution
 """
 
@@ -24,25 +25,25 @@ from vesma.config import (
     load_settings,
 )
 
-# ── New default paths ─────────────────────────────────────────────────────────
+# ── Canonical default paths ──────────────────────────────────────────────────
 
 
 def test_default_vault_path_is_consolidated() -> None:
-    """Default vault_path should be ~/.mnemos/vault, not ~/mnemos-vault."""
+    """Default vault_path should be ~/.vesma/vault, not ~/mnemos-vault."""
     cfg = VesmaConfig()
-    assert str(cfg.vault_path) == "~/.mnemos/vault"
+    assert str(cfg.vault_path) == "~/.vesma/vault"
 
 
 def test_default_data_dir_is_consolidated() -> None:
-    """Default data_dir should be ~/.mnemos/data, not ~/.vesma."""
+    """Default data_dir should be ~/.vesma/data (the 6.x canonical home)."""
     cfg = VesmaConfig()
-    assert str(cfg.data_dir) == "~/.mnemos/data"
+    assert str(cfg.data_dir) == "~/.vesma/data"
 
 
-def test_default_db_name_unchanged() -> None:
-    """db_name stays 'mnemos.db' — it's now under data_dir."""
+def test_default_db_name_flipped() -> None:
+    """db_name defaults to 'vesma.db' (home flip, owner directive 2026-10-08)."""
     cfg = VesmaConfig()
-    assert cfg.db_name == "mnemos.db"
+    assert cfg.db_name == "vesma.db"
 
 
 def test_db_path_resolves_under_data_dir(tmp_path: Path) -> None:
@@ -60,7 +61,7 @@ def test_logging_config_defaults() -> None:
     """LoggingConfig has sensible defaults."""
     cfg = LoggingConfig()
     assert cfg.level == "INFO"
-    assert str(cfg.log_file) == "~/.mnemos/logs/mnemos.log"
+    assert str(cfg.log_file) == "~/.vesma/logs/vesma.log"
     assert cfg.max_file_size_mb == 10
     assert cfg.backup_count == 3
     assert "%(asctime)s" in cfg.format
@@ -118,7 +119,7 @@ def test_migrate_layout_no_old_paths(fake_home: Path) -> None:
 
 
 def test_migrate_layout_moves_vault(fake_home: Path) -> None:
-    """Old ~/mnemos-vault/ is moved to ~/.mnemos/vault/."""
+    """Old ~/mnemos-vault/ is moved to ~/.vesma/vault/."""
     old_vault = fake_home / "mnemos-vault"
     old_vault.mkdir()
     (old_vault / "note.md").write_text("test note")
@@ -130,38 +131,72 @@ def test_migrate_layout_moves_vault(fake_home: Path) -> None:
     assert len(actions) == 1
     assert "vault" in actions[0]
     assert not old_vault.exists()  # old moved
-    new_vault = fake_home / ".mnemos" / "vault"
+    new_vault = fake_home / ".vesma" / "vault"
     assert new_vault.is_dir()
     assert (new_vault / "note.md").read_text() == "test note"
 
 
 def test_migrate_layout_moves_data_files(fake_home: Path) -> None:
-    """Old ~/.mnemos/mnemos.db is moved to ~/.mnemos/data/mnemos.db."""
-    old_root = fake_home / ".mnemos"
+    """A db at the ~/.vesma root is consolidated into ~/.vesma/data/."""
+    old_root = fake_home / ".vesma"
     old_root.mkdir()
-    (old_root / "mnemos.db").write_text("fake db")
+    (old_root / "vesma.db").write_text("fake db")
     (old_root / "vectors.db").write_text("fake vectors")
 
     settings = Settings()
     settings.resolve_paths()
     actions = settings.migrate_layout()
 
-    # Should have moved mnemos.db and vectors.db
+    # Should have moved vesma.db and vectors.db
     data_moved = [a for a in actions if a.startswith("data:")]
     assert len(data_moved) == 2
-    new_data = fake_home / ".mnemos" / "data"
-    assert (new_data / "mnemos.db").exists()
+    new_data = fake_home / ".vesma" / "data"
+    assert (new_data / "vesma.db").exists()
     assert (new_data / "vectors.db").exists()
     # Old files should be gone (moved, not copied)
-    assert not (old_root / "mnemos.db").exists()
+    assert not (old_root / "vesma.db").exists()
+
+
+def test_migrate_layout_moves_legacy_root_db_name(fake_home: Path) -> None:
+    """A 6.0.0-era mnemos.db at the ~/.vesma root consolidates the same way."""
+    old_root = fake_home / ".vesma"
+    old_root.mkdir()
+    (old_root / "mnemos.db").write_text("fake db")
+
+    settings = Settings()
+    settings.resolve_paths()
+    actions = settings.migrate_layout()
+
+    data_moved = [a for a in actions if a.startswith("data:")]
+    assert len(data_moved) == 1
+    assert (fake_home / ".vesma" / "data" / "mnemos.db").exists()
+
+
+def test_migrate_layout_never_touches_legacy_home(fake_home: Path) -> None:
+    """Home-flip pin: migrate_layout NEVER moves anything out of ~/.mnemos.
+
+    The legacy 5.x home belongs to the explicit `vesma migrate-store` mover
+    (ADR-0044); auto-consolidation inside the canonical home only.
+    """
+    legacy = fake_home / ".mnemos"
+    legacy.mkdir()
+    (legacy / "mnemos.db").write_text("legacy db")
+
+    settings = Settings()
+    settings.resolve_paths()
+    actions = settings.migrate_layout()
+
+    assert actions == []
+    assert (legacy / "mnemos.db").exists()
+    assert not (fake_home / ".vesma").exists()
 
 
 def test_migrate_layout_preserves_config_yaml(fake_home: Path) -> None:
-    """config.yaml at ~/.mnemos/config.yaml stays in place during migration."""
-    old_root = fake_home / ".mnemos"
+    """config.yaml at ~/.vesma/config.yaml stays in place during migration."""
+    old_root = fake_home / ".vesma"
     old_root.mkdir()
-    (old_root / "config.yaml").write_text("vesma:\n  data_dir: ~/.mnemos/data\n")
-    (old_root / "mnemos.db").write_text("fake db")
+    (old_root / "config.yaml").write_text("vesma:\n  data_dir: ~/.vesma/data\n")
+    (old_root / "vesma.db").write_text("fake db")
 
     settings = Settings()
     settings.resolve_paths()
@@ -169,7 +204,7 @@ def test_migrate_layout_preserves_config_yaml(fake_home: Path) -> None:
 
     # config.yaml must remain at root, not moved into data/
     assert (old_root / "config.yaml").exists()
-    assert not (fake_home / ".mnemos" / "data" / "config.yaml").exists()
+    assert not (fake_home / ".vesma" / "data" / "config.yaml").exists()
 
 
 def test_migrate_layout_idempotent(fake_home: Path) -> None:
@@ -194,7 +229,7 @@ def test_migrate_layout_does_not_overwrite_new(fake_home: Path) -> None:
     old_vault.mkdir()
     (old_vault / "old.md").write_text("old")
 
-    new_vault = fake_home / ".mnemos" / "vault"
+    new_vault = fake_home / ".vesma" / "vault"
     new_vault.mkdir(parents=True)
     (new_vault / "new.md").write_text("new")
 
@@ -211,9 +246,9 @@ def test_migrate_layout_does_not_overwrite_new(fake_home: Path) -> None:
 
 def test_migrate_layout_skips_custom_data_dir(fake_home: Path) -> None:
     """If data_dir was overridden to a custom path, migration is skipped."""
-    old_root = fake_home / ".mnemos"
+    old_root = fake_home / ".vesma"
     old_root.mkdir()
-    (old_root / "mnemos.db").write_text("fake db")
+    (old_root / "vesma.db").write_text("fake db")
 
     custom_data = fake_home / "custom_data"
     settings = Settings()
@@ -221,10 +256,10 @@ def test_migrate_layout_skips_custom_data_dir(fake_home: Path) -> None:
     settings.resolve_paths()
     actions = settings.migrate_layout()
 
-    # No data migration because data_dir is not the default ~/.mnemos/data
+    # No data migration because data_dir is not the default ~/.vesma/data
     data_actions = [a for a in actions if a.startswith("data:")]
     assert data_actions == []
-    assert (old_root / "mnemos.db").exists()  # old untouched
+    assert (old_root / "vesma.db").exists()  # old untouched
 
 
 # ── load_settings integration ─────────────────────────────────────────────────
@@ -240,9 +275,9 @@ def test_load_settings_calls_migrate_layout(
     monkeypatch.setenv("HOME", str(fake_home))
 
     # Create a config file so load_settings finds it
-    cfg = fake_home / ".mnemos" / "config.yaml"
+    cfg = fake_home / ".vesma" / "config.yaml"
     cfg.parent.mkdir(parents=True)
-    cfg.write_text("vesma:\n  data_dir: ~/.mnemos/data\n")
+    cfg.write_text("vesma:\n  data_dir: ~/.vesma/data\n")
 
     # Patch migrate_layout to track the call
     with patch.object(Settings, "migrate_layout", return_value=[]) as mock_migrate:

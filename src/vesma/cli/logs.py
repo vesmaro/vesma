@@ -23,7 +23,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from vesma.config import load_settings
+from vesma.cli._manager import load_settings_or_exit
 from vesma.storage.sqlite_store import SQLiteStore
 
 # Use a wide console so table columns are not truncated in non-interactive
@@ -117,7 +117,7 @@ def logs_cmd(
     `--limit` to narrow the window; `--follow` keeps polling for new traces
     tail -f style until interrupted.
     """
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     settings.resolve_paths()
     store = SQLiteStore(settings.db_path)
 

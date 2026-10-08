@@ -19,7 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from vesma.config import Settings, load_settings
+from vesma.cli._manager import load_settings_or_exit
+from vesma.config import Settings
 from vesma.manager import MemoryManager
 from vesma.models import MemoryCreate, MemorySource, MemoryStatus, MemoryType
 
@@ -197,7 +198,7 @@ def migrate_from_ai_brain(
         raise FileNotFoundError(f"Source DB not found: {source_db}")
 
     if settings is None:
-        settings = load_settings()
+        settings = load_settings_or_exit()
         settings.resolve_paths()
         settings.apply_runtime_env()
 

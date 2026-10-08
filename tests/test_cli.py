@@ -407,8 +407,8 @@ class TestCompletionCommand:
         monkeypatch.setenv("HOME", str(fake_home))
         result = runner.invoke(app, ["completion", "bash"])
         assert result.exit_code == 0
-        # Completion script file stored under ~/.mnemos/completion/
-        script_file = fake_home / ".mnemos" / "completion" / "vesma.bash"
+        # Completion script file stored under ~/.vesma/completion/
+        script_file = fake_home / ".vesma" / "completion" / "vesma.bash"
         assert script_file.exists()
         assert "_vesma()" in script_file.read_text(encoding="utf-8")
         # rc file gets the exact canonical guarded source line.
@@ -416,8 +416,8 @@ class TestCompletionCommand:
         assert rc.exists()
         content = rc.read_text(encoding="utf-8")
         assert (
-            "[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash" in content
+            "[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash" in content
         )
         assert "eval " not in content
 
@@ -433,7 +433,7 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         content = rc.read_text(encoding="utf-8")
         # The source line marker should appear exactly once.
-        assert content.count("source ~/.mnemos/completion/vesma.bash") == 1
+        assert content.count("source ~/.vesma/completion/vesma.bash") == 1
 
     def test_completion_auto_detect_from_shell_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -445,11 +445,11 @@ class TestCompletionCommand:
         monkeypatch.setenv("SHELL", "/usr/bin/zsh")
         result = runner.invoke(app, ["completion"])
         assert result.exit_code == 0
-        script_file = fake_home / ".mnemos" / "completion" / "vesma.zsh"
+        script_file = fake_home / ".vesma" / "completion" / "vesma.zsh"
         assert script_file.exists()
         rc = fake_home / ".zshrc"
         assert rc.exists()
-        assert "source ~/.mnemos/completion/vesma.zsh" in rc.read_text(encoding="utf-8")
+        assert "source ~/.vesma/completion/vesma.zsh" in rc.read_text(encoding="utf-8")
 
     def test_completion_is_installed_false_for_commented_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -463,8 +463,8 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         rc.write_text(
             "# Added by `mnemos completion` (bash)\n"
-            "#[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash\n",
+            "#[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert not _is_installed("bash", rc)
@@ -480,7 +480,7 @@ class TestCompletionCommand:
         monkeypatch.setenv("HOME", str(fake_home))
         rc = fake_home / ".bashrc"
         rc.write_text(
-            "[ -f ~/.mnemos/completion/vesma.bash ] && source ~/.mnemos/completion/vesma.bash\n",
+            "[ -f ~/.vesma/completion/vesma.bash ] && source ~/.vesma/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert _is_installed("bash", rc)
@@ -507,8 +507,8 @@ class TestCompletionCommand:
         assert "eval " not in content
         # New canonical source line must be present.
         assert (
-            "[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash" in content
+            "[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash" in content
         )
         # User content preserved.
         assert "# some user content" in content

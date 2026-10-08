@@ -31,13 +31,13 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # it globally — these tests must pin THEIR OWN layout, so drop it.
     monkeypatch.delenv("VESMA_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)  # keep ./config.yaml out of the search path
-    # Create a config so doctor can load settings
-    cfg = tmp_path / ".mnemos" / "config.yaml"
+    # Create a config so doctor can load settings (the canonical search place)
+    cfg = tmp_path / ".vesma" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
         f"vesma:\n"
-        f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
-        f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
+        f"  vault_path: {tmp_path / '.vesma' / 'vault'}\n"
+        f"  data_dir: {tmp_path / '.vesma' / 'data'}\n"
     )
     return tmp_path
 
@@ -71,7 +71,7 @@ def test_collect_paths_includes_completion(isolated_home: Path) -> None:
     paths = _collect_paths(settings)
     assert "completion" in paths
     assert paths["completion"].startswith("~")
-    assert paths["completion"].endswith(".mnemos/completion")
+    assert paths["completion"].endswith(".vesma/completion")
 
 
 def test_collect_paths_uses_tilde_abbreviation(isolated_home: Path) -> None:

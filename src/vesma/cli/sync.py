@@ -34,7 +34,7 @@ Two subcommands, wired into ``cli/main.py`` as a Typer sub-app:
   ``title``, ``tags``).
 
 **Audit log** — every export and import appends one JSONL entry to
-``~/.mnemos/logs/sync-audit.jsonl`` (counters only — no raw content /
+``~/.vesma/logs/sync-audit.jsonl`` (counters only — no raw content /
 secrets / PII). See :mod:`vesma.audit`.
 """
 

@@ -607,7 +607,7 @@ class TestAuditModule:
         """The audit log filename is the documented relative path."""
         from vesma.audit import SYNC_AUDIT_FILENAME
 
-        assert SYNC_AUDIT_FILENAME == ".mnemos/logs/sync-audit.jsonl"
+        assert SYNC_AUDIT_FILENAME == ".vesma/logs/sync-audit.jsonl"
 
     def test_log_sync_audit_appends_jsonl(self, tmp_path: Path, monkeypatch) -> None:
         """log_sync_audit writes one JSON object per line, adds timestamp."""

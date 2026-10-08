@@ -255,6 +255,34 @@ def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -
         logger.debug("update-history append failed", exc_info=True)
 
 
+# ── legacy-home detection (home-flip, owner directive 2026-10-08) ────────────
+
+
+def _legacy_home_hint() -> str | None:
+    """One-line migration hint when a legacy ``~/.mnemos`` home has content.
+
+    Best-effort by contract: ANY failure to inspect the home degrades to
+    ``None`` (no hint line) — the update surfaces must never crash over a
+    diagnostics nicety. The hint text is the SAME one the fork-refusal gate
+    and the legacy-config diagnostics print (single UX contract).
+    """
+    try:
+        from vesma.config import MIGRATE_HINT, legacy_home_is_substantial
+
+        if legacy_home_is_substantial():
+            return f"legacy store home ~/.mnemos detected — migrate with: {MIGRATE_HINT}"
+    except Exception:  # diagnostics must never break the report
+        logger.debug("legacy-home detection failed", exc_info=True)
+    return None
+
+
+def _print_legacy_home_hint(console: Console) -> None:
+    """Print the one-line migration hint when a legacy home is detected."""
+    hint = _legacy_home_hint()
+    if hint is not None:
+        console.print(f"[yellow]⚠[/yellow] {hint}")
+
+
 # ── check mode ───────────────────────────────────────────────────────────────
 
 
@@ -358,6 +386,7 @@ def _print_check(console: Console) -> UpdateInfo | None:
         "family max over the alias dists (vesma-memory-server / vesma — same "
         "codebase; mnemos-memory-server is the deprecated legacy mirror).[/dim]"
     )
+    _print_legacy_home_hint(console)
     return info
 
 
@@ -454,6 +483,7 @@ def _run_user_update(console: Console, to: str | None, *, verbose: bool = False)
         # the next `vesma service run` fail-closed (REQUIREMENTS_INVALID)
         # and any supervisor restart meant downtime. Reconcile NOW.
         _reconcile_service_manifests(console)
+        _print_legacy_home_hint(console)
     else:
         raise typer.Exit(1)
 

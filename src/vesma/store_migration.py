@@ -792,6 +792,15 @@ def migrate_config(source: _StoreLayout, new_home: Path, staging: Path) -> tuple
             paths_rerooted += 1
         rerooted[key] = new_value
     vesma_section = rerooted
+    # ALWAYS append the pin, even when the source config carried NO db_name
+    # key at all (owner directive 2026-10-08; the 08.10 production incident:
+    # the pre-fix mover left the key absent, the service then fell back to
+    # its default db name and silently read an empty auto-created database).
+    # The materialized target database IS vesma.db unconditionally, so the
+    # migrated config must name it unconditionally too.
+    if "db_name" not in vesma_section:
+        vesma_section["db_name"] = CANONICAL_DB_NAME
+        db_name_pinned = True
 
     # Remaining sections: re-root Path-typed values, keep everything else.
     settings_fields = Settings.model_fields

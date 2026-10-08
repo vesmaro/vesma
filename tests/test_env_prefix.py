@@ -54,7 +54,7 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _no_config(tmp_path: Path) -> Path:
     """A config path that does not exist — keeps load_settings off the real
-    ``~/.mnemos/config.yaml`` and ``./config.yaml``."""
+    ``~/.vesma/config.yaml`` and ``./config.yaml``."""
     return tmp_path / "no-config.yaml"
 
 
@@ -104,7 +104,7 @@ class TestDeprecatedSpellingsIgnored:
         monkeypatch.setenv("VESMARO_MNEMOS__DATA_DIR", "/vesmaro-retired")
         monkeypatch.setenv("VESMARO_API__PORT", "9443")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".vesma" / "data").resolve()
         assert settings.api.port != 9443
 
     def test_deprecated_short_alias_ignored(
@@ -113,7 +113,7 @@ class TestDeprecatedSpellingsIgnored:
         _clear_env(monkeypatch)
         monkeypatch.setenv("VESMARO_DATA_DIR", "/vesmaro-139-retired")
         settings = load_settings(config_path=_no_config(tmp_path))
-        assert settings.vesma.data_dir == (Path.home() / ".mnemos" / "data").resolve()
+        assert settings.vesma.data_dir == (Path.home() / ".vesma" / "data").resolve()
 
     def test_canonical_wins_when_deprecated_also_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

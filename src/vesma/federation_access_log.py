@@ -14,7 +14,7 @@ matching (the same topic hashes to the same digest).
 Storage (contract §10 "Где хранится"): the log lives **only on B**.
 It is **never replicated**, never exported, never synced — like the
 moderation mapping table, it is a leak surface. Phase 1 stores it as
-an append-only JSONL file (``~/.mnemos/logs/federation-access.jsonl``)
+an append-only JSONL file (``~/.vesma/logs/federation-access.jsonl``)
 so that an operator can inspect it with standard tools. Phase 2 will
 wire the log into the federation server's request path.
 
@@ -36,10 +36,10 @@ from pydantic import BaseModel, Field
 
 from vesma.trigger_codes import TriggerCode
 
-# Default log location — under ~/.mnemos/logs/ alongside the other
+# Default log location — under ~/.vesma/logs/ alongside the other
 # logs (sync-audit.jsonl, vesma.log). Resolved lazily so the
 # module import never touches the filesystem.
-DEFAULT_LOG_PATH = Path("~/.mnemos/logs/federation-access.jsonl")
+DEFAULT_LOG_PATH = Path("~/.vesma/logs/federation-access.jsonl")
 
 
 def hash_topic(topic: str) -> str:

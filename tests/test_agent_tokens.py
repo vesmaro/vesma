@@ -45,6 +45,7 @@ from vesma.agent_tokens import (
     validate_agent_token,
 )
 from vesma.cli.main import app as cli_app
+from vesma.config import load_settings
 
 runner = CliRunner()
 
@@ -370,7 +371,9 @@ def test_cli_issue_validate_rotate_revoke_flow(tmp_path: Path) -> None:
     assert AGENT in listing.output
 
     # validate via the exported hook (launch condition TM §8)
-    settings_db = tmp_path / "data" / "mnemos.db"
+    # The db file the CLI actually writes (home flip: the default db_name is
+    # vesma.db — derive the path from the settings, never hardcode a name).
+    settings_db = load_settings(tmp_path / "config.yaml").db_path
     key = load_or_create_signing_key(tmp_path / "data" / "agent-token-signing.key")
     with AgentTokenStore(settings_db) as st:
         verdict = validate_agent_token(token1, NODE, store=st, key=key)

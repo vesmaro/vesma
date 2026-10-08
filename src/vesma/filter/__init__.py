@@ -15,5 +15,5 @@ Pipeline order:
   5. tokens   — pre-tokenization estimation and budget accounting
 
 Profiles: log | terminal | code | docs | web | default
-Configuration: ~/.mnemos/filter_profiles.yaml
+Configuration: ~/.vesma/filter_profiles.yaml
 """

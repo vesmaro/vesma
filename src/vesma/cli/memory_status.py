@@ -64,9 +64,9 @@ VSCODE_MCP_CONFIG = Path("~/.config/Code/User/mcp.json")
 #: Built-in store markers (existence + mtime only, never contents). Same
 #: defaults as the zero-config Settings and the MCP env defaults.
 STORE_MARKERS: tuple[str, ...] = (
-    ".mnemos/data",
-    ".mnemos/vault",
-    ".mnemos/data/mnemos.db",
+    ".vesma/data",
+    ".vesma/vault",
+    ".vesma/data/vesma.db",
 )
 
 

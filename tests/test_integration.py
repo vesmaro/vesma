@@ -1899,7 +1899,7 @@ class TestUniversalTargets:
         entry = data["mcp"]["servers"]["vesma"]  # brand-primary server key
         assert entry["command"] == "/bin/vesma"
         assert entry["args"] == ["mcp-server"]
-        assert entry["env"]["VESMA_DATA_DIR"] == str(fake_home / ".mnemos/data")
+        assert entry["env"]["VESMA_DATA_DIR"] == str(fake_home / ".vesma/data")
 
     def test_register_mcp_zcode_preserves_legacy_foreign_entry(
         self, universal_manager: IntegrationManager, fake_home: Path
@@ -1930,7 +1930,7 @@ class TestUniversalTargets:
         assert servers["mnemos"]["command"] == "old"
         assert servers["mnemos"]["env"]["VESMA_DATA_DIR"] == "/custom/data"
         entry = servers["vesma"]
-        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(fake_home / ".mnemos/vault")
+        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(fake_home / ".vesma/vault")
         assert entry["command"] == "/bin/vesma"
 
     def test_register_mcp_agents_creates_file(
@@ -4019,13 +4019,13 @@ class TestMemoryStatus:
     ) -> None:
         home, pack, _ = self._build(tmp_path)
         self._patch(monkeypatch, home, pack)
-        (home / ".mnemos" / "data").mkdir(parents=True)
-        (home / ".mnemos" / "data" / "mnemos.db").write_bytes(b"")  # marker only
+        (home / ".vesma" / "data").mkdir(parents=True)
+        (home / ".vesma" / "data" / "vesma.db").write_bytes(b"")  # marker only
 
         result = runner.invoke(app, ["memory", "status", "--home", str(home)])
 
         assert result.exit_code == 0, result.output
-        assert "mnemos.db ✓" in result.output
+        assert "vesma.db ✓" in result.output
         assert "vault ✗" in result.output
 
 
@@ -4261,7 +4261,7 @@ class TestCodexTarget:
         entry = data["mcp_servers"]["vesma"]
         assert entry["command"] == "/bin/vesma"
         assert entry["args"] == ["mcp-server"]
-        assert entry["env"]["VESMA_DATA_DIR"] == str(home / ".mnemos/data")
+        assert entry["env"]["VESMA_DATA_DIR"] == str(home / ".vesma/data")
 
     def test_register_mcp_codex_merges_preserving_user_bytes(self, codex_env: tuple) -> None:
         mgr, _, cfg_path = codex_env
@@ -4289,7 +4289,7 @@ class TestCodexTarget:
         assert ok
         entry = tomllib.loads(cfg_path.read_text(encoding="utf-8"))["mcp_servers"]["vesma"]
         assert entry["env"]["VESMA_DATA_DIR"] == "/custom/data"  # user tuning kept
-        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(home / ".mnemos/vault")
+        assert entry["env"]["VESMA_VAULT__VAULT_PATH"] == str(home / ".vesma/vault")
         assert entry["command"] == "/bin/vesma"  # command refreshed
 
     def test_register_mcp_codex_keeps_legacy_foreign_table(self, codex_env: tuple) -> None:

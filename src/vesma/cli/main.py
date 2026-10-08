@@ -15,9 +15,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from vesma.cli._manager import get_manager
+from vesma.cli._manager import get_manager, load_settings_or_exit
 from vesma.cli.migrate_store_cmd import migrate_store
-from vesma.config import find_config_file, load_settings
+from vesma.config import find_config_file
 from vesma.logging_setup import setup_logging
 from vesma.models import (
     AgentRecallQuery,
@@ -221,10 +221,9 @@ def _dry_run_filter_preview(text: str, tag_list: list[str], config: str | None) 
     Shared by ``add --dry-run`` (content / stdin / file text) and
     ``ingest file --dry-run`` (W3).
     """
-    from vesma.config import load_settings as _load_settings
     from vesma.filter.pipeline import apply_filter
 
-    settings = _load_settings(config)
+    settings = load_settings_or_exit(config)
     # cli-audit 2026-10-08 (P1 #7): a violation here used to escape as an
     # unhandled TagContractError traceback; now it is the same clean typed
     # error the save path prints.
@@ -327,7 +326,9 @@ def add(
     # saves or previews — the CLI must not silently save a row the MCP
     # surface refuses (strict default), and in lax mode it patches exactly
     # like the MCP surface.
-    tag_list = _validate_cli_tags(tag_list, strict=load_settings(config).vesma.strict_tag_contract)
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
@@ -1767,7 +1768,7 @@ def serve(
 
     import uvicorn
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     if log_file is not None:
         settings.logging.log_file = log_file
         settings.resolve_paths()
@@ -1893,7 +1894,7 @@ def fetch_cmd(
     """
     import sys
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     fed = settings.federation
     # cli-audit 2026-10-08 (P1 #3): the mesh modules import lazily, BELOW
@@ -2002,7 +2003,7 @@ def meta_poll(
 
     from vesma.meta_poller import MetaPoller, PeerPollResult
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     fed = settings.federation
     if not fed.meta_poll.mesh_config_path.strip():
@@ -2077,7 +2078,7 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 
     from vesma.mcp_server import main as mcp_main
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     # Issue #445 — one INFO line when a newer release exists (cache-first,
     # 3s cap, never raises; runs before the stdio loop starts).
@@ -2137,7 +2138,7 @@ def migrate(
     """
     from vesma.cli.migrate import migrate_from_ai_brain
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     db_path = source / "ai_brain.db"
     vault_path = vault if vault.exists() else None
 
@@ -2254,7 +2255,7 @@ _auth_app.add_typer(_totp_app, name="totp")
 def _auth_store(config: str | None = None) -> AuthStore:
     from vesma.api.auth_store import AuthStore  # lazy: avoids circular deps
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     settings.resolve_paths()
     settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
     return AuthStore(settings.db_path)
@@ -2385,7 +2386,7 @@ def totp_enroll(
 
     from vesma.api.auth import encrypt_totp_secret
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
         console.print(
@@ -2462,7 +2463,7 @@ def totp_test(
 
     from vesma.api.auth import decrypt_totp_secret
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
         console.print("[red]VESMA_API__TOTP_MASTER_KEY is not set.[/red]")

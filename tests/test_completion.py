@@ -41,7 +41,7 @@ from vesma.cli.main import app
 
 runner = CliRunner()
 
-CANONICAL_BASH = "[ -f ~/.mnemos/completion/vesma.bash ] && source ~/.mnemos/completion/vesma.bash"
+CANONICAL_BASH = "[ -f ~/.vesma/completion/vesma.bash ] && source ~/.vesma/completion/vesma.bash"
 
 
 @pytest.fixture
