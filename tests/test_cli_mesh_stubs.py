@@ -71,7 +71,14 @@ def test_fetch_with_id_and_missing_stubs_is_actionable(
     )
     # None in sys.modules = "import of lazy_fetch halted" ImportError —
     # the same failure shape a stub-less wheel produces when the mesh
-    # shim cannot resolve the generated modules.
+    # shim cannot resolve the generated modules. The package ATTRIBUTE
+    # must go too: once ANY earlier test imported vesma.lazy_fetch, the
+    # from-import resolves through the parent package's attributes and
+    # never consults sys.modules (full-suite pollution trap — the test
+    # passed solo and failed under the suite until this was pinned).
+    import vesma
+
+    monkeypatch.delattr(vesma, "lazy_fetch", raising=False)
     monkeypatch.setitem(sys.modules, "vesma.lazy_fetch", None)
     result = runner.invoke(app, ["fetch", "--id", "fed:agent:uuid"])
     assert result.exit_code == 1
