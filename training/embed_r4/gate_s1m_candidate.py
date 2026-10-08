@@ -115,14 +115,34 @@ def main(argv: list[str] | None = None) -> int:
     r5 = float(metrics["recall_at_5"])
 
     if args.self_check:
-        ok = abs(r5 - BASELINE_RECALL_AT_5) < 1e-9
+        # Compare against the RECORDED s1.json full-precision value (the
+        # markdown BASELINE.md rounds to 4 decimals — a 1e-9 check against
+        # the rounded number false-fails).
+        recorded = json.loads(
+            (ROOT / "benchmarks" / "baselines" / "s1.json").read_text(encoding="utf-8")
+        )["metrics"]["s1m"]["metrics"]
+        expected_r5 = float(recorded["recall_at_5"])
+        ok = abs(r5 - expected_r5) < 1e-9
+        also_exact = {
+            name: (abs(float(metrics[name]) - float(recorded[name])) < 1e-9)
+            for name in ("precision_at_5", "recall_at_5")
+        }
+        drift = {
+            name: round(float(metrics[name]) - float(recorded[name]), 6)
+            for name in ("precision_at_10", "recall_at_10", "mrr", "ndcg_at_5", "ndcg_at_10")
+        }
         verdict = {
             "mode": "self-check",
-            "expected_recall_at_5": BASELINE_RECALL_AT_5,
+            "expected_recall_at_5_full_precision": expected_r5,
             "plumbing_ok": ok,
+            "gate_metrics_exact": also_exact,
+            "order_sensitive_drift_vs_2026_09_15_recording": drift,
             "note": (
-                "harness self-check against the recorded BASELINE §10 — deterministic "
-                "corpus/queries must reproduce it exactly; candidate gates not computed here"
+                "harness self-check against the recorded baseline s1.json — the gate "
+                "metrics (recall@5 / precision@5 / ci95) must reproduce exactly; "
+                "order-sensitive deeper-rank metrics may drift if engine ranking "
+                "mechanics evolved since the baseline recording (baseline vintage, "
+                "flagged to the TL lane; candidate gates not computed here)"
             ),
         }
     else:
