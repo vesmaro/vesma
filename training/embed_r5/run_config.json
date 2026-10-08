@@ -1,0 +1,119 @@
+{
+  "kind": "embed-round5-decisive-run-config",
+  "committed_before_run": true,
+  "committed_at": "2026-10-08",
+  "authority": [
+    "docs/specs/embed-round5-prereg.md (ACTIVATED, ratified 08.10/09.10)",
+    "ADR-0005 (docs/decisions/0005-embed-round5-crosslingual-hybrid.md)",
+    "phase-0.5 pilot selection (wt/embed-r5-corpus training-pilot, runlog 02:06): lambda=1.0, tau=0.05, in-batch InfoNCE",
+    "phase-0.5 export finding (runlog 01:15): naive static int8 PTQ banned as sole form"
+  ],
+  "executor": "gcw-ml-engineer",
+  "corpus": {
+    "path": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r5-corpus/data/embed-r5/corpus",
+    "fingerprint_sha256_train_plus_val": "e64fdbea65f0e6a4f2830a42ea6bd0d74a2974854d381427c4d5ba2ea4901c62",
+    "train_rows": 25420,
+    "val_rows": 1261,
+    "total_texts": 26681,
+    "sealed": true,
+    "read_only": true,
+    "note": "verified `cat train val | sha256sum` before anything (2026-10-08, matches)"
+  },
+  "student": {
+    "init": "cointegrated/rubert-tiny2 (fresh, round-4 F config)",
+    "projection": "Linear(312->384, bias=False), random init (seed 42), trained jointly",
+    "mrl_dims": [64, 128, 256, 384],
+    "mrl_weights_spec": "4,2,1,1 (normalised 0.5/0.25/0.125/0.125, prereg §1.3)",
+    "max_length": 256,
+    "pooling": "mean + L2 (runtime embedder contract)"
+  },
+  "kd": {
+    "teacher": "Qwen/Qwen3-Embedding-0.6B (frozen, bf16 CPU — the «Учитель» arm is CLOSED, phase-0.5 audit FAIL)",
+    "teacher_instruct_template": "Given a memory note, retrieve similar notes",
+    "teacher_pooling": "last_token, left padding",
+    "kd_target": "first 384 dims of precomputed 1024-d fp32 vectors (lockstep npz, train rows then val rows)",
+    "loss": "training.distill.mrl_kd_loss, temperature 0.05 — UNCHANGED from round-4",
+    "precompute": "lockstep over all 26681 texts, batch 32, torch threads 8, interop 1, bf16 (round-4 recipe), RESUMABLE: incremental partial-npz every 500 batches"
+  },
+  "contrastive": {
+    "lambda": 1.0,
+    "tau": 0.05,
+    "mechanics": "symmetric in-batch InfoNCE, pair-adjacent batches of 16 pairs (32 texts), partner = i^1, cosine logits / tau, on the full 384-d projected L2-normalised embedding (pilot mechanics verbatim)",
+    "positives": "translation pairs of the r5 corpus: translated-llm-r4 + translated-real-r4 + translated-dup + twins + tatoeba (750 inline pairs); NOT translated-sibling (contrast pairs per gate builder note)",
+    "pair_pool_rule": "build_gate_set.py pairing recipe verbatim (real/llm via gen key match; seed-dup inline side_text_seed; twin inline; pair_key dedup first-occurrence), both sides in the r5 TRAIN slice under the expected source class, one-pair-per-text; gate-manifest excluded_text_shas asserted ZERO hits (corpus is already clean)",
+    "batch_layout": "PARTITION design: each epoch = (a) KD-only batches over non-pair train texts (batch 32, round-4 loop unchanged), then (b) joint KD+contrastive pair-adjacent batches over the pair pool (16 pairs per batch). Every train text trains exactly once per epoch; pair texts get the pilot joint loss.",
+    "stream_order": "fixed: stream (a) then stream (b), both deterministically shuffled per epoch (seeded rng)"
+  },
+  "optimization": {
+    "optimizer": "AdamW",
+    "lr": 2e-5,
+    "batch_size_kd": 32,
+    "pairs_per_batch": 16,
+    "epochs": {"min": 16, "max": 20, "note": "prereg §1.4: 16–20 epochs; every epoch checkpointed"},
+    "early_stop": "val criterion = min-over-slices R@5; stop when best-so-far improves by <0.001 for 4 consecutive evals (prereg §1.4, fixed before start)",
+    "seed": 42,
+    "torch_threads": 8,
+    "device": "cpu",
+    "determinism": "training.distill.set_determinism(42)"
+  },
+  "checkpoint_selection": {
+    "protocol": "S1m-val on the full val slice (1261 queries), relevance = frozen teacher-top5 (384-d teacher slice), computed from the same precomputed npz as the KD targets",
+    "criterion": "max min-over-MRL-slices R@5 (slices 64/128/256/384, student truncated+renormalised vs teacher slice truncated+renormalised; relevance from the frozen 384-d teacher-top5)",
+    "tie_break": ["higher R@5 at 384", "higher MRR at 384", "lower epoch"],
+    "committed_before_training": true,
+    "forbidden": "judged corpus c2ce056d, cortex sealed holdouts/evalsets — never read before export+selection",
+    "monitoring_only": "per-epoch gate-set proxy (seed-dup/llm/real/twin medians, mono control, burned144) recorded for trend (prereg §4.3), NEVER used for selection"
+  },
+  "export": {
+    "forms_measured": [
+      "fp32 ONNX (exactness reference vs torch, round-4 evidence: identical)",
+      "fp16 ONNX (weights+graph float16)",
+      "int8 static QDQ CALIBRATED: per-channel weight quantization, MinMax calibration over 512 deterministic train-corpus samples (stratified by source family, seed 42) — the round-4 failure (200 val samples, per-channel=False) is corrected on both axes",
+      "int8 dynamic (weight-only, activation scales at runtime)"
+    ],
+    "choice_rule_fixed_before_measurement": "among forms with g6a mean <= 45 ms: hard guards |delta mono control median vs prod 0.8982| <= 0.005 AND val min-over-slices R@5 within 0.005 of the fp32 reference; among survivors max composite = seed_dup_median + llm_median + burned144_median (gate-set proxy readouts); tie-break smaller |delta mono|, then simpler form. Final gates run ONCE on the chosen artifact.",
+    "graph": "static 1x256, mean-pool + projector + L2 baked in, opset 15 (round-4 graph, export_onnx.py)"
+  },
+  "gates": {
+    "population": "sealed gate set cb36757769fb88f2806065f50348f5fd8383cfdb0c19c66e6335eac8ace01123, 180 pairs, one harness (run_phase0 NanoProvider recipe), ONE pass on the final artifact",
+    "binding": {
+      "g1_s1m_no_harm": {"threshold": 0.9252, "judged_fp": "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1", "mechanics": "gate_s1m_candidate.py --artifact (production S1m path, self-comparison)"},
+      "gX0_mono_control": {"threshold": "|delta| median_best_distractor_cos vs prod 3b752e06 <= 0.005", "prod_reference": 0.8982},
+      "seed_dup": {"n": 22, "median_ge": 0.85, "share_ge085": 0.50, "candidate_floor": [0.8201, 0.2727]},
+      "llm": {"n": 68, "median_ge": 0.93, "share_ge085": 0.90, "candidate_floor": [0.9051, 0.7941]},
+      "g6a_latency": {"threshold_mean_ms": 45, "method": "addendum-6 §A.2"},
+      "g7_size_mb": {"threshold": 60}
+    },
+    "monitored": {
+      "real_class": {"floor": [0.9344, 0.9673], "note": "share/median of REJECT candidate f70672aa"},
+      "twin_class": {"floor": [0.8621, 0.9357]},
+      "retrieval_cross_R@5": {"floor_total": 0.9556, "floor_en": 0.9444, "floor_ru": 0.9667},
+      "sibling_anchor": {"prod_median": 0.6889, "population": "build_gate_baseline 80 pairs (r4 corpus reconstruction), candidate measured on the same texts"},
+      "g2_value": "recorded, no verdict (lift function moved to per-class gates)",
+      "g3_per_slice": "recorded in the gate pass, no verdict weight"
+    },
+    "single_shot": "exactly ONE measured gate pass on the chosen artifact; floors/characterization reruns are registered calibration, not gate re-rolls"
+  },
+  "prelaunch_estimates": {
+    "teacher_precompute_wall": "26681 texts x ~0.29 s/text ≈ 2.2 h (round-4 measured 0.288 s/text on this box)",
+    "train_wall": "~14-17 min/epoch (25420 texts; round-4 was 12-15 min on 24.2k) + ~1.5 min/epoch eval => 16-20 epochs ≈ 4.2-5.5 h",
+    "export_measure": "~40 min (4 forms x embed+proxy)",
+    "gates": "~1 h (S1m production mechanics + gate pass + latency)",
+    "total_wall_estimate_hours": 8.5,
+    "peak_ram_estimate_gb": {"teacher_precompute": 4.1, "training": 2.0, "export": 2.0},
+    "stop_conditions": [
+      "available box RAM < 4 GB at a heavy-job launch (sequential-heavy-jobs rule; stop-and-resume honored — round-4 precedent)",
+      "training RSS > 8 GB",
+      "non-finite loss (exit 4)",
+      "corpus fingerprint mismatch at any read",
+      "npz lockstep violation (texts differ)"
+    ]
+  },
+  "environment": {
+    "python_train": "/var/home/abyss/.venvs/nm-train/bin/python (torch 2.13.0+cu130 CPU-used, transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0)",
+    "python_gate": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/.venv/bin/python (vesmaro 5.6.4 runtime, onnxruntime 1.27.0, tokenizers 0.22.2)",
+    "HF_HOME": "/var/home/abyss/.cache/huggingface",
+    "engine_repo_state": "worktree wt/embed-r5-train, branch feat/embed-r5-train from feat/embed-r4-train @ 507bfda; main/release/consolidate/r4 worktrees untouched; prod services untouched",
+    "isolation": "nm-train venv referenced by path, no installs; engine .venv read-only for gate mechanics"
+  }
+}
