@@ -1055,7 +1055,9 @@ class TestProcessorSubapp:
     def test_stop_is_a_noop_when_not_running(self, isolated_config: Path) -> None:
         result = runner.invoke(app, ["processor", "stop"])
         assert result.exit_code == 0, result.output
-        assert "stopped" in result.output
+        # P3 (cli-audit 2026-10-08): the no-op is named as such, not
+        # claimed as a stop.
+        assert "not running (no-op)" in result.output
 
     def test_help_lists_all_four_verbs(self, isolated_config: Path) -> None:
         result = runner.invoke(app, ["processor", "--help"])

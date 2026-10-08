@@ -445,7 +445,11 @@ def ingest_file(
     except (OSError, UnicodeDecodeError) as exc:
         # UnicodeDecodeError is a ValueError, not an OSError: without it a
         # binary file would traceback on the canonical surface.
-        detail = exc.strerror if isinstance(exc, OSError) else str(exc)
+        detail = (
+            exc.strerror
+            if isinstance(exc, OSError)
+            else "binary file — not ingested (content is not valid UTF-8 text)"
+        )
         console.print(f"[red]Cannot read {path}: {detail}[/red]")
         raise typer.Exit(1) from exc
     if dry_run:
@@ -946,7 +950,7 @@ def tags_rename(
         bool,
         typer.Option(
             "--dry-run",
-            help="Preview changes without writing to the database (default: True).",
+            help="Preview changes without writing to the database.",
         ),
     ] = True,
     no_dry_run: Annotated[
@@ -1497,8 +1501,14 @@ def processor_stop(config: str = ConfigOption) -> None:
     """
     mgr = get_manager(config)
     try:
+        # P3 (cli-audit 2026-10-08): stopping an already-stopped loop used
+        # to claim "✓ stopped" — distinguish the no-op.
+        was_running = mgr.processor_running
         mgr.stop_background_processor()
-        console.print("[green]✓ Background processor stopped[/green]")
+        if was_running:
+            console.print("[green]✓ Background processor stopped[/green]")
+        else:
+            console.print("[cyan]· Background processor not running (no-op)[/cyan]")
     finally:
         mgr.close()
 
@@ -2154,8 +2164,7 @@ def migrate_tags(
 ) -> None:
     """Migrate legacy gcw: tags to the canonical vesma:* namespace.
 
-    .. deprecated::
-        Use ``vesma tags rename --from gcw: --to vesma: --no-dry-run``
+    DEPRECATED: use ``vesma tags rename --from gcw: --to vesma: --no-dry-run``
         instead. This command now delegates to the safe ``tags_rename``
         path (plain UPDATE via ``update_fields``) so the FTS5 index stays
         consistent. The old raw-``sqlite3`` implementation in
@@ -2231,7 +2240,7 @@ _totp_app = typer.Typer(
         "Manage TOTP 2FA enrollment.\n\n"
         "Enroll a token with `enroll` (prints the provisioning URI for the "
         "authenticator app), smoke-test it with `test`, retire it with "
-        "`disable`. Requires VESMARO_API__TOTP_MASTER_KEY to encrypt the "
+        "`disable`. Requires VESMA_API__TOTP_MASTER_KEY to encrypt the "
         "secret at rest."
     ),
     no_args_is_help=True,
@@ -2368,7 +2377,7 @@ def totp_enroll(
     """Generate a TOTP secret and print the provisioning URI + optional QR code.
 
     Enrolls the token for time-based 2FA: a fresh secret is generated,
-    encrypted with VESMARO_API__TOTP_MASTER_KEY, and stored; the provisioning
+    encrypted with VESMA_API__TOTP_MASTER_KEY, and stored; the provisioning
     URI goes to your authenticator app. Re-enrolling replaces the previous
     secret. Afterwards verify with `totp test` before relying on it.
     """

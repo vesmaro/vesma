@@ -1239,7 +1239,7 @@ timer_app = typer.Typer(
         "Install, remove or inspect the weekly update timer.\n\n"
         "The timer is the scheduled side of `vesma update`: a systemd user "
         "timer (or the platform equivalent) that runs the weekly check+apply "
-        "pass. `install` sets it up, `remove` tears it down, `status` shows "
+        "pass. `install` sets it up, `uninstall` tears it down, `status` shows "
         "whether it is scheduled and when it last fired."
     ),
 )
