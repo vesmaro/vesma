@@ -2361,7 +2361,7 @@ app.add_typer(doctor_app, name="doctor")
 
 from vesma.cli.agent_token_cmd import agent_token_app  # noqa: E402
 from vesma.cli.export_cmd import export_app  # noqa: E402
-from vesma.cli.import_cmd import import_app  # noqa: E402
+from vesma.cli.import_cmd import import_cmd  # noqa: E402
 from vesma.cli.logs import logs_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
@@ -2369,7 +2369,10 @@ from vesma.cli.update_cmd import update_app  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
-app.add_typer(import_app, name="import")
+# A PLAIN command, not a sub-app: a group parses options only BEFORE the
+# first positional (click MultiCommand), so `import f.json --mode merge`
+# died with "Missing argument 'source'" (cli-audit 2026-10-08 #4).
+app.command(name="import")(import_cmd)
 app.add_typer(logs_app, name="logs")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
