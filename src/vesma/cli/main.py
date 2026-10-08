@@ -559,9 +559,7 @@ def search(
         )
     if effective_threshold > 0 and results:
         relevant = [
-            r
-            for r in results
-            if r.vector_score is None or r.vector_score >= effective_threshold
+            r for r in results if r.vector_score is None or r.vector_score >= effective_threshold
         ]
         if not relevant and results:
             best = max(r.vector_score for r in results if r.vector_score is not None)
@@ -1803,7 +1801,23 @@ def serve(
     if settings.mesh.enabled:
         from vesma.service.backend import start_mesh_legs
 
-        mesh_server = start_mesh_legs(settings, config)
+        # cli-audit 2026-10-08 (P1 #2): a failed mesh leg (missing gRPC
+        # stubs in the install, socket busy, …) used to kill serve BEFORE
+        # the HTTP API ever bound — the whole product was down because one
+        # optional leg was. `serve` DEGRADES now: a loud warning and a
+        # working HTTP API. `service run` keeps its fail-fast contract
+        # (a supervised unit must fail loudly, not come up half-alive).
+        try:
+            mesh_server = start_mesh_legs(settings, config)
+        except Exception as exc:
+            console.print(
+                "[yellow]warning[/yellow] mesh leg failed to start — serving "
+                f"HTTP-only (degraded): {exc}"
+            )
+            console.print(
+                "[dim]mesh stays disabled for this process; fix the cause and "
+                "restart to re-enable.[/dim]"
+            )
 
     # S2 phase 2: the meta poller starts in the FastAPI lifespan, which
     # is PER WORKER — with uvicorn workers > 1 every worker polls. The
@@ -1869,16 +1883,16 @@ def fetch_cmd(
     """
     import sys
 
-    from vesma.lazy_fetch import (
-        FetchResolutionError,
-        run_fetch,
-    )
-
     settings = load_settings(config)
     setup_logging(settings, verbose=_verbose)
     fed = settings.federation
+    # cli-audit 2026-10-08 (P1 #3): the mesh modules import lazily, BELOW
+    # the argument guards — a wheel without the gRPC stubs used to die
+    # with ImportError even on bare `vesma fetch` (where a clean usage
+    # error belongs).
     if not record_ids:
         console.print("[red]✗[/red] no --id given — name at least one federation record id")
+        console.print("[dim]usage: vesma fetch --id fed:<agent>:<uuid> [--id …] [--yes][/dim]")
         raise typer.Exit(1)
     if not fed.fetch.mesh_config_path.strip():
         console.print(
@@ -1889,8 +1903,19 @@ def fetch_cmd(
 
     mgr = get_manager(config)
 
+    # cli-audit 2026-10-08 (P1 #2/#3): a wheel whose build machine never
+    # generated the gRPC stubs reaches here — the operator gets the fix
+    # ladder, not a raw traceback. (The import and the run are separate
+    # try blocks: except clauses evaluate in order, so one shared block
+    # would hit an UnboundLocalError on the exception type's own name.)
     try:
-        stats = run_fetch(
+        from vesma import lazy_fetch as _lazy_fetch
+    except ImportError as exc:
+        console.print(f"[red]✗[/red] mesh federation is unavailable in this install: {exc}")
+        raise typer.Exit(1) from exc
+
+    try:
+        stats = _lazy_fetch.run_fetch(
             mgr.sqlite,
             mgr,
             settings,
@@ -1900,7 +1925,7 @@ def fetch_cmd(
             stdout=sys.stdout,
             is_tty=sys.stdin.isatty,
         )
-    except FetchResolutionError as exc:
+    except _lazy_fetch.FetchResolutionError as exc:
         console.print(f"[red]✗[/red] {exc}")
         raise typer.Exit(1) from exc
 

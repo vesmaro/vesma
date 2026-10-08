@@ -232,6 +232,17 @@ exclude = ["benchmarks", "training"]
 # "vesma") / "integrations"`.
 [tool.hatch.build.targets.wheel.force-include]
 "integrations" = "vesma/integrations"
+# Ship the generated gRPC stubs inside the wheel (issue #514 tail;
+# cli-audit 2026-10-08 finding #2): a pip install has no federation/
+# checkout, so vesma._mesh_gen resolved nothing and serve/fetch on a
+# mesh-enabled config crashed with "gRPC generated stubs not found"
+# before the HTTP bind. Mapped INTO the package as vesma/_mesh_gen_stubs/
+# — candidate 0 of the shim's resolution order. The directory is
+# gitignored: run `bash scripts/gen-proto.sh` before building; from a
+# checkout without it the wheel simply omits the stubs (hatchling skips
+# a missing force-include source — verified 2026-10-09) and the shim's
+# error message names the generation command.
+"federation/gen/python" = "vesma/_mesh_gen_stubs"
 # Ship the setup scripts (mcp-setup.sh, install.sh, deploy.sh, setup-distrobox.sh)
 # inside the wheel so `vesma integration setup` can find mcp-setup.sh from a
 # pip-installed package, not just from a source checkout. Mapped to
@@ -261,6 +272,16 @@ exclude = ["benchmarks", "training"]
 "scripts/sync-peers.sh" = "vesma/scripts/sync-peers.sh"
 "scripts/sync-readme-version.sh" = "vesma/scripts/sync-readme-version.sh"
 "scripts/sync-version.mjs" = "vesma/scripts/sync-version.mjs"
+
+# The generated gRPC stubs are gitignored, so gitignore-based sdist
+# selection would drop them — and release wheels are built FROM the
+# sdist (see the scripts block above). Force-include the generated dir
+# into the sdist verbatim (same path), so the from-sdist wheel build
+# finds it for the wheel mapping above. Same skip-when-missing contract:
+# a build from a checkout without `bash scripts/gen-proto.sh` omits the
+# stubs everywhere, and the shim's ImportError names the command.
+[tool.hatch.build.targets.sdist.force-include]
+"federation/gen/python" = "federation/gen/python"
 
 [tool.ruff]
 target-version = "py311"
