@@ -1115,6 +1115,59 @@ class TestRecallGroup:
         """Bare `vesma recall` still runs the context recall (exit 0, no hint)."""
         result = runner.invoke(app, ["recall", "--limit", "5"])
         assert result.exit_code == 0, result.output
+
+    def test_bare_recall_returns_mixed_tags(self, isolated_config: Path) -> None:
+        """Bare `vesma recall` surfaces entries of DIFFERENT tags (audit P1 #5).
+
+        It used to delegate to the checkpoint-scoped recall_context, so
+        only `vesma:checkpoint` rows ever surfaced while the help promised
+        "the most recent memories". Now every tag appears.
+        """
+        _seed_agent_memory(isolated_config, "bare recall decision row", "cli")
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+        mgr = get_manager(str(isolated_config))
+        mgr.sqlite.save(
+            Memory(
+                content="bare recall checkpoint row",
+                title="bare recall checkpoint row",
+                tags=["project:cli-smoke", "agent:cli", "vesma:checkpoint"],
+                source=MemorySource.CLI,
+                memory_type=MemoryType.NOTE,
+                status=MemoryStatus.RAW,
+                project="cli-smoke",
+                agent="cli",
+            )
+        )
+        result = runner.invoke(app, ["recall", "--limit", "10"])
+        assert result.exit_code == 0, result.output
+        assert "bare recall decision row" in result.output, "non-checkpoint rows must surface"
+        assert "bare recall checkpoint row" in result.output, "checkpoint rows must surface"
+
+    def test_bare_recall_respects_project_filter(self, isolated_config: Path) -> None:
+        """`vesma recall --project X` keeps the project scope on the unscoped listing."""
+        _seed_agent_memory(isolated_config, "recall scoped row", "cli")
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+        mgr = get_manager(str(isolated_config))
+        mgr.sqlite.save(
+            Memory(
+                content="recall other-project row",
+                title="recall other-project row",
+                tags=["project:other", "agent:cli", "vesma:learning"],
+                source=MemorySource.CLI,
+                memory_type=MemoryType.NOTE,
+                status=MemoryStatus.RAW,
+                project="other",
+                agent="cli",
+            )
+        )
+        result = runner.invoke(app, ["recall", "--project", "cli-smoke", "--limit", "10"])
+        assert result.exit_code == 0, result.output
+        assert "recall scoped row" in result.output
+        assert "recall other-project row" not in result.output
         assert "deprecated" not in result.output
 
     def test_help_advertises_agent_subcommand_and_hides_flag(self, isolated_config: Path) -> None:

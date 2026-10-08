@@ -615,7 +615,13 @@ def recall(
         results = mgr.agent_recall(AgentRecallQuery(agent=agent, project=project, limit=limit))
         _print_recall_memories([r.memory for r in results])
         return
-    _print_recall_memories(mgr.recall_context(project=project or "", limit=limit))
+    # cli-audit 2026-10-08 (P1 #5): bare recall used to delegate to
+    # recall_context — checkpoint-scoped by contract — so only
+    # vesma:checkpoint rows ever surfaced while the help promised "the
+    # most recent memories". recall_recent is the unscoped listing the
+    # help describes; recall_context (checkpoints) keeps its MCP/REST
+    # semantics untouched.
+    _print_recall_memories(mgr.recall_recent(project=project or "", limit=limit))
 
 
 @_recall_app.command(name="agent")

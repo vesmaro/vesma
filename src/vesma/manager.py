@@ -3403,6 +3403,39 @@ class MemoryManager:
             if not is_quarantined(m)
         ]
 
+    def recall_recent(self, *, project: str = "", limit: int = 10) -> list[Memory]:
+        """Return the most recent memories REGARDLESS of tag (CLI bare recall).
+
+        cli-audit 2026-10-08 (P1 #5): bare ``vesma recall`` used to delegate
+        to :meth:`recall_context`, which is checkpoint-scoped by contract —
+        the help promised "the most recent memories" but only
+        ``vesma:checkpoint`` rows ever surfaced. This is the unscoped
+        recency listing the help describes: every tag, every type, the
+        same status policy as the recency leg of ``recall_context``
+        (everything except ``archived``, ADR-0019 §5 quarantine exclusion
+        included — the same two predicates, not a copy).
+
+        The checkpoint-scoped :meth:`recall_context` is UNCHANGED — the
+        MCP tool ``vesma_recall_context`` and ``POST /context/recall``
+        keep their exact semantics; only the CLI bare form switched.
+        """
+        from vesma.models import _PROJECT_RE, normalize_project_slug
+
+        project = normalize_project_slug(project)
+        if project and not _PROJECT_RE.match(f"project:{project}"):
+            raise ValueError(
+                f"project must be 1-64 characters of [a-z0-9_-] after normalization "
+                f"(got {project!r})"
+            )
+        memories = self.sqlite.list_all(limit=limit * 3, project=project)
+        # Same retirement policy as the recall_context recency leg: archived
+        # checkpoints are retired, quarantined entries never resurface.
+        memories = [
+            m for m in memories if m.status != MemoryStatus.ARCHIVED and not is_quarantined(m)
+        ]
+        memories.sort(key=lambda m: m.created_at, reverse=True)
+        return memories[:limit]
+
     def recall_context(
         self, *, project: str, query: str | None = None, task: str | None = None, limit: int = 5
     ) -> list[Memory]:
