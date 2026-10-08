@@ -58,6 +58,7 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from vesma import __version__
 from vesma.updates import (
@@ -448,8 +449,51 @@ def _run_user_update(console: Console, to: str | None, *, verbose: bool = False)
 
     if rc == 0:
         console.print("[yellow]restart clients (MCP/serve) to pick up the new version[/yellow]")
+        # P0 (cli-audit 2026-10-08): after an engine upgrade the installed
+        # components.d manifests must match THIS engine — stale ones made
+        # the next `vesma service run` fail-closed (REQUIREMENTS_INVALID)
+        # and any supervisor restart meant downtime. Reconcile NOW.
+        _reconcile_service_manifests(console)
     else:
         raise typer.Exit(1)
+
+
+def _reconcile_service_manifests(console: Console) -> None:
+    """Post-upgrade manifest reconciliation (P0, cli-audit 2026-10-08).
+
+    Best-effort in shape but loud in outcome: stale bundled manifests
+    (board/metrics) are regenerated from the new engine's bundle,
+    operator-authored manifests (mesh.yaml) are only WARN-checked, and a
+    residual fail-closed validation failure prints the manual remediation
+    and exits 1 — an upgrade that leaves a service unable to restart is
+    not a successful apply.
+    """
+    from vesma.service.errors import ManifestError
+    from vesma.service.install import InstallError, regenerate_stale_manifests
+
+    try:
+        lines, regenerated = regenerate_stale_manifests()
+    except (InstallError, ManifestError, OSError) as exc:
+        console.print(
+            f"[red]✗[/red] service manifest reconciliation failed: {exc}\n"
+            "[dim]run `vesma service install` BEFORE restarting vesma.service[/dim]"
+        )
+        raise typer.Exit(1) from exc
+    if not lines:
+        return  # no components.d installed — no service surface to reconcile
+    for line in lines:
+        warn_line = line.startswith("WARN:")
+        style = "[yellow]⚠[/yellow]" if warn_line else "[cyan]·[/cyan]"
+        # Text(line): report lines carry operator data (paths, codes) —
+        # rendered without markup, only the prefix is styling.
+        console.print(style, Text(line))
+    if regenerated:
+        console.print(
+            f"[green]service manifests regenerated for {__version__} — "
+            "restart vesma.service[/green]"
+        )
+    else:
+        console.print(f"[cyan]service manifests current for {__version__}[/cyan]")
 
 
 # ── timer install / removal ──────────────────────────────────────────────────

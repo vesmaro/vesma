@@ -41,7 +41,12 @@ from typing import Final
 
 from vesma.service import layout, unitgen
 from vesma.service.errors import ManifestError
-from vesma.service.manifest import ComponentManifest, bundled_manifest_path, load_installation
+from vesma.service.manifest import (
+    ComponentManifest,
+    bundled_manifest_path,
+    load_installation,
+    load_manifest,
+)
 
 logger = logging.getLogger("vesma.service.install")
 
@@ -488,6 +493,92 @@ def install() -> InstallResult:
 def engine_venv() -> Path:
     """The venv the running engine lives in (``ExecStart`` target)."""
     return Path(sys.executable).absolute().parent.parent
+
+
+# ── Post-upgrade manifest reconciliation (P0, cli-audit 2026-10-08) ────
+
+
+def regenerate_stale_manifests() -> tuple[list[str], int]:
+    """Reconcile installed manifests with THIS engine after an upgrade.
+
+    P0 (cli-audit 2026-10-08): ``vesma update apply`` upgraded the engine
+    while the installed ``components.d`` manifests stayed on the old era —
+    the next ``vesma service run`` died fail-closed with
+    ``[REQUIREMENTS_INVALID] $.launch.python.requirements ...`` and ANY
+    supervisor restart meant downtime. The updater owns the fix:
+
+    1. bundled components (``board``/``metrics``): an installed manifest
+       whose bytes differ from THIS engine's bundle is regenerated from
+       the bundle (the same single-writer discipline as ``service
+       install`` — installed pack manifests are owned artifacts);
+    2. operator-authored manifests (anything else, e.g. ``mesh.yaml``):
+       NEVER touched — structure-checked against THIS engine's validator,
+       a violation is a loud WARN naming the code and path;
+    3. a final fail-closed ``load_installation`` pass: any remaining
+       installation-level problem (stray file, duplicate name, dependency
+       cycle) is reported as a loud warning — the operator must fix it
+       BEFORE restarting ``vesma.service``.
+
+    Returns ``(report_lines, regenerated_count)``. Raises through
+    unexpected errors; the caller (``vesma update apply``) turns a
+    failure into exit 1 with the manual remediation.
+    """
+    report: list[str] = []
+    components_dir = layout.components_dir()
+    if not components_dir.is_dir():
+        return report, 0  # nothing installed — nothing to reconcile
+
+    version = _engine_version()
+
+    # 1. Bundled manifests: regenerate the STALE ones from this engine's
+    #    bundle (bytes-diff = stale, covering missing requirements
+    #    sections, old-era version markers, schema drift — everything the
+    #    validator of the new engine would refuse).
+    for name in BUNDLED_COMPONENTS:
+        target = components_dir / f"{name}.yaml"
+        if not target.exists():
+            continue  # operator removed it deliberately — do not resurrect
+        bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
+        try:
+            installed_text = target.read_text(encoding="utf-8")
+        except OSError as exc:
+            report.append(f"WARN: cannot read {target}: {exc}")
+            continue
+        if installed_text == bundle_text:
+            continue
+        _atomic_write(target, bundle_text, 0o644)
+        report.append(f"regenerated: {target} (bundled manifest was stale for engine {version})")
+
+    # 2. Operator-authored manifests: validate structure only, never write.
+    for path in sorted([*components_dir.glob("*.yaml"), *components_dir.glob("*.yml")]):
+        if path.stem in BUNDLED_COMPONENTS:
+            continue
+        try:
+            load_manifest(path)
+        except ManifestError as exc:
+            report.append(
+                f"WARN: operator-authored manifest {path.name} fails THIS engine's "
+                f"validator (left untouched): {exc}"
+            )
+
+    # 3. Fail-closed whole-installation check (same load `service run`
+    #    performs): whatever still fails must be fixed before a restart.
+    try:
+        installation = load_installation(components_dir)
+    except ManifestError as exc:
+        report.append(
+            f"WARN: the installation still fails fail-closed validation — "
+            f"{exc} — fix or re-run `vesma service install` BEFORE restarting "
+            f"vesma.service"
+        )
+    else:
+        report.append(
+            f"validation: components.d loads fail-closed on engine {version} — "
+            f"{len(installation)} component(s): {', '.join(sorted(installation))}"
+        )
+
+    regenerated = sum(1 for line in report if line.startswith("regenerated:"))
+    return report, regenerated
 
 
 # ── Uninstall ─────────────────────────────────────────────────────────
