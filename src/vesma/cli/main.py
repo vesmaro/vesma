@@ -192,19 +192,43 @@ def _print_saved(memory: Memory) -> None:
     console.print(f"[green]✓[/green] Saved: {memory.auto_title()} ({memory.id})")
 
 
+def _validate_cli_tags(tag_list: list[str], *, strict: bool) -> list[str]:
+    """Single CLI tag-contract gate — the mirror of the MCP surface.
+
+    cli-audit 2026-10-08 (P1 #7): ``add`` used to save contract-violating
+    rows silently while the MCP tool refuses them. Every CLI save surface
+    validates here: strict mode refuses with a clean typed error (same
+    contract the MCP ``vesma_add`` enforces), lax mode applies the same
+    auto-patching the MCP surface gets and returns the patched list.
+    """
+    from vesma.models import TagContractError, validate_tag_contract
+
+    try:
+        return validate_tag_contract(tag_list, strict=strict)
+    except TagContractError as exc:
+        console.print(f"[red]✗ Tag contract violation:[/red] {exc}")
+        console.print(
+            "[dim]Pass --tags with at least one project:<slug>, one agent:<slug> and "
+            "one vesma:<subtype> tag — e.g. "
+            "--tags 'project:myproj,agent:user,vesma:note'.[/dim]"
+        )
+        raise typer.Exit(1) from None
+
+
 def _dry_run_filter_preview(text: str, tag_list: list[str], config: str | None) -> None:
     """Validate the tag contract and print context-filter stats without saving.
 
     Shared by ``add --dry-run`` (content / stdin / file text) and
     ``ingest file --dry-run`` (W3).
     """
-    # Validate tag contract (raises TagContractError in strict mode).
     from vesma.config import load_settings as _load_settings
     from vesma.filter.pipeline import apply_filter
-    from vesma.models import validate_tag_contract
 
     settings = _load_settings(config)
-    validate_tag_contract(tag_list, strict=settings.vesma.strict_tag_contract)
+    # cli-audit 2026-10-08 (P1 #7): a violation here used to escape as an
+    # unhandled TagContractError traceback; now it is the same clean typed
+    # error the save path prints.
+    tag_list = _validate_cli_tags(tag_list, strict=settings.vesma.strict_tag_contract)
 
     result = apply_filter(text)
     stats = result["stats"]
@@ -298,6 +322,12 @@ def add(
         _deprecated_flag_hint("vesma add --url URL", "vesma ingest url URL")
     if file:
         _deprecated_flag_hint("vesma add --file PATH", "vesma ingest file PATH")
+
+    # cli-audit 2026-10-08 (P1 #7): enforce the tag contract BEFORE anything
+    # saves or previews — the CLI must not silently save a row the MCP
+    # surface refuses (strict default), and in lax mode it patches exactly
+    # like the MCP surface.
+    tag_list = _validate_cli_tags(tag_list, strict=load_settings(config).vesma.strict_tag_contract)
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:

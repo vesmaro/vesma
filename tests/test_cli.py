@@ -119,7 +119,11 @@ def test_add_creates_memory(isolated_config: Path) -> None:
             "add",
             "hello world",  # positional content
             "--tags",
-            "project:cli-smoke,agent:cli,mnemos:test",
+            # cli-audit 2026-10-08 (P1 #7): CLI add enforces the tag contract
+            # now — fixtures carry a VALID subtype (the old `mnemos:test`
+            # fixture tag was contract-invalid and only ever landed because
+            # the CLI never checked).
+            "project:cli-smoke,agent:cli,mnemos:learning",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -324,23 +328,53 @@ class TestVesmaTagInputAlias:
 def test_add_with_invalid_tags_does_not_crash(
     isolated_config: Path,
 ) -> None:
-    """`mnemos add` with no tags still completes (no Python traceback).
+    """`mnemos add` with no tags is REFUSED with a clean typed error (no traceback).
 
-    The CLI may accept the call (no enforced contract on `add`) and
-    emit a memory that downstream pipelines may then flag — that
-    is by design (the contract is enforced in the manager.add()
-    path or by the watcher filter, not at the CLI surface). What
-    matters here is: the CLI does not raise an unhandled exception.
+    cli-audit 2026-10-08 (P1 #7): the CLI used to save contract-violating
+    rows silently while the MCP `vesma_add` refuses them. The CLI `add`
+    now enforces the same contract (strict default): a clean red error
+    naming the violations, exit 1, nothing saved.
     """
     result = runner.invoke(
         app,
         [
             "add",
             "x",  # content
-            # No --tags (deliberate: test graceful path)
+            # No --tags (deliberate: the contract must refuse this)
         ],
     )
     assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    assert "project:" in result.output  # the fix hint names the required tags
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == [], "a refused add must save nothing"
+
+
+def test_add_dry_run_invalid_tags_clean_error(
+    isolated_config: Path,
+) -> None:
+    """`add --dry-run` on contract-violating tags: clean red error, no traceback.
+
+    cli-audit 2026-10-08 (P1 #7b): the dry run used to escape as an
+    unhandled TagContractError traceback (exit 1 WITH traceback).
+    """
+    result = runner.invoke(app, ["add", "preview me", "--dry-run"])
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+
+
+def test_add_dry_run_valid_tags_previews(isolated_config: Path) -> None:
+    """`add --dry-run` with contract-valid tags still prints the filter preview."""
+    result = runner.invoke(
+        app,
+        ["add", "preview me", "--dry-run", "--tags", "project:p,agent:a,vesma:learning"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Filter preview" in result.output
 
 
 # ── mnemos completion ─────────────────────────────────────────────────────────
@@ -1288,7 +1322,16 @@ class TestAddIngestAliases:
 
     def test_content_form_stays_canonical_and_hint_free(self, isolated_config: Path) -> None:
         """`vesma add <content>` keeps working with no deprecation noise."""
-        result = runner.invoke(app, ["add", "w3 quick capture note"])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "w3 quick capture note",
+                # cli-audit 2026-10-08 (P1 #7): CLI add enforces the contract.
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "deprecated" not in result.output
@@ -1305,7 +1348,16 @@ class TestAddIngestAliases:
             "ingest_url",
             return_value=_fake_ingested_memory("w3 alias page body"),
         ) as mock_ingest:
-            result = runner.invoke(app, ["add", "--url", "https://example.com/alias"])
+            result = runner.invoke(
+                app,
+                [
+                    "add",
+                    "--url",
+                    "https://example.com/alias",
+                    "--tags",
+                    "project:cli-smoke,agent:cli,mnemos:learning",
+                ],
+            )
         assert result.exit_code == 0, result.output
         mock_ingest.assert_called_once()
         assert "Saved" in result.output
@@ -1317,7 +1369,16 @@ class TestAddIngestAliases:
         """`add --file` keeps identical behavior + prints the stderr hint."""
         note = isolated_config.parent / "w3-alias-note.md"
         note.write_text("w3 file alias body\n", encoding="utf-8")
-        result = runner.invoke(app, ["add", "--file", str(note)])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--file",
+                str(note),
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 file alias body" in result.output
@@ -1327,7 +1388,17 @@ class TestAddIngestAliases:
 
     def test_url_alias_dry_run_refused_as_before(self, isolated_config: Path) -> None:
         """`add --url --dry-run` keeps its historical refusal (exit 1)."""
-        result = runner.invoke(app, ["add", "--url", "https://example.com/x", "--dry-run"])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--url",
+                "https://example.com/x",
+                "--dry-run",
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert "--dry-run is not supported with --url" in result.output
 
