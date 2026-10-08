@@ -2658,6 +2658,12 @@ class MemoryManager:
             if len(vector_resolved) >= limit * 2:
                 break
 
+        # Raw vector-leg cosines by id — result provenance for the CLI
+        # relevance gate (cli-audit 2026-10-08 P1 #9): the fused RRF score
+        # is rank-based and cannot separate a garbage query from a real
+        # one, the raw cosine can.
+        vector_raw: dict[str, float] = dict(vector_resolved)
+
         # ── RRF merge ──────────────────────────────────────────────────────
         rrf_k = 60
         scores: dict[str, float] = {}
@@ -2714,7 +2720,21 @@ class MemoryManager:
                 continue
             if tags and not all(t in matched.tags for t in tags):
                 continue
-            results.append(SearchResult(memory=matched, score=score, search_type=search_type))
+            # cli-audit 2026-10-08 (P1 #9): the RAW vector-leg cosine rides
+            # the result as provenance — the fused RRF score is rank-based
+            # (top of ANY leg ≈ alpha/(rrf_k+1) ≈ 0.008) and cannot
+            # separate a garbage query from a real one; the raw cosine can.
+            # Populated ONLY for SEMANTIC-ONLY rows (no FTS match): a row
+            # with lexical evidence is relevant regardless of its cosine,
+            # and its None here is the CLI gate's keep-marker.
+            results.append(
+                SearchResult(
+                    memory=matched,
+                    score=score,
+                    search_type=search_type,
+                    vector_score=None if mid in fts_ids else vector_raw.get(mid),
+                )
+            )
             if len(results) >= fused_fill:
                 break
         fused_surplus: list[tuple[str, float]] = []

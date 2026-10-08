@@ -243,6 +243,17 @@ class SearchConfig(BaseModel):
     # (and ``feedback_apply`` stays inert on an empty counter set).
     # Env: ``VESMA_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
     feedback_capture_enabled: bool = True
+    # cli-audit 2026-10-08 (P1 #9): the minimum RAW vector-leg cosine for a
+    # semantic-only candidate to count as relevant on surfaces that gate by
+    # relevance (the CLI `search` applies it by default; MCP/HTTP keep
+    # returning everything unless the caller filters). 0.0 = unset — the
+    # CLI then falls back to its built-in calibrated default (see
+    # cli.main._DEFAULT_SEARCH_RELEVANCE). The scale is embedder-specific:
+    # the bundled nano model is anisotropic (garbage ≈ 0.5, related ≈ 0.88
+    # — measured 2026-10-09), hashing test embedders are orthogonal
+    # (garbage ≈ 0.0), so tune per provider via
+    # ``VESMA_SEARCH__MIN_RELEVANCE``.
+    min_relevance: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class ApiConfig(BaseModel):
