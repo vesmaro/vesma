@@ -1,0 +1,93 @@
+{
+  "kind": "embed-round4-F-run-config",
+  "committed_before_run": true,
+  "committed_at": "2026-10-08",
+  "authority": [
+    "docs/specs/embed-round4-prereg-DRAFT.md (ACTIVATED 2026-10-06)",
+    "docs/specs/embed-round4-prereg-ADDENDUM-6.md (§A.2 g6a=45ms, §A.3 corpus rescale, §A.4 probe)",
+    "docs/specs/embed-round4-prereg-ADDENDUM-8.md (A.8.4: F-training unlocked, executor gcw-ml-engineer)",
+    "benchmarks/baselines/BASELINE.md §10/§11 (S1m numbers, g1 corridor 0.9252)"
+  ],
+  "executor": "gcw-ml-engineer",
+  "corpus": {
+    "path": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r4-corpus/data/embed-r4/corpus",
+    "fingerprint_sha256_train_plus_val": "7a3bf00b22951df59e3cb3e638c16e1c05f09a51223da8e19ef246ed29f8b645",
+    "train_rows": 24221,
+    "val_rows": 1275,
+    "sealed": true,
+    "read_only": true,
+    "note": "verified `cat train val | sha256sum` before anything; corpus never modified, never regenerated"
+  },
+  "student": {
+    "variant": "F (ADR 0004)",
+    "init": "cointegrated/rubert-tiny2",
+    "projection": "Linear(312->384, bias=False), random init (seed 42), trained jointly",
+    "mrl_dims": [64, 128, 256, 384],
+    "mrl_weights": [0.25, 0.25, 0.25, 0.25],
+    "max_length": 256,
+    "pooling": "mean + L2 (runtime embedder contract)"
+  },
+  "kd": {
+    "teacher": "Qwen/Qwen3-Embedding-0.6B (frozen, bf16 CPU, HF cache /var/home/abyss/.cache/huggingface)",
+    "teacher_instruct_template": "Given a memory note, retrieve similar notes",
+    "teacher_pooling": "last_token, left padding (Qwen3 official geometry)",
+    "teacher_dim_target": "1024-d precomputed vectors, KD target = first 384 dims (MRL slice), fp32 npz lockstep with corpus",
+    "loss": "MSE on L2-normalised cosine residual / temperature, summed over MRL dims (training/distill.py mrl_kd_loss)",
+    "temperature": 0.05,
+    "precompute": "lockstep over all 25496 corpus texts, batch 32, torch threads 8, interop 1"
+  },
+  "optimization": {
+    "optimizer": "AdamW",
+    "lr": 2e-5,
+    "batch_size": 32,
+    "epochs": 6,
+    "epoch_budget_justification": "probe (38k corpus) stopped at 3 epochs with val still improving (R@5 .266->.463->.533); corpus here is 1.5x smaller (25.5k) — 6 epochs is the agreed compensation zone; checkpoint EVERY epoch, selection on val only",
+    "seed": 42,
+    "torch_threads": 8,
+    "device": "cpu",
+    "determinism": "training.distill.set_determinism(42): PYTHONHASHSEED/random/numpy/torch seeded, deterministic algorithms warn-only"
+  },
+  "checkpoint_selection": {
+    "protocol": "probe protocol: S1m-val on the 5% val slice (1275 queries), relevance = frozen teacher-top5 within the slice, computed from the same precomputed teacher vectors as the KD targets",
+    "rule": "argmax recall_at_5; tie-break higher ndcg_at_10; then lower epoch",
+    "committed_before_training": true,
+    "forbidden": "any use of the sealed judged corpus c2ce056d, cortex holdouts (v43-holdout, b2-180), or cortex evalsets for selection"
+  },
+  "gate_measurement": {
+    "single_shot": "exactly ONE measured pass on the SELECTED checkpoint's exported artifact feeding g1/g2/g3; no judged-corpus measurements across checkpoints (gate-shopping forbidden)",
+    "order": "train -> select (val only) -> export ONNX -> harness self-check vs BASELINE §10 (production artifact, plumbing validation) -> single-shot g1/g2 (production S1m mechanics) + g3 (eval harness) + g6a (§A.2 latency)",
+    "g1_no_harm": {"metric": "S1m recall@5", "threshold": 0.9252},
+    "g2_target": {"metric": "S1m recall@5", "threshold": 0.96, "adopt_rule": "ADOPT = g1 AND g2; g1 without g2 = REJECT"},
+    "g3_mrl": {"slices": {"256": 0.02, "128": 0.03, "64": 0.05}, "basis": "delta vs same-harness full-384"},
+    "g6a_latency": {"threshold_mean_ms": 45, "method": "addendum-6 §A.2: CPU batch=1 static 1x256, VESMARO_ORT_THREADS=4, 20 RU/EN note-like texts, warmup 5, 20 passes, perf_counter"},
+    "judged_corpus_fingerprint": "c2ce056d57d91143f7a1959442ef2b37891464d4cd5f218f5eabbc785c8e72f1",
+    "judged_corpus_not_read_before": "training + selection + export complete"
+  },
+  "export": {
+    "form": "production static graph 1x256, int8 PTQ (QDQ, deterministic val-slice calibration, 200 samples), opset 15",
+    "manifest_mrl_dims": "explicit --mrl-dims 64,128,256,384 (probe checkpoints carry no mrl_dims.json)",
+    "dataset_fingerprint": "read from the sealed corpus fingerprint.txt (7a3bf00b…8b645)"
+  },
+  "prelaunch_estimates": {
+    "teacher_precompute_wall": "~2h (probe measured 11019s for 38192 texts → 25496 × 0.288 s/text ≈ 7343s)",
+    "train_wall": "~12-15 min/epoch (probe 18-23 min at 36.3k train texts; this corpus 24.2k) → ~75-90 min for 6 epochs",
+    "total_wall_estimate_hours": 3.5,
+    "peak_ram_estimate_gb": {"teacher_precompute": 5.0, "training": 2.0},
+    "stop_conditions": [
+      "training RSS > 8 GB (RAM overrun is a stop condition, not a surprise)",
+      "non-finite KD loss (script exits 4)",
+      "corpus fingerprint mismatch at any read",
+      "box available RAM < 4 GB at launch or during teacher precompute"
+    ]
+  },
+  "environment": {
+    "python_train": "/var/home/abyss/.venvs/nm-train/bin/python (torch 2.13.0+cu130 CPU-used, transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0)",
+    "python_gate": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/.venv/bin/python (vesmaro 5.6.4 runtime, onnxruntime 1.27.0, tokenizers 0.22.2)",
+    "HF_HOME": "/var/home/abyss/.cache/huggingface (host cache: rubert-tiny2 + Qwen3-Embedding-0.6B present, probe-proven)",
+    "engine_repo_state": "worktree wt/embed-r4-train, branch feat/embed-r4-train @ main 093fbdb; NO pushes, NO main/release/consolidate worktree touches; engine prod services untouched"
+  },
+  "isolation": {
+    "parallel_release_train_respected": "release/6.0.0, wt/consolidate-*, wt/corpus-v43-redo, main checkout, prod services: read-only/untouched; my own venvs referenced, no installs into foreign venvs",
+    "venv_note": "nm-train referenced by path (no installs); engine .venv used read-only for gate mechanics"
+  }
+}
