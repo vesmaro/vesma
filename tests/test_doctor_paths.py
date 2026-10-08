@@ -27,6 +27,10 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Patch Path.home() and HOME env to a tmp directory and create a minimal config."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
+    # The resolved-config lookup consults VESMA_CONFIG; the suite gate sets
+    # it globally — these tests must pin THEIR OWN layout, so drop it.
+    monkeypatch.delenv("VESMA_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)  # keep ./config.yaml out of the search path
     # Create a config so doctor can load settings
     cfg = tmp_path / ".mnemos" / "config.yaml"
     cfg.parent.mkdir(parents=True)
@@ -77,6 +81,60 @@ def test_collect_paths_uses_tilde_abbreviation(isolated_home: Path) -> None:
     paths = _collect_paths(settings)
     assert paths["root"].startswith("~")
     assert paths["config"].startswith("~")
+
+
+def test_collect_paths_follows_vesma_config_env(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cli-audit 2026-10-08 (P1 #10): with VESMA_CONFIG active, Root/Config/
+    Cache/Completion derive from the RESOLVED config — no ~/.mnemos leftovers
+    mixed into the table."""
+    custom = isolated_home / "custom-cfg" / "vesma.yaml"
+    custom.parent.mkdir(parents=True)
+    custom.write_text("vesma:\n", encoding="utf-8")
+    monkeypatch.setenv("VESMA_CONFIG", str(custom))
+    settings = Settings()
+    settings.resolve_paths()
+    paths = _collect_paths(settings)
+    # Display tilde-abbreviates home-relative paths — compare the tails.
+    assert paths["config"].endswith("custom-cfg/vesma.yaml")
+    assert paths["root"].endswith("custom-cfg")
+    assert paths["completion"].endswith("custom-cfg/completion")
+    assert ".mnemos" not in paths["root"]
+
+
+def test_host_venv_from_box_note_explains_version_mismatch(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cli-audit 2026-10-08 (P1 #10 / P2 host binary): a host engine venv
+    built for a DIFFERENT interpreter gets an explanatory note, not a bare
+    "broken" failure."""
+    import sys
+
+    from vesma.cli import doctor as doctor_mod
+
+    host_home = isolated_home / "host-home"
+    venv_cfg = host_home / ".local" / "share" / "vesma" / "venv" / "pyvenv.cfg"
+    venv_cfg.parent.mkdir(parents=True)
+    other = "3.11" if sys.version_info[:2] != (3, 11) else "3.12"
+    venv_cfg.write_text(f"home = /usr\nversion = {other}.0\n", encoding="utf-8")
+    monkeypatch.setattr(
+        doctor_mod, "_distrobox_context_for_paths", lambda: (True, "box", host_home)
+    )
+    note = doctor_mod._host_venv_from_box_note()
+    assert note is not None
+    assert "NOT runnable from inside this box" in note
+    assert other in note
+
+
+def test_host_venv_from_box_note_absent_on_host(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No note outside a container (the host binary is fine there)."""
+    from vesma.cli import doctor as doctor_mod
+
+    monkeypatch.setattr(doctor_mod, "_distrobox_context_for_paths", lambda: (False, None, None))
+    assert doctor_mod._host_venv_from_box_note() is None
 
 
 # ── --paths flag ──────────────────────────────────────────────────────────────

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import tomllib
 from collections.abc import Callable
@@ -76,8 +75,12 @@ def _check_config() -> CheckResult:
         settings.resolve_paths()
     except Exception as exc:  # doctor must report, not crash
         return CheckResult("Config", CheckStatus.FAIL, f"load failed: {exc}")
-    # See vesma.config.find_config_file for the full search order.
-    cfg_path = os.environ.get("VESMA_CONFIG") or str(Path.home() / ".mnemos" / "config.yaml")
+    # cli-audit 2026-10-08 (P1 #10): the reported path must be the file
+    # load_settings ACTUALLY loaded (VESMA_CONFIG → ./config.yaml →
+    # ~/.mnemos/config.yaml), not a hardcoded guess.
+    from vesma.config import find_config_file
+
+    cfg_path = find_config_file() or Path.home() / ".mnemos" / "config.yaml"
     return CheckResult(
         "Config",
         CheckStatus.PASS,
@@ -850,9 +853,19 @@ def _collect_paths(settings: Any) -> dict[str, str]:
 
     Returns a dict with keys: root, config, data_dir, db_path, vault, logs,
     cache, completion, mcp_config.
+
+    cli-audit 2026-10-08 (P1 #10): Root/Config/Cache/Completion used to be
+    hardcoded under ``~/.mnemos`` while Data/DB/Vault showed the RESOLVED
+    config's paths — with ``VESMA_CONFIG`` active the table mixed two
+    worlds. Everything now derives from the one resolved source: the
+    config file ``load_settings`` actually loaded (VESMA_CONFIG → cwd →
+    ~/.mnemos), with ~/.mnemos as the zero-config fallback root.
     """
     home = Path.home()
-    root = home / ".mnemos"
+    from vesma.config import find_config_file
+
+    resolved_config = find_config_file()
+    root = resolved_config.parent if resolved_config is not None else home / ".mnemos"
     mcp_cfg = home / ".config" / "Code" / "User" / "mcp.json"
 
     # Use ~ abbreviation for display where possible.
@@ -865,7 +878,7 @@ def _collect_paths(settings: Any) -> dict[str, str]:
 
     return {
         "root": _display(root),
-        "config": _display(root / "config.yaml"),
+        "config": _display(resolved_config) if resolved_config else _display(root / "config.yaml"),
         "data_dir": _display(settings.vesma.data_dir),
         "db_path": _display(settings.db_path),
         "vault": _display(settings.vesma.vault_path),
@@ -895,6 +908,60 @@ def _render_paths(paths: dict[str, str]) -> None:
     ]
     for label, key in labels:
         console.print(f"  {label:<13} {paths.get(key, '?')}")
+    note = _host_venv_from_box_note()
+    if note:
+        console.print(f"\n[yellow]⚠[/yellow] {note}")
+
+
+def _distrobox_context_for_paths() -> tuple[bool, str | None, Path | None]:
+    """Box-context seam for the paths note (tests patch this)."""
+    from vesma.cli.update_cmd import _distrobox_context
+
+    return _distrobox_context()
+
+
+def _host_venv_from_box_note() -> str | None:
+    """cli-audit 2026-10-08 (P1 #10 / P2 host-binary): explain the "broken"
+    host engine venv instead of leaving the operator with a bare
+    ModuleNotFoundError.
+
+    Inside a distrobox, ``Path.home()`` is the BOX home, but the engine
+    venv layout can resolve to the HOST home (the ``/var/home/<user>``
+    prefix); that venv was built for the HOST's CPython — from the box
+    (a different interpreter version) its ``bin/vesma`` cannot even boot.
+    When that exact mismatch is detectable, say so plainly.
+    """
+    import sys
+
+    try:
+        in_container, _box, host_home = _distrobox_context_for_paths()
+    except Exception:  # pragma: no cover — detection is best-effort
+        return None
+    if not (in_container and host_home):
+        return None
+    host_venv = host_home / ".local" / "share" / "vesma" / "venv"
+    pyvenv_cfg = host_venv / "pyvenv.cfg"
+    try:
+        if not pyvenv_cfg.is_file():
+            return None
+        host_version: str | None = None
+        for line in pyvenv_cfg.read_text(encoding="utf-8").splitlines():
+            if line.startswith("version"):
+                host_version = line.split("=", 1)[1].strip()
+                break
+    except OSError:
+        return None
+    if not host_version:
+        return None
+    box_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if host_version.startswith(box_version):
+        return None
+    return (
+        f"host engine venv {host_venv} was built for CPython {host_version}, "
+        f"but this box runs {box_version} — the host-side `vesma` binary is NOT "
+        "runnable from inside this box (that is expected, not a broken install): "
+        "use this box's own vesma here, and manage the host service from the HOST."
+    )
 
 
 # ── Runner ───────────────────────────────────────────────────────────────────
