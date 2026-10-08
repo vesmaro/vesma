@@ -400,7 +400,7 @@ vesma stats [OPTIONS]
 | Ключ | Значение |
 |------|--------- |
 | `status` | Всегда `ok` (сигнал живости) |
-| `version` | Версия Vesma (например `5.6.2`) |
+| `version` | Версия Vesma (например `6.0.0`) |
 | `update_available` | Сводка проверки обновлений: `installed`, `latest`, `dist`, `update_available`, `checked_at` (кэш 24 ч) |
 | `data_dir` | Разрешённая директория данных |
 | `vault_path` | Разрешённая директория vault |
@@ -419,8 +419,8 @@ vesma stats [OPTIONS]
 ```bash
 vesma stats
 # status: ok
-# version: 5.6.2
-# update_available: {'installed': '5.6.2', 'latest': '5.6.2', 'dist': 'vesma-memory-server',
+# version: 6.0.0
+# update_available: {'installed': '6.0.0', 'latest': '6.0.0', 'dist': 'vesma-memory-server',
 #   'update_available': False, 'checked_at': '2026-10-06T10:04:51+00:00', 'stale': False}
 # data_dir: /home/you/.vesma/data
 # vault_path: /home/you/.vesma/vault
