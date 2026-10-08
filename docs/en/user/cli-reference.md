@@ -49,7 +49,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
 | [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
-> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `vesma:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
+> The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `mnemos:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
 
 ---
 
@@ -745,14 +745,14 @@ If you see `Errors: N`, the `summary.errors` list (printed to stderr at DEBUG le
 
 ## `migrate-store`
 
-Move a 5.x store to the 6.0 layout: `vesma.db`, canonical `vesma:*` tags, `project:vesma` slug, `vesma:` config section, home `~/.vesma/` (ADR-0044). **Explicit-only**: both `--from` and `--to` are required — discovery never picks a store for you. **Dry-run by default**: without `--apply` the command prints the plan (paths and counters) and writes nothing. Safety gates on `--apply`: a SQLite backup-API snapshot is taken and verified first; a live socket or a held database lock is a loud refusal; the `mnemos:no-federate` trust marker stays byte-stable (never rewritten); the report prints paths and numbers only, never record contents. Re-running on an already-migrated store is a no-op.
+Move a 5.x store to the 6.0 layout: `vesma.db`, canonical `vesma:*` tags, `project:vesma` slug, `vesma:` config section, home `~/.vesma/` (ADR-0044). **Explicit-only**: both `--from` and `--to` are required — discovery never picks a store for you. **Dry-run by default**: without `--apply` the command prints the plan (paths and counters) and writes nothing. Safety gates on `--apply`: a SQLite backup-API snapshot is taken and verified first; a live socket or a held database lock is a loud refusal; the `mnemos:no-federate` trust marker stays byte-stable (never rewritten); the report prints paths and numbers only, never record contents. Re-running on an already-migrated store is a LOUD REFUSAL (exit code 7, `AlreadyMigratedError` — pinned by the store-migration tests), never a silent second mutation.
 
 ### Options
 
 | Option | Description |
 |---|---|
 | `--from PATH` | **Required.** Explicit source store home (e.g. `~/.mnemos`). |
-| `--to PATH` | **Required.** Explicit target store home (6.0 layout, e.g. `~/.vesma`). |
+| `--to PATH` | **Required.** Explicit target store home (6.0 layout, e.g. `~/.vesma`). Must not exist at all — any pre-existing target (even an empty directory) is refused at plan time. |
 | `--apply` | Write the migration. Without it: read-only plan. |
 | `--json` | Machine-readable report (paths and numbers only). |
 
@@ -760,7 +760,7 @@ Move a 5.x store to the 6.0 layout: `vesma.db`, canonical `vesma:*` tags, `proje
 
 ```
 $ vesma migrate-store --from ~/.mnemos --to ~/.vesma          # plan only
-$ vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply  # execute
+$ vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply  # execute (a second run refuses with exit 7)
 ```
 
 ### Related

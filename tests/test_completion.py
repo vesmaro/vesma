@@ -305,19 +305,80 @@ class TestInstallerRc:
         _fish_completions_file("vesma").write_text("", encoding="utf-8")
         assert _is_installed("fish", _rc_path("fish"))
 
-    def test_remove_old_entries_keeps_non_completion_lines(self, fake_home: Path) -> None:
+    def test_remove_keeps_foreign_content_anchors_to_our_legacy_forms(
+        self, fake_home: Path
+    ) -> None:
+        """SEC cascade P3: the removal rules are anchored to OUR legacy forms.
+
+        A bare path mention in a user comment, a foreign tool sourcing its OWN
+        completion dir, and a foreign ``--show-completion`` eval are foreign
+        content — never removed. Only lines shaped like OUR legacy entries
+        (source/eval/``[ -f``/``# Added by`` + ``~/.mnemos/completion/``, or a
+        vesma/vesmaro/mnemos ``--show-completion`` eval) go.
+        """
         rc = fake_home / ".bashrc"
         rc.write_text(
             "export PATH=$PATH:/usr/local/bin\n"
-            "# a user comment mentioning mnemos/completion/ is migrated away\n"
-            "alias ll='ls -la'\n",
+            "# a user comment mentioning mnemos/completion/ stays put\n"
+            "alias ll='ls -la'\n"
+            'eval "$(mytool --show-completion bash)"\n'
+            "source ~/mytools/mnemos/completion/other.bash\n",
             encoding="utf-8",
         )
         _remove_old_completion_entries(rc, "bash")
         content = rc.read_text(encoding="utf-8")
         assert "export PATH" in content
         assert "alias ll" in content
-        assert "mnemos/completion/" not in content
+        # Foreign content survives verbatim.
+        assert "# a user comment mentioning mnemos/completion/ stays put" in content
+        assert 'eval "$(mytool --show-completion bash)"' in content
+        assert "source ~/mytools/mnemos/completion/other.bash" in content
+
+    def test_foreign_if_block_with_path_mention_survives_and_rc_parses(
+        self, fake_home: Path
+    ) -> None:
+        """A foreign if-block whose comment mentions the legacy path is kept —
+        the whole construct must survive and the rc must still parse."""
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            "# my notes: the old mnemos/completion/ layout was different\n"
+            "if [ -d ~/projects/legacy-thing ]; then\n"
+            "    export LEGACY_THING=1  # refers to mnemos/completion/ docs\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        _remove_old_completion_entries(rc, "bash")
+        content = rc.read_text(encoding="utf-8")
+        assert "legacy-thing" in content
+        assert "LEGACY_THING=1" in content
+        assert "fi" in content  # the foreign block is intact
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+    def test_our_legacy_forms_removed_foreign_kept_and_rc_parses(self, fake_home: Path) -> None:
+        rc = fake_home / ".bashrc"
+        rc.write_text(
+            'eval "$(vesmaro --show-completion bash)"\n'
+            'eval "$(mnemos --show-completion bash)"\n'
+            "[ -f ~/.mnemos/completion/vesmaro.bash ] "
+            "&& source ~/.mnemos/completion/vesmaro.bash\n"
+            "# Added by `vesma completion` (bash)\n"
+            'eval "$(mytool --show-completion bash)"\n'
+            "alias ll='ls -la'\n",
+            encoding="utf-8",
+        )
+        _remove_old_completion_entries(rc, "bash")
+        content = rc.read_text(encoding="utf-8")
+        # OUR legacy forms are gone.
+        assert "vesmaro --show-completion" not in content
+        assert "mnemos --show-completion" not in content
+        assert "~/.mnemos/completion/vesmaro.bash" not in content
+        assert "# Added by `vesma completion`" not in content
+        # Foreign content survives; rc still parses.
+        assert 'eval "$(mytool --show-completion bash)"' in content
+        assert "alias ll" in content
+        proc = subprocess.run(["bash", "-n", str(rc)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
 
 
 # ── Wave W-I: rc integrity — block-aware migration + syntax validation ───────

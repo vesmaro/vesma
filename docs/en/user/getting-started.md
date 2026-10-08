@@ -291,7 +291,7 @@ Vesma automatically:
 2. **Mirrored it to your Obsidian vault** at `~/.mnemos/vault/` as a markdown file with YAML frontmatter.
 3. **Validated the tag contract** — `project:test` + `agent:getting-started` + `vesma:learning` is a valid trio. Skip one and you get `❌ Tag contract violation: ...` instead.
 
-The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). The legacy `vesma:` spelling is accepted as an input alias everywhere and normalized to the canon; stored tags keep the canonical `vesma:*` form.
+The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). The legacy `mnemos:` spelling is accepted as an input alias everywhere and normalized to the canon; stored tags keep the canonical `vesma:*` form.
 
 > **Note.** Freshly added entries get the `raw` status. The background processor
 > (it runs in the MCP and HTTP API modes, and in a CLI-only deployment —
@@ -667,7 +667,7 @@ The full schema is in [config.example.yaml](../../../config.example.yaml). The m
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis and the context filter |
 
 Every one of them is overridden by environment variables (`VESMA_*`, `__` is the
-nesting separator; the 5.0–5.2 spelling `VESMARO_*` is retired as of 6.0.0, the
+nesting separator; retired as of 6.0.0 is the 5.0–5.2 spelling (`VESMARO_*`), the
 4.x spelling `VESMA_*` is no longer read):
 
 ```bash

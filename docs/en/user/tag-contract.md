@@ -20,21 +20,21 @@ The tag contract:
 
 ---
 
-## Storage prefix: `vesma:` is canonical, `vesma:` is the legacy alias
+## Storage prefix: `vesma:` is canonical, `mnemos:` is the legacy alias
 
 `vesma:` is the canonical storage prefix (6.0 canonical-prefix flip);
-every new record is written as `vesma:<subtype>`. The legacy `vesma:`
+every new record is written as `vesma:<subtype>`. The legacy `mnemos:`
 spelling is accepted on input everywhere and rewritten to the canon.
 
 - **You type** either spelling — at the CLI (`--tags`), in HTTP API tag
-  filters and in MCP add calls. Vesma normalizes `vesma:<subtype>` to
+  filters and in MCP add calls. Vesma normalizes `mnemos:<subtype>` to
   `vesma:<subtype>` before anything is written or matched.
 - **Storage keeps `vesma:*`.** Existing 5.x rows still carrying
-  `vesma:*` are re-slugged in place by the 6.0 mover in the same
+  `mnemos:*` are re-slugged in place by the 6.0 mover in the same
   release train, so stores, exports and federation traffic converge on
   one spelling.
 - **Unknown subtypes are refused loudly** in either spelling:
-  `vesma:bogus` and `vesma:bogus` both fail with an
+  `vesma:bogus` and `mnemos:bogus` both fail with an
   `invalid subtype ...` error.
 - **The one exception: `mnemos:no-federate` stays byte-stable forever**
   (ArchCom 2026-10-03). The exclusion marker is written and read ONLY
@@ -149,7 +149,7 @@ tests on every surface):
 ## `mnemos:no-federate` — federation exclusion marker
 
 `mnemos:no-federate` is an **exclusion marker**, not a cognitive category.
-It keeps the legacy `vesma:` spelling as its ONLY canonical form — a
+It keeps the legacy `mnemos:` spelling as its ONLY canonical form — a
 byte-stable trust marker by ArchCom verdict (2026-10-03): the code writes
 and reads exactly that spelling, forever, and the 6.0 mover never re-slugs
 it. Typing `vesma:no-federate` normalizes to the same stored tag. Its
@@ -222,9 +222,9 @@ renamed to `mnemos:no-federate` because the same exclusion must cover
 from vesma.models import validate_tag_contract, TagContract, TagContractError
 
 # Validate a list of tags (strict, raises on violations).
-# Legacy vesma: input normalizes — the result carries the canonical vesma: form.
+# Legacy mnemos: input normalizes — the result carries the canonical vesma: form.
 clean_tags = validate_tag_contract(
-    ["project:myproject", "agent:copilot", "vesma:learning"],
+    ["project:myproject", "agent:copilot", "mnemos:learning"],
     strict=True,
 )
 # clean_tags == ["project:myproject", "agent:copilot", "vesma:learning"]

@@ -531,24 +531,29 @@ def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
     """Migrate away every legacy completion entry from the rc file — WHOLE
     shell constructs, not bare lines.
 
-    Removed:
+    Removed (SEC cascade P3: every rule is ANCHORED to our legacy FORMS — a
+    foreign tool that merely mentions a similar path or flag is never touched):
 
-    * any line mentioning the completion directory that is NOT the exact
-      canonical source line for this shell — pre-rebrand
-      ``[ -f … ] && source …`` one-liners, wrong-shell/wrong-name
-      references, and stale marker comments;
-    * ``if [ -f … ]; then source …; fi`` blocks referencing the completion
-      dir. When the matched line OPENS a multi-line conditional, the removal
-      consumes the entire if/then(/else)/fi block down to the MATCHING
-      ``fi`` (nesting-aware); a self-contained one-line ``if …; then …; fi``
-      stays a single-line removal. An opener whose block never closes (rc
-      damaged before us) removes only itself — the write-time syntax
-      validation decides whether the result is shippable;
+    * lines that reference the LEGACY completion directory
+      (``~/.mnemos/completion/``) THROUGH one of our own line shapes — a
+      ``source``/``eval`` command, a ``[ -f … ]`` guard, or our old
+      ``# Added by`` marker. A user comment that merely mentions the path,
+      or a foreign tool sourcing its own legacy-named completion
+      directory without one of those shapes, is PRESERVED;
+    * ``if [ -f … ]; then source …; fi`` blocks referencing the legacy
+      completion dir through the same shapes. When the matched line OPENS a
+      multi-line conditional, the removal consumes the entire if/then(/else)/fi
+      block down to the MATCHING ``fi`` (nesting-aware); a self-contained
+      one-line ``if …; then …; fi`` stays a single-line removal. An opener
+      whose block never closes (rc damaged before us) removes only itself —
+      the write-time syntax validation decides whether the result is
+      shippable;
     * orphaned pure control lines — ``fi``/``then``/``else``/``elif``/
       ``do``/``done``/``esac`` whose opener is gone, whether we just removed
       it or a historical edit did (the 2026-10-03 field incident);
-    * old ``eval "$(… --show-completion …)"`` lines (any spelling —
-      the flag is retired with the custom engine).
+    * old ``eval "$(vesma|vesmaro|mnemos --show-completion …)"`` lines — the
+      program name is part of the anchor: another tool's
+      ``--show-completion`` eval is foreign content and stays.
 
     Duplicate copies of the canonical line itself collapse to the first
     occurrence (exactly ONE canonical line stays).
@@ -571,7 +576,18 @@ def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
     except OSError:
         return True  # unreadable: nothing to migrate here (installer reports separately)
     canonical = _canonical_source_line(shell)
-    show_completion_re = re.compile(r"--show-completion", re.IGNORECASE)
+    # SEC cascade P3 (a): anchored to OUR legacy shapes — a bare path mention
+    # (a user comment, a foreign tool's own completion dir) must survive.
+    legacy_completion_re = re.compile(
+        r"(?:\bsource\b|\beval\b|\[\s*-f\s|#\s*Added by)"
+        r"[^\n]*"
+        r"(?:~/|/[\w.-]+/)+\.mnemos/completion/"
+    )
+    # SEC cascade P3 (b): the program name is part of the anchor — another
+    # tool's --show-completion eval is foreign content and must survive.
+    show_completion_re = re.compile(
+        r"\b(?:vesma|vesmaro|mnemos)\s+--show-completion\b", re.IGNORECASE
+    )
     added_by_re = re.compile(r"#\s*Added by `vesma completion`")
     lines = content.splitlines(keepends=True)
     remove = [False] * len(lines)
@@ -582,8 +598,8 @@ def _remove_old_completion_entries(rc: Path, shell: str) -> bool:
             if canonical_seen:
                 remove[i] = True  # dedupe: exactly one canonical line
             canonical_seen = True
-        elif "mnemos/completion/" in line:
-            remove[i] = True  # any completion-dir mention that is not the canonical line
+        elif legacy_completion_re.search(line):
+            remove[i] = True  # OUR legacy dir reference through one of our shapes
         elif show_completion_re.search(line) or added_by_re.search(line):
             remove[i] = True  # pre-custom-engine eval format and its markers
     # Consume whole multi-line conditionals opened by a removed line.

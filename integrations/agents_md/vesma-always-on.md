@@ -45,7 +45,7 @@ Tags are the searchability backbone of the store. Every write MUST carry:
 - at least one `vesma:<subtype>` — e.g. `vesma:decision`,
   `vesma:learning`, `vesma:bug-pattern`, `vesma:checkpoint` (the
   `vesma:` tag prefix is the canonical storage form since 6.0; the
-  legacy `vesma:` spelling is accepted on input — except the
+  legacy `mnemos:` spelling is accepted on input — except the
   `mnemos:no-federate` exclusion marker, which stays byte-stable
   forever).
 

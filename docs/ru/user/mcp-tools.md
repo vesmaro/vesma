@@ -85,7 +85,7 @@ Vesma говорит на [Model Context Protocol](https://modelcontextprotocol.
 |------|-----|--------------|-------------|---------- |
 | `content` | string | **да** | — | Текст для запоминания. |
 | `title` | string | нет | авто | Краткий заголовок. |
-| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>` (старое написание `vesma:<subtype>` принимается как входной алиас). |
+| `tags` | string[] | **да** | — | Должны включать `project:<slug>`, `agent:<slug>` и хотя бы один `vesma:<subtype>` (старое написание `mnemos:<subtype>` принимается как входной алиас). |
 | `memory_type` | string | нет | `note` | Одно из `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | нет | авто | Одно из `log`, `terminal`, `code`, `docs`, `web`, `default`. Управляет контекстным фильтром M10. |
 | `verbosity` | string | нет | из конфига | Одно из `default`, `terse`, `minimal`. Вставляет подсказку по стилю вывода во framing результата. См. [Сокращение токенов вывода (P1-7)](#сокращение-токенов-вывода-p1-7). |

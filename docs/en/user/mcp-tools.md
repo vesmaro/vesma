@@ -1886,7 +1886,7 @@ The `vesma_add` and `vesma_ingest_url` tools reject calls that violate the M2 co
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Binds to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]{0,63}` | exactly 1 | Authoring agent |
-| `vesma:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category (legacy `vesma:` spelling accepted on input) |
+| `vesma:<subtype>` | `[a-z][a-z0-9\-]*` | at least 1 | Cognitive category (legacy `mnemos:` spelling accepted on input) |
 
 Valid `vesma:` subtypes: `session`, `bug-pattern`, `learning`, `decision`, `rule`, `open-question`, `checkpoint`, `legacy`.
 
