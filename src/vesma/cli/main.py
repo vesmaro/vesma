@@ -198,9 +198,12 @@ def _validate_cli_tags(tag_list: list[str], *, strict: bool) -> list[str]:
 
     cli-audit 2026-10-08 (P1 #7): ``add`` used to save contract-violating
     rows silently while the MCP tool refuses them. Every CLI save surface
-    validates here: strict mode refuses with a clean typed error (same
-    contract the MCP ``vesma_add`` enforces), lax mode applies the same
-    auto-patching the MCP surface gets and returns the patched list.
+    validates here — ``add`` and, since the cascade fix 2026-10-09 (P2),
+    ``ingest file`` / ``ingest url`` too (they used to save silently while
+    their own ``--dry-run`` refused): strict mode refuses with a clean
+    typed error (same contract the MCP ``vesma_add`` enforces), lax mode
+    applies the same auto-patching the MCP surface gets and returns the
+    patched list.
     """
     from vesma.models import TagContractError, validate_tag_contract
 
@@ -412,6 +415,15 @@ def ingest_url(
     at least one `--tags` entry, typically including a `project:` slug.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Input boundary + cascade fix 2026-10-09 (P2): normalize legacy
+    # mnemos:* spellings, then the SAME tag-contract gate as `add` —
+    # ingest used to save contract-violating rows silently while its own
+    # --dry-run refused them. Validated BEFORE the fetch (no network work
+    # for a call that cannot be saved).
+    tag_list = normalize_tag_aliases(tag_list)
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
     mgr = get_manager(config)
     memory = _save_url_ingest(mgr, url, tag_list)
     _print_saved(memory)
@@ -442,6 +454,14 @@ def ingest_file(
     A missing or binary file is a clean error, not a traceback.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Input boundary + cascade fix 2026-10-09 (P2): normalize legacy
+    # mnemos:* spellings, then the SAME tag-contract gate as `add` —
+    # ingest used to save contract-violating rows silently while its own
+    # --dry-run refused them (the add/add-dry-run asymmetry, mirrored).
+    tag_list = normalize_tag_aliases(tag_list)
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
     try:
         text = path.read_text()
     except (OSError, UnicodeDecodeError) as exc:
@@ -576,6 +596,7 @@ def search(
         relevant = [
             r for r in results if r.vector_score is None or r.vector_score >= effective_threshold
         ]
+        dropped = len(results) - len(relevant)
         if not relevant and results:
             best = max(r.vector_score for r in results if r.vector_score is not None)
             console.print(
@@ -586,6 +607,13 @@ def search(
             )
             return
         results = relevant
+        # Cascade fix 2026-10-09 (P3): a PARTIAL drop used to render as a
+        # mysteriously short table — say what the gate hid and how to see it.
+        if dropped > 0:
+            console.print(
+                f"[dim]{dropped} low-relevance result(s) hidden — raise the floor "
+                "or pass --threshold 0 to see everything.[/dim]"
+            )
 
     if not results:
         console.print("[yellow]No results found.[/yellow]")

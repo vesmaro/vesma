@@ -194,3 +194,37 @@ def test_config_high_min_relevance_gates_garbage(isolated_config: Path) -> None:
     result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
     assert result.exit_code == 0, result.output
     assert "No relevant results" in result.output
+
+
+# ── cascade fix 2026-10-09 (P3): the partial-drop explanation ─────────────────
+
+
+def test_partial_gate_drop_is_explained(isolated_config: Path) -> None:
+    """When the gate hides SOME rows but keeps others, the CLI says what was
+    hidden (previously: a mysteriously short table, no explanation)."""
+    from vesma.cli._manager import get_manager
+
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    _seed(isolated_config, "grocery list: milk, eggs, bread")
+    mgr = get_manager(str(isolated_config))
+    rows = mgr.search("release train", limit=10)
+    semantic_only = [r.vector_score for r in rows if r.vector_score is not None]
+    assert semantic_only, "the unrelated row must be semantic-only for this query"
+    # A floor just above the unrelated row's cosine drops exactly that row;
+    # the lexically-corroborated row (vector_score None) always survives.
+    floor = min(0.99, min(semantic_only) + 0.05)
+    body = isolated_config.read_text(encoding="utf-8")
+    isolated_config.write_text(body + f"search:\n  min_relevance: {floor:.3f}\n", encoding="utf-8")
+    # The manager singleton cached the pre-floor settings — rebuild it so
+    # the CLI picks up the config floor.
+    from vesma.cli._manager import reset_manager
+
+    reset_manager()
+
+    result = runner.invoke(app, ["search", "release train"])
+
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" not in result.output
+    assert "release train" in result.output.lower(), "the kept row must render"
+    assert "low-relevance result(s) hidden" in result.output, result.output
+    assert "--threshold 0" in result.output
