@@ -861,12 +861,18 @@ def _collect_paths(settings: Any) -> dict[str, str]:
     cli-audit 2026-10-08 (P1 #10): Root/Config/Cache/Completion used to be
     hardcoded under ``~/.mnemos`` while Data/DB/Vault showed the RESOLVED
     config's paths — with ``VESMA_CONFIG`` active the table mixed two
-    worlds. Everything now derives from the one resolved source: the
-    config file ``load_settings`` actually loaded (VESMA_CONFIG → cwd →
-    ~/.vesma), with ~/.vesma as the zero-config fallback root.
+    worlds. Every row now shows where the ACTUAL writer puts its files:
+    Root/Config from the config file ``load_settings`` really loaded,
+    Data/DB/Vault/Logs from the resolved settings, and Completion/Cache
+    from their real owners — cascade fix 2026-10-09 (P3): completion is
+    ALWAYS ``~/.vesma/completion`` (the completion writer takes no config
+    override), the cache is the §3.9 XDG cache root; a ``VESMA_CONFIG``
+    in a temp dir used to display locations nothing would ever write to.
     """
     home = Path.home()
+    from vesma.cli.completion import _completion_dir as completion_dir
     from vesma.config import find_config_file
+    from vesma.service.layout import cache_base
 
     resolved_config = find_config_file()
     root = resolved_config.parent if resolved_config is not None else home / ".vesma"
@@ -889,8 +895,8 @@ def _collect_paths(settings: Any) -> dict[str, str]:
         "logs": _display(settings.logging.log_file)
         if settings.logging.log_file
         else "(stderr only)",
-        "cache": _display(root / "cache"),
-        "completion": _display(root / "completion"),
+        "cache": _display(cache_base()),
+        "completion": _display(completion_dir()),
         "mcp_config": _display(mcp_cfg),
     }
 

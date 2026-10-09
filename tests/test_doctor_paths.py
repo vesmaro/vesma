@@ -86,9 +86,9 @@ def test_collect_paths_uses_tilde_abbreviation(isolated_home: Path) -> None:
 def test_collect_paths_follows_vesma_config_env(
     isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """cli-audit 2026-10-08 (P1 #10): with VESMA_CONFIG active, Root/Config/
-    Cache/Completion derive from the RESOLVED config — no ~/.mnemos leftovers
-    mixed into the table."""
+    """cli-audit 2026-10-08 (P1 #10): with VESMA_CONFIG active, Root/Config
+    derive from the RESOLVED config — no ~/.mnemos leftovers mixed into the
+    table."""
     custom = isolated_home / "custom-cfg" / "vesma.yaml"
     custom.parent.mkdir(parents=True)
     custom.write_text("vesma:\n", encoding="utf-8")
@@ -99,8 +99,30 @@ def test_collect_paths_follows_vesma_config_env(
     # Display tilde-abbreviates home-relative paths — compare the tails.
     assert paths["config"].endswith("custom-cfg/vesma.yaml")
     assert paths["root"].endswith("custom-cfg")
-    assert paths["completion"].endswith("custom-cfg/completion")
     assert ".mnemos" not in paths["root"]
+
+
+def test_collect_paths_completion_and_cache_show_real_writers(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cascade fix 2026-10-09 (P3): Completion/Cache name the paths their
+    actual writers use — a VESMA_CONFIG in a temp dir must not make doctor
+    display a completion dir nothing would ever write to. The completion
+    writer always uses ~/.vesma/completion (no config override); the cache
+    lives at the §3.9 XDG cache root."""
+    custom = isolated_home / "custom-cfg" / "vesma.yaml"
+    custom.parent.mkdir(parents=True)
+    custom.write_text("vesma:\n", encoding="utf-8")
+    monkeypatch.setenv("VESMA_CONFIG", str(custom))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    settings = Settings()
+    settings.resolve_paths()
+    paths = _collect_paths(settings)
+
+    assert paths["completion"].endswith(".vesma/completion"), paths["completion"]
+    assert "custom-cfg" not in paths["completion"]
+    assert paths["cache"].endswith(".cache/vesma"), paths["cache"]
+    assert "custom-cfg" not in paths["cache"]
 
 
 def test_host_venv_from_box_note_explains_version_mismatch(
