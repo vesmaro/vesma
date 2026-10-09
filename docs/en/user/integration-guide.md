@@ -384,10 +384,11 @@ Vesma ships two dedicated surfaces for harness/automation integrations
   bare task slug to scope the assembly to one task's entries, ADR-0027
   Phase 0), `on_session_start` (recall
   recent checkpoints), and `post_tool_call` (autocompression: with
-  `hooks.auto_compress: true` in the config — or a per-call
-  `auto_compress: true` — the tool output is compressed via CCR and the
-  marker-headed `compressed_text` is returned to substitute in your
-  window). Identity (`session`/`project`/`agent`) is required on every
+  `hooks.auto_compress: true` in the config — which the server accepts
+  only together with `ccr.validate_markers: true` in the same config —
+  or a per-call `auto_compress: true` — the tool output is compressed
+  via CCR and the marker-headed `compressed_text` is returned to
+  substitute in your window). Identity (`session`/`project`/`agent`) is required on every
   hook call. Full reference: [mcp-tools.md → `vesma_hooks`](mcp-tools.md#vesma_hooks)
   / [http-api.md → Lifecycle hooks](http-api.md).
 - **`VesmaSDK`** (`from vesma.sdk import VesmaSDK`) — the thin typed
