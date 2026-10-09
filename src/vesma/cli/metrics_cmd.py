@@ -12,7 +12,9 @@ Two commands over the metrics plane, both read-first:
   ledger (ZCode ``db.sqlite``) STRICTLY READ-ONLY — the baseline must
   not mutate any store it reads. Every run writes a JSON snapshot
   under ``<data_dir>/baselines/`` (``--no-snapshot`` opts out); unknown
-  models are FLAGGED in the table, never priced.
+  models are FLAGGED in the table, never priced. ``--by-harness`` adds
+  the cross-harness cut (USD/day + per-turn medians per ``harness_id``;
+  the JSON snapshot carries it always).
 
 * ``vesma metrics session-type`` — the operator's manual classification
   axis: ``vesma metrics session-type <session> task|chat|background``
@@ -48,7 +50,7 @@ from vesma.metrics.schema import (
     SESSION_LABELS,
     SESSION_TYPE_DEFAULT,
     SESSION_TYPES,
-    SIDECAR_FILENAME,
+    sidecar_path,
 )
 from vesma.metrics.tariffs import load_tariffs
 
@@ -77,7 +79,7 @@ def _fmt(value: float | None, unit: str = "", digits: int = 0) -> str:
     return f"{value:,.{digits}f}{unit}"
 
 
-def _print_report(report: BaselineReport) -> None:
+def _print_report(report: BaselineReport, *, by_harness: bool = False) -> None:
     summary = Table(box=None, show_header=False, pad_edge=False)
     summary.add_column(style="bold", no_wrap=True)
     summary.add_column()
@@ -157,6 +159,36 @@ def _print_report(report: BaselineReport) -> None:
             )
         console.print(types)
 
+    # nhi-15 wave 1: the cross-harness cut (--by-harness). Rows exist
+    # only once harnesses POST turn-usage signals — an empty cut prints
+    # the honest "no write-path data yet", never a zero.
+    if by_harness:
+        if report.harnesses:
+            harness_table = Table(title="by harness", title_justify="left", box=None)
+            harness_table.add_column("harness_id")
+            harness_table.add_column("turns", justify="right")
+            harness_table.add_column("sessions", justify="right")
+            harness_table.add_column("median in/turn", justify="right")
+            harness_table.add_column("median out/turn", justify="right")
+            harness_table.add_column("USD", justify="right")
+            harness_table.add_column("USD/day", justify="right")
+            for h in report.harnesses:
+                harness_table.add_row(
+                    h.harness,
+                    f"{h.turns:,}",
+                    f"{len(h.sessions):,}",
+                    _fmt(h.median_input_per_turn),
+                    _fmt(h.median_output_per_turn),
+                    f"${h.cost_usd:,.2f}",
+                    f"${h.cost_usd_per_day:,.2f}",
+                )
+            console.print(harness_table)
+        else:
+            console.print(
+                "[yellow]note[/yellow] by harness: no harness-attributed turns yet —"
+                " the cut fills in as harnesses POST /signals/turn-usage"
+            )
+
     for note in report.notes:
         console.print(f"[yellow]note[/yellow] {note}")
 
@@ -208,6 +240,13 @@ def metrics_baseline(
             "--no-snapshot", help="Do not write the JSON snapshot under <data_dir>/baselines/."
         ),
     ] = False,
+    by_harness: Annotated[
+        bool,
+        typer.Option(
+            "--by-harness",
+            help="Print the cross-harness cut: USD/day and per-turn medians per harness_id.",
+        ),
+    ] = False,
     config: str = ConfigOption,
 ) -> None:
     """Money baseline over the last --days: medians/p90, USD/day, cached share.
@@ -215,6 +254,8 @@ def metrics_baseline(
     Source: the sidecar's own ``turn_usage`` plane, or an explicit
     read-only harness ledger via ``--from-harness``. An empty plane is a
     loud NO-DATA, never a zero. Unknown models are flagged, not priced.
+    ``--by-harness`` adds the harness_id cut (USD/day + medians) — the
+    comparison the 2026-10-09 owner directive reads.
     """
     until_ts = time.time()
     since_ts = until_ts - days * 86_400.0
@@ -229,7 +270,7 @@ def metrics_baseline(
             session_types = read_harness_session_labels(from_harness)
             source = f"harness:{from_harness}"
         else:
-            sidecar = data_dir / SIDECAR_FILENAME
+            sidecar = sidecar_path(data_dir)
             if sidecar.exists():
                 turns = read_sidecar_turns(sidecar, since_ts, until_ts)
                 session_types = _sidecar_session_labels(sidecar)
@@ -256,7 +297,7 @@ def metrics_baseline(
         until_ts=until_ts,
         notes=notes,
     )
-    _print_report(report)
+    _print_report(report, by_harness=by_harness)
 
     if no_snapshot:
         return
@@ -282,7 +323,7 @@ def metrics_session_type(
     sidecar. ``unclassified`` clears a label back to the default.
     """
     mgr = get_manager(config)
-    sidecar = mgr.settings.vesma.data_dir.expanduser() / SIDECAR_FILENAME
+    sidecar = sidecar_path(mgr.settings.vesma.data_dir.expanduser())
 
     if list_all:
         rows = _read_labels(sidecar)

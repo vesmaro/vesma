@@ -234,6 +234,15 @@ TURN_USAGE = _table(
     ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
     ("session", "TEXT"),
     ("turn_id", "TEXT"),
+    # nhi-15 wave 1 (2026-10-08): harness attribution — WHICH harness
+    # produced the turn (owner directive: the store must stay independent
+    # of any one harness's ledger, and money baselines must be comparable
+    # ACROSS harnesses). 'unknown' keeps legacy rows meaningful without a
+    # backfill; wave-0 sidecars gain the columns via the idempotent
+    # ALTER migration below (``migrate_turn_usage_harness``).
+    ("harness_id", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("project", "TEXT"),  # caller-declared slug (the verb-ledger convention)
+    ("agent", "TEXT"),
     ("ts", "REAL NOT NULL"),  # unix epoch SECONDS (sidecar convention)
     (
         "status",
@@ -246,6 +255,31 @@ TURN_USAGE = _table(
     ("cached_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+#: Legal ``turn_usage.status`` values (mirrored from the CHECK — the
+#: ``SESSION_TYPES`` precedent: cheap refusal before the write).
+TURN_STATUSES: tuple[str, ...] = ("completed", "error", "cancelled", "other")
+
+#: Deduplication — one row per (harness, session, turn). Created by
+#: :func:`migrate_turn_usage_harness` (NOT in ``INDEXES_SQL``: the flat
+#: SCHEMA_SQL pass runs before the column migration, and a wave-0 table
+#: without ``harness_id`` would fail the index create and take the whole
+#: connect down). NULL session/turn_id never collide (SQLite NULL
+#: semantics), but the write path requires both, so replayed signals
+#: dedup exactly.
+TURN_USAGE_DEDUPE_INDEX_SQL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_dedupe ON turn_usage(harness_id, session, turn_id)"
+)
+
+#: Wave-0 sidecars carry ``turn_usage`` WITHOUT the harness columns; the
+#: additive ALTER set below brings them onto the born-final shape
+#: (idempotent: each column is added only when ``PRAGMA table_info``
+#: lacks it).
+TURN_USAGE_HARNESS_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("harness_id", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("project", "TEXT"),
+    ("agent", "TEXT"),
 )
 
 #: Operator-assigned session labels — the ``session_type`` axis of the
@@ -272,6 +306,20 @@ SESSION_TYPES: tuple[str, ...] = ("task", "chat", "background", "unclassified")
 
 #: Harness-agnostic default for unlabeled sessions.
 SESSION_TYPE_DEFAULT = "unclassified"
+
+
+def sidecar_path(data_dir: Any) -> Any:
+    """Resolve the sidecar's path under ``data_dir`` — the ONLY way code
+    outside the vendored metrics package may reach for the file. The C1
+    tripwire (``test_sidecar_referenced_only_by_metrics_package``)
+    keeps the sidecar's NAME itself vendored: bug-report / backup /
+    export / federation paths stay blind to the sidecar, and operator
+    surfaces (the ``vesma metrics`` CLI) go through this helper.
+    """
+    from pathlib import Path
+
+    return Path(data_dir) / SIDECAR_FILENAME
+
 
 TABLE_SCHEMAS: dict[str, TableSchema] = {
     t.name: t
@@ -403,6 +451,40 @@ def migrate_awareness_events_kinds(conn: Any) -> None:
     conn.commit()
 
 
+# ── nhi-15 wave 1: the turn_usage harness-attribution migration ───────────────
+
+
+def migrate_turn_usage_harness(conn: Any) -> None:
+    """Bring wave-0 ``turn_usage`` tables onto the harness-attribution
+    shape — idempotent, additive, runs on EVERY sidecar open.
+
+    Fresh sidecars are created in the final shape by ``SCHEMA_SQL``, so
+    the PRAGMA check finds every column and the function costs one
+    pragma + one ``CREATE UNIQUE INDEX IF NOT EXISTS`` no-op. Wave-0
+    tables (born between the money-plane schema and this write path)
+    gain ``harness_id``/``project``/``agent`` via ``ALTER TABLE ADD
+    COLUMN`` — additive, row-preserving, and convergent under crashes
+    (an interrupted ALTER rolls back whole; the next open re-checks).
+
+    The dedup index is created HERE, not in ``INDEXES_SQL``: the flat
+    SCHEMA_SQL pass runs before this migration, and a wave-0 table
+    without ``harness_id`` would fail the index create and take the
+    whole connect down.
+
+    Raises whatever sqlite raises — the caller (``MetricsStore._conn``)
+    degrades to "sidecar unavailable", same as every bootstrap fault.
+    """
+    cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(turn_usage)").fetchall()}
+    if not cols:
+        return  # absent — SCHEMA_SQL owns creation
+    for name, decl in TURN_USAGE_HARNESS_COLUMNS:
+        if name not in cols:
+            # Static schema literals from the born-final table definition
+            # (no user input can reach here).
+            conn.execute(f"ALTER TABLE turn_usage ADD COLUMN {name} {decl}")  # nosec B608
+    conn.execute(TURN_USAGE_DEDUPE_INDEX_SQL)
+
+
 #: Security invariant inputs — the exposer computes these from gates and
 #: canaries, never from non-fatal telemetry (RL-S4).
 __all__ = [
@@ -417,7 +499,11 @@ __all__ = [
     "SIDECAR_FILENAME",
     "TABLE_NAMES",
     "TABLE_SCHEMAS",
+    "TURN_STATUSES",
     "TURN_USAGE",
+    "TURN_USAGE_DEDUPE_INDEX_SQL",
+    "TURN_USAGE_HARNESS_COLUMNS",
+    "sidecar_path",
 ]
 
 

@@ -59,6 +59,9 @@ class TurnRow:
     input_tokens: int
     cached_read_tokens: int
     output_tokens: int
+    #: Which harness produced the turn (nhi-15 wave 1) — 'unknown' for
+    #: rows from a sidecar predating the harness columns.
+    harness: str = "unknown"
 
 
 # ── Read-only sources ──────────────────────────────────────────────────────
@@ -94,10 +97,16 @@ def read_sidecar_turns(path: Any, since_ts: float, until_ts: float) -> list[Turn
                 f"no turn_usage table in sidecar {path} — sidecar predates the"
                 " money plane (re-open the store once with vesma >= 6.1)"
             )
+        # A sidecar opened by wave-0 code only carries the turn_usage
+        # shape WITHOUT the harness columns — read it tolerantly and
+        # label those rows 'unknown' instead of refusing the baseline.
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(turn_usage)").fetchall()}
+        has_harness = "harness_id" in cols
+        harness_col = ", harness_id" if has_harness else ""
         rows = conn.execute(
-            "SELECT session, ts, model, status, input_tokens,"
-            " cached_read_tokens, output_tokens FROM turn_usage"
-            " WHERE ts > ? AND ts <= ? ORDER BY ts",
+            f"SELECT session, ts, model, status, input_tokens,"  # nosec B608 - static table + column literals
+            f" cached_read_tokens, output_tokens{harness_col}"
+            " FROM turn_usage WHERE ts > ? AND ts <= ? ORDER BY ts",
             (since_ts, until_ts),
         ).fetchall()
     finally:
@@ -111,6 +120,7 @@ def read_sidecar_turns(path: Any, since_ts: float, until_ts: float) -> list[Turn
             input_tokens=int(r[4]),
             cached_read_tokens=int(r[5]),
             output_tokens=int(r[6]),
+            harness=str(r[7]) if has_harness and r[7] is not None else "unknown",
         )
         for r in rows
     ]
@@ -175,6 +185,7 @@ def read_harness_turns(path: Any, since_ts: float, until_ts: float) -> list[Turn
             input_tokens=int(r[4]),
             cached_read_tokens=int(r[5]),
             output_tokens=int(r[6]),
+            harness="zcode",  # v1 knows only the ZCode ledger shape
         )
         for r in raw
     ]
@@ -251,6 +262,29 @@ class TypeSlice:
 
 
 @dataclass
+class HarnessSlice:
+    """One ``harness_id`` bucket over the window (nhi-15 wave 1).
+
+    The cross-harness comparison axis of the owner directive: which
+    harness burns what — $ over the window, $/day, and the per-turn
+    medians, side by side.
+    """
+
+    harness: str
+    turns: int = 0
+    sessions: set[str] = field(default_factory=set)
+    input_tokens: int = 0
+    cached_read_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_usd_per_day: float = 0.0
+    unknown_model_tokens: int = 0
+    median_input_per_turn: float | None = None
+    median_output_per_turn: float | None = None
+    daily_costs: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class BaselineReport:
     """Everything the stdout table and the JSON snapshot render."""
 
@@ -274,6 +308,7 @@ class BaselineReport:
     unknown_model_tokens: int = 0
     models: list[ModelSlice] = field(default_factory=list)
     session_types: list[TypeSlice] = field(default_factory=list)
+    harnesses: list[HarnessSlice] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -330,6 +365,23 @@ class BaselineReport:
                 }
                 for t in self.session_types
             ],
+            "by_harness": [
+                {
+                    "harness_id": h.harness,
+                    "turns": h.turns,
+                    "sessions": len(h.sessions),
+                    "input_tokens": h.input_tokens,
+                    "cached_read_tokens": h.cached_read_tokens,
+                    "output_tokens": h.output_tokens,
+                    "cost_usd": h.cost_usd,
+                    "cost_usd_per_day": h.cost_usd_per_day,
+                    "unknown_model_tokens": h.unknown_model_tokens,
+                    "median_input_per_turn": h.median_input_per_turn,
+                    "median_output_per_turn": h.median_output_per_turn,
+                    "daily_costs": dict(sorted(h.daily_costs.items())),
+                }
+                for h in self.harnesses
+            ],
             "notes": list(self.notes),
         }
 
@@ -373,6 +425,9 @@ def build_report(
     models: dict[str, ModelSlice] = {}
     type_slices: dict[str, TypeSlice] = {}
     type_inputs: dict[str, list[float]] = {}
+    harness_slices: dict[str, HarnessSlice] = {}
+    harness_inputs: dict[str, list[float]] = {}
+    harness_outputs: dict[str, list[float]] = {}
 
     for turn in turns:
         session = turn.session or "<anonymous>"
@@ -400,9 +455,19 @@ def build_report(
         tslice.input_tokens += turn.input_tokens
         type_inputs.setdefault(stype, []).append(float(turn.input_tokens))
 
+        hslice = harness_slices.setdefault(turn.harness, HarnessSlice(harness=turn.harness))
+        hslice.turns += 1
+        hslice.sessions.add(session)
+        hslice.input_tokens += turn.input_tokens
+        hslice.cached_read_tokens += turn.cached_read_tokens
+        hslice.output_tokens += turn.output_tokens
+        harness_inputs.setdefault(turn.harness, []).append(float(turn.input_tokens))
+        harness_outputs.setdefault(turn.harness, []).append(float(turn.output_tokens))
+
         rate = tariffs.rate(turn.model)
         if rate is None:
             report.unknown_model_tokens += turn.input_tokens
+            hslice.unknown_model_tokens += turn.input_tokens
         else:
             cost = turn_cost_usd(
                 rate,
@@ -410,8 +475,11 @@ def build_report(
                 cached_read_tokens=turn.cached_read_tokens,
                 output_tokens=turn.output_tokens,
             )
+            day = _utc_date(turn.ts)
             slice_.cost_usd += cost
             tslice.cost_usd += cost
+            hslice.cost_usd += cost
+            hslice.daily_costs[day] = hslice.daily_costs.get(day, 0.0) + cost
             report.cost_usd += cost
 
     report.session_count = len(sessions)
@@ -430,6 +498,11 @@ def build_report(
         type_slices[stype].median_input_per_turn = percentile(values, 0.5)
     report.session_types = sorted(type_slices.values(), key=lambda t: t.input_tokens, reverse=True)
     days = max(window_days, 1)
+    for harness, slice_h in harness_slices.items():
+        slice_h.median_input_per_turn = percentile(harness_inputs[harness], 0.5)
+        slice_h.median_output_per_turn = percentile(harness_outputs[harness], 0.5)
+        slice_h.cost_usd_per_day = slice_h.cost_usd / days
+    report.harnesses = sorted(harness_slices.values(), key=lambda h: h.cost_usd, reverse=True)
     report.cost_usd_per_day = report.cost_usd / days
     return report
 
@@ -479,6 +552,7 @@ __all__ = [
     "HARNESS_TASK_TYPE_MAP",
     "BaselineReport",
     "BaselineSourceError",
+    "HarnessSlice",
     "ModelSlice",
     "TurnRow",
     "TypeSlice",

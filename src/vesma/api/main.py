@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.cors import CORSMiddleware
@@ -1486,6 +1486,158 @@ async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
     except ValueError as exc:
         # Per-hook boundary validation (identity, per-action args).
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── nhi-15 wave 1: harness turn-usage signals (the money plane) ────────────────
+# Slice nhi-15-money-metrics-baseline (2026-10-08). SELF-CONTAINED slice
+# block: everything the write path needs lives between these markers —
+# the parallel api/main.py lanes are untouched. The endpoint accepts ONE
+# harness signal (one Stop event → the turns of ONE harness session) and
+# hands it to the sidecar's ``turn_usage`` table through
+# ``MetricsStore.record_turn_usage_batch``; dedup is the store's
+# ``(harness_id, session, turn_id)`` unique index, so replays are
+# idempotent and money baselines stay comparable ACROSS harnesses
+# (owner directive 2026-10-09).
+
+#: Body cap for one signal — a 500-turn batch is a few KB; 1 MB is a
+#: generous ceiling that still bounds request memory (DoS posture).
+_TURN_SIGNAL_MAX_BODY_BYTES = 1_000_000
+#: Fixed-window rate cap per harness_id (signals/minute). Each Stop
+#: event posts once; 120/min is orders of magnitude above honest use.
+_TURN_SIGNAL_RATE_LIMIT = 120
+_TURN_SIGNAL_RATE_WINDOW_S = 60.0
+#: Bounded registry — never grows without bound across harnesses.
+_TURN_RATE_MAX_KEYS = 1024
+_turn_signal_rate: dict[str, tuple[float, int]] = {}
+_turn_rate_lock = threading.Lock()
+
+
+class TurnUsageTurnIn(BaseModel):
+    """One billed turn inside a turn-usage signal (nhi-15 wave 1)."""
+
+    turn_id: str = Field(min_length=1, max_length=128)
+    ts: float  # epoch SECONDS (sidecar convention; ms is the harness side)
+    model: str | None = Field(default=None, max_length=128)
+    status: Literal["completed", "error", "cancelled", "other"] = "completed"
+    input: int = Field(default=0, ge=0, le=10**12)
+    cached_read: int = Field(default=0, ge=0, le=10**12)
+    cached_write: int = Field(default=0, ge=0, le=10**12)
+    output: int = Field(default=0, ge=0, le=10**12)
+    reasoning: int = Field(default=0, ge=0, le=10**12)
+
+
+class TurnUsageSignalIn(BaseModel):
+    """Body of POST /signals/turn-usage — one harness, one session."""
+
+    harness_id: str = Field(min_length=1, max_length=64)
+    session: str = Field(min_length=1, max_length=128)
+    project: str | None = Field(default=None, max_length=128)
+    agent: str | None = Field(default=None, max_length=128)
+    turns: list[TurnUsageTurnIn] = Field(min_length=1, max_length=500)
+
+
+def _turn_rate_allow(harness_id: str, now: float) -> bool:
+    """Fixed-window per-harness rate gate (in-process, bounded registry)."""
+    with _turn_rate_lock:
+        if len(_turn_signal_rate) > _TURN_RATE_MAX_KEYS:
+            # Evict expired windows first; a pathological harness flood
+            # beyond that drops the OLDEST keys (bounded memory always).
+            for key in [
+                k
+                for k, (window, _) in _turn_signal_rate.items()
+                if now - window >= _TURN_SIGNAL_RATE_WINDOW_S
+            ]:
+                del _turn_signal_rate[key]
+            while len(_turn_signal_rate) > _TURN_RATE_MAX_KEYS:
+                _turn_signal_rate.pop(next(iter(_turn_signal_rate)))
+        entry = _turn_signal_rate.get(harness_id)
+        if entry is None or now - entry[0] >= _TURN_SIGNAL_RATE_WINDOW_S:
+            _turn_signal_rate[harness_id] = (now, 1)
+            return True
+        if entry[1] >= _TURN_SIGNAL_RATE_LIMIT:
+            return False
+        _turn_signal_rate[harness_id] = (entry[0], entry[1] + 1)
+        return True
+
+
+@app.post("/signals/turn-usage", status_code=202)
+async def post_turn_usage_signal(request: Request) -> dict[str, Any]:
+    """Record one harness turn-usage signal into the money plane (nhi-15).
+
+    Fire-and-forget telemetry for harness hooks: a Stop handler posts
+    its OWN session's turns with a ``harness_id`` slug; the sidecar
+    dedups on ``(harness_id, session, turn_id)``. Returns
+    ``202 {"accepted": N, "deduped": M}`` — ``deduped`` counts the
+    replays the unique index absorbed. Oversized bodies → 413 (checked
+    on the RAW body, BEFORE model parsing); a harness exceeding the
+    per-harness rate cap → 429; validation refusals (shape/identity) →
+    422 with the contract message; a disabled metrics plane → 503. No
+    body content is ever logged.
+    """
+    _track_http_call()
+    # The size cap fires on the RAW body: model parsing would otherwise
+    # answer a 2 MB flood with a 422 before any cap saw it.
+    raw_len = request.headers.get("content-length", "")
+    if raw_len.isdigit() and int(raw_len) > _TURN_SIGNAL_MAX_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"turn-usage signal exceeds {_TURN_SIGNAL_MAX_BODY_BYTES} bytes",
+        )
+    body = await request.body()
+    if len(body) > _TURN_SIGNAL_MAX_BODY_BYTES:  # chunked / missing header leg
+        raise HTTPException(
+            status_code=413,
+            detail=f"turn-usage signal exceeds {_TURN_SIGNAL_MAX_BODY_BYTES} bytes",
+        )
+    try:
+        req = TurnUsageSignalIn.model_validate_json(body)
+    except ValidationError as exc:
+        # FastAPI's automatic body parsing is bypassed above, so the
+        # 422 contract is rendered by hand — same shape, our message.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not _turn_rate_allow(req.harness_id, time.time()):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"turn-usage rate cap exceeded for harness {req.harness_id!r}"
+                f" (max {_TURN_SIGNAL_RATE_LIMIT}/min)"
+            ),
+        )
+    store = getattr(get_manager(), "_vitals_store", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail="metrics plane unavailable (disabled)")
+    try:
+        result = store.record_turn_usage_batch(
+            harness_id=req.harness_id,
+            session=req.session,
+            project=req.project,
+            agent=req.agent,
+            turns=[
+                {
+                    "turn_id": t.turn_id,
+                    "ts": t.ts,
+                    "model": t.model,
+                    "status": t.status,
+                    "input_tokens": t.input,
+                    "cached_read_tokens": t.cached_read,
+                    "cached_write_tokens": t.cached_write,
+                    "output_tokens": t.output,
+                    "reasoning_tokens": t.reasoning,
+                }
+                for t in req.turns
+            ],
+        )
+    except ValueError as exc:
+        # Store-side contract refusal (newline in identity slugs etc.) —
+        # same caller-facing discipline as the hooks boundary.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=503, detail="metrics plane write failed")
+    accepted, deduped = result
+    return {"accepted": accepted, "deduped": deduped}
+
+
+# ── end nhi-15 wave 1 turn-usage signal block ──────────────────────────────────
 
 
 # ── Reversible content compression (CCR) ───────────────────────────────────────

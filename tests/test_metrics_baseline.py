@@ -376,3 +376,190 @@ def test_cli_session_type_set_list_and_bad_label(ops_config: Path, tmp_path: Pat
     # missing args → usage
     result = runner.invoke(app, ["metrics", "session-type"])
     assert result.exit_code == 2
+
+
+# ── by-harness cut (nhi-15 wave 1) ─────────────────────────────────────────
+
+
+def test_by_harness_money_medians_daily_and_json(tmp_path: Path) -> None:
+    """The cross-harness cut: $/day, medians and the JSON snapshot axis."""
+    turns = [
+        TurnRow(
+            session="z1",
+            ts=_ts(0.1),
+            model="GLM-5.3-Flash",
+            status="completed",
+            input_tokens=1_000_000,
+            cached_read_tokens=800_000,
+            output_tokens=100_000,
+            harness="zcode",
+        ),
+        TurnRow(
+            session="z2",
+            ts=_ts(0.2),
+            model="GLM-5.3-Flash",
+            status="completed",
+            input_tokens=3_000_000,
+            cached_read_tokens=2_400_000,
+            output_tokens=300_000,
+            harness="zcode",
+        ),
+        TurnRow(
+            session="o1",
+            ts=_ts(0.3),
+            model="GLM-5.3-Flash",
+            status="completed",
+            input_tokens=500_000,
+            cached_read_tokens=0,
+            output_tokens=10_000,
+            harness="other-harness",
+        ),
+    ]
+    report = build_report(
+        source="test",
+        turns=turns,
+        session_types={},
+        tariffs=TARIFFS,
+        window_days=2,
+        since_ts=_ts(2),
+        until_ts=_ts(0),
+    )
+    by_harness = {h.harness: h for h in report.harnesses}
+    assert set(by_harness) == {"zcode", "other-harness"}
+    z = by_harness["zcode"]
+    # zcode money: turn1 (0.2 fresh*0.15 + 0.8 cached*0.03 + 0.1 out*0.5) = 0.104
+    #              turn2 (0.6*0.15 + 2.4*0.03 + 0.3*0.5) = 0.312  → 0.416 over 2 days
+    assert z.cost_usd == pytest.approx(0.416)
+    assert z.cost_usd_per_day == pytest.approx(0.208)
+    assert z.turns == 2 and len(z.sessions) == 2
+    assert z.median_input_per_turn == 2_000_000.0  # median of 1M/3M
+    o = by_harness["other-harness"]
+    # other-harness money: 0.5 fresh * 0.15 + 0.01 out * 0.5 = 0.08
+    assert o.cost_usd == pytest.approx(0.08)
+    assert o.median_input_per_turn == 500_000.0
+    assert o.median_output_per_turn == 10_000.0
+    # sorted by cost desc — zcode leads
+    assert report.harnesses[0].harness == "zcode"
+    doc = report.to_dict()
+    assert {h["harness_id"] for h in doc["by_harness"]} == {"zcode", "other-harness"}
+    zdoc = next(h for h in doc["by_harness"] if h["harness_id"] == "zcode")
+    assert zdoc["cost_usd_per_day"] == pytest.approx(0.208)
+    assert zdoc["daily_costs"] and len(zdoc["daily_costs"]) == 1
+
+
+def test_by_harness_median_even_sample_and_unknown_flag() -> None:
+    turns = [
+        TurnRow(
+            session="a",
+            ts=_ts(0.1),
+            model=None,
+            status="completed",
+            input_tokens=100,
+            cached_read_tokens=0,
+            output_tokens=1,
+            harness="h1",
+        ),
+        TurnRow(
+            session="b",
+            ts=_ts(0.2),
+            model="GLM-5.3-Flash",
+            status="completed",
+            input_tokens=300,
+            cached_read_tokens=0,
+            output_tokens=3,
+            harness="h1",
+        ),
+    ]
+    report = build_report(
+        source="test",
+        turns=turns,
+        session_types={},
+        tariffs=TARIFFS,
+        window_days=1,
+        since_ts=_ts(1),
+        until_ts=_ts(0),
+    )
+    h = report.harnesses[0]
+    assert h.median_input_per_turn == 200.0  # interpolation over the even sample
+    assert h.unknown_model_tokens == 100  # unpriced model flagged per harness
+
+
+def test_read_sidecar_labels_harness_and_legacy_unknown(tmp_path: Path) -> None:
+    """Sidecar rows carry their harness_id; wave-0 rows read as 'unknown'."""
+    db = tmp_path / "m.sqlite"
+    store = MetricsStore(db)
+    try:
+        store.record_turn_usage_batch(
+            harness_id="zcode",
+            session="s1",
+            turns=[
+                {
+                    "turn_id": "t1",
+                    "ts": _ts(0.01),
+                    "model": "GLM-5.3-Flash",
+                    "input_tokens": 1000,
+                    "cached_read_tokens": 500,
+                    "output_tokens": 10,
+                }
+            ],
+        )
+    finally:
+        store.close()
+    rows = read_sidecar_turns(db, _ts(1), _ts(0))
+    assert len(rows) == 1 and rows[0].harness == "zcode"
+
+    legacy = tmp_path / "legacy.sqlite"
+    conn = sqlite3.connect(legacy)
+    conn.execute(
+        "CREATE TABLE turn_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT,"
+        " turn_id TEXT, ts REAL NOT NULL, status TEXT NOT NULL DEFAULT 'completed',"
+        " model TEXT, input_tokens INTEGER NOT NULL DEFAULT 0,"
+        " cached_read_tokens INTEGER NOT NULL DEFAULT 0,"
+        " cached_write_tokens INTEGER NOT NULL DEFAULT 0,"
+        " output_tokens INTEGER NOT NULL DEFAULT 0,"
+        " reasoning_tokens INTEGER NOT NULL DEFAULT 0)"
+    )
+    conn.execute(
+        "INSERT INTO turn_usage (session, ts, input_tokens, output_tokens)"
+        f" VALUES ('old', {_ts(0.01)}, 700, 7)"
+    )
+    conn.commit()
+    conn.close()
+    legacy_rows = read_sidecar_turns(legacy, _ts(1), _ts(0))
+    assert len(legacy_rows) == 1 and legacy_rows[0].harness == "unknown"
+
+
+def test_cli_baseline_by_harness_flag(ops_config: Path, tmp_path: Path) -> None:
+    """--by-harness prints the harness cut; empty plane prints the honest note."""
+    data_dir = tmp_path / "data"
+    _materialize_store(data_dir / SIDECAR_FILENAME)
+    # empty plane: loud note, never a table of zeros
+    result = runner.invoke(
+        app, ["metrics", "baseline", "--days", "1", "--by-harness", "--no-snapshot"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "no harness-attributed turns yet" in result.output
+
+    sconn = sqlite3.connect(data_dir / SIDECAR_FILENAME)
+    sconn.execute(
+        "INSERT INTO turn_usage (session, ts, model, status, input_tokens,"
+        " cached_read_tokens, output_tokens, harness_id, project, agent)"
+        " VALUES (?, ?, 'GLM-5.3-Flash', 'completed', 2000000, 1600000, 200000,"
+        " 'zcode', 'proj', 'zcode-user')",
+        ("sess_z", _ts(0.01)),
+    )
+    sconn.commit()
+    sconn.close()
+    result = runner.invoke(
+        app, ["metrics", "baseline", "--days", "1", "--by-harness", "--no-snapshot"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "by harness" in result.output
+    assert "zcode" in result.output
+    assert "USD/day" in result.output
+    # snapshot carries the cut even without the stdout flag
+    result = runner.invoke(app, ["metrics", "baseline", "--days", "1"])
+    assert result.exit_code == 0, result.output
+    snapshots = list((data_dir / "baselines").glob("baseline-*.json"))
+    doc = json.loads(snapshots[-1].read_text())
+    assert [h["harness_id"] for h in doc["by_harness"]] == ["zcode"]
