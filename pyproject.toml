@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vesma"
-version = "6.0.0"
+version = "6.1.0"
 description = "Vesma — standalone memory & knowledge server for AI agents (Vesmaro Project)"
 readme = "README.md"
 requires-python = ">=3.11"
