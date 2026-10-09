@@ -56,7 +56,9 @@ from vesma.metrics.schema import (
     RETENTION_DAYS,
     SCHEMA_SQL,
     TABLE_NAMES,
+    TURN_STATUSES,
     migrate_awareness_events_kinds,
+    migrate_turn_usage_harness,
 )
 from vesma.metrics.schema import (
     validate_awareness_meta as validate_awareness_meta,  # re-export: sink contract
@@ -128,6 +130,14 @@ _ENUM_STR_PATHS = frozenset({"recall.query_source", "recall.lens.name"})
 #: input: refuse the WHOLE write on any non-conforming shape, loudly.
 _BLOCK_ID_LIMIT = 128  # chars per opaque block id
 _BLOCK_ID_MAX_ENTRIES = 256  # entries per report (before dedup)
+
+#: nhi-15 wave 1 — turn-usage batch limits. Same hostile-input posture as
+#: ``record_usage``: this is a client-supplied write into the plane.
+_TURN_ID_LIMIT = 128  # chars per opaque turn id
+_TURN_BATCH_MAX_ENTRIES = 500  # turns per signal (the 1 MB REST cap bounds too)
+_TURN_TOKEN_LIMIT = 10**12  # same sane-report cap as ``tokens_out``
+_TURN_TS_MAX = 4_102_444_800.0  # 2100-01-01 UTC — absurd-future refusal
+_IDENTITY_LIMIT = 128  # harness/session/project/agent slug cap (awareness precedent)
 
 
 def _project_stage_stats(stats: dict[str, Any]) -> dict[str, Any]:
@@ -316,6 +326,10 @@ class MetricsStore(VerbLedgerMixin):
                         # files; raises sqlite3.Error into the same
                         # degrade-to-unavailable handling as above).
                         migrate_awareness_events_kinds(conn)
+                        # nhi-15 wave 1: wave-0 turn_usage tables gain the
+                        # harness columns + the dedup unique index (no-op
+                        # on fresh/migrated files).
+                        migrate_turn_usage_harness(conn)
                         conn.commit()
                         self._chmod_sidecar_files()  # belt and braces
                         self._local.conn = conn
@@ -622,6 +636,178 @@ class MetricsStore(VerbLedgerMixin):
             # Same rollback discipline as record_assemble/record_verb: a
             # partial write must never linger for the next commit.
 
+            conn = getattr(self._local, "conn", None)
+            if conn is not None:
+                with suppress(sqlite3.Error):
+                    conn.rollback()
+            return None
+
+    # ── nhi-15 wave 1 write path: the money plane (turn_usage) ────────────
+
+    def record_turn_usage_batch(
+        self,
+        *,
+        harness_id: str,
+        session: str,
+        turns: list[dict[str, Any]],
+        project: str | None = None,
+        agent: str | None = None,
+    ) -> tuple[int, int] | None:
+        """Record a batch of harness turns into ``turn_usage``. Non-fatal.
+
+        The money plane's ONLY write path (nhi-15 wave 1): one harness
+        signal carries the turns of ONE harness session; the unique
+        index ``(harness_id, session, turn_id)`` makes replays
+        idempotent — ``INSERT OR IGNORE`` dedups, so a harness may
+        re-post its session's turns on every Stop event without
+        double-counting a single billed token.
+
+        Batch discipline: ALL rows of one signal go in ONE implicit
+        transaction with a single COMMIT at the end (never a commit per
+        turn) — and a failure rolls the WHOLE batch back (a partial
+        money ledger would lie). Validation refuses the WHOLE batch
+        BEFORE any write (loud, never a silent drop):
+
+          - ``harness_id`` / ``session``: non-empty single-line strings
+            (64 / 128 chars — the awareness identity posture);
+          - ``project`` / ``agent``: optional caller-declared slugs,
+            same shape;
+          - each turn: ``turn_id`` (non-empty single-line, 128 chars),
+            ``ts`` (finite epoch seconds, not absurdly future),
+            ``status`` in the born-final enum (default ``completed``),
+            optional ``model`` (single-line, 128 chars), and
+            non-negative integer token counters (bools refused) capped
+            at 10**12 — ids and counters only, never text (the C3
+            posture of the whole sidecar).
+
+        Failure semantics (DELIBERATE split from ``record_usage``'s
+        swallow-all): a CONTRACT violation raises ``ValueError`` — this
+        plane has a synchronous REST caller that must answer 4xx
+        honestly, and a validation refusal is client's, not the host's,
+        to own. Only INFRASTRUCTURE failures (sidecar unavailable,
+        sqlite error) return ``None`` — the host never breaks on
+        telemetry, and the caller answers 503.
+        """
+        try:
+            for name, val in (("harness_id", harness_id), ("session", session)):
+                if (
+                    not isinstance(val, str)
+                    or not val
+                    or len(val) > _IDENTITY_LIMIT
+                    or "\n" in val
+                    or "\r" in val
+                ):
+                    raise ValueError(f"{name} must be a non-empty single-line string")
+            for opt_name, opt_val in (("project", project), ("agent", agent)):
+                if opt_val is None:
+                    continue
+                if (
+                    not isinstance(opt_val, str)
+                    or not opt_val
+                    or len(opt_val) > _IDENTITY_LIMIT
+                    or "\n" in opt_val
+                    or "\r" in opt_val
+                ):
+                    raise ValueError(f"{opt_name} must be a non-empty single-line string")
+            if not isinstance(turns, list) or not turns:
+                raise ValueError("turns must be a non-empty list of turn objects")
+            if len(turns) > _TURN_BATCH_MAX_ENTRIES:
+                raise ValueError(f"turns has {len(turns)} entries (max {_TURN_BATCH_MAX_ENTRIES})")
+
+            rows: list[tuple[Any, ...]] = []
+            for turn in turns:
+                if not isinstance(turn, dict):
+                    raise ValueError("each turn must be an object")
+                turn_id = turn.get("turn_id")
+                if (
+                    not isinstance(turn_id, str)
+                    or not turn_id
+                    or len(turn_id) > _TURN_ID_LIMIT
+                    or "\n" in turn_id
+                    or "\r" in turn_id
+                ):
+                    raise ValueError(f"turn_id must be a non-empty string, got {turn_id!r}")
+                ts = turn.get("ts")
+                if (
+                    isinstance(ts, bool)
+                    or not isinstance(ts, (int, float))
+                    or not math.isfinite(float(ts))
+                    or ts < 0
+                    or ts > _TURN_TS_MAX
+                ):
+                    raise ValueError(f"ts must be finite epoch seconds, got {ts!r}")
+                status = turn.get("status") or "completed"
+                if status not in TURN_STATUSES:
+                    raise ValueError(f"status must be one of {TURN_STATUSES}, got {status!r}")
+                model = turn.get("model")
+                if model is not None and (
+                    not isinstance(model, str)
+                    or not model
+                    or len(model) > _TURN_ID_LIMIT
+                    or "\n" in model
+                    or "\r" in model
+                ):
+                    raise ValueError(f"model must be a short single-line string, got {model!r}")
+                counters = []
+                for key in (
+                    "input_tokens",
+                    "cached_read_tokens",
+                    "cached_write_tokens",
+                    "output_tokens",
+                    "reasoning_tokens",
+                ):
+                    value = turn.get(key, 0)
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or value < 0
+                        or value > _TURN_TOKEN_LIMIT
+                    ):
+                        raise ValueError(f"{key} must be an int >= 0, got {value!r}")
+                    counters.append(value)
+                rows.append(
+                    (
+                        session,
+                        turn_id,
+                        harness_id,
+                        project,
+                        agent,
+                        float(ts),
+                        status,
+                        model,
+                        *counters,
+                    )
+                )
+
+            conn = self._conn()
+            if conn is None:
+                return None
+            before = conn.total_changes
+            conn.executemany(
+                "INSERT OR IGNORE INTO turn_usage (session, turn_id, harness_id, project,"
+                " agent, ts, status, model, input_tokens, cached_read_tokens,"
+                " cached_write_tokens, output_tokens, reasoning_tokens)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
+            accepted = conn.total_changes - before
+            conn.commit()
+            return accepted, len(rows) - accepted
+        except (
+            sqlite3.Error,
+            TypeError,
+            AttributeError,
+            OSError,
+            OverflowError,
+            ArithmeticError,
+        ) as exc:
+            # ValueError is DELIBERATELY absent: a contract refusal is
+            # re-raised to the REST caller (4xx), only infrastructure
+            # failures degrade to None (the docstring's failure split).
+            self._fail("record_turn_usage_batch", exc)
+            # Batch rollback discipline (the record_assemble precedent):
+            # a failed money batch must never commit partially nor hold
+            # the WAL write lock open until the next successful call.
             conn = getattr(self._local, "conn", None)
             if conn is not None:
                 with suppress(sqlite3.Error):

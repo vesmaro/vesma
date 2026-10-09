@@ -34,7 +34,9 @@ from vesma.cli.doctor import CheckStatus, _check_mcp_transport
 # 38 → 39 (#454): vesma_register_project added (agent-side PG2 registration).
 # 39 → 40 (vitals wave 9): vesma_usage_report added — the phase C usage-loop
 # closure as a harness-authored report tool (ADR-0026 §C).
-EXPECTED_TOOL_COUNT = 40
+# 40 → 41 (nhi-9/nhi-14): vesma_ambient_brief added — the situation brief
+# (NOTAM form), the REST/MCP twin pair over ONE compose core.
+EXPECTED_TOOL_COUNT = 41
 
 
 # The conftest installs MagicMock stubs into sys.modules BEFORE any test

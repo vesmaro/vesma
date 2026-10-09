@@ -304,10 +304,11 @@ async def test_manifest_vesma_only() -> None:
     the count pin moved 27 → 28 with it. ADR-0032 PG-0 slice 4: the 10
     project-graph tools joined — 28 → 39. 6.0.0 removed the legacy
     ``mnemos_*`` spellings from the manifest and the call path. Vitals
-    wave 9: vesma_usage_report joined — 39 → 40."""
+    wave 9: vesma_usage_report joined — 39 → 40. Situation brief
+    (nhi-9/nhi-14): vesma_ambient_brief joined — 40 → 41."""
     tools = await list_tools()
     names = [t.name for t in tools]
-    assert len(names) == 40
+    assert len(names) == 41
     assert all(n.startswith("vesma_") for n in names)
     assert "vesma_search" in names
     assert "vesma_retrieve" in names

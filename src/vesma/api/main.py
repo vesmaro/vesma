@@ -7,6 +7,7 @@ Loopback-bound by default (127.0.0.1) — do not expose externally without auth.
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -17,16 +18,17 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.cors import CORSMiddleware
 
 from vesma import __version__
+from vesma.ambient import IDENTITY_MAX_CHARS, compose_ambient, surface_now
 from vesma.api.auth import router as auth_router
 from vesma.api.auth_store import AuthStore
 from vesma.api.federation import router as federation_router
@@ -1486,6 +1488,320 @@ async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
     except ValueError as exc:
         # Per-hook boundary validation (identity, per-action args).
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── nhi-15 wave 1: harness turn-usage signals (the money plane) ────────────────
+# Slice nhi-15-money-metrics-baseline (2026-10-08). SELF-CONTAINED slice
+# block: everything the write path needs lives between these markers —
+# the parallel api/main.py lanes are untouched. The endpoint accepts ONE
+# harness signal (one Stop event → the turns of ONE harness session) and
+# hands it to the sidecar's ``turn_usage`` table through
+# ``MetricsStore.record_turn_usage_batch``; dedup is the store's
+# ``(harness_id, session, turn_id)`` unique index, so replays are
+# idempotent and money baselines stay comparable ACROSS harnesses
+# (owner directive 2026-10-09).
+
+#: Body cap for one signal — a 500-turn batch is a few KB; 1 MB is a
+#: generous ceiling that still bounds request memory (DoS posture).
+_TURN_SIGNAL_MAX_BODY_BYTES = 1_000_000
+#: Fixed-window rate cap per harness_id (signals/minute). Each Stop
+#: event posts once; 120/min is orders of magnitude above honest use.
+_TURN_SIGNAL_RATE_LIMIT = 120
+_TURN_SIGNAL_RATE_WINDOW_S = 60.0
+#: Bounded registry — never grows without bound across harnesses.
+_TURN_RATE_MAX_KEYS = 1024
+_turn_signal_rate: dict[str, tuple[float, int]] = {}
+_turn_rate_lock = threading.Lock()
+
+
+class TurnUsageTurnIn(BaseModel):
+    """One billed turn inside a turn-usage signal (nhi-15 wave 1)."""
+
+    turn_id: str = Field(min_length=1, max_length=128)
+    ts: float  # epoch SECONDS (sidecar convention; ms is the harness side)
+    model: str | None = Field(default=None, max_length=128)
+    status: Literal["completed", "error", "cancelled", "other"] = "completed"
+    input: int = Field(default=0, ge=0, le=10**12)
+    cached_read: int = Field(default=0, ge=0, le=10**12)
+    cached_write: int = Field(default=0, ge=0, le=10**12)
+    output: int = Field(default=0, ge=0, le=10**12)
+    reasoning: int = Field(default=0, ge=0, le=10**12)
+
+
+class TurnUsageSignalIn(BaseModel):
+    """Body of POST /signals/turn-usage — one harness, one session."""
+
+    harness_id: str = Field(min_length=1, max_length=64)
+    session: str = Field(min_length=1, max_length=128)
+    project: str | None = Field(default=None, max_length=128)
+    agent: str | None = Field(default=None, max_length=128)
+    turns: list[TurnUsageTurnIn] = Field(min_length=1, max_length=500)
+
+
+def _turn_rate_allow(harness_id: str, now: float) -> bool:
+    """Fixed-window per-harness rate gate (in-process, bounded registry)."""
+    with _turn_rate_lock:
+        if len(_turn_signal_rate) > _TURN_RATE_MAX_KEYS:
+            # Evict expired windows first; a pathological harness flood
+            # beyond that drops the OLDEST keys (bounded memory always).
+            for key in [
+                k
+                for k, (window, _) in _turn_signal_rate.items()
+                if now - window >= _TURN_SIGNAL_RATE_WINDOW_S
+            ]:
+                del _turn_signal_rate[key]
+            while len(_turn_signal_rate) > _TURN_RATE_MAX_KEYS:
+                _turn_signal_rate.pop(next(iter(_turn_signal_rate)))
+        entry = _turn_signal_rate.get(harness_id)
+        if entry is None or now - entry[0] >= _TURN_SIGNAL_RATE_WINDOW_S:
+            _turn_signal_rate[harness_id] = (now, 1)
+            return True
+        if entry[1] >= _TURN_SIGNAL_RATE_LIMIT:
+            return False
+        _turn_signal_rate[harness_id] = (entry[0], entry[1] + 1)
+        return True
+
+
+@app.post("/signals/turn-usage", status_code=202)
+async def post_turn_usage_signal(request: Request) -> dict[str, Any]:
+    """Record one harness turn-usage signal into the money plane (nhi-15).
+
+    Fire-and-forget telemetry for harness hooks: a Stop handler posts
+    its OWN session's turns with a ``harness_id`` slug; the sidecar
+    dedups on ``(harness_id, session, turn_id)``. Returns
+    ``202 {"accepted": N, "deduped": M}`` — ``deduped`` counts the
+    replays the unique index absorbed. Oversized bodies → 413 (checked
+    on the RAW body, BEFORE model parsing); a harness exceeding the
+    per-harness rate cap → 429; validation refusals (shape/identity) →
+    422 with the contract message; a disabled metrics plane → 503. No
+    body content is ever logged.
+    """
+    _track_http_call()
+    # The size cap fires on the RAW body: model parsing would otherwise
+    # answer a 2 MB flood with a 422 before any cap saw it.
+    raw_len = request.headers.get("content-length", "")
+    if raw_len.isdigit() and int(raw_len) > _TURN_SIGNAL_MAX_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"turn-usage signal exceeds {_TURN_SIGNAL_MAX_BODY_BYTES} bytes",
+        )
+    body = await request.body()
+    if len(body) > _TURN_SIGNAL_MAX_BODY_BYTES:  # chunked / missing header leg
+        raise HTTPException(
+            status_code=413,
+            detail=f"turn-usage signal exceeds {_TURN_SIGNAL_MAX_BODY_BYTES} bytes",
+        )
+    try:
+        req = TurnUsageSignalIn.model_validate_json(body)
+    except ValidationError as exc:
+        # FastAPI's automatic body parsing is bypassed above, so the
+        # 422 contract is rendered by hand — same shape, our message.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not _turn_rate_allow(req.harness_id, time.time()):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"turn-usage rate cap exceeded for harness {req.harness_id!r}"
+                f" (max {_TURN_SIGNAL_RATE_LIMIT}/min)"
+            ),
+        )
+    store = getattr(get_manager(), "_vitals_store", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail="metrics plane unavailable (disabled)")
+    try:
+        result = store.record_turn_usage_batch(
+            harness_id=req.harness_id,
+            session=req.session,
+            project=req.project,
+            agent=req.agent,
+            turns=[
+                {
+                    "turn_id": t.turn_id,
+                    "ts": t.ts,
+                    "model": t.model,
+                    "status": t.status,
+                    "input_tokens": t.input,
+                    "cached_read_tokens": t.cached_read,
+                    "cached_write_tokens": t.cached_write,
+                    "output_tokens": t.output,
+                    "reasoning_tokens": t.reasoning,
+                }
+                for t in req.turns
+            ],
+        )
+    except ValueError as exc:
+        # Store-side contract refusal (newline in identity slugs etc.) —
+        # same caller-facing discipline as the hooks boundary.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=503, detail="metrics plane write failed")
+    accepted, deduped = result
+    return {"accepted": accepted, "deduped": deduped}
+
+
+# ── end nhi-15 wave 1 turn-usage signal block ──────────────────────────────────
+# ── Situation brief (nhi-9/nhi-14, NOTAM form) ────────────────────────────────
+# ── [ambient-brief slice] everything in THIS block belongs to nhi-9; other ───
+# ── lines own their own sections — do not edit across the marker. ─────────────
+
+
+class AmbientBriefRequest(BaseModel):
+    """Request body for POST /ambient/brief — mirrors ``vesma_ambient_brief``."""
+
+    # Cascade P2-3: identity length caps at the REST input — a giant
+    # string would land verbatim in the brief-cache key and the store's
+    # index paths. A legit slug is far below the envelope; violations
+    # are a pydantic 422 before any manager touch.
+    session: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
+    project: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
+    agent: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
+    layer: Literal["state", "delta"] = "state"
+    budget: int = Field(default=450, ge=0, le=450)
+    # The change token from a previous response: matching the current
+    # store state yields 304 (the server-side dedup contract — the
+    # harness never re-injects an unchanged brief).
+    state_id: str | None = None
+
+
+class AmbientBriefMeta(BaseModel):
+    """Typed meta of the brief composition (fixed shape, optional extras)."""
+
+    layer: str
+    redactions: int
+    foreign_share: float
+    tokens_est: int
+    rate_limited: bool = False
+    degraded: bool = False
+    sterile: bool = False
+    cached: bool = False
+    # state-layer extras
+    red_flags: int | None = None
+    neighbors: int | None = None
+    quiet: bool | None = None
+    truncated: bool | None = None
+    # The original composition moment (ISO-8601 UTC; cascade Q-P2-2):
+    # ages inside a cached brief are frozen at compose time for the
+    # life of the state_id — this is the honest staleness signal.
+    composed_at: str | None = None
+    # MCP-side short-circuit marker (cascade Q-P2-3); never set on REST
+    # (REST answers 304 for the same case).
+    unchanged: bool | None = None
+    # delta-layer extras
+    heartbeat_state: str | None = None
+    degraded_reason: str | None = None
+
+
+class AmbientBriefResponse(BaseModel):
+    """Typed response of POST /ambient/brief — the harness contract.
+
+    ``tail`` is the delta-layer envelope when a delta exists (None on
+    the state layer — a state pull never consumes the heartbeat
+    cursor); the brief itself is placed LAST by the harness (tail-LAST,
+    ADR-0028) — placement is the client's duty, the server only
+    separates the fields.
+    """
+
+    brief: str
+    state_id: str
+    sections: list[str]
+    meta: AmbientBriefMeta
+    tail: str | None = None
+
+
+# ── Stale-poll ledger (cascade P2-2) ──────────────────────────────────────────
+#
+# The 304 branch must not be free change-detection: an unbounded poll
+# loop spending nothing but a compose-shaped hole in the ledger starves
+# every other awareness consumer. Consecutive 304s per caller identity
+# are counted; past the limit the poll degrades to 429 (a fresh 200
+# resets the count). The table is bounded — identities beyond the cap
+# are evicted wholesale (a worst-case miss just re-counts from zero).
+
+_STALE_POLL_LIMIT: Final[int] = 32
+_STALE_POLL_MAX_IDENTITIES: Final[int] = 4096
+_STALE_POLL_LOCK = threading.Lock()
+_stale_polls: dict[tuple[str, str, str], int] = {}
+
+
+def _stale_poll_hit(project: str, agent: str, session: str) -> bool:
+    """Count one 304 for the identity; True when the limit is exceeded."""
+    key = (project, agent, session)
+    with _STALE_POLL_LOCK:
+        count = _stale_polls.get(key, 0) + 1
+        if count > _STALE_POLL_LIMIT:
+            _stale_polls[key] = 0  # restart the window — back off, then retry
+            return True
+        if len(_stale_polls) >= _STALE_POLL_MAX_IDENTITIES:
+            _stale_polls.clear()
+        _stale_polls[key] = count
+        return False
+
+
+def _stale_poll_reset(project: str, agent: str, session: str) -> None:
+    """A fresh (200) composition clears the identity's stale streak."""
+    with _STALE_POLL_LOCK:
+        _stale_polls.pop((project, agent, session), None)
+
+
+def reset_stale_poll_ledger() -> None:
+    """Test/admin hook: drop the whole stale-poll ledger."""
+    with _STALE_POLL_LOCK:
+        _stale_polls.clear()
+
+
+@app.post("/ambient/brief", response_model=AmbientBriefResponse)
+async def ambient_brief(
+    req: AmbientBriefRequest,
+    if_none_match: str | None = Header(default=None),
+) -> Response:
+    """Compose the situation brief (nhi-9) — REST twin of ``vesma_ambient_brief``.
+
+    ONE compose function (:func:`vesma.ambient.compose_ambient`) serves
+    both legs — the MCP↔REST parity contract is byte-identity of
+    ``brief`` for the same store state and clock. ``state_id`` (request)
+    or ``If-None-Match`` matching the current store state yields **304
+    Not Modified** with no body (quiet = zero work; the brief is served
+    from the in-process (identity, budget, state_id) LRU otherwise);
+    after 32 consecutive 304s the poll degrades to **429** (cascade
+    P2-2 — change-detection is not free). Boundary violations
+    (identity-less calls) map to 422.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    try:
+        result = compose_ambient(
+            mgr,
+            req.layer,
+            session=req.session,
+            project=req.project,
+            agent=req.agent,
+            budget=req.budget,
+            now=surface_now(),
+        )
+    except ValueError as exc:
+        # Boundary validation (identity, layer, budget, clock contract).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    current = str(result.get("state_id", ""))
+    inm = if_none_match.strip().strip('"') if if_none_match else None
+    if (req.state_id is not None and req.state_id == current) or (inm == current and inm):
+        if _stale_poll_hit(req.project, req.agent, req.session):
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"stale poll: state unchanged after {_STALE_POLL_LIMIT} "
+                    "consecutive pulls — back off; the counter restarts"
+                ),
+            )
+        return Response(status_code=304)
+    _stale_poll_reset(req.project, req.agent, req.session)
+    payload = AmbientBriefResponse(**result)
+    return JSONResponse(
+        content=json.loads(payload.model_dump_json()),
+        headers={"ETag": f'"{payload.state_id}"'},
+    )
+
+
+# ── [ambient-brief slice] end of block ────────────────────────────────────────
 
 
 # ── Reversible content compression (CCR) ───────────────────────────────────────

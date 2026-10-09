@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-08",
+  "currency": "USD",
+  "unit": "USD per 1,000,000 tokens",
+  "sources": [
+    "https://docs.z.ai/guides/overview/pricing (accessed 2026-10-08: GLM-5.3, GLM-5.3-Flash, GLM-5.3-FlashX, GLM-5.2)",
+    "https://platform.kimi.ai/docs/pricing/chat (accessed 2026-10-08: kimi-k3)"
+  ],
+  "notes": [
+    "Standard list prices. Launch promos (e.g. the GLM-5.3-Flash 50%-off window) and flat-rate coding-plan subscriptions are NOT reflected: turns served under a coding plan are paid by quota, so the baseline's USD figures are the list-price EQUIVALENT of the token volume, not the actual cash out.",
+    "cached_input is the cache READ (hit) rate. Z.AI cache-write storage is limited-time free; cache-write tokens are stored in turn_usage.cached_write_tokens but not billed in v1.",
+    "Unknown model ids resolve to no rate and are FLAGGED in the baseline report — numbers are never invented."
+  ],
+  "models": {
+    "GLM-5.3": { "input": 1.4, "cached_input": 0.26, "output": 4.4 },
+    "GLM-5.3-Flash": { "input": 0.15, "cached_input": 0.03, "output": 0.5 },
+    "GLM-5.3-FlashX": { "input": 0.37, "cached_input": 0.075, "output": 1.25 },
+    "GLM-5.2": { "input": 1.4, "cached_input": 0.26, "output": 4.4 },
+    "kimi-k3": { "input": 3.0, "cached_input": 0.3, "output": 15.0 }
+  }
+}

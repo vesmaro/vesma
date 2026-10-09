@@ -1537,6 +1537,35 @@ class Settings(BaseSettings):
             file_secret_settings,
         )
 
+    @model_validator(mode="after")
+    def _autocompression_requires_strict_markers(self) -> Settings:
+        """nhi-3 secure defaults — the compression-automation knob PAIR.
+
+        ``hooks.auto_compress=true`` turns ``post_tool_call`` into a
+        side-effecting CCR write whose receipt is a ``[compressed: ...]``
+        marker the harness substitutes into its window. The A2 strict
+        gate (``ccr.validate_markers``) is what makes such markers
+        redeemable only after existence + integrity + issuer-provenance
+        checks; enabling autocompression WITHOUT it mints
+        loosely-redeemable cache rows (any caller holding the hash gets
+        the content back with zero provenance resistance) and is refused
+        at the config boundary. Both knobs are checked in the SAME
+        ``Settings`` object — an automation deployment cannot split them
+        across config files or env layers. Per-call ``auto_compress=true``
+        stays a caller-controlled escape hatch (A2 register N3): this
+        gate governs the deployment-level automation (the W3+ harness
+        configs), not individual invocations.
+        """
+        if self.hooks.auto_compress and not self.ccr.validate_markers:
+            raise ValueError(
+                "hooks.auto_compress=true requires ccr.validate_markers=true "
+                "in the same config — autocompression mints [compressed: ...] "
+                "markers that must redeem only through the strict validation "
+                "gate (existence + integrity + provenance); "
+                "set ccr.validate_markers=true or disable hooks.auto_compress"
+            )
+        return self
+
     def resolve_paths(self) -> None:
         self.vesma.vault_path = self.vesma.vault_path.expanduser().resolve()
         self.vesma.data_dir = self.vesma.data_dir.expanduser().resolve()
