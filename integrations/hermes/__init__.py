@@ -186,9 +186,7 @@ VESMA_ADD_SCHEMA: dict[str, Any] = {
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": (
-                    'Required: ["project:<slug>", "agent:<slug>", "vesma:<subtype>"].'
-                ),
+                "description": ('Required: ["project:<slug>", "agent:<slug>", "vesma:<subtype>"].'),
             },
             "title": {"type": "string", "description": "Short title (optional)."},
             "memory_type": {
