@@ -33,16 +33,16 @@ Health surface: unauthenticated `GET /health` (used by probes and `helm test`).
   [Image registry status](#image-registry-status)
 
 > **Image tag.** The chart pins `image.tag` to `Chart.yaml appVersion`
-> (currently `4.3.0`). For a fresh release pin the image explicitly:
-> `--set image.tag=5.6.2` (published tags —
-> `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x, latest`).
+> (currently `6.0.0`). For a fresh release pin the image explicitly:
+> `--set image.tag=6.0.0` (published tags — `6.0.0, latest`;
+> older waves left `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x`).
 
 ## Quick start
 
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
-  --set image.tag=5.6.2 \
+  --set image.tag=6.0.0 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -53,7 +53,7 @@ K3s (Traefik + local-path are the defaults, so nothing extra is needed):
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
-  --set image.tag=5.6.2 \
+  --set image.tag=6.0.0 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -153,7 +153,7 @@ re-pushes) lives in ADR-0031.
 
 ```bash
 helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=5.6.2              # data volumes survive upgrades
+  --set image.tag=6.0.0              # data volumes survive upgrades
 helm uninstall vesma -n vesma    # PVCs are kept; delete them explicitly if needed
 ```
 

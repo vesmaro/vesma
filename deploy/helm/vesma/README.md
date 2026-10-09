@@ -36,6 +36,9 @@ address. `helm test vesma` runs an in-cluster health check.
 
 The default image is `ghcr.io/vesmaro/vesma` (org namespace, backfilled in
 the 4.3.0 wave) and it is **public** — plain pulls work with no credentials.
+The image is published synchronously with every release (versioned tag plus
+`latest`; owner directive 2026-10-05), so the chart's `appVersion` tag is
+always available.
 `image.pullSecrets` stays available for private-registry setups or rate
 limits, but is not needed here. The legacy `ghcr.io/korrnals/mnemos` package
 holds pre-rebrand releases and will be archived.

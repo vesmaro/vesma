@@ -11,7 +11,7 @@ ContainerName=vesma
 # Published image (org namespace). Local build alternative:
 #   podman build -t localhost/vesma:latest -f Containerfile .
 #   → then set Image=localhost/vesma:latest and AutoUpdate=local
-Image=ghcr.io/vesmaro/vesma:5.2.0
+Image=ghcr.io/vesmaro/vesma:6.0.0
 AutoUpdate=registry
 
 PublishPort=8787:8787

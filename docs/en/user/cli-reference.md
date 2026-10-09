@@ -412,7 +412,7 @@ vesma stats [OPTIONS]
 ```bash
 vesma stats
 # status: ok
-# version: 4.0.0
+# version: 6.0.0
 # data_dir: /home/you/.vesma/data
 # vault_path: /home/you/.vesma/vault
 # total: 142

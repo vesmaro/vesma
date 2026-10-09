@@ -16,7 +16,7 @@ a project name cannot be silently migrated. Everything below prepares and
 verifies the artifacts — the actual `twine upload` is a deliberate,
 manual step.
 
-## PyPI channels — LIVE: `vesma` (primary; re-verified on the 5.6.2 train, both live channels carry 5.6.2, the mirror is frozen at 5.2.0)
+## PyPI channels — LIVE: `vesma` (primary; re-verified on the 6.0.0 train, both live channels carry 6.0.0, the mirror is frozen at 5.2.0)
 
 The distribution name decided 2026-09-01 was `mnemos-memory-server`. In
 the 5.0.0 rebrand the release channels moved: the bare `vesma` slot is
@@ -36,8 +36,8 @@ the formerly manual mirror dance is codified in the script.
 
 | Channel | PyPI status | Used by |
 | --- | --- | --- |
-| `vesma` | ours, live (5.0.0 → 5.6.2) | primary — `pip install vesma`, README badge |
-| `vesma-memory-server` | ours, live (5.0.0 → 5.6.2) | mirror; `scripts/install.sh` probes `vesma` first and consults the mirror only as a logged fallback |
+| `vesma` | ours, live (5.0.0 → 6.0.0) | primary — `pip install vesma`, README badge |
+| `vesma-memory-server` | ours, live (5.0.0 → 6.0.0) | mirror; `scripts/install.sh` probes `vesma` first and consults the mirror only as a logged fallback |
 | `mnemos-memory-server` | ours, frozen at 5.2.0 | legacy pre-rebrand channel, live until deprecation |
 
 The original 2026-09-01 decision matrix is kept as written that day
