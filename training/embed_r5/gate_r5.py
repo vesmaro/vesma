@@ -108,7 +108,9 @@ class NanoHarness:
             if abs(n - 1.0) > 1e-3:
                 v = v / n
             vecs.append(v)
-        return np.vstack(vecs).astype(np.float64)
+        # float32, exactly as run_phase0 (the ratified floors were computed
+        # in float32; a float64 cast shifts medians in the 4th decimal)
+        return np.vstack(vecs)
 
 
 def proxy_medians_at_slice(vec: np.ndarray, surfaces: dict, dim: int | None) -> dict:
@@ -165,7 +167,13 @@ def main() -> int:
     }
     for k, expected in STORED.items():
         got = plumbing[k]
-        if abs(got - expected) > 0.0005:
+        # tolerance: the gX0-defining values (mono, cross R@5) reproduce
+        # EXACTLY under the engine runtime and stay exact-match; the
+        # proxy aggregate carries MLAS run-to-run reduction-order jitter
+        # (observed ±0.0009 median, 14/180 pairs ±0.005 — characterization
+        # vs audit vs this pass), so the non-gate aggregates get 0.002.
+        tol = 0.0005 if k in ("mono_overall", "cross_r5") else 0.002
+        if abs(got - expected) > tol:
             raise SystemExit(f"PLUMBING ASSERT FAILED: prod {k} {got} != stored {expected}")
     print(f"[plumbing] production floors reproduced: {plumbing}", flush=True)
     del prod, prod_vec, prod_ev
