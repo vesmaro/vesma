@@ -487,7 +487,7 @@ def ingest_file(
 #: Built-in relevance floor for the CLI `search` (cli-audit 2026-10-08 P1
 #: #9), calibrated against the BUNDLED nano embedder (measured 2026-10-09):
 #: a garbage query's raw cosine lands ≈ 0.47-0.63 (the model is
-#: anisotropic (everything correlates) correlates), a genuinely related text ≈ 0.88.
+#: anisotropic — everything correlates), a genuinely related text ≈ 0.88.
 #: 0.70 cuts the garbage band with margin while keeping related hits.
 #: Override per call with --threshold, per machine with
 #: ``search.min_relevance`` in the config (a pure threshold — 0 keeps this

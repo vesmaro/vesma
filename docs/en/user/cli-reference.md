@@ -24,7 +24,7 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`ingest`](#ingest) | Ingest external content: `ingest url URL` / `ingest file PATH` |
 | [`search`](#search) | Hybrid FTS5 + vector search |
 | [`recall`](#recall) | List recent memories; `recall agent` scopes to one agent |
-| [`tags validate`](#tags-validate) | Validate the tag contract across a vault |
+| [`tags validate`](#tags-validate) | Validate the tag contract across the live store; exit 1 on violations |
 | [`tags audit`](#tags-audit) | Scan for tag-contract non-conformance; `--apply` heals additively |
 | [`workflow`](#workflow) | Memory workflow lifecycle: `get` / `set` / `history` |
 | [`stats`](#stats) | Show health counters |
@@ -214,9 +214,12 @@ vesma search QUERY [OPTIONS]
 | `--tags / -T` | — | Comma-separated tags to filter by. |
 | `--include-raw / --published-only` | `--include-raw` | Include `raw`/`processing` entries (default), or restrict to `published` knowledge. |
 | `--status` | — | Filter by status (`raw`/`processing`/`processed`/`published`/`archived`); takes precedence over `--include-raw`. |
+| `--threshold` | config / built-in floor | Minimum semantic (vector-leg cosine) relevance for a result with no lexical match. `0` disables the gate for this call. |
 | `--config / -c` | — | Path to `config.yaml`. |
 
 The score is the fused RRF score, with 0.0 = no match and 1.0 = top hit. By default raw entries are searched too — a just-added memory stays `raw` until the knowledge pipeline publishes it; use `--published-only` to restrict results to the vector-index scope.
+
+**Relevance gate.** The CLI drops results that carry no lexical (FTS) match and whose raw semantic similarity is below the floor — a garbage query says "no relevant results" instead of returning the whole store. The floor resolves per call (`--threshold`), then from `search.min_relevance` in the config (a pure threshold; `0` = unset), then a built-in `0.70` calibrated against the bundled nano embedder. Machine-wide OFF is the explicit `search.cli_relevance_gate: false` config key; when the gate hides some — but not all — results, the CLI says how many were hidden.
 
 ### Examples
 
@@ -271,22 +274,24 @@ vesma recall agent sre --project vesma --limit 25
 
 ## `tags validate`
 
-Validate the Vesma tag contract across an existing Vesma vault directory. Reports entries that violate the M2 schema.
+Validate the tag contract across the LIVE store (the SQLite store from `--config`). Every entry needs at least one `project:*`, one `agent:*` and one subtype tag (`vesma:*`; legacy `mnemos:*` counts) — the same contract the doctor's tag-contract check and `vesma tags audit` enforce. Each non-conformant entry is reported with its id, current tags and the missing prefixes.
 
 ```text
-vesma tags validate VAULT_PATH
+vesma tags validate [VAULT_PATH] [--config PATH]
 ```
 
-| Argument | Description |
+| Argument / Option | Description |
 |----------|-------------|
-| `VAULT_PATH` (positional) | Path to a Vesma vault directory (markdown mirror). |
+| `VAULT_PATH` (positional) | Deprecated — accepted for backward compatibility, not used; the scan always covers the live store. |
+| `--config / -c` | Path to `config.yaml`. |
 
-> **Status.** The full vault-scan implementation is not yet wired in (`# TODO (M2): scan SQLite + vault markdown files`). For now the command prints a placeholder. Use `vesma stats` and the HTTP API `GET /memories?project=...` to inspect tags via SQLite instead.
+Exit code is `1` when violations exist and `0` on a clean store (CI-friendly). Pair with `vesma tags audit --apply` for the bulk heal.
 
 ### Example
 
 ```bash
-vesma tags validate ~/.vesma/vault
+# CI gate: non-zero exit on a violating store
+vesma tags validate
 ```
 
 ---
