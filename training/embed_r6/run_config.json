@@ -1,0 +1,105 @@
+{
+  "kind": "embed-round6-decisive-run-config",
+  "committed_before_run": true,
+  "committed_at": "2026-10-10",
+  "authority": [
+    "docs/specs/embed-round6-prereg-schedule.md (ACTIVATED, owner ratification 10.10, main @ 8310d1f)",
+    "docs/specs/embed-round5-prereg.md @ 294b8dd+ (thresholds/population/measurement inherited unchanged)",
+    "round-5 decisive run: feat/embed-r5-train @ fa95de3 (REJECT: gX0 -0.0682, llm 0.897<0.93; cross R@5 0.9972)"
+  ],
+  "executor": "gcw-ml-engineer",
+  "single_variable": "SCHEDULE AND SELECTION ONLY (round-6 prereg §2/§3) — corpus, teacher, loss mechanics, thresholds, gate population, export recipe all identical to round-5",
+
+  "corpus": {
+    "path": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r5-corpus/data/embed-r5/corpus",
+    "fingerprint_sha256_train_plus_val": "e64fdbea65f0e6a4f2830a42ea6bd0d74a2974854d381427c4d5ba2ea4901c62",
+    "train_rows": 25420,
+    "val_rows": 1261,
+    "total_texts": 26681,
+    "verified": "2026-10-10: `cat train val | sha256sum` = e64fdbea… (matches sealed fp); IDENTICAL to round-5"
+  },
+
+  "teacher": {
+    "reused_from_round5": true,
+    "npz": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/wt/embed-r5-train/training/runs/embed-r5/teacher_vectors.npz (READ-ONLY source; copied into runs/embed-r6/)",
+    "reuse_integrity_proof": [
+      "precompute script asserts corpus fp at read time and hard-fails on mismatch (embed_r5/precompute_teacher_r5.py:57)",
+      "precompute log shows the fp assert passed on the run that produced the final npz",
+      "state json: {encoded: 26681, total: 26681, final: true}",
+      "2026-10-10 DIRECT lockstep re-verify: npz texts array == current corpus texts (26681, exact list equality), vectors (26681,1024) fp32 all finite"
+    ],
+    "savings": "~3-6 h precompute avoided",
+    "kd_target": "first 384 dims, temperature 0.05, MRL 64/128/256/384 weights 4,2,1,1 — UNCHANGED"
+  },
+
+  "schedule": {
+    "phase1": {
+      "loss": "per-slice KD ONLY (no contrastive) — round-4 loop verbatim over ALL train texts (25420), batch 32",
+      "transition": "val R@5 @384 >= 0.50 OR epoch cap 8, whichever first; evaluated at every phase-1 epoch eval"
+    },
+    "phase2": {
+      "loss": "+ translation-contrastive lambda=1.0, tau=0.05 (round-5 pilot mechanics VERBATIM: symmetric in-batch InfoNCE, pair-adjacent 16-pair batches, partner=i^1, diagonal NOT masked)",
+      "epoch_structure": "INTERLEAVED partition design: KD-only batches over non-pair texts (19956 texts, ~624 batches) and joint KD+CT pair batches (2732 pairs, 171 batches) consumed as [3 KD : 1 CT] repeating; CT exhausted after 513 interleaved KD batches, remaining ~111 KD batches finish the epoch — every train text exactly once per epoch",
+      "mono_replay_ratio": "mono-KD batches : CT batches = 624:171 = 3.65:1 >= 1:3 floor (prereg §2; mechanics at executor discretion — interleave chosen over round-5 sequential streams so the mono anchor refreshes DURING the contrastive pass, not only before it)",
+      "mono_guard": "at EVERY phase-2 epoch eval: if proxy mono_control_median < 0.8932 (prod 0.8982 - 0.005) -> contrastive OFF for the REST of the run; remaining budget trains KD-only over ALL train texts (mono-replay); guard trip logged with the epoch and the measured value",
+      "requirement": "mono_control_median >= 0.8932 from the FIRST phase-2 eval (prereg §2)"
+    },
+    "early_stop": "UNCHANGED (round-5 §1.4): min-over-slices val R@5 improves <0.001 for 4 consecutive evals; active in both phases",
+    "budget": "<= 20 epochs TOTAL (both phases combined), every epoch checkpointed",
+    "seed": 42,
+    "determinism": "training.distill.set_determinism(42); single order_rng(42); NOTE (round-5 parity): a mid-run resume restarts the RNG from seed — segment-deterministic, not cross-resume deterministic (same accepted property as round-5)"
+  },
+
+  "selection": {
+    "authority": "round-6 prereg §3 (rule fixed BEFORE the run)",
+    "step1": "candidates = ALL phase-2 checkpoints (epochs whose record carries phase==2, including post-guard-trip mono-replay epochs) passing cross-class PROXY: seed_dup_median >= 0.85 AND seed_dup_share_ge085 >= 0.50 AND llm_median >= 0.93 AND llm_share_ge085 >= 0.90 (proxy = the per-epoch monitor harness, same harness for every epoch — selection-internal consistency; prereg explicitly allows gate-harness proxy for selection)",
+    "step2": "among candidates: MAX mono_control_median; tie-break higher min-over-slices R@5, then lower epoch",
+    "step3_fallback": "no candidates -> checkpoint with MAX composite (min-over-slices R@5) among ALL run checkpoints (both phases) with proxy mono_control_median >= 0.8932; tie-break lower epoch. INTERPRETATION NOTE (logged): prereg §3.3 carries no phase-2 qualifier (unlike §3.1), so the fallback pool spans all epochs of the run",
+    "step4": "still nothing -> REJECT without shopping (final lane closure for both lever classes)",
+    "proxy_monitor_extension": "per-epoch record now ALSO carries seed_dup_share_ge085 and llm_share_ge085 (round-5 monitor recorded medians only; shares are required by §3 step 1) — an additive measurement change, harness unchanged",
+    "judged_corpus": "c2ce056d NEVER read before export of the selected checkpoint; cortex sealed holdouts forbidden for selection"
+  },
+
+  "export": {
+    "form_FIXED": "int8-dynamic (weight-only, per-channel QInt8) — round-5 recipe VERBATIM (quantize_dynamic on the Gemm-normalised fp32 graph, opset 15, static 1x256, mean-pool + projector + L2 baked)",
+    "forbidden": "static int8 (any form), fp16 (round-6 prereg §1: both BANNED)",
+    "no_form_fallback": "the artifact form is FIXED by prereg; if the int8-dynamic artifact fails the gate the verdict is honest REJECT — no switch to fp32 or any other form (round-5's form-choice fallback does NOT carry over: the schedule round keeps ONE variable)",
+    "measured_for_record": "fp32 graph (quantize source + exactness reference) and int8-dynamic: val per-slice R@5 readout, gate-proxy readout, per-text cos vs fp32-torch, size, context latency probe (probe only — official g6a from gate_latency.py, engine runtime)"
+  },
+
+  "gates": {
+    "population": "sealed gate set cb36757769fb88f2806065f50348f5fd8383cfdb0c19c66e6335eac8ace01123 (verified 2026-10-10), 180 pairs, one harness (run_phase0 NanoProvider recipe), ONE pass on the final artifact",
+    "binding_adopt": {
+      "g1_s1m_no_harm": ">= 0.9252 (judged c2ce056d, production S1m mechanics, self-comparison only)",
+      "gX0_mono_control": "|delta| median_best_distractor_cos vs prod 0.8982 <= 0.005",
+      "seed_dup": "median >= 0.85 AND share(cos>=0.85) >= 0.50 (floors to beat from round-5 candidate: 0.8683 / 0.7727)",
+      "llm": "median >= 0.93 AND share(cos>=0.85) >= 0.90 (round-5 candidate floors: 0.8970 / 0.8529)",
+      "g6a_latency": "mean <= 45 ms (addendum-6 §A.2, engine runtime ORT 1.27)",
+      "g7_size": "<= 60 MB"
+    },
+    "monitored": "real/twin class cosines, retrieval cross R@5 (keep the cure: round-5 candidate cross 0.9972), sibling negative anchor (prod 0.6889), g3 per-slice, burned144, g2 value recorded",
+    "single_shot": "exactly ONE measured gate pass on the chosen artifact; no post-hoc checkpoint switching; no threshold edits; honest REJECT is a final legal outcome"
+  },
+
+  "prelaunch_estimates": {
+    "phase1_epoch_wall": "~11-15 min (795 KD batches; round-4: 12-15 min on 24.2k texts)",
+    "phase2_epoch_wall": "~11-16 min (624 KD + 171 joint batches + eval; round-5: 11.2-14.6 min measured)",
+    "total_wall_estimate_hours": "20 epochs ~ 3.7-5.5 h clean; up to ~8 h under box contention",
+    "peak_ram_estimate_gb": {"training": 2.5, "note": "teacher npz 116 MB + student ~30M params + batch activations; round-5 estimate 2.0 GB"},
+    "launch_gate": "available box RAM >= 4 GB at launch (sequential-heavy-jobs rule); observed 2026-10-10 12:19: available 1 GB (neighbor tenants) — TRAINING LAUNCH BLOCKED until the window opens; polling, stop-and-resume honored",
+    "stop_conditions": [
+      "training RSS > 8 GB",
+      "non-finite loss (exit 4)",
+      "corpus fingerprint mismatch at any read",
+      "npz lockstep violation (texts differ)",
+      "mono guard trip is NOT a stop condition — it is a scheduled state transition (CT off, run continues)"
+    ]
+  },
+
+  "environment": {
+    "python_train": "/var/home/abyss/.venvs/nm-train/bin/python (torch 2.13.0+cu130 CPU-used, transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0) — identical to round-5",
+    "python_gate": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/.venv/bin/python (vesmaro 5.6.4 runtime, ORT 1.27.0) — identical to round-5",
+    "engine_repo_state": "worktree wt/embed-r6-train, branch feat/embed-r6-train FROM feat/embed-r5-train @ fa95de3; main/release/consolidate worktrees untouched; wt/embed-r5-train read-only; prod untouched",
+    "prod_reference": "src/vesmaro/models/vesma-embed-v1 model.onnx sha256 3b752e0671a50da5… (verified 2026-10-10)"
+  }
+}
