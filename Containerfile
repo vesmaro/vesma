@@ -30,6 +30,13 @@ COPY src/ ./src/
 # pyproject.toml [tool.hatch.build.targets.wheel.force-include].
 COPY integrations/ ./integrations/
 COPY scripts/ ./scripts/
+# federation/gen/python is force-included into the wheel by pyproject.toml
+# ([tool.hatch.build.targets.wheel.force-include] — the vendored gRPC
+# stubs, cli-audit 2026-10-08 finding #2). Provision it in the build
+# context BEFORE pip install: a fresh hatchling from PyPI fails the build
+# with "Forced include not found" when the source is absent (the
+# skip-if-missing behavior holds only for the uv.lock-pinned hatchling).
+COPY federation/gen/python ./federation/gen/python
 COPY NOTICE LICENSE ./
 RUN pip install --no-cache-dir "."
 
