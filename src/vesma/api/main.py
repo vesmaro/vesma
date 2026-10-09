@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -28,7 +28,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.cors import CORSMiddleware
 
 from vesma import __version__
-from vesma.ambient import compose_ambient, surface_now
+from vesma.ambient import IDENTITY_MAX_CHARS, compose_ambient, surface_now
 from vesma.api.auth import router as auth_router
 from vesma.api.auth_store import AuthStore
 from vesma.api.federation import router as federation_router
@@ -1498,9 +1498,13 @@ async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
 class AmbientBriefRequest(BaseModel):
     """Request body for POST /ambient/brief — mirrors ``vesma_ambient_brief``."""
 
-    session: str
-    project: str
-    agent: str
+    # Cascade P2-3: identity length caps at the REST input — a giant
+    # string would land verbatim in the brief-cache key and the store's
+    # index paths. A legit slug is far below the envelope; violations
+    # are a pydantic 422 before any manager touch.
+    session: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
+    project: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
+    agent: str = Field(min_length=1, max_length=IDENTITY_MAX_CHARS)
     layer: Literal["state", "delta"] = "state"
     budget: int = Field(default=450, ge=0, le=450)
     # The change token from a previous response: matching the current
@@ -1525,6 +1529,13 @@ class AmbientBriefMeta(BaseModel):
     neighbors: int | None = None
     quiet: bool | None = None
     truncated: bool | None = None
+    # The original composition moment (ISO-8601 UTC; cascade Q-P2-2):
+    # ages inside a cached brief are frozen at compose time for the
+    # life of the state_id — this is the honest staleness signal.
+    composed_at: str | None = None
+    # MCP-side short-circuit marker (cascade Q-P2-3); never set on REST
+    # (REST answers 304 for the same case).
+    unchanged: bool | None = None
     # delta-layer extras
     heartbeat_state: str | None = None
     degraded_reason: str | None = None
@@ -1547,6 +1558,47 @@ class AmbientBriefResponse(BaseModel):
     tail: str | None = None
 
 
+# ── Stale-poll ledger (cascade P2-2) ──────────────────────────────────────────
+#
+# The 304 branch must not be free change-detection: an unbounded poll
+# loop spending nothing but a compose-shaped hole in the ledger starves
+# every other awareness consumer. Consecutive 304s per caller identity
+# are counted; past the limit the poll degrades to 429 (a fresh 200
+# resets the count). The table is bounded — identities beyond the cap
+# are evicted wholesale (a worst-case miss just re-counts from zero).
+
+_STALE_POLL_LIMIT: Final[int] = 32
+_STALE_POLL_MAX_IDENTITIES: Final[int] = 4096
+_STALE_POLL_LOCK = threading.Lock()
+_stale_polls: dict[tuple[str, str, str], int] = {}
+
+
+def _stale_poll_hit(project: str, agent: str, session: str) -> bool:
+    """Count one 304 for the identity; True when the limit is exceeded."""
+    key = (project, agent, session)
+    with _STALE_POLL_LOCK:
+        count = _stale_polls.get(key, 0) + 1
+        if count > _STALE_POLL_LIMIT:
+            _stale_polls[key] = 0  # restart the window — back off, then retry
+            return True
+        if len(_stale_polls) >= _STALE_POLL_MAX_IDENTITIES:
+            _stale_polls.clear()
+        _stale_polls[key] = count
+        return False
+
+
+def _stale_poll_reset(project: str, agent: str, session: str) -> None:
+    """A fresh (200) composition clears the identity's stale streak."""
+    with _STALE_POLL_LOCK:
+        _stale_polls.pop((project, agent, session), None)
+
+
+def reset_stale_poll_ledger() -> None:
+    """Test/admin hook: drop the whole stale-poll ledger."""
+    with _STALE_POLL_LOCK:
+        _stale_polls.clear()
+
+
 @app.post("/ambient/brief", response_model=AmbientBriefResponse)
 async def ambient_brief(
     req: AmbientBriefRequest,
@@ -1559,8 +1611,10 @@ async def ambient_brief(
     ``brief`` for the same store state and clock. ``state_id`` (request)
     or ``If-None-Match`` matching the current store state yields **304
     Not Modified** with no body (quiet = zero work; the brief is served
-    from the in-process (identity, budget, state_id) LRU otherwise).
-    Boundary violations (identity-less calls) map to 422.
+    from the in-process (identity, budget, state_id) LRU otherwise);
+    after 32 consecutive 304s the poll degrades to **429** (cascade
+    P2-2 — change-detection is not free). Boundary violations
+    (identity-less calls) map to 422.
     """
     _track_http_call()
     mgr = get_manager()
@@ -1580,7 +1634,16 @@ async def ambient_brief(
     current = str(result.get("state_id", ""))
     inm = if_none_match.strip().strip('"') if if_none_match else None
     if (req.state_id is not None and req.state_id == current) or (inm == current and inm):
+        if _stale_poll_hit(req.project, req.agent, req.session):
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"stale poll: state unchanged after {_STALE_POLL_LIMIT} "
+                    "consecutive pulls — back off; the counter restarts"
+                ),
+            )
         return Response(status_code=304)
+    _stale_poll_reset(req.project, req.agent, req.session)
     payload = AmbientBriefResponse(**result)
     return JSONResponse(
         content=json.loads(payload.model_dump_json()),

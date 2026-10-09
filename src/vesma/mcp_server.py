@@ -1632,9 +1632,11 @@ async def _canonical_tools() -> list[Tool]:
                         "type": "string",
                         "description": (
                             "The change token from your previous pull — "
-                            "echo it to detect 'nothing changed' cheaply "
-                            "(REST answers 304; MCP returns the same "
-                            "state_id to compare)."
+                            "echo it to detect 'nothing changed' cheaply: "
+                            "REST answers 304; MCP short-circuits to an "
+                            "'unchanged' section with an empty brief "
+                            "(no recomposition; state layer only — delta "
+                            "pulls always run)."
                         ),
                     },
                 },
@@ -2373,8 +2375,16 @@ def _handle_ambient_brief(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     over the REST/MCP surfaces (the parity contract). The clock rides
     :func:`vesma.ambient.surface_now` — the single sanctioned read (the
     compose path itself is clock-injected and source-pinned).
+
+    Cascade hardening (accept-after-fix, 2026-10-09): identity length
+    caps at the MCP input (P2-3 — a giant string would land in the
+    brief-cache key), and the echoed ``state_id`` short-circuits an
+    unchanged state (Q-P2-3) to a cheap «unchanged» envelope without a
+    full recomposition — the state layer only; a delta pull always runs
+    (its heartbeat cursor is at-most-once, skipping is the caller's
+    business).
     """
-    from vesma.ambient import compose_ambient, surface_now
+    from vesma.ambient import IDENTITY_MAX_CHARS, compose_ambient, current_state_id, surface_now
 
     amb_layer = args.get("layer", "state")
     if amb_layer not in ("state", "delta"):
@@ -2388,6 +2398,13 @@ def _handle_ambient_brief(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     amb_agent = args.get("agent")
     if not isinstance(amb_agent, str) or not amb_agent.strip():
         return {"error": "agent is required and must be a non-empty string"}
+    for label, value in (
+        ("session", amb_session),
+        ("project", amb_project),
+        ("agent", amb_agent),
+    ):
+        if len(value) > IDENTITY_MAX_CHARS:
+            return {"error": f"{label} must be at most {IDENTITY_MAX_CHARS} characters"}
     amb_budget = args.get("budget", 450)
     if (
         not isinstance(amb_budget, int)
@@ -2395,6 +2412,35 @@ def _handle_ambient_brief(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         or not (0 <= amb_budget <= 450)
     ):
         return {"error": "budget must be an integer in [0, 450]"}
+    amb_state_id = args.get("state_id")
+    if amb_state_id is not None and not isinstance(amb_state_id, str):
+        return {"error": "state_id must be a string"}
+    # Cascade Q-P2-3: the schema promises a cheap «nothing changed»
+    # check — honor it. One single-row probe; a probe fault falls
+    # through to the full compose (its degrade contract owns faults).
+    if amb_layer == "state" and amb_state_id:
+        try:
+            current = current_state_id(mgr, project=amb_project)
+        except Exception:
+            current = None
+        if current is not None and amb_state_id == current:
+            return {
+                "brief": "",
+                "state_id": current,
+                "sections": ["unchanged"],
+                "meta": {
+                    "layer": "state",
+                    "unchanged": True,
+                    "redactions": 0,
+                    "foreign_share": 0.0,
+                    "tokens_est": 0,
+                    "rate_limited": False,
+                    "degraded": False,
+                    "sterile": False,
+                    "cached": False,
+                },
+                "tail": None,
+            }
     try:
         return compose_ambient(
             mgr,

@@ -71,6 +71,16 @@ agents sharing a project must never receive each other's brief from a
 shared slot). A cache hit skips the rate ledger and every store read
 beyond the state probe.
 
+Age semantics inside one state_id (cascade Q-P2-2): every age in the
+rendered brief («(N мин назад)», the «ТИХО · проверено HH:MM» stamp)
+is frozen at COMPOSITION time — a cache hit within the same state_id
+returns the original picture by design (that is what "nothing changed"
+means), so its ages drift from the wall clock. The state-layer
+``meta.composed_at`` (ISO-8601 UTC) carries the original composition
+moment: consumers compare it against their own clock to judge the
+brief's staleness; a fresh picture costs a new state_id (any write in
+the project moves it).
+
 Same-package note: the private awareness helpers
 (``_my_goal``/``_picture_rate_refused``/``_sanitize_agent_id``/
 ``_task_tag_from_row``) are imported DELIBERATELY — one-source gates
@@ -85,6 +95,7 @@ import copy
 import logging
 import re
 import threading
+import unicodedata
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -130,6 +141,13 @@ BRIEF_EVENTS_MAX: Final[int] = 5
 #: Scan bound of the task-goal lookup (the awareness feed bound — one
 #: window query, no unbounded scans).
 MY_GOAL_SCAN_LIMIT: Final[int] = 200
+
+#: Input cap for every caller identity string (session/project/agent;
+#: cascade P2-3): a giant identity lands in the brief-cache key and the
+#: store's index paths — bounded at both surfaces (REST pydantic 422,
+#: MCP error dict). A legit slug is ≤64 chars; 128 is the generous
+#: envelope, not a target.
+IDENTITY_MAX_CHARS: Final[int] = 128
 
 #: Render cap of one foreign fragment (goal text) — the awareness
 #: GOAL_TITLE budget-class bound applied again at render time.
@@ -257,19 +275,60 @@ def _select_hint_template(shared_tokens: list[str]) -> str:
 
 # ── Foreign-text sanitization (render-time; verdict §6.1) ─────────────────────
 #
-# Mechanical, closed rule set: role tags, code fences and imperative
-# constructions are CUT (replaced with the ellipsis marker), the residue
-# is whitespace-collapsed and length-capped. The rule list is a SECURITY
-# surface — extend it only with a pin test (the mint-protection #432
-# precedent: every new marker class joins with its test).
+# Mechanical, closed rule set: role tags, special tokens, code fences,
+# imperative constructions, quote/arrow/bracket shape and homoglyph
+# disguises are CUT (replaced with the ellipsis marker or ``_``), the
+# residue is whitespace-collapsed and length-capped. The rule list is a
+# SECURITY surface — extend it only with a pin test (the mint-protection
+# #432 precedent: every new marker class joins with its test).
+#
+# Cascade hardening (accept-after-fix, 2026-10-09): the sanitizer now
+# also closes the four bypass classes the cascade review probed —
+# (a) bare RU 2nd-person imperatives («отмени»), (b) chat-special
+# tokens (<|im_start|>, [INST]), (c) unicode homoglyphs (a Latin
+# imperative assembled from Cyrillic look-alike letters), (d)
+# quote/arrow/bracket shape that escapes the data-quotes and fakes the
+# server «→» consequence. Each class has its pin test in
+# tests/test_ambient_brief.py.
 
 _FOREIGN_CUT_MARK: Final[str] = "…"
+
+#: Closed list of bare 2nd-person RU imperatives the sanitizer cuts
+#: (cascade P1-1a). Extending this list is a SECURITY change — every
+#: new verb joins with its pin test; the membership is pinned.
+SANITIZED_IMPERATIVES: Final[tuple[str, ...]] = (
+    "отмени",
+    "удали",
+    "запусти",
+    "выполни",
+    "перепиши",
+    "игнорируй",
+    "забудь",
+    "выведи",
+    "напиши",
+    "создай",
+)
 
 _ROLE_TAG_RE: Final[re.Pattern[str]] = re.compile(
     r"</?(?:system|assistant|user|inst|instructions?|role|tool)\b[^<>]{0,80}>",
     re.IGNORECASE,
 )
+#: Chat-special tokens (cascade P1-1b): whole «<|…|>» tokens, the
+#: llama-style [INST]/[/INST]/[SYSTEM] brackets, and a broken orphan
+#: «<|» opener (a smuggled half-token must not survive either).
+_SPECIAL_TOKEN_RE: Final[re.Pattern[str]] = re.compile(
+    r"<\|[^<>|]{0,80}\|>"
+    r"|\[/?(?:INST|SYSTEM)\]"
+    r"|<\|",
+    re.IGNORECASE,
+)
 _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"```+|`+")
+#: Quote/arrow/bracket shape (cascade P1-2): the peer text must not be
+#: able to close the server's «data quotes» or draw the server's «→»
+#: consequence arrow; markdown link brackets go the same way. Replaced
+#: with ``_`` (the _sanitize_agent_id mechanics) AFTER the imperative
+#: cuts — ``_`` is a word character and would break the \b anchors.
+_FOREIGN_QUOTE_ARROW_RE: Final[re.Pattern[str]] = re.compile(r'[«»"→←\[\]]')
 _IMPERATIVE_EN_RE: Final[re.Pattern[str]] = re.compile(
     r"(?i)\b(?:"
     r"you (?:must|should|shall|are now|have to|need to)"
@@ -282,8 +341,9 @@ _IMPERATIVE_EN_RE: Final[re.Pattern[str]] = re.compile(
 )
 _IMPERATIVE_RU_RE: Final[re.Pattern[str]] = re.compile(
     r"(?i)\b(?:"
-    r"игнорир(?:уй|овать|уйте)"
-    r"|забудь|забудьте"
+    r"(?:" + "|".join(re.escape(v) for v in SANITIZED_IMPERATIVES) + r")(?:те)?"
+    r"|игнорир(?:уй|овать|уйте)"
+    r"|забудь(?:те)?"
     r"|ты (?:обязан|должен|должна|теперь)"
     r"|вы (?:обязаны|должны)"
     r"|(?:не )?делай(?:те)?"
@@ -294,21 +354,119 @@ _IMPERATIVE_RU_RE: Final[re.Pattern[str]] = re.compile(
     r")\b",
     re.UNICODE,
 )
+#: The combined imperative view used for the HOMOGLYPH pass (cascade
+#: P1-1c): matches are found on the folded text and spliced back into
+#: the original by offset (the fold is 1:1 per character). The global
+#: flag rides the compile call — Python 3.11+ forbids a second inline
+#: ``(?i)`` mid-expression.
+_IMPERATIVE_ANY_RE: Final[re.Pattern[str]] = re.compile(
+    _IMPERATIVE_EN_RE.pattern.removeprefix("(?i)")
+    + "|"
+    + _IMPERATIVE_RU_RE.pattern.removeprefix("(?i)"),
+    re.IGNORECASE | re.UNICODE,
+)
+#: Closed homoglyph fold — look-alike Cyrillic/Greek letters with a
+#: Latin twin map to that twin. Used ONLY to FIND homoglyph-disguised
+#: imperatives (a Latin phrase assembled from look-alike letters); the
+#: honest residue keeps its original script (splicing, not folding, on
+#: output). The ambiguous literals are the DATA — noqa is deliberate.
+_HOMOGLYPH_PAIRS: Final[tuple[tuple[str, str], ...]] = (
+    # Cyrillic lowercase with a Latin visual twin (one pair per line —
+    # each literal IS the homoglyph data, noqa stays with its pair).
+    ("а", "a"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("е", "e"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("о", "o"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("р", "p"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("с", "c"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("у", "y"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("х", "x"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("і", "i"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("ј", "j"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("ɡ", "g"),  # noqa: RUF001 — homoglyph data (deliberate)
+    # Cyrillic uppercase with a Latin visual twin
+    ("А", "A"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("В", "B"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Е", "E"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("К", "K"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("М", "M"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Н", "H"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("О", "O"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Р", "P"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("С", "C"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Т", "T"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("У", "Y"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Х", "X"),  # noqa: RUF001 — homoglyph data (deliberate)
+    # Greek with a Latin visual twin
+    ("ο", "o"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Α", "A"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Β", "B"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Ε", "E"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Ζ", "Z"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Η", "H"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Κ", "K"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Μ", "M"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Ν", "N"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Ο", "O"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Ρ", "P"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Τ", "T"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Υ", "Y"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("Χ", "X"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("ι", "i"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("ν", "v"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("ρ", "p"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("τ", "t"),
+    ("υ", "u"),  # noqa: RUF001 — homoglyph data (deliberate)
+    ("χ", "x"),
+)
+_HOMOGLYPH_FOLD_TABLE: Final[dict[int, str]] = {ord(src): dst for src, dst in _HOMOGLYPH_PAIRS}
+
+
+def _cut_homoglyph_imperatives(cleaned: str) -> str:
+    """Cut homoglyph-disguised imperatives without folding honest text.
+
+    The fold view (:data:`_HOMOGLYPH_FOLD_TABLE`) is a 1:1 per-character
+    map, so a match found on the folded view aligns by offset with the
+    original string; only the matched spans are replaced with the cut
+    mark, the rest keeps its original (honest) script.
+    """
+    folded = cleaned.translate(_HOMOGLYPH_FOLD_TABLE)
+    if folded == cleaned:
+        return cleaned
+    parts: list[str] = []
+    pos = 0
+    matched = False
+    for m in _IMPERATIVE_ANY_RE.finditer(folded):
+        matched = True
+        parts.append(cleaned[pos : m.start()])
+        parts.append(_FOREIGN_CUT_MARK)
+        pos = m.end()
+    if not matched:
+        return cleaned
+    parts.append(cleaned[pos:])
+    return "".join(parts)
 
 
 def sanitize_foreign_text(text: str, *, max_chars: int = FOREIGN_LINE_MAX_CHARS) -> str:
     """Mechanically neutralize one foreign fragment for the brief.
 
-    Order: role tags → code fences → imperative constructions (EN+RU)
-    → whitespace collapse → length cap. A deterministic pure function
-    of the input; never raises (a non-string degrades to "").
+    Order: NFKC normalization (full-width/compatibility homoglyphs)
+    → role tags → chat-special tokens → code fences → imperative
+    constructions (EN+RU) → homoglyph-disguised imperatives (a Latin
+    phrase assembled from look-alike letters) → quote/arrow/bracket
+    substitution → whitespace collapse → length cap. A deterministic
+    pure function of the input; never raises (a non-string degrades
+    to "").
     """
     if not isinstance(text, str):
         return ""
-    cleaned = _ROLE_TAG_RE.sub(_FOREIGN_CUT_MARK, text)
+    cleaned = unicodedata.normalize("NFKC", text)
+    cleaned = _ROLE_TAG_RE.sub(_FOREIGN_CUT_MARK, cleaned)
+    cleaned = _SPECIAL_TOKEN_RE.sub(_FOREIGN_CUT_MARK, cleaned)
     cleaned = _CODE_FENCE_RE.sub("", cleaned)
     cleaned = _IMPERATIVE_EN_RE.sub(_FOREIGN_CUT_MARK, cleaned)
     cleaned = _IMPERATIVE_RU_RE.sub(_FOREIGN_CUT_MARK, cleaned)
+    cleaned = _cut_homoglyph_imperatives(cleaned)
+    cleaned = _FOREIGN_QUOTE_ARROW_RE.sub("_", cleaned)
     cleaned = " ".join(cleaned.split())
     if len(cleaned) > max_chars:
         cleaned = cleaned[: max_chars - 1].rstrip() + _FOREIGN_CUT_MARK
@@ -485,15 +643,30 @@ def _blind_lines(
     excluded_federated: int,
     delta_total: int,
     my_goal: str | None,
+    hint_fallback: bool = False,
 ) -> list[str]:
-    """BLIND SPOTS — the fog (what was NOT checked), from data only."""
+    """BLIND SPOTS — the fog (what was NOT checked), from data only.
+
+    Cascade Q-P2-1 (honest blind spots): when no task checkpoint exists
+    but conflict-hints were fed from the untasked ``_my_goal`` fallback,
+    the brief says exactly that — it must not claim the hints are blind
+    while they are active, nor stay silent about the fallback.
+    """
     lines = ["- кросс-проект не опрашивался: awareness строго в рамках проекта (v0)"]
     if excluded_federated > 0:
         lines.append(f"- отфильтровано federated-записей: {excluded_federated} (no-federate)")
     if delta_total > BRIEF_EVENTS_MAX:
         lines.append(f"- показаны первые {BRIEF_EVENTS_MAX} соседей из {delta_total}")
     if my_goal is None:
-        lines.append("- цель сессии не зафиксирована (нет task-чекпоинта) — conflict-hints слепы")
+        if hint_fallback:
+            lines.append(
+                "- задача не зафиксирована (нет task-чекпоинта): "
+                "цель для conflict-hints взята из нетаскованного чекпоинта"
+            )
+        else:
+            lines.append(
+                "- цель сессии не зафиксирована (нет task-чекпоинта) — conflict-hints слепы"
+            )
     return lines
 
 
@@ -508,6 +681,7 @@ def _render_state_brief(
     task_slug: str | None,
     excluded_federated: int,
     include_goals: bool = True,
+    hint_fallback: bool = False,
 ) -> tuple[str, list[str], dict[str, Any]]:
     """Assemble the state brief text; enforce the ceiling.
 
@@ -553,6 +727,7 @@ def _render_state_brief(
             excluded_federated=excluded_federated,
             delta_total=len(slots),
             my_goal=my_goal,
+            hint_fallback=hint_fallback,
         ),
     ]
     if_contract = _if_contract_line(hints)
@@ -772,9 +947,16 @@ def _compose_state_layer(
     slots: list[dict[str, Any]] = delta.get("agents", [])
     my_goal, task_slug = _my_task_goal(mgr, project=project, agent=agent, session=session)
     hint_goal = my_goal
+    hint_fallback = False
     if hint_goal is None:
         hint_goal = _my_goal(mgr, project=project, agent=agent)
+        hint_fallback = hint_goal is not None
     hints = conflict_hints(hint_goal, delta)
+    # Cascade P2-1: the hint's neighbor id renders in TWO places (the
+    # hint line and the IF-contract) — sanitize once at the source,
+    # same discipline as the event line's agent slot.
+    for hint in hints:
+        hint["neighbor"] = _sanitize_agent_id(str(hint.get("neighbor", "peer")))
 
     text, sections, stats = _render_state_brief(
         project=project,
@@ -785,6 +967,7 @@ def _compose_state_layer(
         my_goal=my_goal,
         task_slug=task_slug,
         excluded_federated=int(delta["counts"].get("excluded_federated", 0)),
+        hint_fallback=hint_fallback,
     )
 
     # Verdict §6.3 — the influence limit: over-cap ⇒ re-render observed
@@ -803,6 +986,7 @@ def _compose_state_layer(
             task_slug=task_slug,
             excluded_federated=int(delta["counts"].get("excluded_federated", 0)),
             include_goals=False,
+            hint_fallback=hint_fallback,
         )
         share = 0.0
 
@@ -819,6 +1003,7 @@ def _compose_state_layer(
             "neighbors": int(stats["neighbors"]),
             "quiet": bool(stats["quiet"]),
             "truncated": bool(stats["truncated"]),
+            "composed_at": now_dt.astimezone(UTC).isoformat(),
             "rate_limited": False,
             "degraded": False,
             "sterile": False,
