@@ -7,6 +7,7 @@ Loopback-bound by default (127.0.0.1) — do not expose externally without auth.
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -27,6 +28,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.cors import CORSMiddleware
 
 from vesma import __version__
+from vesma.ambient import compose_ambient, surface_now
 from vesma.api.auth import router as auth_router
 from vesma.api.auth_store import AuthStore
 from vesma.api.federation import router as federation_router
@@ -1486,6 +1488,107 @@ async def run_hook(action: str, req: HooksRequest) -> dict[str, Any]:
     except ValueError as exc:
         # Per-hook boundary validation (identity, per-action args).
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Situation brief (nhi-9/nhi-14, NOTAM form) ────────────────────────────────
+# ── [ambient-brief slice] everything in THIS block belongs to nhi-9; other ───
+# ── lines own their own sections — do not edit across the marker. ─────────────
+
+
+class AmbientBriefRequest(BaseModel):
+    """Request body for POST /ambient/brief — mirrors ``vesma_ambient_brief``."""
+
+    session: str
+    project: str
+    agent: str
+    layer: Literal["state", "delta"] = "state"
+    budget: int = Field(default=450, ge=0, le=450)
+    # The change token from a previous response: matching the current
+    # store state yields 304 (the server-side dedup contract — the
+    # harness never re-injects an unchanged brief).
+    state_id: str | None = None
+
+
+class AmbientBriefMeta(BaseModel):
+    """Typed meta of the brief composition (fixed shape, optional extras)."""
+
+    layer: str
+    redactions: int
+    foreign_share: float
+    tokens_est: int
+    rate_limited: bool = False
+    degraded: bool = False
+    sterile: bool = False
+    cached: bool = False
+    # state-layer extras
+    red_flags: int | None = None
+    neighbors: int | None = None
+    quiet: bool | None = None
+    truncated: bool | None = None
+    # delta-layer extras
+    heartbeat_state: str | None = None
+    degraded_reason: str | None = None
+
+
+class AmbientBriefResponse(BaseModel):
+    """Typed response of POST /ambient/brief — the harness contract.
+
+    ``tail`` is the delta-layer envelope when a delta exists (None on
+    the state layer — a state pull never consumes the heartbeat
+    cursor); the brief itself is placed LAST by the harness (tail-LAST,
+    ADR-0028) — placement is the client's duty, the server only
+    separates the fields.
+    """
+
+    brief: str
+    state_id: str
+    sections: list[str]
+    meta: AmbientBriefMeta
+    tail: str | None = None
+
+
+@app.post("/ambient/brief", response_model=AmbientBriefResponse)
+async def ambient_brief(
+    req: AmbientBriefRequest,
+    if_none_match: str | None = Header(default=None),
+) -> Response:
+    """Compose the situation brief (nhi-9) — REST twin of ``vesma_ambient_brief``.
+
+    ONE compose function (:func:`vesma.ambient.compose_ambient`) serves
+    both legs — the MCP↔REST parity contract is byte-identity of
+    ``brief`` for the same store state and clock. ``state_id`` (request)
+    or ``If-None-Match`` matching the current store state yields **304
+    Not Modified** with no body (quiet = zero work; the brief is served
+    from the in-process (identity, budget, state_id) LRU otherwise).
+    Boundary violations (identity-less calls) map to 422.
+    """
+    _track_http_call()
+    mgr = get_manager()
+    try:
+        result = compose_ambient(
+            mgr,
+            req.layer,
+            session=req.session,
+            project=req.project,
+            agent=req.agent,
+            budget=req.budget,
+            now=surface_now(),
+        )
+    except ValueError as exc:
+        # Boundary validation (identity, layer, budget, clock contract).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    current = str(result.get("state_id", ""))
+    inm = if_none_match.strip().strip('"') if if_none_match else None
+    if (req.state_id is not None and req.state_id == current) or (inm == current and inm):
+        return Response(status_code=304)
+    payload = AmbientBriefResponse(**result)
+    return JSONResponse(
+        content=json.loads(payload.model_dump_json()),
+        headers={"ETag": f'"{payload.state_id}"'},
+    )
+
+
+# ── [ambient-brief slice] end of block ────────────────────────────────────────
 
 
 # ── Reversible content compression (CCR) ───────────────────────────────────────

@@ -1,0 +1,15 @@
+# GOLDEN: the FORM of the situation brief (nhi-14, NOTAM verdict).
+# Re-record ONLY on a conscious form change (design decision), never
+# to silence a red test: VESMA_AMBIENT_REGEN=1 uv run pytest tests/test_ambient_brief.py::TestGoldenForm -x
+# Lines starting with '# ' are comments; the rest is the exact brief.
+
+## БРИФ ОБСТАНОВКИ · swarm-quiet-proj · 12:00 UTC
+Красных: 0 · соседей: 0
+
+МОЯ ЦЕЛЬ: не зафиксирована (нет task-чекпоинта)
+
+ТИХО · проверено 12:00 UTC
+
+## BLIND SPOTS (не проверено)
+- кросс-проект не опрашивался: awareness строго в рамках проекта (v0)
+- цель сессии не зафиксирована (нет task-чекпоинта) — conflict-hints слепы
