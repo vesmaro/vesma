@@ -113,3 +113,84 @@ def test_manager_marks_semantic_only_rows_with_vector_score(isolated_config: Pat
     assert all(r.vector_score is None for r in lexical), (
         "lexically-corroborated rows carry None (the gate's keep-marker)"
     )
+
+
+# ── cascade fix 2026-10-09 (P2): the three-state gate contract ────────────────
+#
+# min_relevance was overloaded: 0 meant "unset" AND was the documented
+# machine-wide OFF switch, but the CLI resolve silently fell back to the
+# 0.70 built-in floor — an operator's `min_relevance: 0` re-armed the very
+# gate it was meant to turn off. The contract now: min_relevance is a PURE
+# threshold (0 = no explicit floor → built-in default while the gate is
+# on), and machine-wide OFF is the explicit `search.cli_relevance_gate:
+# false` key.
+
+
+def _add_search_section(isolated_config: Path, search_yaml: str) -> None:
+    """Overwrite the fixture config with a `search:` section BEFORE the CLI
+    first instantiates the manager (the fixture only resets the singleton)."""
+    body = isolated_config.read_text(encoding="utf-8")
+    isolated_config.write_text(body + f"search:\n{search_yaml}", encoding="utf-8")
+
+
+def test_config_gate_false_disables_gate(isolated_config: Path) -> None:
+    """cli_relevance_gate: false → machine-wide OFF: a garbage query returns
+    the whole store (the P2 case the 0-overload silently broke)."""
+    _add_search_section(isolated_config, "  cli_relevance_gate: false\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" not in result.output
+    assert "Score" in result.output, "the ungated table must render with the gate off"
+
+
+def test_config_gate_false_ignores_min_relevance(isolated_config: Path) -> None:
+    """The OFF switch wins over a configured threshold — no silent re-arm."""
+    _add_search_section(isolated_config, "  cli_relevance_gate: false\n  min_relevance: 0.99\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" not in result.output
+    assert "Score" in result.output
+
+
+def test_config_gate_false_explicit_threshold_still_applies(isolated_config: Path) -> None:
+    """An explicit --threshold is a per-call override — honored even when the
+    machine-wide gate is off."""
+    _add_search_section(isolated_config, "  cli_relevance_gate: false\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy", "--threshold", "0.99"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" in result.output
+
+
+def test_config_min_relevance_is_a_pure_threshold(isolated_config: Path) -> None:
+    """A >0 min_relevance is applied verbatim: a 0.10 floor (below the nano
+    garbage band ≈0.5) admits semantic-only rows instead of the 0.70 default."""
+    _add_search_section(isolated_config, "  min_relevance: 0.1\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" not in result.output
+    assert "Score" in result.output
+
+
+def test_config_min_relevance_zero_is_unset_not_off(isolated_config: Path) -> None:
+    """min_relevance: 0 with the gate ON keeps the built-in floor — documented
+    contract: 0 means 'no explicit floor', machine-wide OFF is the gate key."""
+    _add_search_section(isolated_config, "  min_relevance: 0.0\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" in result.output, (
+        "0 must stay 'unset' (built-in floor), not a disabled gate"
+    )
+
+
+def test_config_high_min_relevance_gates_garbage(isolated_config: Path) -> None:
+    """A high configured floor gates the garbage band like the default does."""
+    _add_search_section(isolated_config, "  min_relevance: 0.99\n")
+    _seed(isolated_config, "vesma release train: tag, github release, ghcr image")
+    result = runner.invoke(app, ["search", "zzzqqqxyzzy"])
+    assert result.exit_code == 0, result.output
+    assert "No relevant results" in result.output

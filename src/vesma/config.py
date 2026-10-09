@@ -253,13 +253,27 @@ class SearchConfig(BaseModel):
     # (and ``feedback_apply`` stays inert on an empty counter set).
     # Env: ``VESMA_SEARCH__FEEDBACK_CAPTURE_ENABLED``.
     feedback_capture_enabled: bool = True
+    # cli-audit 2026-10-08 (P1 #9) + cascade fix 2026-10-09: machine-wide
+    # ON/OFF switch for the CLI `search` relevance gate. Default true —
+    # the CLI drops results that carry no lexical (FTS) match and whose raw
+    # semantic similarity is below the floor (a garbage query says "no
+    # relevant results" instead of returning the whole store). ``false``
+    # disables the gate unconditionally (pure ranking); an explicit
+    # ``--threshold`` still wins for a single call. MCP/HTTP surfaces are
+    # unaffected (they never gated). Env:
+    # ``VESMA_SEARCH__CLI_RELEVANCE_GATE``.
+    cli_relevance_gate: bool = True
     # cli-audit 2026-10-08 (P1 #9): the minimum RAW vector-leg cosine for a
-    # semantic-only candidate to count as relevant on surfaces that gate by
-    # relevance (the CLI `search` applies it by default; MCP/HTTP keep
-    # returning everything unless the caller filters). 0.0 = unset — the
-    # CLI then falls back to its built-in calibrated default (see
-    # cli.main._DEFAULT_SEARCH_RELEVANCE). The scale is embedder-specific:
-    # the bundled nano model is anisotropic (garbage ≈ 0.5, related ≈ 0.88
+    # semantic-only candidate to count as relevant when the CLI `search`
+    # gate is ON (see ``cli_relevance_gate``; MCP/HTTP keep returning
+    # everything unless the caller filters). This is a PURE THRESHOLD now:
+    # 0.0 (the default) means "no explicit floor configured" — the CLI then
+    # uses its built-in calibrated default (see
+    # cli.main._DEFAULT_SEARCH_RELEVANCE); disabling the gate is the
+    # SEPARATE ``cli_relevance_gate: false`` key, not this knob (a 0 here
+    # used to be overloaded as "unset" and silently re-armed the gate an
+    # operator meant to turn off). The scale is embedder-specific: the
+    # bundled nano model is anisotropic (garbage ≈ 0.5, related ≈ 0.88
     # — measured 2026-10-09), hashing test embedders are orthogonal
     # (garbage ≈ 0.0), so tune per provider via
     # ``VESMA_SEARCH__MIN_RELEVANCE``.

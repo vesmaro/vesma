@@ -469,7 +469,10 @@ def ingest_file(
 #: anisotropic (everything correlates) correlates), a genuinely related text ≈ 0.88.
 #: 0.70 cuts the garbage band with margin while keeping related hits.
 #: Override per call with --threshold, per machine with
-#: ``search.min_relevance`` in the config; --threshold 0 disables the gate.
+#: ``search.min_relevance`` in the config (a pure threshold — 0 keeps this
+#: built-in floor); the gate itself switches off machine-wide via
+#: ``search.cli_relevance_gate: false``. --threshold 0 disables the gate
+#: for the call.
 #: (Other embedders have different scales — hashing fixtures are
 #: orthogonal at 0.0 — hence the knob, not a hardcoded universal.)
 _DEFAULT_SEARCH_RELEVANCE = 0.70
@@ -513,9 +516,11 @@ def search(
             "--threshold",
             help=(
                 "Minimum semantic (vector-leg cosine) relevance for a result with "
-                "no lexical match. Default: search.min_relevance from the config, "
-                "else a calibrated floor for the bundled embedder. 0 disables the "
-                "gate (pure ranking, garbage queries return the whole store)."
+                "no lexical match. Default: search.min_relevance from the config "
+                "when set (>0), else a calibrated floor for the bundled embedder. "
+                "Machine-wide off: search.cli_relevance_gate: false in the config. "
+                "0 disables the gate for this call (pure ranking, garbage queries "
+                "return the whole store)."
             ),
         ),
     ] = None,
@@ -555,14 +560,18 @@ def search(
     # even a garbage query surfaces the whole store at ≈0.008 and "no
     # results" is unreachable. Gate on the raw vector cosine: a row with
     # NO lexical (FTS) match must clear the semantic floor to surface.
+    # Cascade fix 2026-10-09 (P2): min_relevance is a pure threshold —
+    # 0 is indistinguishable from unset, so machine-wide OFF is the
+    # explicit ``search.cli_relevance_gate: false`` key (the old "0
+    # disables the gate" contract silently re-armed the built-in floor).
     effective_threshold = threshold
-    if effective_threshold is None:
+    if effective_threshold is None and mgr.settings.search.cli_relevance_gate:
         effective_threshold = (
             mgr.settings.search.min_relevance
             if mgr.settings.search.min_relevance > 0
             else _DEFAULT_SEARCH_RELEVANCE
         )
-    if effective_threshold > 0 and results:
+    if effective_threshold is not None and effective_threshold > 0 and results:
         relevant = [
             r for r in results if r.vector_score is None or r.vector_score >= effective_threshold
         ]
