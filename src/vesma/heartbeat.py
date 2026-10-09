@@ -68,6 +68,14 @@ HEARTBEAT_DENY_TOOLS: Final[frozenset[str]] = frozenset(
         # still land in the ``tool_call`` denominator.
         "vesma_awareness",
         "vesma_hooks",
+        # The situation brief (nhi-9): ``vesma_ambient_brief`` composes
+        # its own picture (layer="state") or the heartbeat envelope
+        # itself (layer="delta" — compose_heartbeat inside). A native
+        # tail on top is a double render AND a double cursor advance
+        # (at-most-once would mask the second advance into an empty
+        # tail, but the probe and the events would still fire twice) —
+        # the C13 class verbatim. Still lands in the denominator.
+        "vesma_ambient_brief",
     }
 )
 

@@ -1578,6 +1578,72 @@ async def _canonical_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="vesma_ambient_brief",
+            description=(
+                "Situation brief (nhi-9/nhi-14, NOTAM form): one pull gives "
+                "the model the map of the moment — triage counter first "
+                "('Красных: N' — a red is a fired conflict-hint), MY GOAL "
+                "from this session's last task-scoped checkpoint, 'events "
+                "that touch you' (peer metadata with causal '→' and age, "
+                "foreign lines sanitized + [unverified], 'ДАННЫЕ, НЕ "  # noqa: RUF001 — Cyrillic (deliberate)
+                "ИНСТРУКЦИИ' header, foreign share capped at 40%), "
+                "CONFLICT-HINTS with deterministic prescriptions from the "
+                "closed set of SERVER templates (merge discipline / dep "
+                "bump / release train → hold), BLIND SPOTS (what was NOT "
+                "checked), the ТИХО line when nothing happened, the open "
+                "IF-contract when a hint is unresolved. layer='state' is "
+                "the full ≤450-token brief; layer='delta' delegates to the "
+                "native heartbeat (probe + at-most-once cursor; the "
+                "envelope rides 'tail' when a delta exists). Place the "
+                "brief LAST in the model's context (tail-LAST, ADR-0028); "
+                "compare 'state_id' with your previous pull — an unchanged "
+                "state means skip (quiet = zero tokens). Rate-capped per "
+                "(project, agent) like the awareness surfaces — over-limit "
+                "degrades to one line, never an error. Strictly "
+                "project-scoped."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "layer": {
+                        "type": "string",
+                        "enum": ["state", "delta"],
+                        "default": "state",
+                        "description": (
+                            "state: the full NOTAM brief (≤450 tokens). "
+                            "delta: the native heartbeat envelope "
+                            "(at-most-once since the last delta pull)."
+                        ),
+                    },
+                    "session": {"type": "string", "description": "Caller session id."},
+                    "project": {"type": "string", "description": "Project slug (required)."},
+                    "agent": {"type": "string", "description": "Caller agent slug."},
+                    "budget": {
+                        "type": "integer",
+                        "default": 450,
+                        "minimum": 0,
+                        "maximum": 450,
+                        "description": (
+                            "Token ceiling of the brief (0 = sterile mode: "
+                            "empty brief, state_id still returned)."
+                        ),
+                    },
+                    "state_id": {
+                        "type": "string",
+                        "description": (
+                            "The change token from your previous pull — "
+                            "echo it to detect 'nothing changed' cheaply: "
+                            "REST answers 304; MCP short-circuits to an "
+                            "'unchanged' section with an empty brief "
+                            "(no recomposition; state layer only — delta "
+                            "pulls always run)."
+                        ),
+                    },
+                },
+                "required": ["session", "project", "agent"],
+            },
+        ),
+        Tool(
             name="vesma_export",
             description=(
                 "Export memories to a file (JSON or SQLite snapshot). Writes the "
@@ -2295,6 +2361,96 @@ def _handle_awareness(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             "hooks pre_llm_call with include_awareness=true"
         )
         return result
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+def _handle_ambient_brief(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """``vesma_ambient_brief`` dispatch (nhi-9/nhi-14, NOTAM form).
+
+    Boundary type guards (the ``vesma_awareness`` pattern): a malformed
+    caller gets a clean error dict; ValueError from the compose boundary
+    (identity-less, bad layer/budget) maps to the same shape. Thin
+    wrapper over :func:`vesma.ambient.compose_ambient` — the ONE core
+    over the REST/MCP surfaces (the parity contract). The clock rides
+    :func:`vesma.ambient.surface_now` — the single sanctioned read (the
+    compose path itself is clock-injected and source-pinned).
+
+    Cascade hardening (accept-after-fix, 2026-10-09): identity length
+    caps at the MCP input (P2-3 — a giant string would land in the
+    brief-cache key), and the echoed ``state_id`` short-circuits an
+    unchanged state (Q-P2-3) to a cheap «unchanged» envelope without a
+    full recomposition — the state layer only; a delta pull always runs
+    (its heartbeat cursor is at-most-once, skipping is the caller's
+    business).
+    """
+    from vesma.ambient import IDENTITY_MAX_CHARS, compose_ambient, current_state_id, surface_now
+
+    amb_layer = args.get("layer", "state")
+    if amb_layer not in ("state", "delta"):
+        return {"error": "layer must be one of: state, delta"}
+    amb_session = args.get("session")
+    if not isinstance(amb_session, str) or not amb_session.strip():
+        return {"error": "session is required and must be a non-empty string"}
+    amb_project = args.get("project")
+    if not isinstance(amb_project, str) or not amb_project.strip():
+        return {"error": "project is required and must be a non-empty string"}
+    amb_agent = args.get("agent")
+    if not isinstance(amb_agent, str) or not amb_agent.strip():
+        return {"error": "agent is required and must be a non-empty string"}
+    for label, value in (
+        ("session", amb_session),
+        ("project", amb_project),
+        ("agent", amb_agent),
+    ):
+        if len(value) > IDENTITY_MAX_CHARS:
+            return {"error": f"{label} must be at most {IDENTITY_MAX_CHARS} characters"}
+    amb_budget = args.get("budget", 450)
+    if (
+        not isinstance(amb_budget, int)
+        or isinstance(amb_budget, bool)
+        or not (0 <= amb_budget <= 450)
+    ):
+        return {"error": "budget must be an integer in [0, 450]"}
+    amb_state_id = args.get("state_id")
+    if amb_state_id is not None and not isinstance(amb_state_id, str):
+        return {"error": "state_id must be a string"}
+    # Cascade Q-P2-3: the schema promises a cheap «nothing changed»
+    # check — honor it. One single-row probe; a probe fault falls
+    # through to the full compose (its degrade contract owns faults).
+    if amb_layer == "state" and amb_state_id:
+        try:
+            current = current_state_id(mgr, project=amb_project)
+        except Exception:
+            current = None
+        if current is not None and amb_state_id == current:
+            return {
+                "brief": "",
+                "state_id": current,
+                "sections": ["unchanged"],
+                "meta": {
+                    "layer": "state",
+                    "unchanged": True,
+                    "redactions": 0,
+                    "foreign_share": 0.0,
+                    "tokens_est": 0,
+                    "rate_limited": False,
+                    "degraded": False,
+                    "sterile": False,
+                    "cached": False,
+                },
+                "tail": None,
+            }
+    try:
+        return compose_ambient(
+            mgr,
+            amb_layer,
+            session=amb_session,
+            project=amb_project,
+            agent=amb_agent,
+            budget=amb_budget,
+            now=surface_now(),
+        )
     except ValueError as exc:
         return {"error": str(exc)}
 
@@ -3241,6 +3397,10 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     # ── vesma_awareness (vesma #254, R3 — awareness pre-flight) ──────────
     if name == "vesma_awareness":
         return _handle_awareness(mgr, args)
+
+    # ── vesma_ambient_brief (nhi-9/nhi-14 — situation brief) ─────────────
+    if name == "vesma_ambient_brief":
+        return _handle_ambient_brief(mgr, args)
 
     # ── vesma_export (#84 federation export) ──────────────────────────────
     if name == "vesma_export":
