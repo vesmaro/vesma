@@ -93,9 +93,17 @@ def manager() -> Iterator[MemoryManager]:
 
 @pytest.fixture
 def auto_manager() -> Iterator[MemoryManager]:
-    """Manager with the ``hooks.auto_compress`` knob ON (automation deployment)."""
+    """Manager with the ``hooks.auto_compress`` knob ON (automation deployment).
+
+    The compression-automation pair is mandatory since nhi-3 secure
+    defaults: the knob requires ``ccr.validate_markers=true`` in the SAME
+    config (pinned by tests/test_config.py), so the fixture carries the
+    strict gate too.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
-        mgr = MemoryManager(_settings(Path(tmpdir), hooks_auto_compress=True))
+        mgr = MemoryManager(
+            _settings(Path(tmpdir), hooks_auto_compress=True, validate_markers=True)
+        )
         yield mgr
         mgr.close()
 
