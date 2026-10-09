@@ -44,6 +44,10 @@ RETENTION_DAYS: dict[str, int] = {
     "injection_blocks": 90,
     "usage_reports": 90,
     "awareness_events": 90,
+    #: nhi-15 (money baseline, 2026-10-08): the money baseline window is
+    #: longitudinal by definition (the 2026-10-09 tick) — rides the same
+    #: 400-day horizon as the hourly rollup.
+    "turn_usage": 400,
 }
 
 
@@ -203,6 +207,72 @@ AWARENESS_EVENT_KINDS: tuple[str, ...] = (
     "conflict_hint_emitted",
 )
 
+# ── nhi-15 (2026-10-08): the money plane — additive born-final tables ─────────
+#
+# Vesma-wave additions (the ``AWARENESS_EVENTS`` precedent: additive
+# ``CREATE TABLE IF NOT EXISTS`` in the connect script, so EXISTING
+# sidecars gain them on their next open — no migration machinery, the
+# D-0002 rule). Two tables:
+
+#: One row per HARNESS TURN (one user request → one model answer, the
+#: billing unit of record). The harness-side ``turn_usage`` (ZCode
+#: db.sqlite, 6.0.0 era) already proves the shape: input_tokens is the
+#: CUMULATIVE billed input of the turn (history is re-read every
+#: request) — that is what providers bill, so it is what the money
+#: baseline counts. ``cached_read_tokens`` is carried FROM BIRTH (the
+#: nhi-15 v1 requirement: providers report cached input; when a write
+#: path lands, the cached share is already ledgerable — no ALTER TABLE
+#: train). ``model`` is the turn's DOMINANT model by input tokens when
+#: the harness splits a turn across models (nullable — multi-model
+#: attribution stays with the harness's model-level ledger).
+#: ``cached_write_tokens`` is stored for the future cache-write rate
+#: (Z.AI storage is limited-time free) but NOT billed in v1.
+#: PRIVACY: ids and integer counters only — no prompt, no output text
+#: (the C3 posture of the whole sidecar).
+TURN_USAGE = _table(
+    "turn_usage",
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("session", "TEXT"),
+    ("turn_id", "TEXT"),
+    ("ts", "REAL NOT NULL"),  # unix epoch SECONDS (sidecar convention)
+    (
+        "status",
+        "TEXT NOT NULL DEFAULT 'completed'"
+        " CHECK (status IN ('completed','error','cancelled','other'))",
+    ),
+    ("model", "TEXT"),
+    ("input_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("cached_read_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("cached_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+#: Operator-assigned session labels — the ``session_type`` axis of the
+#: money baseline (task / chat / background). Rows are written ONLY by
+#: the explicit ``vesma metrics session-type`` CLI (and tests); nothing
+#: in the server writes here, so the table is NOT in ``RETENTION_DAYS``
+#: (operator curation is not telemetry — TTL must never eat a label
+#: the owner set by hand).
+SESSION_LABELS = _table(
+    "session_labels",
+    ("session", "TEXT PRIMARY KEY"),
+    (
+        "session_type",
+        "TEXT NOT NULL DEFAULT 'unclassified'"
+        " CHECK (session_type IN ('task','chat','background','unclassified'))",
+    ),
+    ("updated_ts", "REAL NOT NULL"),
+    ("updated_by", "TEXT"),  # e.g. 'cli', 'harness:zcode' — provenance slug
+)
+
+#: Legal ``session_type`` values (mirrored from the CHECK — cheap
+#: refusal before the write).
+SESSION_TYPES: tuple[str, ...] = ("task", "chat", "background", "unclassified")
+
+#: Harness-agnostic default for unlabeled sessions.
+SESSION_TYPE_DEFAULT = "unclassified"
+
 TABLE_SCHEMAS: dict[str, TableSchema] = {
     t.name: t
     for t in (
@@ -212,6 +282,8 @@ TABLE_SCHEMAS: dict[str, TableSchema] = {
         INJECTION_BLOCKS,
         USAGE_REPORTS,
         AWARENESS_EVENTS,
+        TURN_USAGE,
+        SESSION_LABELS,
     )
 }
 TABLE_NAMES: tuple[str, ...] = tuple(TABLE_SCHEMAS)
@@ -227,6 +299,8 @@ INDEXES_SQL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_usage_metrics ON usage_reports(metrics_id)",
     "CREATE INDEX IF NOT EXISTS idx_awareness_kind_ts ON awareness_events(kind, ts)",
     "CREATE INDEX IF NOT EXISTS idx_awareness_project_ts ON awareness_events(project, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn_usage(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_turn_session_ts ON turn_usage(session, ts)",
 )
 
 #: C5 — ``meta_json`` allowlist, fail-closed. Unknown key → the write is
@@ -337,9 +411,13 @@ __all__ = [
     "META_ALLOWLIST",
     "RETENTION_DAYS",
     "SCHEMA_SQL",
+    "SESSION_LABELS",
+    "SESSION_TYPES",
+    "SESSION_TYPE_DEFAULT",
     "SIDECAR_FILENAME",
     "TABLE_NAMES",
     "TABLE_SCHEMAS",
+    "TURN_USAGE",
 ]
 
 

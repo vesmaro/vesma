@@ -2363,6 +2363,7 @@ from vesma.cli.agent_token_cmd import agent_token_app  # noqa: E402
 from vesma.cli.export_cmd import export_app  # noqa: E402
 from vesma.cli.import_cmd import import_app  # noqa: E402
 from vesma.cli.logs import logs_app  # noqa: E402
+from vesma.cli.metrics_cmd import _metrics_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
 from vesma.cli.update_cmd import update_app  # noqa: E402
@@ -2371,6 +2372,7 @@ app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
 app.add_typer(import_app, name="import")
 app.add_typer(logs_app, name="logs")
+app.add_typer(_metrics_app, name="metrics")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
 
