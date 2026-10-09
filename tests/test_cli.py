@@ -377,6 +377,84 @@ def test_add_dry_run_valid_tags_previews(isolated_config: Path) -> None:
     assert "Filter preview" in result.output
 
 
+# ── cascade fix 2026-10-09 (P2): the ingest surfaces join the gate ────────────
+#
+# `ingest file` / `ingest url` reached their save paths without the tag
+# contract gate: contract-violating rows were saved silently while the
+# SAME tags on `add` (and on `ingest file --dry-run`) were refused — the
+# add/add-dry-run asymmetry, mirrored on the ingest surfaces.
+
+
+def test_ingest_file_invalid_tags_refused_nothing_saved(isolated_config: Path) -> None:
+    """`ingest file` with contract-violating tags: clean error, nothing saved."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    result = runner.invoke(app, ["ingest", "file", str(src)])
+
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == [], "a refused ingest must save nothing"
+
+
+def test_ingest_file_dry_run_and_save_agree_on_invalid_tags(isolated_config: Path) -> None:
+    """--dry-run and the real save make the SAME decision for bad tags."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    dry = runner.invoke(app, ["ingest", "file", str(src), "--dry-run"])
+    real = runner.invoke(app, ["ingest", "file", str(src)])
+
+    assert dry.exit_code == 1, dry.output
+    assert "Tag contract violation" in dry.output
+    assert real.exit_code == dry.exit_code, "save must refuse exactly like the dry run"
+    assert "Tag contract violation" in real.output
+
+
+def test_ingest_url_invalid_tags_refused_before_fetch(isolated_config: Path) -> None:
+    """`ingest url` with contract-violating tags: refused BEFORE the fetch."""
+    result = runner.invoke(app, ["ingest", "url", "http://example.invalid/never-fetched"])
+
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output, (
+        "the refusal must be the tag gate, not a fetch error"
+    )
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == []
+
+
+def test_ingest_file_valid_tags_still_saves(isolated_config: Path) -> None:
+    """Contract-valid tags: `ingest file` keeps its saving behavior."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["ingest", "file", str(src), "--tags", "project:p,agent:a,vesma:learning"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Saved" in result.output
+
+
+def test_ingest_tag_error_takes_precedence_over_read_error(isolated_config: Path) -> None:
+    """Order pin: the tag gate sits next to tag parsing, BEFORE the file
+    read — invalid tags win over a missing file (same gate as `add`)."""
+    missing = isolated_config.parent / "does-not-exist.txt"
+    result = runner.invoke(app, ["ingest", "file", str(missing)])
+
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    assert "Cannot read" not in result.output
+
+
 # ── mnemos completion ─────────────────────────────────────────────────────────
 
 
@@ -1278,7 +1356,10 @@ class TestIngestSubApp:
 
         note = isolated_config.parent / "w3-note.md"
         note.write_text("w3 ingest file happy path body\n", encoding="utf-8")
-        result = runner.invoke(app, ["ingest", "file", str(note)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(note), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 ingest file happy path body" in result.output
@@ -1312,7 +1393,10 @@ class TestIngestSubApp:
     def test_ingest_file_missing_file_clean_error(self, isolated_config: Path) -> None:
         """A missing path is a clean exit-1 error, not a traceback."""
         missing = isolated_config.parent / "does-not-exist.txt"
-        result = runner.invoke(app, ["ingest", "file", str(missing)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(missing), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 1, result.output
         assert "Cannot read" in result.output
         assert "Traceback" not in result.output
@@ -1329,7 +1413,10 @@ class TestIngestSubApp:
         monkeypatch.setattr("locale.getpreferredencoding", lambda do_setlocale: "utf-8")
         blob = isolated_config.parent / "w3-blob.bin"
         blob.write_bytes(b"\xff\xfe\x00\x01not-utf8")
-        result = runner.invoke(app, ["ingest", "file", str(blob)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(blob), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 1, result.output
         assert "Cannot read" in result.output
         assert "Traceback" not in result.output
@@ -1350,7 +1437,16 @@ class TestIngestSubApp:
             "ingest_url",
             return_value=_fake_ingested_memory("w3 extracted page text"),
         ) as mock_ingest:
-            result = runner.invoke(app, ["ingest", "url", "https://example.com/w3"])
+            result = runner.invoke(
+                app,
+                [
+                    "ingest",
+                    "url",
+                    "https://example.com/w3",
+                    "--tags",
+                    "project:p,agent:a,vesma:learning",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 extracted page text" in result.output
