@@ -115,6 +115,91 @@ def test_absent_bundled_manifest_is_not_resurrected(components_home: Path) -> No
     assert any("metrics.yaml" in line for line in lines)
 
 
+# ── cascade fix 2026-10-09 (P3): pre-regen backup of operator edits ──────────
+#
+# A bytes-diff may be an operator EDIT sitting on top of an old bundle, not
+# just staleness — the overwrite used to discard such edits without a trace.
+# The backup must live OUTSIDE components.d: layout §3.5 fail-closed refuses
+# any non-manifest file in the manifests directory (a .bak there would brick
+# `vesma service run`), so it lands in the config root next to it.
+
+
+def test_modified_manifest_backup_keeps_operator_edits(components_home: Path) -> None:
+    """A modified board.yaml → regen: the .bak keeps the edits, the target
+    becomes the bundle, and a loud WARN names the backup path."""
+    operator_edit = (
+        bundled_manifest_path("board").read_text(encoding="utf-8")
+        + "# operator: pin CPUQuota=50%\n"
+    )
+    board = components_home / "board.yaml"
+    board.write_text(operator_edit, encoding="utf-8")
+
+    lines, regenerated = regen()
+
+    assert regenerated >= 1
+    backup = components_home.parent / "board.yaml.pre-regen.bak"
+    assert backup.is_file(), "the pre-regen backup must exist"
+    assert backup.read_text(encoding="utf-8") == operator_edit, (
+        "the backup must carry the operator's edits byte-identically"
+    )
+    assert board.read_text(encoding="utf-8") == bundled_manifest_path("board").read_text(
+        encoding="utf-8"
+    ), "the target must be the bundle after the regen"
+    assert any("operator edits discarded" in line and str(backup) in line for line in lines)
+    # 0600: the backup carries the operator's local configuration.
+    assert (backup.stat().st_mode & 0o777) == 0o600
+
+
+def test_pre_regen_backup_is_one_time(components_home: Path) -> None:
+    """A second divergence never clobbers the FIRST divergence record."""
+    operator_edit = (
+        bundled_manifest_path("board").read_text(encoding="utf-8")
+        + "# operator: pin CPUQuota=50%\n"
+    )
+    (components_home / "board.yaml").write_text(operator_edit, encoding="utf-8")
+    regen()
+    backup = components_home.parent / "board.yaml.pre-regen.bak"
+    assert backup.read_text(encoding="utf-8") == operator_edit
+
+    # Second divergence: different operator edit on top of the fresh bundle.
+    second_edit = (
+        bundled_manifest_path("board").read_text(encoding="utf-8")
+        + "# operator: pin MemoryMax=1G\n"
+    )
+    (components_home / "board.yaml").write_text(second_edit, encoding="utf-8")
+    lines, regenerated = regen()
+
+    assert regenerated >= 1
+    assert backup.read_text(encoding="utf-8") == operator_edit, (
+        "the one-time backup must keep the FIRST divergence record"
+    )
+    assert any("already exists" in line for line in lines), lines
+    assert any("operator edits discarded" in line for line in lines)
+
+
+def test_backup_failure_aborts_overwrite(components_home: Path) -> None:
+    """If the backup cannot be written, the regen must NOT destroy the
+    installed manifest — the operator edits survive, the failure is loud."""
+    operator_edit = (
+        bundled_manifest_path("board").read_text(encoding="utf-8")
+        + "# operator: pin CPUQuota=50%\n"
+    )
+    board = components_home / "board.yaml"
+    board.write_text(operator_edit, encoding="utf-8")
+
+    with patch(
+        "vesma.service.install._atomic_write",
+        side_effect=OSError("disk full"),
+    ):
+        lines, regenerated = regen()
+
+    assert regenerated == 0, "no overwrite may happen when the backup failed"
+    assert board.read_text(encoding="utf-8") == operator_edit, (
+        "the operator's edits must survive a failed backup"
+    )
+    assert any("NOT overwriting" in line and "disk full" in line for line in lines)
+
+
 # ── CLI: `vesma update apply` runs the reconciliation ─────────────────────────
 
 

@@ -533,7 +533,13 @@ def regenerate_stale_manifests() -> tuple[list[str], int]:
     # 1. Bundled manifests: regenerate the STALE ones from this engine's
     #    bundle (bytes-diff = stale, covering missing requirements
     #    sections, old-era version markers, schema drift — everything the
-    #    validator of the new engine would refuse).
+    #    validator of the new engine would refuse). Cascade fix 2026-10-09
+    #    (P3): a diff may be an OPERATOR EDIT sitting on top of an old
+    #    bundle, so before the overwrite the installed bytes go to a
+    #    one-time 0600 backup — the backup lives in the config root (next
+    #    to components.d, NOT inside it: layout §3.5 fail-closed refuses
+    #    any non-manifest file in the manifests directory, so a .bak there
+    #    would brick `vesma service run`).
     for name in BUNDLED_COMPONENTS:
         target = components_dir / f"{name}.yaml"
         if not target.exists():
@@ -546,8 +552,29 @@ def regenerate_stale_manifests() -> tuple[list[str], int]:
             continue
         if installed_text == bundle_text:
             continue
+        backup = components_dir.parent / f"{target.name}.pre-regen.bak"
+        if backup.exists():
+            # One-time: never clobber the FIRST divergence record.
+            report.append(
+                f"note: backup {backup} already exists — the current "
+                f"{target.name} is overwritten without a new backup"
+            )
+        else:
+            try:
+                _atomic_write(backup, installed_text, 0o600)
+            except OSError as exc:
+                report.append(
+                    f"WARN: {target.name} DIFFERS from the bundle and the backup "
+                    f"failed ({exc}) — NOT overwriting: keep or move the operator "
+                    f"edits, then re-run `vesma update apply`"
+                )
+                continue
         _atomic_write(target, bundle_text, 0o644)
         report.append(f"regenerated: {target} (bundled manifest was stale for engine {version})")
+        report.append(
+            f"WARN: installed manifest differed from the previous bundle — "
+            f"operator edits discarded (backup: {backup})"
+        )
 
     # 2. Operator-authored manifests: validate structure only, never write.
     for path in sorted([*components_dir.glob("*.yaml"), *components_dir.glob("*.yml")]):
