@@ -2658,6 +2658,12 @@ class MemoryManager:
             if len(vector_resolved) >= limit * 2:
                 break
 
+        # Raw vector-leg cosines by id — result provenance for the CLI
+        # relevance gate (cli-audit 2026-10-08 P1 #9): the fused RRF score
+        # is rank-based and cannot separate a garbage query from a real
+        # one, the raw cosine can.
+        vector_raw: dict[str, float] = dict(vector_resolved)
+
         # ── RRF merge ──────────────────────────────────────────────────────
         rrf_k = 60
         scores: dict[str, float] = {}
@@ -2714,7 +2720,21 @@ class MemoryManager:
                 continue
             if tags and not all(t in matched.tags for t in tags):
                 continue
-            results.append(SearchResult(memory=matched, score=score, search_type=search_type))
+            # cli-audit 2026-10-08 (P1 #9): the RAW vector-leg cosine rides
+            # the result as provenance — the fused RRF score is rank-based
+            # (top of ANY leg ≈ alpha/(rrf_k+1) ≈ 0.008) and cannot
+            # separate a garbage query from a real one; the raw cosine can.
+            # Populated ONLY for SEMANTIC-ONLY rows (no FTS match): a row
+            # with lexical evidence is relevant regardless of its cosine,
+            # and its None here is the CLI gate's keep-marker.
+            results.append(
+                SearchResult(
+                    memory=matched,
+                    score=score,
+                    search_type=search_type,
+                    vector_score=None if mid in fts_ids else vector_raw.get(mid),
+                )
+            )
             if len(results) >= fused_fill:
                 break
         fused_surplus: list[tuple[str, float]] = []
@@ -3402,6 +3422,39 @@ class MemoryManager:
             for m in memories
             if not is_quarantined(m)
         ]
+
+    def recall_recent(self, *, project: str = "", limit: int = 10) -> list[Memory]:
+        """Return the most recent memories REGARDLESS of tag (CLI bare recall).
+
+        cli-audit 2026-10-08 (P1 #5): bare ``vesma recall`` used to delegate
+        to :meth:`recall_context`, which is checkpoint-scoped by contract —
+        the help promised "the most recent memories" but only
+        ``vesma:checkpoint`` rows ever surfaced. This is the unscoped
+        recency listing the help describes: every tag, every type, the
+        same status policy as the recency leg of ``recall_context``
+        (everything except ``archived``, ADR-0019 §5 quarantine exclusion
+        included — the same two predicates, not a copy).
+
+        The checkpoint-scoped :meth:`recall_context` is UNCHANGED — the
+        MCP tool ``vesma_recall_context`` and ``POST /context/recall``
+        keep their exact semantics; only the CLI bare form switched.
+        """
+        from vesma.models import _PROJECT_RE, normalize_project_slug
+
+        project = normalize_project_slug(project)
+        if project and not _PROJECT_RE.match(f"project:{project}"):
+            raise ValueError(
+                f"project must be 1-64 characters of [a-z0-9_-] after normalization "
+                f"(got {project!r})"
+            )
+        memories = self.sqlite.list_all(limit=limit * 3, project=project)
+        # Same retirement policy as the recall_context recency leg: archived
+        # checkpoints are retired, quarantined entries never resurface.
+        memories = [
+            m for m in memories if m.status != MemoryStatus.ARCHIVED and not is_quarantined(m)
+        ]
+        memories.sort(key=lambda m: m.created_at, reverse=True)
+        return memories[:limit]
 
     def recall_context(
         self, *, project: str, query: str | None = None, task: str | None = None, limit: int = 5

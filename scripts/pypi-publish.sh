@@ -403,6 +403,18 @@ pipeline_for_dist() {
       echo "→ reuse $DIST_DIR/${PKG_FS}-${PYV}* (existing artifacts match version)"; record "Build wheel+sdist [$PKG_NAME]" "SKIP"
     else
       rm -rf "$DIST_DIR"
+      # Vendor the gRPC stubs into the artifacts (issue #514 tail; cli-audit
+      # 2026-10-08 finding #2): the wheel force-includes federation/gen/python
+      # and the sdist carries it — regenerate FIRST so even a fresh checkout
+      # ships the stubs (6.0.0 shipped without them and serve/fetch crashed
+      # on mesh-enabled configs). gencode-guarded and idempotent; a failure
+      # aborts the build loudly — a stubless wheel is exactly the defect
+      # this step exists to prevent.
+      echo "→ gen-proto (vendor the gRPC stubs into the artifacts)"
+      if ! PYTHON="$(command -v python)" bash "$SCRIPT_DIR/gen-proto.sh"; then
+        echo "ERROR [$PKG_NAME]: gen-proto failed — refusing to build stubless artifacts" >&2
+        record "Build wheel+sdist [$PKG_NAME]" "FAIL"; print_summary
+      fi
       python -c "import build" 2>/dev/null || pip install -q build
       set +e; python -m build --outdir "$DIST_DIR"; rc=$?; set -e
       if [[ $rc -ne 0 ]]; then record "Build wheel+sdist [$PKG_NAME]" "FAIL"; print_summary; fi

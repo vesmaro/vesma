@@ -52,12 +52,12 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         "vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", tmp_path / ".copilot" / "agents"
     )
-    cfg = tmp_path / ".mnemos" / "config.yaml"
+    cfg = tmp_path / ".vesma" / "config.yaml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
         f"vesma:\n"
-        f"  vault_path: {tmp_path / '.mnemos' / 'vault'}\n"
-        f"  data_dir: {tmp_path / '.mnemos' / 'data'}\n"
+        f"  vault_path: {tmp_path / '.vesma' / 'vault'}\n"
+        f"  data_dir: {tmp_path / '.vesma' / 'data'}\n"
         f"embedding:\n"
         f"  provider: nano\n",
         encoding="utf-8",

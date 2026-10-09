@@ -9,7 +9,7 @@ Acceptance criteria (authoritative, from the issue):
      not downloaded).
 
 The zero-config profile is the built-in default set: loopback-only bind
-(127.0.0.1:8787), storage auto-created under ``~/.mnemos/``, FTS5 recall
+(127.0.0.1:8787), storage auto-created under ``~/.vesma/``, FTS5 recall
 always on (the vector leg degrades non-fatally when embeddings are
 unavailable).
 """
@@ -108,9 +108,9 @@ class TestZeroConfigDefaults:
         settings = load_settings()
         assert settings.api.host == "127.0.0.1"
         assert settings.api.auth_enabled is False
-        assert settings.vesma.vault_path == clean_home / ".mnemos" / "vault"
-        assert settings.vesma.data_dir == clean_home / ".mnemos" / "data"
-        assert settings.db_path == clean_home / ".mnemos" / "data" / "mnemos.db"
+        assert settings.vesma.vault_path == clean_home / ".vesma" / "vault"
+        assert settings.vesma.data_dir == clean_home / ".vesma" / "data"
+        assert settings.db_path == clean_home / ".vesma" / "data" / "vesma.db"
 
     def test_find_config_file_explicit_path(self, clean_home, tmp_path):
         cfg_file = tmp_path / "my.yaml"
@@ -154,14 +154,14 @@ class TestFirstRun:
         same warm-up ``serve`` performs at startup — so the DB file appears
         on the first store access, not at construction.
         """
-        assert not (clean_home / ".mnemos").exists()
+        assert not (clean_home / ".vesma").exists()
         mgr = MemoryManager(load_settings())
         try:
-            assert (clean_home / ".mnemos" / "vault").is_dir()
-            assert (clean_home / ".mnemos" / "data").is_dir()
-            assert not (clean_home / ".mnemos" / "data" / "mnemos.db").exists()
+            assert (clean_home / ".vesma" / "vault").is_dir()
+            assert (clean_home / ".vesma" / "data").is_dir()
+            assert not (clean_home / ".vesma" / "data" / "vesma.db").exists()
             mgr.stats()  # first store access — the serve warm-up equivalent
-            assert (clean_home / ".mnemos" / "data" / "mnemos.db").exists()
+            assert (clean_home / ".vesma" / "data" / "vesma.db").exists()
         finally:
             mgr.close()
 

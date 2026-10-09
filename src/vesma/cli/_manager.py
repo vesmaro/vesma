@@ -11,10 +11,36 @@ backward compatibility.
 
 from __future__ import annotations
 
-from vesma.config import load_settings
+import sys
+from pathlib import Path
+
+import typer
+
+from vesma.config import (
+    LegacyConfigError,
+    LegacyStoreForkRefused,
+    Settings,
+    load_settings,
+)
 from vesma.manager import MemoryManager
 
 _manager: MemoryManager | None = None
+
+
+def load_settings_or_exit(config: str | Path | None = None) -> Settings:
+    """CLI settings loader: the legacy-era guards render as ONE stderr line.
+
+    The typed :class:`LegacyStoreForkRefused` (fork refusal, ADR-0044 gate 5)
+    and :class:`LegacyConfigError` (legacy config detected) exceptions stay
+    typed for doctor/API/tests, but the interactive CLI must answer with a
+    single actionable line — never a rich traceback panel (this typer version
+    pretty-prints any non-Exit exception, ClickException included).
+    """
+    try:
+        return load_settings(config)
+    except (LegacyConfigError, LegacyStoreForkRefused) as exc:
+        print(f"vesma: {exc} [{exc.code}]", file=sys.stderr)
+        raise typer.Exit(1) from exc
 
 
 def get_manager(config: str | None = None) -> MemoryManager:
@@ -27,7 +53,7 @@ def get_manager(config: str | None = None) -> MemoryManager:
     """
     global _manager
     if _manager is None:
-        settings = load_settings(config)
+        settings = load_settings_or_exit(config)
         _manager = MemoryManager(settings)
     return _manager
 

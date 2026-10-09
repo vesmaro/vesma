@@ -15,9 +15,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from vesma.cli._manager import get_manager
+from vesma.cli._manager import get_manager, load_settings_or_exit
 from vesma.cli.migrate_store_cmd import migrate_store
-from vesma.config import find_config_file, load_settings
+from vesma.config import find_config_file
+from vesma.fs_hardening import ensure_private_dir
 from vesma.logging_setup import setup_logging
 from vesma.models import (
     AgentRecallQuery,
@@ -192,19 +193,45 @@ def _print_saved(memory: Memory) -> None:
     console.print(f"[green]✓[/green] Saved: {memory.auto_title()} ({memory.id})")
 
 
+def _validate_cli_tags(tag_list: list[str], *, strict: bool) -> list[str]:
+    """Single CLI tag-contract gate — the mirror of the MCP surface.
+
+    cli-audit 2026-10-08 (P1 #7): ``add`` used to save contract-violating
+    rows silently while the MCP tool refuses them. Every CLI save surface
+    validates here — ``add`` and, since the cascade fix 2026-10-09 (P2),
+    ``ingest file`` / ``ingest url`` too (they used to save silently while
+    their own ``--dry-run`` refused): strict mode refuses with a clean
+    typed error (same contract the MCP ``vesma_add`` enforces), lax mode
+    applies the same auto-patching the MCP surface gets and returns the
+    patched list.
+    """
+    from vesma.models import TagContractError, validate_tag_contract
+
+    try:
+        return validate_tag_contract(tag_list, strict=strict)
+    except TagContractError as exc:
+        console.print(f"[red]✗ Tag contract violation:[/red] {exc}")
+        console.print(
+            "[dim]Pass --tags with at least one project:<slug>, one agent:<slug> and "
+            "one vesma:<subtype> tag — e.g. "
+            "--tags 'project:myproj,agent:user,vesma:note'.[/dim]"
+        )
+        raise typer.Exit(1) from None
+
+
 def _dry_run_filter_preview(text: str, tag_list: list[str], config: str | None) -> None:
     """Validate the tag contract and print context-filter stats without saving.
 
     Shared by ``add --dry-run`` (content / stdin / file text) and
     ``ingest file --dry-run`` (W3).
     """
-    # Validate tag contract (raises TagContractError in strict mode).
-    from vesma.config import load_settings as _load_settings
     from vesma.filter.pipeline import apply_filter
-    from vesma.models import validate_tag_contract
 
-    settings = _load_settings(config)
-    validate_tag_contract(tag_list, strict=settings.vesma.strict_tag_contract)
+    settings = load_settings_or_exit(config)
+    # cli-audit 2026-10-08 (P1 #7): a violation here used to escape as an
+    # unhandled TagContractError traceback; now it is the same clean typed
+    # error the save path prints.
+    tag_list = _validate_cli_tags(tag_list, strict=settings.vesma.strict_tag_contract)
 
     result = apply_filter(text)
     stats = result["stats"]
@@ -299,6 +326,14 @@ def add(
     if file:
         _deprecated_flag_hint("vesma add --file PATH", "vesma ingest file PATH")
 
+    # cli-audit 2026-10-08 (P1 #7): enforce the tag contract BEFORE anything
+    # saves or previews — the CLI must not silently save a row the MCP
+    # surface refuses (strict default), and in lax mode it patches exactly
+    # like the MCP surface.
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
+
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
         if url:
@@ -380,6 +415,15 @@ def ingest_url(
     at least one `--tags` entry, typically including a `project:` slug.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Input boundary + cascade fix 2026-10-09 (P2): normalize legacy
+    # mnemos:* spellings, then the SAME tag-contract gate as `add` —
+    # ingest used to save contract-violating rows silently while its own
+    # --dry-run refused them. Validated BEFORE the fetch (no network work
+    # for a call that cannot be saved).
+    tag_list = normalize_tag_aliases(tag_list)
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
     mgr = get_manager(config)
     memory = _save_url_ingest(mgr, url, tag_list)
     _print_saved(memory)
@@ -410,12 +454,24 @@ def ingest_file(
     A missing or binary file is a clean error, not a traceback.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Input boundary + cascade fix 2026-10-09 (P2): normalize legacy
+    # mnemos:* spellings, then the SAME tag-contract gate as `add` —
+    # ingest used to save contract-violating rows silently while its own
+    # --dry-run refused them (the add/add-dry-run asymmetry, mirrored).
+    tag_list = normalize_tag_aliases(tag_list)
+    tag_list = _validate_cli_tags(
+        tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
+    )
     try:
         text = path.read_text()
     except (OSError, UnicodeDecodeError) as exc:
         # UnicodeDecodeError is a ValueError, not an OSError: without it a
         # binary file would traceback on the canonical surface.
-        detail = exc.strerror if isinstance(exc, OSError) else str(exc)
+        detail = (
+            exc.strerror
+            if isinstance(exc, OSError)
+            else "binary file — not ingested (content is not valid UTF-8 text)"
+        )
         console.print(f"[red]Cannot read {path}: {detail}[/red]")
         raise typer.Exit(1) from exc
     if dry_run:
@@ -427,6 +483,20 @@ def ingest_file(
 
 
 # ── search ─────────────────────────────────────────────────────────────────────
+
+#: Built-in relevance floor for the CLI `search` (cli-audit 2026-10-08 P1
+#: #9), calibrated against the BUNDLED nano embedder (measured 2026-10-09):
+#: a garbage query's raw cosine lands ≈ 0.47-0.63 (the model is
+#: anisotropic — everything correlates), a genuinely related text ≈ 0.88.
+#: 0.70 cuts the garbage band with margin while keeping related hits.
+#: Override per call with --threshold, per machine with
+#: ``search.min_relevance`` in the config (a pure threshold — 0 keeps this
+#: built-in floor); the gate itself switches off machine-wide via
+#: ``search.cli_relevance_gate: false``. --threshold 0 disables the gate
+#: for the call.
+#: (Other embedders have different scales — hashing fixtures are
+#: orthogonal at 0.0 — hence the knob, not a hardcoded universal.)
+_DEFAULT_SEARCH_RELEVANCE = 0.70
 
 
 @app.command()
@@ -461,6 +531,20 @@ def search(
             "Takes precedence over --include-raw."
         ),
     ),
+    threshold: Annotated[
+        float | None,
+        typer.Option(
+            "--threshold",
+            help=(
+                "Minimum semantic (vector-leg cosine) relevance for a result with "
+                "no lexical match. Default: search.min_relevance from the config "
+                "when set (>0), else a calibrated floor for the bundled embedder. "
+                "Machine-wide off: search.cli_relevance_gate: false in the config. "
+                "0 disables the gate for this call (pure ranking, garbage queries "
+                "return the whole store)."
+            ),
+        ),
+    ] = None,
     config: str = ConfigOption,
 ) -> None:
     """Search long-term memory (hybrid FTS + vector).
@@ -469,6 +553,11 @@ def search(
     MCP/HTTP surfaces (published-only by default), the interactive CLI must
     complete the first add → search roundtrip from a clean install with no
     running server and no pipeline pass yet (ADR-0017 Phase 0).
+
+    A relevance gate drops results that carry no lexical (FTS) match and
+    whose raw semantic similarity is below the threshold — a garbage query
+    says "no relevant results" instead of returning the whole store with
+    near-zero scores.
     """
     from vesma.models import MemoryStatus
 
@@ -487,6 +576,45 @@ def search(
         include_raw=include_raw,
         status=status_enum,
     )
+
+    # cli-audit 2026-10-08 (P1 #9): the fused RRF score is rank-based —
+    # even a garbage query surfaces the whole store at ≈0.008 and "no
+    # results" is unreachable. Gate on the raw vector cosine: a row with
+    # NO lexical (FTS) match must clear the semantic floor to surface.
+    # Cascade fix 2026-10-09 (P2): min_relevance is a pure threshold —
+    # 0 is indistinguishable from unset, so machine-wide OFF is the
+    # explicit ``search.cli_relevance_gate: false`` key (the old "0
+    # disables the gate" contract silently re-armed the built-in floor).
+    effective_threshold = threshold
+    if effective_threshold is None and mgr.settings.search.cli_relevance_gate:
+        effective_threshold = (
+            mgr.settings.search.min_relevance
+            if mgr.settings.search.min_relevance > 0
+            else _DEFAULT_SEARCH_RELEVANCE
+        )
+    if effective_threshold is not None and effective_threshold > 0 and results:
+        relevant = [
+            r for r in results if r.vector_score is None or r.vector_score >= effective_threshold
+        ]
+        dropped = len(results) - len(relevant)
+        if not relevant and results:
+            best = max(r.vector_score for r in results if r.vector_score is not None)
+            console.print(
+                f"[yellow]No relevant results[/yellow] — best semantic score "
+                f"{best:.3f} is below the relevance threshold "
+                f"{effective_threshold:.2f} "
+                "(lower it with --threshold, or pass 0 to disable the gate)."
+            )
+            return
+        results = relevant
+        # Cascade fix 2026-10-09 (P3): a PARTIAL drop used to render as a
+        # mysteriously short table — say what the gate hid and how to see it.
+        if dropped > 0:
+            console.print(
+                f"[dim]{dropped} low-relevance result(s) hidden — raise the floor "
+                "or pass --threshold 0 to see everything.[/dim]"
+            )
+
     if not results:
         console.print("[yellow]No results found.[/yellow]")
         return
@@ -585,7 +713,13 @@ def recall(
         results = mgr.agent_recall(AgentRecallQuery(agent=agent, project=project, limit=limit))
         _print_recall_memories([r.memory for r in results])
         return
-    _print_recall_memories(mgr.recall_context(project=project or "", limit=limit))
+    # cli-audit 2026-10-08 (P1 #5): bare recall used to delegate to
+    # recall_context — checkpoint-scoped by contract — so only
+    # vesma:checkpoint rows ever surfaced while the help promised "the
+    # most recent memories". recall_recent is the unscoped listing the
+    # help describes; recall_context (checkpoints) keeps its MCP/REST
+    # semantics untouched.
+    _print_recall_memories(mgr.recall_recent(project=project or "", limit=limit))
 
 
 @_recall_app.command(name="agent")
@@ -617,7 +751,7 @@ def recall_agent(
 
 # ── tags (M2) ─────────────────────────────────────────────────────────────────
 # Subcommand tree:
-#   vesma tags validate <vault>   — validate tag contract across a vault
+#   vesma tags validate   — validate the tag contract across the live store
 
 _tags_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -636,22 +770,91 @@ app.add_typer(_tags_app, name="tags")
 
 @_tags_app.command(name="validate")
 def tags_validate(
-    vault: Annotated[Path, typer.Argument(help="Path to Vesma vault directory")],
+    vault: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Deprecated positional — accepted for backward compatibility; "
+            "the scan always covers the live store from --config."
+        ),
+    ] = None,
     config: str = ConfigOption,
 ) -> None:
-    """Validate tag contract across an existing vault. Reports non-conformant entries.
+    """Validate the tag contract across the live store. Exit 1 on violations.
 
-    Scans the vault for tags that break the contract — wrong `project:`/
-    `agent:` spelling, uppercase slugs, spaces instead of hyphens — and
-    reports each offending entry with its reason. Pair with `vesma tags
-    normalize` for the bulk fix of the case/spacing class.
+    Every entry needs at least one `project:*`, one `agent:*` and one
+    subtype tag (`vesma:*`; legacy `mnemos:*` counts) — the same contract
+    the doctor's tag-contract check and `vesma tags audit` enforce. Each
+    non-conformant entry is reported with its id, current tags and the
+    missing prefixes. Exits 1 when violations exist (CI-friendly), 0 on a
+    clean store. Pair with `vesma tags audit --apply` for the bulk heal.
     """
 
-    console.print(f"[bold]Validating tag contract in:[/bold] {vault}")
-    # TODO (M2): scan SQLite + vault markdown files
+    if vault is not None:
+        console.print(
+            "[dim]note: the positional vault path is not used — validation runs "
+            "against the live store from --config (same scan as `vesma tags audit`)."
+            "[/dim]"
+        )
+
+    mgr = get_manager(config)
+
+    rows: list[tuple[Any, ...]] = []
+    db_path = mgr.sqlite.db_path
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT id, content, title, tags, project FROM memories ORDER BY created_at DESC"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                rows = []  # fresh/empty store — nothing to validate
+            else:
+                console.print(f"[red]✗ Tag validation failed:[/red] {exc}")
+                raise typer.Exit(1) from exc
+        except sqlite3.Error as exc:
+            console.print(f"[red]✗ Tag validation failed:[/red] {exc}")
+            raise typer.Exit(1) from exc
+        finally:
+            conn.close()
+
+    findings: list[dict[str, Any]] = []
+    for mem_id, content, title, raw_tags, project_col in rows:
+        _, missing, unparseable = _audit_heal_tags(str(raw_tags or ""), str(project_col or ""))
+        if not missing:
+            continue
+        if unparseable:
+            tags_display = "(unparseable)"
+        else:
+            try:
+                tags_display = ", ".join(json.loads(raw_tags)) if raw_tags else ""
+            except (json.JSONDecodeError, TypeError):
+                tags_display = "(unparseable)"
+        snippet = f"{title or content or ''}".strip().replace("\n", " ")
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "…"
+        findings.append(
+            {"id": str(mem_id), "snippet": snippet, "tags": tags_display, "missing": missing}
+        )
+
     console.print(
-        "[yellow]Full vault scan not yet implemented (M2 storage layer pending).[/yellow]"
+        f"[bold]Validating tag contract:[/bold] {len(rows):,} entries scanned, "
+        f"{len(findings):,} non-conformant"
     )
+    if not findings:
+        console.print("[green]✓ All entries conform to the tag contract.[/green]")
+        return
+
+    table = Table(title="Tag contract violations")
+    table.add_column("ID", style="cyan")
+    table.add_column("Entry", style="white", max_width=60)
+    table.add_column("Tags", style="dim")
+    table.add_column("Missing", style="red")
+    for f in findings:
+        table.add_row(f["id"][:8] + "…", f["snippet"], f["tags"], ", ".join(f["missing"]))
+    console.print(table)
+    console.print("[yellow]Heal with: vesma tags audit --apply[/yellow]")
+    raise typer.Exit(1)
 
 
 @_tags_app.command(name="normalize")
@@ -786,7 +989,7 @@ def tags_rename(
         bool,
         typer.Option(
             "--dry-run",
-            help="Preview changes without writing to the database (default: True).",
+            help="Preview changes without writing to the database.",
         ),
     ] = True,
     no_dry_run: Annotated[
@@ -1337,8 +1540,14 @@ def processor_stop(config: str = ConfigOption) -> None:
     """
     mgr = get_manager(config)
     try:
+        # P3 (cli-audit 2026-10-08): stopping an already-stopped loop used
+        # to claim "✓ stopped" — distinguish the no-op.
+        was_running = mgr.processor_running
         mgr.stop_background_processor()
-        console.print("[green]✓ Background processor stopped[/green]")
+        if was_running:
+            console.print("[green]✓ Background processor stopped[/green]")
+        else:
+            console.print("[cyan]· Background processor not running (no-op)[/cyan]")
     finally:
         mgr.close()
 
@@ -1597,7 +1806,7 @@ def serve(
 
     import uvicorn
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     if log_file is not None:
         settings.logging.log_file = log_file
         settings.resolve_paths()
@@ -1641,7 +1850,23 @@ def serve(
     if settings.mesh.enabled:
         from vesma.service.backend import start_mesh_legs
 
-        mesh_server = start_mesh_legs(settings, config)
+        # cli-audit 2026-10-08 (P1 #2): a failed mesh leg (missing gRPC
+        # stubs in the install, socket busy, …) used to kill serve BEFORE
+        # the HTTP API ever bound — the whole product was down because one
+        # optional leg was. `serve` DEGRADES now: a loud warning and a
+        # working HTTP API. `service run` keeps its fail-fast contract
+        # (a supervised unit must fail loudly, not come up half-alive).
+        try:
+            mesh_server = start_mesh_legs(settings, config)
+        except Exception as exc:
+            console.print(
+                "[yellow]warning[/yellow] mesh leg failed to start — serving "
+                f"HTTP-only (degraded): {exc}"
+            )
+            console.print(
+                "[dim]mesh stays disabled for this process; fix the cause and "
+                "restart to re-enable.[/dim]"
+            )
 
     # S2 phase 2: the meta poller starts in the FastAPI lifespan, which
     # is PER WORKER — with uvicorn workers > 1 every worker polls. The
@@ -1707,16 +1932,16 @@ def fetch_cmd(
     """
     import sys
 
-    from vesma.lazy_fetch import (
-        FetchResolutionError,
-        run_fetch,
-    )
-
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     fed = settings.federation
+    # cli-audit 2026-10-08 (P1 #3): the mesh modules import lazily, BELOW
+    # the argument guards — a wheel without the gRPC stubs used to die
+    # with ImportError even on bare `vesma fetch` (where a clean usage
+    # error belongs).
     if not record_ids:
         console.print("[red]✗[/red] no --id given — name at least one federation record id")
+        console.print("[dim]usage: vesma fetch --id fed:<agent>:<uuid> [--id …] [--yes][/dim]")
         raise typer.Exit(1)
     if not fed.fetch.mesh_config_path.strip():
         console.print(
@@ -1727,8 +1952,19 @@ def fetch_cmd(
 
     mgr = get_manager(config)
 
+    # cli-audit 2026-10-08 (P1 #2/#3): a wheel whose build machine never
+    # generated the gRPC stubs reaches here — the operator gets the fix
+    # ladder, not a raw traceback. (The import and the run are separate
+    # try blocks: except clauses evaluate in order, so one shared block
+    # would hit an UnboundLocalError on the exception type's own name.)
     try:
-        stats = run_fetch(
+        from vesma import lazy_fetch as _lazy_fetch
+    except ImportError as exc:
+        console.print(f"[red]✗[/red] mesh federation is unavailable in this install: {exc}")
+        raise typer.Exit(1) from exc
+
+    try:
+        stats = _lazy_fetch.run_fetch(
             mgr.sqlite,
             mgr,
             settings,
@@ -1738,7 +1974,7 @@ def fetch_cmd(
             stdout=sys.stdout,
             is_tty=sys.stdin.isatty,
         )
-    except FetchResolutionError as exc:
+    except _lazy_fetch.FetchResolutionError as exc:
         console.print(f"[red]✗[/red] {exc}")
         raise typer.Exit(1) from exc
 
@@ -1805,7 +2041,7 @@ def meta_poll(
 
     from vesma.meta_poller import MetaPoller, PeerPollResult
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     fed = settings.federation
     if not fed.meta_poll.mesh_config_path.strip():
@@ -1880,7 +2116,7 @@ def mcp_server_cmd(config: str = ConfigOption) -> None:
 
     from vesma.mcp_server import main as mcp_main
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
     # Issue #445 — one INFO line when a newer release exists (cache-first,
     # 3s cap, never raises; runs before the stdio loop starts).
@@ -1940,7 +2176,7 @@ def migrate(
     """
     from vesma.cli.migrate import migrate_from_ai_brain
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     db_path = source / "ai_brain.db"
     vault_path = vault if vault.exists() else None
 
@@ -1967,8 +2203,7 @@ def migrate_tags(
 ) -> None:
     """Migrate legacy gcw: tags to the canonical vesma:* namespace.
 
-    .. deprecated::
-        Use ``vesma tags rename --from gcw: --to vesma: --no-dry-run``
+    DEPRECATED: use ``vesma tags rename --from gcw: --to vesma: --no-dry-run``
         instead. This command now delegates to the safe ``tags_rename``
         path (plain UPDATE via ``update_fields``) so the FTS5 index stays
         consistent. The old raw-``sqlite3`` implementation in
@@ -2044,7 +2279,7 @@ _totp_app = typer.Typer(
         "Manage TOTP 2FA enrollment.\n\n"
         "Enroll a token with `enroll` (prints the provisioning URI for the "
         "authenticator app), smoke-test it with `test`, retire it with "
-        "`disable`. Requires VESMARO_API__TOTP_MASTER_KEY to encrypt the "
+        "`disable`. Requires VESMA_API__TOTP_MASTER_KEY to encrypt the "
         "secret at rest."
     ),
     no_args_is_help=True,
@@ -2058,9 +2293,9 @@ _auth_app.add_typer(_totp_app, name="totp")
 def _auth_store(config: str | None = None) -> AuthStore:
     from vesma.api.auth_store import AuthStore  # lazy: avoids circular deps
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     settings.resolve_paths()
-    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(settings.vesma.data_dir)
     return AuthStore(settings.db_path)
 
 
@@ -2181,7 +2416,7 @@ def totp_enroll(
     """Generate a TOTP secret and print the provisioning URI + optional QR code.
 
     Enrolls the token for time-based 2FA: a fresh secret is generated,
-    encrypted with VESMARO_API__TOTP_MASTER_KEY, and stored; the provisioning
+    encrypted with VESMA_API__TOTP_MASTER_KEY, and stored; the provisioning
     URI goes to your authenticator app. Re-enrolling replaces the previous
     secret. Afterwards verify with `totp test` before relying on it.
     """
@@ -2189,7 +2424,7 @@ def totp_enroll(
 
     from vesma.api.auth import encrypt_totp_secret
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
         console.print(
@@ -2266,7 +2501,7 @@ def totp_test(
 
     from vesma.api.auth import decrypt_totp_secret
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     master_key = settings.api.totp_master_key.get_secret_value()
     if not master_key:
         console.print("[red]VESMA_API__TOTP_MASTER_KEY is not set.[/red]")
@@ -2361,7 +2596,7 @@ app.add_typer(doctor_app, name="doctor")
 
 from vesma.cli.agent_token_cmd import agent_token_app  # noqa: E402
 from vesma.cli.export_cmd import export_app  # noqa: E402
-from vesma.cli.import_cmd import import_app  # noqa: E402
+from vesma.cli.import_cmd import import_cmd  # noqa: E402
 from vesma.cli.logs import logs_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
@@ -2369,7 +2604,10 @@ from vesma.cli.update_cmd import update_app  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
 app.add_typer(export_app, name="export")
-app.add_typer(import_app, name="import")
+# A PLAIN command, not a sub-app: a group parses options only BEFORE the
+# first positional (click MultiCommand), so `import f.json --mode merge`
+# died with "Missing argument 'source'" (cli-audit 2026-10-08 #4).
+app.command(name="import")(import_cmd)
 app.add_typer(logs_app, name="logs")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")

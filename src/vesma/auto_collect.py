@@ -6,7 +6,7 @@ Weighted signals for auto-checkpoint triggers:
   3. summary_marker   — regex on recent messages for <conversation-summary>/<compacted>
   4. reference_drop   — agent stops citing earlier identifiers in last N calls
 
-Configuration: ~/.mnemos/auto_collect.yaml
+Configuration: ~/.vesma/auto_collect.yaml
 """
 
 from __future__ import annotations

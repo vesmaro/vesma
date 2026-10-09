@@ -213,7 +213,7 @@ def mode_set(
     if path is None:
         console.print(
             "[red]✗[/red] no config file found (zero-config) — create "
-            "`~/.mnemos/config.yaml` (or point --config at one) first; "
+            "`~/.vesma/config.yaml` (or point --config at one) first; "
             "refusing to invent a config behind the operator's back"
         )
         raise typer.Exit(1)

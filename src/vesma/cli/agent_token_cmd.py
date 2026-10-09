@@ -36,7 +36,9 @@ from vesma.agent_tokens import (
     rotate_agent_token,
     signing_key_path,
 )
-from vesma.config import Settings, load_settings
+from vesma.cli._manager import load_settings_or_exit
+from vesma.config import Settings
+from vesma.fs_hardening import ensure_private_dir
 
 console = Console()
 
@@ -58,9 +60,9 @@ ConfigOption = Annotated[str | None, typer.Option("--config", "-c", help="Path t
 
 def _resolve_settings(config: str | None) -> Settings:
     """Load settings, resolve paths, ensure the data dir exists."""
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     settings.resolve_paths()
-    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(settings.vesma.data_dir)
     return settings
 
 

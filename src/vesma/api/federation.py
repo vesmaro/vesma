@@ -44,7 +44,7 @@ def get_access_log(request: Request) -> FederationAccessLog:
     2. ``settings.federation.access_log_path`` — operator-configured
        path (e.g. ``/data/federation-access.jsonl`` for persistent
        volumes in containerised deployments).
-    3. :data:`DEFAULT_LOG_PATH` — ``~/.mnemos/logs/federation-access.jsonl``.
+    3. :data:`DEFAULT_LOG_PATH` — ``~/.vesma/logs/federation-access.jsonl``.
     """
     log = getattr(request.app.state, "federation_access_log", None)
     if log is not None:

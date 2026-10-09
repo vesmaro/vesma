@@ -5,7 +5,7 @@ ArchCom 2026-07-17 federation contract §3.2 — the audit log records
 redacted, PII anonymized, errors, warnings. **No raw content, no
 secrets, no PII values** ever enter the audit log.
 
-The log is append-only JSONL at ``~/.mnemos/logs/sync-audit.jsonl`` —
+The log is append-only JSONL at ``~/.vesma/logs/sync-audit.jsonl`` —
 one JSON object per line. An operator can ``tail -f`` it for live
 monitoring, ``jq`` it for aggregates, or ship it to a SIEM.
 
@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from vesma.fs_hardening import ensure_private_dir, harden_file
+
 __all__ = [
     "SCANNER_AUDIT_FILENAME",
     "SYNC_AUDIT_FILENAME",
@@ -37,19 +39,19 @@ __all__ = [
 ]
 
 #: Relative path of the audit log under the user's home directory.
-SYNC_AUDIT_FILENAME: str = ".mnemos/logs/sync-audit.jsonl"
+SYNC_AUDIT_FILENAME: str = ".vesma/logs/sync-audit.jsonl"
 
 #: Relative path of the background scanner audit log under the user's home
 #: directory. One JSON object per scan pass — counters only (records scanned
 #: / tagged / skipped, pattern-name counts, duration, incremental flag). No
 #: raw content, no secrets, no PII values ever enter this log.
-SCANNER_AUDIT_FILENAME: str = ".mnemos/logs/scanner-audit.jsonl"
+SCANNER_AUDIT_FILENAME: str = ".vesma/logs/scanner-audit.jsonl"
 
 
 def sync_audit_path() -> Path:
     """Return the absolute path of the sync audit log.
 
-    Resolved against the user's home directory (``~/.mnemos/logs/
+    Resolved against the user's home directory (``~/.vesma/logs/
     sync-audit.jsonl``). The directory is created on first write by
     :func:`log_sync_audit`.
     """
@@ -59,7 +61,7 @@ def sync_audit_path() -> Path:
 def scanner_audit_path() -> Path:
     """Return the absolute path of the background scanner audit log.
 
-    Resolved against the user's home directory (``~/.mnemos/logs/
+    Resolved against the user's home directory (``~/.vesma/logs/
     scanner-audit.jsonl``). The directory is created on first write by
     :func:`log_scanner_audit`.
     """
@@ -67,7 +69,7 @@ def scanner_audit_path() -> Path:
 
 
 def log_sync_audit(entry: dict[str, Any]) -> None:
-    """Append a sync audit entry to ``~/.mnemos/logs/sync-audit.jsonl``.
+    """Append a sync audit entry to ``~/.vesma/logs/sync-audit.jsonl``.
 
     Adds an ISO 8601 UTC ``timestamp`` field if the caller did not
     supply one. The entry is serialised with ``json.dumps(...,
@@ -98,8 +100,10 @@ def log_scanner_audit(entry: dict[str, Any]) -> None:
 
 def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
     """Append one JSON object as a line to ``path`` (creating parents)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Cascade fix 2026-10-09: 0700 dirs + 0600 audit file (leak surface).
+    ensure_private_dir(path.parent)
     record = dict(entry)
     record.setdefault("timestamp", datetime.now(UTC).isoformat().replace("+00:00", "Z"))
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
+    harden_file(path)

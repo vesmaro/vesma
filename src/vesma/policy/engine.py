@@ -1,6 +1,6 @@
 """Policy engine — M5: declarative YAML rule evaluation.
 
-Rules are loaded from ~/.mnemos/policies.yaml (or injected via config).
+Rules are loaded from ~/.vesma/policies.yaml (or injected via config).
 Each rule has conditions (status, age, quality thresholds) and actions
 (auto-publish, archive, alert, trigger-cluster).
 

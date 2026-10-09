@@ -16,15 +16,33 @@ Usage::
 from __future__ import annotations
 
 import logging
+from io import TextIOWrapper
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from vesma.fs_hardening import ensure_private_dir, harden_file
 
 if TYPE_CHECKING:
     from vesma.config import Settings
 
 # Valid log levels — anything outside this set falls back to INFO.
 _VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+
+class _PrivateRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that keeps the log file at 0600.
+
+    Cascade fix 2026-10-09: the log records memory titles/tags, so the
+    file must not inherit the writer's umask. ``_open`` runs on every
+    open — creation here and the fresh file after each rollover — so a
+    best-effort narrow-if-wider after the super call covers both.
+    """
+
+    def _open(self) -> TextIOWrapper:
+        stream = super()._open()
+        harden_file(Path(self.baseFilename))
+        return stream
 
 
 def _resolve_level(level_str: str) -> int:
@@ -65,9 +83,10 @@ def setup_logging(settings: Settings, *, verbose: bool = False) -> None:
     if cfg.log_file and str(cfg.log_file).strip():
         log_path: Path = cfg.log_file
         try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
+            # Cascade fix 2026-10-09: 0700 on every created level.
+            ensure_private_dir(log_path.parent)
             max_bytes = cfg.max_file_size_mb * 1024 * 1024
-            file_handler = RotatingFileHandler(
+            file_handler = _PrivateRotatingFileHandler(
                 filename=str(log_path),
                 maxBytes=max_bytes,
                 backupCount=cfg.backup_count,

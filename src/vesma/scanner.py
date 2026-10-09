@@ -283,7 +283,7 @@ class BackgroundScanner:
               (so the next incremental scan excludes records modified
               during this pass — they were already scanned).
             * One entry is appended to the scanner audit log
-              (``~/.mnemos/logs/scanner-audit.jsonl``).
+              (``~/.vesma/logs/scanner-audit.jsonl``).
         """
         t0 = time.monotonic()
 

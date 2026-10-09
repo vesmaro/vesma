@@ -41,7 +41,7 @@ from vesma.cli.main import app
 
 runner = CliRunner()
 
-CANONICAL_BASH = "[ -f ~/.mnemos/completion/vesma.bash ] && source ~/.mnemos/completion/vesma.bash"
+CANONICAL_BASH = "[ -f ~/.vesma/completion/vesma.bash ] && source ~/.vesma/completion/vesma.bash"
 
 
 @pytest.fixture
@@ -141,7 +141,9 @@ class TestCompleteEngine:
         direct = get_completions(["tags", "va"], 1)
         assert (
             "validate",
-            "Validate tag contract across an existing vault. Reports non-conformant entries.",
+            # Description follows the 6.x docstring (audit fix wave 1: the
+            # stub became a real store scan that exits 1 on violations).
+            "Validate the tag contract across the live store. Exit 1 on violations.",
         ) in direct
         # The engine never raises even on nonsense input.
         assert get_completions([], 7) == []

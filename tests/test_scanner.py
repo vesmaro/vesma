@@ -628,10 +628,10 @@ class TestAuditModule:
         assert entries[0]["records_scanned"] == 1
 
     def test_scanner_audit_path_under_home(self) -> None:
-        """``scanner_audit_path`` resolves under ``~/.mnemos/logs/``."""
+        """``scanner_audit_path`` resolves under ``~/.vesma/logs/``."""
         # NOTE: this test reads the real (un-patched) path; the autouse
         # fixture patches the *function object*, but we import the
         # original here via a fresh reference to assert the contract.
         from vesma.audit import SCANNER_AUDIT_FILENAME
 
-        assert SCANNER_AUDIT_FILENAME == ".mnemos/logs/scanner-audit.jsonl"
+        assert SCANNER_AUDIT_FILENAME == ".vesma/logs/scanner-audit.jsonl"

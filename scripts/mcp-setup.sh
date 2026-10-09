@@ -4,12 +4,12 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/mcp-setup.sh | bash
 #   curl -fsSL .../mcp-setup.sh | bash -s -- --scope workspace
-#   curl -fsSL .../mcp-setup.sh | bash -s -- --scope user --data-dir ~/.mnemos --vault ~/vesma-vault
+#   curl -fsSL .../mcp-setup.sh | bash -s -- --scope user --data-dir ~/.vesma --vault ~/vesma-vault
 #
 # Flags:
 #   --scope SCOPE       VS Code config scope: user | workspace (default: user)
-#   --data-dir PATH     VESMA_DATA_DIR (default: ~/.mnemos/data)
-#   --vault PATH        VESMA_VAULT__VAULT_PATH (default: ~/.mnemos/vault)
+#   --data-dir PATH     VESMA_DATA_DIR (default: ~/.vesma/data)
+#   --vault PATH        VESMA_VAULT__VAULT_PATH (default: ~/.vesma/vault)
 #   --command CMD       Command to launch vesma (default: auto-detect: venv → system → vesma)
 #   --auto-collect      Set VESMA_AUTO_COLLECT=1 (nag agent to save context)
 #   --force             Overwrite an existing 'vesma' entry even if already present
@@ -18,8 +18,8 @@
 set -euo pipefail
 
 SCOPE="user"
-DATA_DIR="${HOME}/.mnemos/data"
-VAULT_PATH="${HOME}/.mnemos/vault"
+DATA_DIR="${HOME}/.vesma/data"
+VAULT_PATH="${HOME}/.vesma/vault"
 VESMA_CMD=""
 AUTO_COLLECT=false
 FORCE=false
@@ -52,7 +52,7 @@ done
 [[ "$SCOPE" != "user" && "$SCOPE" != "workspace" ]] && die "--scope must be 'user' or 'workspace'"
 
 if [[ -z "$VESMA_CMD" ]]; then
-  candidate="${HOME}/.mnemos/venv/bin/vesma"
+  candidate="${HOME}/.vesma/venv/bin/vesma"
   if [[ -x "$candidate" ]]; then
     VESMA_CMD="$candidate"; info "Found vesma at: ${VESMA_CMD}"
   elif command -v vesma &>/dev/null; then

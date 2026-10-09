@@ -360,17 +360,27 @@ class TestTagsNormalizeCliStripsSpaces:
 
         runner = CliRunner()
 
-        # Add a memory with a tag that has trailing space.
-        add_result = runner.invoke(
-            app,
-            [
-                "add",
-                "content for normalize test",
-                "--tags",
-                "project: My Project ,agent:cli,mnemos:test",
-            ],
+        # Seed a memory with a tag that has trailing space DIRECTLY into
+        # the store: `tags normalize` heals EXISTING sloppy rows (written
+        # before the contract existed). cli-audit fix wave 1 (P1 #7) made
+        # the CLI `add` enforce the contract, so it now REFUSES this exact
+        # input — the seeder must bypass the CLI write gate.
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+        seed_mgr = get_manager()
+        seed_mgr.sqlite.save(
+            Memory(
+                content="content for normalize test",
+                title="content for normalize test",
+                tags=["project: My Project ", "agent:cli", "mnemos:test"],
+                source=MemorySource.CLI,
+                memory_type=MemoryType.NOTE,
+                status=MemoryStatus.RAW,
+                project="My Project ",
+                agent="cli",
+            )
         )
-        assert add_result.exit_code == 0, add_result.output
 
         # Run tags normalize.
         norm_result = runner.invoke(app, ["tags", "normalize"])
@@ -379,8 +389,6 @@ class TestTagsNormalizeCliStripsSpaces:
 
         # Verify the stored tag was normalized correctly (no leading/trailing
         # hyphens). Read directly from the manager's SQLite store.
-        from vesma.cli._manager import get_manager
-
         mgr = get_manager()
         memories = mgr.sqlite.list_all(limit=100, offset=0)
         normalize_mems = [m for m in memories if "normalize test" in m.content]

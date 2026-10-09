@@ -2245,8 +2245,8 @@ class IntegrationManager:
     def _mcp_entry(self, vesma_bin: str | None, existing: dict[str, Any] | None) -> dict[str, Any]:
         """Build the stdio server entry, preserving user tuning where present.
 
-        Env defaults mirror ``mcp-setup.sh``: ``<home>/.mnemos/{data,vault}``
-        (the consolidated store home; renamed together with the store move).
+        Env defaults mirror ``mcp-setup.sh``: ``<home>/.vesma/{data,vault}``
+        (the canonical store home; renamed together with the store move).
         A pre-existing entry keeps its env verbatim, so cross-layout installs
         never clobber tuned paths.
         """
@@ -2263,13 +2263,13 @@ class IntegrationManager:
 
     def _resolve_server_bin(self, vesma_bin: str | None) -> str:
         """Explicit bin > ``which`` > the installer's well-known venv path."""
-        return vesma_bin or shutil.which("vesma") or str(self.home / ".mnemos/venv/bin/vesma")
+        return vesma_bin or shutil.which("vesma") or str(self.home / ".vesma/venv/bin/vesma")
 
     def _mcp_env_defaults(self) -> dict[str, str]:
         """Env defaults shared by every MCP entry shape (mirror mcp-setup.sh)."""
         return {
-            "VESMA_DATA_DIR": str(self.home / ".mnemos/data"),
-            "VESMA_VAULT__VAULT_PATH": str(self.home / ".mnemos/vault"),
+            "VESMA_DATA_DIR": str(self.home / ".vesma/data"),
+            "VESMA_VAULT__VAULT_PATH": str(self.home / ".vesma/vault"),
         }
 
     def _mcp_entry_opencode(

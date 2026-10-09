@@ -26,6 +26,7 @@ from sys import getsizeof
 from typing import Any, Final, Literal, cast
 
 from vesma.compact import FederationIndexEntry, title_matches_blocklist
+from vesma.fs_hardening import ensure_private_dir, harden_file
 from vesma.models import (
     NO_FEDERATE_TAG,
     Memory,
@@ -1182,7 +1183,9 @@ class SQLiteStore:
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Cascade fix 2026-10-09: 0700 on every created level (the plain
+        # mkdir(parents=True) left the home tree under the process umask).
+        ensure_private_dir(self.db_path.parent)
         self._local = threading.local()
         self._cache = _TTLCache()
         # Serialises CONNECTION BOOTSTRAP (schema script + migrations)
@@ -1211,6 +1214,12 @@ class SQLiteStore:
                     conn.execute("PRAGMA busy_timeout=5000")
                     conn.executescript(_DB_SCHEMA)
                     self._run_migrations(conn)
+                    # Cascade fix 2026-10-09: sqlite creates the db + the
+                    # WAL/SHM sidecars under the process umask — narrow to
+                    # 0600 right after bootstrap (no-op when compliant).
+                    harden_file(self.db_path)
+                    harden_file(self.db_path.with_name(self.db_path.name + "-wal"))
+                    harden_file(self.db_path.with_name(self.db_path.name + "-shm"))
                     self._local.conn = conn
         return conn
 

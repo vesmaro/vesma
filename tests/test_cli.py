@@ -119,7 +119,11 @@ def test_add_creates_memory(isolated_config: Path) -> None:
             "add",
             "hello world",  # positional content
             "--tags",
-            "project:cli-smoke,agent:cli,mnemos:test",
+            # cli-audit 2026-10-08 (P1 #7): CLI add enforces the tag contract
+            # now — fixtures carry a VALID subtype (the old `mnemos:test`
+            # fixture tag was contract-invalid and only ever landed because
+            # the CLI never checked).
+            "project:cli-smoke,agent:cli,mnemos:learning",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -324,23 +328,131 @@ class TestVesmaTagInputAlias:
 def test_add_with_invalid_tags_does_not_crash(
     isolated_config: Path,
 ) -> None:
-    """`mnemos add` with no tags still completes (no Python traceback).
+    """`mnemos add` with no tags is REFUSED with a clean typed error (no traceback).
 
-    The CLI may accept the call (no enforced contract on `add`) and
-    emit a memory that downstream pipelines may then flag — that
-    is by design (the contract is enforced in the manager.add()
-    path or by the watcher filter, not at the CLI surface). What
-    matters here is: the CLI does not raise an unhandled exception.
+    cli-audit 2026-10-08 (P1 #7): the CLI used to save contract-violating
+    rows silently while the MCP `vesma_add` refuses them. The CLI `add`
+    now enforces the same contract (strict default): a clean red error
+    naming the violations, exit 1, nothing saved.
     """
     result = runner.invoke(
         app,
         [
             "add",
             "x",  # content
-            # No --tags (deliberate: test graceful path)
+            # No --tags (deliberate: the contract must refuse this)
         ],
     )
     assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    assert "project:" in result.output  # the fix hint names the required tags
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == [], "a refused add must save nothing"
+
+
+def test_add_dry_run_invalid_tags_clean_error(
+    isolated_config: Path,
+) -> None:
+    """`add --dry-run` on contract-violating tags: clean red error, no traceback.
+
+    cli-audit 2026-10-08 (P1 #7b): the dry run used to escape as an
+    unhandled TagContractError traceback (exit 1 WITH traceback).
+    """
+    result = runner.invoke(app, ["add", "preview me", "--dry-run"])
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+
+
+def test_add_dry_run_valid_tags_previews(isolated_config: Path) -> None:
+    """`add --dry-run` with contract-valid tags still prints the filter preview."""
+    result = runner.invoke(
+        app,
+        ["add", "preview me", "--dry-run", "--tags", "project:p,agent:a,vesma:learning"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Filter preview" in result.output
+
+
+# ── cascade fix 2026-10-09 (P2): the ingest surfaces join the gate ────────────
+#
+# `ingest file` / `ingest url` reached their save paths without the tag
+# contract gate: contract-violating rows were saved silently while the
+# SAME tags on `add` (and on `ingest file --dry-run`) were refused — the
+# add/add-dry-run asymmetry, mirrored on the ingest surfaces.
+
+
+def test_ingest_file_invalid_tags_refused_nothing_saved(isolated_config: Path) -> None:
+    """`ingest file` with contract-violating tags: clean error, nothing saved."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    result = runner.invoke(app, ["ingest", "file", str(src)])
+
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == [], "a refused ingest must save nothing"
+
+
+def test_ingest_file_dry_run_and_save_agree_on_invalid_tags(isolated_config: Path) -> None:
+    """--dry-run and the real save make the SAME decision for bad tags."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    dry = runner.invoke(app, ["ingest", "file", str(src), "--dry-run"])
+    real = runner.invoke(app, ["ingest", "file", str(src)])
+
+    assert dry.exit_code == 1, dry.output
+    assert "Tag contract violation" in dry.output
+    assert real.exit_code == dry.exit_code, "save must refuse exactly like the dry run"
+    assert "Tag contract violation" in real.output
+
+
+def test_ingest_url_invalid_tags_refused_before_fetch(isolated_config: Path) -> None:
+    """`ingest url` with contract-violating tags: refused BEFORE the fetch."""
+    result = runner.invoke(app, ["ingest", "url", "http://example.invalid/never-fetched"])
+
+    assert "Traceback" not in result.output
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output, (
+        "the refusal must be the tag gate, not a fetch error"
+    )
+    from vesma.cli._manager import get_manager
+
+    mgr = get_manager(str(isolated_config))
+    assert mgr.sqlite.list_all(limit=100) == []
+
+
+def test_ingest_file_valid_tags_still_saves(isolated_config: Path) -> None:
+    """Contract-valid tags: `ingest file` keeps its saving behavior."""
+    src = isolated_config.parent / "probe.txt"
+    src.write_text("ingest contract probe", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["ingest", "file", str(src), "--tags", "project:p,agent:a,vesma:learning"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Saved" in result.output
+
+
+def test_ingest_tag_error_takes_precedence_over_read_error(isolated_config: Path) -> None:
+    """Order pin: the tag gate sits next to tag parsing, BEFORE the file
+    read — invalid tags win over a missing file (same gate as `add`)."""
+    missing = isolated_config.parent / "does-not-exist.txt"
+    result = runner.invoke(app, ["ingest", "file", str(missing)])
+
+    assert result.exit_code == 1
+    assert "Tag contract violation" in result.output
+    assert "Cannot read" not in result.output
 
 
 # ── mnemos completion ─────────────────────────────────────────────────────────
@@ -373,8 +485,8 @@ class TestCompletionCommand:
         monkeypatch.setenv("HOME", str(fake_home))
         result = runner.invoke(app, ["completion", "bash"])
         assert result.exit_code == 0
-        # Completion script file stored under ~/.mnemos/completion/
-        script_file = fake_home / ".mnemos" / "completion" / "vesma.bash"
+        # Completion script file stored under ~/.vesma/completion/
+        script_file = fake_home / ".vesma" / "completion" / "vesma.bash"
         assert script_file.exists()
         assert "_vesma()" in script_file.read_text(encoding="utf-8")
         # rc file gets the exact canonical guarded source line.
@@ -382,8 +494,8 @@ class TestCompletionCommand:
         assert rc.exists()
         content = rc.read_text(encoding="utf-8")
         assert (
-            "[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash" in content
+            "[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash" in content
         )
         assert "eval " not in content
 
@@ -399,7 +511,7 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         content = rc.read_text(encoding="utf-8")
         # The source line marker should appear exactly once.
-        assert content.count("source ~/.mnemos/completion/vesma.bash") == 1
+        assert content.count("source ~/.vesma/completion/vesma.bash") == 1
 
     def test_completion_auto_detect_from_shell_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -411,11 +523,11 @@ class TestCompletionCommand:
         monkeypatch.setenv("SHELL", "/usr/bin/zsh")
         result = runner.invoke(app, ["completion"])
         assert result.exit_code == 0
-        script_file = fake_home / ".mnemos" / "completion" / "vesma.zsh"
+        script_file = fake_home / ".vesma" / "completion" / "vesma.zsh"
         assert script_file.exists()
         rc = fake_home / ".zshrc"
         assert rc.exists()
-        assert "source ~/.mnemos/completion/vesma.zsh" in rc.read_text(encoding="utf-8")
+        assert "source ~/.vesma/completion/vesma.zsh" in rc.read_text(encoding="utf-8")
 
     def test_completion_is_installed_false_for_commented_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -429,8 +541,8 @@ class TestCompletionCommand:
         rc = fake_home / ".bashrc"
         rc.write_text(
             "# Added by `mnemos completion` (bash)\n"
-            "#[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash\n",
+            "#[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert not _is_installed("bash", rc)
@@ -446,7 +558,7 @@ class TestCompletionCommand:
         monkeypatch.setenv("HOME", str(fake_home))
         rc = fake_home / ".bashrc"
         rc.write_text(
-            "[ -f ~/.mnemos/completion/vesma.bash ] && source ~/.mnemos/completion/vesma.bash\n",
+            "[ -f ~/.vesma/completion/vesma.bash ] && source ~/.vesma/completion/vesma.bash\n",
             encoding="utf-8",
         )
         assert _is_installed("bash", rc)
@@ -473,8 +585,8 @@ class TestCompletionCommand:
         assert "eval " not in content
         # New canonical source line must be present.
         assert (
-            "[ -f ~/.mnemos/completion/vesma.bash ] "
-            "&& source ~/.mnemos/completion/vesma.bash" in content
+            "[ -f ~/.vesma/completion/vesma.bash ] "
+            "&& source ~/.vesma/completion/vesma.bash" in content
         )
         # User content preserved.
         assert "# some user content" in content
@@ -1021,7 +1133,9 @@ class TestProcessorSubapp:
     def test_stop_is_a_noop_when_not_running(self, isolated_config: Path) -> None:
         result = runner.invoke(app, ["processor", "stop"])
         assert result.exit_code == 0, result.output
-        assert "stopped" in result.output
+        # P3 (cli-audit 2026-10-08): the no-op is named as such, not
+        # claimed as a stop.
+        assert "not running (no-op)" in result.output
 
     def test_help_lists_all_four_verbs(self, isolated_config: Path) -> None:
         result = runner.invoke(app, ["processor", "--help"])
@@ -1081,6 +1195,59 @@ class TestRecallGroup:
         """Bare `vesma recall` still runs the context recall (exit 0, no hint)."""
         result = runner.invoke(app, ["recall", "--limit", "5"])
         assert result.exit_code == 0, result.output
+
+    def test_bare_recall_returns_mixed_tags(self, isolated_config: Path) -> None:
+        """Bare `vesma recall` surfaces entries of DIFFERENT tags (audit P1 #5).
+
+        It used to delegate to the checkpoint-scoped recall_context, so
+        only `vesma:checkpoint` rows ever surfaced while the help promised
+        "the most recent memories". Now every tag appears.
+        """
+        _seed_agent_memory(isolated_config, "bare recall decision row", "cli")
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+        mgr = get_manager(str(isolated_config))
+        mgr.sqlite.save(
+            Memory(
+                content="bare recall checkpoint row",
+                title="bare recall checkpoint row",
+                tags=["project:cli-smoke", "agent:cli", "vesma:checkpoint"],
+                source=MemorySource.CLI,
+                memory_type=MemoryType.NOTE,
+                status=MemoryStatus.RAW,
+                project="cli-smoke",
+                agent="cli",
+            )
+        )
+        result = runner.invoke(app, ["recall", "--limit", "10"])
+        assert result.exit_code == 0, result.output
+        assert "bare recall decision row" in result.output, "non-checkpoint rows must surface"
+        assert "bare recall checkpoint row" in result.output, "checkpoint rows must surface"
+
+    def test_bare_recall_respects_project_filter(self, isolated_config: Path) -> None:
+        """`vesma recall --project X` keeps the project scope on the unscoped listing."""
+        _seed_agent_memory(isolated_config, "recall scoped row", "cli")
+        from vesma.cli._manager import get_manager
+        from vesma.models import Memory, MemorySource, MemoryStatus, MemoryType
+
+        mgr = get_manager(str(isolated_config))
+        mgr.sqlite.save(
+            Memory(
+                content="recall other-project row",
+                title="recall other-project row",
+                tags=["project:other", "agent:cli", "vesma:learning"],
+                source=MemorySource.CLI,
+                memory_type=MemoryType.NOTE,
+                status=MemoryStatus.RAW,
+                project="other",
+                agent="cli",
+            )
+        )
+        result = runner.invoke(app, ["recall", "--project", "cli-smoke", "--limit", "10"])
+        assert result.exit_code == 0, result.output
+        assert "recall scoped row" in result.output
+        assert "recall other-project row" not in result.output
         assert "deprecated" not in result.output
 
     def test_help_advertises_agent_subcommand_and_hides_flag(self, isolated_config: Path) -> None:
@@ -1189,7 +1356,10 @@ class TestIngestSubApp:
 
         note = isolated_config.parent / "w3-note.md"
         note.write_text("w3 ingest file happy path body\n", encoding="utf-8")
-        result = runner.invoke(app, ["ingest", "file", str(note)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(note), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 ingest file happy path body" in result.output
@@ -1223,7 +1393,10 @@ class TestIngestSubApp:
     def test_ingest_file_missing_file_clean_error(self, isolated_config: Path) -> None:
         """A missing path is a clean exit-1 error, not a traceback."""
         missing = isolated_config.parent / "does-not-exist.txt"
-        result = runner.invoke(app, ["ingest", "file", str(missing)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(missing), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 1, result.output
         assert "Cannot read" in result.output
         assert "Traceback" not in result.output
@@ -1240,7 +1413,10 @@ class TestIngestSubApp:
         monkeypatch.setattr("locale.getpreferredencoding", lambda do_setlocale: "utf-8")
         blob = isolated_config.parent / "w3-blob.bin"
         blob.write_bytes(b"\xff\xfe\x00\x01not-utf8")
-        result = runner.invoke(app, ["ingest", "file", str(blob)])
+        result = runner.invoke(
+            app,
+            ["ingest", "file", str(blob), "--tags", "project:p,agent:a,vesma:learning"],
+        )
         assert result.exit_code == 1, result.output
         assert "Cannot read" in result.output
         assert "Traceback" not in result.output
@@ -1261,7 +1437,16 @@ class TestIngestSubApp:
             "ingest_url",
             return_value=_fake_ingested_memory("w3 extracted page text"),
         ) as mock_ingest:
-            result = runner.invoke(app, ["ingest", "url", "https://example.com/w3"])
+            result = runner.invoke(
+                app,
+                [
+                    "ingest",
+                    "url",
+                    "https://example.com/w3",
+                    "--tags",
+                    "project:p,agent:a,vesma:learning",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 extracted page text" in result.output
@@ -1288,7 +1473,16 @@ class TestAddIngestAliases:
 
     def test_content_form_stays_canonical_and_hint_free(self, isolated_config: Path) -> None:
         """`vesma add <content>` keeps working with no deprecation noise."""
-        result = runner.invoke(app, ["add", "w3 quick capture note"])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "w3 quick capture note",
+                # cli-audit 2026-10-08 (P1 #7): CLI add enforces the contract.
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "deprecated" not in result.output
@@ -1305,7 +1499,16 @@ class TestAddIngestAliases:
             "ingest_url",
             return_value=_fake_ingested_memory("w3 alias page body"),
         ) as mock_ingest:
-            result = runner.invoke(app, ["add", "--url", "https://example.com/alias"])
+            result = runner.invoke(
+                app,
+                [
+                    "add",
+                    "--url",
+                    "https://example.com/alias",
+                    "--tags",
+                    "project:cli-smoke,agent:cli,mnemos:learning",
+                ],
+            )
         assert result.exit_code == 0, result.output
         mock_ingest.assert_called_once()
         assert "Saved" in result.output
@@ -1317,7 +1520,16 @@ class TestAddIngestAliases:
         """`add --file` keeps identical behavior + prints the stderr hint."""
         note = isolated_config.parent / "w3-alias-note.md"
         note.write_text("w3 file alias body\n", encoding="utf-8")
-        result = runner.invoke(app, ["add", "--file", str(note)])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--file",
+                str(note),
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Saved" in result.output
         assert "w3 file alias body" in result.output
@@ -1327,7 +1539,17 @@ class TestAddIngestAliases:
 
     def test_url_alias_dry_run_refused_as_before(self, isolated_config: Path) -> None:
         """`add --url --dry-run` keeps its historical refusal (exit 1)."""
-        result = runner.invoke(app, ["add", "--url", "https://example.com/x", "--dry-run"])
+        result = runner.invoke(
+            app,
+            [
+                "add",
+                "--url",
+                "https://example.com/x",
+                "--dry-run",
+                "--tags",
+                "project:cli-smoke,agent:cli,mnemos:learning",
+            ],
+        )
         assert result.exit_code == 1, result.output
         assert "--dry-run is not supported with --url" in result.output
 

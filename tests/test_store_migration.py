@@ -938,6 +938,61 @@ def test_db_name_misconfig_pinned_to_canonical(store_home: Path, tmp_path: Path)
     assert cfg["vesma"]["db_name"] == "vesma.db"
 
 
+def test_db_name_absent_key_still_pinned(store_home: Path, tmp_path: Path) -> None:
+    """Pin (owner directive 2026-10-08, the 08.10 production incident): a source
+    config WITHOUT any db_name key still produces a target config that names
+    vesma.db. The pre-fix mover appended nothing in that case; the service then
+    fell back to its (then-mnemos) default and silently read an empty
+    auto-created database. The materialized target db IS vesma.db
+    unconditionally, so the migrated config must name it unconditionally.
+    """
+    import yaml
+
+    (store_home / "config.yaml").write_text(
+        yaml.safe_dump({"mnemos": {"data_dir": f"{store_home}/data"}}), encoding="utf-8"
+    )
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["config"]["db_name_pinned"] is True
+    cfg = yaml.safe_load((target / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["vesma"]["db_name"] == "vesma.db"
+    # The pinned name addresses the database the mover actually materialized.
+    assert (target / "data" / "vesma.db").is_file()
+
+
+def test_db_name_canonical_value_not_reported_as_pinned(store_home: Path, tmp_path: Path) -> None:
+    """db_name_pinned stays False when the source already carried vesma.db —
+    the flag means 'we had to pin', not 'the key exists'."""
+    import yaml
+
+    (store_home / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "mnemos": {
+                    "data_dir": f"{store_home}/data",
+                    "db_name": "vesma.db",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["config"]["db_name_pinned"] is False
+    cfg = yaml.safe_load((target / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["vesma"]["db_name"] == "vesma.db"
+
+
 def test_dry_run_leaves_source_wal_untouched(store_home: Path, tmp_path: Path) -> None:
     """Pin (P3d): dry-run stats open read-only — no source WAL growth."""
     db = store_home / "data" / "mnemos.db"

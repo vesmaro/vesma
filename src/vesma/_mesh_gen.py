@@ -14,24 +14,28 @@ stable, package-qualified names. Importers use::
     from vesma._mesh_gen import core_pb2, core_pb2_grpc, fed_pb2
 
 instead of touching ``sys.path`` themselves. The generated directory
-location is resolved from this file's own path AND the
-``VESMA_MESH_GEN_DIR`` environment variable, in candidate order:
+location is resolved from the package itself AND this file's own path AND
+the ``VESMA_MESH_GEN_DIR`` environment variable, in candidate order:
 
 1. **Env override** ``VESMA_MESH_GEN_DIR`` — authoritative when set (an
    operator/diagnostic redirect must never be silently second-guessed);
    when the named directory does not exist the resolution fails loudly
    naming the variable, with NO fallback to the structural candidates.
-2. **Source-checkout layout** — ``src/vesma/_mesh_gen.py`` (also the
+2. **In-package wheel copy** — ``vesma/_mesh_gen_stubs/`` (issue #514
+   tail; cli-audit 2026-10-08 finding #2): the wheel force-includes the
+   generated stubs INTO the package, so a plain ``pip install`` carries
+   them and the mesh legs work out of the box. This candidate wins
+   whenever the stubs were vendored at build time.
+3. **Source-checkout layout** — ``src/vesma/_mesh_gen.py`` (also the
    ``pip install -e`` shape): three ``parent`` hops reach the repo root,
    stubs live at ``<repo>/federation/gen/python`` (issue #514 layout a).
-3. **Site-packages layout** — an installed wheel:
+4. **Site-packages layout** — an installed wheel:
    ``<venv>/lib/python3.14/site-packages/vesma/_mesh_gen.py`` (a
    ``lib64`` symlink is resolved away first): two ``parent`` hops reach
    ``site-packages``, stubs live at
    ``<venv>/lib/python3.14/site-packages/federation/gen/python``
-   (issue #514 layout b; a wheel does NOT carry the gitignored stubs --
-   run ``bash scripts/gen-proto.sh`` from a source checkout and place
-   the generated directory as above, or point the env override at it).
+   (issue #514 layout b — the manual placement path, kept for
+   operator-managed installs).
 
 The first EXISTING candidate wins; when none exists the failure is a
 clear :class:`ImportError` enumerating every probed path and the
@@ -62,11 +66,15 @@ GEN_DIR_ENV_VAR: Final[str] = "VESMA_MESH_GEN_DIR"
 
 
 def _candidate_gen_dirs() -> tuple[Path, ...]:
-    """Structural candidates, in resolution order (source checkout first).
+    """Structural candidates, in resolution order (vendored copy first).
 
-    Candidate shapes (issue #514), derived from THIS file's location after
-    ``resolve()`` (follows ``lib64 -> lib`` symlinks in wheel installs):
+    Candidate shapes (issue #514 + the #514-tail wheel vendoring), derived
+    from THIS file's location after ``resolve()`` (follows ``lib64 -> lib``
+    symlinks in wheel installs):
 
+    - in-package wheel copy: ``.../vesma/_mesh_gen_stubs/`` — the wheel
+      force-includes the generated stubs into the package (cli-audit
+      2026-10-08 finding #2), so a pip install works out of the box;
     - source checkout: ``<repo>/src/vesma/_mesh_gen.py`` ->
       ``parents[2]`` == repo root (three ``parent`` hops: vesma -> src
       -> ``<repo>``), stubs at ``<repo>/federation/gen/python``;
@@ -76,6 +84,7 @@ def _candidate_gen_dirs() -> tuple[Path, ...]:
     """
     here = Path(__file__).resolve()
     return (
+        here.parent / "_mesh_gen_stubs",
         here.parent.parent.parent / "federation" / "gen" / "python",
         here.parent.parent / "federation" / "gen" / "python",
     )
@@ -109,14 +118,25 @@ def _resolve_gen_dir() -> Path:
     for candidate in candidates:
         if candidate.is_dir():
             return candidate
+    # cli-audit 2026-10-08 (finding #2): the fix hint must address the
+    # INSTALL the user actually has — "run gen-proto.sh from a source
+    # checkout" is meaningless to a pip user. Reinstalling the wheel
+    # rebuilds nothing; the stubs ride the wheel only when the BUILD
+    # machine had generated them. The honest fix ladder: upgrade to a
+    # wheel built with the stubs, or generate from source.
     raise ImportError(
-        "gRPC generated stubs not found. Probed:\n"
+        "gRPC generated stubs not found — mesh federation is unavailable "
+        "in this install. Probed:\n"
         f"{_probed_listing(candidates)}\n"
-        "Fix: from a source checkout run `bash scripts/gen-proto.sh`, then "
-        "either keep the stubs at <repo>/federation/gen/python (source "
-        "checkout) or place that directory next to site-packages "
-        "(wheel installs) — or point VESMA_MESH_GEN_DIR at the directory "
-        "containing mnemos_core_api_pb2.py."
+        "Fix (any one):\n"
+        "  1. reinstall vesma from an official distribution built WITH the\n"
+        "     mesh stubs vendored (pip install --upgrade vesma);\n"
+        "  2. from a source checkout run `bash scripts/gen-proto.sh` and keep\n"
+        "     the stubs at <repo>/federation/gen/python;\n"
+        "  3. place the generated directory next to site-packages\n"
+        "     (<site-packages>/federation/gen/python), or point\n"
+        "     VESMA_MESH_GEN_DIR at the directory containing\n"
+        "     mnemos_core_api_pb2.py."
     )
 
 

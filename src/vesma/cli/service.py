@@ -337,7 +337,7 @@ def run(
     Single-instance: when a live supervisor already answers on the socket,
     exits 0 with a message (control-socket v1 §4.2 step 2).
     """
-    from vesma.config import load_settings
+    from vesma.cli._manager import load_settings_or_exit
     from vesma.logging_setup import setup_logging
     from vesma.service.backend import CoreStartupError, ServiceApp
 
@@ -348,7 +348,7 @@ def run(
     if not manifests:
         _fail("no component manifests found — install components first (wave W4)")
 
-    settings = load_settings(config)
+    settings = load_settings_or_exit(config)
     setup_logging(settings)
     host, port = settings.api.host, settings.api.port
     if settings.runtime.uvicorn_workers != 1:

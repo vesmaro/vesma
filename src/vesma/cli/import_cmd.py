@@ -1,6 +1,13 @@
 """``vesma import`` CLI subcommand — thin Typer wrapper over import logic.
 
 Delegates to :mod:`vesma.cli.import_` for the actual import logic.
+
+Registered as a PLAIN command (one positional + options), not a Typer
+group: a group parses options only BEFORE the first positional argument
+(click's ``allow_interspersed_args=False`` on MultiCommand), so
+``vesma import f.json --mode merge`` used to die with exit 2 "Missing
+argument 'source'" (cli-audit 2026-10-08, finding #4). A plain command
+intersperses options and arguments freely — both orders parse.
 """
 
 from __future__ import annotations
@@ -16,22 +23,7 @@ from vesma.cli.import_ import ImportMode, run_import
 
 console = Console()
 
-import_app = typer.Typer(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    name="import",
-    help=(
-        "Import memories from a JSON or SQLite export file.\n\n"
-        "The counterpart of `vesma export`. `--mode merge` upserts by record "
-        "id (idempotent, re-runnable); `--mode restore` REPLACES the whole "
-        "store and therefore requires `--confirm`. Untrusted imports have "
-        "server-minted canon keys stripped unless `--trusted-restore` says "
-        "otherwise."
-    ),
-    no_args_is_help=True,
-)
 
-
-@import_app.callback(invoke_without_command=True)
 def import_cmd(
     source: Annotated[Path, typer.Argument(help="Export file to import")],
     mode: Annotated[

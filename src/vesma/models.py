@@ -1093,6 +1093,12 @@ class SearchResult(BaseModel):
     memory: Memory
     score: float
     search_type: str  # "semantic" | "fts" | "hybrid"
+    # cli-audit 2026-10-08 (P1 #9) — raw vector-leg cosine for SEMANTIC-ONLY
+    # rows (no FTS match); None for lexically-matched and graph-expansion
+    # rows. The fused ``score`` is RRF rank-based — its scale cannot
+    # separate a garbage query from a real one; the raw cosine is the
+    # relevance signal relevance gates threshold on.
+    vector_score: float | None = None
     # Search v2 provenance (issue #313) — optional, backward-compatible:
     # absent fields mean "ordinary fused hit" (the pre-v2 contract).
     # ``project_scope_fallback``: the row surfaced because the scoped
