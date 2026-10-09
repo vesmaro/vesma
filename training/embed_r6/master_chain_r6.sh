@@ -24,6 +24,15 @@ if [ ! -f "$RUN_DIR/pairs_r5.json" ]; then
 fi
 
 # ── stage 1: training (resume loop) ──
+# launch gate: available RAM >= 4 GB (sequential-heavy-jobs rule; run_config
+# prelaunch_estimates.launch_gate). Polls every 120 s; logged per check.
+while true; do
+  AVAIL_MB=$(free -m | awk '/^Mem:/{print $7}')
+  echo "[master] $(date -Is) launch gate: available ${AVAIL_MB} MB (need >= 4096)"
+  if [ "$AVAIL_MB" -ge 4096 ]; then break; fi
+  sleep 120
+done
+
 compute_start_epoch() {
   "$PY" - <<'EOF'
 import json
