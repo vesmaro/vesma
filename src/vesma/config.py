@@ -22,6 +22,8 @@ from pydantic import (
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
+from vesma.fs_hardening import ensure_private_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -1608,7 +1610,8 @@ class Settings(BaseSettings):
             and root_db is not None
             and not (new_data / root_db).exists()
         ):
-            new_data.mkdir(parents=True, exist_ok=True)
+            # Cascade fix 2026-10-09: 0700 on every created level.
+            ensure_private_dir(new_data)
             for item in old_data_root.iterdir():
                 # Don't move config.yaml, data/, vault/, logs/, cache/ — those
                 # are either already in the right place or belong at root.
@@ -1626,7 +1629,7 @@ class Settings(BaseSettings):
         old_vault = home / "mnemos-vault"
         default_new_vault = (home / ".vesma" / "vault").resolve()
         if new_vault == default_new_vault and old_vault.is_dir() and not new_vault.exists():
-            new_vault.parent.mkdir(parents=True, exist_ok=True)
+            ensure_private_dir(new_vault.parent)
             shutil.move(str(old_vault), str(new_vault))
             actions.append(f"vault: {old_vault} → {new_vault}")
             logger.info("migrate_layout: moved vault %s → %s", old_vault, new_vault)

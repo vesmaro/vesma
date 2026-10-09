@@ -34,6 +34,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from vesma.fs_hardening import ensure_private_dir, harden_file
 from vesma.trigger_codes import TriggerCode
 
 # Default log location — under ~/.vesma/logs/ alongside the other
@@ -115,7 +116,9 @@ class FederationAccessLog:
         disk before returning (audit-log integrity).
         """
         with self._lock:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
+            # Cascade fix 2026-10-09: 0700 on every created level + the
+            # JSONL file itself at 0600 (audit log = leak surface, §10).
+            ensure_private_dir(self._path.parent)
             line = entry.model_dump_json()
             # Open in binary append mode and encode explicitly so we
             # control exactly what hits disk (no platform newline
@@ -124,6 +127,7 @@ class FederationAccessLog:
                 fh.write((line + "\n").encode("utf-8"))
                 fh.flush()
                 os.fsync(fh.fileno())
+            harden_file(self._path)
 
     def _iter_entries(self) -> list[AccessLogEntry]:
         """Read and parse every line of the log file.

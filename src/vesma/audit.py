@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from vesma.fs_hardening import ensure_private_dir, harden_file
+
 __all__ = [
     "SCANNER_AUDIT_FILENAME",
     "SYNC_AUDIT_FILENAME",
@@ -98,8 +100,10 @@ def log_scanner_audit(entry: dict[str, Any]) -> None:
 
 def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
     """Append one JSON object as a line to ``path`` (creating parents)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Cascade fix 2026-10-09: 0700 dirs + 0600 audit file (leak surface).
+    ensure_private_dir(path.parent)
     record = dict(entry)
     record.setdefault("timestamp", datetime.now(UTC).isoformat().replace("+00:00", "Z"))
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
+    harden_file(path)

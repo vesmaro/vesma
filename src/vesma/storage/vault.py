@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import frontmatter
 
+from vesma.fs_hardening import ensure_private_dir, harden_file
 from vesma.models import Memory, MemorySource, MemoryType
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,9 @@ class VaultManager:
 
     def __init__(self, vault_path: Path) -> None:
         self.vault_path = vault_path
-        self.vault_path.mkdir(parents=True, exist_ok=True)
+        # Cascade fix 2026-10-09: 0700 on every created level (the plain
+        # mkdir(parents=True) left the vault under the process umask).
+        ensure_private_dir(self.vault_path)
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -40,7 +43,7 @@ class VaultManager:
     def memory_to_file(self, memory: Memory) -> Path:
         """Write memory as a markdown file with YAML frontmatter. Returns file path."""
         target_dir = self._memory_dir(memory)
-        target_dir.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(target_dir)
 
         filename = self._sanitize_filename(memory.auto_title())
         file_path = target_dir / f"{filename}.md"
@@ -75,6 +78,9 @@ class VaultManager:
             m["extra"] = memory.metadata
 
         file_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+        # Cascade fix 2026-10-09: vault markdown carries the same content as
+        # the db — keep it 0600 regardless of the writer's umask.
+        harden_file(file_path)
         return file_path
 
     # ── read ──────────────────────────────────────────────────────────────

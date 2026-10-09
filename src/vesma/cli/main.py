@@ -18,6 +18,7 @@ from rich.table import Table
 from vesma.cli._manager import get_manager, load_settings_or_exit
 from vesma.cli.migrate_store_cmd import migrate_store
 from vesma.config import find_config_file
+from vesma.fs_hardening import ensure_private_dir
 from vesma.logging_setup import setup_logging
 from vesma.models import (
     AgentRecallQuery,
@@ -2266,7 +2267,7 @@ def _auth_store(config: str | None = None) -> AuthStore:
 
     settings = load_settings_or_exit(config)
     settings.resolve_paths()
-    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(settings.vesma.data_dir)
     return AuthStore(settings.db_path)
 
 

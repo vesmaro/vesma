@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from vesma import __version__
+from vesma.fs_hardening import ensure_private_dir, harden_file
 
 if TYPE_CHECKING:
     from vesma.config import Settings
@@ -183,7 +184,8 @@ def _write_cache(
     stale answers stay available inside the negative-TTL window.
     """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # Cascade fix 2026-10-09: 0700 dirs + 0600 cache file.
+        ensure_private_dir(path.parent)
         payload = {
             "schema": 1,
             "checked_at": now.isoformat(),
@@ -193,6 +195,7 @@ def _write_cache(
             "ok": ok,
         }
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        harden_file(path)
     except Exception:
         logger.debug("update-check cache write failed", exc_info=True)
 
@@ -413,8 +416,9 @@ def family_latest(
             "checked_at": moment.isoformat(),
         }
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            ensure_private_dir(path.parent)
             path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+            harden_file(path)
         except Exception:
             logger.debug("family-latest cache write failed", exc_info=True)
         return best

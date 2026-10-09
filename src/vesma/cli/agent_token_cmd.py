@@ -38,6 +38,7 @@ from vesma.agent_tokens import (
 )
 from vesma.cli._manager import load_settings_or_exit
 from vesma.config import Settings
+from vesma.fs_hardening import ensure_private_dir
 
 console = Console()
 
@@ -61,7 +62,7 @@ def _resolve_settings(config: str | None) -> Settings:
     """Load settings, resolve paths, ensure the data dir exists."""
     settings = load_settings_or_exit(config)
     settings.resolve_paths()
-    settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(settings.vesma.data_dir)
     return settings
 
 

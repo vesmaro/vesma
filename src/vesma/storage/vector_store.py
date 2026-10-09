@@ -16,6 +16,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from vesma.fs_hardening import ensure_private_dir, harden_file
+
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS embeddings (
     id       TEXT PRIMARY KEY,
@@ -30,7 +32,8 @@ class VectorStore:
     """SQLite + numpy vector store — no external Rust-based vector DB required."""
 
     def __init__(self, data_dir: Path) -> None:
-        data_dir.mkdir(parents=True, exist_ok=True)
+        # Cascade fix 2026-10-09: 0700 on every created level.
+        ensure_private_dir(data_dir)
         self._db_path = str(data_dir / "vectors.db")
         self._local = threading.local()
         conn = self._conn()
@@ -39,6 +42,11 @@ class VectorStore:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.commit()
+        # The db + WAL/SHM sidecars were created under the process umask.
+        db_path = Path(self._db_path)
+        harden_file(db_path)
+        harden_file(db_path.with_name(db_path.name + "-wal"))
+        harden_file(db_path.with_name(db_path.name + "-shm"))
 
     def _conn(self) -> sqlite3.Connection:
         # `getattr(..., default=None)` returns `Any`; the truthy check is
