@@ -51,13 +51,16 @@ def main(argv: list[str] | None = None) -> int:
     out: Path = args.out
     report_path = out
 
-    # Run the proven round-5 runner into a temp path, then re-kind the report.
+    # Run the proven round-5 runner (its main() parses sys.argv) into a temp
+    # path, then re-kind the report.
     tmp_out = out.with_suffix(".r5-mechanics.json")
-    code = gate_main([
+    sys.argv = [
+        "gate_r5-mechanics",
         "--artifact-dir", str(args.artifact_dir),
         "--out", str(tmp_out),
         "--sibling-pop", str(args.sibling_pop),
-    ] + (["--skip-latency-subprocess"] if args.skip_latency_subprocess else []))
+    ] + (["--skip-latency-subprocess"] if args.skip_latency_subprocess else [])
+    code = gate_main()
     if code != 0:
         return code
 

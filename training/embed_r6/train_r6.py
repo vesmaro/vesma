@@ -218,8 +218,16 @@ def main(argv: list[str] | None = None) -> int:
             n_val_texts = cnt
     if digest.hexdigest() != EXPECTED_FP and not os.environ.get("VESMA_R6_SMOKE"):
         raise SystemExit(f"CORPUS FINGERPRINT MISMATCH: {digest.hexdigest()}")
-    if os.environ.get("VESMA_R6_SMOKE") or os.environ.get("VESMA_R5_SMOKE"):
+    smoke = bool(os.environ.get("VESMA_R6_SMOKE") or os.environ.get("VESMA_R5_SMOKE"))
+    if smoke:
         print("SMOKE MODE: corpus fingerprint assert bypassed", flush=True)
+    # smoke-only instrumentation (env-gated; real-run defaults are the prereg values)
+    phase1_cap = (
+        int(os.environ.get("VESMA_R6_SMOKE_PHASE1_CAP", PHASE1_EPOCH_CAP)) if smoke else PHASE1_EPOCH_CAP
+    )
+    mono_line = (
+        float(os.environ.get("VESMA_R6_SMOKE_MONO_LINE", MONO_GUARD_LINE)) if smoke else MONO_GUARD_LINE
+    )
     val_slice_start = len(texts_all) - n_val_texts
 
     npz = np.load(args.teacher_vectors, allow_pickle=True)
@@ -469,15 +477,17 @@ def main(argv: list[str] | None = None) -> int:
             if r5384 >= PHASE1_R5384_TRANSITION:
                 transition = {"to_phase": 2, "reason": f"val_R5@384 {r5384:.4f} >= {PHASE1_R5384_TRANSITION}"}
                 phase_next = 2
-            elif epoch >= PHASE1_EPOCH_CAP:
-                transition = {"to_phase": 2, "reason": f"phase-1 epoch cap {PHASE1_EPOCH_CAP} reached"}
+                ct_enabled_next = True
+            elif epoch >= phase1_cap:
+                transition = {"to_phase": 2, "reason": f"phase-1 epoch cap {phase1_cap} reached"}
                 phase_next = 2
+                ct_enabled_next = True
         elif ct_enabled:
-            if mono_now is not None and mono_now < MONO_GUARD_LINE:
+            if mono_now is not None and mono_now < mono_line:
                 guard = {
                     "tripped": True,
                     "mono_control_median": mono_now,
-                    "line": MONO_GUARD_LINE,
+                    "line": mono_line,
                     "action": "contrastive OFF for the rest of the run; KD-only mono-replay to budget end",
                 }
                 ct_enabled_next = False
