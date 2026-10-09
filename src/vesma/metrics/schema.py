@@ -44,6 +44,10 @@ RETENTION_DAYS: dict[str, int] = {
     "injection_blocks": 90,
     "usage_reports": 90,
     "awareness_events": 90,
+    #: nhi-15 (money baseline, 2026-10-08): the money baseline window is
+    #: longitudinal by definition (the 2026-10-09 tick) — rides the same
+    #: 400-day horizon as the hourly rollup.
+    "turn_usage": 400,
 }
 
 
@@ -203,6 +207,120 @@ AWARENESS_EVENT_KINDS: tuple[str, ...] = (
     "conflict_hint_emitted",
 )
 
+# ── nhi-15 (2026-10-08): the money plane — additive born-final tables ─────────
+#
+# Vesma-wave additions (the ``AWARENESS_EVENTS`` precedent: additive
+# ``CREATE TABLE IF NOT EXISTS`` in the connect script, so EXISTING
+# sidecars gain them on their next open — no migration machinery, the
+# D-0002 rule). Two tables:
+
+#: One row per HARNESS TURN (one user request → one model answer, the
+#: billing unit of record). The harness-side ``turn_usage`` (ZCode
+#: db.sqlite, 6.0.0 era) already proves the shape: input_tokens is the
+#: CUMULATIVE billed input of the turn (history is re-read every
+#: request) — that is what providers bill, so it is what the money
+#: baseline counts. ``cached_read_tokens`` is carried FROM BIRTH (the
+#: nhi-15 v1 requirement: providers report cached input; when a write
+#: path lands, the cached share is already ledgerable — no ALTER TABLE
+#: train). ``model`` is the turn's DOMINANT model by input tokens when
+#: the harness splits a turn across models (nullable — multi-model
+#: attribution stays with the harness's model-level ledger).
+#: ``cached_write_tokens`` is stored for the future cache-write rate
+#: (Z.AI storage is limited-time free) but NOT billed in v1.
+#: PRIVACY: ids and integer counters only — no prompt, no output text
+#: (the C3 posture of the whole sidecar).
+TURN_USAGE = _table(
+    "turn_usage",
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("session", "TEXT"),
+    ("turn_id", "TEXT"),
+    # nhi-15 wave 1 (2026-10-08): harness attribution — WHICH harness
+    # produced the turn (owner directive: the store must stay independent
+    # of any one harness's ledger, and money baselines must be comparable
+    # ACROSS harnesses). 'unknown' keeps legacy rows meaningful without a
+    # backfill; wave-0 sidecars gain the columns via the idempotent
+    # ALTER migration below (``migrate_turn_usage_harness``).
+    ("harness_id", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("project", "TEXT"),  # caller-declared slug (the verb-ledger convention)
+    ("agent", "TEXT"),
+    ("ts", "REAL NOT NULL"),  # unix epoch SECONDS (sidecar convention)
+    (
+        "status",
+        "TEXT NOT NULL DEFAULT 'completed'"
+        " CHECK (status IN ('completed','error','cancelled','other'))",
+    ),
+    ("model", "TEXT"),
+    ("input_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("cached_read_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("cached_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+#: Legal ``turn_usage.status`` values (mirrored from the CHECK — the
+#: ``SESSION_TYPES`` precedent: cheap refusal before the write).
+TURN_STATUSES: tuple[str, ...] = ("completed", "error", "cancelled", "other")
+
+#: Deduplication — one row per (harness, session, turn). Created by
+#: :func:`migrate_turn_usage_harness` (NOT in ``INDEXES_SQL``: the flat
+#: SCHEMA_SQL pass runs before the column migration, and a wave-0 table
+#: without ``harness_id`` would fail the index create and take the whole
+#: connect down). NULL session/turn_id never collide (SQLite NULL
+#: semantics), but the write path requires both, so replayed signals
+#: dedup exactly.
+TURN_USAGE_DEDUPE_INDEX_SQL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_dedupe ON turn_usage(harness_id, session, turn_id)"
+)
+
+#: Wave-0 sidecars carry ``turn_usage`` WITHOUT the harness columns; the
+#: additive ALTER set below brings them onto the born-final shape
+#: (idempotent: each column is added only when ``PRAGMA table_info``
+#: lacks it).
+TURN_USAGE_HARNESS_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("harness_id", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("project", "TEXT"),
+    ("agent", "TEXT"),
+)
+
+#: Operator-assigned session labels — the ``session_type`` axis of the
+#: money baseline (task / chat / background). Rows are written ONLY by
+#: the explicit ``vesma metrics session-type`` CLI (and tests); nothing
+#: in the server writes here, so the table is NOT in ``RETENTION_DAYS``
+#: (operator curation is not telemetry — TTL must never eat a label
+#: the owner set by hand).
+SESSION_LABELS = _table(
+    "session_labels",
+    ("session", "TEXT PRIMARY KEY"),
+    (
+        "session_type",
+        "TEXT NOT NULL DEFAULT 'unclassified'"
+        " CHECK (session_type IN ('task','chat','background','unclassified'))",
+    ),
+    ("updated_ts", "REAL NOT NULL"),
+    ("updated_by", "TEXT"),  # e.g. 'cli', 'harness:zcode' — provenance slug
+)
+
+#: Legal ``session_type`` values (mirrored from the CHECK — cheap
+#: refusal before the write).
+SESSION_TYPES: tuple[str, ...] = ("task", "chat", "background", "unclassified")
+
+#: Harness-agnostic default for unlabeled sessions.
+SESSION_TYPE_DEFAULT = "unclassified"
+
+
+def sidecar_path(data_dir: Any) -> Any:
+    """Resolve the sidecar's path under ``data_dir`` — the ONLY way code
+    outside the vendored metrics package may reach for the file. The C1
+    tripwire (``test_sidecar_referenced_only_by_metrics_package``)
+    keeps the sidecar's NAME itself vendored: bug-report / backup /
+    export / federation paths stay blind to the sidecar, and operator
+    surfaces (the ``vesma metrics`` CLI) go through this helper.
+    """
+    from pathlib import Path
+
+    return Path(data_dir) / SIDECAR_FILENAME
+
+
 TABLE_SCHEMAS: dict[str, TableSchema] = {
     t.name: t
     for t in (
@@ -212,6 +330,8 @@ TABLE_SCHEMAS: dict[str, TableSchema] = {
         INJECTION_BLOCKS,
         USAGE_REPORTS,
         AWARENESS_EVENTS,
+        TURN_USAGE,
+        SESSION_LABELS,
     )
 }
 TABLE_NAMES: tuple[str, ...] = tuple(TABLE_SCHEMAS)
@@ -227,6 +347,8 @@ INDEXES_SQL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_usage_metrics ON usage_reports(metrics_id)",
     "CREATE INDEX IF NOT EXISTS idx_awareness_kind_ts ON awareness_events(kind, ts)",
     "CREATE INDEX IF NOT EXISTS idx_awareness_project_ts ON awareness_events(project, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn_usage(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_turn_session_ts ON turn_usage(session, ts)",
 )
 
 #: C5 — ``meta_json`` allowlist, fail-closed. Unknown key → the write is
@@ -329,6 +451,40 @@ def migrate_awareness_events_kinds(conn: Any) -> None:
     conn.commit()
 
 
+# ── nhi-15 wave 1: the turn_usage harness-attribution migration ───────────────
+
+
+def migrate_turn_usage_harness(conn: Any) -> None:
+    """Bring wave-0 ``turn_usage`` tables onto the harness-attribution
+    shape — idempotent, additive, runs on EVERY sidecar open.
+
+    Fresh sidecars are created in the final shape by ``SCHEMA_SQL``, so
+    the PRAGMA check finds every column and the function costs one
+    pragma + one ``CREATE UNIQUE INDEX IF NOT EXISTS`` no-op. Wave-0
+    tables (born between the money-plane schema and this write path)
+    gain ``harness_id``/``project``/``agent`` via ``ALTER TABLE ADD
+    COLUMN`` — additive, row-preserving, and convergent under crashes
+    (an interrupted ALTER rolls back whole; the next open re-checks).
+
+    The dedup index is created HERE, not in ``INDEXES_SQL``: the flat
+    SCHEMA_SQL pass runs before this migration, and a wave-0 table
+    without ``harness_id`` would fail the index create and take the
+    whole connect down.
+
+    Raises whatever sqlite raises — the caller (``MetricsStore._conn``)
+    degrades to "sidecar unavailable", same as every bootstrap fault.
+    """
+    cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(turn_usage)").fetchall()}
+    if not cols:
+        return  # absent — SCHEMA_SQL owns creation
+    for name, decl in TURN_USAGE_HARNESS_COLUMNS:
+        if name not in cols:
+            # Static schema literals from the born-final table definition
+            # (no user input can reach here).
+            conn.execute(f"ALTER TABLE turn_usage ADD COLUMN {name} {decl}")  # nosec B608
+    conn.execute(TURN_USAGE_DEDUPE_INDEX_SQL)
+
+
 #: Security invariant inputs — the exposer computes these from gates and
 #: canaries, never from non-fatal telemetry (RL-S4).
 __all__ = [
@@ -337,9 +493,17 @@ __all__ = [
     "META_ALLOWLIST",
     "RETENTION_DAYS",
     "SCHEMA_SQL",
+    "SESSION_LABELS",
+    "SESSION_TYPES",
+    "SESSION_TYPE_DEFAULT",
     "SIDECAR_FILENAME",
     "TABLE_NAMES",
     "TABLE_SCHEMAS",
+    "TURN_STATUSES",
+    "TURN_USAGE",
+    "TURN_USAGE_DEDUPE_INDEX_SQL",
+    "TURN_USAGE_HARNESS_COLUMNS",
+    "sidecar_path",
 ]
 
 
