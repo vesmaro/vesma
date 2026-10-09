@@ -258,7 +258,7 @@ def _tag_contract_error_handler(_request: Request, exc: Exception) -> JSONRespon
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
-app.add_exception_handler(TagContractError, _tag_contract_error_handler)  # type: ignore[arg-type]
+app.add_exception_handler(TagContractError, _tag_contract_error_handler)
 
 # T-AUTH: auth middleware (runs after CORS, before routes)
 app.add_middleware(AuthMiddleware)
