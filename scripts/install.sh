@@ -160,7 +160,7 @@ if [[ "$CONTAINER" == true ]]; then
     -p "${CONTAINER_PORT}:8787" \
     -v vesma-data:/data \
     -v vesma-vault:/vault \
-    -e VESMA_API__TOTP_MASTER_KEY="${TOTP_KEY}" \
+    -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
     "ghcr.io/vesmaro/vesma:${VERSION}" || die "Failed to start container."
 
   ok "Vesma container started on port ${CONTAINER_PORT}."
@@ -227,11 +227,17 @@ if [[ "$NO_VENV" == false && -x "$VESMA_BIN" ]]; then
   VESMA_BIN="${LOCAL_BIN}/vesma"
 fi
 
-# ── Verify ────────────────────────────────────────────────────────
-if [[ -x "$VESMA_BIN" ]] || command -v vesma &>/dev/null; then
-  ok "Vesma v${VERSION} installed successfully!"
+# ── Verify (smoke: THE installed binary, by explicit path) ────────
+# Never resolve via PATH here: a pre-existing `vesma` from a different
+# environment would false-pass (env-isolation directive 2026-10-06 —
+# PATH-resolved binaries are the cross-environment incident class). The
+# canonical venv install is verified through its ${VENV_PATH}/bin path
+# (or the ${LOCAL_BIN} launcher), --no-venv through the resolved script dir.
+if [[ -n "${VESMA_BIN:-}" && -x "$VESMA_BIN" ]] \
+   && INSTALLED_VER="$("$VESMA_BIN" --version 2>&1)" && [[ -n "$INSTALLED_VER" ]]; then
+  ok "Vesma v${VERSION} installed successfully — ${VESMA_BIN} reports: ${INSTALLED_VER}"
 else
-  warn "vesma CLI not found — check the install output above."
+  die "Smoke check failed: '${VESMA_BIN:-<binary not resolved>} --version' did not answer — see the install output above."
 fi
 
 # ── Optional: VS Code MCP integration ─────────────────────────────
