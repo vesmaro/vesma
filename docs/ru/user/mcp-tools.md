@@ -1535,11 +1535,11 @@ CLI-двойник: `vesma graph register <project> <root>`.
 ```json
 {
   "status": "ok",
-  "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "version": "6.1.0",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
-  "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
+  "by_status": {"archived": 5, "processed": 12, "published": 125},
   "vectors": 120
 }
 ```

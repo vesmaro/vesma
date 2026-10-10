@@ -36,8 +36,8 @@ deprecation. У всех трёх summary «(Vesmaro Project)».
 
 | Канал | Статус на PyPI | Используется |
 | --- | --- | --- |
-| `vesma` | наш, живой (5.0.0 → 6.0.0) | основной — `pip install vesma`, бейдж README |
-| `vesma-memory-server` | наш, живой (5.0.0 → 6.0.0) | зеркало; `scripts/install.sh` сначала опрашивает `vesma`, зеркало — только fallback с предупреждением |
+| `vesma` | наш, живой (5.0.0 → 6.1.0) | основной — `pip install vesma`, бейдж README |
+| `vesma-memory-server` | наш, живой (5.0.0 → 6.1.0) | зеркало; `scripts/install.sh` сначала опрашивает `vesma`, зеркало — только fallback с предупреждением |
 | `mnemos-memory-server` | наш, заморожен на 5.2.0 | доребрендинговый канал, живёт до deprecation |
 
 Исходная матрица решения 2026-09-01 сохранена как записано в тот день

@@ -3,7 +3,9 @@
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
 > The complete Vesma user lifecycle: install → service → integration →
-> doctor → updates → legacy cleanup. Current for release 5.6.2.
+> doctor → updates → legacy cleanup. Current for release 6.1.0. The store
+> home is `~/.vesma/` (since 6.0.0; the 5.x move is covered in
+> [migration-6-0.md](migration-6-0.md)).
 
 Vesma is a standalone memory & knowledge server for AI agents. One utility —
 `vesma` — drives the whole cycle: installs the package, deploys the service,
@@ -27,7 +29,7 @@ full CLI command reference lives in [cli-reference.md](cli-reference.md); every 
 tool is documented in [mcp-tools.md](mcp-tools.md), every HTTP endpoint in
 [http-api.md](http-api.md).
 
-> **5.6.2 tip.** `-h` works at every level — `vesma -h`, `vesma service -h`,
+> **Tip (since 5.6.2).** `-h` works at every level — `vesma -h`, `vesma service -h`,
 > `vesma service start -h`. Forgot the flags — append `-h` to any command.
 
 ---
@@ -287,8 +289,8 @@ Expected output:
 
 Vesma automatically:
 
-1. **Wrote the entry to SQLite** at `~/.mnemos/data/mnemos.db` (created on first run).
-2. **Mirrored it to your Obsidian vault** at `~/.mnemos/vault/` as a markdown file with YAML frontmatter.
+1. **Wrote the entry to SQLite** at `~/.vesma/data/vesma.db` (created on first run).
+2. **Mirrored it to your Obsidian vault** at `~/.vesma/vault/` as a markdown file with YAML frontmatter.
 3. **Validated the tag contract** — `project:test` + `agent:getting-started` + `vesma:learning` is a valid trio. Skip one and you get `❌ Tag contract violation: ...` instead.
 
 The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). The legacy `mnemos:` spelling is accepted as an input alias everywhere and normalized to the canon; stored tags keep the canonical `vesma:*` form.
@@ -485,7 +487,7 @@ with a stderr hint — write new scripts against the subcommands.
 ```bash
 vesma update check              # report only
 vesma update apply              # pip user-site (+ npm best-effort)
-vesma update apply --to 5.6.1   # rollback / version pin
+vesma update apply --to 6.0.0   # rollback / version pin
 vesma update timer install      # weekly automation
 ```
 
@@ -519,7 +521,8 @@ mechanics are removed.
 
 | Path | What it is |
 |------|-----------|
-| `~/.mnemos/` | The engine store: `data/mnemos.db` (SQLite + vector index), `vault/` (Obsidian mirror), `config.yaml`, `logs/` |
+| `~/.vesma/` | The engine store (canonical since 6.0.0): `data/vesma.db` (SQLite + vector index), `vault/` (Obsidian mirror), `config.yaml`, `logs/` |
+| `~/.mnemos/` | 5.x-era legacy store — **do not delete until migrated**: run `vesma migrate-store --from ~/.mnemos --to ~/.vesma` first ([migration-6-0.md](migration-6-0.md)) |
 | `~/.config/vesma/` | Service-layer config: `vesma.yaml`, the `components.d/` manifests, `env/` secret files |
 | `~/.local/share/vesma/` | Component data + the engine and component venvs (`venv/`, `venvs/`) — owned by the install flow, never edit by hand |
 | `~/.local/state/vesma/` | Logs, the transition journal, the fallback runtime |
@@ -539,7 +542,8 @@ systemctl --user daemon-reload
 # 3. old shell wrappers and old-name launchers
 rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
 
-# 4. old completion scripts (the current ones are vesma.*; leave them)
+# 4. old completion scripts (legacy 5.x location; the current ones live in
+#    ~/.vesma/completion/ — leave those)
 rm -i ~/.mnemos/completion/vesma.*
 
 # 5. legacy venv directories with versions in the name (hand-created — NOT the canonical vesma/venv*)
@@ -557,9 +561,10 @@ vesma doctor service        # the service installation against the layout v1 con
 
 ### Scenario B — full removal, nothing kept
 
-> ⚠️ **IRREVERSIBLE.** The `~/.mnemos/` store (database, vector index, vault,
-> logs), the service-layer configs and all component data are erased with no way
-> back. If the data matters at all — export first:
+> ⚠️ **IRREVERSIBLE.** The `~/.vesma/` store (database, vector index, vault,
+> logs; a 5.x-era `~/.mnemos/` store is erased with it), the service-layer
+> configs and all component data are erased with no way back. If the data
+> matters at all — export first:
 > `vesma export backup.json` (see [export-import.md](export-import.md)).
 
 ```bash
@@ -581,12 +586,12 @@ systemctl --user disable --now vesma.service 2>/dev/null
 rm -i ~/.config/systemd/user/vesma*.service ~/.config/systemd/user/vesma-update.{service,timer}
 systemctl --user daemon-reload
 
-# 6. the data and config directories — everything
-rm -ri ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
+# 6. the data and config directories — everything (~/.mnemos is the 5.x legacy home)
+rm -ri ~/.vesma ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
 
 # 7. launchers and completion scripts
-rm -i ~/.local/bin/vesma ~/.local/bin/vesma ~/.local/bin/vesma-*
-rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
+rm -i ~/.vesma/completion/vesma.* ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
 ```
 
 Steps 1–3 go through the utility because only it knows the full list of its own
@@ -653,13 +658,14 @@ loss). For non-standard locations use `--source PATH` and `--vault PATH`.
 
 ## Configuration
 
-Vesma reads `config.yaml` from the current directory or `~/.mnemos/config.yaml`.
+Vesma reads `config.yaml` from the current directory or `~/.vesma/config.yaml`
+(override: `VESMA_CONFIG`; the 5.x legacy location was `~/.mnemos/config.yaml`).
 The full schema is in [config.example.yaml](../../../config.example.yaml). The most useful knobs:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `vesma.data_dir` | `~/.mnemos/data` | SQLite store + vector index |
-| `vesma.vault_path` | `~/.mnemos/vault` | Obsidian mirror |
+| `vesma.data_dir` | `~/.vesma/data` | SQLite store + vector index |
+| `vesma.vault_path` | `~/.vesma/vault` | Obsidian mirror |
 | `vesma.strict_tag_contract` | `true` | Enforce the tag contract (`false` — legacy imports only) |
 | `embedding.provider` | `nano` | `nano` (vesma-embed-v1, bundled) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Vector leg weight in RRF (0.0 = pure FTS, 1.0 = pure vector) |
@@ -676,12 +682,12 @@ VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 
 ### Logging
 
-Vesma writes logs to `~/.mnemos/logs/mnemos.log` by default (rotation, 10 MB × 3 files):
+Vesma writes logs to `~/.vesma/logs/vesma.log` by default (rotation, 10 MB × 3 files):
 
 ```yaml
 logging:
   level: INFO                    # DEBUG | INFO | WARNING | ERROR
-  log_file: ~/.mnemos/logs/mnemos.log
+  log_file: ~/.vesma/logs/vesma.log
   max_file_size_mb: 10
   backup_count: 3
 ```
@@ -758,4 +764,4 @@ note in the [integration guide](integration-guide.md).
 
 ---
 
-_Last updated: 2026-10-06 (release 5.6.2)_
+_Last updated: 2026-10-10 (release 6.1.0)_

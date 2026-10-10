@@ -175,18 +175,45 @@ Liveness probe. Always unauthenticated — safe for load balancers and superviso
 
 ### `GET /metrics`
 
-Prometheus-style metrics (M5 observability). Currently returns the same shape as `GET /memories` aggregate stats:
+Legacy alias — returns the aggregate store stats as JSON. It is **not** the
+Prometheus exposition; for that, use `GET /api/v1/metrics` below.
+
+**Response 200** — truncated example from a live engine:
 
 ```json
 {
   "status": "ok",
-  "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "version": "6.1.0",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
-  "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
-  "vectors": 120
+  "by_status": {"archived": 5, "processed": 12, "published": 125},
+  "vectors": 125,
+  "projects": {"default": 9},
+  "filter": {},
+  "embedding_status": {},
+  "processor": {},
+  "search_health": {}
 }
+```
+
+(The real body carries full `projects`, `filter`, `embedding_status`,
+`processor` and `search_health` objects — omitted here for brevity.)
+
+### `GET /api/v1/metrics`
+
+Prometheus text exposition (the Grafana/observability scrape target).
+Serves `text/plain; version=0.0.4; charset=utf-8` — `# HELP` / `# TYPE`
+header lines followed by `vesma_*` series (memories total, by-status,
+by-project, sessions, plus the vitals exposition):
+
+```text
+# HELP vesma_memories_total Total number of memories in storage
+# TYPE vesma_memories_total gauge
+vesma_memories_total 3971
+# HELP vesma_memories_by_status Memories by status
+# TYPE vesma_memories_by_status gauge
+vesma_memories_by_status{status="published"} 3945
 ```
 
 ---

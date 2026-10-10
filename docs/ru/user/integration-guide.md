@@ -598,7 +598,7 @@ mkdir -p ~/.config/opencode && echo '{"$schema":"https://opencode.ai/config.json
 Полные строки для копирования (плюс shell-однострочники для чистой установки
 и настройку env): [`integrations/mcp-presets.md`](../../../integrations/mcp-presets.md).
 Переменные окружения не нужны — сервер по умолчанию использует
-`~/.mnemos/{data,vault}` и создаёт обе директории при первом запуске.
+`~/.vesma/{data,vault}` и создаёт обе директории при первом запуске.
 
 ## Шаблон адаптера
 

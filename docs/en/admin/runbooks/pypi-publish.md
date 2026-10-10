@@ -36,8 +36,8 @@ the formerly manual mirror dance is codified in the script.
 
 | Channel | PyPI status | Used by |
 | --- | --- | --- |
-| `vesma` | ours, live (5.0.0 → 6.0.0) | primary — `pip install vesma`, README badge |
-| `vesma-memory-server` | ours, live (5.0.0 → 6.0.0) | mirror; `scripts/install.sh` probes `vesma` first and consults the mirror only as a logged fallback |
+| `vesma` | ours, live (5.0.0 → 6.1.0) | primary — `pip install vesma`, README badge |
+| `vesma-memory-server` | ours, live (5.0.0 → 6.1.0) | mirror; `scripts/install.sh` probes `vesma` first and consults the mirror only as a logged fallback |
 | `mnemos-memory-server` | ours, frozen at 5.2.0 | legacy pre-rebrand channel, live until deprecation |
 
 The original 2026-09-01 decision matrix is kept as written that day

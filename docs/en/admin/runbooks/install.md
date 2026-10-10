@@ -38,18 +38,18 @@ itself: `vesma update apply` (the "Upgrade" section below).
 
 ## Configuration
 
-Default config lives at `~/.mnemos/config.yaml` (optional — the defaults are fine). Minimal:
+Default config lives at `~/.vesma/config.yaml` (optional — the defaults are fine). Minimal:
 
 ```yaml
 vesma:
-  data_dir: ~/.mnemos/data
-  vault_path: ~/.mnemos/vault
+  data_dir: ~/.vesma/data
+  vault_path: ~/.vesma/vault
   strict_tag_contract: true
 embedding:
   provider: nano  # vesma-embed-v1 — bundled local model, works offline; or onnx, ollama
 ```
 
-Store: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Vault mirror: `~/.mnemos/vault/` (Obsidian-compatible markdown; the `~/.mnemos/` paths are the shipped defaults — 5.x keeps this layout during the dual period).
+Store: `~/.vesma/data/vesma.db` (SQLite, WAL). Vault mirror: `~/.vesma/vault/` (Obsidian-compatible markdown; the `~/.vesma/` paths are the shipped defaults since 6.0.0 — the 5.x-era `~/.mnemos/` layout moves with `vesma migrate-store`, see [migration-6-0.md](../../user/migration-6-0.md)).
 
 ## Service (recommended for long-running hosts)
 
@@ -118,7 +118,7 @@ and containers are never updated automatically. Weekly automation:
 [getting-started.md](../../user/getting-started.md#the-vesma-update-subcommands).
 
 The store schema is migrated automatically on first start of the new version. Back up
-`~/.mnemos/data/` before major upgrades — see [backup-restore.md](backup-restore.md).
+`~/.vesma/data/` before major upgrades — see [backup-restore.md](backup-restore.md).
 
 ## Verify
 

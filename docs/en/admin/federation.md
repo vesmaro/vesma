@@ -108,7 +108,7 @@ receive).
 ## 3. Federation access log — `src/vesma/federation_access_log.py`
 
 Contract §10. A B-side append-only JSONL audit log at
-`~/.mnemos/logs/federation-access.jsonl` that records who queried
+`~/.vesma/logs/federation-access.jsonl` that records who queried
 what, when, with what trigger code, and which records were returned.
 The log powers **anti-correlation tracking**: B sees A already got
 `EXHAUSTIVE` on topic X → the next request on the same topic returns

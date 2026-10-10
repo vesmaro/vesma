@@ -71,7 +71,7 @@ flowchart LR
 
 > **Изоляция хранилищ.** vesma разрешает свой конфиг в фиксированном
 > порядке — явный флаг `--config` → переменная окружения `VESMA_CONFIG` →
-> `./config.yaml` → `~/.mnemos/config.yaml` (`find_config_file` в
+> `./config.yaml` → `~/.vesma/config.yaml` (`find_config_file` в
 > `src/vesma/config.py`). Переменной `VESMA_HOME` **не существует**.
 > Чтобы запустить изолированный инстанс, создайте per-instance
 > `config.yaml` (с собственными `vesma.data_dir` / `vesma.vault_path`)
@@ -212,7 +212,7 @@ echo "VESMA_FED_PEER_VESMA_A_TOKEN=$TEST_TOKEN"
 ```mermaid
 flowchart LR
   LAP[Peer A<br/>laptop<br/>loopback :18101] -- SSH tunnel --> SSH[peer-b-host<br/>SSH -L 18101 → 127.0.0.1:8101]
-  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
+  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.vesma/config.yaml]
 ```
 
 ### a. Запустите тестовый `vesma serve` на peer B (удалённый хост)
@@ -245,7 +245,7 @@ vesma add \
 
 ### c. Сконфигурируйте peer A в `federation.peers` на peer B
 
-Отредактируйте `~/.mnemos/config.yaml` peer B, добавив peer A. Значение
+Отредактируйте `~/.vesma/config.yaml` peer B, добавив peer A. Значение
 токена живёт в именованной переменной окружения, никогда в конфиг-файле.
 
 ```yaml
@@ -342,7 +342,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 ```
 
 Ожидаем `trigger_code: "ALREADY_EXHAUSTED"` и пустой `records`. Журнал
-доступа (`~/.mnemos/logs/federation-access.jsonl` на peer B) хранит
+доступа (`~/.vesma/logs/federation-access.jsonl` на peer B) хранит
 прежнюю запись `EXHAUSTIVE` для этой пары `(peer_id, sha256(query))`, и
 сервер возвращает `ALREADY_EXHAUSTED` **без повторного запуска поиска**
 (контракт §9). Открытый текст запроса никогда не попадает в журнал
@@ -480,7 +480,7 @@ Production-развёртывание федерации обязано испо
 | Bearer-токен | Инлайн-переменная окружения в команде serve | Per-peer bearer в Kubernetes `Secret` — конфиг называет переменную (`bearer_token_env`), `Secret` хранит значение |
 | mTLS | Опущен (`mtls_cert_fingerprint` не задан) | Per-peer пиннинг сертификата по ADR-0016 — задайте `mtls_cert_fingerprint` равным SHA-256 клиентского сертификата peer'а, и пусть реверс-прокси инжектирует `X-Client-Cert-Fingerprint` |
 | Rate limit | 30/мин (тест) | Настраивается per-peer; лимитер process-local, поэтому multi-worker-развёртываниям нужен внешний лимитер (Redis) — см. [`federation.md`](federation.md) |
-| Журнал доступа | `~/.mnemos/logs/federation-access.jsonl` (по умолчанию) | Персистентный том — задайте `federation.access_log_path` на смонтированный путь в контейнеризированных развёртываниях |
+| Журнал доступа | `~/.vesma/logs/federation-access.jsonl` (по умолчанию) | Персистентный том — задайте `federation.access_log_path` на смонтированный путь в контейнеризированных развёртываниях |
 
 ### Ссылка на Helm-чарт
 

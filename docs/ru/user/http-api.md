@@ -175,18 +175,44 @@ Breaking-изменения — снятие алиасов, физически�
 
 ### `GET /metrics`
 
-Метрики в стиле Prometheus (наблюдаемость M5). Сейчас возвращает ту же структуру, что и агрегированная статистика `GET /memories`:
+Легаси-алиас — возвращает агрегированную статистику хранилища в JSON. Это **не** Prometheus-экспозиция; для неё используйте `GET /api/v1/metrics` ниже.
+
+**Ответ 200** — сокращённый пример с живого движка:
 
 ```json
 {
   "status": "ok",
-  "version": "4.0.0",
-  "data_dir": "/home/you/.mnemos/data",
-  "vault_path": "/home/you/.mnemos/vault",
+  "version": "6.1.0",
+  "data_dir": "/home/you/.vesma/data",
+  "vault_path": "/home/you/.vesma/vault",
   "total": 142,
-  "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
-  "vectors": 120
+  "by_status": {"archived": 5, "processed": 12, "published": 125},
+  "vectors": 125,
+  "projects": {"default": 9},
+  "filter": {},
+  "embedding_status": {},
+  "processor": {},
+  "search_health": {}
 }
+```
+
+(В реальном ответе объекты `projects`, `filter`, `embedding_status`,
+`processor` и `search_health` заполнены полностью — здесь опущены для краткости.)
+
+### `GET /api/v1/metrics`
+
+Prometheus-экспозиция в текстовом формате (scrape-цель для Grafana и
+observability-стека). Отдаёт `text/plain; version=0.0.4; charset=utf-8` —
+строки `# HELP` / `# TYPE` и серии `vesma_*` (всего памяти, по статусам,
+по проектам, сессии, плюс vitals-экспозиция):
+
+```text
+# HELP vesma_memories_total Total number of memories in storage
+# TYPE vesma_memories_total gauge
+vesma_memories_total 3971
+# HELP vesma_memories_by_status Memories by status
+# TYPE vesma_memories_by_status gauge
+vesma_memories_by_status{status="published"} 3945
 ```
 
 ---

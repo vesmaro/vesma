@@ -2,24 +2,31 @@
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/ci-cd.md)
 
-> **Scope**: How to operate, debug, and extend the GitHub Actions CI pipeline
-> for Vesma. Source of truth: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> **Scope**: How to operate, debug, and extend the CI pipeline for Vesma.
+> Source of truth: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> **Status (current reality):** GitHub Actions is billing-locked (#117) and
+> does **not** fire — the operative gates are the local scripts
+> (`make local-ci` / `scripts/local-ci.sh`, `scripts/pypi-publish.sh`,
+> `scripts/image-publish.sh`). The workflow files are kept as the spec for
+> when Actions resume; sections describing the Actions UI are marked as such.
 
 ---
 
 ## Pipeline overview
 
-The CI workflow (`.github/workflows/ci.yml`) runs on every push to `main`,
-every pull request targeting `main`, and on a weekly drift check
-(Monday 06:00 UTC). It has two jobs:
+The CI workflow (`.github/workflows/ci.yml`) is written to run on every push
+to `main`, every pull request targeting `main`, and on a weekly drift check
+(Monday 06:00 UTC) — **but it currently does not run** (billing-locked
+#117). It has two jobs:
 
 | Job | Runner | Purpose |
 |---|---|---|
 | `verify` | `ubuntu-latest`, Python 3.11 / 3.12 / 3.13 matrix | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
 | `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-test the `Containerfile` builds and the CLI works in-image (today the legacy hook `vesma --help`) |
 
-The `verify` job is the **required status check** for `main` (see
-[Branch protection](#branch-protection)).
+The `verify` job is the intended **required status check** for `main` once
+Actions resume (see [Branch protection](#branch-protection)); while they are
+locked, merge gates close through `local-ci.sh`.
 
 ---
 
@@ -78,6 +85,11 @@ go through `local-ci.sh` only.
 ---
 
 ## Branch protection
+
+> Applies **once Actions resume** — while they are billing-locked (#117),
+> a required status check that can never report green would hard-block
+> every merge; merge discipline is enforced locally in the meantime
+> (`make local-ci` before every push, TL re-run before merge).
 
 > ⚠️ This is **not** enforced by the workflow — it must be set via the
 > GitHub repository settings (Settings → Branches → Branch protection
@@ -170,6 +182,10 @@ and re-bump manually per the dependency-updates runbook.
 
 ## Container build job
 
+> Actions job — currently not running (billing-locked #117). The local
+> equivalent (`buildah bud` + smoke) is shown in
+> [Reproducing CI locally](#reproducing-ci-locally).
+
 The `build-container` job uses `buildah` (rootless, no daemon) instead
 of Docker to avoid the privileged-container requirement on GitHub-hosted
 runners. Steps:
@@ -196,6 +212,10 @@ If the container job fails, inspect the log for:
 ---
 
 ## Debugging failed runs
+
+> Actions UI workflow — applies when Actions resume. While they are
+> locked, failures surface locally: re-run the failing gate from
+> `scripts/local-ci.sh` and read its terminal output.
 
 1. Open the failed run on GitHub Actions.
 2. Find the step that failed. Each step's log is collapsible —
@@ -250,7 +270,9 @@ python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 ```
 
 Then push to a feature branch and confirm the green check on a draft PR
-before merging.
+before merging. While Actions are billing-locked (#117) the check will
+not appear — `make local-ci` is the gate that proves the workflow file
+still parses and the steps still pass.
 
 ---
 

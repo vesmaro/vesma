@@ -8,7 +8,9 @@
 
 One page, three honest sections: what works out of the box, what is partial,
 and what is planned. Statuses reflect the v4.0.0 codebase (owner-approved map
-2026-08-31, updated 2026-09-05: packaging shipped, benchmark stands landed).
+2026-08-31, updated 2026-09-05: packaging shipped, benchmark stands landed);
+the shipped surface has only grown since — the current release is **6.1.0**
+(store home `~/.vesma/`, mesh meta-polling).
 
 ---
 

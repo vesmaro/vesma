@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/mnemos-banner.svg" alt="Vesma — memory &amp; knowledge server for AI agents" width="100%">
+  <img src="assets/vesma-banner.svg" alt="Vesma — memory &amp; knowledge server for AI agents" width="100%">
 </p>
 
 # Vesma Documentation / Документация Vesma
@@ -16,7 +16,7 @@ Vesma — автономный сервер памяти и знаний: даё
 
 Установка с PyPI: `pip install vesma` · Первый запуск: [Начало работы](ru/user/getting-started.md) · Подключение харнеса: [MCP-пресеты](../integrations/mcp-presets.md)
 
-<!-- deprecated-note: the pre-rebrand PyPI package `mnemos-memory-server` remains live until deprecation; the bare `vesma` slot on PyPI is an unrelated project. -->
+<!-- deprecated-note: the bare `vesma` slot on PyPI is ours since the rebrand (the primary channel, `pip install vesma`); the pre-rebrand package `mnemos-memory-server` remains live until deprecation and installs the same server. -->
 
 ---
 

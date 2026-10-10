@@ -125,7 +125,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 
 ## User docs
 
-- [Feature Map](features.md) — what works out of the box, what is partial, what is planned (v4.0.0).
+- [Feature Map](features.md) — what works out of the box, what is partial, what is planned.
 - [Getting Started](user/getting-started.md) — install → first memory → first search → connect your harness.
 - [Integration Guide](user/integration-guide.md) — behavioral layer, deploy targets, agent MCP wiring, Hermes plugin.
 - [MCP Tools Reference](user/mcp-tools.md) — every `vesma_*` tool.
@@ -161,7 +161,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 
 ## Project (historical, English only)
 
-- [Architecture Decision Records](../project/adr/README.md) — 22 ADRs covering the M1 → M16 evolution and the v4.0.0 foundation.
+- [Architecture Decision Records](../project/adr/README.md) — the decision ledger from the fork through the 6.x releases.
 - [Milestones](../project/milestones.md) — milestone ledger with status legend.
 - [Phase completion reports](../project/reports/) — final reports per completed roadmap phase (Phase 0–1: PR #135–#157).
 - [Code Review 2026-06](../project/code-review-2026-06.md) — final code review findings and fixes.
