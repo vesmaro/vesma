@@ -1,4 +1,4 @@
-"""Tests for the update check + ``vesma update`` (issue #445).
+"""Tests for the update check + ``vesma self-update`` (issue #445).
 
 NO REAL NETWORK anywhere in this file: the HTTP fetch is always injected
 (``fetcher=``) or monkeypatched; dist detection and subprocesses are
@@ -407,7 +407,7 @@ def test_version_hint_on_stderr_when_update_available(
     assert result.exit_code == 0
     assert "vesma" in result.output
     assert f"update available: {LATEST}" in result.stderr
-    assert "vesma update --check" in result.stderr
+    assert "vesma self-update --check" in result.stderr
 
 
 def test_version_no_hint_when_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -445,7 +445,7 @@ def test_version_hint_never_crashes_on_broken_check(monkeypatch: pytest.MonkeyPa
     assert "vesma" in result.output
 
 
-# ── CLI: vesma update ────────────────────────────────────────────────────────
+# ── CLI: vesma self-update ────────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -460,7 +460,7 @@ def quiet_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _invoke_update(args: list[str], monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     from vesma.cli.main import app
 
-    return runner.invoke(app, ["update", *args])
+    return runner.invoke(app, ["self-update", *args])
 
 
 def test_update_check_output_shape(quiet_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -697,7 +697,7 @@ def test_update_plain_nontty_pending_check_only_with_hint(
 
     result = _invoke_update([], monkeypatch)
     assert result.exit_code == 0
-    assert "apply with: vesma update apply" in result.output
+    assert "apply with: vesma self-update apply" in result.output
     assert "UPDATE AVAILABLE" in result.output
 
 
@@ -882,7 +882,7 @@ def test_install_timer_env_fallback_exec_start(
     assert result.exit_code == 0, result.output
     service = (quiet_home / ".config/systemd/user/vesma-update.service").read_text()
     # quiet_home has no ~/.local/bin/vesma launcher — /usr/bin/env fallback.
-    assert "/usr/bin/env vesma update --yes --scope=user" in service
+    assert "/usr/bin/env vesma self-update --yes --scope=user" in service
 
 
 def test_install_timer_prints_instructions_when_systemctl_unavailable(
@@ -998,7 +998,7 @@ def test_install_timer_in_box_writes_host_units(
     service = (unit_dir / "vesma-update.service").read_text()
     assert (
         f"ExecStart={host_home}/.local/bin/distrobox-enter -n ubuntu -- /bin/sh -c "
-        "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+        "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
     ) in service
     timer = (unit_dir / "vesma-update.timer").read_text()
     assert "OnCalendar=weekly" in timer
@@ -1218,9 +1218,9 @@ def test_deprecated_check_alias_hints_on_stderr_stdout_clean(
 ) -> None:
     result = _invoke_update(["--check"], monkeypatch)
     assert result.exit_code == 0
-    assert "use: vesma update check" in result.stderr
+    assert "use: vesma self-update check" in result.stderr
     assert "[deprecated]" in result.stderr
-    assert "use: vesma update check" not in result.stdout, "stdout stays clean for pipes/JSON"
+    assert "use: vesma self-update check" not in result.stdout, "stdout stays clean for pipes/JSON"
     assert "UPDATE AVAILABLE" in result.stdout, "the flag still works identically"
 
 
@@ -1237,7 +1237,7 @@ def test_deprecated_yes_alias_hints_and_applies(
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 0, result.output
-    assert "use: vesma update apply" in result.stderr
+    assert "use: vesma self-update apply" in result.stderr
     assert "deprecated" not in result.stdout
     assert recorded, "the alias must keep working"
 
@@ -1251,8 +1251,8 @@ def test_deprecated_to_and_scope_aliases_hint(
 ) -> None:
     result = _invoke_update(["--to", "5.1.0", "--scope=user"], monkeypatch)
     assert result.exit_code == 0
-    assert "use: vesma update apply --to VERSION" in result.stderr
-    assert "use: vesma update apply --scope user" in result.stderr
+    assert "use: vesma self-update apply --to VERSION" in result.stderr
+    assert "use: vesma self-update apply --scope user" in result.stderr
 
 
 def test_deprecated_uninstall_timer_alias_hints_and_removes(
@@ -1261,7 +1261,7 @@ def test_deprecated_uninstall_timer_alias_hints_and_removes(
     calls = _spy_systemctl(monkeypatch, rc=0)
     result = _invoke_update(["--uninstall-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
-    assert "use: vesma update timer uninstall" in result.stderr
+    assert "use: vesma self-update timer uninstall" in result.stderr
     assert "removed" in result.stdout
     assert calls, "the alias must route to the same removal"
 
@@ -1269,7 +1269,7 @@ def test_deprecated_uninstall_timer_alias_hints_and_removes(
 def test_deprecated_flags_hidden_from_help(quiet_home: Path) -> None:
     from vesma.cli.main import app
 
-    result = runner.invoke(app, ["update", "--help"])
+    result = runner.invoke(app, ["self-update", "--help"])
     assert result.exit_code == 0
     # The deprecation NOTE mentions --check once; a visible option would
     # render a second time in the Options panel.
@@ -1372,7 +1372,7 @@ def test_family_row_update_available_wording_points_at_apply(
     monkeypatch.setenv("COLUMNS", "300")
     result = _invoke_update(["check"], monkeypatch)
     assert result.exit_code == 0
-    assert "UPDATE AVAILABLE — run 'vesma update apply'" in result.output
+    assert "UPDATE AVAILABLE — run 'vesma self-update apply'" in result.output
 
 
 # ── family_latest (updates.py) ────────────────────────────────────────────────
@@ -1451,7 +1451,7 @@ def test_timer_install_alias_refused_in_box(
     _spy_systemctl(monkeypatch, rc=0)
     result = _invoke_update(["--install-timer"], monkeypatch)
     assert result.exit_code == 1
-    assert "use: vesma update timer install" in result.stderr
+    assert "use: vesma self-update timer install" in result.stderr
     assert "dead units" in result.output
 
 

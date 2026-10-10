@@ -79,7 +79,13 @@ def _print_update_hint() -> None:
     except Exception:
         return
     if info is not None and info.update_available:
-        print(f"update available: {info.latest} (run 'vesma update --check')", file=sys.stderr)
+        # Canonical spelling since wave 61: the application self-update
+        # family lives under `vesma self-update` (top-level `vesma update`
+        # is the component-manifest verb now).
+        print(
+            f"update available: {info.latest} (run 'vesma self-update --check')",
+            file=sys.stderr,
+        )
 
 
 def _version_callback(value: bool) -> None:
@@ -2609,7 +2615,10 @@ app.add_typer(export_app, name="export")
 # first positional (click MultiCommand), so `import f.json --mode merge`
 # died with "Missing argument 'source'" (cli-audit 2026-10-08 #4).
 app.command(name="import")(import_cmd)
-app.add_typer(logs_app, name="logs")
+# Wave 61 component UX: the top-level `logs` name belongs to the
+# COMPONENT logs verb (vesma.cli.components); the pipeline-trace viewer
+# keeps its full surface under the `task-logs` alias.
+app.add_typer(logs_app, name="task-logs")
 app.add_typer(_metrics_app, name="metrics")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
@@ -2629,12 +2638,13 @@ from vesma.cli.graph_cmd import graph_app  # noqa: E402
 
 app.add_typer(graph_app, name="graph")
 
-# update family: a sub-app (board card vesma-update-family-components) —
-# plain `vesma update` keeps the 5.2.0 report+prompt behavior via the
-# group callback; check/apply/timer/components are subcommands and the
-# old flags remain hidden deprecated aliases (the shipped systemd unit's
-# ExecStart depends on them).
-app.add_typer(update_app, name="update")
+# self-update family: a sub-app (board card vesma-update-family-components) —
+# the APPLICATION self-update (check/apply/timer/components). Wave 61
+# component UX moved it off the top-level `update` name — that name now
+# belongs to the component-manifest verb (vesma.cli.components); the
+# legacy flag forms the shipped systemd unit depends on keep working as
+# hidden aliases on both surfaces.
+app.add_typer(update_app, name="self-update")
 
 # ── service (engine waves W3/W4, one sub-app) — install/uninstall (W4)
 #    plus the supervisor control plane status/health/start/stop/restart/
@@ -2643,6 +2653,15 @@ app.add_typer(update_app, name="update")
 from vesma.cli.service import service_app  # noqa: E402
 
 app.add_typer(service_app, name="service")
+
+# ── top-level component verbs (wave 61, board card vesma-61-wave) ──────
+#    vesma install|status|start|stop|restart|logs|update|configs [NAME]
+#    — ONE unified surface for built-in AND operator-authored
+#    components; thin delegation onto the service/manifest core.
+
+from vesma.cli.components import register_component_commands  # noqa: E402
+
+register_component_commands(app)
 
 # ── awareness (ADR-0035 operator surface, board card vesma-ops-mode-ux) ──
 #    get/set — the heartbeat mode switch in the resolved config file (the

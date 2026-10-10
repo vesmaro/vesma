@@ -1,17 +1,21 @@
-"""``vesma update`` CLI — one command for the whole update family (issue #445).
+"""``vesma self-update`` CLI — the APPLICATION self-update family (#445).
+
+Wave 61 component UX: the top-level ``vesma update`` name now belongs to
+the COMPONENT manifest verb (``vesma.cli.components``); THIS family moved
+to ``vesma self-update`` — same subcommands, same behavior, new name.
 
 Subcommands (standing design rule: flags do not replace subcommands):
 
-* ``vesma update`` — report every update surface found on THIS machine
-  (installed vs latest pip dist, the global npm package, the host
-  prod-venvs, the Go binaries) and — in an interactive terminal, when a
-  pip update is pending — ask ``Apply update? [y/N]`` and apply on yes
-  (issue #460). Non-TTY contexts (pipes/CI) stay check-only and print
-  ``apply with: vesma update --yes``.
-* ``vesma update check`` — the report only: never prompts, never
+* ``vesma self-update`` — report every update surface found on THIS
+  machine (installed vs latest pip dist, the global npm package, the
+  host prod-venvs, the Go binaries) and — in an interactive terminal,
+  when a pip update is pending — ask ``Apply update? [y/N]`` and apply
+  on yes (issue #460). Non-TTY contexts (pipes/CI) stay check-only and
+  print ``apply with: vesma self-update apply``.
+* ``vesma self-update check`` — the report only: never prompts, never
   applies (safe in pipes and CI).
-* ``vesma update apply [--to VERSION] [--scope user] [-y] [--verbose]``
-  — the apply path: upgrade the installed dist via
+* ``vesma self-update apply [--to VERSION] [--scope user] [-y]
+  [--verbose]`` — the apply path: upgrade the installed dist via
   ``<python> -m pip install --user --upgrade`` (``--break-system-packages``
   appended only under a PEP 668 externally-managed interpreter), update
   the global npm package best-effort, append a record to
@@ -19,20 +23,22 @@ Subcommands (standing design rule: flags do not replace subcommands):
   one summary line per surface; ``--verbose`` prints the full pip output
   (and it is shown as a tail automatically on failure). ``--to <version>``
   pins a specific (rollback) version.
-* ``vesma update timer install|uninstall|status`` — manage or inspect the
-  weekly systemd USER timer (``vesma-update.timer``). Inside a distrobox
-  a naive install would schedule units the host user manager never
-  loads (#468) — the install REFUSES there by default; ``--force`` opts
-  into the box-aware host-home install (one ExecStart line per box).
-* ``vesma update components`` — the component inventory (pip dist,
+* ``vesma self-update timer install|uninstall|status`` — manage or
+  inspect the weekly systemd USER timer (``vesma-update.timer``). Inside
+  a distrobox a naive install would schedule units the host user manager
+  never loads (#468) — the install REFUSES there by default; ``--force``
+  opts into the box-aware host-home install (one ExecStart line per box).
+* ``vesma self-update components`` — the component inventory (pip dist,
   integration pack, cortex bundle, embedder, npm package, timer,
   prod-venvs, Go binaries) with each piece's update path. No network.
 
 Deprecated flag forms (``--check``, ``--yes``/``-y``, ``--to``,
 ``--scope``, ``--install-timer``, ``--uninstall-timer``) still work on
 the plain form — hidden aliases with identical behavior and a one-line
-stderr hint pointing at the subcommand; the shipped systemd unit's
-``ExecStart`` (``vesma update --yes --scope=user``) depends on them.
+stderr hint pointing at the subcommand. The same forms remain hidden
+aliases on the COMPONENT ``vesma update`` verb (delegating HERE) — units
+installed before the rename keep running (``vesma update --yes
+--scope=user`` in a shipped ExecStart applies the self-update).
 
 The systemd unit files ship as ``contrib/vesma-update.{service,timer}``
 AND as the ``_SERVICE_TEMPLATE`` / ``_TIMER_TEMPLATE`` constants below —
@@ -90,8 +96,8 @@ _PROD_VENV_GLOB = "mnemos-prod/venv*"
 
 _GO_BIN_NAMES = ("vesmaro-agent", "vesma-agent", "mnemos-mesh", "vesma-mesh")
 
-_DEFAULT_EXEC_START = "%h/.local/bin/vesma update --yes --scope=user"
-_FALLBACK_EXEC_START = "/usr/bin/env vesma update --yes --scope=user"
+_DEFAULT_EXEC_START = "%h/.local/bin/vesma self-update --yes --scope=user"
+_FALLBACK_EXEC_START = "/usr/bin/env vesma self-update --yes --scope=user"
 
 _SERVICE_TEMPLATE = """\
 # vesma-update.service — weekly user-site auto-update (issue #445).
@@ -105,17 +111,16 @@ _SERVICE_TEMPLATE = """\
 #   releases with checksum verification), and container images (CI
 #   release artifacts).
 #
-# Install with `vesma update timer install`, remove with
-# `vesma update timer uninstall` (deprecated flag forms
-# --install-timer/--uninstall-timer still work). The installer writes
+# Install with `vesma self-update timer install`, remove with
+# `vesma self-update timer uninstall`. The installer writes
 # this file with the ExecStart chosen for this machine (%h launcher when
 # present, /usr/bin/env fallback otherwise).
 #
 # Distrobox hosts: a systemd USER timer on the HOST cannot reach the
 # boxes' pip user-sites. Adapt this unit the way the prod units do —
 # one ExecStart line per box, e.g.:
-#   ExecStart=distrobox-enter ubuntu-box -- vesma update --yes --scope=user
-#   ExecStart=distrobox-enter vscode-box -- vesma update --yes --scope=user
+#   ExecStart=distrobox-enter ubuntu-box -- vesma self-update --yes --scope=user
+#   ExecStart=distrobox-enter vscode-box -- vesma self-update --yes --scope=user
 # (systemd accumulates ExecStart= lines; keep the primary one first).
 
 [Unit]
@@ -220,7 +225,7 @@ def _stdin_is_tty() -> bool:
     """True when stdin is an interactive terminal (gates the confirm prompt).
 
     Injection point for tests: CliRunner stdin is never a TTY, so tests
-    monkeypatch this to simulate an interactive ``vesma update``.
+    monkeypatch this to simulate an interactive ``vesma self-update``.
     """
     try:
         return bool(sys.stdin.isatty())
@@ -297,7 +302,7 @@ def _family_note(
     ``family`` is the family max over the aliases' published versions;
     ``info`` is the per-dist answer for the installed alias. The note
     says UPDATE AVAILABLE whenever ANY known latest beats the installed
-    version — the wording stays actionable by ``vesma update apply``,
+    version — the wording stays actionable by ``vesma self-update apply``,
     which re-fetches and reports per-dist honestly when the aliases
     diverge.
     """
@@ -308,9 +313,9 @@ def _family_note(
         return "latest unknown (offline or check disabled)"
     latest = max(candidates, key=version_key)
     if info is not None and info.update_available:
-        return "UPDATE AVAILABLE — run 'vesma update apply'"
+        return "UPDATE AVAILABLE — run 'vesma self-update apply'"
     if version_key(latest) > version_key(installed):
-        return "UPDATE AVAILABLE — run 'vesma update apply'"
+        return "UPDATE AVAILABLE — run 'vesma self-update apply'"
     if version_key(installed) > version_key(latest):
         # installed > every known latest even after a fresh check (#460):
         # the honest wording for a local build or an unpublished release.
@@ -381,7 +386,7 @@ def _print_check(console: Console) -> UpdateInfo | None:
 
     console.print(table)
     console.print(
-        "[dim]`vesma update apply` changes only the pip user-site (and the npm "
+        "[dim]`vesma self-update apply` changes only the pip user-site (and the npm "
         "package); prod venvs and Go binaries are never touched. pip Latest = the "
         "family max over the alias dists (vesma-memory-server / vesma — same "
         "codebase; mnemos-memory-server is the deprecated legacy mirror).[/dim]"
@@ -611,7 +616,7 @@ def _box_exec_start_value(box: str, host_home: Path) -> str:
     enter = host_home / ".local" / "bin" / "distrobox-enter"
     return (
         f"{enter} -n {box} -- /bin/sh -c "
-        "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+        "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
     )
 
 
@@ -664,7 +669,7 @@ def _install_timer(console: Console, *, force: bool = False) -> None:
         )
         console.print(
             "  ExecStart=<host-home>/.local/bin/distrobox-enter -n <box> -- /bin/sh -c "
-            "'exec \"$HOME/.local/bin/vesma\" update --yes --scope=user'"
+            "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
         )
         raise typer.Exit(1)
     if in_container:
@@ -673,7 +678,7 @@ def _install_timer(console: Console, *, force: bool = False) -> None:
             console.print(
                 f"[red]✗[/red] running inside {where} — installing the timer here would "
                 "schedule units the host user manager never loads (dead units, issue #468). "
-                "Run `vesma update timer install` on the HOST instead (it wires one "
+                "Run `vesma self-update timer install` on the HOST instead (it wires one "
                 "ExecStart line per box into the host units — see the upgrade runbook), "
                 "or re-run here with --force if you intend to install from this box."
             )
@@ -833,7 +838,7 @@ def _uninstall_timer_in_box(console: Console, box: str, host_home: Path) -> None
     _remove_timer_units(console, unit_dir, host_manager=True)
 
 
-# ── timer status (`vesma update timer status`, #W-C) ─────────────────────────
+# ── timer status (`vesma self-update timer status`, #W-C) ─────────────────────────
 
 
 def _systemctl_property(unit: str, prop: str) -> str | None:
@@ -884,7 +889,7 @@ def _timer_status() -> dict[str, object]:
     return status
 
 
-# ── component inventory (`vesma update components`, #W-C) ─────────────────────
+# ── component inventory (`vesma self-update components`, #W-C) ─────────────────────
 
 #: The bundled cortex manifest (importlib.resources pattern, mirrors
 #: ``decision_provider.CORTEX_ARTIFACT_DIR`` without importing numpy).
@@ -903,8 +908,8 @@ def _cortex_manifest() -> dict[str, Any]:
 def _pip_component() -> tuple[str, str]:
     detected = detect_installed_dist()
     if detected is None:
-        return "-", "`pip install --user vesma`, then `vesma update apply`"
-    return f"{detected[0]} {detected[1]}", "`vesma update apply`"
+        return "-", "`pip install --user vesma`, then `vesma self-update apply`"
+    return f"{detected[0]} {detected[1]}", "`vesma self-update apply`"
 
 
 def _integration_component() -> tuple[str, str]:
@@ -993,9 +998,9 @@ def _embedder_component() -> tuple[str, str]:
 def _npm_component() -> tuple[str, str]:
     npm = shutil.which(NPM_BIN)
     if npm is None:
-        return "-", "`vesma update apply` (npm not found — report only)"
+        return "-", "`vesma self-update apply` (npm not found — report only)"
     version = _npm_global_version(npm)
-    return version or "not installed", "`vesma update apply` (npm leg, best-effort)"
+    return version or "not installed", "`vesma self-update apply` (npm leg, best-effort)"
 
 
 def _timer_component() -> tuple[str, str]:
@@ -1004,7 +1009,7 @@ def _timer_component() -> tuple[str, str]:
     if status.get("container"):
         box = status.get("box")
         cell += f" — in distrobox '{box}'" if box else " — in a container"
-    return cell, "`vesma update timer install`"
+    return cell, "`vesma self-update timer install`"
 
 
 def _prod_venv_component() -> tuple[str, str]:
@@ -1054,7 +1059,7 @@ update_app = typer.Typer(
     help="Check for updates / update the user-site install (issues #445, #460).\n\n"
     "Subcommands: `check` (report only), `apply` (the update path), `timer "
     "install|uninstall|status` (the weekly systemd timer), `components` (the "
-    "component inventory). Plain `vesma update` keeps the 5.2.0 behavior: report "
+    "component inventory). Plain `vesma self-update` keeps the 5.2.0 behavior: report "
     "+ interactive apply prompt in a TTY. The old flag forms (--check, --yes/-y, "
     "--to, --scope, --install-timer, --uninstall-timer) still work as hidden "
     "deprecated aliases with a stderr hint (scripts and the shipped systemd unit "
@@ -1070,7 +1075,7 @@ def update(
         bool,
         typer.Option(
             "--check",
-            help="Deprecated flag form — use: `vesma update check`.",
+            help="Deprecated flag form — use: `vesma self-update check`.",
             hidden=True,
         ),
     ] = False,
@@ -1079,7 +1084,7 @@ def update(
         typer.Option(
             "--yes",
             "-y",
-            help="Deprecated flag form — use: `vesma update apply`.",
+            help="Deprecated flag form — use: `vesma self-update apply`.",
             hidden=True,
         ),
     ] = False,
@@ -1095,7 +1100,7 @@ def update(
         str | None,
         typer.Option(
             "--scope",
-            help="Deprecated flag form — use: `vesma update apply --scope user`.",
+            help="Deprecated flag form — use: `vesma self-update apply --scope user`.",
             hidden=True,
         ),
     ] = None,
@@ -1103,7 +1108,7 @@ def update(
         str | None,
         typer.Option(
             "--to",
-            help="Deprecated flag form — use: `vesma update apply --to VERSION`.",
+            help="Deprecated flag form — use: `vesma self-update apply --to VERSION`.",
             hidden=True,
         ),
     ] = None,
@@ -1111,7 +1116,7 @@ def update(
         bool,
         typer.Option(
             "--install-timer",
-            help="Deprecated flag form — use: `vesma update timer install`.",
+            help="Deprecated flag form — use: `vesma self-update timer install`.",
             hidden=True,
         ),
     ] = False,
@@ -1119,14 +1124,14 @@ def update(
         bool,
         typer.Option(
             "--uninstall-timer",
-            help="Deprecated flag form — use: `vesma update timer uninstall`.",
+            help="Deprecated flag form — use: `vesma self-update timer uninstall`.",
             hidden=True,
         ),
     ] = False,
 ) -> None:
     """Check for updates / update the user-site install (issues #445, #460).
 
-    Plain `vesma update`: the surfaces report, then — in an interactive
+    Plain `vesma self-update`: the surfaces report, then — in an interactive
     terminal, when a pip update is pending — a confirmation prompt before
     applying (pipes/CI stay check-only and print `apply with: vesma
     update apply`).
@@ -1156,19 +1161,53 @@ def update(
         if deprecated_used:
             typer.echo(
                 "note: options placed before the subcommand are ignored — "
-                "pass them after it (e.g. `vesma update apply --yes`)",
+                "pass them after it (e.g. `vesma self-update apply --yes`)",
                 err=True,
             )
         return
+    _legacy_flag_dispatch(
+        console,
+        check=check,
+        yes=yes,
+        verbose=verbose,
+        scope=scope,
+        to=to,
+        install_timer=install_timer,
+        uninstall_timer=uninstall_timer,
+    )
+
+
+def _legacy_flag_dispatch(
+    console: Console,
+    *,
+    check: bool,
+    yes: bool,
+    verbose: bool,
+    scope: str | None,
+    to: str | None,
+    install_timer: bool,
+    uninstall_timer: bool,
+) -> None:
+    """The deprecated FLAG forms' dispatch — one code path, two surfaces.
+
+    Shared by the ``vesma self-update`` group callback AND the hidden
+    legacy flags on the component ``vesma update`` verb (units installed
+    before the rename keep working, with a stderr hint naming the
+    canonical spelling).
+    """
     if install_timer and uninstall_timer:
         console.print("[red]✗[/red] --install-timer and --uninstall-timer are mutually exclusive")
         raise typer.Exit(1)
     if install_timer:
-        _deprecated_flag_hint("vesma update --install-timer", "vesma update timer install")
+        _deprecated_flag_hint(
+            "vesma self-update --install-timer", "vesma self-update timer install"
+        )
         _install_timer(console)
         return
     if uninstall_timer:
-        _deprecated_flag_hint("vesma update --uninstall-timer", "vesma update timer uninstall")
+        _deprecated_flag_hint(
+            "vesma self-update --uninstall-timer", "vesma self-update timer uninstall"
+        )
         _uninstall_timer(console)
         return
     if scope is not None and scope != "user":
@@ -1178,17 +1217,21 @@ def update(
         )
         raise typer.Exit(1)
     if yes:
-        _deprecated_flag_hint("vesma update --yes", "vesma update apply")
+        _deprecated_flag_hint("vesma self-update --yes", "vesma self-update apply")
         _run_user_update(console, to, verbose=verbose)
         return
     # Hints precede the report: the first line a human sees names the
     # canonical spelling; stdout itself stays hint-free for pipes/JSON.
     if to is not None:
-        _deprecated_flag_hint("vesma update --to VERSION", "vesma update apply --to VERSION")
+        _deprecated_flag_hint(
+            "vesma self-update --to VERSION", "vesma self-update apply --to VERSION"
+        )
     if scope is not None:
-        _deprecated_flag_hint("vesma update --scope user", "vesma update apply --scope user")
+        _deprecated_flag_hint(
+            "vesma self-update --scope user", "vesma self-update apply --scope user"
+        )
     if check:
-        _deprecated_flag_hint("vesma update --check", "vesma update check")
+        _deprecated_flag_hint("vesma self-update --check", "vesma self-update check")
     info = _print_check(console)
     if check:
         return
@@ -1198,7 +1241,7 @@ def update(
         if typer.confirm("Apply update?", default=False):
             _run_user_update(console, to, verbose=verbose)
         return
-    console.print("[dim]apply with: vesma update apply[/dim]")
+    console.print("[dim]apply with: vesma self-update apply[/dim]")
 
 
 @update_app.command(name="check")
@@ -1206,7 +1249,7 @@ def update_check() -> None:
     """Report every update surface without changing anything.
 
     Never prompts, never applies — identical to the deprecated
-    `vesma update --check`, safe in pipes and CI.
+    `vesma self-update --check`, safe in pipes and CI.
     """
     _print_check(Console())
 
@@ -1245,7 +1288,7 @@ def update_apply(
 ) -> None:
     """Apply the update now: pip --user upgrade (+ npm best-effort).
 
-    The apply path behind the deprecated `vesma update --yes`. Never
+    The apply path behind the deprecated `vesma self-update --yes`. Never
     prompts — invoking `apply` IS the confirmation; `-y/--yes` is
     accepted but changes nothing. `--to VERSION` pins a (rollback)
     version. Every run appends a record to the update history.
@@ -1260,14 +1303,14 @@ def update_apply(
     _run_user_update(console, to, verbose=verbose)
 
 
-# ── timer subcommands (`vesma update timer ...`) ──────────────────────────────
+# ── timer subcommands (`vesma self-update timer ...`) ──────────────────────────────
 
 
 timer_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     help=(
         "Install, remove or inspect the weekly update timer.\n\n"
-        "The timer is the scheduled side of `vesma update`: a systemd user "
+        "The timer is the scheduled side of `vesma self-update`: a systemd user "
         "timer (or the platform equivalent) that runs the weekly check+apply "
         "pass. `install` sets it up, `uninstall` tears it down, `status` shows "
         "whether it is scheduled and when it last fired."
@@ -1337,7 +1380,7 @@ def timer_status(
 update_app.add_typer(timer_app, name="timer")
 
 
-# ── components subcommand (`vesma update components`, #W-C) ───────────────────
+# ── components subcommand (`vesma self-update components`, #W-C) ───────────────────
 
 
 @update_app.command(name="components")

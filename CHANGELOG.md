@@ -5,6 +5,13 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Top-level component verbs (wave 61 component UX, owner directive 2026-10-08): `vesma install|status|start|stop|restart|logs|update|configs [NAME]`** — ONE unified surface for every component, built-in and operator-authored alike; bare calls never bulk-mutate (refusals carry the component list + the `--all` hint; bulk lifecycle runs in dependency order), `status`/`configs` carry `--json` and degrade explicitly when the supervisor is down, `vesma update NAME` regenerates stale bundled manifests behind the `.pre-regen.bak` backup while operator-authored manifests are refused ("managed by operator — edit the manifest file"), and an empty `vesma logs NAME` says so explicitly with the source named (P2 cli-audit 2026-10-08). Files: `src/vesma/cli/components.py`, `src/vesma/service/install.py` (`install_component`, `regenerate_component_manifest`); tests `tests/test_cli_components.py`.
+- **Collision surfaces moved BY ALIAS (nothing removed)**: the application self-update family now lives at `vesma self-update` (check/apply/timer/components; new timer units write the canonical ExecStart spelling, and the legacy flag forms the previously shipped units depend on keep working as hidden aliases on BOTH `vesma self-update` and the component `vesma update` verb — including a `--timer` hint closing the P2 `update --timer` finding), and the pipeline-trace viewer lives at `vesma task-logs` (its flags also work as hidden aliases on component `vesma logs`). Files: `src/vesma/cli/update_cmd.py`, `src/vesma/cli/logs.py`, `src/vesma/cli/main.py`, `contrib/vesma-update.service`; tests `tests/test_updates.py`, `tests/test_update_components.py`.
+
 ## [6.1.0] — 2026-10-09
 
 ### Changed
