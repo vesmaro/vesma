@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Build backend pinned: `hatchling>=1.26,<2` in `[build-system] requires`** — the floor is PEP 639 `license-files` support (hatchling 1.18.0–1.25.0 die on this pyproject's metadata with `TypeError: Field project.license-files must be a table`); the cap is the next major so a future hatchling major cannot flip build behavior mid-train (the 6.1.0 container build died on a fresh hatchling 1.32.4 with `Forced include not found` when a force-include source was absent — container side fixed by COPYing the stubs, 36502be). Bisect 2026-10-10 (wheel target, stub-less checkout): 1.18.0–1.25.0 fail metadata, 1.26.0–1.32.4 all fail on the missing force-include source — no hatchling skips missing sources, so building without `bash scripts/gen-proto.sh` stays unsupported and the pyproject comments say so now.
+
 ## [6.1.0] — 2026-10-09
 
 ### Changed

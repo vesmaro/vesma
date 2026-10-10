@@ -1,5 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+# Floor: PEP 639 `license-files` (list form) needs hatchling >= 1.26 — older
+# backends raise `TypeError: Field project.license-files must be a table`
+# (verified 2026-10-10: 1.18.0–1.25.0 all fail metadata).
+# Cap: major boundary only, bumped deliberately. Hatchling ships behavior
+# changes in minors (1.19.0 made missing force-include sources an error),
+# so a fresh minor can still break a build — re-verify, then raise the cap.
+requires = ["hatchling>=1.26,<2"]
 build-backend = "hatchling.build"
 
 [project]
@@ -238,10 +244,11 @@ exclude = ["benchmarks", "training"]
 # mesh-enabled config crashed with "gRPC generated stubs not found"
 # before the HTTP bind. Mapped INTO the package as vesma/_mesh_gen_stubs/
 # — candidate 0 of the shim's resolution order. The directory is
-# gitignored: run `bash scripts/gen-proto.sh` before building; from a
-# checkout without it the wheel simply omits the stubs (hatchling skips
-# a missing force-include source — verified 2026-10-09) and the shim's
-# error message names the generation command.
+# gitignored: run `bash scripts/gen-proto.sh` before building — a checkout
+# without it CANNOT build (hatchling raises `Forced include not found` on a
+# missing force-include source; bisect 2026-10-10: every hatchling that
+# parses PEP 639 license-files, i.e. >= 1.26, errors — nothing skips) and
+# the shim's ImportError names the generation command.
 "federation/gen/python" = "vesma/_mesh_gen_stubs"
 # Ship the setup scripts (mcp-setup.sh, install.sh, deploy.sh, setup-distrobox.sh)
 # inside the wheel so `vesma integration setup` can find mcp-setup.sh from a
@@ -277,9 +284,10 @@ exclude = ["benchmarks", "training"]
 # selection would drop them — and release wheels are built FROM the
 # sdist (see the scripts block above). Force-include the generated dir
 # into the sdist verbatim (same path), so the from-sdist wheel build
-# finds it for the wheel mapping above. Same skip-when-missing contract:
-# a build from a checkout without `bash scripts/gen-proto.sh` omits the
-# stubs everywhere, and the shim's ImportError names the command.
+# finds it for the wheel mapping above. Same missing-source contract as the
+# wheel mapping: a checkout without `bash scripts/gen-proto.sh` fails the
+# sdist build with `Forced include not found` (bisect 2026-10-10), and the
+# shim's ImportError names the command.
 [tool.hatch.build.targets.sdist.force-include]
 "federation/gen/python" = "federation/gen/python"
 
