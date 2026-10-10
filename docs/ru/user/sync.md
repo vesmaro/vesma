@@ -221,7 +221,7 @@ Cron-ready shell-шаблон, объединяющий экспорт → пе�
 ## Audit-лог
 
 Каждый `vesma sync export` и `vesma sync import` дописывает одну
-JSONL-запись в `~/.mnemos/logs/sync-audit.jsonl`. Лог append-only —
+JSONL-запись в `~/.vesma/logs/sync-audit.jsonl`. Лог append-only —
 `tail -f` для мониторинга, `jq` для агрегатов, или отправка в SIEM.
 
 Формат записей (только **счётчики** — без сырого контента, секретов, PII):
@@ -244,7 +244,7 @@ Audit-лог — операционный след: какие проекты с
 синхронизации. Тег автоматически добавляется при записи сканером Layer 1
 (#86), когда детектируется секретный паттерн; владелец может снять его
 с явным подтверждением через `MemoryManager.remove_no_federate()`. См.
-[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации)
+[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate--маркер-исключения-из-федерации)
 для полного lifecycle.
 
 Даже без тега moderation-pipeline (Layer 3) прогоняет каждую запись при
@@ -257,5 +257,5 @@ secrets/PII — defence-in-depth, чтобы один пропущенный с�
 
 - [Export & Import](./export-import.md) — полные бэкапы (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — трёхслойная модель.
-- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-маркер-исключения-из-федерации) — маркер исключения.
+- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate--маркер-исключения-из-федерации) — маркер исключения.
 - [MCP Tools](./mcp-tools.md) — `vesma_export` / `vesma_import` MCP-инструменты (MCP-поверхность для полного export/import).

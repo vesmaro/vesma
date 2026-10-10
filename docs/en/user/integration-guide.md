@@ -579,7 +579,7 @@ Full copy-paste lines for the fallback paths (plus fresh-setup shell one-liners
 and env tuning):
 [`integrations/mcp-presets.md`](../../../integrations/mcp-presets.md).
 No environment variables are required — the server defaults to
-`~/.mnemos/{data,vault}` and creates both on first run.
+`~/.vesma/{data,vault}` and creates both on first run.
 
 ## Adapter template
 

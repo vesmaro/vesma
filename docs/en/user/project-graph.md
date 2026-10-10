@@ -13,7 +13,7 @@
 
 The **project graph** is a memory-grade symbol map of a codebase, built by
 parsing files with tree-sitter (ADR-0032). It lives in a sidecar SQLite file,
-`code_graph.db`, next to the main store in the data dir (`~/.mnemos/data/` by
+`code_graph.db`, next to the main store in the data dir (`~/.vesma/data/` by
 default).
 
 What is stored — and what is not:

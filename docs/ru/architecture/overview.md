@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/architecture/overview.md) · Русский
 
-> Снимок архитектуры актуален для Vesma **5.6.2**. Нормативные контракты
+> Снимок архитектуры актуален для Vesma **6.1.0**. Нормативные контракты
 > сервисного слоя (component-manifest, service-lifecycle, control-socket,
 > layout — все v1.0.0) живут в отдельном репо
 > [vesma-specs](https://github.com/vesmaro/vesma-specs).
@@ -290,7 +290,7 @@ flowchart TB
 
 #### Layout v1 — канонические пути
 
-Пути инсталляции (не путать с легаси-путями стора памяти `~/.mnemos/` из раздела «Конфигурация»):
+Пути инсталляции (не путать с путями стора памяти `~/.vesma/` из раздела «Конфигурация»; легаси-дом эпохи 5.x `~/.mnemos/` переезжает в `~/.vesma/` командой `vesma migrate-store`):
 
 | Путь | Режим | Назначение |
 |------|-------|------------|
@@ -444,13 +444,13 @@ updated: 2026-04-10T12:00:00
 
 ## Конфигурация
 
-Поиск конфигурационного файла (в порядке приоритета): явный `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.mnemos/config.yaml`. Переменные окружения канонически читаются с префиксом `VESMA_` (например, `VESMA_VESMA__DATA_DIR`); написание 5.0–5.2 `VESMARO_*` выведено из обращения — 6.0.0 читает только `VESMA_*` (двойной период ADR-0031 завершён).
+Поиск конфигурационного файла (в порядке приоритета): явный `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.vesma/config.yaml`. Переменные окружения канонически читаются с префиксом `VESMA_` (например, `VESMA_VESMA__DATA_DIR`); написание 5.0–5.2 `VESMARO_*` выведено из обращения — 6.0.0 читает только `VESMA_*` (двойной период ADR-0031 завершён).
 
 ```yaml
 # config.yaml
 vesma:
-  vault_path: ~/.mnemos/vault          # Obsidian vault
-  data_dir: ~/.mnemos/data             # векторный индекс + SQLite
+  vault_path: ~/.vesma/vault           # Obsidian vault
+  data_dir: ~/.vesma/data              # векторный индекс + SQLite
 
 embedding:
   provider: nano                       # nano (vesma-embed-v1, встроена) | onnx | ollama | sentence-transformers
@@ -470,7 +470,7 @@ mcp:
 ```
 
 > Два слоя путей не путать: **стор памяти** (vault, SQLite, кэш — по умолчанию
-> `~/.mnemos/…`, legacy-пути, управляются секцией `vesma:`) и **инсталляция
+> `~/.vesma/…`, управляются секцией `vesma:`) и **инсталляция
 > сервиса** (юнит, venv-ы, манифесты — layout v1, `~/.config/vesma/`,
 > `~/.local/share/vesma/`, `~/.local/state/vesma/`). См. раздел
 > «Сервисный слой».

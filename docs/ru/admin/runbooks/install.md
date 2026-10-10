@@ -42,20 +42,22 @@ pipx install vesma
 
 ## Конфигурация
 
-Конфиг по умолчанию — `~/.mnemos/config.yaml` (опционально — значений по умолчанию
+Конфиг по умолчанию — `~/.vesma/config.yaml` (опционально — значений по умолчанию
 достаточно). Минимальный вариант:
 
 ```yaml
 vesma:
-  data_dir: ~/.mnemos/data
-  vault_path: ~/.mnemos/vault
+  data_dir: ~/.vesma/data
+  vault_path: ~/.vesma/vault
   strict_tag_contract: true
 embedding:
   provider: nano  # vesma-embed-v1 — встроенная локальная модель, работает офлайн; или onnx, ollama
 ```
 
-Хранилище: `~/.mnemos/data/mnemos.db` (SQLite, WAL). Зеркало vault:
-`~/.mnemos/vault/` (Obsidian-совместимый markdown).
+Хранилище: `~/.vesma/data/vesma.db` (SQLite, WAL). Зеркало vault:
+`~/.vesma/vault/` (Obsidian-совместимый markdown; пути `~/.vesma/` — поставляемые
+по умолчанию с 6.0.0; легаси-лейаут 5.x `~/.mnemos/` переезжает командой
+`vesma migrate-store`, см. [migration-6-0.md](../../user/migration-6-0.md)).
 
 ## Сервис (рекомендуется для постоянной работы)
 
@@ -123,7 +125,7 @@ Go-бинарники и контейнеры никогда не обновля
 подкоманд — в [getting-started.md](../../user/getting-started.md#подкоманды-vesma-update).
 
 Схема хранилища мигрирует автоматически при первом запуске новой версии.
-Делайте бэкап `~/.mnemos/data/` перед мажорными обновлениями — см.
+Делайте бэкап `~/.vesma/data/` перед мажорными обновлениями — см.
 [backup-restore.md](backup-restore.md).
 
 ## Проверка

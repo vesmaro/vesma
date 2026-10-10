@@ -70,7 +70,7 @@ response, not a trigger code; the response body still carries
 
 > **Store isolation.** vesma resolves its config in a fixed order —
 > explicit `--config` flag → `VESMA_CONFIG` env var → `./config.yaml` →
-> `~/.mnemos/config.yaml` (`find_config_file` in `src/vesma/config.py`).
+> `~/.vesma/config.yaml` (`find_config_file` in `src/vesma/config.py`).
 > There is **no** `VESMA_HOME` variable. To run an isolated instance,
 > write a per-instance `config.yaml` (own `vesma.data_dir` /
 > `vesma.vault_path`) and point `VESMA_CONFIG` at it — every command
@@ -211,7 +211,7 @@ remote host (peer B, the `ai-agent` machine). It exercises the live
 ```mermaid
 flowchart LR
   LAP[Peer A<br/>laptop<br/>loopback :18101] -- SSH tunnel --> SSH[peer-b-host<br/>SSH -L 18101 → 127.0.0.1:8101]
-  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.mnemos/config.yaml]
+  SSH --> PB[Peer B vesma serve<br/>loopback :8101<br/>default config ~/.vesma/config.yaml]
 ```
 
 ### a. Start the test `vesma serve` on peer B (remote host)
@@ -243,7 +243,7 @@ vesma add \
 
 ### c. Configure peer A in `federation.peers` on peer B
 
-Edit peer B's `~/.mnemos/config.yaml` to add peer A. The token value lives in the named env var, never in
+Edit peer B's `~/.vesma/config.yaml` to add peer A. The token value lives in the named env var, never in
 the config file.
 
 ```yaml
@@ -341,7 +341,7 @@ curl -sS -X POST http://127.0.0.1:18101/api/v1/federation/pull \
 
 Expect `trigger_code: "ALREADY_EXHAUSTED"` and `records` empty. The
 access log
-(`~/.mnemos/logs/federation-access.jsonl` on peer B) records the prior
+(`~/.vesma/logs/federation-access.jsonl` on peer B) records the prior
 `EXHAUSTIVE` entry for this `(peer_id, sha256(query))` pair, and the
 server returns `ALREADY_EXHAUSTED` **without re-running search**
 (contract §9). The plaintext query is never stored in the access log —
@@ -483,7 +483,7 @@ A production federation deployment must use the full auth stack.
 | Bearer token | Inline env var in the serve command | Per-peer bearer in a Kubernetes `Secret` — the config names the env var (`bearer_token_env`), the `Secret` holds the value |
 | mTLS | Omitted (`mtls_cert_fingerprint` unset) | Per-peer cert pinning per ADR-0016 — set `mtls_cert_fingerprint` to the SHA-256 of the peer's client cert, and have the reverse proxy inject `X-Client-Cert-Fingerprint` |
 | Rate limit | 30/min (test) | Tuned per peer; the limiter is process-local, so multi-worker deployments need an external limiter (Redis) — see [`federation.md`](federation.md) |
-| Access log | `~/.mnemos/logs/federation-access.jsonl` (default) | Persistent volume — set `federation.access_log_path` to a mounted path in containerised deployments |
+| Access log | `~/.vesma/logs/federation-access.jsonl` (default) | Persistent volume — set `federation.access_log_path` to a mounted path in containerised deployments |
 
 ### Helm chart reference
 

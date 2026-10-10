@@ -19,7 +19,7 @@ Vesma — **local-first, single-tenant, file-backed** сервер памяти,
 развёртываемый как CLI-инструмент, stdio MCP-сервер или loopback HTTP API
 (по умолчанию `127.0.0.1`). Поверхности доступа:
 
-- SQLite-база (`mnemos.db`) и Obsidian-совместимый vault.
+- SQLite-база (`vesma.db`) и Obsidian-совместимый vault.
 - Локальный FastAPI HTTP API (по умолчанию `127.0.0.1:8787`).
 - MCP-сервер через stdio.
 - Опциональные исходящие сетевые вызовы к LLM-провайдерам (Ollama / OpenAI /
@@ -235,9 +235,9 @@ ruff check src/ tests/          # ОБЯЗАТЕЛЬНО: 0 ошибок
 Vesma использует **непрозрачные bearer-токены** (префикс `mnk_`, 256 бит
 случайных данных через `secrets.token_urlsafe(32)`). На диск и в SQLite
 записывается только PBKDF2-HMAC-SHA256 дайджест каждого токена (600 000
-итераций, фиксированная соль `mnemos.api.auth.fernet.v1`). Открытый текст
+итераций, фиксированная соль `vesma.api.auth.fernet.v1`). Открытый текст
 показывается однократно при создании и никогда не хранится. Похищенный
-`~/.mnemos/data/mnemos.db` (где дайджесты токенов хранятся вместе с
+`~/.vesma/data/vesma.db` (где дайджесты токенов хранятся вместе с
 памятями) или конфигурационный файл содержат только хэш, а не
 пригодный к использованию bearer-токен.
 
@@ -443,7 +443,7 @@ key, database connection strings, и high-entropy base64-последовате�
 
 ### 11.2 Тег `mnemos:no-federate`
 
-См. [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#vesmano-federate--маркер-исключения-из-федерации)
+См. [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#mnemosno-federate--маркер-исключения-из-федерации)
 для жизненного цикла тега (авто-добавление, идемпотентность, удаление с
 подтверждением, re-detection guard). Тег — это **маркер исключения** в
 пространстве имён подтипов `vesma:`, НЕ когнитивная категория.
@@ -507,7 +507,7 @@ key, database connection strings, и high-entropy base64-последовате�
   schema-drift / oversized / нарушении контракта **весь batch
   отклоняется** (без частичных записей).
 - **Audit-лог** — каждый экспорт и импорт дописывает одну JSONL-запись
-  в `~/.mnemos/logs/sync-audit.jsonl` с **только счётчиками** —
+  в `~/.vesma/logs/sync-audit.jsonl` с **только счётчиками** —
   экспортировано / импортировано / refused / skipped, secrets
   redacted, PII anonymized, errors, warnings. **Сырой контент, секреты
   и PII-значения никогда не попадают в audit-лог**.

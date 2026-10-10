@@ -3,7 +3,9 @@
 **🌐 Language / Язык:** [English](../../en/user/getting-started.md) · Русский
 
 > Полный жизненный цикл пользователя Vesma: установка → сервис → интеграция →
-> doctor → обновления → вычистка легаси. Актуально для релиза 5.6.2.
+> doctor → обновления → вычистка легаси. Актуально для релиза 6.1.0. Дом
+> стора — `~/.vesma/` (с 6.0.0; переезд с 5.x описан в
+> [migration-6-0.md](migration-6-0.md)).
 
 Vesma — standalone-сервер памяти и знаний для AI-агентов. Одна утилита `vesma`
 ведёт весь цикл: ставит пакет, разворачивает сервис, подключает агентские
@@ -27,7 +29,7 @@ flowchart LR
 MCP-инструменту — [mcp-tools.md](mcp-tools.md). По каждому HTTP-эндпоинту —
 [http-api.md](http-api.md).
 
-> **Подсказка 5.6.2.** `-h` работает на любом уровне — `vesma -h`,
+> **Подсказка (с 5.6.2).** `-h` работает на любом уровне — `vesma -h`,
 > `vesma service -h`, `vesma service start -h`. Не помните флаги — добавьте
 > `-h` к любой команде.
 
@@ -286,8 +288,8 @@ vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
 
 Vesma автоматически:
 
-1. **Записал запись в SQLite** по пути `~/.mnemos/data/mnemos.db` (создаётся при первом запуске).
-2. **Отразил её в Obsidian-vault** `~/.mnemos/vault/` как markdown-файл с YAML-фронтматтером.
+1. **Записал запись в SQLite** по пути `~/.vesma/data/vesma.db` (создаётся при первом запуске).
+2. **Отразил её в Obsidian-vault** `~/.vesma/vault/` как markdown-файл с YAML-фронтматтером.
 3. **Проверил контракт тегов** — `project:test` + `agent:getting-started` + `vesma:learning` —
    корректная тройка. Пропустите один из тегов, и вместо подтверждения получите
    `❌ Tag contract violation: ...`.
@@ -503,7 +505,7 @@ updates:
 ```bash
 vesma update check              # отчёт-only
 vesma update apply              # pip user-site (+ npm best-effort)
-vesma update apply --to 5.6.1   # откат / закрепление версии
+vesma update apply --to 6.0.0   # откат / закрепление версии
 vesma update timer install      # недельная автоматизация
 ```
 
@@ -537,7 +539,8 @@ Go-бинарники и контейнеры молча не обновляют
 
 | Путь | Что это |
 |------|---------|
-| `~/.mnemos/` | Стор движка: `data/mnemos.db` (SQLite + векторный индекс), `vault/` (зеркало Obsidian), `config.yaml`, `logs/` |
+| `~/.vesma/` | Стор движка (канон с 6.0.0): `data/vesma.db` (SQLite + векторный индекс), `vault/` (зеркало Obsidian), `config.yaml`, `logs/` |
+| `~/.mnemos/` | Легаси-стор эпохи 5.x — **до миграции не удалять**: сначала `vesma migrate-store --from ~/.mnemos --to ~/.vesma` ([migration-6-0.md](migration-6-0.md)) |
 | `~/.config/vesma/` | Конфиг сервис-слоя: `vesma.yaml`, манифесты `components.d/`, env-файлы `env/` |
 | `~/.local/share/vesma/` | Данные компонентов + venv движка и компонентов (`venv/`, `venvs/`) — владелец: install-флоу, руками не трогать |
 | `~/.local/state/vesma/` | Логи, журнал переходов, fallback runtime |
@@ -557,7 +560,8 @@ systemctl --user daemon-reload
 # 3. старые sh-обёртки и лаунчеры старых имён
 rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
 
-# 4. старые completion-скрипты (актуальные — vesma.*; их не трогать)
+# 4. старые completion-скрипты (легаси-локация 5.x; актуальные живут в
+#    ~/.vesma/completion/ — их не трогать)
 rm -i ~/.mnemos/completion/vesma.*
 
 # 5. легаси venv-каталоги с версиями в имени (созданные руками — НЕ канонические vesma/venv*)
@@ -575,7 +579,8 @@ vesma doctor service        # сервис-установка по контра�
 
 ### Сценарий Б — полное удаление без сохранения
 
-> ⚠️ **НЕОБРАТИМО.** Стор `~/.mnemos/` (база, векторный индекс, vault, логи),
+> ⚠️ **НЕОБРАТИМО.** Стор `~/.vesma/` (база, векторный индекс, vault, логи;
+> легаси-стор эпохи 5.x `~/.mnemos/` стирается вместе с ним),
 > конфиги сервис-слоя и все данные компонентов стираются без возможности
 > восстановления. Если данные хоть что-то значат — сначала сделайте выгрузку:
 > `vesma export backup.json` (см. [export-import.md](export-import.md)).
@@ -599,12 +604,12 @@ systemctl --user disable --now vesma.service 2>/dev/null
 rm -i ~/.config/systemd/user/vesma*.service ~/.config/systemd/user/vesma-update.{service,timer}
 systemctl --user daemon-reload
 
-# 6. каталоги данных и конфигов — всё целиком
-rm -ri ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
+# 6. каталоги данных и конфигов — всё целиком (~/.mnemos — легаси-дом 5.x)
+rm -ri ~/.vesma ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
 
 # 7. лаунчеры и completion-скрипты
-rm -i ~/.local/bin/vesma ~/.local/bin/vesma ~/.local/bin/vesma-*
-rm -i ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
+rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
+rm -i ~/.vesma/completion/vesma.* ~/.mnemos/completion/vesma.* ~/.config/fish/completions/vesma.fish
 ```
 
 Шаги 1–3 — утилитой, потому что только она знает полный список своих артефактов;
@@ -669,13 +674,14 @@ vesma migrate from-ai-brain
 
 ## Конфигурация
 
-Vesma читает `config.yaml` из текущего каталога или `~/.mnemos/config.yaml`.
+Vesma читает `config.yaml` из текущего каталога или `~/.vesma/config.yaml`
+(оверрайд: `VESMA_CONFIG`; легаси-локация 5.x — `~/.mnemos/config.yaml`).
 Полная схема — в [config.example.yaml](../../../config.example.yaml). Самые полезные ручки:
 
 | Параметр | По умолчанию | Назначение |
 |----------|--------------|-----------|
-| `vesma.data_dir` | `~/.mnemos/data` | Хранилище SQLite + векторный индекс |
-| `vesma.vault_path` | `~/.mnemos/vault` | Зеркало Obsidian |
+| `vesma.data_dir` | `~/.vesma/data` | Хранилище SQLite + векторный индекс |
+| `vesma.vault_path` | `~/.vesma/vault` | Зеркало Obsidian |
 | `vesma.strict_tag_contract` | `true` | Принуждать контракт тегов (`false` — только для легаси-импортов) |
 | `embedding.provider` | `nano` | `nano` (vesma-embed-v1, встроенная) / `onnx` / `ollama` / `sentence-transformers` |
 | `search.hybrid_alpha` | `0.5` | Вес векторной ноги в RRF (0.0 = чистый FTS, 1.0 = чистый вектор) |
@@ -692,12 +698,12 @@ VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
 
 ### Логирование
 
-Vesma пишет логи в `~/.mnemos/logs/mnemos.log` по умолчанию (ротация, 10 МБ × 3 файла):
+Vesma пишет логи в `~/.vesma/logs/vesma.log` по умолчанию (ротация, 10 МБ × 3 файла):
 
 ```yaml
 logging:
   level: INFO                    # DEBUG | INFO | WARNING | ERROR
-  log_file: ~/.mnemos/logs/mnemos.log
+  log_file: ~/.vesma/logs/vesma.log
   max_file_size_mb: 10
   backup_count: 3
 ```
@@ -774,4 +780,4 @@ ADR-0023; после переустановки транспорт подтве�
 
 ---
 
-_Последнее обновление: 2026-10-06 (релиз 5.6.2)_
+_Последнее обновление: 2026-10-10 (релиз 6.1.0)_

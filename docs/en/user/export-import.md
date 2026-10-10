@@ -33,7 +33,7 @@ endpoints. Both share the same underlying logic.
 | Format | What it contains | Vectors | Traces | Best for |
 |--------|------------------|---------|--------|----------|
 | **JSON** (`--format json`) | Memory metadata + projects | Regenerated on import | Never | Partial export, migration, inspection |
-| **SQLite** (`--format sqlite`) | Raw `mnemos.db` + `vectors.db` in a `.tar.gz` | Included (full snapshot) | Never | Fastest full backup / restore |
+| **SQLite** (`--format sqlite`) | Raw `vesma.db` + `vectors.db` in a `.tar.gz` | Included (full snapshot) | Never | Fastest full backup / restore |
 
 ### JSON — metadata only
 
@@ -44,7 +44,7 @@ memories. This keeps the export file small and portable.
 
 ### SQLite — complete snapshot
 
-A SQLite export copies the raw `mnemos.db` and `vectors.db` files into a
+A SQLite export copies the raw `vesma.db` and `vectors.db` files into a
 `.tar.gz` archive. This is the fastest way to produce a full backup and
 the fastest way to restore one (the DB files are replaced directly).
 Filters (`--project`, `--agent`, etc.) do **not** apply to SQLite exports

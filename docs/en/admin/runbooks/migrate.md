@@ -124,7 +124,7 @@ If something goes wrong:
 ```bash
 # Restore from a Vesma backup
 ls ~/.vesma/data/*.backup-*
-cp ~/.vesma/data/mnemos.db.backup-YYYYMMDD-HHMMSS ~/.vesma/data/mnemos.db
+cp ~/.vesma/data/vesma.db.backup-YYYYMMDD-HHMMSS ~/.vesma/data/vesma.db
 
 # Or restore from a JSON export — idempotent merge
 vesma import vesma-export.json --mode merge

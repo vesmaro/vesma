@@ -2,9 +2,10 @@
 
 **🌐 Language / Язык:** [English](../../../en/admin/runbooks/backup-restore.md) · Русский
 
-- **Канонический стор** — `~/.mnemos/`: БД `~/.mnemos/data/mnemos.db` (SQLite, WAL)
-  и Obsidian-совместимое зеркало `~/.mnemos/vault/`. Путь исторический (эпоха
-  Vesma) и переименования не требует — его же печатает `vesma doctor paths`.
+- **Канонический стор** — `~/.vesma/` (с 6.0.0): БД `~/.vesma/data/vesma.db` (SQLite, WAL)
+  и Obsidian-совместимое зеркало `~/.vesma/vault/`. Стор эпохи 5.x `~/.mnemos/` —
+  легаси: сначала перенесите его командой `vesma migrate-store`
+  ([migration-6-0.md](../../user/migration-6-0.md)) и только потом опирайтесь на эти пути.
 - Для штатного экспорта/переноса данных используйте утилиту (`vesma export` /
   `vesma import`), а не ручной обход SQLite: она умеет шифрование, фильтры и
   идемпотентный merge.
@@ -17,8 +18,8 @@
 ```bash
 # Данные Vesma + vault
 tar czf vesma-backup-$(date +%Y%m%d).tar.gz \
-  ~/.mnemos/data \
-  ~/.mnemos/vault
+  ~/.vesma/data \
+  ~/.vesma/vault
 ```
 
 Перед таром остановите пишущие процессы (`vesma processor stop`; если работает
@@ -49,7 +50,7 @@ vesma export --dry-run
 
 ```bash
 # Ежедневное резервное копирование в 02:00
-0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
+0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.vesma/data ~/.vesma/vault
 ```
 
 ## Восстановление
@@ -62,9 +63,13 @@ vesma export --dry-run
 tar xzf vesma-backup-20260115.tar.gz -C ~
 
 # Или выборочное восстановление
-cp vesma-backup-20260115/.mnemos/data/mnemos.db ~/.mnemos/data/
-rsync -a vesma-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
+cp vesma-backup-20260115/.vesma/data/vesma.db ~/.vesma/data/
+rsync -a vesma-backup-20260115/.vesma/vault/ ~/.vesma/vault/
 ```
+
+> Бэкап эпохи 5.x распаковывается в `.mnemos/` (имя БД — `mnemos.db`) — восстановите
+> его во временный дом и перенесите вперёд командой `vesma migrate-store`
+> ([migration-6-0.md](../../user/migration-6-0.md)), а не поверх `~/.vesma/`.
 
 ### Восстановление из экспорта Vesma
 
@@ -81,7 +86,7 @@ vesma import vesma-export.json --mode merge
 # Полное восстановление из снапшота (деструктивно; авто-бэкап в --backup-dir)
 vesma import vesma-snapshot.db.zst --mode restore --confirm \
   --passphrase-file ~/.secrets/backup-passphrase \
-  --backup-dir ~/.mnemos/data/pre-restore
+  --backup-dir ~/.vesma/data/pre-restore
 ```
 
 После восстановления проверьте состояние: `vesma stats`, `vesma search "probe"`,
@@ -92,10 +97,10 @@ vesma import vesma-snapshot.db.zst --mode restore --confirm \
 Vesma автоматически создаёт резервные копии БД перед миграциями схемы:
 
 ```bash
-ls ~/.mnemos/data/*.backup-*
-# ~/.mnemos/data/mnemos.db.backup-20260115-143022
+ls ~/.vesma/data/*.backup-*
+# ~/.vesma/data/vesma.db.backup-20260115-143022
 
-cp ~/.mnemos/data/mnemos.db.backup-20260115-143022 ~/.mnemos/data/mnemos.db
+cp ~/.vesma/data/vesma.db.backup-20260115-143022 ~/.vesma/data/vesma.db
 ```
 
 ## Импорт сторонних записей

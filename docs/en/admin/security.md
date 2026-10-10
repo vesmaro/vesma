@@ -19,7 +19,7 @@ Vesma is a **local-first, single-tenant, file-backed** memory server
 deployed as either a CLI tool, a stdio MCP server, or a loopback HTTP API
 (defaults to `127.0.0.1`). It exposes:
 
-- A SQLite database (`mnemos.db`) and an Obsidian-compatible vault.
+- A SQLite database (`vesma.db`) and an Obsidian-compatible vault.
 - A local FastAPI HTTP API (default `127.0.0.1:8787`).
 - An MCP server over stdio.
 - Optional outbound network calls to LLM providers (Ollama / OpenAI / etc.)
@@ -234,8 +234,8 @@ contract from `.copilot/instructions/lint-and-validate.instructions.md`:
 Vesma uses **opaque bearer tokens** (prefix `mnk_`, 256-bit random via
 `secrets.token_urlsafe(32)`). Only the PBKDF2-HMAC-SHA256 digest of each
 token is written to disk or SQLite (600 000 iterations, fixed salt
-`mnemos.api.auth.fernet.v1`). The plaintext is shown once at creation and
-never stored. A stolen `~/.mnemos/data/mnemos.db` (where token digests
+`vesma.api.auth.fernet.v1`). The plaintext is shown once at creation and
+never stored. A stolen `~/.vesma/data/vesma.db` (where token digests
 live alongside memories) or config file yields only the
 hash, not a usable bearer string.
 
@@ -450,7 +450,7 @@ content.
 
 ### 11.2 `mnemos:no-federate` tag
 
-See [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#vesmano-federate--federation-exclusion-marker)
+See [Tag Contract — `mnemos:no-federate`](../user/tag-contract.md#mnemosno-federate--federation-exclusion-marker)
 for the tag's lifecycle (auto-add, idempotent, removal with confirmation,
 re-detection guard). The tag is an **exclusion marker** in the
 `vesma:` subtype namespace — it is NOT a cognitive category.
@@ -511,7 +511,7 @@ into the federation batch-sync path. See
   skipped, never overwritten). Schema drift / oversized / contract
   violations reject the **whole batch** (no partial writes).
 - **Audit log** — every export and import appends one JSONL entry to
-  `~/.mnemos/logs/sync-audit.jsonl` with **counters only** — records
+  `~/.vesma/logs/sync-audit.jsonl` with **counters only** — records
   exported / imported / refused / skipped, secrets redacted, PII
   anonymized, errors, warnings. **No raw content, no secrets, no PII
   values** ever enter the audit log.
