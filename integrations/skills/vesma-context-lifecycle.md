@@ -55,8 +55,8 @@ rewrite lifecycle.
    vesma_assemble_context(session=<session-id>, project=<project-slug>,
                            file=<optional-path>, agent=<agent-slug>,
                            budget=2048, mode="sync")
-     # → assembled text, per-block provenance lines, redaction counts,
-     #   token stats
+   # → assembled text, per-block provenance lines, redaction counts,
+   #   token stats
    ```
 
    The fixed pipeline runs in order: hybrid RRF recall (published/processed
