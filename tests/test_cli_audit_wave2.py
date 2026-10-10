@@ -110,6 +110,14 @@ def test_metrics_command_token_skips_help_and_version_runs() -> None:
     assert _metrics_command_token(["vesma", "stats"]) == "stats"
 
 
+def test_bare_invocation_shows_help_and_exits_zero() -> None:
+    """cli-audit 2026-10-08 (P3): bare `vesma` = help on stdout + exit 0
+    (click's no_args_is_help path used to exit 2 with help on stderr)."""
+    result = runner.invoke(app, [])
+    assert result.exit_code == 0, result.output
+    assert "Usage:" in result.output
+
+
 # ── stats snapshot rendering ──────────────────────────────────────────────────
 
 

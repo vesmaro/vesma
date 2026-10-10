@@ -50,17 +50,28 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_app_help_exits_cleanly() -> None:
-    """`mnemos --help` exits 0 and prints the help banner."""
+    """`vesma --help` exits 0 and prints the help banner.
+
+    The assertion matches the CURRENT brand: it used to check "mnemos",
+    which only passed by accident — the string lived in serve's
+    now-retired "MnemosCore" glossary wording (cli-audit 2026-10-08 P3
+    renamed it to "the federation mesh gRPC server"), not in the banner.
+    """
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "mnemos" in result.output.lower()
+    assert "vesma" in result.output.lower()
 
 
 def test_app_no_args_shows_help() -> None:
-    """With no args, Typer prints help (no_args_is_help=True)."""
+    """With no args, vesma prints the help on stdout and exits 0.
+
+    cli-audit 2026-10-08 (P3): the bare invocation used to ride click's
+    NoArgsIsHelpError — help on stderr, exit 2. The callback's
+    help-and-exit-0 path owns it now, so the exit code is asserted.
+    """
     result = runner.invoke(app, [])
-    # Typer exits 0 on no-args-with-help; the help text goes to stdout
-    assert "Usage:" in result.output or "mnemos" in result.output.lower()
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
 
 
 # ── Command registration ─────────────────────────────────────────────────────

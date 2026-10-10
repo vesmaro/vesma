@@ -40,9 +40,11 @@ logs_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     name="logs",
     help=(
-        "View pipeline traces (cluster, synthesize, publish, recall).\n\n"
-        "Reads the trace table the knowledge pipeline writes per stage: what "
-        "ran, on which memories, with what outcome. Filter by `--project`, "
+        "View pipeline traces.\n\n"
+        "Reads the trace table the knowledge pipeline writes per task: what "
+        "ran, on which memories, with what outcome. Known task labels: "
+        "cluster, synthesize, publish, recall, plus the tag-bulk verbs "
+        "(tags_add / tags_remove / tags_rename). Filter by `--project`, "
         "cap with `--limit`, cut off with `--since`, or keep watching with "
         "`--follow`."
     ),
@@ -92,7 +94,8 @@ def logs_cmd(
         typer.Option(
             "--task",
             "-t",
-            help="Filter by task label (cluster|synthesize|publish|recall)",
+            help="Filter by trace task label — free string; known: cluster, "
+            "synthesize, publish, recall, tags_add, tags_remove, tags_rename.",
         ),
     ] = None,
     project: Annotated[

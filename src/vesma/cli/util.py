@@ -309,12 +309,21 @@ def detect_cmd(
 
     table = Table(title="Detected harnesses")
     table.add_column("Target", style="bold cyan")
-    table.add_column("Detect path")
-    table.add_column("Deploy map")
+    # cli-audit 2026-10-08 (P3): the path columns used to ellipsize to
+    # "ubu…" on an 80-column terminal. Paths print ~-abbreviated (the
+    # columns lose 30+ chars of $HOME noise) and fold (wrap) instead of
+    # truncating — nothing is unreadable at any width.
+    table.add_column("Detect path", overflow="fold")
+    table.add_column("Deploy map", overflow="fold")
+
+    def _short(p: Path | str) -> str:
+        s = str(p)
+        home = str(Path.home())
+        return ("~" + s[len(home) :]) if s.startswith(home) else s
 
     for t in detected:
-        detect_str = "\n".join(str(p) for p in t.detect_paths)
-        deploy_str = "\n".join(f"{k} → {v}" for k, v in t.deploy_map.items())
+        detect_str = "\n".join(_short(p) for p in t.detect_paths)
+        deploy_str = "\n".join(f"{k} → {_short(v)}" for k, v in t.deploy_map.items())
         table.add_row(t.name, detect_str, deploy_str)
     console.print(table)
 

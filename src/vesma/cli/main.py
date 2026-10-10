@@ -49,7 +49,11 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     name="vesma",
     help="Vesma — standalone memory & knowledge server for AI agents.",
-    no_args_is_help=True,
+    # cli-audit 2026-10-08 (P3): a bare `vesma` used to fall into click's
+    # NoArgsIsHelpError — help on stderr, exit 2. invoke_without_command +
+    # the callback's help-and-exit-0 below own the bare invocation now.
+    invoke_without_command=True,
+    no_args_is_help=False,
     # UX-4: the hint under the Commands table (rendered as the epilog).
     epilog="Tip: add -h to any command for help.",
     # typer's generated completion scripts carry no candidate descriptions in
@@ -128,6 +132,7 @@ def _install_completion_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -179,6 +184,12 @@ def main(
         # ERROR/CRITICAL visible. No-op for commands that configure file
         # logging later (serve/mcp-server re-run setup_logging).
         logging.getLogger("vesma").setLevel(logging.ERROR)
+    if ctx.invoked_subcommand is None:
+        # cli-audit 2026-10-08 (P3): a bare `vesma` shows the help and
+        # exits 0 (click's no_args_is_help path used to exit 2 with the
+        # help on stderr).
+        console.print(ctx.get_help())
+        raise typer.Exit(0)
 
 
 ConfigOption = typer.Option(None, "--config", "-c", help="Path to config.yaml")
@@ -557,8 +568,9 @@ def search(
         None,
         "--status",
         help=(
-            "Filter by status (raw/processing/processed/published/archived). "
-            "Takes precedence over --include-raw."
+            "Filter by status: raw | processing | processed | published | archived "
+            "(spaces around the pipes let the help wrap instead of truncating — "
+            "cli-audit 2026-10-08). Takes precedence over --include-raw."
         ),
     ),
     threshold: Annotated[
@@ -1340,7 +1352,7 @@ def workflow_set(
         str,
         typer.Option(
             "--to",
-            help="Target status: open|in-progress|blocked|resolved|done|withdrawn.",
+            help="Target status: open | in-progress | blocked | resolved | done | withdrawn.",
         ),
     ],
     actor: Annotated[
@@ -1358,8 +1370,8 @@ def workflow_set(
 ) -> None:
     """Transition a memory's workflow status through the server-enforced state machine.
 
-    The target status goes in `--to` (open|in-progress|blocked|resolved|done|
-    withdrawn); `--actor` identifies who is acting. Illegal transitions and
+    The target status goes in `--to` (open | in-progress | blocked | resolved |
+    done | withdrawn); `--actor` identifies who is acting. Illegal transitions and
     guardrail violations (locked by someone else, terminal state) exit 1 with
     the server's reason. `--force` overrides another actor's lock but REQUIRES
     `--reason` — the override lands in the audit log.
@@ -1836,13 +1848,14 @@ def serve(
     ] = None,
     config: str = ConfigOption,
 ) -> None:
-    """Start the Vesma HTTP API server (+ the MnemosCore mesh gRPC server when mesh is enabled).
+    """Start the Vesma HTTP API server (+ the federation mesh gRPC server when mesh is enabled).
 
     Serves the REST API on `--host`/`--port` (defaults from config; loopback
     only with built-in zero-config defaults — non-loopback binds require
-    auth + TOTP + TLS). With `mesh.enabled` in config, the MnemosCore gRPC
-    server joins the same process on its Unix socket. `--log-file` overrides
-    the config log path; `--config` selects a non-default config.yaml.
+    auth + TOTP + TLS). With `mesh.enabled` in config, the federation mesh
+    gRPC server joins the same process on its Unix socket. `--log-file`
+    overrides the config log path; `--config` selects a non-default
+    config.yaml.
     """
     import os
 
@@ -1879,7 +1892,7 @@ def serve(
     os.environ["VESMA_API__PORT"] = str(p)
 
     # Native mesh serve wiring (W2, ROADMAP-v2 go-live): when the mesh is
-    # enabled, serve the MnemosCore gRPC server on the configured Unix
+    # enabled, serve the federation mesh gRPC server on the configured Unix
     # socket in THIS process, next to the HTTP API — the mnemos-mesh Go
     # binary dials that socket. Mirrors the reference wiring in
     # vesma-mesh/test/integration/serve-with-mesh.py. Additive: with
@@ -2231,8 +2244,11 @@ app.add_typer(_migrate_app, name="migrate")
 # above (mover contract point 11: the ai-brain path keeps working untouched).
 app.command(name="migrate-store")(migrate_store)
 
-_DEFAULT_AI_BRAIN_SOURCE = Path("~/.ai-brain").expanduser()
-_DEFAULT_BRAIN_VAULT = Path("~/brain-vault").expanduser()
+# Defaults stay ~-relative at the module level (cli-audit 2026-10-08 P3:
+# an import-time expanduser() baked the CONSTRUCTING machine's home into
+# the help/usage text); the command expands against the runtime $HOME.
+_DEFAULT_AI_BRAIN_SOURCE = Path("~/.ai-brain")
+_DEFAULT_BRAIN_VAULT = Path("~/brain-vault")
 
 
 @_migrate_app.command(name="from-ai-brain")
@@ -2257,6 +2273,8 @@ def migrate(
     from vesma.cli.migrate import migrate_from_ai_brain
 
     settings = load_settings_or_exit(config)
+    source = source.expanduser()  # ~-relative default → runtime $HOME
+    vault = vault.expanduser()
     db_path = source / "ai_brain.db"
     vault_path = vault if vault.exists() else None
 
