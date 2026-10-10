@@ -266,7 +266,9 @@ def install_command(
             _fail("specify either a component NAME or --all, not both")
         try:
             result: InstallComponentResult = install_component(name)
-        except (InstallError, ManifestError) as exc:
+        except (InstallError, ManifestError, OSError) as exc:
+            # OSError (disk full, EACCES, ...) renders as one clean line
+            # like every other refusal — never a traceback (P3-2).
             _fail(str(exc))
         for line in result.lines:
             console.print("[green]✓[/green]", Text(line))
@@ -275,7 +277,7 @@ def install_command(
     if all_components:
         try:
             full = install_service()
-        except (InstallError, ManifestError) as exc:
+        except (InstallError, ManifestError, OSError) as exc:
             _fail(str(exc))
         for line in full.lines:
             downgraded = line.startswith("CONTAINER DOWNGRADE")
@@ -347,10 +349,12 @@ def status_command(
     records, notice = _registry_or_fail()
     if name is not None:
         records = [_require_component(records, name)]
-    live: dict[str, Any] | None = None
-    live_reason: str | None = None
-    if all(record.manifest is not None for record in records):
-        live, live_reason = _live_states(socket, name)
+    # P2-2 (cascade fix): the live leg is queried for the BUNDLE VIEW
+    # too — `service run` on a fresh machine falls back to the bundled
+    # manifests without any components.d, so a RUNNING component must
+    # not be reported "not installed" just because no manifest is on
+    # disk. Live state overrides the disk-derived label.
+    live, live_reason = _live_states(socket, name)
 
     if json_output:
         supervisor: dict[str, Any] = {"reachable": live is not None}
@@ -380,16 +384,25 @@ def status_command(
 
 
 def _state_cell(record: ComponentRecord, live: dict[str, Any] | None) -> str:
+    """One State cell — live data wins over the disk-derived label.
+
+    With the supervisor answering, a bundle-fallback component shows its
+    REAL state marked "(bundle fallback)"; only a dead supervisor leaves
+    the disk verdict ("not installed" / "unknown") standing.
+    """
+    if live is not None:
+        entry = live.get(record.name)
+        if isinstance(entry, dict):
+            state = str(entry.get("state", "unknown"))
+            pid = entry.get("pid")
+            label = f"{state} (pid {pid})" if pid else state
+            if record.manifest is None:
+                label += " (bundle fallback)"
+            return label
+        return "not loaded" if record.manifest is not None else "not installed"
     if record.manifest is None:
         return "not installed"
-    if live is None:
-        return "unknown (supervisor not reachable)"
-    entry = live.get(record.name)
-    if not isinstance(entry, dict):
-        return "not loaded"
-    state = str(entry.get("state", "unknown"))
-    pid = entry.get("pid")
-    return f"{state} (pid {pid})" if pid else state
+    return "unknown (supervisor not reachable)"
 
 
 def _status_json_row(record: ComponentRecord, live: dict[str, Any] | None) -> dict[str, Any]:
@@ -591,14 +604,22 @@ def logs_command(
         raise typer.Exit(code=2) from None
     _require_component(records, name)
     if follow:
-        _with_client(socket, lambda client: client.follow_logs(name, console.print, tail=tail))
+        # Security F1 (cascade): component log lines are OPERATOR DATA —
+        # rendered via Text(), never through markup (a child emitting
+        # "[link]…" / "[red]…" must not style the trusted CLI).
+        _with_client(
+            socket,
+            lambda client: client.follow_logs(
+                name, lambda line: console.print(Text(line)), tail=tail
+            ),
+        )
         return
     lines = _with_client(socket, lambda client: client.logs(name, tail=tail))
     if not lines:
         console.print(f"no log lines available for {name} ({LOG_SOURCE_NOTE})", style="yellow")
         return
     for line in lines:
-        console.print(line)
+        console.print(Text(line))
 
 
 # ── vesma update ──────────────────────────────────────────────────────
@@ -689,17 +710,36 @@ def update_command(
     `vesma self-update`; its old flag forms (--yes, --check, --to,
     --scope, --install-timer, --uninstall-timer) still work here as
     hidden aliases so installed units and scripts keep running.
+
+    A legacy self-update flag TOGETHER with a component NAME is refused
+    loudly (P2, cascade fix): the flag belongs to the self-update family
+    and would otherwise silently swallow the NAME — the operator gets
+    both spellings instead of the wrong mutation.
     """
-    if (
-        check
-        or yes
-        or verbose
-        or scope is not None
-        or to is not None
-        or install_timer
-        or uninstall_timer
-        or timer_alias
-    ):
+    legacy_flags: list[tuple[str, str]] = [
+        entry
+        for entry, used in (
+            (("--check", "vesma self-update check"), check),
+            (("--yes", "vesma self-update apply"), yes),
+            (("--verbose", "vesma self-update apply"), verbose),
+            (("--scope", "vesma self-update apply --scope user"), scope is not None),
+            (("--to", "vesma self-update apply --to VERSION"), to is not None),
+            (("--install-timer", "vesma self-update timer install"), install_timer),
+            (("--uninstall-timer", "vesma self-update timer uninstall"), uninstall_timer),
+            (("--timer", "vesma self-update timer install"), timer_alias),
+        )
+        if used
+    ]
+    if name is not None and legacy_flags:
+        # P2-1 (cascade fix): the legacy dispatch runs the APPLICATION
+        # self-update — it must never silently swallow a component NAME.
+        flags = ", ".join(flag for flag, _canonical in legacy_flags)
+        _fail(
+            f"{flags} belongs to `vesma self-update`; given NAME — either "
+            f"`vesma update {name}` or `{legacy_flags[0][1]}` (without the "
+            "component name)"
+        )
+    if legacy_flags:
         from vesma.cli.update_cmd import _legacy_flag_dispatch
 
         _legacy_flag_dispatch(
@@ -713,35 +753,16 @@ def update_command(
             uninstall_timer=uninstall_timer,
         )
         return
-    # The update verb resolves targets by FILE STEM, not through the
-    # fail-closed registry: a stale (schema-invalid) bundled manifest is
-    # exactly what `vesma update` exists to heal — demanding a valid
-    # components.d here would make the medicine require the patient to be
-    # healthy first (the same warn-based discipline as the 6.1.0
-    # post-upgrade reconciliation).
-    components_dir = layout.components_dir()
+    # The update verb resolves targets in the CORE (single source of
+    # truth — see regenerate_component_manifest), by FILE STEM, not
+    # through the fail-closed registry: a stale (schema-invalid) bundled
+    # manifest is exactly what `vesma update` exists to heal — demanding
+    # a valid components.d here would make the medicine require the
+    # patient to be healthy first (the same warn-based discipline as the
+    # 6.1.0 post-upgrade reconciliation).
     if name is not None:
         if all_components:
             _fail("specify either a component NAME or --all, not both")
-        target = components_dir / f"{name}.yaml"
-        alt = components_dir / f"{name}.yml"
-        if name in BUNDLED_COMPONENTS:
-            if not target.exists() and not alt.exists():
-                _fail(
-                    f"component {name!r} is not installed ({target} does not exist) — "
-                    f"install it first: `vesma install {name}`"
-                )
-        elif target.exists() or alt.exists():
-            _fail(
-                f"component {name!r} is operator-authored — managed by operator — "
-                f"edit the manifest file ({target}); the engine never rewrites it"
-            )
-        else:
-            known = ", ".join(_manifest_stems()) or "nothing"
-            _fail(
-                f"component {name!r} is not installed (components: {known}) — if you "
-                "meant the APPLICATION self-update: `vesma self-update check|apply|timer`"
-            )
         try:
             lines, regenerated = regenerate_component_manifest(name)
         except (InstallError, ManifestError, OSError) as exc:

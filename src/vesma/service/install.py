@@ -659,6 +659,11 @@ def _reconcile_bundled_manifest(components_dir: Path, name: str) -> list[str]:
 def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
     """Regenerate ONE component's manifest (``vesma update NAME`` core).
 
+    The SINGLE SOURCE OF TRUTH for target resolution (P3-3, cascade fix):
+    resolution goes by FILE STEM — never a fail-closed installation load —
+    so a stale (schema-invalid) bundled manifest stays reachable: updating
+    is how it gets healed.
+
     Bundled components (``board`` / ``metrics``): the same single-writer
     reconciliation as the post-upgrade pass — stale bytes are regenerated
     from THIS engine's bundle behind a one-time ``.pre-regen.bak`` backup.
@@ -682,14 +687,22 @@ def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
                 )
             lines = [f"current: {target} (matches the engine bundle)"]
         return lines, any(line.startswith("regenerated:") for line in lines)
-    # Operator-authored: report the refusal as data — the installed list
-    # travels on the exception for the CLI to render.
+    # Operator-authored: report the refusal as data — the CLI renders it.
     target = components_dir / f"{name}.yaml"
-    if not target.exists():
-        installed = sorted(load_installation(components_dir)) if components_dir.is_dir() else []
+    alt = components_dir / f"{name}.yml"
+    if not target.exists() and not alt.exists():
+        # Light stem listing — deliberately NO fail-closed load here (the
+        # installation may be broken in exactly the way this verb heals).
+        if components_dir.is_dir():
+            known = sorted(
+                {p.stem for p in [*components_dir.glob("*.yaml"), *components_dir.glob("*.yml")]}
+            )
+        else:
+            known = list(BUNDLED_COMPONENTS)
         raise InstallError(
-            f"component {name!r} is not installed (installed: {installed or 'nothing'}; "
-            f"bundled: {list(BUNDLED_COMPONENTS)}) — nothing to update"
+            f"component {name!r} is not installed (components: {', '.join(known) or 'nothing'})"
+            " — if you meant the APPLICATION self-update: `vesma self-update"
+            " check|apply|timer`"
         )
     raise InstallError(
         f"component {name!r} is operator-authored ({target}) — managed by operator — "

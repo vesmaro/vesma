@@ -164,6 +164,21 @@ class TestInstall:
             "a venv-needing component must be told where venvs are built"
         )
 
+    def test_oserror_renders_as_clean_refusal(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P3-2 (cascade): a disk-level OSError is one red line, not a
+        traceback — same refusal shape as the typed errors."""
+
+        def raise_disk_full(name: str) -> object:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr("vesma.cli.components.install_component", raise_disk_full)
+        result = runner.invoke(app, ["install", "board"])
+        assert result.exit_code == 1, result.output
+        assert "No space left on device" in result.output
+        assert "Traceback" not in result.output
+
 
 # ── status ────────────────────────────────────────────────────────────
 
@@ -209,6 +224,50 @@ class TestStatus:
         assert result.exit_code == 0, result.output
         assert "not installed" in result.output
         assert "no installation found" in result.output
+
+    def test_bundle_fallback_live_state_wins(
+        self, bundle_only_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P2-2 (cascade): `service run` without components.d runs the
+        BUNDLE — a live board must show its real state marked "bundle
+        fallback", not the disk-derived "not installed"."""
+
+        class FakeClient:
+            def status(self, component: str | None) -> dict[str, object]:
+                return {
+                    "components": {"board": {"state": "running", "pid": 4242}},
+                }
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("vesma.cli.components._open_client", lambda socket: FakeClient())
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0, result.output
+        assert "running (pid 4242) (bundle fallback)" in result.output, result.output
+        assert result.output.count("not installed") == 1, (
+            "metrics has no live entry — the disk label stands for it alone"
+        )
+
+    def test_bundle_fallback_live_state_in_json(
+        self, bundle_only_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class FakeClient:
+            def status(self, component: str | None) -> dict[str, object]:
+                return {
+                    "components": {"board": {"state": "running", "pid": 4242}},
+                }
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("vesma.cli.components._open_client", lambda socket: FakeClient())
+        result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["supervisor"]["reachable"] is True
+        states = {row["name"]: row["state"] for row in payload["components"]}
+        assert states["board"] == "running (pid 4242) (bundle fallback)"
 
 
 # ── start / stop / restart ────────────────────────────────────────────
@@ -352,6 +411,22 @@ class TestLogs:
         assert recorded.get("task") == "cluster" and recorded.get("limit") == 7
         assert "task-logs" in result.output, "the deprecation hint must name the alias"
 
+    def test_log_lines_render_as_data_not_markup(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Security F1 (cascade): a component's log text is DATA — a child
+        emitting rich markup must not style the trusted CLI."""
+
+        def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> list[str]:
+            return ["[red]injected[/red] plain line"]
+
+        monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
+        result = runner.invoke(app, ["logs", "board"])
+        assert result.exit_code == 0, result.output
+        assert "[red]injected[/red]" in result.output, (
+            "markup must reach the terminal verbatim (Text), not be interpreted"
+        )
+
 
 # ── update ────────────────────────────────────────────────────────────
 
@@ -425,6 +500,24 @@ class TestUpdate:
         assert result.exit_code == 0, result.output
         assert recorded.get("yes") is True and recorded.get("scope") == "user", (
             "the shipped systemd unit's ExecStart form must keep applying"
+        )
+
+    def test_legacy_flag_with_name_refuses_loudly(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P2-1 (cascade): `vesma update board --yes` must NOT silently
+        swallow the NAME and run the APPLICATION self-update — it refuses
+        naming both spellings instead."""
+
+        def boom(console: object, **kwargs: object) -> None:
+            raise AssertionError("legacy dispatch must not run for NAME + legacy flag")
+
+        monkeypatch.setattr("vesma.cli.update_cmd._legacy_flag_dispatch", boom)
+        result = runner.invoke(app, ["update", "board", "--yes"])
+        assert result.exit_code == 1, result.output
+        assert "--yes" in result.output and "vesma self-update" in result.output
+        assert "vesma update board" in result.output, (
+            "the refusal must spell out BOTH unambiguous spellings"
         )
 
     def test_timer_alias_delegates(
