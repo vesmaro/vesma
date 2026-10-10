@@ -782,7 +782,10 @@ curl -s -X POST http://127.0.0.1:8000/context/rewrite \
 `on_session_start`, `tool_name`/`output_text`/`auto_compress`/`profile` для
 `post_tool_call`. `output_text` ограничен капом `hooks.max_output_chars`
 (по умолчанию 1 048 576 символов, конвенция капов context-rewrite; `0`
-отключает) — превышение отклоняется с 422 ДО любой записи.
+отключает) — превышение отклоняется с 422 ДО любой записи. Ручка
+автоматизации — обязательная ПАРА на уровне конфига: `hooks.auto_compress=true`
+принимается только вместе с `ccr.validate_markers=true` в том же конфиге
+(secure defaults NHI-3); точечный аргумент `auto_compress` этого не требует.
 
 **Тело запроса**
 

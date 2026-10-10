@@ -780,7 +780,11 @@ validation can later prove provenance.
 `on_session_start`, `tool_name`/`output_text`/`auto_compress`/`profile` for
 `post_tool_call`. `output_text` is capped at `hooks.max_output_chars`
 (default 1,048,576 chars, the context-rewrite caps convention; `0` disables)
-— an over-cap payload is rejected 422 BEFORE any write.
+— an over-cap payload is rejected 422 BEFORE any write. The automation knob
+is a required PAIR at the config level: `hooks.auto_compress=true` is accepted
+only together with `ccr.validate_markers=true` in the same config (NHI-3
+secure defaults); the per-call `auto_compress` argument has no such
+requirement.
 
 **Request body**
 
