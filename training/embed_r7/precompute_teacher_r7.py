@@ -6,10 +6,12 @@ corpus changed ONLY in llm-class rows).
 Teacher UNCHANGED (Qwen/Qwen3-Embedding-0.6B, round-4/5/6 recipe verbatim:
 instruction template, max_length 256, batch 32, bf16 CPU, last-token
 pooling) — so a text present in BOTH corpora has a DETERMINISTIC identical
-vector. Reuse rule: exact text-hash match into the round-6 npz
-(26681 texts, runs/embed-r6, read-only source), STRING equality asserted on
-every reuse hit (hash collision would be caught); every non-reused text is
-encoded fresh.
+vector. Reuse rule: RAW-STRING equality into the round-6 npz
+(26681 texts, runs/embed-r6, read-only source) — text_hash() normalises
+(a case-fold collision old-vs-new llm text was caught in flight), so the
+hash only narrows candidates and the raw string decides; the frozen
+teacher encoded the raw strings, therefore byte-identical strings reuse
+their vector deterministically. Every non-reused text is encoded fresh.
 
 Proof obligations (written to reuse_proof.json + stdout, appended to runlog):
   1. reused texts: r6-vector identity via text_hash AND string equality;
@@ -100,30 +102,35 @@ def main() -> int:
     r6_sha = hashlib.sha256(R6_NPZ.read_bytes()).hexdigest()
     print(f"r6 npz: {len(r6_texts)} texts, vectors {r6_vecs.shape}, sha {r6_sha[:12]}…", flush=True)
 
-    r6_index: dict[str, int] = {}
+    # REUSE CRITERION = RAW-STRING EQUALITY. text_hash() normalises
+    # (case-fold etc.), so a hash hit does NOT imply the teacher saw the same
+    # input (r7 case found in flight: 'Helios-Index …' vs 'Helios-index …' —
+    # old 0.6B vs new 1.7B text, same normalised form). The npz stores the
+    # raw strings the teacher encoded; only byte-identical strings reuse.
+    r6_index: dict[str, list[int]] = {}
     for i, t in enumerate(r6_texts):
-        h = text_hash(t)
-        assert h not in r6_index, f"r6 npz text-hash collision at {i}"
-        r6_index[h] = i
+        r6_index.setdefault(text_hash(t), []).append(i)
 
+    r6_string_set = set(r6_texts)
     vectors = np.zeros((len(texts), r6_vecs.shape[1]), dtype=np.float32)
     todo: list[int] = []
     n_reused = 0
     recomputed_non_llm: list[int] = []
     for i, t in enumerate(texts):
-        h = text_hash(t)
-        j = r6_index.get(h)
-        if j is not None:
-            assert r6_texts[j] == t, f"hash hit but string differs at r7 idx {i}"
-            vectors[i] = r6_vecs[j]
+        hit = None
+        for j in r6_index.get(text_hash(t), ()):  # hash narrows; string decides
+            if r6_texts[j] == t:
+                hit = j
+                break
+        if hit is not None:
+            vectors[i] = r6_vecs[hit]
             n_reused += 1
         else:
             todo.append(i)
             if rows[i]["source"] != "translated-llm-r4":
                 recomputed_non_llm.append(i)
 
-    r7_hash_set = {text_hash(t) for t in texts}
-    dropped_r6 = [t for t in r6_texts if text_hash(t) not in r7_hash_set]
+    dropped_r6 = [t for t in r6_texts if t not in set(texts)]
 
     assert not recomputed_non_llm, (
         f"PROOF FAILURE: {len(recomputed_non_llm)} non-llm rows would be recomputed "
@@ -229,7 +236,7 @@ def main() -> int:
         "source_texts": len(r6_texts),
         "r7_corpus_fp": EXPECTED_FP,
         "r7_texts": len(texts),
-        "reused_by_hash_and_string_equality": n_reused,
+        "reused_by_raw_string_equality": n_reused,
         "recomputed_llm_texts": len(todo),
         "recomputed_non_llm_rows": 0,
         "r6_texts_absent_from_r7": len(dropped_r6),
@@ -244,12 +251,12 @@ def main() -> int:
     }
     PROOF_JSON.write_text(json.dumps(proof, indent=1) + "\n")
     with open(RUNLOG, "a", encoding="utf-8") as fh:
-        fh.write(f"- teacher reuse PROVEN: reused={n_reused} (hash+string identity vs r6 npz "
+        fh.write(f"- teacher reuse PROVEN: reused={n_reused} (raw-string identity vs r6 npz "
                  f"{r6_sha[:12]}…), recomputed={len(todo)} (all translated-llm-r4), "
                  f"r6-absent={len(dropped_r6)}; npz lockstep OK "
                  f"({back['vectors'].shape}); proof -> runs/embed-r7/reuse_proof.json\n")
     print(json.dumps({k: proof[k] for k in (
-        "reused_by_hash_and_string_equality", "recomputed_llm_texts",
+        "reused_by_raw_string_equality", "recomputed_llm_texts",
         "r6_texts_absent_from_r7")}, indent=1), flush=True)
     print(f"teacher vectors: {back['vectors'].shape} -> {OUT_NPZ}", flush=True)
     return 0
