@@ -1,0 +1,123 @@
+{
+  "kind": "embed-round7-decisive-run-config",
+  "committed_before_run": true,
+  "committed_at": "2026-10-10",
+  "authority": [
+    "docs/specs/embed-round7-prereg-llmquality.md (ACTIVATED, owner ratification 10.10, merge 72ddf3f)",
+    "docs/specs/embed-round6-prereg-schedule.md (schedule/selection/export inherited UNCHANGED, §1)",
+    "docs/specs/embed-round5-prereg.md @ 294b8dd+ (thresholds/population/measurement inherited unchanged)",
+    "round-6 decisive run: feat/embed-r6-train @ 7f50a07 (REJECT: llm 0.8947<0.93, share 0.8529<0.90; g1 0.9427, gX0 +0.0025 PASS)"
+  ],
+  "executor": "gcw-ml-engineer",
+  "single_variable": "LLM-CLASS DATA QUALITY ONLY (round-7 prereg §2): 937 llm dst texts replaced by Qwen3-1.7B re-translation, 612 gate-failed llm rows dropped — corpus, teacher, schedule, selection, thresholds, gate population, export recipe all otherwise identical to round-6",
+
+  "corpus": {
+    "path": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r5-corpus/data/embed-r7/corpus",
+    "fingerprint_sha256_train_plus_val": "ad3d438f89ce91f47d279b63f1e88157ce747cb3a128399db1df707e8e1a3b7e",
+    "train_rows": 24841,
+    "val_rows": 1228,
+    "total_texts": 26069,
+    "verified": "2026-10-10: `cat train val | sha256sum` = ad3d438f… (matches sealed fp); report.json counts match",
+    "delta_vs_round6": {
+      "replaced_llm_rows": 937,
+      "dropped_llm_rows": 612,
+      "non_llm_rows": "byte-preserved in order (sealed build assert)",
+      "old_generation": "0.6B llm translations fully replaced, NOT mixed (prereg §2)"
+    }
+  },
+
+  "teacher": {
+    "reused_from_round6_partial": true,
+    "teacher_id": "Qwen/Qwen3-Embedding-0.6B — UNCHANGED (round-7 prereg §3: clean data attribution)",
+    "source_npz": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/wt/embed-r6-train/training/runs/embed-r6/teacher_vectors.npz (READ-ONLY source; 26681x1024)",
+    "reuse_rule": "exact text-hash match + string-equality assert; frozen teacher → deterministic identical vectors for identical texts",
+    "recompute": "only texts absent from the r6 npz (expected: the 937 new llm dst texts); recipe = precompute_teacher_r5.py verbatim",
+    "proof": "runs/embed-r7/reuse_proof.json + runlog entry (reused/recomputed/absent counts; absent texts asserted to be r5 llm-class rows only)",
+    "kd_target": "first 384 dims, temperature 0.05, MRL 64/128/256/384 weights 4,2,1,1 — UNCHANGED"
+  },
+
+  "schedule": {
+    "inherited": "round-6 prereg §2 VERBATIM (single variable is the corpus)",
+    "phase1": {
+      "loss": "per-slice KD ONLY (no contrastive) — round-4 loop verbatim over ALL train texts (24841), batch 32",
+      "transition": "val R@5 @384 >= 0.50 OR epoch cap 8, whichever first"
+    },
+    "phase2": {
+      "loss": "+ translation-contrastive lambda=1.0, tau=0.05 (round-5 pilot mechanics VERBATIM)",
+      "epoch_structure": "INTERLEAVED [3 KD : 1 CT] partition design as round-6; pair texts excluded from the KD-only stream; every train text exactly once per epoch",
+      "mono_replay_ratio": "mono-KD batches : CT batches >= 1:3 floor (asserted at launch)",
+      "mono_guard": "at EVERY phase-2 epoch eval: proxy mono_control_median < 0.8932 -> contrastive OFF for the REST of the run; KD-only mono-replay to budget; guard trip = logged state transition, not failure",
+      "requirement": "mono_control_median >= 0.8932 from the FIRST phase-2 eval"
+    },
+    "early_stop": "UNCHANGED: min-over-slices val R@5 improves <0.001 for 4 consecutive evals; active in both phases",
+    "budget": "<= 20 epochs TOTAL (both phases combined), every epoch checkpointed",
+    "seed": 42,
+    "determinism": "training.distill.set_determinism(42); single order_rng(42); segment-deterministic on resume (same accepted property as r5/r6)"
+  },
+
+  "pair_pool": {
+    "recipe": "build_pair_pool_r7.py = build_pair_pool_r6.py VERBATIM with two deltas: r7 corpus fp; llm candidates from r7 shards (Qwen3-1.7B, final-pass-wins = sealed build semantics)",
+    "identity_asserts": [
+      "every non-llm pair_key (seed-dup/real/twin/tatoeba) identical to the round-6 pool, no losses, no additions",
+      "llm sha_src set == r6 llm sha_src set minus units dropped by the r7 build",
+      "every kept llm dst sits in the r7 corpus under translated-llm-r4",
+      "gate-manifest text SHAs: zero hits (invariant)",
+      "sibling monitor population n=80 (recipe verbatim vs r4 corpus)"
+    ],
+    "out": "runs/embed-r7/pairs_r7.json"
+  },
+
+  "selection": {
+    "authority": "round-6 prereg §3 (rule fixed BEFORE the run; inherited unchanged)",
+    "step1": "candidates = ALL phase-2 checkpoints passing cross-class PROXY: seed_dup_median >= 0.85 AND seed_dup_share_ge085 >= 0.50 AND llm_median >= 0.93 AND llm_share_ge085 >= 0.90 (per-epoch monitor harness, selection-internal consistency)",
+    "step2": "among candidates: MAX mono_control_median; tie-break higher min-over-slices R@5, then lower epoch",
+    "step3_fallback": "no candidates -> MAX composite (min-over-slices R@5) among ALL run checkpoints with proxy mono_control_median >= 0.8932; tie-break lower epoch (pre-registered interpretation carried from round-6)",
+    "step4": "still nothing -> REJECT without shopping",
+    "judged_corpus": "c2ce056d NEVER read before export of the selected checkpoint"
+  },
+
+  "export": {
+    "form_FIXED": "int8-dynamic (weight-only, per-channel QInt8) — round-5 recipe VERBATIM",
+    "forbidden": "static int8 (any form), fp16 — BANNED",
+    "no_form_fallback": "artifact form FIXED by prereg; a gate FAIL on it is an honest REJECT — no form switch",
+    "measured_for_record": "fp32 (quantize source + exactness reference) and int8-dynamic: val per-slice R@5, gate-proxy readout, per-text cos vs fp32-torch, size, context latency probe; official g6a from gate_latency.py under engine runtime"
+  },
+
+  "gates": {
+    "population": "sealed gate set cb36757769fb88f2806065f50348f5fd8383cfdb0c19c66e6335eac8ace01123 (SHA to re-verify at gate time), 180 pairs, one harness (NanoProvider recipe), ONE pass on the final artifact",
+    "binding_adopt": {
+      "g1_s1m_no_harm": ">= 0.9252 (judged c2ce056d, production S1m mechanics, self-comparison only)",
+      "gX0_mono_control": "|delta| median_best_distractor_cos vs prod 0.8982 <= 0.005 (prod 3b752e06)",
+      "seed_dup": "median >= 0.85 AND share(cos>=0.85) >= 0.50 (round-6 candidate: 0.8637 / 0.7727)",
+      "llm": "median >= 0.93 AND share(cos>=0.85) >= 0.90 (round-6 candidate: 0.8947 / 0.8529 — THE LEVER)",
+      "g6a_latency": "mean <= 45 ms (addendum-6 §A.2, engine runtime ORT 1.27)",
+      "g7_size": "<= 60 MB"
+    },
+    "monitored": "real/twin class cosines, retrieval cross R@5, sibling negative anchor (prod 0.6889), g3 per-slice, burned144, g2 value recorded",
+    "hypothesis_note": "the experiment's point: llm median vs round-6's 0.8947 (0.6B pairs). A lift proves the llm-quality lever; no lift (with quality gates on pairs passed) supports 'llm class ceiling is set by the pairs' as a platform limit",
+    "single_shot": "exactly ONE measured gate pass on the chosen artifact; no post-hoc checkpoint switching; no threshold edits; honest REJECT is FINAL (lane closes per round-7 prereg §4)"
+  },
+
+  "prelaunch_estimates": {
+    "teacher_precompute": "937 texts to encode (~3.4 texts/s measured r5) ~5-6 min + model load; reuse of 25132 vectors is disk-copy speed",
+    "phase1_epoch_wall": "~11-15 min (ceil(24841/32)=777 KD batches; r6: 795 batches 11-15 min)",
+    "phase2_epoch_wall": "~11-16 min (r6: 11.2-14.6 min measured; r7 CT stream slightly smaller than r6)",
+    "total_wall_estimate_hours": "20 epochs ~ 3.7-5.5 h clean; up to ~8 h under box contention",
+    "peak_ram_estimate_gb": {"training": 2.5, "teacher_precompute": 2.0, "note": "teacher npz ~107 MB + student ~30M params + batch activations; box showed 9.7 GB available at 2026-10-10 pre-launch check; 102 G swap present (stop conditions relaxed, sequential-heavy-jobs rule KEPT)"},
+    "launch_gate": "available box RAM >= 4 GB at launch (sequential-heavy-jobs rule); poll 120 s",
+    "stop_conditions": [
+      "non-finite loss (exit 4)",
+      "corpus fingerprint mismatch at any read",
+      "npz lockstep violation (texts differ)",
+      "reuse-proof assert failure (non-llm recompute / non-llm r6 drop)",
+      "mono guard trip is NOT a stop condition — scheduled state transition (CT off, run continues)"
+    ]
+  },
+
+  "environment": {
+    "python_train": "/var/home/abyss/.venvs/nm-train/bin/python (torch 2.13.0+cu130 CPU-used, transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0) — identical to r5/r6",
+    "python_gate": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/.venv/bin/python (vesmaro runtime, ORT 1.27.0) — identical to r5/r6",
+    "engine_repo_state": "worktree wt/embed-r7-train, branch feat/embed-r7-train FROM feat/embed-r6-train @ 7f50a07; main/release/consolidate worktrees untouched; wt/embed-r6-train and wt/embed-r5-train READ-ONLY; prod untouched",
+    "prod_reference": "src/vesmaro/models/vesma-embed-v1 model.onnx sha256 3b752e0671a50da5… (verified at gate time by the r5 plumbing assert)"
+  }
+}
