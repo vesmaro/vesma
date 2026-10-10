@@ -99,7 +99,13 @@ class TestLogsCommand:
         assert "mnemos" not in result.output or "other-project" in result.output
 
     def test_logs_empty_db_prints_no_traces(self, isolated_config):
-        result = runner.invoke(app, ["logs"])
+        """Empty trace store says so — under the `task-logs` alias.
+
+        Wave 61: bare `vesma logs` is the COMPONENT logs verb now (usage
+        error without a NAME); the pipeline-trace viewer lives on as
+        `vesma task-logs` with identical behavior.
+        """
+        result = runner.invoke(app, ["task-logs"])
         assert result.exit_code == 0, result.output
         assert "no" in result.output.lower() or "trace" in result.output.lower()
 
@@ -108,6 +114,10 @@ class TestLogsCommand:
         assert result.exit_code != 0
 
     def test_logs_command_registered(self):
-        """`mnemos logs` is registered on the Typer app."""
+        """The trace viewer is registered as `task-logs` (wave 61 alias).
+
+        The top-level `logs` name belongs to the component logs verb; the
+        trace viewer keeps its full surface under the alias.
+        """
         registered_groups = {getattr(g, "name", None) for g in app.registered_groups}
-        assert "logs" in registered_groups
+        assert "task-logs" in registered_groups
