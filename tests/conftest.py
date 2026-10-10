@@ -288,3 +288,32 @@ def isolated_store_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iter
     for var in _PATH_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     yield home
+
+
+@pytest.fixture(autouse=True)
+def isolate_root_logger():
+    """Restore the root logger around every test (full-suite isolation leak).
+
+    ``vesma``'s CLI commands (``serve`` / ``fetch`` / ``meta-poll`` /
+    ``mcp-server``) call :func:`vesma.logging_setup.setup_logging`, which
+    clears the root handlers and installs a console ``StreamHandler`` bound
+    to the ``sys.stderr`` captured for THAT test. pytest closes the capture
+    when the test ends, but the handler stays on the root logger — every
+    later test that emits a log record then gets an
+    "--- Logging error --- … ValueError: I/O operation on closed file"
+    traceback printed into its own captured output, breaking CLI-JSON
+    assertions (``vesma doctor`` subcommands, service doctor) in
+    full-suite runs while staying green solo.
+
+    Snapshot-and-restore of handlers + level per test keeps every test's
+    logging view pristine regardless of which CLI commands earlier tests
+    ran in-process.
+    """
+    import logging
+
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    yield
+    root.handlers[:] = saved_handlers
+    root.setLevel(saved_level)

@@ -32,9 +32,11 @@
 - Ingress-контроллер (в K3s Traefik установлен из коробки)
 - Образ контейнера, доступный кластеру — см. [Статус реестра образов](#статус-реестра-образов)
 
-> **Тег образа.** Chart pin'ит `image.tag` на `Chart.yaml appVersion`
-> (сейчас `6.0.0`). Для свежего релиза задавайте образ явно:
-> `--set image.tag=6.0.0` (опубликованные теги — `6.0.0, latest`;
+> **Тег образа.** Чарт берёт образ из `Chart.yaml appVersion`
+> (сейчас `6.0.0`) — `image.tag` в `values.yaml` по умолчанию пуст, поэтому
+> установка и обновление следуют за чартом без дополнительных флагов. Не
+> передавайте `--set image.tag=…`, если вам намеренно не нужен не-дефолтный
+> тег (опубликованные теги — `6.0.0, latest`;
 > от прежних волн остались `4.3.0, 5.1.x, 5.2.0, 5.5.0, 5.6.x`).
 
 ## Быстрый старт
@@ -42,7 +44,6 @@
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
-  --set image.tag=6.0.0 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vesma.example.com'
@@ -53,7 +54,6 @@ K3s (Traefik и local-path — дефолты, ничего дополнител
 ```bash
 helm install vesma deploy/helm/vesma \
   --namespace vesma --create-namespace \
-  --set image.tag=6.0.0 \
   --set auth.totpMasterKey="$(openssl rand -hex 32)" \
   --set ingress.className=traefik \
   --set 'ingress.hosts[0].host=vesma.home.lan'
@@ -152,8 +152,9 @@ ADR-0031.
 ## Обновления и удаление
 
 ```bash
-helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values \
-  --set image.tag=6.0.0              # тома с данными переживают обновления
+helm upgrade vesma deploy/helm/vesma -n vesma --reuse-values
+# Тег образа следует за Chart.yaml appVersion (image.tag в values.yaml по
+# умолчанию пуст) — тома с данными переживают обновление.
 helm uninstall vesma -n vesma    # PVC сохраняются; при необходимости удалите явно
 ```
 
