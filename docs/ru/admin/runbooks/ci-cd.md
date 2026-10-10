@@ -2,24 +2,31 @@
 
 **🌐 Language / Язык:** [English](../../../en/admin/runbooks/ci-cd.md) · Русский
 
-> **Область**: Работа, отладка и расширение pipeline GitHub Actions CI для
-> Vesma. Источник истины: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> **Область**: Работа, отладка и расширение CI-pipeline Vesma.
+> Источник истины: [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml).
+> **Статус (текущая реальность):** GitHub Actions заблокированы по billing
+> (#117) и **не запускаются** — рабочие гейты закрыта локальными скриптами
+> (`make local-ci` / `scripts/local-ci.sh`, `scripts/pypi-publish.sh`,
+> `scripts/image-publish.sh`). Workflow-файлы хранятся как спецификация на
+> случай возобновления Actions; секции про Actions-интерфейс помечены явно.
 
 ---
 
 ## Обзор pipeline
 
-CI workflow (`.github/workflows/ci.yml`) запускается при каждом push в `main`,
-каждом pull request с целью `main` и еженедельно для drift check (понедельник,
-06:00 UTC). Содержит два job'а:
+CI workflow (`.github/workflows/ci.yml`) написан на запуск при каждом push
+в `main`, каждом pull request с целью `main` и еженедельно для drift check
+(понедельник, 06:00 UTC) — **но сейчас он не выполняется** (billing-лок
+#117). Содержит два job'а:
 
 | Job | Runner | Назначение |
 |---|---|---|
 | `verify` | `ubuntu-latest`, матрица Python 3.11 / 3.12 / 3.13 | Lint + format + mypy + bandit + pip-audit + pytest + coverage |
 | `build-container` | `ubuntu-latest` (rootless buildah) | Smoke-тест сборки `Containerfile` и работы CLI внутри образа (сегодня — легаси-хук `vesma --help`) |
 
-Job `verify` является **обязательной status check** для `main` (см.
-[Защита веток](#защита-веток)).
+Job `verify` — задуманная **обязательная status check** для `main` после
+возобновления Actions (см. [Защита веток](#защита-веток)); пока они
+заблокированы, merge-гейты замыкаются через `local-ci.sh`.
 
 ---
 
@@ -78,6 +85,12 @@ buildah run vesma-test -- vesma --help
 ---
 
 ## Защита веток
+
+> Применимо **после возобновления Actions** — пока они заблокированы по
+> billing (#117), обязательная status check, которая никогда не станет
+> зелёной, наглухо заблокировала бы любой merge; до тех пор merge-дисциплина
+> держится локально (`make local-ci` перед каждым push, повторный прогон TL
+> перед merge).
 
 > ⚠️ Это **не** применяется workflow — нужно настроить в настройках репозитория
 > GitHub (Settings → Branches → Branch protection rules → `main`).
@@ -166,6 +179,10 @@ Patch и minor обновления группируются в один PR на
 
 ## Job сборки контейнера
 
+> Actions-job — сейчас не выполняется (billing-лок #117). Локальный
+> эквивалент (`buildah bud` + smoke) показан в
+> [Воспроизведение CI локально](#воспроизведение-ci-локально).
+
 Job `build-container` использует `buildah` (rootless, без daemon'а) вместо
 Docker, чтобы избежать привилегированного контейнера на GitHub-hosted runners.
 Шаги:
@@ -191,6 +208,10 @@ Docker, чтобы избежать привилегированного кон�
 ---
 
 ## Отладка упавших прогонов
+
+> Actions-интерфейс — применимо после возобновления Actions. Пока они
+> заблокированы, падения проявляются локально: перезапустите упавший гейт
+> из `scripts/local-ci.sh` и читайте вывод в терминале.
 
 1. Откройте упавший прогон в GitHub Actions.
 2. Найдите упавший шаг. Лог каждого шага сворачивается — разверните его.
@@ -239,6 +260,8 @@ python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 ```
 
 Затем push в feature-ветку и убедитесь в зелёной check на draft PR перед мержем.
+Пока Actions заблокированы по billing (#117), check не появится — гейтом, который
+доказывает, что workflow-файл парсится и шаги проходят, остаётся `make local-ci`.
 
 ---
 
