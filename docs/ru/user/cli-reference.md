@@ -406,7 +406,7 @@ vesma stats [OPTIONS]
 | Ключ | Значение |
 |------|--------- |
 | `status` | Всегда `ok` (сигнал живости) |
-| `version` | Версия Vesma (например `6.0.0`) |
+| `version` | Версия Vesma запущенного сервера (например `6.1.0`) |
 | `update_available` | Сводка проверки обновлений: `installed`, `latest`, `dist`, `update_available`, `checked_at` (кэш 24 ч) |
 | `data_dir` | Разрешённая директория данных |
 | `vault_path` | Разрешённая директория vault |
@@ -779,7 +779,7 @@ vesma migrate from-ai-brain --source /tmp/restore/.ai-brain --vault /tmp/restore
 
 | Опция | Описание |
 |---|---|
-| `--from PATH` | **Обязательна.** Явный исходный дом хранилища (например, `~/.mnemos`). |
+| `--from PATH` | **Обязательна.** Явный исходный дом хранилища (например, `~/.mnemos` или дом эпохи 6.0 `~/.local/share/vesma/core`). |
 | `--to PATH` | **Обязательна.** Явный целевой дом хранилища (макет 6.0, например `~/.vesma`). Не должен существовать вовсе — любой уже существующий таргет (даже пустой каталог) отказывается на этапе плана. |
 | `--apply` | Выполнить миграцию. Без неё: read-only план. |
 | `--json` | Машиночитаемый отчёт (только пути и числа). |
@@ -966,9 +966,9 @@ vesma doctor paths
 #   Root          ~/.vesma
 #   Config        ~/.vesma/config.yaml
 #   Data dir      ~/.vesma/data
-#   DB            ~/.vesma/data/mnemos.db
+#   DB            ~/.vesma/data/vesma.db
 #   Vault         ~/.vesma/vault
-#   Logs          ~/.vesma/logs/mnemos.log
+#   Logs          ~/.vesma/logs/vesma.log
 #   Cache         ~/.vesma/cache
 #   Completion    ~/.vesma/completion
 #   MCP config    ~/.config/Code/User/mcp.json
@@ -1023,7 +1023,7 @@ vesma memory status [OPTIONS]
 По каждому харнесу в таблице: состояние пака (штампы: attached / stale /
 missing), MCP-регистрация (есть ли запись сервера `vesma`), внешние движки
 памяти (другие ключи серверов из конфига харнесса), маркеры локального
-хранилища (`data`, `vault`, `mnemos.db` — существование + mtime) и активный
+хранилища (`data`, `vault`, `data/vesma.db` — существование + mtime) и активный
 режим приоритета (`overlay+mirror`; `replace`/`off` появятся с MS-1).
 
 ### Пример

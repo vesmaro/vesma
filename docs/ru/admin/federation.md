@@ -108,7 +108,7 @@ Phase 1 определяет enum и оба хелпера. Phase 2 подклю
 ## 3. Журнал доступа федерации — `src/vesma/federation_access_log.py`
 
 Контракт §10. B-side append-only JSONL audit-лог в
-`~/.mnemos/logs/federation-access.jsonl`, фиксирующий, кто, когда и с
+`~/.vesma/logs/federation-access.jsonl`, фиксирующий, кто, когда и с
 каким триггер-кодом что запрашивал и какие записи были возвращены.
 Журнал обеспечивает **anti-correlation tracking**: B видит, что A уже
 получал `EXHAUSTIVE` по теме X → следующий запрос по той же теме

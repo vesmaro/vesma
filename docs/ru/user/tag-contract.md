@@ -190,8 +190,8 @@ base64-последовательности), сканер:
   **не** мутируется, возвращается предупреждение.
 - Повторно сканирует контент после удаления. Если секрет всё ещё присутствует,
   тег **добавляется автоматически заново**, а отчёт помечает
-  `re_detected=True`. Владелец должен сначала редアクтировать контент (см.
-  `vesma.secrets_detector.redact_content`), чтобы permanently удалить тег.
+  `re_detected=True`. Владелец должен сначала отредактировать контент (см.
+  `vesma.secrets_detector.redact_content`), чтобы окончательно удалить тег.
 
 ### Отличие от (несуществующего) `vesma:no-export`
 
@@ -408,7 +408,7 @@ dry_run}`; `add` — `{action, scanned, changed, added_tags, errors, dry_run}`.
    [cli-reference.md](cli-reference.md#tags-audit)).
 4. Отредактируйте записи вручную, задав best-effort-умолчания
    (`project:unknown`, `agent:unknown`).
-5. Переключите `strict_tag_contract=True` в `~/.mnemos/config.yaml` после очистки.
+5. Переключите `strict_tag_contract=True` в `~/.vesma/config.yaml` после очистки.
 
 ---
 

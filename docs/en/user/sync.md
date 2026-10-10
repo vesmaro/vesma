@@ -221,7 +221,7 @@ trigger on B is guarded by `vesma-import-wrapper.sh` (both under
 ## Audit log
 
 Every `vesma sync export` and `vesma sync import` appends one JSONL
-entry to `~/.mnemos/logs/sync-audit.jsonl`. The log is append-only —
+entry to `~/.vesma/logs/sync-audit.jsonl`. The log is append-only —
 `tail -f` for live monitoring, `jq` for aggregates, or ship to a SIEM.
 
 Entry shapes (counters **only** — no raw content, no secrets, no PII):
@@ -244,7 +244,7 @@ Records tagged `mnemos:no-federate` are excluded from sync export
 entirely. The tag is auto-added on write by the Layer 1 secrets scanner
 (#86) when a secret pattern is detected; owners can remove it with
 explicit confirmation via `MemoryManager.remove_no_federate()`. See
-[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-federation-exclusion-marker)
+[Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate--federation-exclusion-marker)
 for the full lifecycle.
 
 Even without the tag, the moderation pipeline (Layer 3) runs on every
@@ -258,5 +258,5 @@ secret. See [Security — Federation defence-in-depth](../admin/security.md#11-f
 
 - [Export & Import](./export-import.md) — full backups (JSON / SQLite).
 - [Security — Federation defence-in-depth](../admin/security.md#11-federation-defence-in-depth) — the three-layer model.
-- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate-federation-exclusion-marker) — the exclusion marker.
+- [Tag Contract — `mnemos:no-federate`](./tag-contract.md#mnemosno-federate--federation-exclusion-marker) — the exclusion marker.
 - [MCP Tools](./mcp-tools.md) — `vesma_export` / `vesma_import` MCP tools (the MCP surface for full export/import).

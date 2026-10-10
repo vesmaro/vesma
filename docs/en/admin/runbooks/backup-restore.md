@@ -2,10 +2,10 @@
 
 **🌐 Language / Язык:** English · [Русский](../../../ru/admin/runbooks/backup-restore.md)
 
-- **Canonical store** — `~/.mnemos/`: DB at `~/.mnemos/data/mnemos.db` (SQLite, WAL)
-  and the Obsidian-compatible mirror at `~/.mnemos/vault/`. The path is
-  historical (Vesma era) and not due for renaming — the CLI and
-  `vesma doctor paths` both read it as-is.
+- **Canonical store** — `~/.vesma/` (since 6.0.0): DB at `~/.vesma/data/vesma.db` (SQLite, WAL)
+  and the Obsidian-compatible mirror at `~/.vesma/vault/`. A 5.x-era
+  `~/.mnemos/` store is legacy — migrate it with `vesma migrate-store`
+  ([migration-6-0.md](../../user/migration-6-0.md)) before relying on these paths.
 - For routine export/transfer use the utility (`vesma export` / `vesma import`), not
   a hand-rolled SQLite walk: the utility brings encryption, filters and an
   idempotent merge.
@@ -18,8 +18,8 @@
 ```bash
 # Vesma data + vault
 tar czf vesma-backup-$(date +%Y%m%d).tar.gz \
-  ~/.mnemos/data \
-  ~/.mnemos/vault
+  ~/.vesma/data \
+  ~/.vesma/vault
 ```
 
 Stop the writing processes first (`vesma processor stop`; `vesma service stop`
@@ -50,7 +50,7 @@ Full list: `vesma export --help`.
 
 ```bash
 # Daily backup at 02:00
-0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.mnemos/data ~/.mnemos/vault
+0 2 * * * tar czf ~/backups/vesma-$(date +\%Y\%m\%d).tar.gz ~/.vesma/data ~/.vesma/vault
 ```
 
 ## Restore
@@ -63,9 +63,13 @@ then restore:
 tar xzf vesma-backup-20260115.tar.gz -C ~
 
 # Or selective restore
-cp vesma-backup-20260115/.mnemos/data/mnemos.db ~/.mnemos/data/
-rsync -a vesma-backup-20260115/.mnemos/vault/ ~/.mnemos/vault/
+cp vesma-backup-20260115/.vesma/data/vesma.db ~/.vesma/data/
+rsync -a vesma-backup-20260115/.vesma/vault/ ~/.vesma/vault/
 ```
+
+> A 5.x-era backup unpacks under `.mnemos/` (db name `mnemos.db`) — restore it
+> into a scratch home and move it forward with `vesma migrate-store`
+> ([migration-6-0.md](../../user/migration-6-0.md)), not directly over `~/.vesma/`.
 
 ### Restore from a Vesma export
 
@@ -82,7 +86,7 @@ vesma import vesma-export.json --mode merge
 # Full restore from a snapshot (destructive; auto-backup goes to --backup-dir)
 vesma import vesma-snapshot.db.zst --mode restore --confirm \
   --passphrase-file ~/.secrets/backup-passphrase \
-  --backup-dir ~/.mnemos/data/pre-restore
+  --backup-dir ~/.vesma/data/pre-restore
 ```
 
 After restoring, check state: `vesma stats`, `vesma search "probe"`, `vesma doctor`.
@@ -92,10 +96,10 @@ After restoring, check state: `vesma stats`, `vesma search "probe"`, `vesma doct
 Vesma creates automatic DB backups before schema migrations:
 
 ```bash
-ls ~/.mnemos/data/*.backup-*
-# ~/.mnemos/data/mnemos.db.backup-20260115-143022
+ls ~/.vesma/data/*.backup-*
+# ~/.vesma/data/vesma.db.backup-20260115-143022
 
-cp ~/.mnemos/data/mnemos.db.backup-20260115-143022 ~/.mnemos/data/mnemos.db
+cp ~/.vesma/data/vesma.db.backup-20260115-143022 ~/.vesma/data/vesma.db
 ```
 
 ## Importing third-party records

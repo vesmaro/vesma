@@ -397,7 +397,7 @@ ai-brain had no required tag schema. Migrating:
    [cli-reference.md](cli-reference.md#tags-audit)).
 4. Edit entries manually to apply best-effort defaults
    (`project:unknown`, `agent:unknown`).
-5. Flip `strict_tag_contract=True` in `~/.mnemos/config.yaml` once clean.
+5. Flip `strict_tag_contract=True` in `~/.vesma/config.yaml` once clean.
 
 ---
 

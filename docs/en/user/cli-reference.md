@@ -400,7 +400,7 @@ vesma stats [OPTIONS]
 | Key | Meaning |
 |-----|---------|
 | `status` | Always `ok` (liveness signal) |
-| `version` | Vesma version (currently `4.0.0`) |
+| `version` | Vesma version of the running server (e.g. `6.1.0`) |
 | `data_dir` | Resolved data directory |
 | `vault_path` | Resolved vault directory |
 | `total` | Total memory count (any status) |
@@ -756,7 +756,7 @@ Move a 5.x store to the 6.0 layout: `vesma.db`, canonical `vesma:*` tags, `proje
 
 | Option | Description |
 |---|---|
-| `--from PATH` | **Required.** Explicit source store home (e.g. `~/.mnemos`). |
+| `--from PATH` | **Required.** Explicit source store home (e.g. `~/.mnemos`, or the 6.0-era `~/.local/share/vesma/core`). |
 | `--to PATH` | **Required.** Explicit target store home (6.0 layout, e.g. `~/.vesma`). Must not exist at all — any pre-existing target (even an empty directory) is refused at plan time. |
 | `--apply` | Write the migration. Without it: read-only plan. |
 | `--json` | Machine-readable report (paths and numbers only). |
@@ -943,9 +943,9 @@ vesma doctor paths
 #   Root          ~/.vesma
 #   Config        ~/.vesma/config.yaml
 #   Data dir      ~/.vesma/data
-#   DB            ~/.vesma/data/mnemos.db
+#   DB            ~/.vesma/data/vesma.db
 #   Vault         ~/.vesma/vault
-#   Logs          ~/.vesma/logs/mnemos.log
+#   Logs          ~/.vesma/logs/vesma.log
 #   Cache         ~/.vesma/cache
 #   Completion    ~/.vesma/completion
 #   MCP config    ~/.config/Code/User/mcp.json
@@ -1000,7 +1000,7 @@ vesma memory status [OPTIONS]
 Per harness the table shows: pack attachment (stamps: attached / stale /
 missing counts), MCP registration (whether the `vesma` server entry is
 present), external memory engines (other server keys seen in the harness
-config), the built-in store markers (`data`, `vault`, `mnemos.db` —
+config), the built-in store markers (`data`, `vault`, `data/vesma.db` —
 existence + mtime) and the active precedence mode (`overlay+mirror`;
 `replace`/`off` arrive with MS-1).
 

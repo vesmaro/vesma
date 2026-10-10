@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/architecture/overview.md)
 
-> This architecture snapshot is current for Vesma **5.6.2**. The normative
+> This architecture snapshot is current for Vesma **6.1.0**. The normative
 > service-layer contracts (component-manifest, service-lifecycle,
 > control-socket, layout — all v1.0.0) live in the separate
 > [vesma-specs](https://github.com/vesmaro/vesma-specs) repository.
@@ -296,8 +296,9 @@ flowchart TB
 
 #### Layout v1 — canonical paths
 
-Installation paths (do not confuse them with the memory-store legacy paths
-`~/.mnemos/` from the Configuration section):
+Installation paths (do not confuse them with the memory-store paths
+`~/.vesma/` from the Configuration section; the 5.x-era legacy home
+`~/.mnemos/` moves to `~/.vesma/` with `vesma migrate-store`):
 
 | Path | Mode | Purpose |
 |------|------|---------|
@@ -451,13 +452,13 @@ Main note content...
 
 ## Configuration
 
-Config file discovery (in priority order): explicit `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.mnemos/config.yaml`. Environment variables are canonically read with the `VESMA_` prefix (e.g. `VESMA_VESMA__DATA_DIR`); the 5.0–5.2 `VESMARO_*` spelling is retired — 6.0.0 reads `VESMA_*` only (the ADR-0031 dual-read period is over).
+Config file discovery (in priority order): explicit `--config` → `VESMA_CONFIG` → `./config.yaml` → `~/.vesma/config.yaml`. Environment variables are canonically read with the `VESMA_` prefix (e.g. `VESMA_VESMA__DATA_DIR`); the 5.0–5.2 `VESMARO_*` spelling is retired — 6.0.0 reads `VESMA_*` only (the ADR-0031 dual-read period is over).
 
 ```yaml
 # config.yaml
 vesma:
-  vault_path: ~/.mnemos/vault         # Obsidian vault
-  data_dir: ~/.mnemos/data            # vector index + SQLite
+  vault_path: ~/.vesma/vault          # Obsidian vault
+  data_dir: ~/.vesma/data             # vector index + SQLite
 
 embedding:
   provider: nano                      # nano (vesma-embed-v1, bundled) | onnx | ollama | sentence-transformers
@@ -477,7 +478,7 @@ mcp:
 ```
 
 > Two path planes must not be confused: the **memory store** (vault, SQLite,
-> cache — `~/.mnemos/…` by default, legacy paths, governed by the `vesma:`
+> cache — `~/.vesma/…` by default, governed by the `vesma:`
 > section) and the **service installation** (unit, venvs, manifests — layout
 > v1, `~/.config/vesma/`, `~/.local/share/vesma/`,
 > `~/.local/state/vesma/`). See the Service Layer section.
