@@ -20,6 +20,7 @@ from vesma.cli.export import (
     ExportFormat,
     run_export,
 )
+from vesma.cli.util import print_snapshot_entry
 from vesma.models import MemoryStatus, normalize_tag_aliases
 
 console = Console()
@@ -126,9 +127,12 @@ def export_cmd(
         passphrase = typer.prompt("Passphrase", hide_input=True, confirmation_prompt=True)
 
     if dry_run:
-        # Validate filters + format without writing.
+        # Validate filters + format without writing. The filter dict is
+        # rendered through the shared snapshot printer — raw dict reprs
+        # (with embedded newlines mid-value) used to leak into the
+        # terminal (cli-audit 2026-10-08 P2).
         console.print(f"[cyan]Dry run: would export {format.value} → {output}[/cyan]")
-        console.print(f"  filter: {filt.to_dict()}")
+        print_snapshot_entry(console, "filter", filt.to_dict())
         console.print(f"  compress: {compress.value}, encrypt: {encrypt}")
         return
 

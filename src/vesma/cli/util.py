@@ -16,7 +16,7 @@ gets the pack and every agent gets wired, non-interactively. Flags narrow.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -41,6 +41,39 @@ from vesma.cli.integration import (
 )
 
 console = Console()
+
+
+# ── snapshot pretty-printer (cli-audit 2026-10-08 P2) ─────────────────────────
+
+
+def format_snapshot_scalar(value: Any) -> str:
+    """Human form of one snapshot scalar: lists comma-joined, rest as str()."""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value) if value else "(none)"
+    if isinstance(value, dict):
+        return ", ".join(f"{k}={v}" for k, v in value.items()) if value else "(empty)"
+    return str(value)
+
+
+def print_snapshot_entry(console_: Console, key: str, value: Any, *, indent: str = "  ") -> None:
+    """One stats/snapshot entry, human-readable.
+
+    cli-audit 2026-10-08 (P2 ``stats``/``filter``/``export --dry-run``):
+    raw Python dict reprs (with embedded newlines mid-value) used to leak
+    into the terminal. Scalars print inline as ``key: value``; a dict prints
+    as a header line plus ``subkey: value`` sub-lines (nested dicts flatten
+    to ``k=v`` pairs); lists comma-join. Scripted consumers use --json.
+    """
+    if isinstance(value, dict):
+        if not value:
+            console_.print(f"{indent}[bold]{key}[/bold]: (empty)")
+            return
+        console_.print(f"{indent}[bold]{key}[/bold]:")
+        for sub_key, sub_value in value.items():
+            console_.print(f"{indent}  [bold]{sub_key}[/bold]: {format_snapshot_scalar(sub_value)}")
+    else:
+        console_.print(f"{indent}[bold]{key}[/bold]: {format_snapshot_scalar(value)}")
+
 
 integration_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},

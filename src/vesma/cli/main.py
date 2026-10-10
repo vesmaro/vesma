@@ -6,6 +6,7 @@ Entry point: vesma (declared in pyproject.toml [project.scripts]).
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from rich.table import Table
 
 from vesma.cli._manager import get_manager, load_settings_or_exit
 from vesma.cli.migrate_store_cmd import migrate_store
+from vesma.cli.util import print_snapshot_entry
 from vesma.config import find_config_file
 from vesma.fs_hardening import ensure_private_dir
 from vesma.logging_setup import setup_logging
@@ -62,6 +64,10 @@ console = Console()
 # Module-level verbose flag — set by the top-level callback via ``--verbose``
 # so that subcommands (serve, mcp-server) can pick it up without re-parsing.
 _verbose: bool = False
+#: Module-level quiet flag — set by the top-level callback via ``--quiet``
+#: (cli-audit 2026-10-08 P2): WARNING-level library noise (federation mTLS
+#: hints) is suppressed for the whole invocation.
+_quiet: bool = False
 
 
 def _print_update_hint() -> None:
@@ -151,10 +157,28 @@ def main(
             help="Enable DEBUG logging (overrides config log level).",
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress WARNING-level log noise (e.g. federation mTLS hints); "
+            "errors still print. The command's own output is unaffected.",
+        ),
+    ] = False,
 ) -> None:
     """Vesma — standalone memory & knowledge server for AI agents."""
-    global _verbose
+    global _verbose, _quiet
     _verbose = verbose
+    _quiet = quiet
+    if quiet:
+        # cli-audit 2026-10-08 (P2): federation mTLS hints are WARNING
+        # records emitted at config-load time — before any command sets up
+        # logging. Raising the vesma loggers' effective level to ERROR
+        # silences them (and any other library WARNING) while keeping
+        # ERROR/CRITICAL visible. No-op for commands that configure file
+        # logging later (serve/mcp-server re-run setup_logging).
+        logging.getLogger("vesma").setLevel(logging.ERROR)
 
 
 ConfigOption = typer.Option(None, "--config", "-c", help="Path to config.yaml")
@@ -1407,18 +1431,30 @@ def workflow_history(
 
 
 @app.command()
-def stats(config: str = ConfigOption) -> None:
+def stats(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit the health snapshot as JSON (for scripting / CI)."),
+    ] = False,
+    config: str = ConfigOption,
+) -> None:
     """Display Vesma health statistics.
 
     One-line-per-key dump of the manager's health snapshot: memory counts,
     vector-store state, and the knowledge-pipeline block (queue depth, last
-    processed timestamp, running flag). The first thing to run when the
-    store "feels wrong" — `vesma doctor` adds deeper per-subsystem checks.
+    processed timestamp, running flag). Nested blocks print as ``key:``
+    headers with indented ``subkey: value`` lines (cli-audit 2026-10-08:
+    raw dict reprs used to leak into the terminal); `--json` emits the raw
+    snapshot for scripting. The first thing to run when the store "feels
+    wrong" — `vesma doctor` adds deeper per-subsystem checks.
     """
     mgr = get_manager(config)
     s = mgr.stats()
+    if json_output:
+        console.print_json(json.dumps(s, default=str))
+        return
     for k, v in s.items():
-        console.print(f"  [bold]{k}[/bold]: {v}")
+        print_snapshot_entry(console, str(k), v)
 
 
 # ── fts / processor / edge-stats sub-apps (CLI-architecture rework W1) ────────
@@ -1781,9 +1817,9 @@ def filter_cmd(
     console.print(f"  profile: {result['filter_profile']}")
     stats_data = result.get("stats", {})
     if "dedup" in stats_data:
-        console.print(f"  dedup:   {stats_data['dedup']}")
+        print_snapshot_entry(console, "dedup", stats_data["dedup"])
     if "tokens" in stats_data:
-        console.print(f"  tokens:  {stats_data['tokens']}")
+        print_snapshot_entry(console, "tokens", stats_data["tokens"])
     console.print(f"  clean_content:\n{result['clean_content']}")
 
 
@@ -2029,15 +2065,31 @@ def meta_poll(
         str | None,
         typer.Option("--peer", help="Poll only this peer id (default: all poll targets)."),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Fetch and validate only — no import, no watermark persistence; "
+            "per-peer lines report what WOULD be offered to the import gate.",
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Summary only — suppress per-peer detail lines."),
+    ] = False,
     config: str = ConfigOption,
 ) -> None:
     """Run one federation meta-poll pass now (S2 phase 2, manual/diagnostic).
 
     The same path the background loop runs per tick — the mesh CLI
-    (``mnemos-mesh sync-meta``) per configured peer, pages imported via
-    the gated upsert, watermark persisted — executed once, in the
-    foreground, with a per-peer summary. Metadata-only: touches
-    ``federation_index`` and the poll state, never ``memories``.
+    per configured peer, pages imported via the gated upsert, watermark
+    persisted — executed once, in the foreground, with a per-peer
+    summary. Metadata-only: touches ``federation_index`` and the poll
+    state, never ``memories``.
+
+    Per-entry INFO diagnostics (refused entries, gate verdicts) go to the
+    log FILE when one is configured — the console keeps the summary
+    (cli-audit 2026-10-08). ``--dry-run`` touches nothing.
 
     Works regardless of ``federation.meta_poll.enabled`` (an explicit
     run is an operator decision); requires
@@ -2045,10 +2097,15 @@ def meta_poll(
     """
     import asyncio
 
+    from vesma.logging_setup import quiet_console_records
     from vesma.meta_poller import MetaPoller, PeerPollResult
 
     settings = load_settings_or_exit(config)
     setup_logging(settings, verbose=_verbose)
+    # cli-audit 2026-10-08 (P2): hundreds of per-entry INFO lines used to
+    # flood the console. The file handler keeps the configured level;
+    # the console keeps WARNING+ — this command's summary is the payload.
+    quiet_console_records()
     fed = settings.federation
     if not fed.meta_poll.mesh_config_path.strip():
         console.print(
@@ -2075,33 +2132,50 @@ def meta_poll(
             raise typer.Exit(1)
 
     async def _run() -> list[PeerPollResult]:
-        return [await poller.poll_once(p) for p in target_ids]
+        return [await poller.poll_once(p, dry_run=dry_run) for p in target_ids]
 
     results = asyncio.run(_run())
-    total_fetched = total_accepted = total_rejected = total_stale = 0
+    total_fetched = total_accepted = total_rejected = total_stale = total_would = 0
     failed = 0
     for r in results:
-        if r.ok:
-            console.print(
-                f"[green]✓[/green] peer={r.peer_id} fetched={r.fetched} "
-                f"accepted={r.accepted} rejected_by_gate={r.rejected_by_gate} "
-                f"stale={r.stale} pages={r.pages} latest_rev={r.latest_rev}"
-            )
-        else:
+        if not quiet:
+            if not r.ok:
+                console.print(
+                    f"[red]✗[/red] peer={r.peer_id} error={r.error} "
+                    f"(fetched={r.fetched} pages={r.pages} latest_rev={r.latest_rev})"
+                )
+            elif dry_run:
+                console.print(
+                    f"[cyan]·[/cyan] peer={r.peer_id} dry-run fetched={r.fetched} "
+                    f"would_import={r.would_import} invalid={r.rejected_by_gate} "
+                    f"pages={r.pages} watermark_would_be={r.latest_rev} "
+                    f"(nothing written)"
+                )
+            else:
+                console.print(
+                    f"[green]✓[/green] peer={r.peer_id} fetched={r.fetched} "
+                    f"accepted={r.accepted} rejected_by_gate={r.rejected_by_gate} "
+                    f"stale={r.stale} pages={r.pages} latest_rev={r.latest_rev}"
+                )
+        if not r.ok:
             failed += 1
-            console.print(
-                f"[red]✗[/red] peer={r.peer_id} error={r.error} "
-                f"(fetched={r.fetched} pages={r.pages} latest_rev={r.latest_rev})"
-            )
         total_fetched += r.fetched
         total_accepted += r.accepted
         total_rejected += r.rejected_by_gate
         total_stale += r.stale
-    console.print(
-        f"[cyan]summary[/cyan] peers={len(results)} failed={failed} "
-        f"fetched={total_fetched} accepted={total_accepted} "
-        f"rejected_by_gate={total_rejected} stale={total_stale}"
-    )
+        total_would += r.would_import
+    if dry_run:
+        console.print(
+            f"[cyan]summary[/cyan] dry-run peers={len(results)} failed={failed} "
+            f"fetched={total_fetched} would_import={total_would} "
+            f"invalid={total_rejected} (nothing written, watermarks unchanged)"
+        )
+    else:
+        console.print(
+            f"[cyan]summary[/cyan] peers={len(results)} failed={failed} "
+            f"fetched={total_fetched} accepted={total_accepted} "
+            f"rejected_by_gate={total_rejected} stale={total_stale}"
+        )
     if failed:
         raise typer.Exit(1)
 
@@ -2674,13 +2748,38 @@ from vesma.cli.awareness_cmd import awareness_app  # noqa: E402
 app.add_typer(awareness_app, name="awareness")
 
 
+def _metrics_command_token(argv: list[str]) -> str | None:
+    """The subcommand token of this invocation, or None for help/version runs.
+
+    cli-audit 2026-10-08 (P2): the vitals recorder loaded Settings even for
+    ``vesma --help`` / ``vesma --version`` — a bare help run must not read
+    the operator's config (it used to re-emit the federation mTLS warning
+    too). A token counts as the command when it is not an option and not
+    the VALUE of a value-taking global option (``--config``/``-c``).
+    """
+    value_options = {"--config", "-c"}
+    skip_next = False
+    for arg in argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in value_options:
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg
+    return None
+
+
 def cli_main() -> None:
     """Console-script entry: time the whole CLI invocation as one verb.
 
     Vitals boundary #10 (A2). Best-effort on every step — the recorder
     needs Settings (default resolution; a --config run still records
     against the default data dir or skips), and a broken plane never
-    changes the command's exit code.
+    changes the command's exit code. Help/version runs (no subcommand
+    token) skip the recorder entirely — they must not load the config.
     """
     import sys as _sys
     import time as _time
@@ -2701,22 +2800,23 @@ def cli_main() -> None:
     finally:
         try:
             argv = _sys.argv
-            cfg = None
-            if "--config" in argv:
-                i = argv.index("--config")
-                if i + 1 < len(argv):
-                    cfg = argv[i + 1]
-            settings = _load(cfg)
-            verb = f"cli:{argv[1]}" if len(argv) > 1 else "cli"
-            from vesma.metrics.boundary import record_verb_standalone
+            verb = _metrics_command_token(argv)
+            if verb is not None:  # help/version runs never touch the config
+                cfg = None
+                if "--config" in argv:
+                    i = argv.index("--config")
+                    if i + 1 < len(argv):
+                        cfg = argv[i + 1]
+                settings = _load(cfg)
+                from vesma.metrics.boundary import record_verb_standalone
 
-            record_verb_standalone(
-                settings,
-                surface="cli",
-                verb=verb,
-                status=status,
-                latency_ms=(_time.monotonic() - t0) * 1000,
-                meta={"retry": code} if code else None,
-            )
+                record_verb_standalone(
+                    settings,
+                    surface="cli",
+                    verb=f"cli:{verb}",
+                    status=status,
+                    latency_ms=(_time.monotonic() - t0) * 1000,
+                    meta={"retry": code} if code else None,
+                )
         except Exception:
             pass

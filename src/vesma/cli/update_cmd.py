@@ -1351,6 +1351,26 @@ def timer_uninstall() -> None:
     _uninstall_timer(Console())
 
 
+# Legend lines for the timer state fields (cli-audit 2026-10-08 P2:
+# ``state: not installed`` next to ``host_state: installed (disabled)``
+# with no explanation of which manager actually fires). Only shown when
+# a HOST leg exists — on a plain host the single ``state`` is
+# self-explanatory.
+_TIMER_BOX_LEGEND_TEXT = (
+    "[dim]legend: state = this box's systemd user manager — units there are never "
+    "loaded, the timer cannot fire from the box; host_state = the HOST user units, "
+    "the only place the update timer actually runs. It fires where the unit is "
+    "ENABLED (host_state); install or change it on the HOST with "
+    "`vesma self-update timer install`.[/dim]"
+)
+_TIMER_BOX_LEGEND_JSON = {
+    "state": "this box's systemd user manager (never loaded inside the box)",
+    "host_state": "the HOST user units — where the update timer actually fires",
+    "fires_when": "the HOST unit is enabled; manage it on the host via "
+    "`vesma self-update timer install`",
+}
+
+
 @timer_app.command(name="status")
 def timer_status(
     json_output: Annotated[
@@ -1361,12 +1381,15 @@ def timer_status(
     """Show timer presence, enabled state and last trigger.
 
     Reports the local systemd user manager; inside a distrobox also the
-    HOST units (a loadable timer can only live there, #468) and a note
-    that this machine appears to be a box.
+    HOST units (a loadable timer can only live there, #468), a note that
+    this machine appears to be a box, and a one-line legend of which leg
+    actually fires (cli-audit 2026-10-08 P2).
     """
     status = _timer_status()
     console = Console()
     if json_output:
+        if status.get("host_state") is not None:
+            status = {**status, "legend": _TIMER_BOX_LEGEND_JSON}
         console.print_json(json.dumps(status))
         return
     table = Table(title=f"Update timer ({TIMER_UNIT})", show_header=True, header_style="bold")
@@ -1375,6 +1398,9 @@ def timer_status(
     for key, value in status.items():
         table.add_row(key, str(value))
     console.print(table)
+    if status.get("host_state") is not None:
+        console.print()
+        console.print(_TIMER_BOX_LEGEND_TEXT)
 
 
 update_app.add_typer(timer_app, name="timer")

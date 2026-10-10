@@ -110,3 +110,23 @@ def setup_logging(settings: Settings, *, verbose: bool = False) -> None:
         uv_logger.handlers.clear()
         uv_logger.setLevel(level)
         uv_logger.propagate = True  # let root handlers emit the records
+
+
+def quiet_console_records(min_level: int = logging.WARNING) -> None:
+    """Raise the CONSOLE handler's level, keep the file handler as configured.
+
+    cli-audit 2026-10-08 (P2, meta-poll): verbose per-entry INFO records
+    (hundreds of ``federation_index: refused entry …`` lines on a big
+    poll) used to flood the operator's terminal. Diagnostic commands that
+    print their own rich summary call this after :func:`setup_logging`:
+    INFO/DEBUG detail stays in the log FILE (when configured), while the
+    console keeps WARNING+ and the command's summary output.
+    """
+    for handler in logging.getLogger().handlers:
+        # FileHandler (and its rotating subclass) IS a StreamHandler — the
+        # file leg must keep its configured level; only the terminal leg
+        # (bare StreamHandler → stderr) is raised.
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, logging.FileHandler
+        ):
+            handler.setLevel(min_level)

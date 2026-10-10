@@ -1944,6 +1944,15 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
     return settings
 
 
+#: Peers already warned about in THIS process (cli-audit 2026-10-08 P2:
+#: ``load_settings`` runs more than once per CLI invocation — the command
+#: body plus the console-script vitals recorder — and the same peer warning
+#: used to print once per load). One warning per peer per process is the
+#: contract; long-running surfaces (serve/mcp-server) also stop re-warning
+#: on every config reload.
+_MTLS_PINNING_WARNED: set[str] = set()
+
+
 def _warn_federation_mtls_pinning_off(settings: Settings) -> None:
     """Warn when federation is active but a peer has mTLS pinning off.
 
@@ -1955,12 +1964,16 @@ def _warn_federation_mtls_pinning_off(settings: Settings) -> None:
     This is non-breaking — a warning only, not a refusal. ADR-0016
     recommends pinning for networked deployments; the warning makes the
     opt-out visible at config-load time rather than silently accepted.
+
+    Once per peer per process (cli-audit 2026-10-08 P2): repeated config
+    loads inside one invocation must not repeat the warning.
     """
     fed = settings.federation
     if not fed.peers:
         return
     for peer_id, peer in fed.peers.items():
-        if peer.mtls_cert_fingerprint is None:
+        if peer.mtls_cert_fingerprint is None and peer_id not in _MTLS_PINNING_WARNED:
+            _MTLS_PINNING_WARNED.add(peer_id)
             logger.warning(
                 "Peer '%s' has no mTLS cert fingerprint — pinning OFF "
                 "(operator opt-out). Set mtls_cert_fingerprint to "
