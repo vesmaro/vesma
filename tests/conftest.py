@@ -28,11 +28,20 @@ Import pin (#288)
 install / ``.venv`` / another checkout on ``PYTHONPATH``) once silently
 pointed the suite at a stale build and produced 7 phantom sweeper
 failures — the pin makes that impossible to miss instead.
+
+Store-home isolation (wave 61 test-isolation slice)
+----------------------------------------------------
+The ``isolated_store_home`` autouse fixture flips ``HOME`` into ``tmp_path``
+and strips path-bearing env vars (``VESMA_CONFIG``, store-path overrides,
+XDG roots), so no test resolves the invoking user's live ``~/.vesma`` —
+neither the config-search read nor call-time ``Path.home()`` writers such
+as the sync/scanner audit logs. Guard: ``tests/test_store_isolation_guard.py``.
 """
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -205,3 +214,77 @@ def no_update_check_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     yield
+
+
+# ---------------------------------------------------------------------------
+# Store-home isolation (wave 61 test-isolation slice)
+# ---------------------------------------------------------------------------
+
+#: Path-bearing environment variables the suite must never inherit from the
+#: invoking shell. On an operator machine ``VESMA_CONFIG`` points at the LIVE
+#: store config (``~/.vesma/config.yaml``), and the two canonical + two alias
+#: variables (issue #139) override store paths directly. Deliberately a fixed
+#: list, NOT a ``VESMA_*`` wildcard: the kill-switch set by
+#: ``no_update_check_network`` must survive regardless of fixture ordering.
+_PATH_ENV_VARS: tuple[str, ...] = (
+    "VESMA_CONFIG",
+    "VESMA_VESMA__DATA_DIR",
+    "VESMA_VESMA__VAULT_PATH",
+    "VESMA_DATA_DIR",
+    "VESMA_VAULT__VAULT_PATH",
+    # XDG roots: unset (not redirected) means the product defaults resolve
+    # under HOME — which this fixture flips — so default-path-resolution
+    # tests stay self-consistent. Same shape as test_service_doctor's
+    # local ``isolated_home`` fixture.
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_RUNTIME_DIR",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_store_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
+    """Isolate EVERY test from the invoking user's real store home.
+
+    Call-time ``Path.home()`` resolution is everywhere in the product
+    (``vesma.audit.sync_audit_path``, ``vesma.cli.doctor``,
+    ``vesma.cli.completion``, ``vesma.cli.update_cmd``,
+    ``vesma.store_migration``, ``vesma.config.find_config_file`` — plus the
+    ``~`` expansion of every config path), so a test that never touches a
+    store surface can still READ the live config — and audit-writing
+    surfaces WRITE the live store. Observed live (2026-10-10): a solo run
+    of ``tests/test_b2b_semantics.py`` appended a ``sync-import`` line to
+    the REAL ``~/.vesma/logs/sync-audit.jsonl`` via
+    ``vesma.audit.log_sync_audit`` (wave-61 test-isolation card).
+
+    This autouse fixture flips ``HOME`` to a per-test fake home next to
+    ``tmp_path`` and strips the path-bearing env vars listed in
+    ``_PATH_ENV_VARS``, so ``find_config_file()`` falls through to "no user
+    config" and every default resolves under the fake home. Tests that
+    isolate further (their own ``HOME``/``VESMA_CONFIG``/``Path.home``
+    patching — the established idiom in test_cli, test_home_flip,
+    test_zero_config, test_doctor_*, test_service_*) compose cleanly:
+    monkeypatch restores LIFO. Tests that exercise import-time path
+    constants (``vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR``,
+    ``vesma.updates.FALLBACK_UPDATE_DIR``, ``vesma.cli.main`` ai-brain
+    defaults) already redirect those explicitly; those constants predate
+    any fixture and cannot be re-pointed from here.
+
+    ``tests/test_store_isolation_guard.py`` fails loudly if this guarantee
+    regresses.
+
+    Placement: the fake home is a SIBLING of ``tmp_path``
+    (``<tmp_path>-home``), not a child. Some suites assert on the FULL
+    content of ``tmp_path`` (report-only contracts:
+    ``test_doctor_mcp_check.py::test_check_is_report_only`` requires
+    ``list(tmp_path.iterdir()) == []``), so the fixture must not add
+    entries there; the pytest tmp-world parent dir owns the cleanup.
+    """
+    home = tmp_path.parent / f"{tmp_path.name}-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for var in _PATH_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    yield home
