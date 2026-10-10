@@ -28,6 +28,19 @@ Import pin (#288)
 install / ``.venv`` / another checkout on ``PYTHONPATH``) once silently
 pointed the suite at a stale build and produced 7 phantom sweeper
 failures — the pin makes that impossible to miss instead.
+
+User-store isolation
+--------------------
+The engine's user store lives under the real HOME (``~/.vesma``, plus
+``$XDG_DATA_HOME``/vesma). Without isolation, any test resolving user
+paths from the ambient environment reads — and can write — the live
+production store of whoever runs the suite. Every test therefore runs
+with HOME / VESMA_CONFIG / XDG_* pointed into its own tmp directory
+(``isolate_user_store_env``); tests exercising HOME-dependent behavior
+override these again locally (their own monkeypatch runs later and
+wins). The companion guard (``tests/test_user_store_guard.py``, forced
+to run last) lstats the real store before the first test and re-checks
+it after the last one: any create/modify/delete there fails the suite.
 """
 
 from __future__ import annotations
@@ -37,6 +50,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+from tests._user_store_guard import (
+    USER_STORE_GUARD_TEST,
+    snapshot_roots,
+    store_roots,
+)
 
 # ---------------------------------------------------------------------------
 # Import pin (#288) — the suite MUST import THIS checkout's vesma
@@ -205,3 +224,86 @@ def no_update_check_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     yield
+
+
+# ---------------------------------------------------------------------------
+# User-store isolation — tmp HOME / VESMA_CONFIG / XDG_* for every test
+# ---------------------------------------------------------------------------
+
+#: Path-bearing store overrides leaked from the operator's shell would
+#: bypass the HOME redirect — drop them (tests set their own locally).
+_STORE_OVERRIDE_ENV_VARS = (
+    "VESMA_DATA_DIR",
+    "VESMA_VAULT__VAULT_PATH",
+    "VESMA_VESMA__DATA_DIR",
+    "VESMA_VESMA__VAULT_PATH",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolate_user_store_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Point every user-path source into this test's own tmp directory.
+
+    ``HOME`` moves to an isolated tmp home: ``Path.home()``-resolved surfaces
+    (``~/.vesma`` store, ``~/.local/share`` fallbacks) land there instead of
+    the live one. ``VESMA_CONFIG`` is pointed at a path that does not exist
+    unless the test creates it — ``find_config_file()`` skips missing
+    candidates, so the zero-config defaults still resolve, and a
+    VESMA_CONFIG leaked from the operator's shell is neutralized either way.
+    The XDG family (config/data/cache/state/runtime) follows the tmp home so
+    nothing authenticates, caches, or sockets against the real user dirs.
+
+    The isolated directories are created via ``tmp_path_factory.mktemp`` —
+    deliberately OUTSIDE the test's own ``tmp_path``: many tests assert
+    ``list(tmp_path.iterdir()) == []`` ("this surface must not write
+    anything"), and fixtures contributing siblings there would break that
+    contract. ``mktemp`` dirs live in the session temp dir, so pytest's
+    tmp-retention policy cleans them with everything else.
+
+    Tests that exercise HOME-dependent behavior override these variables
+    again locally — a test's own ``monkeypatch.setenv`` runs after this
+    fixture and wins; ``delenv`` on any of them works the same way.
+    """
+    iso = tmp_path_factory.mktemp("user-store-iso")
+    home = iso / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VESMA_CONFIG", str(home / ".vesma" / "config.yaml"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / ".local" / "share"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(home / ".cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(home / ".local" / "state"))
+    runtime = iso / "runtime"
+    runtime.mkdir(mode=0o700)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    for var in _STORE_OVERRIDE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return home
+
+
+@pytest.fixture(scope="session", autouse=True)
+def real_user_store_baseline() -> tuple[list[Path], dict[str, tuple[int, int]]]:
+    """Snapshot the real user store before the first test runs.
+
+    Session-scoped autouse so the capture happens at session start — at
+    that point HOME / XDG_* still point at the real environment. The guard
+    test (sunk to the end of the session by the hook below) diffs this
+    snapshot against the store's post-suite state; see
+    ``tests/test_user_store_guard.py``.
+    """
+    roots = store_roots()
+    return roots, snapshot_roots(roots)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Sink the user-store guard to the very end of the session.
+
+    The guard compares the real store against its session-start baseline,
+    so it is only meaningful once every other test has finished.
+    """
+    guards = [item for item in items if item.name == USER_STORE_GUARD_TEST]
+    if guards:
+        rest = [item for item in items if item.name != USER_STORE_GUARD_TEST]
+        items[:] = rest + guards
