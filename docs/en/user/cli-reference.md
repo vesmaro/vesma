@@ -39,11 +39,17 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`integration`](#integration) | Deploy / verify the integration layer (`setup` / `update` / `verify` / `detect` / `uninstall`; full guide: [integration-guide.md](integration-guide.md)) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
 | [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` / `service` subcommands; checks: config, database, vault, …) |
-| [`update`](#update) | Check for updates / update the user-site install (`check` / `apply` / `components` / `timer`) |
+| [`install`](#install) | Components: install one manifest (NAME) or the whole installation (`--all`) |
+| [`status`](#status) | The component registry: origin, version, live state (`--json`); answers even with the supervisor down |
+| [`start`](#start--stop--restart) · [`stop`](#start--stop--restart) · [`restart`](#start--stop--restart) | Component lifecycle via the supervisor (NAME or `--all`; bare calls refuse) |
+| [`logs`](#logs) | Component logs (`--tail N`, `--follow`); bare call is a usage error |
+| [`update`](#update) | Regenerate bundled component manifests (NAME or `--all`); operator-authored files are never rewritten |
+| [`configs`](#configs) | Component config paths: manifest, env file, data dir (`--json`) |
+| [`self-update`](#self-update) | Application self-update family (`check` / `apply` / `timer` / `components`) — the canonical name of the former top-level `update` |
 | [`service`](#service) | Vesma service: `install` / `uninstall` + supervisor control (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`) |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
-| [`logs`](#logs) | View pipeline traces |
+| [`task-logs`](#task-logs) | View pipeline traces — the canonical name of the former top-level `logs` |
 | [`sync`](sync.md) | Federation batch sync export / import (dedicated page) |
 | [`meta-poll`](#meta-poll) | Federation metadata poll: run one poller pass manually (S2 phase 2) |
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
@@ -1018,16 +1024,102 @@ health gate — `doctor` and `integration verify` govern health).
 
 ---
 
-## `update`
+## Component commands
 
-One command family for updating Vesma. Plain `vesma update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint, so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep working.
+Since 6.1.0 the top-level verbs `install`, `status`, `start`, `stop`, `restart`, `logs`, `update` and `configs` drive **components** — one unified surface for every component: the built-in bundle (`board`, `metrics`) and operator-authored external ones alike. A component is any valid manifest in `~/.config/vesma/components.d/`. The release bundle owns `board.yaml` / `metrics.yaml`; **anything else in that directory is operator-authored and never rewritten by the engine** — `vesma update` on such a file is refused with "managed by operator, edit the file".
+
+Semantics shared by the whole family:
+
+| Rule | Behavior |
+|------|----------|
+| `NAME` xor `--all` | Specify one or the other — both together is a refusal (exit 1) |
+| Bare calls never bulk-mutate | `start` / `stop` / `restart` / `update` without a target refuse loudly with the component list and the `--all` hint; bare `install` lists what is installable and changes nothing (exit 0); bare `logs` is a usage error (exit 2) |
+| Exit codes | `0` success (informational listings included) · `1` refusal (unknown component, missing target, supervisor unreachable) · `2` usage error |
+| Offline registry | `status` / `configs` read disk state and answer with the supervisor down; the live column says "unknown" explicitly instead of failing |
+
+### `install`
 
 ```text
-vesma update                     # report + interactive apply prompt (5.2.0 behavior)
-vesma update check
-vesma update apply [OPTIONS]
-vesma update timer install|uninstall|status
-vesma update components [--json]
+vesma install NAME
+vesma install --all
+vesma install            # informational: the installable set, changes nothing (exit 0)
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `NAME` | Per-component manifest install. A bundled component is (re)written from this release's bundle (a diverging installed manifest is preserved as a one-time `.pre-regen.bak` backup); an operator-authored manifest is validated fail-closed and left untouched. Data dirs and config schemas are materialized. Idempotent. |
+| `--all` | The full installation: manifests, per-component venvs and the systemd user unit — identical to `vesma service install`. |
+
+### `status`
+
+```text
+vesma status [NAME] [--json]
+```
+
+The registry table: Component · Origin (`bundled` / `operator`) · Version · State. The registry half is disk-state and works with the supervisor down; the live state (`running` / `stopped` / `failed` + pid) comes from the supervisor over its control socket and reads `unknown (supervisor not reachable)` when it does not answer.
+
+`--json` emits the same data machine-readably — the supervisor reachability travels INSIDE the payload (`supervisor.reachable`, with `reason` when false), so pipes never parse prose.
+
+### `start` / `stop` / `restart`
+
+```text
+vesma start NAME | --all
+vesma stop NAME | --all [--force]
+vesma restart NAME | --all
+```
+
+Thin delegation to the same control-plane client `vesma service start` / `stop` / `restart` uses — zero supervisor logic of its own. `start` and `stop` are idempotent (an already-running / already-stopped component is reported as-is); `restart` is a real stop-then-start cycle and NOT idempotent — a retry after a lost response performs a second restart.
+
+- `--all` walks every installed component in dependency order (`restart` too); `stop --all` walks in reverse dependency order.
+- `--force` (stop only) skips the graceful phase and SIGKILLs after a short delay — for a wedged process only.
+- A bare call refuses with the installed list and the `NAME` / `--all` hint (exit 1); so does a silent control socket. Confirm readiness afterwards with `vesma service health`.
+
+### `logs`
+
+```text
+vesma logs NAME [--tail N] [--follow]
+```
+
+Prints the last `--tail` lines (default 100, cap 10000) from the component's log source through the supervisor control socket; `--follow` / `-f` streams new lines until the component stops. An EMPTY result says so explicitly and names the source — silence is never an answer.
+
+Bare `vesma logs` is a usage error (exit 2) listing the installed components. The former pipeline-trace viewer lives on as `vesma task-logs`; its flag forms (`--task`, `--project`, `--since`, `--limit`, `--config`) still work here as hidden aliases — identical behavior plus a one-line `[deprecated]` hint on stderr, then the call is delegated to `vesma task-logs`.
+
+### `update`
+
+```text
+vesma update NAME
+vesma update --all
+```
+
+Regenerates a component's manifest from this release's bundle. With NAME: a **bundled** component's manifest is rewritten when its bytes differ from the shipped bundle (the previous bytes are kept as a one-time `.pre-regen.bak` backup) — after a regeneration, restart `vesma.service`; an **operator-authored** manifest is REFUSED ("managed by operator"). With `--all`: every stale bundled manifest at once. Bare `vesma update` refuses — it is never a bulk mutation.
+
+Two contract details worth knowing:
+
+- Targets are resolved **by file stem**, not through the fail-closed registry — a stale (schema-invalid) bundled manifest is exactly what `vesma update` exists to heal.
+- The application self-update family moved to [`vesma self-update`](#self-update). Its legacy flag forms (`--check`, `--yes/-y`, `--verbose`, `--scope`, `--to`, `--install-timer`, `--uninstall-timer`, `--timer`) still work here as hidden aliases so installed units and scripts keep running. A legacy flag TOGETHER with a component NAME is refused loudly — the flag belongs to the self-update family and must never silently swallow the NAME.
+
+### `configs`
+
+```text
+vesma configs [NAME] [--json]
+```
+
+Bare: the per-component table Manifest · Env file · Data dir. With NAME: the effective config path the component receives plus its key config fields — origin, manifest, config path, env file, data dir, runtime dir, venv bin, config schema. `--json` emits the same machine-readably. Writing configs is out of scope — edit the manifest or the config file directly.
+
+---
+
+## `self-update`
+
+> **Canonical name since the component UX (6.1.0).** The application self-update family lives under `vesma self-update` — the top-level [`update`](#update) name now belongs to the component-manifest verb. The legacy FLAG forms (`vesma update --yes`, `--check`, …) keep working as hidden aliases on both surfaces so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep running; the legacy SUBCOMMAND spellings are gone — `vesma update check` would now read `check` as a component name and refuse.
+
+One command family for updating Vesma. Plain `vesma self-update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma self-update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint naming the canonical spelling.
+
+```text
+vesma self-update                     # report + interactive apply prompt (5.2.0 behavior)
+vesma self-update check
+vesma self-update apply [OPTIONS]
+vesma self-update timer install|uninstall|status
+vesma self-update components [--json]
 ```
 
 ### Subcommands
@@ -1041,7 +1133,9 @@ vesma update components [--json]
 | `timer status` | Unit presence, enabled state and last trigger (`--json` for scripting); inside a box it also reports the HOST units and names the box. |
 | `components` | The component inventory (below) — local state only, no network. |
 
-Deprecated flag aliases (each prints `use: vesma update …` once on stderr; stdout stays clean): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Options placed before the subcommand word are ignored with an explicit stderr note.
+Deprecated flag aliases (each prints a one-line `[deprecated]` hint naming the canonical `vesma self-update …` spelling on stderr; stdout stays clean): `--check` → `check`; `--yes`/`-y` → `apply`; `--to`/`--scope` → `apply --to`/`apply --scope`; `--install-timer`/`--uninstall-timer` → `timer install`/`timer uninstall`. Options placed before the subcommand word are ignored with an explicit stderr note.
+
+The `--verbose` option also exists on the group itself: `vesma self-update --verbose` prints the full pip output instead of a one-line summary per surface (on failure the last pip lines are shown either way).
 
 The check is cached for 24h; if the installed version is newer than the cached `latest` (right after a self-upgrade), the cache is re-checked once synchronously. When the installed version is still newer than everything published, the report says `newer than published latest (local build?)`.
 
@@ -1051,16 +1145,16 @@ The check is cached for 24h; if the installed version is newer than the cached `
 
 ### Component inventory
 
-`vesma update components` shows what is installed and how each piece updates — every row is read from local state (files, sqlite, `systemctl --user`, `npm ls`), never from the network. Honest `-` where a component is absent or its version is not cheaply readable.
+`vesma self-update components` shows what is installed and how each piece updates — every row is read from local state (files, sqlite, `systemctl --user`, `npm ls`), never from the network. Honest `-` where a component is absent or its version is not cheaply readable.
 
 | Component | Installed | Update path |
 |-----------|-----------|-------------|
-| pip dist | `<dist> <version>` (first of `vesma-memory-server` / `vesma` found) | `vesma update apply` |
+| pip dist | `<dist> <version>` (first of `vesma-memory-server` / `vesma` found) | `vesma self-update apply` |
 | integration pack | pack version + aggregate stale/missing across detected targets | `vesma integration update` (`setup` when files are missing) |
 | cortex bundle | `vesma-cortex-v1` name + weights revision from the shipped manifest | ships with the wheel |
 | embedder | model id + fingerprint (vector-store vintage when readable; `VINTAGE MISMATCH` on a stale index) | `vesma reindex` after a model switch |
-| npm package `@vesmaro/vesma` | global version or `-` | `vesma update apply` (npm leg, best-effort) |
-| update timer | enabled / installed (disabled) / not installed — plus the box note | `vesma update timer install` |
+| npm package `@vesmaro/vesma` | global version or `-` | `vesma self-update apply` (npm leg, best-effort) |
+| update timer | enabled / installed (disabled) / not installed — plus the box note | `vesma self-update timer install` |
 | prod venvs | comma-separated venv names, ONE row | MANUAL GATE — upgrade runbook |
 | go binaries | comma-separated names, report only | goreleaser releases (checksums) |
 
@@ -1068,25 +1162,25 @@ The check is cached for 24h; if the installed version is newer than the cached `
 
 ```bash
 # Report all update surfaces, then ask to apply (in a terminal)
-vesma update
+vesma self-update
 
 # Check only — canonical spelling of the old `--check`
-vesma update check
+vesma self-update check
 
 # Apply without any prompt (scripts, CI; the old `--yes --scope=user`)
-vesma update apply
+vesma self-update apply
 
 # Apply with the full pip output
-vesma update apply --verbose
+vesma self-update apply --verbose
 
 # Roll back to a pinned version
-vesma update apply --to 5.1.1
+vesma self-update apply --to 5.1.1
 
 # Weekly auto-update of the user-site (run ON THE HOST — #468)
-vesma update timer install
+vesma self-update timer install
 
 # What is installed, and what updates it
-vesma update components
+vesma self-update components
 ```
 
 Restart running clients (MCP / `serve`) after a successful update to pick up the new version.
@@ -1168,12 +1262,14 @@ Installation diagnostics — `vesma doctor service` (read-only, DR-01…DR-13).
 
 ---
 
-## `logs`
+## `task-logs`
+
+> **Canonical name since the component UX (6.1.0).** The pipeline-trace viewer lives under `vesma task-logs` — the top-level [`logs`](#logs) name now shows **component** logs. The trace-filter flags (`--task`, `--project`, `--since`, `--limit`, `--config`) still work on `vesma logs` as hidden aliases with a deprecation hint; the bare form (`vesma logs` with no arguments) is now a component-logs usage error.
 
 View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table.
 
 ```text
-vesma logs [OPTIONS]
+vesma task-logs [OPTIONS]
 ```
 
 | Option | Default | Description |
@@ -1188,10 +1284,10 @@ vesma logs [OPTIONS]
 ### Example
 
 ```bash
-vesma logs --task cluster --project vesma --limit 20
+vesma task-logs --task cluster --project vesma --limit 20
 
 # Watch the pipeline live
-vesma logs --follow
+vesma task-logs --follow
 ```
 
 ### Related
@@ -1334,8 +1430,8 @@ slugs never print (zero peer content, ADR-0035 CWE-359 posture).
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | User error (missing argument, invalid tag, etc.) |
-| 2 | `vesma doctor`: one or more checks warn, nothing is broken |
+| 1 | User error (missing argument, invalid tag, component refusal, supervisor unreachable, etc.) |
+| 2 | Usage error (unknown flag, bare `vesma logs`); `vesma doctor`: one or more checks warn, nothing is broken |
 
 The CLI does not return non-zero for "no results" — `vesma search` exits 0 with an empty table.
 
@@ -1353,4 +1449,4 @@ The CLI does not return non-zero for "no results" — `vesma search` exits 0 wit
 
 ---
 
-_Last updated: 2026-10-06_
+_Last updated: 2026-10-10_

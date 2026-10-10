@@ -19,7 +19,7 @@ flowchart LR
     A[Install<br>pip / uv tool / npm / ghcr] --> B[Service<br>vesma service install + run]
     B --> C[Integration<br>vesma integration setup]
     C --> D[Verify<br>vesma doctor]
-    D -->|loop| E[Update<br>vesma update check → apply]
+    D -->|loop| E[Update<br>vesma self-update check → apply]
     E --> B
     F[Legacy install] -->|cleanup| A
 ```
@@ -45,7 +45,7 @@ rebrand). Pick a channel:
 | **uv tool / pipx** — isolated | `uv tool install vesma` · `pipx install vesma` | same, with `vesma` on `PATH` and project environments untouched |
 | **npm** | `npm install -g @vesmaro/vesma` | CLI + MCP server from the npm channel |
 | **ghcr container** | see the block below | the server in one command, nothing installed into the system |
-| **`vesma update apply`** | for an existing Vesma install | updates the pip distribution via the utility itself (see [Updates](#updates)) |
+| **`vesma self-update apply`** | for an existing Vesma install | updates the pip distribution via the utility itself (see [Updates](#updates)) |
 
 Plus external LLM enrichment: `pip install "vesma[ollama]"` — also `openai`,
 `anthropic`, `gemini`.
@@ -163,6 +163,40 @@ When the socket does not answer, the command exits with a hint to start
 Under systemd logs go to journald (`vesma service logs` is a journalctl filter
 by identifier); without systemd — to `~/.local/state/vesma/logs/<name>/` with
 10 MB × 5 rotation. The contract admits no "third place" for logs.
+
+---
+
+## Components
+
+Vesma ships a component bundle — `board` (the local dashboard) and `metrics` —
+and accepts **operator-authored components**: any valid manifest dropped into
+`~/.config/vesma/components.d/`. One top-level verb family drives them all
+(`vesma install` / `status` / `start` / `stop` / `restart` / `logs` / `update` /
+`configs`):
+
+```bash
+vesma install --all        # manifests, per-component venvs, the systemd user unit
+vesma status               # the registry: origin, version, live state
+vesma start --all          # or NAME — bare calls never bulk-mutate
+vesma logs board --follow  # tail one component's log
+```
+
+`vesma install --all` is the same full installation as
+`vesma service install`; afterwards `vesma status` is the one-look answer —
+it reads disk state and works even with the supervisor down, marking the
+live column explicitly when it cannot reach it. Bare lifecycle calls
+(`vesma start` without a NAME or `--all`) refuse loudly — they are never
+bulk mutations.
+
+**Operator-authored components.** A manifest you place in `components.d`
+yourself is yours: the engine never rewrites it — `vesma update NAME` on such
+a file is refused with "managed by operator, edit the file". Only the bundled
+manifests (`board`, `metrics`) are regenerated from the release bundle
+(`vesma update NAME` / `--all`; the previous bytes are kept as a
+`.pre-regen.bak` backup).
+
+The full verb reference with exit codes lives in
+[cli-reference.md](cli-reference.md#component-commands).
 
 ---
 
@@ -468,27 +502,33 @@ updates:
   check_enabled: false
 ```
 
-### The `vesma update` subcommands
+### The `vesma self-update` subcommands
+
+> Since the component UX (6.1.0) the application self-update family lives under
+> `vesma self-update` — the top-level `update` is now the component-manifest
+> verb. Legacy flag forms (`vesma update --yes`, `--check`, …) still work as
+> hidden aliases.
 
 | Command | Purpose |
 |---------|---------|
-| `vesma update check` | Reports every update surface of the machine. Never prompts, never applies — safe in pipes and CI |
-| `vesma update apply` | Apply the update now: pip `--user --upgrade` (+ npm best-effort). Never prompts — invoking `apply` IS the confirmation. `--to VERSION` pins/rolls back to a specific version. Every run appends a record to `~/.local/share/vesma/update-history.json` |
-| `vesma update components` | The component inventory: what is installed and how it updates. Local state only — no network. `--json` for scripts |
-| `vesma update timer install` | Install and enable the weekly systemd user timer (`vesma-update.timer`) — the automated check+apply pass |
-| `vesma update timer uninstall` | Remove the timer and its service unit |
-| `vesma update timer status` | Whether the timer is installed, whether it is enabled, when it last fired |
+| `vesma self-update check` | Reports every update surface of the machine. Never prompts, never applies — safe in pipes and CI |
+| `vesma self-update apply` | Apply the update now: pip `--user --upgrade` (+ npm best-effort). Never prompts — invoking `apply` IS the confirmation. `--to VERSION` pins/rolls back to a specific version. Every run appends a record to `~/.local/share/vesma/update-history.json` |
+| `vesma self-update components` | The update-surface inventory: what is installed and how it updates. Local state only — no network. `--json` for scripts |
+| `vesma self-update timer install` | Install and enable the weekly systemd user timer (`vesma-update.timer`) — the automated check+apply pass |
+| `vesma self-update timer uninstall` | Remove the timer and its service unit |
+| `vesma self-update timer status` | Whether the timer is installed, whether it is enabled, when it last fired |
 
-Bare `vesma update` keeps the 5.2.0 behavior: report + an interactive apply
-prompt in a TTY. The old flag forms (`--check`, `--yes`, `--to`, `--scope`,
-`--install-timer`, `--uninstall-timer`) still work as hidden deprecated aliases
-with a stderr hint — write new scripts against the subcommands.
+Bare `vesma self-update` keeps the 5.2.0 behavior: report + an interactive
+apply prompt in a TTY. The old flag forms (`--check`, `--yes`, `--to`,
+`--scope`, `--install-timer`, `--uninstall-timer`) still work as hidden
+deprecated aliases with a stderr hint — write new scripts against the
+subcommands.
 
 ```bash
-vesma update check              # report only
-vesma update apply              # pip user-site (+ npm best-effort)
-vesma update apply --to 6.0.0   # rollback / version pin
-vesma update timer install      # weekly automation
+vesma self-update check              # report only
+vesma self-update apply              # pip user-site (+ npm best-effort)
+vesma self-update apply --to 6.0.0   # rollback / version pin
+vesma self-update timer install      # weekly automation
 ```
 
 `apply` touches only the pip user-site (and npm, if installed) — prod venvs,
@@ -510,7 +550,7 @@ updated automatically.
 Installations from the rebrand and the pre-service-track era leave artifacts
 under old names on the machine. Two scenarios below. Before either one, record
 the current state: `vesma doctor paths` (where the config points),
-`vesma update components` (which distributions are installed).
+`vesma self-update components` (which distributions are installed).
 
 ### Scenario A — clean the legacy, keep the database
 
@@ -531,7 +571,7 @@ mechanics are removed.
 **What to remove:**
 
 ```bash
-# 1. pip distributions under old names (keep one current dist; the list — vesma update components)
+# 1. pip distributions under old names (keep one current dist; the list — vesma self-update components)
 pip uninstall mnemos-memory-server vesma-memory-server
 
 # 2. legacy vesma-* units (systemd user)
@@ -572,7 +612,7 @@ vesma doctor service        # the service installation against the layout v1 con
 vesma service uninstall --all
 
 # 2. remove the update timer
-vesma update timer uninstall
+vesma self-update timer uninstall
 
 # 3. remove the behavioral pack from all harnesses (only files carrying the pack's stamp)
 vesma integration uninstall
