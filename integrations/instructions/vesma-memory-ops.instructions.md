@@ -602,6 +602,8 @@ a release number.
 
 | Tool | When to use |
 |------|-------------|
+| `vesma_assemble_context` | G0a gate — assemble the pre-LLM memory block: hybrid recall + optional CCR expansion + secret scan + cache alignment under one token budget. Key params: `session=`, `project=`, `agent=`, `budget<=2048`, `mode="sync"` (`async` / `code` / `prose` variants); the result carries `usage_report.metrics_id` — remember it for the G0b report. |
+| `vesma_usage_report` | G0b gate — after the model answered, close the G0a loop: `metrics_id=N`, `block_ids_touched=["N:0", ...]` (opaque ordinals `<metrics_id>:<i>`, composed never guessed; empty list is legitimate), `tokens_out=...`. |
 | `vesma_awareness` | Awareness pre-flight (read-only): presence + delta + conflict-hints for PARALLEL sessions over one project; `action="record_abstention"` attributes an abstention-on-presence to the delta block. Call at session start (see HOW — session start), before risky operations, and in forensics sweeps (before any "unknown actor" claim). |
 | `vesma_compress` | Reversible compression of large content (logs, traces, JSON). 70-90% token reduction, zero data loss. See §2 "Reversible compression". |
 | `vesma_retrieve` | Retrieve the full original for a CCR marker hash (from `vesma_compress`). Optional FTS5 query returns ranked snippets from the cached original. |
