@@ -1523,7 +1523,7 @@ Same shape as the CLI `vesma stats` command — see [cli-reference.md#stats](cli
   "data_dir": "/home/you/.vesma/data",
   "vault_path": "/home/you/.vesma/vault",
   "total": 142,
-  "by_status": {"raw": 5, "processing": 0, "processed": 12, "published": 120, "archived": 5},
+  "by_status": {"archived": 5, "processed": 12, "published": 125},
   "vectors": 120
 }
 ```
