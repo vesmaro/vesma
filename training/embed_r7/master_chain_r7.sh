@@ -18,7 +18,7 @@ if [ ! -f "$RUN_DIR/teacher_vectors.npz" ]; then
   echo "[master] $(date -Is) FATAL: teacher npz missing from runs/embed-r7"
   exit 1
 fi
-if [ ! -f "$RUN_DIR/pairs_r5.json" ]; then
+if [ ! -f "$RUN_DIR/pairs_r7.json" ]; then
   echo "[master] $(date -Is) FATAL: pair pool missing (build_pair_pool_r7 must run first)"
   exit 1
 fi
