@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import stat
 from collections.abc import Generator
 from io import StringIO
@@ -133,9 +132,9 @@ class MeshFetchDouble:
 
 
 @pytest.fixture
-def mesh(tmp_path: Path) -> MeshFetchDouble:
+def mesh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MeshFetchDouble:
     d = MeshFetchDouble(tmp_path)
-    os.environ["VESMA_TEST_FETCH_STATE"] = str(d.state_path)
+    monkeypatch.setenv("VESMA_TEST_FETCH_STATE", str(d.state_path))
     return d
 
 
