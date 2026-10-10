@@ -1,4 +1,10 @@
-"""``vesma logs`` — view pipeline traces (M6 explainability layer).
+"""``vesma task-logs`` — view pipeline traces (M6 explainability layer).
+
+Wave 61 component UX: the top-level ``vesma logs`` name now belongs to
+the COMPONENT logs verb (``vesma.cli.components``); the trace viewer
+moved to ``vesma task-logs`` — same flags, same behavior, new name (the
+old --task/--project/--since/--limit flags also keep working as hidden
+aliases on the component `vesma logs` verb, with a deprecation hint).
 
 Reads the ``traces`` table via :meth:`SQLiteStore.list_traces` and prints
 a compact, ``tail -f``-style table. Supports filtering by task label,
@@ -6,11 +12,11 @@ project, and a time boundary.
 
 Usage::
 
-    vesma logs                       # last 50 traces
-    vesma logs --task cluster        # only cluster traces
-    vesma logs --project vesma      # filter by project
-    vesma logs --limit 100           # more rows
-    vesma logs --follow              # poll for new traces (tail -f)
+    vesma task-logs                       # last 50 traces
+    vesma task-logs --task cluster        # only cluster traces
+    vesma task-logs --project vesma      # filter by project
+    vesma task-logs --limit 100           # more rows
+    vesma task-logs --follow              # poll for new traces (tail -f)
 """
 
 from __future__ import annotations

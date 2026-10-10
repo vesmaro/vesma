@@ -495,7 +495,219 @@ def engine_venv() -> Path:
     return Path(sys.executable).absolute().parent.parent
 
 
+# ── Per-component manifest install (component UX, wave 61) ────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class InstallComponentResult:
+    """Outcome of one per-component install (for the CLI report)."""
+
+    lines: tuple[str, ...]
+    manifest_path: Path
+    origin: str  # "bundled" | "operator"
+    written: bool  # bundle bytes were (re)written from this engine's bundle
+
+
+def install_component(name: str) -> InstallComponentResult:
+    """Install ONE component's manifest — the per-component slice of
+    :func:`install`, idempotent.
+
+    Scope (deliberate, documented): this is a MANIFEST-level install —
+    the manifest is (re)written from the bundle for bundled components
+    (same single-writer + ``.pre-regen.bak`` backup discipline as the
+    update reconciliation) or fail-closed validated for an
+    operator-authored one, then the component data dir and config schema
+    are materialized. Component VENVS and the systemd unit are
+    installation-wide artifacts and stay owned by :func:`install`
+    (``vesma install --all`` / ``vesma service install``); a python child
+    gets a loud pointer instead of a silent half-install.
+
+    Raises :class:`InstallError` for an unknown name (neither bundled nor
+    present in components.d) and :class:`ManifestError` when the
+    installation fails fail-closed validation (same final pass as
+    :func:`install`).
+    """
+    components_dir = layout.components_dir()
+    _ensure_canonical_dirs()
+    target = components_dir / f"{name}.yaml"
+    report: list[str] = []
+    written = False
+
+    if name in BUNDLED_COMPONENTS:
+        bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
+        written = False
+        if target.exists() and target.read_text(encoding="utf-8") == bundle_text:
+            report.append(f"manifest: {target} (current — matches the engine bundle)")
+        else:
+            if target.exists():
+                # Same backup discipline as the update reconciliation: a
+                # divergence may be operator edits sitting on the bundle.
+                backup = components_dir.parent / f"{target.name}.pre-regen.bak"
+                if not backup.exists():
+                    _atomic_write(backup, target.read_text(encoding="utf-8"), 0o600)
+                    report.append(f"backup: {backup} (previous manifest preserved)")
+                else:
+                    report.append(
+                        f"note: backup {backup} already exists — overwritten without a new backup"
+                    )
+                report.append(
+                    f"regenerated: {target} (bundled manifest reinstalled for "
+                    f"engine {_engine_version()})"
+                )
+            else:
+                report.append(f"installed: {target} (from the engine bundle)")
+            _atomic_write(target, bundle_text, 0o644)
+            written = True
+        origin = "bundled"
+    elif target.exists():
+        origin = "operator"
+        report.append(f"manifest: {target} (operator-authored — validated, left untouched)")
+    else:
+        installed = sorted(load_installation(components_dir)) if components_dir.is_dir() else []
+        raise InstallError(
+            f"component {name!r} is not installed and is not a bundled component "
+            f"(bundled: {list(BUNDLED_COMPONENTS)}; installed: {installed or 'nothing'}) — "
+            "external components install by dropping a valid manifest into "
+            f"{components_dir}, then re-running this command"
+        )
+
+    manifest = load_manifest(target)
+    if manifest.name != name:
+        raise InstallError(
+            f"manifest {target.name} declares component {manifest.name!r}, not {name!r} — "
+            "the file name must match metadata.name"
+        )
+
+    layout.ensure_dir(layout.data_dir(name), layout.MODE_DIR_DEFAULT)
+    schema_path = _write_component_schemas(manifest)
+    if schema_path is not None:
+        report.append(f"schema: {schema_path}")
+    if _has_venv(manifest):
+        report.append(
+            f"venv: {name} needs a component venv — manifests only here; "
+            "(re)build venvs and the unit with `vesma service install`"
+        )
+
+    # Same final fail-closed pass as install(): the whole components.d
+    # must load (stray file, duplicate, dependency cycle surface HERE).
+    installation = load_installation(components_dir)
+    report.append(
+        f"validation: components.d loads fail-closed — "
+        f"{len(installation)} component(s): {', '.join(sorted(installation))}"
+    )
+    logger.info("component installed: name=%s origin=%s written=%s", name, origin, written)
+    return InstallComponentResult(
+        lines=tuple(report), manifest_path=target, origin=origin, written=written
+    )
+
+
 # ── Post-upgrade manifest reconciliation (P0, cli-audit 2026-10-08) ────
+
+
+def _reconcile_bundled_manifest(components_dir: Path, name: str) -> list[str]:
+    """Reconcile ONE installed bundled manifest with THIS engine's bundle.
+
+    The per-name body of :func:`regenerate_stale_manifests` (shared with
+    the per-component ``vesma update NAME`` verb): bytes-diff = stale, a
+    one-time 0600 ``.pre-regen.bak`` backup preserves operator edits
+    before the overwrite, and the backup lives in the config root (next
+    to components.d, NOT inside it: layout §3.5 fail-closed refuses any
+    non-manifest file in the manifests directory, so a .bak there would
+    brick `vesma service run`). An absent manifest is NOT resurrected —
+    the operator removed it deliberately.
+
+    Returns the report lines (empty when the manifest is current).
+    """
+    lines: list[str] = []
+    target = components_dir / f"{name}.yaml"
+    if not target.exists():
+        return lines  # operator removed it deliberately — do not resurrect
+    bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
+    try:
+        installed_text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"WARN: cannot read {target}: {exc}"]
+    if installed_text == bundle_text:
+        return lines
+    backup = components_dir.parent / f"{target.name}.pre-regen.bak"
+    if backup.exists():
+        # One-time: never clobber the FIRST divergence record.
+        lines.append(
+            f"note: backup {backup} already exists — the current "
+            f"{target.name} is overwritten without a new backup"
+        )
+    else:
+        try:
+            _atomic_write(backup, installed_text, 0o600)
+        except OSError as exc:
+            lines.append(
+                f"WARN: {target.name} DIFFERS from the bundle and the backup "
+                f"failed ({exc}) — NOT overwriting: keep or move the operator "
+                f"edits, then re-run `vesma update apply`"
+            )
+            return lines
+    _atomic_write(target, bundle_text, 0o644)
+    version = _engine_version()
+    lines.append(f"regenerated: {target} (bundled manifest was stale for engine {version})")
+    lines.append(
+        f"WARN: installed manifest differed from the previous bundle — "
+        f"operator edits discarded (backup: {backup})"
+    )
+    return lines
+
+
+def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
+    """Regenerate ONE component's manifest (``vesma update NAME`` core).
+
+    The SINGLE SOURCE OF TRUTH for target resolution (P3-3, cascade fix):
+    resolution goes by FILE STEM — never a fail-closed installation load —
+    so a stale (schema-invalid) bundled manifest stays reachable: updating
+    is how it gets healed.
+
+    Bundled components (``board`` / ``metrics``): the same single-writer
+    reconciliation as the post-upgrade pass — stale bytes are regenerated
+    from THIS engine's bundle behind a one-time ``.pre-regen.bak`` backup.
+    An operator-authored manifest (any non-bundled name) is REFUSED — it
+    is owned by the operator, never rewritten by the engine:
+
+    ``InstallError("... managed by operator — edit the manifest file")``.
+
+    Returns ``(report_lines, regenerated)``. Raises :class:`InstallError`
+    for unknown names (neither bundled nor installed).
+    """
+    components_dir = layout.components_dir()
+    if name in BUNDLED_COMPONENTS:
+        lines = _reconcile_bundled_manifest(components_dir, name)
+        if not lines:
+            target = components_dir / f"{name}.yaml"
+            if not target.exists():
+                raise InstallError(
+                    f"component {name!r} is not installed ({target} does not exist) — "
+                    f"install it first: `vesma install {name}`"
+                )
+            lines = [f"current: {target} (matches the engine bundle)"]
+        return lines, any(line.startswith("regenerated:") for line in lines)
+    # Operator-authored: report the refusal as data — the CLI renders it.
+    target = components_dir / f"{name}.yaml"
+    alt = components_dir / f"{name}.yml"
+    if not target.exists() and not alt.exists():
+        # Light stem listing — deliberately NO fail-closed load here (the
+        # installation may be broken in exactly the way this verb heals).
+        if components_dir.is_dir():
+            known = sorted(
+                {p.stem for p in [*components_dir.glob("*.yaml"), *components_dir.glob("*.yml")]}
+            )
+        else:
+            known = list(BUNDLED_COMPONENTS)
+        raise InstallError(
+            f"component {name!r} is not installed (components: {', '.join(known) or 'nothing'})"
+            " — if you meant the APPLICATION self-update: `vesma self-update"
+            " check|apply|timer`"
+        )
+    raise InstallError(
+        f"component {name!r} is operator-authored ({target}) — managed by operator — "
+        "edit the manifest file; the engine never rewrites it"
+    )
 
 
 def regenerate_stale_manifests() -> tuple[list[str], int]:
@@ -520,7 +732,7 @@ def regenerate_stale_manifests() -> tuple[list[str], int]:
        BEFORE restarting ``vesma.service``.
 
     Returns ``(report_lines, regenerated_count)``. Raises through
-    unexpected errors; the caller (``vesma update apply``) turns a
+    unexpected errors; the caller (``vesma self-update apply``) turns a
     failure into exit 1 with the manual remediation.
     """
     report: list[str] = []
@@ -533,48 +745,11 @@ def regenerate_stale_manifests() -> tuple[list[str], int]:
     # 1. Bundled manifests: regenerate the STALE ones from this engine's
     #    bundle (bytes-diff = stale, covering missing requirements
     #    sections, old-era version markers, schema drift — everything the
-    #    validator of the new engine would refuse). Cascade fix 2026-10-09
-    #    (P3): a diff may be an OPERATOR EDIT sitting on top of an old
-    #    bundle, so before the overwrite the installed bytes go to a
-    #    one-time 0600 backup — the backup lives in the config root (next
-    #    to components.d, NOT inside it: layout §3.5 fail-closed refuses
-    #    any non-manifest file in the manifests directory, so a .bak there
-    #    would brick `vesma service run`).
+    #    validator of the new engine would refuse). The per-name body
+    #    (backup discipline included) is shared with the per-component
+    #    `vesma update NAME` verb — see _reconcile_bundled_manifest.
     for name in BUNDLED_COMPONENTS:
-        target = components_dir / f"{name}.yaml"
-        if not target.exists():
-            continue  # operator removed it deliberately — do not resurrect
-        bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
-        try:
-            installed_text = target.read_text(encoding="utf-8")
-        except OSError as exc:
-            report.append(f"WARN: cannot read {target}: {exc}")
-            continue
-        if installed_text == bundle_text:
-            continue
-        backup = components_dir.parent / f"{target.name}.pre-regen.bak"
-        if backup.exists():
-            # One-time: never clobber the FIRST divergence record.
-            report.append(
-                f"note: backup {backup} already exists — the current "
-                f"{target.name} is overwritten without a new backup"
-            )
-        else:
-            try:
-                _atomic_write(backup, installed_text, 0o600)
-            except OSError as exc:
-                report.append(
-                    f"WARN: {target.name} DIFFERS from the bundle and the backup "
-                    f"failed ({exc}) — NOT overwriting: keep or move the operator "
-                    f"edits, then re-run `vesma update apply`"
-                )
-                continue
-        _atomic_write(target, bundle_text, 0o644)
-        report.append(f"regenerated: {target} (bundled manifest was stale for engine {version})")
-        report.append(
-            f"WARN: installed manifest differed from the previous bundle — "
-            f"operator edits discarded (backup: {backup})"
-        )
+        report.extend(_reconcile_bundled_manifest(components_dir, name))
 
     # 2. Operator-authored manifests: validate structure only, never write.
     for path in sorted([*components_dir.glob("*.yaml"), *components_dir.glob("*.yml")]):
@@ -749,11 +924,14 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
 
 __all__ = [
     "BUNDLED_COMPONENTS",
+    "InstallComponentResult",
     "InstallError",
     "InstallResult",
     "UninstallResult",
     "install",
+    "install_component",
     "parse_pin_line",
     "read_lock",
+    "regenerate_component_manifest",
     "uninstall",
 ]

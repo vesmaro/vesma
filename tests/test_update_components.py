@@ -1,4 +1,4 @@
-"""Tests for ``vesma update components`` + ``timer status`` (board card W-C).
+"""Tests for ``vesma self-update components`` + ``timer status`` (board card W-C).
 
 NO NETWORK anywhere in this file: every subprocess/local-API seam is
 monkeypatched; the cortex manifest is read from the shipped package
@@ -51,7 +51,7 @@ def quiet_systemctl(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
 def _invoke(args: list[str]) -> object:
     from vesma.cli.main import app
 
-    return runner.invoke(app, ["update", *args])
+    return runner.invoke(app, ["self-update", *args])
 
 
 def test_components_table_covers_all_surfaces(
@@ -101,12 +101,13 @@ def test_components_json_shape(wide_and_not_a_box: Path, monkeypatch: pytest.Mon
     assert len(rows) == 8
     by_name = {row["component"]: row for row in rows}
     assert by_name["pip dist"]["installed"] == f"vesma {INSTALLED}"
-    assert "vesma update apply" in by_name["pip dist"]["update_path"]
+    assert "vesma self-update apply" in by_name["pip dist"]["update_path"]
     assert "vesma integration update" in by_name["integration pack"]["update_path"]
     assert by_name["cortex bundle"]["update_path"] == "ships with the wheel"
     assert "vesma reindex" in by_name["embedder"]["update_path"]
     assert (
-        "vesma update timer install" in by_name["update timer (vesma-update.timer)"]["update_path"]
+        "vesma self-update timer install"
+        in by_name["update timer (vesma-update.timer)"]["update_path"]
     )
 
 
