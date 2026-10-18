@@ -109,7 +109,7 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 # легаси-имя ассета — unit-файл остаётся vesma.container до деплой-волны
 cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesma.env (оба имени переменной), затем:
-podman pull ghcr.io/vesmaro/vesma:6.0.0  # образы публикуются синхронно с каждым релизом  # container images ship with every release
+podman pull ghcr.io/vesmaro/vesma:6.2.0  # образы публикуются синхронно с каждым релизом
 # quadlet выводит имя unit из имени файла — пока это vesma.service
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
@@ -386,3 +386,11 @@ Apache-2.0 — см. [LICENSE](LICENSE) и [NOTICE](NOTICE). Исходники:
 
 Вклад приветствуется — в [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md): настройка окружения разработки,
 конвенции веток и коммитов и quality gate, который должно пройти каждое изменение.
+
+---
+
+## 🛠 Релизная автоматизация
+
+Релизы Vesma идут через внутренний кластерный конвейер `release-pipeline` —
+подписанные артефакты (SHA256 → SBOM → cosign → GPG), без GitHub Actions.
+Операторский ранбук: **[release-pipeline](docs/ru/dev/release-pipeline.md)**.

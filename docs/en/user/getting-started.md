@@ -74,14 +74,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:6.0.0
+  ghcr.io/vesmaro/vesma:6.2.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:6.0.0` (pinned) · `:latest` (rolling).
+Tags: `:6.2.0` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -90,7 +90,7 @@ Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md)
 
 <!-- version:pip -->
 ```bash
-pip install vesma==6.0.0
+pip install vesma==6.2.0
 ```
 <!-- /version:pip -->
 
@@ -108,6 +108,18 @@ PyPI — `pip install vesma` installs the same wheel). -->
 > **OS note.** Vesma is developed on Linux (Arch, Fedora, Ubuntu 22.04+) and
 > regularly smoke-tested on macOS. Windows works through WSL2. The systemd unit in
 > `contrib/systemd/` is Linux-only.
+
+> **Not every Linux.** Two install-failure classes to know before you start:
+>
+> - **musl / Alpine is not supported.** The `onnxruntime` dependency (the embedding
+>   runtime) publishes no musllinux wheels, so on Alpine `pip install vesma` fails
+>   with `No matching distribution found for onnxruntime>=1.20`. There is no wheel
+>   to install — take the [container](../admin/runbooks/container-deployment.md).
+> - **Bare Debian / Ubuntu / Fedora images ship without `python3`/`pip`**, and where a
+>   distro `pip` exists, it enforces PEP 668: a system-wide install is refused with
+>   `error: externally-managed-environment`. Install with an isolated tool —
+>   `uv tool install vesma` or `pipx install vesma` (they manage their own
+>   environments and bypass the guard) — or take the container.
 
 > **Hardware.** The bundled `vesma-embed-v1` runs comfortably on a single CPU core.
 > No GPU required. A 2 vCPU / 2 GB VM is enough for personal use.
@@ -312,7 +324,7 @@ in `vesma completion --show-instructions`.
 ## Your first record (CLI)
 
 ```bash
-vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
+vesma add "Hello world" --tags "project:test,agent:getting-started,vesma:learning"
 ```
 
 Expected output:
@@ -329,11 +341,14 @@ Vesma automatically:
 
 The tag contract is documented in [tag-contract.md](tag-contract.md). The short version: every memory needs **exactly one** `project:<slug>`, **exactly one** `agent:<slug>`, and **at least one** `vesma:<subtype>` (e.g. `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). The legacy `mnemos:` spelling is accepted as an input alias everywhere and normalized to the canon; stored tags keep the canonical `vesma:*` form.
 
-> **Note.** Freshly added entries get the `raw` status. The background processor
-> (it runs in the MCP and HTTP API modes, and in a CLI-only deployment —
-> `vesma processor start`) automatically clusters, synthesizes, quality-checks and
-> publishes them. The vector search index only includes entries with the `published`
-> status. Rebuild it manually with `vesma reindex`.
+> **Note.** A freshly added entry gets the `raw` status but is searchable
+> immediately: by default `vesma search` includes `raw` entries (the full-text
+> leg), so nothing you save is hidden while refinement runs. The background
+> processor (it runs in the MCP and HTTP API modes, and in a CLI-only deployment —
+> `vesma processor start`) then clusters, synthesizes, quality-checks and
+> publishes entries; until then `vesma doctor` counts them as "awaiting
+> refinement". Refinement is about vector-index maturity, not visibility: the
+> vector leg covers `published` entries. Rebuild it manually with `vesma reindex`.
 
 External content has its own subcommands (since 5.6.2): `vesma ingest url URL`
 (a web page) and `vesma ingest file PATH` (a local file), both with `--dry-run`
@@ -389,11 +404,9 @@ off. Full walkthrough: [project-graph.md](project-graph.md).
 
 ---
 
-## Running the HTTP API (optional)
+## Connect your harness (MCP)
 
 The MCP server is the primary integration surface: your agent harness spawns `vesma mcp-server` over stdio and gets the full `vesma_*` tool set. Pick your harness:
-
-> The MCP server is the primary integration surface: your agent harness spawns `vesma mcp-server` over stdio and gets the full `vesma_*` tool set. Pick your harness:
 
 | Harness | Fastest path |
 |---------|--------------|
@@ -713,8 +726,8 @@ The full schema is in [config.example.yaml](../../../config.example.yaml). The m
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Pipeline synthesis and the context filter |
 
 Every one of them is overridden by environment variables (`VESMA_*`, `__` is the
-nesting separator; retired as of 6.0.0 is the 5.0–5.2 spelling (`VESMARO_*`), the
-4.x spelling `VESMA_*` is no longer read):
+nesting separator). The legacy spellings — `VESMARO_*` (5.0–5.2) and `MNEMOS_*`
+(4.x) — are no longer read as of 6.0.0:
 
 ```bash
 VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
@@ -747,6 +760,16 @@ an isolated install (`uv tool` / `pipx`) — it puts `vesma` on `PATH` in every
 shell (`~/.local/bin`; add the directory to `PATH` if your distribution does not
 do it).
 
+### `pip install vesma` fails with `externally-managed-environment`
+
+The distribution's Python is PEP 668-protected: a system-wide `pip install` is
+refused on stock Debian / Ubuntu / Fedora. Do not reach for
+`--break-system-packages` — install isolated instead: `uv tool install vesma` /
+`pipx install vesma` (both keep their own environment), or run the
+[container](../admin/runbooks/container-deployment.md). Alpine / musl is a
+different wall: `onnxruntime` has no musllinux wheels, so there the container is
+the only path.
+
 ### `vesma mcp-server` crashes with an `mcp` import error
 
 The install is broken or a foreign `mcp` 1.x landed on top of the core SDK:
@@ -761,10 +784,12 @@ The supervisor is not running. Start `vesma service run` (foreground) or the uni
 
 ### Search returns only "raw" entries
 
-The vector index only includes entries with the `published` status; fresh entries
-start as `raw` and are published by the background processor. To publish
-immediately, set `status: "published"` when creating via the HTTP API — or let
-the pipeline run (`vesma processor start` in a CLI-only deployment).
+That is normal right after an add: search includes `raw` entries by default — a
+fresh memory is visible immediately — while the vector leg covers only
+`published` entries the pipeline has refined. Want just the refined knowledge?
+Run `vesma search --published-only`. To publish immediately, set
+`status: "published"` when creating via the HTTP API — or let the pipeline run
+(`vesma processor start` in a CLI-only deployment).
 
 ### `sqlite3.OperationalError: database is locked`
 

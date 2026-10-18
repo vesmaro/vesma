@@ -134,7 +134,7 @@ vesma add [CONTENT] [OPTIONS]
 
 ```bash
 # Inline content
-vesma add "Use uv, not pip" --tags project:vesma agent:tech-writer vesma:learning
+vesma add "Use uv, not pip" --tags "project:vesma,agent:tech-writer,vesma:learning"
 
 # With a title
 vesma add "Always validate SQL with parameterized queries" \
@@ -142,14 +142,14 @@ vesma add "Always validate SQL with parameterized queries" \
   --tags "project:vesma,agent:security,vesma:rule,severity:high"
 
 # From a file
-vesma add --file ~/notes/architecture.md --tags project:vesma agent:tech-lead vesma:decision
+vesma add --file ~/notes/architecture.md --tags "project:vesma,agent:tech-lead,vesma:decision"
 
 # From a URL (fetches, extracts, saves)
-vesma add --url https://example.com/article --tags project:research agent:user vesma:learning
+vesma add --url https://example.com/article --tags "project:research,agent:user,vesma:learning"
 
 # From stdin
 echo "Pinned CVE-2026-45829 in chromadb 1.5.9" \
-  | vesma add --tags project:vesma agent:sre vesma:bug-pattern,severity:medium
+  | vesma add --tags "project:vesma,agent:sre,vesma:bug-pattern,severity:medium"
 ```
 
 ---

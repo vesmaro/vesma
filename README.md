@@ -109,7 +109,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # legacy-named asset — unit file stays vesma.container until the deploy wave renames it
 cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesma.env (both env spellings), then:
-podman pull ghcr.io/vesmaro/vesma:6.0.0  # образы публикуются синхронно с каждым релизом  # container images ship with every release
+podman pull ghcr.io/vesmaro/vesma:6.2.0  # container images ship with every release
 # quadlet derives the unit name from the file name — the unit is vesma.service for now
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
@@ -390,24 +390,8 @@ and commit conventions, and the quality gate a change must pass.
 
 ---
 
-## 🛠 CI / Релизы — кластерный конвейер `release-pipeline`
+## 🛠 Release automation
 
-Этот проект подключён к общему кластерному конвейеру релизов
-([Korrnals/release-pipeline](https://github.com/Korrnals/release-pipeline),
-K3s `abyss-ai-agent`, namespace `release-pipeline`). GitHub Actions не
-используется (биллинг аккаунта заблокирован) — конвейер и есть штатный путь
-релизов. Релизный артефакт подписывается трёхслойно: SHA256 → SBOM → cosign → GPG.
-
-**Релиз новой версии:**
-1. `VERSION` → релизный коммит (конвенция репо) → тег `vX.Y.Z` → push.
-2. Обновить версию проекта в `projects[]` файла `~/.cache/release-pipeline-values.yaml` и применить:
-   ```bash
-   helm upgrade --install release-pipeline \
-     ~/LABs/Projects/Project-Umbra/release-pipeline/chart/release-pipeline \
-     --kube-context abyss-ai-agent -n release-pipeline \
-     -f ~/.cache/release-pipeline-values.yaml
-   ```
-3. Наблюдение: `kubectl --context abyss-ai-agent -n release-pipeline get jobs`,
-   логи: `kubectl ... logs -f job/release-<proj>-<ver>`.
-
-Подробности (типы проектов, kaniko-контейнеры, teardown): README конвейера.
+Vesma releases ride the internal cluster pipeline `release-pipeline` — signed
+artifacts (SHA256 → SBOM → cosign → GPG), no GitHub Actions. Operator runbook:
+**[release-pipeline](docs/en/dev/release-pipeline.md)**.

@@ -43,12 +43,12 @@ and `vesma-vault` (Obsidian markdown mirror); the compose path names them `vesma
 Pull the released image and start it directly — nothing to build:
 
 ```bash
-podman pull ghcr.io/vesmaro/vesma:6.0.0      # :latest tracks the newest release
+podman pull ghcr.io/vesmaro/vesma:6.2.0      # :latest tracks the newest release
 podman run -d --name vesma \
   -v vesma-data:/data -v vesma-vault:/vault \
   -p 8787:8787 \
   --env VESMA_API__TOTP_MASTER_KEY=<your-key> \
-  ghcr.io/vesmaro/vesma:6.0.0
+  ghcr.io/vesmaro/vesma:6.2.0
 ```
 
 `docker` works identically — swap `podman` for `docker`. The image includes
@@ -155,7 +155,7 @@ Shortcut:
 ## Run — systemd (quadlet)
 
 The quadlet path installs a systemd **user** unit and manages the container as a persistent
-service. The unit references the published `ghcr.io/vesmaro/vesma:6.0.0`, pulled
+service. The unit references the published `ghcr.io/vesmaro/vesma:6.2.0`, pulled
 automatically; to run a local build instead, build the image first (see
 [Build from source](#build-from-source-fallback)) and set `Image=localhost/vesma:latest` in the unit.
 
@@ -212,7 +212,7 @@ systemctl --user status vesma
 > The build system is pinned `hatchling>=1.26,<2` (`pyproject.toml`).
 
 ```bash
-podman build -t localhost/vesma:6.0.0 -f Containerfile .
+podman build -t localhost/vesma:6.2.0 -f Containerfile .
 ```
 
 The `Containerfile` uses `python:3.12-slim` as the base, installs the package (the MCP SDK rides in core),
@@ -242,8 +242,8 @@ Manual push, if ever needed (PAT with `write:packages`):
 
 ```bash
 podman login ghcr.io
-podman tag localhost/vesma:6.0.0 ghcr.io/vesmaro/vesma:6.0.0
-podman push ghcr.io/vesmaro/vesma:6.0.0
+podman tag localhost/vesma:6.2.0 ghcr.io/vesmaro/vesma:6.2.0
+podman push ghcr.io/vesmaro/vesma:6.2.0
 podman push ghcr.io/vesmaro/vesma:latest
 ```
 
