@@ -13,6 +13,7 @@ import json
 import os
 import socket
 import stat
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -41,6 +42,15 @@ from vesma.service.control import (
     _peer_allowed,
     client_safe_start_reason,
 )
+
+# Portability (wave61, audit F9): Linux-only runtime surface under test —
+# prctl subreaper / os.fork / SO_PEERCRED / journald socket have no macOS/BSD
+# counterpart; without the gate a macOS `make verify` would read as regression.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux-only runtime surface (prctl/fork/SO_PEERCRED/procfs)",
+)
+
 
 # ── helpers ───────────────────────────────────────────────────────────
 

@@ -85,14 +85,26 @@ NPM_BIN = "npm"
 SERVICE_UNIT = "vesma-update.service"
 TIMER_UNIT = "vesma-update.timer"
 
-# Known host location of the production venvs (design machine-map). The
+# Known host locations of the production venvs (design machine-map). The
 # literal path covers distrobox contexts where Path.home() points at the
-# box home while the prod venvs live under the HOST home.
-_PROD_VENV_BASES = (
-    Path.home() / ".local" / "share",
-    Path("/var/home/abyss/.local/share"),
-)
+# box home while the prod venvs live under the HOST home. A machine with
+# a different layout overrides the base list via VESMA_PROD_VENV_BASES
+# (os.pathsep-separated entries, ``~`` expanded); unset/empty keeps the
+# defaults below.
 _PROD_VENV_GLOB = "mnemos-prod/venv*"
+
+
+def _prod_venv_bases() -> tuple[Path, ...]:
+    """Prod-venv base dirs to scan; machine-portable via VESMA_PROD_VENV_BASES."""
+    if bases := os.environ.get("VESMA_PROD_VENV_BASES", "").strip():
+        return tuple(
+            Path(part.strip()).expanduser() for part in bases.split(os.pathsep) if part.strip()
+        )
+    return (
+        Path.home() / ".local" / "share",
+        Path("/var/home/abyss/.local/share"),
+    )
+
 
 _GO_BIN_NAMES = ("vesmaro-agent", "vesma-agent", "mnemos-mesh", "vesma-mesh")
 
@@ -175,7 +187,7 @@ def _npm_global_version(npm: str) -> str | None:
 def _prod_venv_paths() -> list[Path]:
     """Existing prod-venv markers (report-only: manual gate, see runbook)."""
     found: list[Path] = []
-    for base in dict.fromkeys(_PROD_VENV_BASES):
+    for base in dict.fromkeys(_prod_venv_bases()):
         try:
             found.extend(sorted(base.glob(_PROD_VENV_GLOB)))
         except OSError:  # pragma: no cover — unreadable base dir
@@ -202,7 +214,14 @@ def _go_binaries() -> list[str]:
 def _run_cmd(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str] | None:
     """Run a subprocess, returning ``None`` instead of raising on failure."""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
     except Exception:
         return None
 
@@ -689,6 +708,16 @@ def _install_timer(console: Console, *, force: bool = False) -> None:
 
 
 def _install_timer_on_host(console: Console) -> None:
+    if sys.platform != "linux" and shutil.which("systemctl") is None:
+        # Portability F8: refuse BEFORE writing any unit files — on macOS/BSD
+        # the units would be dead weight and the old post-write warning read
+        # like a partial success. Linux without systemctl keeps the old
+        # write-then-hint path (containers may enable systemd later).
+        console.print(
+            "[yellow]![/yellow] self-update timer install is not supported on "
+            "this platform: systemd user units are a Linux mechanism."
+        )
+        raise typer.Exit(1)
     unit_dir = _unit_dir()
     try:
         unit_dir.mkdir(parents=True, exist_ok=True)

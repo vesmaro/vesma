@@ -37,6 +37,15 @@ PY = sys.executable
 WAIT_TIMEOUT_S = 20.0
 
 
+# Portability (wave61, audit F9): Linux-only runtime surface under test —
+# prctl subreaper / os.fork / SO_PEERCRED / journald socket have no macOS/BSD
+# counterpart; without the gate a macOS `make verify` would read as regression.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux-only runtime surface (prctl/fork/SO_PEERCRED/procfs)",
+)
+
+
 # ── fixtures + helpers ────────────────────────────────────────────────
 
 

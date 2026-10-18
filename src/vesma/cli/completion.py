@@ -454,6 +454,7 @@ def _check_shell_syntax(shell: str, rc: Path) -> tuple[bool, str]:
             [shell, "-n", str(rc)],  # FileNotFoundError below = binary not installed
             capture_output=True,
             text=True,
+            encoding="utf-8",
             errors="replace",
             timeout=10,
             check=False,

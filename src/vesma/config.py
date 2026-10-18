@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -1341,6 +1342,20 @@ class UpdatesConfig(BaseModel):
     check_enabled: bool = True
 
 
+def _default_mesh_socket_path() -> str:
+    """Platform default for the mnemos-mesh Unix socket (portability F4).
+
+    Linux keeps the historical ``/run/mnemos/core.sock`` (systemd-tmpfiles
+    convention) — prod behavior is byte-identical. Every other unix
+    (macOS, BSD) has no ``/run/mnemos``: the default falls back into the
+    user-owned ``~/.vesma/run/`` so a default-config mesh actually binds
+    instead of dying on ``parent.mkdir`` PermissionError.
+    """
+    if sys.platform == "linux":
+        return "/run/mnemos/core.sock"
+    return str(Path.home() / ".vesma" / "run" / "core.sock")
+
+
 class MeshConfig(BaseModel):
     """mnemos-mesh gRPC client configuration (Phase 3, issue #105 M3).
 
@@ -1354,8 +1369,10 @@ class MeshConfig(BaseModel):
     Fields:
         socket_path: Filesystem path to the ``mnemos-mesh`` Unix socket.
             The mesh binary creates the socket; Vesma connects to it.
-            Default ``/run/mnemos/core.sock`` (systemd-tmpfiles convention
-            for runtime sockets owned by the vesma user).
+            Platform default (:func:`_default_mesh_socket_path`):
+            ``/run/mnemos/core.sock`` on Linux (systemd-tmpfiles convention
+            for runtime sockets owned by the vesma user), ``~/.vesma/run/
+            core.sock`` elsewhere (macOS/BSD have no ``/run/mnemos``).
         enabled: Master switch. When ``False`` (default), :class:`MeshClient`
             is not constructed and the MCP/HTTP paths do not attempt to
             talk to the mesh. Operators enable it after deploying the mesh.
@@ -1377,7 +1394,7 @@ class MeshConfig(BaseModel):
             ``tcp:`` section) parse unchanged and open no TCP port.
     """
 
-    socket_path: str = "/run/mnemos/core.sock"
+    socket_path: str = Field(default_factory=_default_mesh_socket_path)
     enabled: bool = False
     timeout_s: float = Field(default=2.0, gt=0.0, le=60.0)
     socket_group_access: bool = False
@@ -1926,7 +1943,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
     found = find_config_file(config_path)
     config_data: dict[str, Any] = {}
     if found is not None:
-        with found.open() as fh:
+        with found.open(encoding="utf-8") as fh:
             config_data = yaml.safe_load(fh) or {}
 
     try:

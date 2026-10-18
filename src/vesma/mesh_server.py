@@ -253,6 +253,17 @@ class MeshTCPLegError(RuntimeError):
     """
 
 
+class MeshSocketPathError(RuntimeError):
+    """The mesh Unix-socket parent directory cannot be created.
+
+    Raised by :meth:`MeshServer.start` when ``parent.mkdir`` hits a
+    PermissionError (e.g. ``/run/mnemos`` on a host where this user
+    cannot write ``/run``) — STARTUP FAIL-FAST with the fix named: the
+    message tells the operator to override ``mesh.socket_path`` in the
+    config instead of a raw traceback.
+    """
+
+
 class CompactImportStatus(Enum):
     """Outcome of the shared in-process compact-record import path.
 
@@ -2371,7 +2382,17 @@ class MeshServer:
             sock_path.unlink()
         # Ensure the parent dir exists with restrictive perms.
         parent = sock_path.parent
-        parent.mkdir(parents=True, exist_ok=True)
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as exc:
+            # Fail-fast with the fix named (portability F4): a raw
+            # PermissionError traceback tells the operator nothing about
+            # the mesh.socket_path override that would fix it.
+            raise MeshSocketPathError(
+                f"mesh socket parent {parent} is not writable ({exc}) — "
+                "override mesh.socket_path in the config "
+                "(e.g. ~/.vesma/run/core.sock)"
+            ) from exc
         try:
             os.chmod(parent, dir_mode)
         except PermissionError:

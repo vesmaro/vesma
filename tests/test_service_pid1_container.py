@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,15 @@ SCRIPT = REPO / "scripts" / "pid1_conformance.sh"
 # First run may pull the image; subsequent runs are container-lifetime
 # only (probe boot + graceful stop ≈ 15-30 s).
 LEG_TIMEOUT_S = 600.0
+
+
+# Portability (wave61, audit F9): Linux-only runtime surface under test —
+# prctl subreaper / os.fork / SO_PEERCRED / journald socket have no macOS/BSD
+# counterpart; without the gate a macOS `make verify` would read as regression.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux-only runtime surface (prctl/fork/SO_PEERCRED/procfs)",
+)
 
 
 def _probe(cmdline: list[str]) -> str | None:

@@ -158,6 +158,8 @@ def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
             [str(python), "-m", "pip", "freeze", "--disable-pip-version-check"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
             check=False,
         )
@@ -251,6 +253,8 @@ def _dr03() -> Finding:
             [sys.executable, "-c", probe],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
             env=env,
@@ -681,6 +685,16 @@ def _dr10() -> Finding:
 
 
 def _dr11() -> Finding:
+    if sys.platform != "linux":
+        # Portability F7: on macOS/BSD there is no systemd and no journald —
+        # the old path either warned about a journald that cannot exist or
+        # reported a n/a systemd probe. Skip loudly instead of warning.
+        return Finding(
+            "DR-11",
+            "journald Storage=persistent",
+            Severity.OK,
+            "systemd not detected on this platform — check skipped",
+        )
     if not _SYSTEMD_RUN_DIR.exists():
         return Finding(
             "DR-11",

@@ -452,7 +452,7 @@ def test_version_hint_never_crashes_on_broken_check(monkeypatch: pytest.MonkeyPa
 def quiet_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Isolated HOME + no report-only surfaces, so output is deterministic."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (tmp_path / "nonexistent-share",))
+    monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (tmp_path / "nonexistent-share",))
     monkeypatch.setattr("shutil.which", lambda name: None)
     return tmp_path
 
@@ -496,7 +496,7 @@ def test_update_check_reports_prod_venv_and_go_binaries(
     (share / "mnemos-prod" / "venv").mkdir()
     (quiet_home / ".local" / "bin").mkdir(parents=True)
     (quiet_home / ".local" / "bin" / "mnemos-mesh").write_text("#!/bin/sh\n")
-    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (share,))
+    monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (share,))
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: None)
     monkeypatch.setattr(updates_cli, "family_latest", lambda: None)
     result = _invoke_update([], monkeypatch)
@@ -949,7 +949,7 @@ def box_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     """HOME inside a distrobox 'ubuntu' whose host home is <tmp>/hosthome."""
     box_home, host_home = _make_box_home(tmp_path, "ubuntu")
     monkeypatch.setenv("HOME", str(box_home))
-    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (tmp_path / "nonexistent-share",))
+    monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (tmp_path / "nonexistent-share",))
     monkeypatch.setattr("shutil.which", lambda name: None)
     return box_home, host_home
 
