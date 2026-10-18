@@ -1926,7 +1926,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
     found = find_config_file(config_path)
     config_data: dict[str, Any] = {}
     if found is not None:
-        with found.open() as fh:
+        with found.open(encoding="utf-8") as fh:
             config_data = yaml.safe_load(fh) or {}
 
     try:

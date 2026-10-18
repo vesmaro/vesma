@@ -367,7 +367,11 @@ def add(
         memory = _save_url_ingest(mgr, url, tag_list)
     elif file:
         memory = _save_file_ingest(
-            mgr, text=Path(file).read_text(), title=title, tag_list=tag_list, source=source
+            mgr,
+            text=Path(file).read_text(encoding="utf-8"),
+            title=title,
+            tag_list=tag_list,
+            source=source,
         )
     elif content:
         data = MemoryCreate(
@@ -469,7 +473,7 @@ def ingest_file(
         tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
     )
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         # UnicodeDecodeError is a ValueError, not an OSError: without it a
         # binary file would traceback on the canonical surface.
