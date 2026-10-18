@@ -1,0 +1,158 @@
+{
+  "kind": "embed-round8-decisive-run-config",
+  "committed_before_run": true,
+  "committed_at": "2026-10-18",
+  "authority": [
+    "docs/specs/embed-round8-prereg-baseswap.md (ACTIVATED, owner ratification 10.10; MUST be verified merged into origin/main BEFORE the decisive stage-1 launch — commit-order discipline)",
+    "docs/specs/embed-round6-prereg-schedule.md (stage-2 schedule/selection/export inherited; contrastive EXCLUDED by r8 prereg §1)",
+    "docs/specs/embed-round5-prereg.md @ 294b8dd+ (thresholds/population/measurement; llm thresholds RECALIBRATED per r8 prereg §2 — the only gate delta)",
+    "round-7 decisive run: feat/embed-r7-train @ de097a8 (REJECT under superseded 0.93/0.90; llm 0.8920/0.8088, g1 0.94267, gX0 +0.0021 — floors to beat: r6/r7 llm median 0.8947/0.8920, cross R@5 0.9556, mono +0.0025)"
+  ],
+  "executor": "gcw-ml-engineer",
+  "single_variable": "TEACHER SOURCE ONLY (r8 prereg §1): the KD teacher changes from Qwen3-Embedding-0.6B (as-is) to harrier-oss-v1-0.6b FT'd on the sealed corpus. Student, corpus, schedule shape (minus contrastive), MRL, selection mechanics, export recipe inherited. One variable per round.",
+
+  "stage1": {
+    "purpose": "calibrate domain + mono on the sealed corpus; the FT'd vectors become the stage-2 teacher",
+    "model": {
+      "id": "microsoft/harrier-oss-v1-0.6b",
+      "revision_pinned": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee",
+      "license": "MIT",
+      "arch": "Qwen3Model decoder-only, dim 1024, last-token pooling, L2 normalise (model card)",
+      "note": "transformers >= 5.18 required by model_type — isolated venv (see environment.venv_eg); nm-train (5.16.1) left UNTOUCHED"
+    },
+    "encoding_recipe": {
+      "text_input": "BARE text — NO instruction template (documents pattern of the model card; the student has no instruction concept; symmetric embedding of all proxy texts)",
+      "pooling": "last-token (model card; identical mechanics to distill.last_token_pool)",
+      "normalise": "L2 after pooling",
+      "max_length": 256,
+      "eval_dtype": "fp32 (base/FT proxy evals)",
+      "teacher_precompute_dtype": "bf16 compute (r5/6/7 teacher recipe convention), fp32 npz on save",
+      "recipe_validation": "epoch-0 (base) proxy readout recorded BEFORE FT; sweep audit anchors (burned 0.9407, S_cal 0.9889, R@5 1.0) are the sanity reference — a wild mismatch triggers a recipe re-derivation note, not a silent proceed"
+    },
+    "loss": {
+      "kind": "in-batch multiple-negatives InfoNCE, symmetric batch layout [s1,d1,s2,d2,...] partner=i^1 — train_r7.contrastive_infonce VERBATIM (pilot-proven mechanics; diagonal not masked, loss floors near log(2), known accepted)",
+      "scale": 20.0,
+      "note": "scale 20 == 1/tau with tau=0.05 — the corpus CT operating point (r5 §2); prereg sanctions contrastive/multiple-negatives on corpus pairs for the FT stage"
+    },
+    "data": {
+      "pairs": "training/runs/embed-r8/pairs_r8.json = BYTE-COPY of runs/embed-r7/pairs_r7.json (sha256 52b82a84b099…, both sides verified identical) — corpus UNCHANGED in r8, therefore the r7 pool (2183 pairs: llm 851 / tatoeba 750 / real 268 / twin 262 / seed-dup 52) is the r8 pool by identity",
+      "corpus_fp": "ad3d438f89ce91f47d279b63f1e88157ce747cb3a128399db1df707e8e1a3b7e (re-asserted at every trainer start)"
+    },
+    "schedule": {
+      "epochs": 4,
+      "epoch_range_note": "prereg §1 sanctions 2-4; running the full sanctioned range with per-epoch checkpoints + evals — selection sees epochs 1..4",
+      "batch_pairs": 16,
+      "optimizer": "AdamW, lr 1e-5 (conservative for full FT), weight_decay 0.01, cosine decay to 10% of peak, 20-step linear warmup, foreach=False (peak-RAM reduction)",
+      "max_grad_norm": 1.0,
+      "seed": 42,
+      "determinism": "training.distill.set_determinism(42); order_rng(42) pair shuffle per epoch",
+      "threads": 12,
+      "checkpointing": "every epoch: model fp32 safetensors + tokenizer + optimizer.pt; ROLLING: optimizer.pt of epoch N deleted when epoch N+1 lands (keep-latest; r7 disk-reclaim precedent) — model weights of ALL epochs retained until selection"
+    },
+    "per_epoch_eval": {
+      "surfaces": "es5.build_surfaces() — gate cb367577 (sha-asserted) + burned144 + pool 480; ONE embed pass fp32 full-1024",
+      "readouts": [
+        "proxy by class (seed-dup/llm/real/twin): M_cal_median + S_cal_share_ge_085 at full 1024",
+        "mono_control_median (median best distractor cos) at full 1024",
+        "cross R@5 (total + per-lang) at full 1024",
+        "burned144_median",
+        "the SAME readouts truncated to first 384 dims + renormalised (predicts the stage-2 KD target space)"
+      ],
+      "note": "BASE mono is NOT gate-bound (prereg §1) — trend recorded, no pass/fail line on stage-1 mono"
+    },
+    "selection_rule_FIXED_BEFORE_RUN": {
+      "pool": "epoch 0 (base, pre-FT) + FT epochs 1..4 — epoch 0 included BY DESIGN so a harmful FT degrades to the sweep-audited base instead of forcing a bad teacher",
+      "candidates": "pool members with mono_control_median >= base_mono - 0.010 (trend guard) AND cross_R@5 >= base_cross - 0.01 (geometry hold — the native cross-lingual geometry is the round's entire thesis, it must survive FT)",
+      "rank": "MAX (llm_median + seed_dup_median)/2 (the quality composite the round optimizes); tie: higher mono_control_median, then lower epoch",
+      "guarantee": "epoch 0 trivially passes candidate gates -> a selection ALWAYS exists; no route leads to an undefined teacher",
+      "output": "runs/embed-r8/ft_selection.json + runlog entry BEFORE stage-2 teacher precompute"
+    },
+    "prelaunch_estimates": {
+      "wall_per_epoch": "137 InfoNCE steps (2183 pairs / 16); 0.6B fp32 fwd+bwd ~10-25 s/step CPU → 25-60 min/epoch; 4 epochs ≈ 1.7-4 h",
+      "teacher_precompute": "26069 texts bf16 batch 32 ~3-6 texts/s → 1.2-2.4 h",
+      "stage2_wall": "11-16 min/epoch (r6/r7 measured), 20-epoch cap ≈ 3.7-5.5 h",
+      "total_estimate_hours": "8-12",
+      "peak_ram_gb": {
+        "stage1_training": 10.5,
+        "note": "0.6B fp32 weights 2.4 + grads 2.4 + AdamW exp_avg/exp_avg_sq 4.8 + activations <1 (foreach=False avoids the foreach temp buffers); box available RAM ~10 GB at pre-launch check — BORDERLINE, documented; swap 39.7G total (33G free) is the backstop; the USB swapfile stays OFF (do not rely on it)",
+        "stage2_training": 2.5,
+        "teacher_precompute": 2.0
+      },
+      "launch_gate": "available box RAM >= 4 GB at launch (sequential-heavy-jobs rule); poll 120 s; stage-1 and stage-2 never overlap; disk floor 2 GB free else pause-and-reclaim",
+      "stop_conditions": [
+        "non-finite loss (exit 4)",
+        "corpus fingerprint mismatch at any read",
+        "npz lockstep violation (texts differ)",
+        "pairs sha mismatch vs 52b82a84b099…",
+        "selection-rule violation (asserts in select_ft_r8.py)",
+        "disk < 2 GB free at checkpoint boundary -> clean pause, reclaim via rolling policy, resume"
+      ]
+    }
+  },
+
+  "stage2": {
+    "teacher": {
+      "id": "microsoft/harrier-oss-v1-0.6b @ f9b9dc8d… FT'd per stage-1 selection (ft_selection.json)",
+      "npz": "training/runs/embed-r8/teacher_vectors.npz — (26069, 1024) fp32, texts lockstep with corpus (train then val, order asserted by the trainer)",
+      "precompute_recipe": "stage1.encoding_recipe verbatim (bare text, last-token, bf16 compute, fp32 npz), batch 32, max_length 256, resume-capable partial npz",
+      "kd_target": "FIRST 384 dims, temperature 0.05, MRL 64/128/256/384 weights 4,2,1,1 — r5/6/7 recipe VERBATIM (prereg §3: 'как round-5 recipe, teacher = FT-harrier')"
+    },
+    "student": {
+      "init": "cointegrated/rubert-tiny2 (30M, dim 312) + fresh Linear(312->384) projector, seed 42 — r5/6/7 VERBATIM"
+    },
+    "schedule": {
+      "phase1": "per-slice KD ONLY over ALL 24841 train texts, batch 32; transition: val R@5 @384 >= 0.50 OR epoch cap 8, whichever first",
+      "phase2": "KD-replay ONLY — KD over ALL train texts, NO contrastive ANYWHERE (r8 prereg §1: cross-lingual geometry comes from the teacher natively; one variable per round)",
+      "early_stop": "UNCHANGED r5 §1.4: min-over-slices val R@5 improves <0.001 for 4 consecutive evals",
+      "budget": "<= 20 epochs total, every epoch checkpointed (model+projector+optimizer, rolling optimizer deletion)",
+      "seed": 42,
+      "determinism": "training.distill.set_determinism(42); single order_rng(42); segment-deterministic resume (r5/6/7 property)"
+    },
+    "selection": {
+      "authority": "r6 prereg §3 rule with the RATIFIED r8 llm recalibration (§2) applied to the selection proxy — selection-internal consistency with the gate",
+      "step1_candidates": "ALL phase-2 checkpoints passing: sd_median >= 0.85 AND sd_share >= 0.50 AND llm_median >= 0.90 AND llm_share >= 0.75 (RECALIBRATED numbers; the superseded 0.93/0.90 must NOT be used anywhere in r8)",
+      "step2": "among candidates MAX mono_control_median; tie: higher min-over-slices R@5, then lower epoch",
+      "step3_fallback": "max min-over-slices R@5 among ALL checkpoints with mono >= 0.8932 (= prod 0.8982 - 0.005, unchanged); tie: lower epoch",
+      "step4": "REJECT without shopping",
+      "judged_corpus": "c2ce056d NEVER read before the export of the selected checkpoint"
+    },
+    "export": {
+      "form_FIXED": "int8-dynamic (weight-only, per-channel QInt8) — r5 recipe VERBATIM; static int8 + fp16 BANNED; no form fallback — a gate FAIL on this artifact is an honest REJECT",
+      "measured_for_record": "fp32 + int8-dynamic: val per-slice R@5, gate-proxy readout, per-text cos vs fp32-torch, size, context latency probe; official g6a from gate_latency.py under engine runtime"
+    }
+  },
+
+  "gates": {
+    "population": "sealed gate set cb36757769fb88f2806065f50348f5fd8383cfdb0c19c66e6335eac8ace01123 (sha re-asserted by es5.load_gate_set at gate time), 180 pairs, one harness (NanoProvider recipe), ONE pass on the final artifact",
+    "binding_adopt": {
+      "g1_s1m_no_harm": ">= 0.9252 (judged c2ce056d, production S1m mechanics, self-comparison only — gate_s1m_candidate.py --artifact)",
+      "gX0_mono_control": "|delta| median_best_distractor_cos vs prod 0.8982 <= 0.005 (prod 3b752e0671a50da5… re-embedded in-process as the plumbing assert)",
+      "seed_dup": "median >= 0.85 AND share(cos>=0.85) >= 0.50",
+      "llm": "median >= 0.90 AND share(cos>=0.85) >= 0.75 — RECALIBRATED (r8 prereg §2: prod anchor 0.872/0.647 + honest margin; 0.872+0.028 -> 0.90, 0.647+0.10 -> 0.75; the old 0.93/0.90 superseded; r8 must ALSO beat r6/r7 floors llm median 0.8947/0.8920 AND hold mono |Δ|)",
+      "g6a_latency": "mean <= 45 ms (addendum-6 §A.2, engine runtime ORT 1.27)",
+      "g7_size": "<= 60 MB"
+    },
+    "monitored": "real/twin class cosines, retrieval cross R@5, sibling negative anchor (prod 0.6889), g3 per-slice, burned144, g2 value recorded; harrier geometry before/after FT recorded at stage-1",
+    "floors_to_beat": {
+      "llm_median": "max(r6 0.8947, r7 0.8920) = 0.8947 — round-8 must exceed this ON TOP of the binding 0.90 gate",
+      "cross_R@5": "r7 0.9556 (monitored hold)",
+      "mono_delta": "r6 +0.0025 / r7 +0.0021 (binding |Δ| <= 0.005 unchanged)"
+    },
+    "single_shot": "exactly ONE measured gate pass on the chosen artifact; no post-hoc checkpoint switching; no threshold edits; honest REJECT is FINAL for the whole 'data+schedule+selection+base' bundle (r8 prereg §5)"
+  },
+
+  "environment": {
+    "venv_eg": "/var/home/abyss/.venvs/nm-eg-r8/bin/python (STAGE-1 ONLY: torch 2.14.1+cpu, transformers 5.20.1 — isolated venv for the >=5.18 model_type requirement; created 2026-10-18; does NOT touch nm-train)",
+    "python_train": "/var/home/abyss/.venvs/nm-train/bin/python (STAGE-2: torch 2.13.0+cu130 CPU-used, transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0) — IDENTICAL to r5/r6/r7, untouched",
+    "python_gate": "/var/home/abyss/LABs/Projects/Project-Vesma/vesma/.venv/bin/python (vesmaro runtime, ORT 1.27.0) — identical to r5/r6/r7",
+    "engine_repo_state": "worktree wt/embed-r8-train, branch feat/embed-r8-train FROM feat/embed-r7-train @ de097a8; main/release/consolidate worktrees untouched; r5/r6/r7 worktrees READ-ONLY; prod untouched",
+    "box_notes": "/tmp is tmpfs (RAM) — nothing large lives there; USB swapfile OFF (39.7G total swap = zram+internal, do not rely); disk /var/home 21 GB free at setup — rolling policies mandatory"
+  },
+
+  "provenance": {
+    "pairs_r8_sha256": "52b82a84b0994b73c1ebb9c23fdcc491d7b934d948f0a15d4cd9a841171e9f55 (= pairs_r7.json byte-copy)",
+    "sibling_pop_sha256": "9f0d0f466ce2c168ac85e3eca65280ae307661aaf7d6496bdff2b1c748b8eb23 (= sibling_pop.json byte-copy)",
+    "corpus_verified": "2026-10-18: train 24841 + val 1228 = 26069; cat train val | sha256sum = ad3d438f… EXACT match to the sealed fp",
+    "harrier_revision_pinned": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee (HF main @ 2026-10-18; snapshot_download pinned)"
+  }
+}
