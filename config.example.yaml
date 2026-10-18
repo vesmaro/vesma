@@ -50,6 +50,15 @@ api:
     - Authorization
     - Content-Type
 
+# --- Component overrides (wave61: component-configs plumbing) ---
+# Each key is a component name from components.d; the value is validated
+# against that component's manifest schema and delivered to it before its
+# factory runs. Fail-closed: a config for an unknown component, or a value
+# off-schema, REFUSES the component start (CONFIG_INVALID).
+components:
+  board:
+    bind: "127.0.0.1:8080"   # loopback-only is the v1 posture (see board schema)
+
 mcp:
   transport: stdio
 
