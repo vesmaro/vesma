@@ -361,7 +361,12 @@ def run(
         )
 
     app = ServiceApp(
-        manifests, socket_path=socket, core_bind=(host, port), log=logger, config=config
+        manifests,
+        socket_path=socket,
+        core_bind=(host, port),
+        log=logger,
+        config=config,
+        component_configs=dict(settings.components),
     )
     try:
         outcome = app.bind()

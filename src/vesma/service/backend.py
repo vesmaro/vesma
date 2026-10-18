@@ -37,6 +37,7 @@ import os
 import threading
 import time
 from collections import deque
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -444,11 +445,17 @@ class ServiceApp:
         journal: Any | None = None,  # HistoryJournal — typed lazily (import cycle)
         log: logging.Logger | None = None,
         config: str | None = None,
+        component_configs: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         self._log = log or logger
         self._with_core = with_core
         self._core_bind = core_bind
         self._config = config
+        # Operator component configs (card vesma-61-component-configs-plumbing):
+        # without this pass-through the Supervisor was built with its
+        # constructor default ({}) — the whole delivery path (schema
+        # validation + register_config) was dead code in production.
+        self._component_configs = dict(component_configs or {})
         self._exit_code = 0
         self._finalized = False
         self._core_server: Any | None = None  # uvicorn.Server (lazy import)
@@ -468,6 +475,7 @@ class ServiceApp:
             manifests,
             logsink=self._sink,
             journal=journal if journal is not None else HistoryJournal(),
+            component_configs=self._component_configs,
         )
         self.backend = SupervisorBackend(self.supervisor, self.buffer)
         self.server = ControlServer(self.backend, log=self._log)

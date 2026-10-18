@@ -1484,6 +1484,11 @@ class Settings(BaseSettings):
     logging: LoggingConfig = LoggingConfig()
     # M5: declarative policy rules (loaded from YAML or set programmatically)
     policies: dict[str, Any] = Field(default_factory=dict)
+    # Per-component config overrides (``components:`` section): each key is a
+    # component name from components.d, each value is the config mapping the
+    # supervisor validates against that component's manifest schema (CM §3.9,
+    # fail-closed) and delivers to the component before its factory runs.
+    components: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     model_config = {
         # Canonical ``VESMA_`` prefix only (6.0.0 retired the #471 dual-read
