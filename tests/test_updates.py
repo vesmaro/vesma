@@ -158,7 +158,9 @@ def test_fresh_positive_cache_with_installed_newer_refetches(
     assert info.latest == "5.1.2"
     assert info.update_available is False
     assert info.stale is False
-    assert calls == ["vesma-memory-server"], "stale-drift cache must re-check once"
+    # The drift re-check fetches the DETECTED dist — canonical-first
+    # detection (2026-10-18) names `vesma` here, not the legacy alias.
+    assert calls == ["vesma"], "stale-drift cache must re-check once"
     payload = json.loads(cache_file.read_text())
     assert payload["latest"] == "5.1.2"
     assert payload["ok"] is True
@@ -254,20 +256,41 @@ def test_corrupt_cache_is_ignored(cache_file: Path) -> None:
 # ── dist detection ───────────────────────────────────────────────────────────
 
 
-def test_dist_detection_first_hit_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dist_detection_canonical_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Side-by-side dists (the 2026-10-18 field incident): canonical wins.
+
+    A legacy ``vesma-memory-server`` dist-info lying next to the real
+    ``vesma`` dist must never shadow the installed version — detection
+    consults the canonical name FIRST and stops there.
+    """
+    seen: list[str] = []
+
+    def fake_version(name: str) -> str:
+        seen.append(name)
+        return {"vesma": "6.2.0", "vesma-memory-server": "5.6.4"}[name]
+
+    monkeypatch.setattr(updates, "_md_version", fake_version)
+    assert updates.detect_installed_dist() == ("vesma", "6.2.0")
+    assert seen == ["vesma"]
+
+
+def test_dist_detection_falls_back_to_legacy_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy-only installs keep detecting through the alias channel."""
     from importlib.metadata import PackageNotFoundError
 
     seen: list[str] = []
 
     def fake_version(name: str) -> str:
         seen.append(name)
-        if name == "vesma-memory-server":
+        if name == "vesma":
             raise PackageNotFoundError(name)
         return "1.2.3"
 
     monkeypatch.setattr(updates, "_md_version", fake_version)
-    assert updates.detect_installed_dist() == ("vesma", "1.2.3")
-    assert seen == ["vesma-memory-server", "vesma"]
+    assert updates.detect_installed_dist() == ("vesma-memory-server", "1.2.3")
+    assert seen == ["vesma", "vesma-memory-server"]
 
 
 def test_dist_detection_none_when_nothing_installed(
@@ -450,10 +473,18 @@ def test_version_hint_never_crashes_on_broken_check(monkeypatch: pytest.MonkeyPa
 
 @pytest.fixture
 def quiet_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Isolated HOME + no report-only surfaces, so output is deterministic."""
+    """Isolated HOME + no report-only surfaces, so output is deterministic.
+
+    The install shape defaults to USER-SITE here — the classic form the
+    pre-shape-matrix tests were written against; the shape matrix itself
+    lives in test_selfupdate_shapes.py.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (tmp_path / "nonexistent-share",))
     monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setattr(
+        updates_cli, "_install_shape", lambda: updates_cli.InstallShape(updates_cli.USER_SITE)
+    )
     return tmp_path
 
 

@@ -4,13 +4,23 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version 2.0.0 --extra mcp
-#   curl -fsSL .../install.sh | bash -s -- --venv ~/.mnemos-venv --extra mcp,ollama
+#   curl -fsSL .../install.sh | bash -s -- --venv ~/somewhere/vesma-venv --extra mcp,ollama
+#
+# The DEFAULT install is isolated: a vesma-owned venv at the canonical
+# layout path (~/.local/share/vesma/venv, XDG_DATA_HOME-honored) with a
+# `vesma` launcher on PATH — like pipx/uv-tools, nothing leaks into
+# system/user/project environments (env-isolation directive 2026-10-06,
+# update-apply fix wave 2026-10-18). The installer writes an ownership
+# marker (.vesma-venv inside the venv root) so `vesma self-update apply`
+# can prove the venv is vesma's and upgrade it in place; a --no-venv
+# (user-site) install records its own flag (~/.local/share/vesma/
+# .user-site-install).
 #
 # Flags:
 #   --version VERSION   Vesma version to install (default: latest from PyPI)
 #   --extra EXTRAS      Comma-separated extras: ollama,openai,anthropic,gemini,dev,all
 #                       (default: none — the MCP server ships in the base package since 4.1.0)
-#   --venv PATH         Create a venv at PATH and install there (default: ~/.mnemos/venv)
+#   --venv PATH         Create a venv at PATH and install there (default: ~/.local/share/vesma/venv)
 #   --no-venv           Install into the current Python (system/user), no venv
 #   --uv                Use uv instead of pip (auto-detected if available)
 #   --mcp               Set up VS Code MCP integration automatically (no prompt)
@@ -30,7 +40,10 @@ set -euo pipefail
 
 VERSION=""
 EXTRAS=""
-VENV_PATH="${HOME}/.mnemos/venv"
+# Canonical isolated default (layout contract §3.2): a vesma-owned venv
+# under the vesma data root, XDG_DATA_HOME-honored like layout.py.
+_VESMA_DATA_ROOT="${XDG_DATA_HOME:-${HOME}/.local/share}/vesma"
+VENV_PATH="${_VESMA_DATA_ROOT}/venv"
 NO_VENV=false
 USE_UV=false
 CONTAINER=false
@@ -193,6 +206,13 @@ if [[ "$NO_VENV" == false ]]; then
   else
     "$PYTHON" -m venv "$VENV_PATH"
   fi
+  # Ownership marker: `vesma self-update apply` reads it as the proof
+  # that THIS venv is vesma's and upgrades it in place (without it a
+  # venv install would be refused as a foreign environment). Re-runs
+  # refresh the stamp — idempotent.
+  printf 'installer=install.sh version=%s date=%s\n' \
+    "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${VENV_PATH}/.vesma-venv"
+  ok "Ownership marker written: ${VENV_PATH}/.vesma-venv"
   # shellcheck disable=SC1091
   source "$VENV_PATH/bin/activate"
   ok "Virtual environment activated: $(which python)"
@@ -212,6 +232,13 @@ fi
 if [[ "$NO_VENV" == false ]]; then
   VESMA_BIN="${VENV_PATH}/bin/vesma"
 else
+  # User-site install flag: a user-site has no venv root to carry the
+  # .vesma-venv marker, so ownership is recorded in the vesma data root
+  # (read by `vesma self-update apply`'s shape detection).
+  mkdir -p "${_VESMA_DATA_ROOT}"
+  printf 'installer=install.sh version=%s date=%s\n' \
+    "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${_VESMA_DATA_ROOT}/.user-site-install"
+  ok "User-site install flag written: ${_VESMA_DATA_ROOT}/.user-site-install"
   VESMA_BIN="$(command -v vesma 2>/dev/null || true)"
 fi
 

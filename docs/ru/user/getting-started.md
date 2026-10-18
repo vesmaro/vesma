@@ -42,11 +42,34 @@ Vesma опубликован на PyPI пакетом **`vesma`** (голый с
 
 | Канал | Команда | Что получите |
 |-------|---------|--------------|
-| **pip** — обычный случай | `pip install vesma` | сервер + CLI `vesma` + REST API + MCP-сервер |
-| **uv tool / pipx** — изолированно | `uv tool install vesma` · `pipx install vesma` | то же самое, `vesma` в `PATH`, проектные окружения не тронуты |
+| **install.sh** — рекомендуемый дефолт | `curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh \| bash` | сервер + CLI в СОБСТВЕННОМ venv vesma (`~/.local/share/vesma/venv`), `vesma` в `PATH`, больше ничего не тронуто |
+| **uv tool / pipx** — изолированно | `uv tool install vesma` · `pipx install vesma` | та же изоляция под управлением вашего менеджера (обновление: `uv tool upgrade vesma` / `pipx upgrade vesma`) |
+| **pip** — голый, в user-site | `pip install --user vesma` | сервер + CLI `vesma` + REST API + MCP-сервер в user-site |
 | **npm** | `npm install -g @vesmaro/vesma` | CLI + MCP-сервер из npm-канала |
 | **ghcr-контейнер** | см. блок ниже | сервер одной командой, без установки в систему |
 | **`vesma self-update apply`** | для уже установленного Vesma | обновление pip-дистрибутива силами утилиты (см. [Обновление](#обновление)) |
+
+### Почему установка по умолчанию — изолированный venv
+
+Vesma никогда не пишет в чужие окружения — это жёсткое правило (с фикс-волны
+update-apply 6.2.0, 18.10.2026). `scripts/install.sh` создаёт venv vesma в
+каноническом пути лейаута `~/.local/share/vesma/venv` (с учётом
+`XDG_DATA_HOME`), ставит пакет туда и кладёт лаунчер `vesma` в `~/.local/bin` —
+как pipx/uv-tools: системный Python, чужие venv и окружения агентских харнесов
+остаются нетронутыми. Установщик пишет маркер владения (`.vesma-venv` в корне
+venv), по которому `vesma self-update apply` понимает, что venv — vesma's, и
+обновляет его **на месте**. Запуск `vesma self-update apply` из ЛЮБОГО другого
+окружения — чужой venv, дерево pipx/`uv tool` — громко отказывает, называя
+правильный путь обновления, вместо записи в чужое окружение.
+
+> **PEP 668 (externally-managed environments).** Debian 12+, Ubuntu 23.04+
+> (включая 24.04) и свежие Fedora помечают системный Python как
+> externally-managed: голый `pip install vesma` там падает с ошибкой
+> `externally-managed-environment`. Это ОС защищает свой Python — документированный
+> ответ — изолированный дефолт выше (install.sh, `uv tool`, `pipx`), а не
+> `--break-system-packages`. Для существующей голой user-site-установки
+> `vesma self-update apply` сам обнаружит маркер и добавит
+> `--break-system-packages`; новым установкам это не нужно.
 
 Плюс внешнее LLM-дообогащение: `pip install "vesma[ollama]"` — также `openai`,
 `anthropic`, `gemini`.
@@ -529,7 +552,7 @@ updates:
 | Команда | Назначение |
 |---------|-----------|
 | `vesma self-update check` | Отчёт по всем поверхностям обновлений машины. Никогда не спрашивает и не применяет — безопасна в пайпах и CI |
-| `vesma self-update apply` | Применить обновление сейчас: pip `--user --upgrade` (+ npm best-effort). Никогда не спрашивает — сам вызов `apply` и есть подтверждение. `--to VERSION` — пин/откат на конкретную версию. Каждый запуск дописывает запись в `~/.local/share/vesma/update-history.json` |
+| `vesma self-update apply` | Применить обновление сейчас: апгрейд той pip-копии, которой этот vesma владеет — на месте для venv-установки с маркером, через `pip --user` для голого user-site — плюс npm best-effort. Чужие окружения и деревья pipx/`uv tool` отказываются с именованным путём обновления. Никогда не спрашивает — сам вызов `apply` и есть подтверждение. `--to VERSION` — пин/откат на конкретную версию. Каждый запуск дописывает запись в `~/.local/share/vesma/update-history.json` и удаляет доребрендинговые legacy-дистры (`vesma-memory-server`, `mnemos-memory-server`) из того же окружения |
 | `vesma self-update components` | Инвентарь компонентов: что установлено и как обновляется. Только локальное состояние — без сети. `--json` для скриптов |
 | `vesma self-update timer install` | Установить и включить недельный systemd user-таймер (`vesma-update.timer`) — автоматический check+apply |
 | `vesma self-update timer uninstall` | Снять таймер и его service-юнит |
@@ -543,16 +566,18 @@ updates:
 
 ```bash
 vesma self-update check              # отчёт-only
-vesma self-update apply              # pip user-site (+ npm best-effort)
+vesma self-update apply              # своя pip-копия (+ npm best-effort)
 vesma self-update apply --to 6.0.0   # откат / закрепление версии
 vesma self-update timer install      # недельная автоматизация
 ```
 
-`apply` трогает только pip user-site (и npm, если установлен) — прод-венвы,
-Go-бинарники и контейнеры молча не обновляются никогда, они только в отчёте
-(помечены `MANUAL GATE` / `report only`). После обновления перезапустите
-агент-харнес / `vesma serve` / сервис (`vesma service restart <component>`),
-чтобы подхватить новую версию.
+`apply` трогает только то, чем этот vesma владеет: user-site-копию либо
+собственный venv с маркером (обновляется на месте), плюс npm, если установлен.
+Чужие окружения (venv другого продукта) и деревья менеджеров (pipx, `uv tool`)
+отказываются с exit 1 и нулём записей; прод-венвы, Go-бинарники и контейнеры
+молча не обновляются никогда, они только в отчёте (помечены `MANUAL GATE` /
+`report only`). После обновления перезапустите агент-харнес / `vesma serve` /
+сервис (`vesma service restart <component>`), чтобы подхватить новую версию.
 
 Шаблоны юнитов таймера лежат в
 [`contrib/vesma-update.service`](../../../contrib/vesma-update.service) /

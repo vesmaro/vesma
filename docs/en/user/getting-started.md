@@ -41,11 +41,36 @@ rebrand). Pick a channel:
 
 | Channel | Command | What you get |
 |---------|---------|--------------|
-| **pip** — the common case | `pip install vesma` | server + `vesma` CLI + REST API + MCP server |
-| **uv tool / pipx** — isolated | `uv tool install vesma` · `pipx install vesma` | same, with `vesma` on `PATH` and project environments untouched |
+| **install.sh** — the recommended default | `curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh \| bash` | server + CLI in vesma's OWN venv (`~/.local/share/vesma/venv`), `vesma` on `PATH`, nothing else touched |
+| **uv tool / pipx** — isolated | `uv tool install vesma` · `pipx install vesma` | same isolation, managed by your tool manager (update with `uv tool upgrade vesma` / `pipx upgrade vesma`) |
+| **pip** — bare, into user-site | `pip install --user vesma` | server + `vesma` CLI + REST API + MCP server in the user site |
 | **npm** | `npm install -g @vesmaro/vesma` | CLI + MCP server from the npm channel |
 | **ghcr container** | see the block below | the server in one command, nothing installed into the system |
 | **`vesma self-update apply`** | for an existing Vesma install | updates the pip distribution via the utility itself (see [Updates](#updates)) |
+
+### Why the default install is an isolated venv
+
+Vesma never writes into environments it does not own — that is a hard rule
+(since the 6.2.0 update-apply fix, 2026-10-18). `scripts/install.sh` creates a
+vesma-owned venv at the canonical layout path `~/.local/share/vesma/venv`
+(`XDG_DATA_HOME`-honored), installs the package there and drops a `vesma`
+launcher into `~/.local/bin` — pipx/uv-tools style: your system Python, other
+projects' venvs and agent-harness environments stay untouched. The installer
+writes an ownership marker (`.vesma-venv` inside the venv root), which
+`vesma self-update apply` reads as the proof that the venv is vesma's and
+upgrades it **in place**. Running `vesma self-update apply` from any OTHER
+environment — another product's venv, a pipx/`uv tool` tree — refuses loudly
+with the proper update path named instead of writing into someone else's
+environment.
+
+> **PEP 668 (externally-managed environments).** Debian 12+, Ubuntu 23.04+
+> (24.04 included) and recent Fedora mark their system Python as
+> externally-managed: a bare `pip install vesma` there fails with
+> `externally-managed-environment`. That is the OS protecting its own Python —
+> the documented answer is the isolated default above (install.sh, `uv tool`,
+> `pipx`), not `--break-system-packages`. For an existing bare user-site
+> install, `vesma self-update apply` detects the marker and appends
+> `--break-system-packages` for you; new installs should not need it.
 
 Plus external LLM enrichment: `pip install "vesma[ollama]"` — also `openai`,
 `anthropic`, `gemini`.
@@ -512,7 +537,7 @@ updates:
 | Command | Purpose |
 |---------|---------|
 | `vesma self-update check` | Reports every update surface of the machine. Never prompts, never applies — safe in pipes and CI |
-| `vesma self-update apply` | Apply the update now: pip `--user --upgrade` (+ npm best-effort). Never prompts — invoking `apply` IS the confirmation. `--to VERSION` pins/rolls back to a specific version. Every run appends a record to `~/.local/share/vesma/update-history.json` |
+| `vesma self-update apply` | Apply the update now: upgrades the pip copy this vesma owns — in place for a marked/canonical venv install, via `pip --user` for a bare user-site install — plus npm best-effort. Foreign environments and pipx/`uv tool` trees are refused with the proper update path named. Never prompts — invoking `apply` IS the confirmation. `--to VERSION` pins/rolls back to a specific version. Every run appends a record to `~/.local/share/vesma/update-history.json` and removes pre-rebrand legacy dists (`vesma-memory-server`, `mnemos-memory-server`) from the same environment |
 | `vesma self-update components` | The update-surface inventory: what is installed and how it updates. Local state only — no network. `--json` for scripts |
 | `vesma self-update timer install` | Install and enable the weekly systemd user timer (`vesma-update.timer`) — the automated check+apply pass |
 | `vesma self-update timer uninstall` | Remove the timer and its service unit |
@@ -526,16 +551,18 @@ subcommands.
 
 ```bash
 vesma self-update check              # report only
-vesma self-update apply              # pip user-site (+ npm best-effort)
+vesma self-update apply              # the owned pip copy (+ npm best-effort)
 vesma self-update apply --to 6.0.0   # rollback / version pin
 vesma self-update timer install      # weekly automation
 ```
 
-`apply` touches only the pip user-site (and npm, if installed) — prod venvs,
-Go binaries and containers are never silently updated; they only appear in the
-report (marked `MANUAL GATE` / `report only`). After an update restart the agent
-harness / `vesma serve` / the service (`vesma service restart <component>`) to
-pick up the new version.
+`apply` touches only what this vesma owns — the user-site copy, or its own
+marked venv (upgraded in place) — and npm, if installed. Foreign environments
+(another product's venv) and tool-manager trees (pipx, `uv tool`) are refused
+with exit 1 and zero writes; prod venvs, Go binaries and containers are never
+silently updated and only appear in the report (marked `MANUAL GATE` /
+`report only`). After an update restart the agent harness / `vesma serve` /
+the service (`vesma service restart <component>`) to pick up the new version.
 
 The timer unit templates live in
 [`contrib/vesma-update.service`](../../../contrib/vesma-update.service) /
