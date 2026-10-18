@@ -205,6 +205,11 @@ systemctl --user status vesma
 > Only needed for development, custom patches, or air-gapped environments.
 > The published image is kept in sync with every release — end users never
 > need this section.
+>
+> **From a fresh checkout, run `bash scripts/gen-proto.sh` before building** —
+> the gRPC stubs are gitignored and the Containerfile COPYs them, so a stubless
+> checkout cannot build (the release train regenerates them automatically).
+> The build system is pinned `hatchling>=1.26,<2` (`pyproject.toml`).
 
 ```bash
 podman build -t localhost/vesma:6.0.0 -f Containerfile .

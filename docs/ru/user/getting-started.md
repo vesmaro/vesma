@@ -19,7 +19,7 @@ flowchart LR
     A[Установка<br>pip / uv tool / npm / ghcr] --> B[Сервис<br>vesma service install + run]
     B --> C[Интеграция<br>vesma integration setup]
     C --> D[Проверка<br>vesma doctor]
-    D -->|цикл| E[Обновление<br>vesma update check → apply]
+    D -->|цикл| E[Обновление<br>vesma self-update check → apply]
     E --> B
     F[Легаси-установка] -->|вычистка| A
 ```
@@ -46,7 +46,7 @@ Vesma опубликован на PyPI пакетом **`vesma`** (голый с
 | **uv tool / pipx** — изолированно | `uv tool install vesma` · `pipx install vesma` | то же самое, `vesma` в `PATH`, проектные окружения не тронуты |
 | **npm** | `npm install -g @vesmaro/vesma` | CLI + MCP-сервер из npm-канала |
 | **ghcr-контейнер** | см. блок ниже | сервер одной командой, без установки в систему |
-| **`vesma update apply`** | для уже установленного Vesma | обновление pip-дистрибутива силами утилиты (см. [Обновление](#обновление)) |
+| **`vesma self-update apply`** | для уже установленного Vesma | обновление pip-дистрибутива силами утилиты (см. [Обновление](#обновление)) |
 
 Плюс внешнее LLM-дообогащение: `pip install "vesma[ollama]"` — также `openai`,
 `anthropic`, `gemini`.
@@ -163,6 +163,40 @@ vesma service run
 Логи при systemd идут в journald (`vesma service logs` — journalctl-фильтр по
 идентификатору); без systemd — в `~/.local/state/vesma/logs/<name>/` с ротацией
 10 МБ × 5. Никаких «третьих мест» логов контракт не допускает.
+
+---
+
+## Компоненты
+
+Vesma поставляет бандл компонентов — `board` (локальный дашборд) и `metrics` —
+и принимает **operator-authored компоненты**: любой валидный манифест,
+положенный в `~/.config/vesma/components.d/`. Одно топ-левел семейство глаголов
+управляет всеми (`vesma install` / `status` / `start` / `stop` / `restart` /
+`logs` / `update` / `configs`):
+
+```bash
+vesma install --all        # манифесты, per-component venv, юнит systemd user
+vesma status               # реестр: происхождение, версия, live-состояние
+vesma start --all          # или NAME — голые вызовы массовых мутаций не делают
+vesma logs board --follow  # хвост лога одного компонента
+```
+
+`vesma install --all` — та же полная установка, что `vesma service install`;
+далее `vesma status` — ответ одним взглядом: он читает состояние с диска и
+работает даже при выключенном супервизоре, честно помечая live-колонку, когда
+дотянуться до него не удалось. Голые вызовы жизненного цикла (`vesma start`
+без NAME или `--all`) громко отказывают — массовыми мутациями они никогда
+не бывают.
+
+**Operator-authored компоненты.** Манифест, который вы сами положили в
+`components.d`, — ваш: движок никогда его не перезаписывает — `vesma update
+NAME` для такого файла отказывает («managed by operator, edit the file»).
+Из бандла релиза перегенерируются только бандл-манифесты (`board`, `metrics`)
+(`vesma update NAME` / `--all`; прошлые байты сохраняются как бэкап
+`.pre-regen.bak`).
+
+Полный справочник глаголов с кодами выхода — в
+[cli-reference.md](cli-reference.md#команды-компонентов).
 
 ---
 
@@ -485,28 +519,33 @@ updates:
   check_enabled: false
 ```
 
-### Подкоманды `vesma update`
+### Подкоманды `vesma self-update`
+
+> С появления компонентного UX (6.1.0) семейство само-обновления приложения
+> живёт под `vesma self-update` — топ-левел `update` теперь глагол
+> перегенерации манифестов компонентов. Legacy-флаговые формы (`vesma update
+> --yes`, `--check`, …) работают как скрытые алиасы.
 
 | Команда | Назначение |
 |---------|-----------|
-| `vesma update check` | Отчёт по всем поверхностям обновлений машины. Никогда не спрашивает и не применяет — безопасна в пайпах и CI |
-| `vesma update apply` | Применить обновление сейчас: pip `--user --upgrade` (+ npm best-effort). Никогда не спрашивает — сам вызов `apply` и есть подтверждение. `--to VERSION` — пин/откат на конкретную версию. Каждый запуск дописывает запись в `~/.local/share/vesma/update-history.json` |
-| `vesma update components` | Инвентарь компонентов: что установлено и как обновляется. Только локальное состояние — без сети. `--json` для скриптов |
-| `vesma update timer install` | Установить и включить недельный systemd user-таймер (`vesma-update.timer`) — автоматический check+apply |
-| `vesma update timer uninstall` | Снять таймер и его service-юнит |
-| `vesma update timer status` | Установлен ли таймер, включён ли, когда срабатывал последний раз |
+| `vesma self-update check` | Отчёт по всем поверхностям обновлений машины. Никогда не спрашивает и не применяет — безопасна в пайпах и CI |
+| `vesma self-update apply` | Применить обновление сейчас: pip `--user --upgrade` (+ npm best-effort). Никогда не спрашивает — сам вызов `apply` и есть подтверждение. `--to VERSION` — пин/откат на конкретную версию. Каждый запуск дописывает запись в `~/.local/share/vesma/update-history.json` |
+| `vesma self-update components` | Инвентарь компонентов: что установлено и как обновляется. Только локальное состояние — без сети. `--json` для скриптов |
+| `vesma self-update timer install` | Установить и включить недельный systemd user-таймер (`vesma-update.timer`) — автоматический check+apply |
+| `vesma self-update timer uninstall` | Снять таймер и его service-юнит |
+| `vesma self-update timer status` | Установлен ли таймер, включён ли, когда срабатывал последний раз |
 
-Простой `vesma update` без подкоманды сохраняет поведение 5.2.0: отчёт +
+Простой `vesma self-update` без подкоманды сохраняет поведение 5.2.0: отчёт +
 интерактивный prompt применения в TTY. Старые флаговые формы (`--check`,
 `--yes`, `--to`, `--scope`, `--install-timer`, `--uninstall-timer`) работают как
 скрытые deprecated-алиасы с подсказкой в stderr — новые скрипты пишите на
 подкомандах.
 
 ```bash
-vesma update check              # отчёт-only
-vesma update apply              # pip user-site (+ npm best-effort)
-vesma update apply --to 6.0.0   # откат / закрепление версии
-vesma update timer install      # недельная автоматизация
+vesma self-update check              # отчёт-only
+vesma self-update apply              # pip user-site (+ npm best-effort)
+vesma self-update apply --to 6.0.0   # откат / закрепление версии
+vesma self-update timer install      # недельная автоматизация
 ```
 
 `apply` трогает только pip user-site (и npm, если установлен) — прод-венвы,
@@ -527,7 +566,7 @@ Go-бинарники и контейнеры молча не обновляют
 
 Установки времён ребрендинга и сервис-трека оставляют на машине артефакты под
 старыми именами. Здесь два сценария. Перед любым из них зафиксируйте текущее
-состояние: `vesma doctor paths` (куда смотрит конфиг), `vesma update components`
+состояние: `vesma doctor paths` (куда смотрит конфиг), `vesma self-update components`
 (какие дисты стоят).
 
 ### Сценарий А — вычистить легаси, сохранив базу данных
@@ -549,7 +588,7 @@ Go-бинарники и контейнеры молча не обновляют
 **Что удалить:**
 
 ```bash
-# 1. pip-дистры старых имён (оставить один актуальный дист; список — vesma update components)
+# 1. pip-дистры старых имён (оставить один актуальный дист; список — vesma self-update components)
 pip uninstall mnemos-memory-server vesma-memory-server
 
 # 2. легаси-юниты vesma-* (systemd user)
@@ -590,7 +629,7 @@ vesma doctor service        # сервис-установка по контра�
 vesma service uninstall --all
 
 # 2. снять таймер обновлений
-vesma update timer uninstall
+vesma self-update timer uninstall
 
 # 3. снять поведенческий пак со всех харнесов (только файлы со штампом пака)
 vesma integration uninstall
