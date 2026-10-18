@@ -102,3 +102,9 @@ feat/*  →  dev-<stage>  →  release/X.Y.Z  →  main
 Open a [GitHub issue](https://github.com/vesmaro/vesma/issues) with the command you ran, the
 exact output, and your `vesma doctor` report (mask anything that looks like a secret — the
 issue tracker is public).
+
+## Release pipeline
+
+Release automation (image build, multi-channel publishing, version stamps) is an internal
+operations pipeline — see [docs/en/dev/release-pipeline.md](docs/en/dev/release-pipeline.md).
+Contributors do not need it: releases are cut from `main` by the maintainers.
