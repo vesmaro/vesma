@@ -417,6 +417,104 @@ class TestNegativeByCode:
         assert exc.value.code == DEPENDS_MISSING
 
 
+# ── Parse resource limits (card vesma-61-yaml-manifest-parse-limits) ──
+#
+# components.d is operator-writable; every file in it is parsed on
+# supervisor start / doctor / install. A hostile or absurd file must fail
+# as a clean MANIFEST_SCHEMA_INVALID, never as a hang, a memory bomb, or
+# an escaping RecursionError traceback. One test per cap leg: bytes,
+# nodes, aliases, depth.
+
+
+class TestParseResourceLimits:
+    @staticmethod
+    def _write_text(tmp_path: Path, text: str, name: str = "bomb.yaml") -> Path:
+        target = tmp_path / name
+        target.write_text(text, encoding="utf-8")
+        return target
+
+    def test_alias_bomb_refused(self, tmp_path: Path) -> None:
+        # Classic billion-laughs shape: ~0.6 KB of chained anchors, 110
+        # alias references (> MAX_YAML_ALIASES). The composer counts every
+        # alias EVENT (PyYAML resolves *anchor to the anchor node, whose
+        # id is scalar/sequence/mapping — the event is the only reliable
+        # signal), so this must be refused at parse time in milliseconds.
+        lines = ["a: &a [" + ",".join(["1"] * 10) + "]"]
+        prev = "a"
+        for i in range(1, 12):
+            lines.append(f"c{i}: &c{i} [" + ",".join([f"*{prev}"] * 10) + "]")
+            prev = f"c{i}"
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(self._write_text(tmp_path, "\n".join(lines)))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+        assert "alias cap" in exc.value.message
+
+    def test_oversized_file_refused_before_read(self, tmp_path: Path) -> None:
+        # MAX_MANIFEST_BYTES gate fires on stat().st_size — the file is
+        # never read into memory at all.
+        target = self._write_text(tmp_path, "# " + "x" * 1_048_600 + "\n")
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(target)
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+        assert "size cap" in exc.value.message
+
+    def test_node_cap_refused(self, tmp_path: Path) -> None:
+        # Flat (non-recursive) absurdity > MAX_YAML_NODES scalars — the
+        # node budget fires where the byte cap alone would admit it.
+        text = "data: [" + ",".join(str(i) for i in range(10_050)) + "]"
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(self._write_text(tmp_path, text))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+        assert "node cap" in exc.value.message
+
+    def test_deep_nesting_refused_cleanly(self, tmp_path: Path) -> None:
+        # The composer recurses per depth: a deeply nested doc inside the
+        # byte cap blows Python's stack (RecursionError, a RuntimeError)
+        # before any counter fires — it must surface as a clean code, not
+        # an escaping traceback.
+        text = "[" * 5000 + "]" * 5000
+        with pytest.raises(ManifestError) as exc:
+            load_manifest(self._write_text(tmp_path, text))
+        assert exc.value.code == MANIFEST_SCHEMA_INVALID
+        assert "nested too deeply" in exc.value.message
+
+    def test_aliases_below_cap_pass(self, tmp_path: Path) -> None:
+        # Legitimate manifests use ZERO aliases today; a few must still
+        # load cleanly so a future legit use degrades loudly, not silently.
+        text = """\
+apiVersion: vesma.component/v1
+kind: child-process
+metadata:
+  name: alias-ok
+  version: 1.0.0
+  tier: optional
+  description: alias under cap
+  provenance:
+    repo: https://example.com/alias-ok
+    license: MIT
+launch:
+  argv: ["{venv_bin}/python", "-m", "alias_worker"]
+  python:
+    version: ">=3.11"
+  env:
+    vars:
+      shared_a: &val hello
+      shared_b: *val
+      shared_c: *val
+stop:
+  signal: SIGTERM
+  grace_period: 10s
+"""
+        manifest = load_manifest(self._write_text(tmp_path, text, name="worker.yaml"))
+        assert manifest.launch is not None
+        assert manifest.launch.env is not None
+        assert manifest.launch.env.vars == {
+            "shared_a": "hello",
+            "shared_b": "hello",
+            "shared_c": "hello",
+        }
+
+
 # ── Installation-level: dup / missing / cycle ────────────────────────
 
 

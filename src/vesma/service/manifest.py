@@ -35,6 +35,7 @@ from typing import Any
 
 import jsonschema
 import yaml
+from yaml.events import AliasEvent
 
 from vesma.service import layout
 from vesma.service.errors import (
@@ -54,6 +55,75 @@ from vesma.service.errors import (
 )
 
 logger = logging.getLogger("vesma.service.manifest")
+
+# ── YAML parse limits (cascade card vesma-61-yaml-manifest-parse-limits) ──────
+#
+# components.d is operator-writable and EVERY manifest in it is parsed on
+# supervisor start / doctor / install — a hostile or accidentally absurd
+# file must fail as a clean MANIFEST_SCHEMA_INVALID, never as a hang or a
+# memory bomb. Two bounded-resource caps, one choke point (load_manifest):
+#
+# * byte cap (CWE-770 class): the file on disk is bounded before it is
+#   read at all;
+# * node/alias caps (CWE-400 class, the YAML "billion laughs" alias-bomb
+#   shape): yaml.safe_load already blocks arbitrary object construction
+#   (CWE-502), but ALIASES carry no budget — chained anchors can turn a
+#   few-hundred-byte file into a DAG that explodes any downstream deep
+#   walk. Both caps count COMPOSE-time events: every scalar/sequence/
+#   mapping the composer materializes, and every alias REFERENCE (the
+#   bomb's multiplicative unit — vesma's own validation only walks
+#   schema-known paths, so capping references keeps even a hostile DAG
+#   bounded and forces the refusal at parse time, with a clean code).
+#
+#: Largest manifest file this loader will read (bytes). The biggest real
+#: manifest in the pack is a few KB; 1 MiB leaves generous operator headroom.
+MAX_MANIFEST_BYTES = 1_048_576
+
+#: Largest number of YAML nodes (scalars + collections + ALIASES) the
+#: composer will materialize for one manifest. A real manifest uses tens.
+MAX_YAML_NODES = 10_000
+
+#: Largest number of YAML alias nodes (``*anchor`` references) per manifest.
+#: Legitimate manifests use ZERO aliases (the schema has no reuse need);
+#: the allowance exists so a future legit use degrades loudly, not silently.
+MAX_YAML_ALIASES = 100
+
+
+class _BoundedSafeLoader(yaml.SafeLoader):
+    """``yaml.SafeLoader`` with compose-time node/alias accounting.
+
+    Everything else is stock SafeLoader: same constructor set (no Python
+    object construction — the CWE-502 surface stays closed), same
+    resolution rules.
+    """
+
+    def __init__(self, stream: Any) -> None:
+        super().__init__(stream)
+        self._vesma_nodes = 0
+        self._vesma_aliases = 0
+
+    def compose_node(self, parent: Any, index: Any) -> Any:
+        # Count every node the composer materializes, including alias
+        # references. PyYAML resolves ``*anchor`` by returning the anchor
+        # node itself — its ``id`` is scalar/sequence/mapping, there is no
+        # distinct alias node class — so an alias can only be detected
+        # from the EVENT (peek, non-destructive), never from the composed
+        # node.
+        self._vesma_nodes += 1
+        if self._vesma_nodes > MAX_YAML_NODES:
+            raise yaml.YAMLError(
+                f"manifest exceeds the YAML node cap ({MAX_YAML_NODES} nodes) — "
+                "possible alias expansion"
+            )
+        if self.check_event(AliasEvent):
+            self._vesma_aliases += 1
+            if self._vesma_aliases > MAX_YAML_ALIASES:
+                raise yaml.YAMLError(
+                    f"manifest exceeds the YAML alias cap ({MAX_YAML_ALIASES} aliases) — "
+                    "possible alias bomb (billion-laughs shape)"
+                )
+        return super().compose_node(parent, index)
+
 
 #: Contract version of the vendored schema (specs repo, 1.1.0,
 #: additive launch.python block — CM §3.5.1, issue #515).
@@ -901,6 +971,14 @@ def load_manifest(
     # legitimately arrive as `~/...` from operator config in later waves.
     manifest_path = Path(path).expanduser()
     try:
+        if manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
+            raise ManifestError(
+                MANIFEST_SCHEMA_INVALID,
+                "$",
+                f"manifest file exceeds the size cap ({MAX_MANIFEST_BYTES} bytes) — "
+                "component manifests are small YAML documents",
+                fix_hint=f"keep the manifest under {MAX_MANIFEST_BYTES // 1024} KiB",
+            )
         text = manifest_path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ManifestError(
@@ -909,12 +987,25 @@ def load_manifest(
             f"cannot read manifest file: {exc}",
         ) from exc
     try:
-        doc = yaml.safe_load(text)
+        doc = yaml.load(text, Loader=_BoundedSafeLoader)
     except yaml.YAMLError as exc:
         raise ManifestError(
             MANIFEST_SCHEMA_INVALID,
             "$",
             f"manifest is not parseable YAML: {exc}",
+        ) from exc
+    except RecursionError as exc:
+        # The parser itself is recursive: a deeply nested document inside
+        # the byte cap (e.g. megabytes of ``[``) blows Python's stack in
+        # the composer BEFORE any cap counter can fire, and RecursionError
+        # is a RuntimeError — without this leg it escapes as a traceback,
+        # not a clean code. PyYAML has no depth limit of its own.
+        raise ManifestError(
+            MANIFEST_SCHEMA_INVALID,
+            "$",
+            "manifest is nested too deeply for the YAML parser — "
+            "component manifests are small flat documents",
+            fix_hint="flatten the manifest structure",
         ) from exc
     if not isinstance(doc, dict):
         raise ManifestError(
