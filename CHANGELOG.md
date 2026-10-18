@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Container deploy defaults bumped to 6.2.0 — the 6.0.0/6.1.0 image tags carry a pre-rebrand CMD (`mnemos serve`, exit 127 on the documented entry); the 6.2.0 tag was rebuilt and republished with `vesma serve` (digest sha256:883943fe3258d6ce3a1eb29c0f24edd96ee4b9055aa75d39ab7fcb35d37735d3).
+
 ## [6.2.0] — 2026-10-18
 
 ### Added

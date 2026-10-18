@@ -4,12 +4,12 @@ description: Vesma (Vesma) — local-first memory & knowledge server for AI agen
 type: application
 
 # Chart version — bump on any template or default change (semver).
-version: 0.1.2
+version: 0.1.3
 # Version of the container image deployed by default, published at
 # ghcr.io/vesmaro/vesma (org namespace backfilled in the 4.3.0 wave;
 # since the 2026-10-05 directive the image phase is mandatory in the
 # release train — the tag publishes synchronously with every release).
-appVersion: "6.0.0"
+appVersion: "6.2.0"
 kubeVersion: ">=1.25.0-0"
 
 home: https://github.com/vesmaro/vesma
@@ -29,4 +29,4 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/images: |
     - name: vesma
-      image: ghcr.io/vesmaro/vesma:6.0.0
+      image: ghcr.io/vesmaro/vesma:6.2.0
