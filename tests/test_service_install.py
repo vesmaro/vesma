@@ -613,3 +613,95 @@ class TestUninstallAllSelfClean:
             uninstall("board")
         # Nothing was removed: the dependency map could not be loaded.
         assert (layout.components_dir() / "board.yaml").exists()
+
+
+# ── `.yml` spelling handling (card vesma-61-yml-install-sync-tail) ────
+
+
+class TestInstallComponentYml:
+    """`vesma install NAME` vs the non-canonical `.yml` spelling.
+
+    A bundled manifest parked under `.yml` MOVES to the canonical `.yaml`
+    (writing `.yaml` next to it would NAME_DUPLICATE on the fail-closed
+    load); an operator-authored `.yml` validates in place; both spellings
+    at once refuse with the addressed fix before anything is written.
+    """
+
+    #: Valid operator manifest, in-process (no venv leg), NO depends_on
+    #: (the fixture installation has no board to depend on).
+    MESH_YML = """\
+apiVersion: vesma.component/v1
+kind: in-process
+metadata:
+  name: mesh
+  version: 0.4.2
+  tier: optional
+  description: "Operator sidecar parked under the .yml spelling."
+  provenance:
+    repo: https://example.invalid/mesh
+    license: MIT
+in_process:
+  module: vesma.service.board
+  entrypoint: create_component
+  python:
+    version: ">=3.11"
+"""
+
+    def test_bundled_yml_only_moves_to_canonical(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        bundle = bundled_manifest_path("board").read_text(encoding="utf-8")
+        (components / "board.yml").write_text(bundle, encoding="utf-8")
+
+        result = install_mod.install_component("board")
+
+        assert not (components / "board.yml").exists()
+        assert (components / "board.yaml").read_text(encoding="utf-8") == bundle
+        assert result.manifest_path.name == "board.yaml"
+        assert result.written is False  # rename then "current — matches the engine bundle"
+        assert any("moved" in line for line in result.lines)
+
+    def test_bundled_yml_divergent_moves_then_backs_up(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        operator_edits = "# operator tuned\n" + bundled_manifest_path("board").read_text(
+            encoding="utf-8"
+        )
+        (components / "board.yml").write_text(operator_edits, encoding="utf-8")
+
+        result = install_mod.install_component("board")
+
+        assert not (components / "board.yml").exists()
+        assert (components / "board.yaml").read_text(encoding="utf-8") == bundled_manifest_path(
+            "board"
+        ).read_text(encoding="utf-8")
+        backup = components.parent / "board.yaml.pre-regen.bak"
+        assert backup.read_text(encoding="utf-8") == operator_edits
+        assert result.written is True
+
+    def test_operator_yml_only_validates_in_place(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        (components / "mesh.yml").write_text(self.MESH_YML, encoding="utf-8")
+
+        result = install_mod.install_component("mesh")
+
+        assert (components / "mesh.yml").exists()
+        assert not (components / "mesh.yaml").exists()
+        assert result.origin == "operator"
+        assert result.manifest_path.name == "mesh.yml"
+        assert result.written is False
+
+    def test_both_spellings_refuse_before_any_write(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        bundle = bundled_manifest_path("board").read_text(encoding="utf-8")
+        stale_copy = "# stale operator copy\n" + bundle
+        (components / "board.yaml").write_text(stale_copy, encoding="utf-8")
+        (components / "board.yml").write_text(bundle, encoding="utf-8")
+
+        with pytest.raises(InstallError) as exc:
+            install_mod.install_component("board")
+
+        assert "board.yaml" in str(exc.value)
+        assert "board.yml" in str(exc.value)
+        # Nothing was written or renamed: both files are byte-identical
+        # to their pre-call state.
+        assert (components / "board.yaml").read_text(encoding="utf-8") == stale_copy
+        assert (components / "board.yml").read_text(encoding="utf-8") == bundle
