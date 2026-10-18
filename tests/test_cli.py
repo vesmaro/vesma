@@ -690,6 +690,66 @@ class TestDoctorCommand:
         assert result.exit_code == 1, result.output
 
 
+# ── doctor config permissions (card 8ff219e5) ────────────────────────────────
+
+
+class TestDoctorConfigPerms:
+    """config.yaml can carry provider API keys — a group/other-readable
+    mode must surface as a loud WARN with the exact chmod (WARN class:
+    softer than the service doctor's DR-01 FAIL for env files, and the
+    doctor gate must not brick on a fixable-in-place mode)."""
+
+    @staticmethod
+    def _write_cfg(tmp_path: Path) -> Path:
+        cfg = tmp_path / "vesma.yaml"
+        cfg.write_text(
+            "vesma:\n"
+            f"  vault_path: {tmp_path / 'vault'}\n"
+            f"  data_dir: {tmp_path / 'data'}\n"
+            "  db_name: doctor-perms.db\n"
+            "embedding:\n"
+            "  provider: nano\n",
+            encoding="utf-8",
+        )
+        return cfg
+
+    def test_group_other_readable_config_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        from vesma.cli.doctor import CheckStatus, _check_config
+
+        cfg = self._write_cfg(tmp_path)
+        os.chmod(cfg, 0o644)
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+
+        result = _check_config()
+
+        assert result.status == CheckStatus.WARN
+        assert "0644" in result.detail
+        assert f"chmod 600 {cfg}" in result.detail
+        # The settings object must still thread through a WARN — every
+        # settings-dependent check downstream consumes Config's extra.
+        assert result.extra.get("settings") is not None
+
+    def test_owner_only_config_passes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        from vesma.cli.doctor import CheckStatus, _check_config
+
+        cfg = self._write_cfg(tmp_path)
+        os.chmod(cfg, 0o600)
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+
+        result = _check_config()
+
+        assert result.status == CheckStatus.PASS
+        assert "valid" in result.detail
+
+
 # ── mnemos tags normalize ────────────────────────────────────────────────────
 
 

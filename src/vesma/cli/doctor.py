@@ -85,6 +85,23 @@ def _check_config() -> CheckResult:
     from vesma.config import find_config_file
 
     cfg_path = find_config_file() or Path.home() / ".vesma" / "config.yaml"
+    # Card 8ff219e5: config.yaml can carry provider API keys — a
+    # group/other-readable mode is a loud WARN with the exact fix, never
+    # a silent pass (WARN class, softer than the service doctor's DR-01
+    # FAIL for env files: a world-readable main config is common and
+    # fixable in place, and the doctor gate must not brick on it).
+    try:
+        cfg_mode = cfg_path.stat().st_mode & 0o777
+    except OSError:
+        cfg_mode = None  # explicit path that failed to load already FAILed above
+    if cfg_mode is not None and cfg_mode & 0o077:
+        return CheckResult(
+            "Config",
+            CheckStatus.WARN,
+            f"{cfg_path} (valid, but group/other-readable — mode {cfg_mode:04o}); "
+            f"the file can carry API keys — tighten: chmod 600 {cfg_path}",
+            extra={"settings": settings},
+        )
     return CheckResult(
         "Config",
         CheckStatus.PASS,
