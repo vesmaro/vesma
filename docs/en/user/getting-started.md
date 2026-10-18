@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
 > The complete Vesma user lifecycle: install → service → integration →
-> doctor → updates → legacy cleanup. Current for release 6.1.0. The store
+> doctor → updates → legacy cleanup. Current for release 6.2.0. The store
 > home is `~/.vesma/` (since 6.0.0; the 5.x move is covered in
 > [migration-6-0.md](migration-6-0.md)).
 
@@ -504,7 +504,7 @@ updates:
 
 ### The `vesma self-update` subcommands
 
-> Since the component UX (6.1.0) the application self-update family lives under
+> Since the component UX (6.2.0) the application self-update family lives under
 > `vesma self-update` — the top-level `update` is now the component-manifest
 > verb. Legacy flag forms (`vesma update --yes`, `--check`, …) still work as
 > hidden aliases.
@@ -804,4 +804,4 @@ note in the [integration guide](integration-guide.md).
 
 ---
 
-_Last updated: 2026-10-10 (release 6.1.0)_
+_Last updated: 2026-10-18 (release 6.2.0)_

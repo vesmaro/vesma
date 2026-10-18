@@ -1026,7 +1026,7 @@ health gate — `doctor` and `integration verify` govern health).
 
 ## Component commands
 
-Since 6.1.0 the top-level verbs `install`, `status`, `start`, `stop`, `restart`, `logs`, `update` and `configs` drive **components** — one unified surface for every component: the built-in bundle (`board`, `metrics`) and operator-authored external ones alike. A component is any valid manifest in `~/.config/vesma/components.d/`. The release bundle owns `board.yaml` / `metrics.yaml`; **anything else in that directory is operator-authored and never rewritten by the engine** — `vesma update` on such a file is refused with "managed by operator, edit the file".
+Since 6.2.0 the top-level verbs `install`, `status`, `start`, `stop`, `restart`, `logs`, `update` and `configs` drive **components** — one unified surface for every component: the built-in bundle (`board`, `metrics`) and operator-authored external ones alike. A component is any valid manifest in `~/.config/vesma/components.d/`. The release bundle owns `board.yaml` / `metrics.yaml`; **anything else in that directory is operator-authored and never rewritten by the engine** — `vesma update` on such a file is refused with "managed by operator, edit the file".
 
 Semantics shared by the whole family:
 
@@ -1110,7 +1110,7 @@ Bare: the per-component table Manifest · Env file · Data dir. With NAME: the e
 
 ## `self-update`
 
-> **Canonical name since the component UX (6.1.0).** The application self-update family lives under `vesma self-update` — the top-level [`update`](#update) name now belongs to the component-manifest verb. The legacy FLAG forms (`vesma update --yes`, `--check`, …) keep working as hidden aliases on both surfaces so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep running; the legacy SUBCOMMAND spellings are gone — `vesma update check` would now read `check` as a component name and refuse.
+> **Canonical name since the component UX (6.2.0).** The application self-update family lives under `vesma self-update` — the top-level [`update`](#update) name now belongs to the component-manifest verb. The legacy FLAG forms (`vesma update --yes`, `--check`, …) keep working as hidden aliases on both surfaces so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep running; the legacy SUBCOMMAND spellings are gone — `vesma update check` would now read `check` as a component name and refuse.
 
 One command family for updating Vesma. Plain `vesma self-update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma self-update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint naming the canonical spelling.
 
@@ -1264,7 +1264,7 @@ Installation diagnostics — `vesma doctor service` (read-only, DR-01…DR-13).
 
 ## `task-logs`
 
-> **Canonical name since the component UX (6.1.0).** The pipeline-trace viewer lives under `vesma task-logs` — the top-level [`logs`](#logs) name now shows **component** logs. The trace-filter flags (`--task`, `--project`, `--since`, `--limit`, `--config`) still work on `vesma logs` as hidden aliases with a deprecation hint; the bare form (`vesma logs` with no arguments) is now a component-logs usage error.
+> **Canonical name since the component UX (6.2.0).** The pipeline-trace viewer lives under `vesma task-logs` — the top-level [`logs`](#logs) name now shows **component** logs. The trace-filter flags (`--task`, `--project`, `--since`, `--limit`, `--config`) still work on `vesma logs` as hidden aliases with a deprecation hint; the bare form (`vesma logs` with no arguments) is now a component-logs usage error.
 
 View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table.
 

@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** English · [Русский](../../ru/architecture/overview.md)
 
-> This architecture snapshot is current for Vesma **6.1.0**. The normative
+> This architecture snapshot is current for Vesma **6.2.0**. The normative
 > service-layer contracts (component-manifest, service-lifecycle,
 > control-socket, layout — all v1.0.0) live in the separate
 > [vesma-specs](https://github.com/vesmaro/vesma-specs) repository.
