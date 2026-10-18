@@ -105,6 +105,7 @@ def _prod_venv_bases() -> tuple[Path, ...]:
         Path("/var/home/abyss/.local/share"),
     )
 
+
 _GO_BIN_NAMES = ("vesmaro-agent", "vesma-agent", "mnemos-mesh", "vesma-mesh")
 
 _DEFAULT_EXEC_START = "%h/.local/bin/vesma self-update --yes --scope=user"

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import socket
 import stat
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,15 @@ from vesma.service.logsink import (
     journal_socket_available,
     make_logsink,
 )
+
+# Portability (wave61, audit F9): Linux-only runtime surface under test —
+# prctl subreaper / os.fork / SO_PEERCRED / journald socket have no macOS/BSD
+# counterpart; without the gate a macOS `make verify` would read as regression.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux-only runtime surface (prctl/fork/SO_PEERCRED/procfs)",
+)
+
 
 # ── Builders render the normative shapes (vs examples/example-log-lines) ─
 

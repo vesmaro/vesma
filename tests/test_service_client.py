@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import socket
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -33,6 +34,15 @@ from vesma.service.client import (
     preflight,
 )
 from vesma.service.control import FOLLOW_IDLE_TIMEOUT_S
+
+# Portability (wave61, audit F9): Linux-only runtime surface under test —
+# prctl subreaper / os.fork / SO_PEERCRED / journald socket have no macOS/BSD
+# counterpart; without the gate a macOS `make verify` would read as regression.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux-only runtime surface (prctl/fork/SO_PEERCRED/procfs)",
+)
+
 
 # ── helpers ───────────────────────────────────────────────────────────
 

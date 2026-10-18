@@ -31,6 +31,11 @@ vesma --help        # sanity check
 - `[dev]` brings the quality-gate toolchain. The MCP SDK is a core dependency (ADR-0023); the `[mcp]` extra remains as an empty compatibility alias.
 - External LLM providers are separate extras (`ollama`, `openai`, `anthropic`, `gemini`) — install
   only what you exercise.
+- **Platform support**: Linux (primary) and macOS are supported; the service
+  runtime (`vesma service run`, systemd units, journald, SO_PEERCRED) and the
+  test modules exercising it are Linux-only. BSD is NOT supported — core deps
+  (`onnxruntime`, `tokenizers`) ship no BSD wheels. Windows is secondary and
+  has known blockers (see the portability audit in the repo docs).
 
 ## The quality gate
 
