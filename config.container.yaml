@@ -1,4 +1,4 @@
-# Mnemos container config — paths mapped to container volumes
+# Vesma container config — paths mapped to container volumes
 vesma:
   vault_path: /vault
   data_dir: /data

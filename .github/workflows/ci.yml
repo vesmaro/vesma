@@ -117,10 +117,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends buildah
 
       - name: Build image
-        run: buildah bud -t mnemos:test .
+        run: buildah bud -t vesma:test .
 
-      - name: Smoke test — mnemos CLI inside container
+      - name: Smoke test — vesma CLI inside container
         run: |
-          buildah from --name mnemos-test mnemos:test
-          buildah run mnemos-test -- mnemos --help
-          buildah run mnemos-test -- python -c "import sys; print('python', sys.version.split()[0])"
+          buildah from --name vesma-test vesma:test
+          buildah run vesma-test -- vesma --help
+          buildah run vesma-test -- python -c "import sys; print('python', sys.version.split()[0])"
