@@ -236,6 +236,8 @@ def _create_component_venv(name: str, *, force: bool = False) -> Path:
         [sys.executable, "-m", "venv", str(venv_dir)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=300,
         check=False,
     )
@@ -253,6 +255,8 @@ def _run_pip(venv_dir: Path, args: list[str]) -> str:
         [str(python), "-m", "pip", *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=1800,
         check=False,
     )
@@ -399,6 +403,8 @@ def _daemon_reload() -> str:
             [systemctl, "--user", "daemon-reload"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
@@ -796,6 +802,8 @@ def _systemctl_user(args: list[str]) -> str:
             [systemctl, "--user", *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
