@@ -87,7 +87,7 @@ while [[ $# -gt 0 ]]; do
     --no-wire-agents)  WIRE_AGENTS="no"; shift ;;
     --container) CONTAINER=true; shift ;;
     --port)      CONTAINER_PORT="$2"; shift 2 ;;
-    --help|-h)  sed -n '2,28p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --help|-h)  awk 'NR > 1 && !/^#/ {exit} {print}' "$0" | sed 's/^# \?//'; exit 0 ;;
     *)          die "Unknown flag: $1 (use --help)" ;;
   esac
 done
@@ -232,9 +232,10 @@ fi
 if [[ "$NO_VENV" == false ]]; then
   VESMA_BIN="${VENV_PATH}/bin/vesma"
 else
-  # User-site install flag: a user-site has no venv root to carry the
-  # .vesma-venv marker, so ownership is recorded in the vesma data root
-  # (read by `vesma self-update apply`'s shape detection).
+  # User-site install stamp: a user-site has no venv root to carry the
+  # .vesma-venv marker, so the installer records its pass here. This is a
+  # WRITE-ONLY AUDIT STAMP — `vesma self-update`'s shape detection classifies
+  # user-site installs unconditionally and does not read this file.
   mkdir -p "${_VESMA_DATA_ROOT}"
   printf 'installer=install.sh version=%s date=%s\n' \
     "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${_VESMA_DATA_ROOT}/.user-site-install"

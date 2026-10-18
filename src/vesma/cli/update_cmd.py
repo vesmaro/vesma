@@ -62,6 +62,7 @@ import getpass
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -264,6 +265,8 @@ def _stdin_is_tty() -> bool:
 
 def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -> None:
     """Append one record to ``~/.local/share/vesma/update-history.json``."""
+    from vesma.fs_hardening import ensure_private_dir, harden_file
+
     path = Path.home() / ".local" / "share" / "vesma" / HISTORY_FILENAME
     try:
         entries: list[object] = []
@@ -283,8 +286,12 @@ def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -
                 "rc": rc,
             }
         )
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # Cascade F3 (2026-10-18): 0700 dir chain + 0600 file — the update
+        # history names environments and versions and must not land 0755/0644
+        # (mirrors the update-check cache write in updates.py).
+        ensure_private_dir(path.parent)
         path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        harden_file(path)
     except Exception:
         logger.debug("update-history append failed", exc_info=True)
 
@@ -324,9 +331,10 @@ def _print_legacy_home_hint(console: Console) -> None:
 #: is the PRIMARY ownership proof for ``self-update apply``.
 _OWNED_VENV_MARKER = ".vesma-venv"
 
-#: The user-site ownership flag for ``--no-venv`` installs (a user-site
-#: has no venv root to carry ``.vesma-venv``, so the flag lives in the
-#: vesma data root).
+#: The user-site stamp the ``--no-venv`` installer writes (a user-site
+#: has no venv root to carry ``.vesma-venv``, so the stamp lives in the
+#: vesma data root). WRITE-ONLY audit trail: the shape detection
+#: classifies user-site installs unconditionally and never reads it.
 _USER_SITE_MARKER = ".user-site-install"
 
 #: Shape kinds — the complete partition of how the RUNNING vesma was
@@ -542,9 +550,15 @@ def _legacy_cleanup_cmd(legacy: str) -> list[str]:
     ``pip uninstall`` has no ``--user`` flag — it removes wherever the
     dist lives on this interpreter's sys.path, which is exactly the
     environment the apply just upgraded. Idempotent: an absent dist is
-    a rc=0 skip-warn.
+    a rc=0 skip-warn. Under a PEP 668 externally-managed interpreter the
+    ``--break-system-packages`` flag rides along (cascade P2-1,
+    2026-10-18): pip gates uninstalls on the marker too, and a cleanup
+    leg that refuses on every apply is worse than no cleanup leg.
     """
-    return [sys.executable, "-m", "pip", "uninstall", "-y", legacy]
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", legacy]
+    if _pep668_externally_managed():
+        cmd.append("--break-system-packages")
+    return cmd
 
 
 def _owned_script_paths(shape: InstallShape) -> list[Path]:
@@ -602,10 +616,13 @@ def _cleanup_legacy_dists(
             removed_any = True
             console.print(f"[green]✓[/green] legacy dist removed: {legacy} {version}")
         else:
+            manual = f"{sys.executable} -m pip uninstall {legacy}"
+            if _pep668_externally_managed():  # the hint must actually work (P2-1)
+                manual += " --break-system-packages"
             console.print(
                 "[yellow]⚠[/yellow] could not remove legacy dist "
                 f"{legacy} {version} (rc={rc}) — the apply stands; remove it "
-                f"manually: {sys.executable} -m pip uninstall {legacy}"
+                f"manually: {manual}"
             )
             _append_history(dist=legacy, from_version=version, to_version="cleanup", rc=rc)
     if removed_any:
@@ -792,7 +809,32 @@ def _build_pip_cmd(dist: str, target: str, pin: bool, *, user_site: bool = True)
     return cmd
 
 
+#: Cascade F2 (2026-10-18): the ``--to`` pin is operator input that lands in
+#: the pip spec, the ownership-marker content and the update history. A
+#: character-class check keeps all three injection-free. Deliberate choice
+#: over ``packaging.version.Version``: the regex is dependency-free, accepts
+#: the full legacy spelling range pip resolves (pre-PEP 440 tags, wildcards,
+#: local versions) and structurally blocks whitespace/newlines — the
+#: injection vector — while ``Version()`` would reject some installable
+#: historic spellings for no security gain.
+_PIN_SPEC_RE = re.compile(r"^[0-9A-Za-z.!+~*_-]+$")
+_PIN_SPEC_MAX_LEN = 64
+
+
+def _valid_pin_spec(value: str) -> bool:
+    """True when ``--to`` is a safe single-token pip version spec."""
+    return len(value) <= _PIN_SPEC_MAX_LEN and bool(_PIN_SPEC_RE.match(value))
+
+
 def _run_user_update(console: Console, to: str | None, *, verbose: bool = False) -> None:
+    if to is not None and not _valid_pin_spec(to):
+        # Before anything else — no pip call, no marker touch, no history row.
+        console.print(
+            f"[red]✗[/red] invalid --to value {to!r} — expected a pip version spec "
+            f"(digits, letters and . ! + ~ * _ - only, max {_PIN_SPEC_MAX_LEN} chars, "
+            "no whitespace)"
+        )
+        raise typer.Exit(1)
     shape = _install_shape()
     if shape.kind in (FOREIGN_VENV, TOOL_MANAGER):
         _refuse_apply(console, shape)  # raises Exit(1) — nothing run, nothing recorded

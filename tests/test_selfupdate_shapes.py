@@ -542,6 +542,98 @@ def test_repair_uses_user_flag_on_user_site_shape(
     assert "--user" in repair
 
 
+# ── cascade fix-slice (2026-10-18): F2 / F3 / P2-1 ────────────────────────────
+
+
+def test_pin_spec_validator_matrix() -> None:
+    """Cascade F2: the ``--to`` whitelist accepts real specs, blocks injection."""
+    assert uc._valid_pin_spec("6.2.0")
+    assert uc._valid_pin_spec("5.1.1rc1")
+    assert uc._valid_pin_spec("2020.01.01")
+    assert uc._valid_pin_spec("6.2.0+local")
+    assert uc._valid_pin_spec("6.*")
+    assert not uc._valid_pin_spec("6.2.0\ninstaller=evil")
+    assert not uc._valid_pin_spec("6.2.0; rm -rf /")
+    assert not uc._valid_pin_spec("6.2.0 drop")
+    assert not uc._valid_pin_spec("a" * 65)
+
+
+def test_apply_invalid_to_refuses_without_writes(
+    shape_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile ``--to`` never reaches pip, the marker or the history."""
+    _prefix, marker = _owned_shape(shape_home, monkeypatch)
+    monkeypatch.setattr(uc, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(uc, "fetch_latest", lambda dist: LATEST)  # must never fire
+    record: list[list[str]] = []
+    _stub_pip(monkeypatch, record=record)
+
+    for bad in ("6.2.0\ninstaller=evil", "6.2.0; drop"):
+        result = _invoke(["apply", "--to", bad])
+        assert result.exit_code == 1
+        assert "invalid --to" in _flat(result)
+
+    assert record == [], "the validator must fire before any pip call"
+    history = shape_home / ".local" / "share" / "vesma" / "update-history.json"
+    assert not history.exists(), "the validator must fire before any history row"
+    assert marker.read_text(encoding="utf-8") == "installer=install.sh version=6.1.0\n", (
+        "the validator must fire before any marker write"
+    )
+
+
+def test_apply_history_is_private(shape_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cascade F3: history lands 0700-dir / 0600-file under a permissive umask."""
+    _owned_shape(shape_home, monkeypatch)
+    monkeypatch.setattr(uc, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(uc, "fetch_latest", lambda dist: LATEST)
+    monkeypatch.setattr(uc, "_pep668_externally_managed", lambda: False)
+    monkeypatch.setattr(uc, "_installed_legacy_dists", lambda: [])
+    _stub_pip(monkeypatch)
+
+    old_umask = os.umask(0o000)  # widest possible — exactly the F3 failure mode
+    try:
+        result = _invoke(["apply"])
+    finally:
+        os.umask(old_umask)
+
+    assert result.exit_code == 0, result.output
+    vesma_root = shape_home / ".local" / "share" / "vesma"
+    history = vesma_root / "update-history.json"
+    assert (vesma_root.stat().st_mode & 0o777) == 0o700
+    assert (history.stat().st_mode & 0o777) == 0o600
+
+
+def test_pep668_cleanup_carries_break_system_packages(
+    shape_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cascade P2-1: the uninstall AND the manual hint carry the PEP 668 flag."""
+    _owned_shape(shape_home, monkeypatch)
+    monkeypatch.setattr(uc, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    monkeypatch.setattr(uc, "fetch_latest", lambda dist: LATEST)
+    monkeypatch.setattr(uc, "_pep668_externally_managed", lambda: True)
+    monkeypatch.setattr(uc, "_installed_legacy_dists", lambda: [("mnemos-memory-server", "5.4.0")])
+    monkeypatch.setattr(uc, "_owned_script_paths", lambda shape: [])
+    record: list[list[str]] = []
+
+    def fake_run(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str]:
+        record.append(list(cmd))
+        rc = 1 if "uninstall" in cmd else 0  # failing cleanup → the hint path
+        return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="")
+
+    monkeypatch.setattr(uc, "_run_cmd", fake_run)
+
+    result = _invoke(["apply"])
+
+    assert result.exit_code == 0, "the failed cleanup must not fail the apply"
+    uninstall = next(cmd for cmd in record if "uninstall" in cmd)
+    assert "--break-system-packages" in uninstall
+    flat = _flat(result)
+    assert "could not remove legacy dist mnemos-memory-server" in flat
+    assert "pip uninstall mnemos-memory-server --break-system-packages" in flat, (
+        "the printed manual command must not repeat the refusal"
+    )
+
+
 # ── real pip, real venv (honest end-to-end) ───────────────────────────────────
 
 
@@ -728,3 +820,17 @@ def test_install_sh_default_venv_is_canonical_and_writes_marker() -> None:
     assert "~/.mnemos/venv" not in text, "the legacy default must stay retired"
     syntax = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
     assert syntax.returncode == 0, syntax.stderr
+
+
+def test_install_sh_help_covers_the_whole_flag_block() -> None:
+    """Cascade P2-2: --help anchors on the header block, never a line number."""
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "scripts" / "install.sh"
+    proc = subprocess.run(
+        ["bash", str(script), "--help"], capture_output=True, text=True, timeout=60
+    )
+    assert proc.returncode == 0, proc.stderr
+    help_text = proc.stdout
+    assert "Show this help" in help_text, "the help must reach the LAST flag lines"
+    assert "--container" in help_text
+    assert "--wire-agents" in help_text

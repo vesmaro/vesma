@@ -68,7 +68,8 @@ venv), по которому `vesma self-update apply` понимает, что 
 > `externally-managed-environment`. Это ОС защищает свой Python — документированный
 > ответ — изолированный дефолт выше (install.sh, `uv tool`, `pipx`), а не
 > `--break-system-packages`. Для существующей голой user-site-установки
-> `vesma self-update apply` сам обнаружит маркер и добавит
+> `vesma self-update apply` сам обнаружит externally-managed интерпретатор
+> (маркер `EXTERNALLY-MANAGED` в stdlib) и добавит
 > `--break-system-packages`; новым установкам это не нужно.
 
 Плюс внешнее LLM-дообогащение: `pip install "vesma[ollama]"` — также `openai`,

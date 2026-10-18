@@ -69,7 +69,8 @@ environment.
 > `externally-managed-environment`. That is the OS protecting its own Python —
 > the documented answer is the isolated default above (install.sh, `uv tool`,
 > `pipx`), not `--break-system-packages`. For an existing bare user-site
-> install, `vesma self-update apply` detects the marker and appends
+> install, `vesma self-update apply` detects the externally-managed
+> interpreter (the `EXTERNALLY-MANAGED` stdlib marker) and appends
 > `--break-system-packages` for you; new installs should not need it.
 
 Plus external LLM enrichment: `pip install "vesma[ollama]"` — also `openai`,
