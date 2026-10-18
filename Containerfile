@@ -1,6 +1,6 @@
 # Vesma — Memory & Knowledge Server for AI Agents
-# Build: podman build -t ghcr.io/vesmaro/vesma:5.1.2 .
-# Run:   podman run -v mnemos-data:/data -v mnemos-vault:/vault -p 8787:8787 ghcr.io/vesmaro/vesma:5.1.2
+# Build: podman build -t ghcr.io/vesmaro/vesma:6.2.0 .
+# Run:   podman run -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 ghcr.io/vesmaro/vesma:6.2.0
 FROM docker.io/library/python:3.12-slim AS base
 
 LABEL maintainer="abyss"
@@ -61,9 +61,9 @@ RUN mkdir -p /data /vault
 
 # Container config (0.0.0.0 bind + auth + CORS; TOTP master key via env)
 COPY config.container.yaml /app/config.yaml
-ENV MNEMOS_CONFIG=/app/config.yaml
+ENV VESMA_CONFIG=/app/config.yaml
 
 EXPOSE 8787
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["mnemos", "serve"]
+CMD ["vesma", "serve"]
