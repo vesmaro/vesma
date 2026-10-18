@@ -31,7 +31,7 @@ def wide_and_not_a_box(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(updates_cli, "_CONTAINERENV", Path("/nonexistent/.containerenv"))
     monkeypatch.delenv("CONTAINER_ID", raising=False)
     monkeypatch.delenv("DISTROBOX_ENTER_ENV", raising=False)
-    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (tmp_path / "absent-share",))
+    monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (tmp_path / "absent-share",))
     return tmp_path
 
 
@@ -62,7 +62,7 @@ def test_components_table_covers_all_surfaces(
     (home / ".local" / "bin" / "vesma-agent").write_text("#!/bin/sh\n")
     share = home / ".local" / "share"
     (share / "mnemos-prod" / "venv-main").mkdir(parents=True)
-    monkeypatch.setattr(updates_cli, "_PROD_VENV_BASES", (share,))
+    monkeypatch.setattr(updates_cli, "_prod_venv_bases", lambda: (share,))
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr("shutil.which", lambda name: None)
 
