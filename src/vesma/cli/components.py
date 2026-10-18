@@ -184,9 +184,20 @@ def _bundle_version(name: str) -> str:
 def _topo_order(manifests: dict[str, ComponentManifest]) -> list[str]:
     """Dependency-first order (``depends_on`` before dependents).
 
-    Deterministic: ties break alphabetically. Cycles and dangling
-    references are impossible here — ``load_installation`` already
-    refuses them (DEPENDS_CYCLE / DEPENDS_MISSING).
+    Cross-comment (cascade dedup finding): ``supervisor._topological_order``
+    is a SECOND implementation of this (Kahn, cycle-raising). The CLI
+    deliberately does NOT import the supervisor module — it is the
+    server-side runtime and would drag the whole control-plane import
+    graph into every CLI invocation. The two share the CONTRACT —
+    dependencies first, alphabetical tie-break, and any valid order is
+    correct for lifecycle sequencing (the exact sequences of a DFS and
+    Kahn pass may differ, and nothing may depend on the difference).
+    Unifying both on one shared helper in ``vesma.service.manifest``
+    belongs to the supervisor refactor window, not the CLI surface —
+    until then this comment is the linkage. Cycles and dangling
+    references are impossible here anyway: ``load_installation`` already
+    refuses them (DEPENDS_CYCLE / DEPENDS_MISSING), so this DFS variant
+    tolerates them for free instead of raising.
     """
     order: list[str] = []
     seen: set[str] = set()
@@ -221,10 +232,21 @@ def _require_component(records: list[ComponentRecord], name: str) -> ComponentRe
     for record in records:
         if record.name == name:
             return record
-    _fail(
-        f"component {name!r} is not installed (installed: {_names_line(records)}) — "
-        "see `vesma status` for the registry"
-    )
+    # Honest detail line (cascade consistency finding): on a fresh
+    # machine the registry is the BUNDLE VIEW — board/metrics are the
+    # installable release bundle, NOT installed components, and the
+    # message must not contradict the "no installation found" notice.
+    installed = [record.name for record in records if record.manifest is not None]
+    if installed:
+        detail = f"installed: {', '.join(installed)}"
+    else:
+        bundle = [record.name for record in records if record.origin == ORIGIN_BUNDLED]
+        detail = (
+            f"nothing installed — the release bundle provides: {', '.join(bundle)}"
+            if bundle
+            else "nothing installed"
+        )
+    _fail(f"component {name!r} is not installed ({detail}) — see `vesma status` for the registry")
 
 
 # ── vesma install ─────────────────────────────────────────────────────

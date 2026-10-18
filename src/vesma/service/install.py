@@ -170,12 +170,29 @@ def _ensure_canonical_dirs() -> None:
 
 
 def _write_bundled_manifests(components_dir: Path) -> list[Path]:
-    """Copy the pack manifests into components.d (atomic, LY-02)."""
+    """Copy the pack manifests into components.d (atomic, LY-02).
+
+    An existing manifest that DIFFERS from this engine's bundle may be
+    carrying operator edits: it is preserved as a one-time 0600
+    ``.pre-regen.bak`` backup next to components.d BEFORE the overwrite
+    — the SAME single-writer discipline as ``install_component`` and the
+    update reconciliation. The old no-backup asymmetry was a cascade
+    finding: `vesma install --all` must not be the one verb that can
+    destroy operator edits silently.
+    """
     written: list[Path] = []
     for name in BUNDLED_COMPONENTS:
-        source = bundled_manifest_path(name)
+        bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
         target = components_dir / f"{name}.yaml"
-        _atomic_write(target, source.read_text(encoding="utf-8"), 0o644)
+        if target.exists():
+            installed_text = target.read_text(encoding="utf-8")
+            if installed_text != bundle_text:
+                backup = components_dir.parent / f"{target.name}.pre-regen.bak"
+                if not backup.exists():
+                    # One-time: never clobber the FIRST divergence record
+                    # (the same rule as every other backup site).
+                    _atomic_write(backup, installed_text, 0o600)
+        _atomic_write(target, bundle_text, 0o644)
         written.append(target)
     return written
 

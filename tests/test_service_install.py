@@ -705,3 +705,50 @@ in_process:
         # to their pre-call state.
         assert (components / "board.yaml").read_text(encoding="utf-8") == stale_copy
         assert (components / "board.yml").read_text(encoding="utf-8") == bundle
+
+
+# ── `install --all` backup unification (cascade finding) ─────────────
+
+
+class TestInstallAllBackup:
+    """`vesma install --all` used to be the ONE overwrite path without
+    the `.pre-regen.bak` discipline — a diverged bundled manifest may
+    carry operator edits, and `--all` destroyed them silently."""
+
+    def test_install_all_backs_up_diverged_bundle_manifest(
+        self, isolated_home: Path, fake_venv_installer: list[str]
+    ) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        operator_edits = "# operator tuned\n" + bundled_manifest_path("board").read_text(
+            encoding="utf-8"
+        )
+        (components / "board.yaml").write_text(operator_edits, encoding="utf-8")
+
+        result = install()
+
+        backup = components.parent / "board.yaml.pre-regen.bak"
+        assert backup.read_text(encoding="utf-8") == operator_edits
+        assert (components / "board.yaml").read_bytes() == bundled_manifest_path(
+            "board"
+        ).read_bytes()
+        assert (components / "board.yaml") in result.manifests
+
+    def test_install_all_never_clobbers_the_first_backup(
+        self, isolated_home: Path, fake_venv_installer: list[str]
+    ) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        first_edits = "# first divergence\n" + bundled_manifest_path("board").read_text(
+            encoding="utf-8"
+        )
+        second_edits = "# second divergence\n" + bundled_manifest_path("board").read_text(
+            encoding="utf-8"
+        )
+        backup = components.parent / "board.yaml.pre-regen.bak"
+        backup.write_text(first_edits, encoding="utf-8")
+        (components / "board.yaml").write_text(second_edits, encoding="utf-8")
+
+        install()
+
+        assert backup.read_text(encoding="utf-8") == first_edits, (
+            "the one-time rule: the FIRST divergence record survives"
+        )
