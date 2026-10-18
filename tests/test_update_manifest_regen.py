@@ -212,6 +212,12 @@ def _fake_update_env(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
     monkeypatch.setattr(uc, "fetch_latest", lambda dist: version)
     monkeypatch.setattr(
         uc,
+        "_install_shape",
+        lambda: uc.InstallShape(uc.USER_SITE),
+    )
+    monkeypatch.setattr(uc, "_installed_legacy_dists", lambda: [])
+    monkeypatch.setattr(
+        uc,
         "_run_cmd",
         lambda cmd, timeout=900: CompletedProcess(args=cmd, returncode=0, stdout="", stderr=""),
     )

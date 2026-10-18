@@ -15,11 +15,20 @@ Subcommands (standing design rule: flags do not replace subcommands):
 * ``vesma self-update check`` — the report only: never prompts, never
   applies (safe in pipes and CI).
 * ``vesma self-update apply [--to VERSION] [--scope user] [-y]
-  [--verbose]`` — the apply path: upgrade the installed dist via
-  ``<python> -m pip install --user --upgrade`` (``--break-system-packages``
-  appended only under a PEP 668 externally-managed interpreter), update
-  the global npm package best-effort, append a record to
-  ``~/.local/share/vesma/update-history.json``. Pip output is captured —
+  [--verbose]`` — the apply path. Install-shape aware (wave 61
+  update-apply fix, owner directive 2026-10-18): an OWNED venv (the
+  ``.vesma-venv`` ownership marker, or the canonical engine venv from the
+  layout contract) is upgraded IN PLACE via
+  ``<venv-python> -m pip install --upgrade`` — never ``--user``, which
+  fails inside any venv ("User site-packages are not visible in this
+  virtualenv", the 6.2.0 field incident); a bare user-site install keeps
+  the classic ``pip install --user`` path; a FOREIGN venv (no marker, not
+  canonical — e.g. another product's venv) and a pipx / ``uv tool``
+  manager environment are refused LOUDLY with exit 1 — self-update never
+  writes into an environment vesma does not own. The global npm package
+  updates best-effort, and every apply appends a record to
+  ``~/.local/share/vesma/update-history.json`` (refusals record nothing).
+  Pip output is captured —
   one summary line per surface; ``--verbose`` prints the full pip output
   (and it is shown as a tail automatically on failure). ``--to <version>``
   pins a specific (rollback) version.
@@ -48,10 +57,12 @@ directory); a drift test pins the repo files byte-identical to them.
 
 from __future__ import annotations
 
+import dataclasses
 import getpass
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -254,6 +265,8 @@ def _stdin_is_tty() -> bool:
 
 def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -> None:
     """Append one record to ``~/.local/share/vesma/update-history.json``."""
+    from vesma.fs_hardening import ensure_private_dir, harden_file
+
     path = Path.home() / ".local" / "share" / "vesma" / HISTORY_FILENAME
     try:
         entries: list[object] = []
@@ -273,8 +286,12 @@ def _append_history(*, dist: str, from_version: str, to_version: str, rc: int) -
                 "rc": rc,
             }
         )
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # Cascade F3 (2026-10-18): 0700 dir chain + 0600 file — the update
+        # history names environments and versions and must not land 0755/0644
+        # (mirrors the update-check cache write in updates.py).
+        ensure_private_dir(path.parent)
         path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        harden_file(path)
     except Exception:
         logger.debug("update-history append failed", exc_info=True)
 
@@ -307,6 +324,351 @@ def _print_legacy_home_hint(console: Console) -> None:
         console.print(f"[yellow]⚠[/yellow] {hint}")
 
 
+# ── install-shape detection (wave 61 update-apply fix, 2026-10-18) ───────────
+
+#: The venv-ownership flag file the canonical installer writes into the
+#: venv root (`installer=... version=... date=...` inside). Its presence
+#: is the PRIMARY ownership proof for ``self-update apply``.
+_OWNED_VENV_MARKER = ".vesma-venv"
+
+#: The user-site stamp the ``--no-venv`` installer writes (a user-site
+#: has no venv root to carry ``.vesma-venv``, so the stamp lives in the
+#: vesma data root). WRITE-ONLY audit trail: the shape detection
+#: classifies user-site installs unconditionally and never reads it.
+_USER_SITE_MARKER = ".user-site-install"
+
+#: Shape kinds — the complete partition of how the RUNNING vesma was
+#: installed (``InstallShape.kind``).
+OWNED_VENV = "owned-venv"  # own marked/canonical venv — upgrade in place
+FOREIGN_VENV = "foreign-venv"  # someone else's venv — loud refusal
+TOOL_MANAGER = "tool-manager"  # pipx / uv tool — refuse, name the manager
+USER_SITE = "user-site"  # bare user-site install — classic pip --user
+
+
+@dataclasses.dataclass(frozen=True)
+class InstallShape:
+    """How THIS vesma process is installed (the apply-shape matrix).
+
+    ``venv_root`` is ``sys.prefix`` for the three venv shapes, ``None``
+    for a user-site install. ``marker_path`` is where the ownership
+    marker lives (or is missing — the refusal messages cite it); for a
+    user-site shape it is the data-root flag file.
+    """
+
+    kind: str
+    venv_root: Path | None = None
+    marker_path: Path | None = None
+
+
+def _in_venv() -> bool:
+    """True when the running interpreter lives inside a virtualenv."""
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def _looks_like_tool_manager() -> bool:
+    """True when the interpreter lives in a pipx / ``uv tool`` venv.
+
+    Path layout is the signal: pipx venvs carry a ``/pipx/`` segment
+    (``~/.local/pipx/venvs/<name>``), uv tools a ``/uv/tools/`` segment
+    (``~/.local/share/uv/tools/<name>``). Checked against BOTH
+    ``sys.prefix`` and ``sys.executable`` (a wrapper on ``PATH`` may sit
+    outside the venv). Deliberate contract deviation: ``pyvenv.cfg``
+    carries no stable manager marker on either tool, so the file-hint
+    leg of the design contract is not implementable without a fragile
+    parser — the path check covers the real layouts on every supported
+    platform.
+    """
+    for candidate in (sys.prefix, sys.executable):
+        text = str(candidate)
+        if "/pipx/" in text or "/uv/tools/" in text:
+            return True
+    return False
+
+
+def _canonical_engine_venv() -> Path:
+    """The layout-contract engine venv (``~/.local/share/vesma/venv``, XDG-honored)."""
+    from vesma.service.layout import engine_venv_dir  # lazy: light import, CLI startup cost
+
+    return engine_venv_dir()
+
+
+def _is_canonical_engine_venv(prefix: Path) -> bool:
+    """True when ``prefix`` IS the canonical engine venv from the layout contract.
+
+    The canonical-path fallback makes pre-marker installs owned (the
+    6.2.0 field case: a service-installed engine venv predates the
+    marker — the canonical path is the ownership proof there).
+    """
+    try:
+        return prefix.resolve() == _canonical_engine_venv().resolve()
+    except OSError:  # pragma: no cover — an unresolvable prefix is not canonical
+        return False
+
+
+def _user_site_marker_path() -> Path:
+    """``~/.local/share/vesma/.user-site-install`` (XDG-honored)."""
+    from vesma.service.layout import data_root  # lazy, same reason as above
+
+    return data_root() / _USER_SITE_MARKER
+
+
+def _install_shape() -> InstallShape:
+    """Classify the running install (the shape matrix of the apply fix).
+
+    Order is load-bearing:
+
+    1. NOT in a venv → :data:`USER_SITE` (the classic pip ``--user`` case).
+    2. Tool-manager path layout → :data:`TOOL_MANAGER`. Priority over the
+       ownership checks: even a stray marker inside a managed venv must
+       never authorize self-writes into a pipx/uv-tool environment.
+    3. ``.vesma-venv`` marker present OR the canonical engine venv path →
+       :data:`OWNED_VENV`.
+    4. Everything else → :data:`FOREIGN_VENV` (apply refuses).
+    """
+    prefix = Path(sys.prefix)
+    if not _in_venv():
+        return InstallShape(USER_SITE, None, _user_site_marker_path())
+    marker = prefix / _OWNED_VENV_MARKER
+    if _looks_like_tool_manager():
+        return InstallShape(TOOL_MANAGER, prefix, marker)
+    if marker.exists() or _is_canonical_engine_venv(prefix):
+        return InstallShape(OWNED_VENV, prefix, marker)
+    return InstallShape(FOREIGN_VENV, prefix, marker)
+
+
+def _refuse_apply(console: Console, shape: InstallShape) -> None:
+    """Loud refusal for an environment vesma does not own (no writes).
+
+    Refusals happen BEFORE any subprocess or history append: a refused
+    apply must leave zero traces. ``typer.Exit(1)`` — the operator picks
+    the named remediation.
+    """
+    if shape.kind == TOOL_MANAGER:
+        console.print(
+            "[red]✗[/red] this vesma is managed by an external tool manager (pipx / "
+            "uv tool) — self-update never writes into a manager-owned venv. Update "
+            "with the manager instead:"
+        )
+        console.print("  pipx upgrade vesma")
+        console.print("  uv tool upgrade vesma")
+        raise typer.Exit(1)
+    if shape.kind == FOREIGN_VENV:
+        console.print(
+            "[red]✗[/red] vesma in this environment was not installed by vesma "
+            f"(no ownership marker at {shape.marker_path}) — refusing to upgrade a "
+            "foreign environment; install via the canonical installer and upgrade "
+            "from there"
+        )
+        if shape.venv_root is not None and _is_legacy_installer_venv(shape.venv_root):
+            console.print(
+                "[yellow]⚠[/yellow] this looks like the pre-6.2 install.sh default "
+                "(~/.mnemos/venv) — re-run scripts/install.sh once: it installs into "
+                "the canonical isolated venv (~/.local/share/vesma/venv) and future "
+                "upgrades apply in place."
+            )
+        raise typer.Exit(1)
+
+
+def _is_legacy_installer_venv(venv_root: Path) -> bool:
+    """True for the pre-6.2 install.sh default ``~/.mnemos/venv`` (best-effort)."""
+    try:
+        return venv_root.resolve() == (Path.home() / ".mnemos" / "venv").resolve()
+    except OSError:  # pragma: no cover — unresolvable paths carry no hint
+        return False
+
+
+def _refresh_owned_marker(shape: InstallShape, version: str) -> None:
+    """Touch/refresh the ``.vesma-venv`` marker after a successful in-place upgrade.
+
+    Creates the marker when missing — canonical-path-owned installs
+    bootstrap it on their first successful upgrade. Best-effort: a
+    marker write failure downgrades to a debug log, never to a failed
+    apply (the upgrade itself succeeded).
+    """
+    if shape.kind != OWNED_VENV or shape.venv_root is None:
+        return
+    stamp = datetime.now(UTC).isoformat(timespec="seconds")
+    try:
+        (shape.venv_root / _OWNED_VENV_MARKER).write_text(
+            f"installer=self-update version={version} date={stamp}\n", encoding="utf-8"
+        )
+    except OSError:
+        logger.debug("ownership marker refresh failed", exc_info=True)
+
+
+def _shape_note(kind: str) -> str:
+    """The check-report pip row note for a shape apply would refuse."""
+    if kind == TOOL_MANAGER:
+        return (
+            "managed by pipx/uv tool — update with `pipx upgrade vesma` / `uv tool upgrade vesma`"
+        )
+    if kind == FOREIGN_VENV:
+        return (
+            "foreign environment — apply refuses (no ownership marker); "
+            "reinstall via the canonical installer"
+        )
+    return ""  # pragma: no cover — only called for the refusing shapes
+
+
+# ── legacy-dist cleanup (field incident 2026-10-18) ──────────────────────────
+
+#: Pre-rebrand dist names (the same codebase under old PyPI slots)
+#: removed from THIS environment after a successful apply. The uninstall
+#: runs ONLY AFTER the new vesma is installed — order discipline: a
+#: legacy uninstall removes the SHARED console script per that dist's
+#: own RECORD (both dists claim ``bin/vesma``), so with no new dist in
+#: place the CLI entry would die. Verified live on prod 6.2.0.
+_LEGACY_DISTS = ("vesma-memory-server", "mnemos-memory-server")
+
+#: Console scripts the ``vesma`` dist claims (pyproject [project.scripts]);
+#: self-checked after a legacy removal (the shared-script collision class).
+_OWNED_SCRIPTS = ("vesma", "vesma-train")
+
+
+def _installed_legacy_dists() -> list[tuple[str, str]]:
+    """Legacy dist names visible to THIS interpreter, as ``(name, version)``.
+
+    The running interpreter's metadata IS the target environment for
+    both applyable shapes (owned-venv: the process runs in that venv;
+    user-site: user-site packages are on sys.path) — a valid pre-filter
+    for the cleanup leg.
+    """
+    import importlib.metadata as md
+
+    found: list[tuple[str, str]] = []
+    for legacy in _LEGACY_DISTS:
+        try:
+            found.append((legacy, md.version(legacy)))
+        except Exception:
+            continue
+    return found
+
+
+def _legacy_cleanup_cmd(legacy: str) -> list[str]:
+    """The uninstall command for one legacy dist (own python, NO --user).
+
+    ``pip uninstall`` has no ``--user`` flag — it removes wherever the
+    dist lives on this interpreter's sys.path, which is exactly the
+    environment the apply just upgraded. Idempotent: an absent dist is
+    a rc=0 skip-warn. Under a PEP 668 externally-managed interpreter the
+    ``--break-system-packages`` flag rides along (cascade P2-1,
+    2026-10-18): pip gates uninstalls on the marker too, and a cleanup
+    leg that refuses on every apply is worse than no cleanup leg.
+    """
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", legacy]
+    if _pep668_externally_managed():
+        cmd.append("--break-system-packages")
+    return cmd
+
+
+def _owned_script_paths(shape: InstallShape) -> list[Path]:
+    """Where the ``vesma`` console scripts must live for THIS shape.
+
+    Posix layouts only; on other platforms the self-check degrades to an
+    empty list (honest: no check, no false alarm).
+    """
+    if os.name != "posix":
+        return []
+    base: Path | None = None
+    if shape.kind == OWNED_VENV and shape.venv_root is not None:
+        base = shape.venv_root / "bin"
+    elif shape.kind == USER_SITE:
+        import sysconfig
+
+        scripts = sysconfig.get_path("scripts", f"{os.name}_user")
+        base = Path(scripts) if scripts else None
+    if base is None:
+        return []
+    return [base / name for name in _OWNED_SCRIPTS]
+
+
+def _cleanup_legacy_dists(
+    console: Console,
+    shape: InstallShape,
+    *,
+    dist: str,
+    target: str,
+    verbose: bool,
+) -> None:
+    """Uninstall the pre-rebrand dist names from THIS environment (best-effort).
+
+    Runs ONLY after the new vesma installed successfully (rc==0) — the
+    order discipline of the 2026-10-18 field incident. ``dist`` (the
+    name apply just upgraded) is EXEMPT: an alias-only install upgrades
+    through its legacy channel, and the cleanup must never remove the
+    dist it just updated. A failed legacy uninstall is a WARN plus one
+    update-history record, never an apply failure: the new vesma is
+    already in place. After any successful removal the shared console
+    scripts are self-checked; a script the legacy uninstall took with it
+    is repaired by re-installing the new dist
+    (see :func:`_repair_shared_scripts`).
+    """
+    present = [(name, ver) for name, ver in _installed_legacy_dists() if name != dist]
+    if not present:
+        return
+    removed_any = False
+    for legacy, version in present:
+        if verbose:
+            console.print(f"[cyan]$[/cyan] {' '.join(_legacy_cleanup_cmd(legacy))}")
+        proc = _run_cmd(_legacy_cleanup_cmd(legacy))
+        rc = proc.returncode if proc is not None else 1
+        if rc == 0:
+            removed_any = True
+            console.print(f"[green]✓[/green] legacy dist removed: {legacy} {version}")
+        else:
+            manual = f"{sys.executable} -m pip uninstall {legacy}"
+            if _pep668_externally_managed():  # the hint must actually work (P2-1)
+                manual += " --break-system-packages"
+            console.print(
+                "[yellow]⚠[/yellow] could not remove legacy dist "
+                f"{legacy} {version} (rc={rc}) — the apply stands; remove it "
+                f"manually: {manual}"
+            )
+            _append_history(dist=legacy, from_version=version, to_version="cleanup", rc=rc)
+    if removed_any:
+        _repair_shared_scripts(console, shape, dist=dist, target=target)
+
+
+def _repair_shared_scripts(
+    console: Console, shape: InstallShape, *, dist: str, target: str
+) -> None:
+    """Re-install the new dist when a legacy uninstall took a shared script.
+
+    pip uninstalls strictly per the removed dist's own RECORD — a
+    console script BOTH dists claim dies with the legacy removal even
+    though the new dist owns it too (prod 6.2.0: ``pip uninstall
+    vesma-memory-server`` killed ``bin/vesma``). The pinned
+    force-reinstall restores every script; the wheel is already in pip's
+    cache from the apply leg, so this is near-local. A failed repair is
+    a loud manual fix — the dist itself is fine, only the launcher is
+    gone.
+    """
+    missing = [p for p in _owned_script_paths(shape) if not p.exists()]
+    if not missing:
+        return
+    repair = [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps"]
+    if shape.kind == USER_SITE:
+        repair.append("--user")
+    repair.append(f"{dist}=={target}")
+    if _pep668_externally_managed():
+        repair.append("--break-system-packages")
+    proc = _run_cmd(repair)
+    rc = proc.returncode if proc is not None else 1
+    if rc == 0 and not [p for p in _owned_script_paths(shape) if not p.exists()]:
+        console.print(
+            "[green]✓[/green] shared console script(s) restored: "
+            + ", ".join(m.name for m in missing)
+        )
+        return
+    console.print(
+        "[red]✗[/red] the legacy cleanup removed the shared console script(s) "
+        + ", ".join(m.name for m in missing)
+        + " and the automatic repair failed — restore them manually:\n"
+        + "  "
+        + " ".join(repair)
+    )
+
+
 # ── check mode ───────────────────────────────────────────────────────────────
 
 
@@ -315,6 +677,7 @@ def _family_note(
     installed: str | None,
     info: UpdateInfo | None,
     family: str | None,
+    shape: InstallShape | None = None,
 ) -> str:
     """The pip family row's Note cell (one row for all aliases, #W-C).
 
@@ -323,10 +686,14 @@ def _family_note(
     says UPDATE AVAILABLE whenever ANY known latest beats the installed
     version — the wording stays actionable by ``vesma self-update apply``,
     which re-fetches and reports per-dist honestly when the aliases
-    diverge.
+    diverge. Install-shape aware: when apply would refuse (foreign venv,
+    tool manager), the note names the real update path instead of
+    advertising a command that exits 1.
     """
     if installed is None or installed_as is None:
         return "not installed — pip install --user vesma"
+    if shape is not None and shape.kind in (FOREIGN_VENV, TOOL_MANAGER):
+        return _shape_note(shape.kind)
     candidates = [v for v in ((info.latest if info is not None else None), family) if v]
     if not candidates:
         return "latest unknown (offline or check disabled)"
@@ -351,6 +718,7 @@ def _print_check(console: Console) -> UpdateInfo | None:
     detected = detect_installed_dist()
     info = check_for_update()
     family = family_latest()
+    shape = _install_shape()
 
     table = Table(
         title="Vesma update surfaces (this machine)",
@@ -376,6 +744,7 @@ def _print_check(console: Console) -> UpdateInfo | None:
             detected[1] if detected is not None else None,
             info,
             family,
+            shape,
         ),
     )
 
@@ -405,8 +774,9 @@ def _print_check(console: Console) -> UpdateInfo | None:
 
     console.print(table)
     console.print(
-        "[dim]`vesma self-update apply` changes only the pip user-site (and the npm "
-        "package); prod venvs and Go binaries are never touched. pip Latest = the "
+        "[dim]`vesma self-update apply` changes only the pip copy this vesma owns "
+        "(the user-site, or its own marked venv) and the npm package; foreign "
+        "environments, prod venvs and Go binaries are never touched. pip Latest = the "
         "family max over the alias dists (vesma-memory-server / vesma — same "
         "codebase; mnemos-memory-server is the deprecated legacy mirror).[/dim]"
     )
@@ -417,8 +787,19 @@ def _print_check(console: Console) -> UpdateInfo | None:
 # ── install mode (--yes) ─────────────────────────────────────────────────────
 
 
-def _build_pip_cmd(dist: str, target: str, pin: bool) -> list[str]:
-    cmd = [sys.executable, "-m", "pip", "install", "--user"]
+def _build_pip_cmd(dist: str, target: str, pin: bool, *, user_site: bool = True) -> list[str]:
+    """The pip command for one apply leg.
+
+    ``user_site=False`` is the OWNED-venv path: upgrade IN the venv the
+    running interpreter belongs to (``sys.executable -m pip install``).
+    ``--user`` inside a venv is impossible by definition — pip answers
+    "User site-packages are not visible in this virtualenv" (rc=1), the
+    exact 6.2.0 field incident this flag removes. Pinned targets install
+    without ``--upgrade`` (an exact-version rollback must move down too).
+    """
+    cmd = [sys.executable, "-m", "pip", "install"]
+    if user_site:
+        cmd.append("--user")
     if pin:
         cmd.append(f"{dist}=={target}")
     else:
@@ -428,7 +809,36 @@ def _build_pip_cmd(dist: str, target: str, pin: bool) -> list[str]:
     return cmd
 
 
+#: Cascade F2 (2026-10-18): the ``--to`` pin is operator input that lands in
+#: the pip spec, the ownership-marker content and the update history. A
+#: character-class check keeps all three injection-free. Deliberate choice
+#: over ``packaging.version.Version``: the regex is dependency-free, accepts
+#: the full legacy spelling range pip resolves (pre-PEP 440 tags, wildcards,
+#: local versions) and structurally blocks whitespace/newlines — the
+#: injection vector — while ``Version()`` would reject some installable
+#: historic spellings for no security gain.
+_PIN_SPEC_RE = re.compile(r"^[0-9A-Za-z.!+~*_-]+$")
+_PIN_SPEC_MAX_LEN = 64
+
+
+def _valid_pin_spec(value: str) -> bool:
+    """True when ``--to`` is a safe single-token pip version spec."""
+    return len(value) <= _PIN_SPEC_MAX_LEN and bool(_PIN_SPEC_RE.match(value))
+
+
 def _run_user_update(console: Console, to: str | None, *, verbose: bool = False) -> None:
+    if to is not None and not _valid_pin_spec(to):
+        # Before anything else — no pip call, no marker touch, no history row.
+        console.print(
+            f"[red]✗[/red] invalid --to value {to!r} — expected a pip version spec "
+            f"(digits, letters and . ! + ~ * _ - only, max {_PIN_SPEC_MAX_LEN} chars, "
+            "no whitespace)"
+        )
+        raise typer.Exit(1)
+    shape = _install_shape()
+    if shape.kind in (FOREIGN_VENV, TOOL_MANAGER):
+        _refuse_apply(console, shape)  # raises Exit(1) — nothing run, nothing recorded
+
     detected = detect_installed_dist()
     if detected is None:
         console.print(
@@ -449,7 +859,7 @@ def _run_user_update(console: Console, to: str | None, *, verbose: bool = False)
         target = to
         pin = True
 
-    cmd = _build_pip_cmd(dist, target, pin)
+    cmd = _build_pip_cmd(dist, target, pin, user_site=shape.kind == USER_SITE)
     if verbose:
         console.print(f"[cyan]$[/cyan] {' '.join(cmd)}")
     # Output is ALWAYS captured (#460: no pip firehose); --verbose chooses
@@ -463,6 +873,7 @@ def _run_user_update(console: Console, to: str | None, *, verbose: bool = False)
             console.print(f"[red]{proc.stderr.rstrip()}[/red]")
     _append_history(dist=dist, from_version=installed, to_version=target, rc=rc)
     if rc == 0:
+        _refresh_owned_marker(shape, target)
         if verbose:
             console.print(f"[green]✓[/green] pip: {dist} {installed} → {target}")
         else:
@@ -472,6 +883,7 @@ def _run_user_update(console: Console, to: str | None, *, verbose: bool = False)
                 console.print(f"[green]✓[/green] pip: {dist} {installed} → {new_version}")
             else:
                 console.print(f"[green]✓[/green] pip: {dist} {installed} — already current")
+        _cleanup_legacy_dists(console, shape, dist=dist, target=target, verbose=verbose)
     else:
         if verbose:
             console.print(f"[red]✗[/red] pip upgrade failed (rc={rc}); history recorded")
@@ -1085,7 +1497,7 @@ def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
 
 update_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
-    help="Check for updates / update the user-site install (issues #445, #460).\n\n"
+    help="Check for updates / update the installed vesma (issues #445, #460).\n\n"
     "Subcommands: `check` (report only), `apply` (the update path), `timer "
     "install|uninstall|status` (the weekly systemd timer), `components` (the "
     "component inventory). Plain `vesma self-update` keeps the 5.2.0 behavior: report "
@@ -1158,7 +1570,7 @@ def update(
         ),
     ] = False,
 ) -> None:
-    """Check for updates / update the user-site install (issues #445, #460).
+    """Check for updates / update the installed vesma (issues #445, #460).
 
     Plain `vesma self-update`: the surfaces report, then — in an interactive
     terminal, when a pip update is pending — a confirmation prompt before
@@ -1315,12 +1727,16 @@ def update_apply(
         ),
     ] = False,
 ) -> None:
-    """Apply the update now: pip --user upgrade (+ npm best-effort).
+    """Apply the update now: upgrade the pip copy this vesma owns (+ npm).
 
     The apply path behind the deprecated `vesma self-update --yes`. Never
     prompts — invoking `apply` IS the confirmation; `-y/--yes` is
     accepted but changes nothing. `--to VERSION` pins a (rollback)
-    version. Every run appends a record to the update history.
+    version. Install-shape aware: a marked/canonical venv upgrades in
+    place (no --user), a bare user-site install uses pip --user, a
+    foreign venv or a pipx/uv-tool environment is refused with the
+    proper update path named. Every run appends a record to the update
+    history and removes pre-rebrand legacy dists from this environment.
     """
     console = Console()
     if scope != "user":

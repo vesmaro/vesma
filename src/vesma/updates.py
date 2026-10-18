@@ -57,6 +57,16 @@ FALLBACK_UPDATE_DIR = Path("~/.local/share/vesma").expanduser()
 #: (first hit wins — this is the dist ``vesma update`` pip-upgrades).
 CANDIDATE_DISTS = ("vesma-memory-server", "vesma")
 
+#: Version-DETECTION priority: the canonical name WINS. When a legacy
+#: alias dist-info lies next to the real ``vesma`` dist (post-rebrand
+#: double-install / cleanup leftovers — field incident 2026-10-18:
+#: ``vesma-memory-server 5.6.4`` beside ``vesma 6.2.0`` made ``--version``
+#: report "update available: 6.1.0", the LEGACY channel's latest), the
+#: legacy metadata must not shadow the real version. The fetch family
+#: (:data:`CANDIDATE_DISTS`) keeps its own order — its LAST element is
+#: the canonical name by contract (``_family_note``).
+_DETECTION_ORDER: tuple[str, ...] = tuple(reversed(CANDIDATE_DISTS))
+
 #: Hard env opt-out (independent of the config knob). Canonical ``VESMA_``
 #: name (6.0.0 retired the deprecated ``VESMARO_UPDATES_CHECK`` spelling —
 #: ADR-0031 dual-period pattern).
@@ -116,11 +126,17 @@ def env_check_disabled() -> bool:
 def detect_installed_dist() -> tuple[str, str] | None:
     """Return ``(dist, installed_version)`` for the first present dist.
 
+    Detection walks :data:`_DETECTION_ORDER` — the canonical ``vesma``
+    name first, so a side-by-side legacy dist-info can never shadow the
+    real version (field incident 2026-10-18). A legacy alias answers
+    only when NO canonical dist is installed (the alias-lag case the
+    family report honestly names).
+
     ``None`` means no pip-installed distribution was found (source
     checkout) — nothing for ``pip --user`` to upgrade, so the check is
     meaningless and callers get ``None``.
     """
-    for dist in CANDIDATE_DISTS:
+    for dist in _DETECTION_ORDER:
         try:
             return dist, _md_version(dist)
         except Exception:
