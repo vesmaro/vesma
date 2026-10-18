@@ -16,7 +16,7 @@ gets the pack and every agent gets wired, non-interactively. Flags narrow.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -41,6 +41,39 @@ from vesma.cli.integration import (
 )
 
 console = Console()
+
+
+# ── snapshot pretty-printer (cli-audit 2026-10-08 P2) ─────────────────────────
+
+
+def format_snapshot_scalar(value: Any) -> str:
+    """Human form of one snapshot scalar: lists comma-joined, rest as str()."""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value) if value else "(none)"
+    if isinstance(value, dict):
+        return ", ".join(f"{k}={v}" for k, v in value.items()) if value else "(empty)"
+    return str(value)
+
+
+def print_snapshot_entry(console_: Console, key: str, value: Any, *, indent: str = "  ") -> None:
+    """One stats/snapshot entry, human-readable.
+
+    cli-audit 2026-10-08 (P2 ``stats``/``filter``/``export --dry-run``):
+    raw Python dict reprs (with embedded newlines mid-value) used to leak
+    into the terminal. Scalars print inline as ``key: value``; a dict prints
+    as a header line plus ``subkey: value`` sub-lines (nested dicts flatten
+    to ``k=v`` pairs); lists comma-join. Scripted consumers use --json.
+    """
+    if isinstance(value, dict):
+        if not value:
+            console_.print(f"{indent}[bold]{key}[/bold]: (empty)")
+            return
+        console_.print(f"{indent}[bold]{key}[/bold]:")
+        for sub_key, sub_value in value.items():
+            console_.print(f"{indent}  [bold]{sub_key}[/bold]: {format_snapshot_scalar(sub_value)}")
+    else:
+        console_.print(f"{indent}[bold]{key}[/bold]: {format_snapshot_scalar(value)}")
+
 
 integration_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -276,12 +309,21 @@ def detect_cmd(
 
     table = Table(title="Detected harnesses")
     table.add_column("Target", style="bold cyan")
-    table.add_column("Detect path")
-    table.add_column("Deploy map")
+    # cli-audit 2026-10-08 (P3): the path columns used to ellipsize to
+    # "ubu…" on an 80-column terminal. Paths print ~-abbreviated (the
+    # columns lose 30+ chars of $HOME noise) and fold (wrap) instead of
+    # truncating — nothing is unreadable at any width.
+    table.add_column("Detect path", overflow="fold")
+    table.add_column("Deploy map", overflow="fold")
+
+    def _short(p: Path | str) -> str:
+        s = str(p)
+        home = str(Path.home())
+        return ("~" + s[len(home) :]) if s.startswith(home) else s
 
     for t in detected:
-        detect_str = "\n".join(str(p) for p in t.detect_paths)
-        deploy_str = "\n".join(f"{k} → {v}" for k, v in t.deploy_map.items())
+        detect_str = "\n".join(_short(p) for p in t.detect_paths)
+        deploy_str = "\n".join(f"{k} → {_short(v)}" for k, v in t.deploy_map.items())
         table.add_row(t.name, detect_str, deploy_str)
     console.print(table)
 

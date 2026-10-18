@@ -23,6 +23,7 @@ like the MCP surface. A service refusal prints its reason and exits 1
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any
 
 import typer
@@ -63,6 +64,29 @@ def _refused(exc: Exception) -> None:
     """Print a service refusal and exit non-zero (loud, no traceback)."""
     console.print(f"[red]refused:[/red] {exc}")
     raise typer.Exit(1) from exc
+
+
+#: The ghost-gate refusal's REST/MCP kwarg spellings → the CLI flags that
+#: carry the same meaning on this surface (cli-audit 2026-10-08 P2). The
+#: confirm_name value itself is preserved; only the parameter names are
+#: translated.
+_MCP_CONFIRM_RE = re.compile(r"\bconfirm=true\b")
+_MCP_CONFIRM_NAME_RE = re.compile(r"\bconfirm_name=('([^']*)'|\"([^\"]*)\")")
+
+
+def _to_cli_gate_syntax(exc: Exception) -> Exception:
+    """Rewrite MCP-kwarg gate syntax in a refusal message to CLI flags.
+
+    ``pass confirm=true and confirm_name='proj' (echo of the project name)``
+    becomes ``pass --force and --confirm-name 'proj'``. Non-gate refusals
+    pass through untouched.
+    """
+    msg = _MCP_CONFIRM_RE.sub("--force", str(exc))
+    msg = _MCP_CONFIRM_NAME_RE.sub(lambda m: f"--confirm-name '{m.group(2) or m.group(3)}'", msg)
+    msg = msg.replace(" (echo of the project name)", "")
+    if msg == str(exc):
+        return exc  # not a gate refusal — pass through
+    return type(exc)(msg)
 
 
 @graph_app.command(name="register")
@@ -177,7 +201,12 @@ def delete_cmd(
             project, agent=agent, reason=reason, confirm=force, confirm_name=confirm_name
         )
     except GraphToolError as exc:
-        _refused(exc)
+        # cli-audit 2026-10-08 (P2): the service layer's ghost-gate refusal
+        # names the REST/MCP kwargs (confirm=true / confirm_name=…) — that
+        # syntax does not exist on the CLI, where the gate is spelled
+        # --force / --confirm-name. Translate the tokens for this surface;
+        # the message body stays service-owned (single source of truth).
+        _refused(_to_cli_gate_syntax(exc))
     console.print(
         f"[green]{result['status']}[/green] project {result['project']!r} "
         f"({result['deleted_nodes']} nodes)"

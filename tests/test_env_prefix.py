@@ -231,9 +231,15 @@ class TestDoctorConfigPath:
     def test_doctor_prefers_vesma_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        import os
+
         from vesma.cli import doctor
 
         canonical = TestConfigPathEnv._config(tmp_path, "canonical.yaml", "/vesma-config")
+        # Owner-only mode: the perms leg (card 8ff219e5) turns a 0644
+        # config into a WARN — this test pins the PATH-PREFERENCE
+        # behavior, so it must not depend on the fixture's file mode.
+        os.chmod(canonical, 0o600)
         monkeypatch.setenv("VESMA_CONFIG", str(canonical))
         result = doctor._check_config()
         assert result.status == doctor.CheckStatus.PASS

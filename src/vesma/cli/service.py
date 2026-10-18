@@ -284,10 +284,11 @@ def logs(
 ) -> None:
     """Show recent component logs; --follow streams until the source stops.
 
-    Prints the last `--tail` lines (default 100, capped at 1000) from the
-    component's log source, or keeps streaming new lines with `--follow`/`-f`
-    until the component stops. Pass a component name from the manifest
-    registry; `--socket` overrides the control socket.
+    Prints the last `--tail` lines (default 100, capped at 10000 — the
+    same cap the `--tail` option enforces) from the component's log
+    source, or keeps streaming new lines with `--follow`/`-f` until the
+    component stops. Pass a component name from the manifest registry;
+    `--socket` overrides the control socket.
     """
     if follow:
         _with_client(

@@ -120,6 +120,12 @@ class PeerPollResult:
     with schema-invalid records folded into ``rejected_by_gate`` (the
     import gate refuses what it cannot validate). ``error`` is ``None``
     on success.
+
+    Dry run (cli-audit 2026-10-08 P2): ``dry_run`` marks a look-only pass —
+    nothing is imported and the watermark is not persisted. ``accepted``/
+    ``stale`` stay 0 (the import gate needs the write to render verdicts);
+    ``would_import`` counts schema-valid entries that WOULD be offered to
+    the gate; ``rejected_by_gate`` carries only the schema-invalid count.
     """
 
     peer_id: str
@@ -130,6 +136,8 @@ class PeerPollResult:
     pages: int = 0
     latest_rev: int = 0
     error: str | None = None
+    dry_run: bool = False
+    would_import: int = 0
 
     @property
     def ok(self) -> bool:
@@ -356,11 +364,11 @@ class MetaPoller:
         """
         return [await self.poll_peer(peer_id) for peer_id in self.peer_ids()]
 
-    async def poll_once(self, peer_id: str) -> PeerPollResult:
+    async def poll_once(self, peer_id: str, *, dry_run: bool = False) -> PeerPollResult:
         """Single-peer one-shot entry point (the ``meta-poll`` CLI)."""
-        return await self.poll_peer(peer_id)
+        return await self.poll_peer(peer_id, dry_run=dry_run)
 
-    async def poll_peer(self, peer_id: str) -> PeerPollResult:
+    async def poll_peer(self, peer_id: str, *, dry_run: bool = False) -> PeerPollResult:
         """Drain one peer's index pages for this pass.
 
         Pages are fetched with ``--since <watermark>`` and imported in
@@ -369,6 +377,10 @@ class MetaPoller:
         (:meth:`SQLiteStore.mark_poll_ok`). ``has_more: true`` chains
         the next page inside this pass up to :data:`META_POLL_MAX_PAGES`;
         beyond the cap the peer resumes next tick.
+
+        ``dry_run=True`` (cli-audit 2026-10-08 P2): fetch + validate only —
+        no import, no watermark persistence; the result reports what
+        WOULD be offered to the import gate.
 
         Any failure (CLI exit, JSON, timeout, store) returns a result
         with ``error`` set and records ``last_error`` in the poll state
@@ -379,26 +391,33 @@ class MetaPoller:
         )
         state = self._store.get_poll_state(peer_id)
         since_rev = state.since_rev if state is not None else 0
-        result = PeerPollResult(peer_id=peer_id, latest_rev=since_rev)
+        result = PeerPollResult(peer_id=peer_id, latest_rev=since_rev, dry_run=dry_run)
         try:
             for _page in range(META_POLL_MAX_PAGES):
                 page = await self._fetch_page(peer_id, since_rev)
                 entries, invalid = self._parse_entries(peer_id, page.records)
                 fetched = len(page.records)
                 accepted = refused = stale = 0
-                for batch in _chunks(entries, META_POLL_BATCH):
-                    stats = self._store.upsert_index_entries(
-                        batch,
-                        sender_peer_id=peer_id,
-                        title_blocklist=self._title_blocklist,
-                    )
-                    accepted += stats.written
-                    refused += stats.refused
-                    stale += stats.stale
+                would_import = 0
+                if not dry_run:
+                    for batch in _chunks(entries, META_POLL_BATCH):
+                        stats = self._store.upsert_index_entries(
+                            batch,
+                            sender_peer_id=peer_id,
+                            title_blocklist=self._title_blocklist,
+                        )
+                        accepted += stats.written
+                        refused += stats.refused
+                        stale += stats.stale
+                else:
+                    # Gate verdicts (refused/LWW) need the write; a dry run
+                    # reports the honest upper bound instead of pretending.
+                    would_import = len(entries)
                 # Watermark never regresses (a peer that rebuilt its DB
                 # with lower rowids must not rewind our checkpoint).
                 since_rev = max(since_rev, page.latest_rev)
-                self._store.mark_poll_ok(peer_id, since_rev)
+                if not dry_run:
+                    self._store.mark_poll_ok(peer_id, since_rev)
                 result = PeerPollResult(
                     peer_id=peer_id,
                     fetched=result.fetched + fetched,
@@ -407,6 +426,8 @@ class MetaPoller:
                     stale=result.stale + stale,
                     pages=result.pages + 1,
                     latest_rev=since_rev,
+                    dry_run=dry_run,
+                    would_import=result.would_import + would_import,
                 )
                 if not page.has_more:
                     break
@@ -429,6 +450,8 @@ class MetaPoller:
                 pages=result.pages,
                 latest_rev=result.latest_rev,
                 error=reason,
+                dry_run=result.dry_run,
+                would_import=result.would_import,
             )
         logger.info(
             "meta poll peer=%s fetched=%d accepted=%d rejected_by_gate=%d stale=%d "

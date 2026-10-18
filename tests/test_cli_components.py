@@ -28,8 +28,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from vesma.cli.components import _lifecycle_targets, _registry, _topo_order
+from vesma.cli.components import _registry, _topo_order
 from vesma.cli.main import app
+from vesma.service.client import ControlClientError
 from vesma.service.install import bundled_manifest_path
 from vesma.service.manifest import ComponentManifest
 
@@ -249,6 +250,33 @@ class TestStatus:
             "metrics has no live entry — the disk label stands for it alone"
         )
 
+    def test_json_carries_unreachable_reason(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The supervisor unreachability reason travels INSIDE the --json
+        payload — pipes never parse prose (cascade test gap)."""
+
+        def raising_client(socket: object) -> object:
+            raise ControlClientError(
+                "cannot connect to the control socket — is the supervisor running?"
+            )
+
+        monkeypatch.setattr("vesma.cli.components._open_client", raising_client)
+        result = runner.invoke(app, ["status", "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["supervisor"]["reachable"] is False
+        assert "supervisor running?" in payload["supervisor"]["reason"]
+
+    def test_unknown_name_on_fresh_machine_names_the_bundle(self, bundle_only_home: Path) -> None:
+        """Consistency (cascade finding): on the bundle view nothing is
+        installed — the refusal must not call board/metrics 'installed'
+        when the notice itself calls them the release bundle."""
+        result = runner.invoke(app, ["status", "mesh"])
+        assert result.exit_code == 1, result.output
+        assert "nothing installed" in result.output
+        assert "release bundle provides: board, metrics" in result.output
+
     def test_bundle_fallback_live_state_in_json(
         self, bundle_only_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -282,6 +310,12 @@ class TestLifecycleBare:
         assert "board, mesh, metrics" in result.output
         assert "specify NAME or --all" in result.output
 
+    @pytest.mark.parametrize("verb", ["start", "stop", "restart"])
+    def test_name_and_all_are_exclusive(self, components_home: Path, verb: str) -> None:
+        result = runner.invoke(app, [verb, "board", "--all"])
+        assert result.exit_code == 1, result.output
+        assert "not both" in result.output
+
     def test_unknown_name_refuses(self, components_home: Path) -> None:
         result = runner.invoke(app, ["start", "ghost"])
         assert result.exit_code == 1, result.output
@@ -295,40 +329,31 @@ class TestLifecycleBare:
 
 
 class TestLifecycleBulk:
-    def _stub_client(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
-        calls: list[tuple[str, str]] = []
-
+    def _stub_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> str:
-            return "running"
+            return "done"
 
         monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
-        return calls
 
     def test_start_all_is_dependency_ordered(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        seen: list[str] = []
-        real_targets = _lifecycle_targets
-
-        def spy(records: object, name: object, all_components: object, verb: str) -> list[str]:
-            targets = real_targets(records, name, all_components, verb)  # type: ignore[arg-type]
-            if verb != "stop":
-                seen.extend(targets)
-            return targets
-
-        monkeypatch.setattr("vesma.cli.components._lifecycle_targets", spy)
+        """Parsed from the printed per-target lines — the CLI prints one
+        ``NAME: state`` line per target in execution order, so the fact
+        under test is observable in the OUTPUT without an internal spy
+        (cascade finding: don't pin internals the output already carries)."""
         self._stub_client(monkeypatch)
         result = runner.invoke(app, ["start", "--all"])
         assert result.exit_code == 0, result.output
-        assert seen.index("board") < seen.index("mesh"), "depends_on must launch before dependents"
+        printed = [line.split(":")[0] for line in result.output.splitlines() if ":" in line]
+        assert printed.index("board") < printed.index("mesh"), (
+            "depends_on must launch before dependents"
+        )
 
     def test_stop_all_is_reverse_dependency_ordered(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> str:
-            return "stopped"
-
-        monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
+        self._stub_client(monkeypatch)
         result = runner.invoke(app, ["stop", "--all"])
         assert result.exit_code == 0, result.output
         printed = [line.split(":")[0] for line in result.output.splitlines() if ":" in line]
@@ -466,13 +491,31 @@ class TestUpdate:
     def test_operator_authored_refuses(self, components_home: Path) -> None:
         result = runner.invoke(app, ["update", "mesh"])
         assert result.exit_code == 1, result.output
-        assert "managed by operator" in result.output
-        assert "edit the manifest file" in result.output
+        # rich word-wraps the (long, path-bearing) refusal line — assert
+        # against whitespace-normalized output so the wrap point, which
+        # moves with the tmp-path length, cannot split a phrase.
+        flat = " ".join(result.output.split())
+        assert "managed by operator" in flat
+        assert "edit the manifest file" in flat
         assert (components_home / "mesh.yaml").read_text(encoding="utf-8") == MESH_MANIFEST
 
     def test_unknown_refuses(self, components_home: Path) -> None:
         result = runner.invoke(app, ["update", "ghost"])
         assert result.exit_code == 1, result.output
+
+    def test_bundled_on_bundle_only_home_refuses_with_install_hint(
+        self, bundle_only_home: Path
+    ) -> None:
+        """No components.d at all: `update board` must refuse with the
+        install pointer — never regenerate out of thin air (the bundle
+        fallback means no installation exists, not a stale manifest)."""
+        result = runner.invoke(app, ["update", "board"])
+        assert result.exit_code == 1, result.output
+        # Whitespace-normalized: the path-bearing line wraps at the rich
+        # console width, and the wrap point moves with the tmp path length.
+        flat = " ".join(result.output.split())
+        assert "install it first" in flat
+        assert "`vesma install board`" in flat
 
     def test_all_regenerates_stale_bundled(self, components_home: Path) -> None:
         stale = components_home / "metrics.yaml"
@@ -614,3 +657,16 @@ class TestSurface:
 
         with pytest.raises(ManifestError):
             _registry()
+
+    def test_broken_components_d_refuses_cleanly_via_runner(self, components_home: Path) -> None:
+        """Runner-level companion to the internal test above: every
+        registry verb renders the fail-closed load as ONE clean refusal —
+        exit 1, the cause named, never a traceback."""
+        (components_home / "broken.yaml").write_text(
+            "apiVersion: vesma.component/v1\nmetadata:\n  name: broken\n", encoding="utf-8"
+        )
+        for argv in (["status"], ["configs"], ["start", "--all"], ["install"]):
+            result = runner.invoke(app, argv)
+            assert result.exit_code == 1, (argv, result.output)
+            assert "fail-closed validation" in result.output, (argv, result.output)
+            assert "Traceback" not in result.output, argv

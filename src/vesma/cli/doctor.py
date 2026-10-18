@@ -85,6 +85,23 @@ def _check_config() -> CheckResult:
     from vesma.config import find_config_file
 
     cfg_path = find_config_file() or Path.home() / ".vesma" / "config.yaml"
+    # Card 8ff219e5: config.yaml can carry provider API keys — a
+    # group/other-readable mode is a loud WARN with the exact fix, never
+    # a silent pass (WARN class, softer than the service doctor's DR-01
+    # FAIL for env files: a world-readable main config is common and
+    # fixable in place, and the doctor gate must not brick on it).
+    try:
+        cfg_mode = cfg_path.stat().st_mode & 0o777
+    except OSError:
+        cfg_mode = None  # explicit path that failed to load already FAILed above
+    if cfg_mode is not None and cfg_mode & 0o077:
+        return CheckResult(
+            "Config",
+            CheckStatus.WARN,
+            f"{cfg_path} (valid, but group/other-readable — mode {cfg_mode:04o}); "
+            f"the file can carry API keys — tighten: chmod 600 {cfg_path}",
+            extra={"settings": settings},
+        )
     return CheckResult(
         "Config",
         CheckStatus.PASS,
@@ -724,8 +741,21 @@ def _check_pending_refine(settings: Any) -> CheckResult:
     return CheckResult("Pending refine", CheckStatus.PASS, "0 entries awaiting refinement")
 
 
+#: How many non-conformant entry ids the doctor's Tag contract detail
+#: enumerates before pointing at the full listing command
+#: (cli-audit 2026-10-08 P2: a bare count told the operator nothing).
+_TAG_CONTRACT_EXAMPLES = 5
+
+
 def _check_tag_contract(settings: Any) -> CheckResult:
-    """Report tag contract mode + non-conformant entry count (if fast)."""
+    """Report tag contract mode + non-conformant entry count (if fast).
+
+    cli-audit 2026-10-08 (P2): the WARN used to carry only a count ("17
+    non-conformant entries") with no way to see WHICH entries — the
+    detail now names the first few ids and the command that lists all of
+    them. Singular/plural is handled explicitly ("1 entry is" was "1
+    entries").
+    """
     strict = settings.vesma.strict_tag_contract
     mode = "strict" if strict else "lenient"
 
@@ -739,22 +769,25 @@ def _check_tag_contract(settings: Any) -> CheckResult:
         )
 
     non_conformant = 0
+    examples: list[str] = []
     try:
         conn = sqlite3.connect(str(db_path))
         try:
             # tags is stored as JSON array; we check for project:/agent:/vesma:
             # prefixes (the legacy mnemos:* spelling counts in the window).
-            rows = conn.execute("SELECT tags FROM memories").fetchall()
+            rows = conn.execute("SELECT id, tags FROM memories").fetchall()
         finally:
             conn.close()
     except sqlite3.Error as exc:
         return CheckResult("Tag contract", CheckStatus.FAIL, f"{mode} mode, scan error: {exc}")
 
-    for (raw_tags,) in rows:
+    for raw_id, raw_tags in rows:
         try:
             tags = json.loads(raw_tags) if raw_tags else []
         except (json.JSONDecodeError, TypeError):
             non_conformant += 1
+            if len(examples) < _TAG_CONTRACT_EXAMPLES:
+                examples.append(str(raw_id))
             continue
         has_project = any(t.startswith("project:") for t in tags)
         has_agent = any(t.startswith("agent:") for t in tags)
@@ -764,16 +797,23 @@ def _check_tag_contract(settings: Any) -> CheckResult:
         has_subtype = any(t.startswith("vesma:") or t.startswith("mnemos:") for t in tags)
         if not (has_project and has_agent and has_subtype):
             non_conformant += 1
+            if len(examples) < _TAG_CONTRACT_EXAMPLES:
+                examples.append(str(raw_id))
 
     if non_conformant > 0:
-        return CheckResult(
-            "Tag contract",
-            CheckStatus.WARN,
-            f"{mode} mode, {non_conformant} non-conformant entries",
-        )
-    return CheckResult(
-        "Tag contract", CheckStatus.PASS, f"{mode} mode, {non_conformant} non-conformant entries"
-    )
+        noun = "entry" if non_conformant == 1 else "entries"
+        detail = f"{mode} mode, {non_conformant} non-conformant {noun}"
+        if examples:
+            shown = ", ".join(f"{e[:8]}…" if len(e) > 8 else e for e in examples)
+            more = (
+                f" (and {non_conformant - len(examples)} more)"
+                if non_conformant > len(examples)
+                else ""
+            )
+            detail += f" — e.g. {shown}{more}"
+        detail += " — full list: `vesma tags validate`"
+        return CheckResult("Tag contract", CheckStatus.WARN, detail)
+    return CheckResult("Tag contract", CheckStatus.PASS, f"{mode} mode, 0 non-conformant entries")
 
 
 def _copilot_harness_detected() -> bool:

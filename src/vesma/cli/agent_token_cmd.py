@@ -19,9 +19,10 @@ prints the ``aud`` hint the operator needs to correlate.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -232,12 +233,26 @@ def token_revoke(
 
 
 @agent_token_app.command("list")
-def token_list(config: ConfigOption = None) -> None:
+def token_list(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit the full list (complete jtis, ISO timestamps) as JSON.",
+        ),
+    ] = False,
+    config: ConfigOption = None,
+) -> None:
     """List issuance metadata (jti, scope, exp, status) — no token values.
 
     Audit view of every issued token: which agent, what grants, when it
     expires, live or rotated/revoked. Secrets never appear here — use it to
     find the `--jti` for a revoke or to spot tokens worth rotating.
+
+    cli-audit 2026-10-08 (P2): the table truncates long jtis to fit the
+    terminal, but `revoke --jti` needs the EXACT id — `--json` prints
+    every row with the complete jti (script-friendly, one object per
+    line).
     """
     settings = _resolve_settings(config)
     store = AgentTokenStore(settings.db_path)
@@ -246,19 +261,44 @@ def token_list(config: ConfigOption = None) -> None:
     finally:
         store.close()
     if not rows:
+        if json_output:
+            console.print("[]")
+            return
         console.print("[yellow]No agent tokens found.[/yellow]")
         return
     now = int(datetime.now(UTC).timestamp())
+
+    def _status_for(row: dict[str, Any]) -> str:
+        if row["revoked_at"] is not None:
+            return "revoked"
+        if int(row["exp"]) <= now:
+            return "expired"
+        if row["grace_until"] is not None:
+            return "grace" if now < int(row["grace_until"]) else "grace-expired"
+        return "live"
+
+    if json_output:
+        # JSONL (one object per line) — stream-parsable without a wrapper.
+        # soft_wrap: a ~200-char line must never be hard-wrapped mid-object
+        # (same contract as the issue command's token line).
+        for row in rows:
+            console.print(
+                json.dumps(
+                    {
+                        "jti": str(row["jti"]),
+                        "agent": str(row["agent_id"]),
+                        "node_aud": str(row["aud"]),
+                        "scope": str(row["scope"]),
+                        "iat": int(row["iat"]),
+                        "exp": int(row["exp"]),
+                        "status": _status_for(row),
+                    }
+                ),
+                soft_wrap=True,
+            )
+        return
     table = Table("jti", "agent", "node/aud", "scope", "iat", "exp", "status")
     for row in rows:
-        status = "revoked"
-        if row["revoked_at"] is None:
-            if int(row["exp"]) <= now:
-                status = "expired"
-            elif row["grace_until"] is not None:
-                status = "grace" if now < int(row["grace_until"]) else "grace-expired"
-            else:
-                status = "live"
         table.add_row(
             str(row["jti"]),
             str(row["agent_id"]),
@@ -266,6 +306,9 @@ def token_list(config: ConfigOption = None) -> None:
             str(row["scope"]),
             _fmt_ts(int(row["iat"])),
             _fmt_ts(int(row["exp"])),
-            status,
+            _status_for(row),
         )
     console.print(table)
+    console.print(
+        "[dim]jtis are truncated to fit — full ids: `vesma agent-token list --json`[/dim]"
+    )

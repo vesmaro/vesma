@@ -33,7 +33,7 @@ help:
 	@echo "  make bench-s3   - Run the S3 session stand (BF-3, nightly contour)"
 	@echo "  make bench-s3-record - Write the S3 baseline (first record / re-baseline)"
 	@echo "  make verify     - Run all checks (lint + typecheck + security + test + bench-s1 + doctor)"
-	@echo "  make doctor     - Run mnemos doctor health checks (config, storage, MCP, integration)"
+	@echo "  make doctor     - Run vesma doctor health checks (config, storage, MCP, integration)"
 	@echo "  make clean      - Remove build artifacts"
 	@echo "  make build-dist - Build wheel + sdist into dist/ (requires: pip install build)"
 	@echo "  make build-image - Build container image locally with podman"
@@ -158,18 +158,18 @@ verify: format-check lint typecheck test security security-reminder bench-s1 doc
 # are HARD failures (#337 review): the old ladder funneled them into the
 # else-branch and printed "all checks passed" for a doctor that never ran.
 doctor:
-	@$(VENV)/mnemos doctor --json > /dev/null 2>&1; \
+	@$(VENV)/vesma doctor --json > /dev/null 2>&1; \
 	code=$$?; \
 	if [ $$code -eq 1 ]; then \
-		echo "✗ mnemos doctor: one or more health checks FAILED"; \
-		$(VENV)/mnemos doctor; \
+		echo "✗ vesma doctor: one or more health checks FAILED"; \
+		$(VENV)/vesma doctor; \
 		exit 1; \
 	elif [ $$code -eq 2 ]; then \
-		echo "⚠ mnemos doctor: warnings only (non-blocking)"; \
+		echo "⚠ vesma doctor: warnings only (non-blocking)"; \
 	elif [ $$code -eq 0 ]; then \
-		echo "✓ mnemos doctor: all checks passed"; \
+		echo "✓ vesma doctor: all checks passed"; \
 	else \
-		echo "✗ mnemos doctor: tool did not run (exit $$code; 127=not found in .venv, 126=not executable) — run: uv sync / make bootstrap"; \
+		echo "✗ vesma doctor: tool did not run (exit $$code; 127=not found in .venv, 126=not executable) — run: uv sync / make bootstrap"; \
 		exit 1; \
 	fi
 

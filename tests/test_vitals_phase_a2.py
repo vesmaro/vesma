@@ -195,12 +195,30 @@ class TestExpositionEndpoint:
 
 
 class TestCliBoundary:
+    def test_cli_entry_version_skips_recorder(self, tmp_path: Path, monkeypatch):
+        """cli-audit 2026-10-08 P2 (landed in c5fb345): --help/--version
+        must not touch the operator's config — the recorder is skipped
+        ENTIRELY, so no sidecar database is created. The old expectation
+        (a --version run records) predates that change and kept this test
+        red since."""
+        cli_settings = _settings(tmp_path)
+        monkeypatch.setattr("vesma.config.load_settings", lambda _cfg=None: cli_settings)
+        monkeypatch.setattr("sys.argv", ["vesma", "--version"])
+        from vesma.cli.main import cli_main
+
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main()
+        assert excinfo.value.code in (0, None)
+        assert not (tmp_path / "data" / SIDECAR_FILENAME).exists()
+
     def test_cli_entry_wrapper_records_verb(self, tmp_path: Path, monkeypatch):
         import sqlite3 as s3
 
         cli_settings = _settings(tmp_path)
         monkeypatch.setattr("vesma.config.load_settings", lambda _cfg=None: cli_settings)
-        monkeypatch.setattr("sys.argv", ["vesma", "--version"])
+        # A REAL subcommand (bare recall on the empty tmp store exits 0) —
+        # a --version run no longer records (see the skip test above).
+        monkeypatch.setattr("sys.argv", ["vesma", "recall"])
         from vesma.cli.main import cli_main
 
         with pytest.raises(SystemExit) as excinfo:

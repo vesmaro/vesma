@@ -438,6 +438,34 @@ class TestPollPeer:
         run(MetaPoller(store, make_federation(mesh)).poll_peer("peer-a"))
         assert senders == ["peer-a"]
 
+    def test_dry_run_fetches_but_never_writes(
+        self, store: SQLiteStore, mesh: MeshDouble, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """cli-audit 2026-10-08 (P2): ``dry_run=True`` fetches and parses —
+        no import, no watermark persistence, gate verdicts unrendered
+        (``accepted``/``stale`` stay 0, ``would_import`` counts the
+        schema-valid entries). ``_fetch_page`` is stubbed so the test does
+        not depend on the (machine-sensitive) subprocess leg."""
+
+        async def _fake_fetch(self: Any, peer_id: str, since_rev: int) -> SyncMetaPage:
+            return SyncMetaPage.model_validate(_page([_record(1), _record(2)], latest_rev=5))
+
+        monkeypatch.setattr(MetaPoller, "_fetch_page", _fake_fetch)
+
+        def _explode(*_args: Any, **_kw: Any) -> Any:
+            raise AssertionError("dry run must not import index entries")
+
+        monkeypatch.setattr(store, "upsert_index_entries", _explode)
+        poller = MetaPoller(store, make_federation(mesh))
+        result = run(poller.poll_peer("peer-a", dry_run=True))
+        assert result.ok
+        assert result.dry_run is True
+        assert result.fetched == 2
+        assert result.would_import == 2
+        assert result.accepted == 0 and result.stale == 0
+        assert store.get_poll_state("peer-a") is None  # watermark NOT persisted
+        assert len(store.list_index(limit=10, exclude_no_federate=False)) == 0
+
     def test_first_poll_omits_since_then_resumes(
         self, store: SQLiteStore, mesh: MeshDouble
     ) -> None:
@@ -795,6 +823,61 @@ class TestMetaPollCLI:
             assert len(store.list_index(limit=10, exclude_no_federate=False)) == 2
         finally:
             store.close()
+
+    def test_one_shot_dry_run_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """cli-audit 2026-10-08 (P2): ``--dry-run`` fetches and validates but
+        must not import rows nor persist the watermark.
+
+        The mesh CLI subprocess leg is stubbed at ``poll_peer`` — the REAL
+        subprocess machinery is covered by the poller-level tests above;
+        this test isolates the CLI's dry-run plumbing from the
+        machine-sensitive spawn path.
+        """
+        captured: dict[str, bool] = {}
+
+        async def _fake_poll(self: Any, peer_id: str, *, dry_run: bool = False) -> PeerPollResult:
+            captured["dry_run"] = dry_run
+            return PeerPollResult(
+                peer_id=peer_id,
+                fetched=2,
+                pages=1,
+                latest_rev=5,
+                dry_run=dry_run,
+                would_import=2 if dry_run else 0,
+                rejected_by_gate=1 if dry_run else 0,
+            )
+
+        monkeypatch.setattr(MetaPoller, "poll_peer", _fake_poll)
+        cfg = _cli_config(tmp_path, MeshDouble(tmp_path))
+        result = runner.invoke(
+            app, ["meta-poll", "--peer", "peer-a", "--dry-run", "--config", str(cfg)]
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["dry_run"] is True
+        assert "would_import=2" in result.output
+        assert "invalid=1" in result.output
+        assert "nothing written" in result.output
+        assert "watermarks unchanged" in result.output
+
+    def test_one_shot_quiet_prints_summary_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """cli-audit 2026-10-08 (P2): ``--quiet`` suppresses the per-peer
+        detail lines; the summary stays."""
+
+        async def _fake_poll(self: Any, peer_id: str, *, dry_run: bool = False) -> PeerPollResult:
+            return PeerPollResult(peer_id=peer_id, fetched=1, accepted=1, pages=1, latest_rev=3)
+
+        monkeypatch.setattr(MetaPoller, "poll_peer", _fake_poll)
+        cfg = _cli_config(tmp_path, MeshDouble(tmp_path))
+        result = runner.invoke(
+            app, ["meta-poll", "--peer", "peer-a", "--quiet", "--config", str(cfg)]
+        )
+        assert result.exit_code == 0, result.output
+        assert "peer=peer-a fetched=" not in result.output
+        assert "summary peers=1 failed=0" in result.output
 
     def test_missing_mesh_config_path_exits_1(self, tmp_path: Path, mesh: MeshDouble) -> None:
         cfg = _cli_config(tmp_path, mesh)
