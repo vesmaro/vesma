@@ -448,9 +448,7 @@ class TestPollPeer:
         not depend on the (machine-sensitive) subprocess leg."""
 
         async def _fake_fetch(self: Any, peer_id: str, since_rev: int) -> SyncMetaPage:
-            return SyncMetaPage.model_validate(
-                _page([_record(1), _record(2)], latest_rev=5)
-            )
+            return SyncMetaPage.model_validate(_page([_record(1), _record(2)], latest_rev=5))
 
         monkeypatch.setattr(MetaPoller, "_fetch_page", _fake_fetch)
 
