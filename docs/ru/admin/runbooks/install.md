@@ -103,7 +103,7 @@ vesma serve  # uvicorn на 127.0.0.1:8787
 
 ```bash
 podman run -d -v vesma-data:/data -v vesma-vault:/vault -p 8787:8787 \
-  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:6.0.0  # 6.0.0: единственное читаемое написание (старые префиксы выведены)
+  --env VESMA_API__TOTP_MASTER_KEY=<your-key> ghcr.io/vesmaro/vesma:6.2.0  # старые env-префиксы (4.x/5.x) не читаются с 6.0.0
 ```
 
 Или через compose из корня репозитория:

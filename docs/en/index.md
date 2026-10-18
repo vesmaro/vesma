@@ -147,6 +147,7 @@ Full catalogue with input schemas, examples, and HTTP equivalents: **[user/mcp-t
 - [Runbooks — Dependency Updates](admin/runbooks/dependency-updates.md) — CVE triage + weekly review.
 - [Runbooks — CI/CD](admin/runbooks/ci-cd.md) — GitHub Actions pipeline operation.
 - [Runbooks — PyPI Publish](admin/runbooks/pypi-publish.md) — name availability, wheel pipeline, version gates, first-publish procedure.
+- [Release Pipeline (internal)](dev/release-pipeline.md) — the cluster release train: version bump, helm apply, job observation, signed artifacts.
 - [Security Model](admin/security.md) — threat model, SSRF guard, secrets hygiene, auth model.
 
 ---

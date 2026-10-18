@@ -171,6 +171,7 @@ vesma integration setup
 - [Ранбук: Обновление зависимостей](admin/runbooks/dependency-updates.md) — разбор CVE + еженедельный обзор.
 - [Ранбук: CI/CD](admin/runbooks/ci-cd.md) — эксплуатация пайплайна GitHub Actions.
 - [Ранбук: Публикация в PyPI](admin/runbooks/pypi-publish.md) — доступность имени, wheel-конвейер, версионные гейты, процедура первой публикации.
+- [Релизный конвейер (внутренний)](dev/release-pipeline.md) — кластерный релизный поезд: подъём версии, helm apply, наблюдение за job, подпись артефактов.
 - [Модель безопасности](admin/security.md) — модель угроз, SSRF-защита, гигиена секретов, модель аутентификации.
 
 ---

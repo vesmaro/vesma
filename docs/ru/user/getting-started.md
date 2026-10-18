@@ -74,14 +74,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:6.0.0
+  ghcr.io/vesmaro/vesma:6.2.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Теги: `:6.0.0` (фиксированная) · `:latest` (rolling).
+Теги: `:6.2.0` (фиксированная) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Полное руководство: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -90,7 +90,7 @@ curl -s http://localhost:8787/health | jq
 
 <!-- version:pip -->
 ```bash
-pip install vesma==6.0.0
+pip install vesma==6.2.0
 ```
 <!-- /version:pip -->
 
@@ -108,6 +108,19 @@ pip install vesma==6.0.0
 > **Замечание об ОС.** Vesma разрабатывается на Linux (Arch, Fedora, Ubuntu 22.04+)
 > и регулярно проходит smoke-тест на macOS. Windows работает через WSL2. Юнит systemd
 > в `contrib/systemd/` — только для Linux.
+
+> **Не всякий Linux.** Два класса сбоев установки, о которых стоит знать заранее:
+>
+> - **musl / Alpine не поддерживается.** Зависимость `onnxruntime` (рантайм
+>   эмбеддингов) не публикует musllinux-колёс, поэтому на Alpine
+>   `pip install vesma` падает с `No matching distribution found for
+>   onnxruntime>=1.20`. Колеса нет — берите
+>   [контейнер](../admin/runbooks/container-deployment.md).
+> - **Голые образы Debian / Ubuntu / Fedora не содержат `python3`/`pip`**, а там, где
+>   дистрибутивный `pip` есть, он принуждает PEP 668: системная установка
+>   отклоняется с `error: externally-managed-environment`. Ставьте изолированным
+>   инструментом — `uv tool install vesma` или `pipx install vesma` (они держат
+>   собственное окружение и обходят запрет) — или берите контейнер.
 
 > **Железо.** Встроенная `vesma-embed-v1` комфортно работает на одном ядре CPU.
 > GPU не требуется. VM с 2 vCPU / 2 ГБ ОЗУ достаточно для личного использования.
@@ -311,7 +324,7 @@ vesma completion --show-instructions   # инструкция ручной ус�
 ## Первая запись (CLI)
 
 ```bash
-vesma add "Hello world" --tags project:test agent:getting-started vesma:learning
+vesma add "Hello world" --tags "project:test,agent:getting-started,vesma:learning"
 ```
 
 Ожидаемый вывод:
@@ -332,10 +345,14 @@ Vesma автоматически:
 **ровно одного** `project:<slug>`, **ровно одного** `agent:<slug>` и **хотя бы одного**
 `vesma:<subtype>` (например, `vesma:learning`, `vesma:bug-pattern`, `vesma:decision`). Старое написание `mnemos:` принимается как входной алиас везде и нормализуется в канон; в хранилище теги сохраняют каноническую форму `vesma:*`.
 
-> **Замечание.** Только что добавленные записи получают статус `raw`. Фоновый процессор
-> (работает в режимах MCP и HTTP API, а в CLI-развёртывании — `vesma processor start`)
-> автоматически кластеризует, синтезирует, проверяет качество и публикует их. Индекс
-> векторного поиска включает только записи в статусе `published`. Перестроить его
+> **Замечание.** Свежедобавленная запись получает статус `raw`, но сразу видима
+> поиску: по умолчанию `vesma search` включает и `raw`-записи (полнотекстовая
+> нога), так что сохранённое не прячется на время доводки. Фоновый процессор
+> (работает в режимах MCP и HTTP API, а в CLI-развёртывании —
+> `vesma processor start`) затем кластеризует, синтезирует, проверяет качество
+> и публикует записи; до тех пор `vesma doctor` считает их «awaiting
+> refinement». Доводка касается зрелости вектор-индекса, а не видимости:
+> векторная нога покрывает записи в статусе `published`. Перестроить индекс
 > вручную: `vesma reindex`.
 
 Внешний контент — отдельные подкоманды (с 5.6.2): `vesma ingest url URL` (страница
@@ -728,8 +745,8 @@ Vesma читает `config.yaml` из текущего каталога или `
 | `llm.provider` / `llm.model` | `ollama` / `qwen2.5:3b` | Синтез конвейера и контекстный фильтр |
 
 Любой из них переопределяется переменными окружения (`VESMA_*`, `__` — разделитель
-вложенности; выведено из обращения в 6.0.0 написание 5.0–5.2 (`VESMARO_*`), написание 4.x
-`VESMA_*` больше не читается):
+вложенности). Легаси-написания — `VESMARO_*` (5.0–5.2) и `MNEMOS_*` (4.x) — с 6.0.0
+не читаются:
 
 ```bash
 VESMA_SEARCH__HYBRID_ALPHA=0.7 vesma search "deployment"
@@ -762,6 +779,15 @@ CLI: `vesma --verbose serve` для уровня DEBUG, `vesma serve --log-file 
 шелле (`~/.local/bin`; добавьте каталог в `PATH`, если ваш дистрибутив этого не
 делает).
 
+### `pip install vesma` падает с `externally-managed-environment`
+
+Python дистрибутива защищён PEP 668: системный `pip install` отклоняется на
+стоковых Debian / Ubuntu / Fedora. Не тянитесь к `--break-system-packages` —
+ставьте изолированно: `uv tool install vesma` / `pipx install vesma` (оба держат
+собственное окружение) или запускайте
+[контейнер](../admin/runbooks/container-deployment.md). Alpine / musl — другая
+стена: у `onnxruntime` нет musllinux-колёс, там контейнер — единственный путь.
+
 ### `vesma mcp-server` падает с ошибкой импорта `mcp`
 
 Установка сломана либо поверх основного SDK лёг чужой `mcp` 1.x:
@@ -776,9 +802,11 @@ ADR-0023; после переустановки транспорт подтве�
 
 ### Поиск возвращает только «raw» записи
 
-Векторный индекс включает только записи в статусе `published`; новые записи
-стартуют как `raw` и публикуются фоновым процессором. Чтобы опубликовать сразу,
-задайте `status: "published"` при создании через HTTP API — или дайте конвейеру
+Сразу после добавления это нормально: поиск по умолчанию включает и `raw`-записи —
+свежая память видна немедленно, — а векторная нога покрывает только
+`published`-записи, доведённые конвейером. Нужен только доведённый контент?
+Запустите `vesma search --published-only`. Чтобы опубликовать сразу, задайте
+`status: "published"` при создании через HTTP API — или дайте конвейеру
 отработать (`vesma processor start` в CLI-развёртывании).
 
 ### `sqlite3.OperationalError: database is locked`
@@ -810,7 +838,7 @@ ADR-0023; после переустановки транспорт подтве�
 | Посмотреть все подкоманды CLI | [cli-reference.md](cli-reference.md) |
 | Посмотреть все MCP-инструменты | [mcp-tools.md](mcp-tools.md) |
 | Посмотреть все HTTP-эндпоинты | [http-api.md](http-api.md) |
-| Поставить движок на индексацию код-графа этого репозитория для поиска кода — репозиторий индексируется сам (блок `auto_index` конфига: авторегистрация + автом-переиндексация) | [project-graph.md](project-graph.md) |
+| Поставить движок на индексацию код-графа этого репозитория для поиска кода — репозиторий индексируется сам (блок `auto_index` конфига: авторегистрация + автопереиндексация) | [project-graph.md](project-graph.md) |
 | Прочитать схему тегов | [tag-contract.md](tag-contract.md) |
 | Углубиться в граф проектов (поиск по символам, трассировка вызовов, авто-индексация) | [project-graph.md](project-graph.md) |
 | Выполнить операционную задачу | [admin/runbooks/install.md](../admin/runbooks/install.md) |
