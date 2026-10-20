@@ -1300,6 +1300,10 @@ def test_deprecated_uninstall_timer_alias_hints_and_removes(
 def test_deprecated_flags_hidden_from_help(quiet_home: Path) -> None:
     from vesma.cli.main import app
 
+    # The count relies on plain console rendering: under CI color-forcing
+    # env vars rich splits the option name with ANSI spans and the count
+    # drops to 0 (2026-10-20 CI wave) — the conftest console env profile
+    # keeps this test's input identical on any runner.
     result = runner.invoke(app, ["self-update", "--help"])
     assert result.exit_code == 0
     # The deprecation NOTE mentions --check once; a visible option would

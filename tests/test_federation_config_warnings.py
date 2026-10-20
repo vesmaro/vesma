@@ -9,11 +9,31 @@ not refuse to load, only makes the operator opt-out visible.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from vesma.config import PeerConfig, load_settings
+from vesma.config import _MTLS_PINNING_WARNED, PeerConfig, load_settings
+
+
+@pytest.fixture(autouse=True)
+def _reset_warned_peers() -> Iterator[None]:
+    """The warned-peer set is process-global (one warning per peer per
+    process, cli-audit 2026-10-08 P2) — isolate it per test.
+
+    Every test here configures the SAME peer ids (mnemos-A/B), so in file
+    order ``test_warns_when_peer_mtls_pinning_off`` poisons ``mnemos-A``
+    and ``test_warns_per_peer_with_off_peer`` then sees 1 warning instead
+    of 2 (the CI-only failure of the 2026-10-20 wave; the set is module
+    state in ``vesma.config`` and survives between tests). Same idiom as
+    ``test_cli_audit_wave2._reset_warned_peers``.
+    """
+    saved = set(_MTLS_PINNING_WARNED)
+    _MTLS_PINNING_WARNED.clear()
+    yield
+    _MTLS_PINNING_WARNED.clear()
+    _MTLS_PINNING_WARNED.update(saved)
 
 
 def _write_config(

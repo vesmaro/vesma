@@ -103,7 +103,12 @@ def test_every_node_has_short_help_and_body() -> None:
 
 
 def test_root_help_carries_minus_h_tip() -> None:
-    """UX-4: the discoverability line under the Commands table."""
+    """UX-4: the discoverability line under the Commands table.
+
+    Relies on the conftest console env profile: CI runners force rich/typer
+    into ANSI even under CliRunner capture, and an ANSI span inside ``-h``
+    breaks this substring (2026-10-20 CI wave).
+    """
     result = runner.invoke(CLICK_ROOT, ["--help"])
     assert result.exit_code == 0
     assert "Tip: add -h to any command for help." in result.output
