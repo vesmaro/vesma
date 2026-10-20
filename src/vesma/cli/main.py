@@ -2841,6 +2841,4 @@ def cli_main() -> None:
                     meta={"retry": code} if code else None,
                 )
         except Exception:
-            logging.getLogger(__name__).debug(
-                "cli verb metrics recording failed", exc_info=True
-            )
+            logging.getLogger(__name__).debug("cli verb metrics recording failed", exc_info=True)

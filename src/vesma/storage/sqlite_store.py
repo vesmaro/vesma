@@ -1027,9 +1027,7 @@ CREATE TABLE IF NOT EXISTS federation_poll_state (
     last_ok_at TEXT NOT NULL DEFAULT '',
     last_error TEXT NOT NULL DEFAULT ''
 );
-"""
-    + _EDGE_STATS_NO_DELETE_TRIGGER_DDL
-    + ";"
+""" + _EDGE_STATS_NO_DELETE_TRIGGER_DDL + ";"
 )
 
 _MIGRATIONS: list[tuple[str, str]] = [

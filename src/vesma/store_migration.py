@@ -1038,10 +1038,12 @@ def verify_target(target_db: Path, snapshot: _Snapshot, all_db_paths: list[Path]
         columns = ", ".join(_SAMPLE_FIELDS)
         for memory_id in sample_ids:
             snap_row = snap_conn.execute(
-                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)  # nosec B608 - static column list
+                f"SELECT {columns} FROM memories WHERE id = ?",
+                (memory_id,),  # nosec B608 - static column list
             ).fetchone()
             tgt_row = tgt_conn.execute(
-                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)  # nosec B608 - static column list
+                f"SELECT {columns} FROM memories WHERE id = ?",
+                (memory_id,),  # nosec B608 - static column list
             ).fetchone()
             if snap_row is None or tgt_row is None:
                 sample_mismatches += 1
