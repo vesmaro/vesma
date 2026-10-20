@@ -31,6 +31,8 @@ WT=/var/home/abyss/LABs/Projects/Project-Vesma/vesma/wt/embed-r8-train
 CORPUS=/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r5-corpus/data/embed-r7/corpus
 export HF_HOME=/var/home/abyss/.distrobox/ubuntu/home/.cache/huggingface
 export HF_HUB_DISABLE_TELEMETRY=1
+export MALLOC_ARENA_MAX=2
+export MALLOC_TRIM_THRESHOLD_=134217728
 export VESMA_R8_SMOKE=1
 LOG="$RUNS/embed-r8-smoke-r8mech.log"
 cd "$WT"
@@ -41,21 +43,38 @@ FAIL=0
 step() { # step <name> <cmd...>
   local name="$1"; shift
   echo "[smoke] $(date -Is) == $name =="
-  if "$@"; then echo "[smoke] $(date -Is) == $name: EXIT 0 =="; else
-    echo "[smoke] $(date -Is) == $name: FAILED (exit $?) =="; FAIL=1; return 1; fi
+  local rc=0
+  if "$@"; then rc=0; else rc=$?; fi
+  if [ "$rc" -eq 0 ]; then echo "[smoke] $(date -Is) == $name: EXIT 0 =="
+  else echo "[smoke] $(date -Is) == $name: FAILED (exit $rc) =="; FAIL=1; return 1; fi
 }
 
 rm -rf "$SMOKE_ROOT"
 mkdir -p "$S1_DIR" "$S2_DIR"
 
+# rerun lane (SKIP_S1_S2=1): S1/S2/SEL already proven in a previous smoke —
+# keep the existing dirs and prove only the tail (export + gate)
+if [ "${SKIP_S1_S2:-0}" = "1" ] && [ -f "$S1_DIR/train_final.json" ] && [ -f "$S2_DIR/epoch1/model.safetensors" ]; then
+  echo "[smoke] SKIP_S1_S2=1 — reusing proven S1/S2 dirs"
+else
+  SKIP_S1_S2=0
+fi
+
 # ── S1: stage-1 trainer mechanics (real pool, 2 steps, full proxy) ──
+if [ "${SKIP_S1_S2:-0}" = "1" ]; then
+  echo "[smoke] SKIP_S1_S2=1 — S1 already proven, skipping"
+else
 step S1-ft-base \
   "$PY_S1" training/embed_r8/ft_base_r8.py \
     --pairs "$RUNS/embed-r8/pairs_r8.json" \
     --out-dir "$S1_DIR" \
-    --epochs 1 --max-steps 2 --threads 12
+    --epochs 1 --max-steps 2 --threads 12 --grad-checkpoint
+fi
 
 # ── S2 fixture: 200 train + 40 val texts, random (240,1024) teacher ──
+if [ "${SKIP_S1_S2:-0}" = "1" ]; then
+  echo "[smoke] SKIP_S1_S2=1 — S2 already proven, skipping"
+else
 step S2-fixture "$PY_S1" - "$CORPUS" "$S2_DIR" <<'EOF'
 import json, sys
 from pathlib import Path
@@ -70,7 +89,7 @@ texts = [json.loads(l)["text"] for l in train + val]
 rng = np.random.default_rng(42)
 v = rng.standard_normal((len(texts), 1024)).astype(np.float32)
 v /= np.linalg.norm(v, axis=1, keepdims=True)
-np.savez(out / "teacher_smoke.npz", vectors=v, texts=np.array(texts, dtype=object))
+np.savez(out / "teacher_vectors.npz", vectors=v, texts=np.array(texts, dtype=object))
 print(f"fixture: {len(texts)} texts, npz {v.shape}")
 EOF
 
@@ -78,7 +97,7 @@ EOF
 step S2-train-kd \
   "$PY_S2" training/embed_r8/train_r8.py \
     --corpus-dir "$S2_DIR/corpus" \
-    --teacher-vectors "$S2_DIR/teacher_smoke.npz" \
+    --teacher-vectors "$S2_DIR/teacher_vectors.npz" \
     --out-dir "$S2_DIR" \
     --epochs 1 --batch-size 32 --threads 8
 
@@ -93,10 +112,13 @@ if [ -f "$S2_DIR/selection.json" ]; then
   echo '{"chosen_epoch": 1, "smoke_shim": true}' > "$S2_DIR/selection.json"
   echo "[smoke] selection shim installed (rule result kept as selection_rule_result.json)"
 fi
+fi
 
-# ── EXP: export mechanics (fp32 + int8-dynamic + latency probe) ──
+# ── EXP: export mechanics (fp32 + int8-dynamic + latency probe); corpus-dir
+# MUST point at the SMOKE corpus (the real-corpus default breaks npz lockstep)
 step EXP-export \
-  "$PY_S2" training/embed_r8/export_r8.py --run-dir "$S2_DIR" --epoch 1
+  "$PY_S2" training/embed_r8/export_r8.py --run-dir "$S2_DIR" --epoch 1 \
+    --corpus-dir "$S2_DIR/corpus"
 
 # ── GATE: gate mechanics on the tiny artifact (quality FAIL expected) ──
 if "$PY_GATE" training/embed_r8/gate_r8.py \
@@ -152,7 +174,8 @@ need(s2 / "gate_smoke.json", g.get("thresholds", {}).get("llm_median") == 0.90
      and g.get("thresholds", {}).get("llm_share") == 0.75)
 gp = {k: v.get("pass") for k, v in g.items() if isinstance(v, dict) and "pass" in v}
 print(f"  gate flags (quality garbage expected): {gp}")
-need(s2 / "gate_smoke.json", "g6a_latency" in g and g["g6a_latency"].get("measured_mean_ms") is not None)
+g6a = (g.get("g6a_report") or {}).get("g6a") or {}
+need(s2 / "gate_smoke.json", bool(g6a) and g6a.get("measured_mean_ms") is not None)
 print("MECHANICS", "PASS" if ok else "FAIL")
 raise SystemExit(0 if ok else 1)
 EOF

@@ -170,6 +170,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-steps", type=int, default=0, help="SMOKE ONLY: cap optimizer steps per epoch (0 = off)")
     ap.add_argument("--skip-proxy", action="store_true")
     ap.add_argument("--skip-eval0", action="store_true", help="resume: epoch-0 record already on file")
+    ap.add_argument("--grad-checkpoint", action="store_true",
+                    help="recompute backbone activations in backward (memory cap lever; "
+                         "loss semantics IDENTICAL — same batch layout/negatives; ~30-40%% "
+                         "more compute per step; activated 2026-10-20 after the 14G-capped "
+                         "smoke OOM: attention-score activations at batch 16x256 fp32 exceed "
+                         "the cap without it")
     args = ap.parse_args(argv)
 
     import os
@@ -200,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
 
     tok = AutoTokenizer.from_pretrained(args.model_id, revision=args.revision)
     model = AutoModel.from_pretrained(args.model_id, revision=args.revision, dtype=torch.float32).to(device)
+    if args.grad_checkpoint:
+        model.config.use_cache = False
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        print("gradient checkpointing ENABLED (memory cap lever)", flush=True)
     model.eval()
     hidden = int(getattr(model.config, "hidden_size", 0))
     assert hidden == 1024, f"unexpected harrier hidden size {hidden}"

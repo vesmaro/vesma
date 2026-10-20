@@ -35,6 +35,8 @@ WT=/var/home/abyss/LABs/Projects/Project-Vesma/vesma/wt/embed-r8-train
 # verified there 2026-10-20) — pin it explicitly, HOME differs on the host
 export HF_HOME=/var/home/abyss/.distrobox/ubuntu/home/.cache/huggingface
 export HF_HUB_DISABLE_TELEMETRY=1
+export MALLOC_ARENA_MAX=2
+export MALLOC_TRIM_THRESHOLD_=134217728
 LOG="$RUN_DIR/chain.log"
 mkdir -p "$S1_DIR"
 cd "$WT"
@@ -119,7 +121,7 @@ while true; do
   "$PY_S1" training/embed_r8/ft_base_r8.py \
     --pairs "$RUN_DIR/pairs_r8.json" \
     --out-dir "$S1_DIR" \
-    --epochs 4 --start-epoch "$START" ${BATCH_ARGS+"${BATCH_ARGS[@]}"}
+    --epochs 4 --start-epoch "$START" --grad-checkpoint ${BATCH_ARGS+"${BATCH_ARGS[@]}"}
   code=$?
   echo "[master] $(date -Is) stage-1 trainer exited code=$code"
   if [ "$code" -eq 4 ]; then echo "[master] non-finite loss — not relaunching"; exit 4; fi

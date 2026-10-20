@@ -156,3 +156,40 @@ stage-2 at `training/runs/embed-r8/`.
   caps verified via `systemctl --user show` → poll per epoch. Selection
   rule, thresholds, export form: UNCHANGED from run_config (fixed
   2026-10-18, still before any decisive step).
+
+## 2026-10-20/21 — mechanics smoke COMPLETE (PASS) — decisive launch cleared
+
+- (smoke OOM, contained) Smoke run 2: stage-1 trainer OOM-KILLED AT THE 14G
+  CAP exactly as designed — "14G memory peak, 16G memory swap peak", unit
+  killed, zcode + desktop UNTOUCHED (the resource isolation worked; first
+  live validation of the attempt-5 fix). Root cause: full-FT backward
+  retains attention-score activations across 28 layers (32 seqs × 256 fp32)
+  — the 2421ce3 estimate under-counted activations.
+- (lever) `--grad-checkpoint` added to ft_base_r8.py (recompute activations
+  in backward; loss semantics IDENTICAL — same batch layout, same
+  in-batch negatives, same schedule; ~30-40% more compute). Wired into
+  stage-A invocation. Verified: peak 12.65G / 12.07G across two runs —
+  fits the non-negotiable cap with ~1.4G margin. BATCH8 marker stays the
+  escalation lever. bf16 autocast REJECTED: CPU lacks amx_bf16/avx512_bf16
+  (software path would slow down); fp32 per run_config stands.
+- (smoke run 3 — full clean-room pass, all EXIT 0): S1 25.7 min total
+  (epoch-0 readout 669 s incl. one-time oneDNN JIT; epoch-1 record 250.3 s
+  covering 2 grad-checkpointed steps + readout + checkpoint → steady-state
+  ~20-25 s/step → 4-epoch decisive stage-1 ≈ 4-5.5 h under CPUQuota 800%);
+  S2 KD trainer 24 s (240-text synthetic corpus, random-teacher npz, proxy
+  monitor + slice metrics + checkpoint + phase record all written); SEL
+  honest-REJECT on garbage proxies (rule step 4) + export shim; EXP 39 s
+  (fp32 + int8-dynamic forms, latency probe); GATE report written under the
+  vesma runtime: thresholds RECALIBRATED 0.90/0.75 asserted, gate set sha
+  cb367577 asserted in-report, g6a subprocess OK (6.41 ms mean, §A.2
+  method), quality flags False as expected for a garbage model.
+- (smoke fixes — smoke script only) fixture npz name → teacher_vectors.npz
+  (export_r8 hardcodes); export --corpus-dir → SMOKE corpus (real-corpus
+  default breaks npz lockstep); inspector key g6a_report.g6a.measured_mean_ms.
+  Standalone inspector re-run vs the smoke artifacts: 16/16 OK.
+- (not smoked) g1 gate_s1m_candidate — judged corpus c2ce056d stays
+  single-touch for the decisive pass; machinery unchanged r5/6/7.
+- (GO) Decisive chain `embed-r8-chain`: MemoryMax=14G MemorySwapMax=16G
+  CPUQuota=800%, stage A→G, resumable per marker. Preflight: RAM 19.8G
+  avail, corpus/pairs/sibling/gate-set shas re-verified this session,
+  harrier @ f9b9dc8d in shared cache, venvs import-verified host-side.
