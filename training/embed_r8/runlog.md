@@ -104,3 +104,55 @@ stage-2 at `training/runs/embed-r8/`.
   detached (setsid nohup), poll: epoch-0 base readout vs sweep anchors
   (burned 0.9407 / S_cal 0.9889 / R@5 1.0 — wild mismatch = recipe
   re-derivation note, not a silent proceed), then per-epoch watch.
+
+## 2026-10-20 — continuation attempt 5 (resource-isolated host-context chain)
+
+- (verify) Machine state post-reboot: swap REPRIORITISED (zram 30.8G pri100 →
+  internal /var/home/swapvol 8G pri10 → usb 64G pri1) — the inverted-swap
+  thrash root cause of the attempt-1..4 oomd kills is STRUCTURALLY FIXED;
+  RAM 20 G available, light load. Pre-flight re-verified: corpus fp
+  ad3d438f… EXACT (recomputed 24841+1228); pairs_r8/sibling_pop shas EXACT
+  (52b82a84b099… / 9f0d0f466ce2…); gate set cb367577… EXACT (180 rows,
+  re-asserted against es5.EXPECTED_GATE_SHA); prereg on origin/main
+  (PR #38 merge 5598251); worktree @ 2421ce3; harrier snapshot RE-VERIFIED
+  present post-reboot: snapshot_download(pinned f9b9dc8d) identity pass,
+  1 208 039 868 bytes total (safetensors 1 192 133 232 as recorded).
+- (DEVIATION, reboot-driven — environment) `systemd-run --user` transient
+  units execute HOST-side (distrobox talks to the host user manager), and
+  box venvs on box /usr are NOT host-executable. Verified importable
+  host-side: nm-eg-r8 (torch 2.14.1+cpu / transformers 5.20.1) and vesma
+  .venv (ORT 1.27.0). Box nm-train is NOT host-executable
+  (/usr/bin/python3.12 = box overlay) → stage-2/export run on
+  `/var/home/abyss/.venvs/nm-train-host` — a HOST-side clone from the same
+  uv cpython-3.12.13 interpreter with EXACT version parity
+  (transformers 5.16.1, onnx 1.22.0, onnxruntime 1.29.0, numpy 2.5.2,
+  safetensors 0.8.0, tokenizers 0.23.1, huggingface_hub 1.29.0; torch
+  2.13.0 **+cpu** wheel vs box 2.13.0+cu130 wheel-used-on-CPU — CPU-only
+  numerics, intra-run determinism by seed 42). Box venvs untouched.
+  HF cache pinned to the box-home path via HF_HOME (harrier verified there).
+- (DEVIATION, mission-ordered — chain scope) master_chain_r8 extended with
+  stage F (export int8-dynamic) + stage G (single-shot gates: gate_r8 THEN
+  g1 gate_s1m_candidate --artifact) — supersedes the 2421ce3 note "export
+  and gates are not chained". Single-shot discipline preserved: once-only
+  markers (gate_pass.json, g1_s1m_report.json), stale-partial guards before
+  export/gate, judged c2ce056d read ONLY in stage G after the export exists.
+  OOM contingency per mission: marker files BATCH8 (ft-stage1) → stage-A
+  relaunch --batch-pairs 8; BATCH16 (run root) → stage-D relaunch
+  --batch-size 16 (KD loss is per-text — batch-independent; an InfoNCE
+  batch change would be a geometry deviation, logged if ever used).
+- (smoke) The predecessor's smoke never completed — trainer mechanics are
+  UNPROVEN on this box, and the host-context venvs are NEW. Running a FULL
+  pipeline mechanics smoke (smoke_chain_r8.sh) in throwaway dirs under the
+  same caps BEFORE the decisive launch: S1 = ft_base_r8 real pool 1 epoch
+  @2 steps WITH proxy harness (es5 never ran under nm-eg-r8/numpy 2.5);
+  S2 = train_r8 on a 240-text synthetic corpus + random teacher npz
+  (VESMA_R8_SMOKE path); SEL = select_checkpoint_r8 rule mechanics; EXP =
+  export_r8 fp32+int8-dynamic WITH latency probe under torch 2.13.0+cpu;
+  GATE = gate_r8 report mechanics incl. g6a subprocess under the host
+  context. g1 S1m NOT smoked — the judged corpus stays single-touch for the
+  decisive pass (machinery unchanged from r5/6/7 production runs).
+- (plan) smoke unit (capped) → verify → cleanup → decisive unit
+  `embed-r8-chain` with MemoryMax=14G MemorySwapMax=16G CPUQuota=800% →
+  caps verified via `systemctl --user show` → poll per epoch. Selection
+  rule, thresholds, export form: UNCHANGED from run_config (fixed
+  2026-10-18, still before any decisive step).
