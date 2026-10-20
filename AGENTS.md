@@ -38,6 +38,12 @@ read it as a constraint, not a suggestion. Product canon lives in [CONTRIBUTING.
 - Worktrees: own `.venv` via `uv sync --extra dev` ONLY (`uv pip install -e` silently
   drifts locked pins and broke the B1 benchmark once); proto stubs are gitignored —
   run `PYTHON="$(uv run which python)" bash scripts/gen-proto.sh` before the first suite.
+- Proto stubs are gitignored and hatchling builds REQUIRE them: any fresh bootstrap is
+  strictly deps-first (`uv sync --no-install-project --extra dev`) →
+  `PYTHON=".venv/bin/python" bash scripts/gen-proto.sh` → `uv sync --extra dev`; never
+  generate stubs with a toolchain newer than the locked one (gencode/runtime mismatch =
+  VersionError at import). 2026-10-20: CI ran red on all three matrix legs since b191962
+  because the editable build hit the force-include before any stub generation.
 - Use `-p no:cacheprovider` when disk pressure is suspected; pytest cache writes have
   killed suite runs on a full disk.
 
