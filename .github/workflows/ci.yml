@@ -81,8 +81,10 @@ jobs:
         run: source .venv/bin/activate && bandit -r src/ -f json -o bandit-report.json
 
       - name: Security (pip-audit)
-        # CVE-2026-45829 has no upstream fix; tracked separately in dependency-updates.md.
-        run: source .venv/bin/activate && pip-audit --ignore-vuln CVE-2026-45829
+        # Ignore list MUST match the Makefile `security` target: CVE-2026-45829
+        # has no upstream fix (tracked in dependency-updates.md); PYSEC-2026-4146
+        # is pyjwt with no fixed release yet (tracked in #476, drop when fixed).
+        run: source .venv/bin/activate && pip-audit --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-4146
 
       - name: Test (pytest)
         run: source .venv/bin/activate && pytest tests/ -q --tb=short
