@@ -31,7 +31,7 @@ import dataclasses
 import importlib
 import logging
 import socket
-import subprocess
+import subprocess  # nosec B404 - Popen argv from validated manifest, no shell
 import threading
 import time
 import urllib.error
@@ -130,7 +130,9 @@ class HttpChecker:
 
     def check(self) -> ProbeResult:
         try:
-            with urllib.request.urlopen(self._url, timeout=self._timeout_s) as response:
+            with urllib.request.urlopen(  # nosec B310 - probe URL from local manifest
+                self._url, timeout=self._timeout_s
+            ) as response:
                 status = response.status
         except (urllib.error.URLError, OSError, ValueError) as exc:
             return ProbeResult(False, f"http probe error: {exc.__class__.__name__}")

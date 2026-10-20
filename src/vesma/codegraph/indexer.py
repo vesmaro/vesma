@@ -443,7 +443,8 @@ class PythonFileParser:
         tree = self._parser.parse(source)
         root = tree.root_node
         spec = language_for_path(rel_path)
-        assert spec is not None  # the surface passed the allowlist
+        if spec is None:  # the surface passed the allowlist — fail closed
+            raise ValueError(f"no language spec for {rel_path!r}")
 
         poisoned = not _secret_allowlisted(rel_path, self._secret_allowlist) and bool(
             detect_secrets(source.decode("utf-8", "replace"))
@@ -588,7 +589,8 @@ class PythonFileParser:
             kind = _KIND_TYPE  # type_alias_statement (PEP 695)
             signature = None
         spec = language_for_path(rel_path)
-        assert spec is not None
+        if spec is None:
+            raise ValueError(f"no language spec for {rel_path!r}")
         graph_node = CodeGraphNode(
             id=_node_id(project, rel_path, name, node.start_point[0] + 1),
             project=project,
@@ -670,7 +672,8 @@ class GoFileParser:
         tree = self._parser.parse(source)
         root = tree.root_node
         spec = language_for_path(rel_path)
-        assert spec is not None  # the surface passed the allowlist
+        if spec is None:  # the surface passed the allowlist — fail closed
+            raise ValueError(f"no language spec for {rel_path!r}")
 
         poisoned = not _secret_allowlisted(rel_path, self._secret_allowlist) and bool(
             detect_secrets(source.decode("utf-8", "replace"))
@@ -761,7 +764,8 @@ class GoFileParser:
         """Emit the Function/Method node; return its qname (the
         enclosing scope for the body's references)."""
         spec = language_for_path(rel_path)
-        assert spec is not None
+        if spec is None:
+            raise ValueError(f"no language spec for {rel_path!r}")
         name_node = node.child_by_field_name("name")
         name = _text(source, name_node) if name_node is not None else ""
         if node.type == "method_declaration":
@@ -807,7 +811,8 @@ class GoFileParser:
         Type. Embedded struct fields and interface ``type_elem`` feed
         the INHERITS pass."""
         spec = language_for_path(rel_path)
-        assert spec is not None
+        if spec is None:
+            raise ValueError(f"no language spec for {rel_path!r}")
         prefix = _go_package_prefix(rel_path)
         for spec_node in decl.named_children:
             name_node = spec_node.child_by_field_name("name")
@@ -1118,7 +1123,8 @@ class ProjectIndexer:
     def parse_file(self, project: str, rel_path: str, source: bytes) -> _FileExtraction:
         """Parse ONE file into its extraction (no store writes)."""
         spec = language_for_path(rel_path)
-        assert spec is not None
+        if spec is None:
+            raise ValueError(f"no language spec for {rel_path!r}")
         return self._parser_for(spec).parse(project, rel_path, source)
 
     # ── limits (PG7, fail-closed) ──────────────────────────────────────────

@@ -64,7 +64,7 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
+import subprocess  # nosec B404 - fixed argv (bash/zsh -n) probe, no shell
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -450,7 +450,7 @@ def _check_shell_syntax(shell: str, rc: Path) -> tuple[bool, str]:
     if shell == "fish":
         return True, ""
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 - shell -n syntax probe, list argv, no shell
             [shell, "-n", str(rc)],  # FileNotFoundError below = binary not installed
             capture_output=True,
             text=True,

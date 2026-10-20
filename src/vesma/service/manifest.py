@@ -907,8 +907,8 @@ def _check_requirements(doc: dict[str, Any]) -> None:
     # must win, not a requirements-echo of a shape error.
     argv_well_formed = isinstance(argv, list) and all(isinstance(arg, str) for arg in argv)
     has_venv_ref = False
-    if argv_well_formed:
-        assert isinstance(argv, list)
+    if argv_well_formed and isinstance(argv, list):
+        # the isinstance re-check exists for mypy narrowing; argv_well_formed is a bool
         has_venv_ref = any("{venv_bin}" in arg for arg in argv)
     requirements_raw: Any = None
     has_python_block = False
@@ -987,7 +987,7 @@ def load_manifest(
             f"cannot read manifest file: {exc}",
         ) from exc
     try:
-        doc = yaml.load(text, Loader=_BoundedSafeLoader)
+        doc = yaml.load(text, Loader=_BoundedSafeLoader)  # nosec B506 - SafeLoader subclass (bounded)
     except yaml.YAMLError as exc:
         raise ManifestError(
             MANIFEST_SCHEMA_INVALID,

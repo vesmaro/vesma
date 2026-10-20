@@ -140,6 +140,7 @@ def detect_installed_dist() -> tuple[str, str] | None:
         try:
             return dist, _md_version(dist)
         except Exception:
+            logger.debug("update detection: %s probe failed, next alias", dist)
             continue
     return None
 
@@ -157,7 +158,9 @@ def fetch_latest(dist: str) -> str:
         PYPI_JSON_URL.format(dist=dist),
         headers={"User-Agent": f"vesma/{__version__} (update-check)"},
     )
-    with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SEC) as response:
+    with urllib.request.urlopen(  # nosec B310 - fixed https PyPI endpoint constant
+        request, timeout=HTTP_TIMEOUT_SEC
+    ) as response:
         payload = json.load(response)
     latest = payload["info"]["version"]
     if not isinstance(latest, str) or not latest:
@@ -291,7 +294,7 @@ def check_for_update(
                 if not load_settings().updates.check_enabled:
                     return None
             except Exception:
-                pass
+                logger.debug("update-check config load failed — default-on posture", exc_info=True)
 
         detected = detect_installed_dist()
         if detected is None:
@@ -422,6 +425,7 @@ def family_latest(
             try:
                 candidates.append(do_fetch(dist))
             except Exception:  # one alias failing must not sink the family
+                logger.debug("family update probe failed for %s", dist)
                 continue
         best = max(candidates, key=version_key) if candidates else None
 

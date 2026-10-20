@@ -563,6 +563,7 @@ class _TTLCache:
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 _DB_SCHEMA = (
+    ""  # nosec B608 - static DDL literal, module constants only
     """
 CREATE TABLE IF NOT EXISTS memories (
     id               TEXT PRIMARY KEY,
@@ -3521,7 +3522,7 @@ class SQLiteStore:
         placeholders = ", ".join("?" for _ in fed_ids)
         conn = self._get_conn()
         rows = conn.execute(
-            f"SELECT * FROM federation_index WHERE id IN ({placeholders})",
+            f"SELECT * FROM federation_index WHERE id IN ({placeholders})",  # nosec B608 - len-derived placeholders
             list(fed_ids),
         ).fetchall()
         return {
@@ -4466,7 +4467,7 @@ class SQLiteStore:
         conn = self._get_conn()
         placeholders = ",".join("?" * len(memory_ids))
         rows = conn.execute(
-            "SELECT memory_id, COUNT(*) AS n FROM edge_stats "
+            "SELECT memory_id, COUNT(*) AS n FROM edge_stats "  # nosec B608 - len-derived placeholders
             f"WHERE memory_id IN ({placeholders}) AND kind = 'used' "
             "GROUP BY memory_id",
             tuple(memory_ids),
