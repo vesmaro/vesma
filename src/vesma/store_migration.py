@@ -237,7 +237,8 @@ def _open_conn(db_path: Path, *, read_only: bool = False) -> sqlite3.Connection:
             with contextlib.suppress(sqlite3.Error):
                 conn.close()
         conn = sqlite3.connect(_ro_uri(db_path), uri=True, timeout=5.0)
-    assert conn is not None
+    if conn is None:  # both connects either succeed or raise — fail closed
+        raise sqlite3.OperationalError("store database could not be opened")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1027,7 +1028,7 @@ def verify_target(target_db: Path, snapshot: _Snapshot, all_db_paths: list[Path]
 
     # 10 seeded sample records: per-field checksums equal under the EXPECTED
     # rewrite (source normalized, target raw).
-    rng = random.Random(_SAMPLE_SEED)
+    rng = random.Random(_SAMPLE_SEED)  # nosec B311 - seeded verification sampling, not security
     ids = list(snap_stats.ids)
     sample_ids = rng.sample(ids, min(_SAMPLE_SIZE, len(ids)))
     sample_mismatches = 0
@@ -1037,10 +1038,10 @@ def verify_target(target_db: Path, snapshot: _Snapshot, all_db_paths: list[Path]
         columns = ", ".join(_SAMPLE_FIELDS)
         for memory_id in sample_ids:
             snap_row = snap_conn.execute(
-                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)
+                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)  # nosec B608 - static column list
             ).fetchone()
             tgt_row = tgt_conn.execute(
-                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)
+                f"SELECT {columns} FROM memories WHERE id = ?", (memory_id,)  # nosec B608 - static column list
             ).fetchone()
             if snap_row is None or tgt_row is None:
                 sample_mismatches += 1

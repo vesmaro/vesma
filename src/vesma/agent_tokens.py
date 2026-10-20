@@ -469,7 +469,9 @@ def _load_signing_key(path: Path) -> Ed25519PrivateKey:
 #: WAL; ``CREATE TABLE IF NOT EXISTS``). Token plaintexts are NEVER stored:
 #: only jti + issuance metadata (the plaintext exists only in the CLI
 #: output and the harness's 0600 file).
-_AGENT_TOKEN_DDL = """
+_AGENT_TOKEN_DDL = (
+    ""  # nosec B105 - SQL DDL schema literal, not a credential
+    """
 CREATE TABLE IF NOT EXISTS agent_tokens (
     jti         TEXT PRIMARY KEY,
     agent_id    TEXT NOT NULL,
@@ -483,6 +485,7 @@ CREATE TABLE IF NOT EXISTS agent_tokens (
 CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent ON agent_tokens(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_tokens_exp  ON agent_tokens(exp);
 """
+)
 
 
 class AgentTokenStore:

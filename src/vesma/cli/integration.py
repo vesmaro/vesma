@@ -1895,7 +1895,8 @@ class IntegrationManager:
         run before this in ``setup()``) has just placed there.
         """
         ext = target.mcp_config
-        assert ext is not None  # guaranteed by targets.yaml schema
+        if ext is None:  # targets.yaml schema guarantees a path — fail closed
+            return False, "target has no mcp_config path (targets.yaml schema drift)"
         if not ext.exists():
             return False, f"bridge extension missing: {ext} — run deploy first"
         deployed_version = read_stamp(ext.read_text(encoding="utf-8", errors="replace"))
@@ -1919,7 +1920,8 @@ class IntegrationManager:
         managed; a foreign ``mnemos`` entry is preserved as data.
         """
         cfg_path = target.mcp_config
-        assert cfg_path is not None  # guaranteed by register_mcp dispatch
+        if cfg_path is None:  # register_mcp dispatch guarantees a path — fail closed
+            return False, "target has no mcp_config path (register_mcp dispatch drift)"
         try:
             text = _read_user_text(cfg_path) if cfg_path.exists() else ""
         except (OSError, UnicodeDecodeError) as exc:
@@ -2029,7 +2031,8 @@ class IntegrationManager:
         ``tomllib`` before the atomic write.
         """
         cfg_path = target.mcp_config
-        assert cfg_path is not None  # guaranteed by unregister_mcp dispatch
+        if cfg_path is None:  # unregister_mcp dispatch guarantees a path — fail closed
+            return False, "target has no mcp_config path (unregister_mcp dispatch drift)"
         if not cfg_path.exists():
             return False, f"{cfg_path} does not exist — nothing to unregister"
         try:
@@ -2096,7 +2099,8 @@ class IntegrationManager:
         foreign data, preserved untouched.
         """
         cfg_path = target.mcp_config
-        assert cfg_path is not None  # guaranteed by register_mcp dispatch
+        if cfg_path is None:  # register_mcp dispatch guarantees a path — fail closed
+            return False, "target has no mcp_config path (register_mcp dispatch drift)"
         try:
             data = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
         except (OSError, json.JSONDecodeError) as exc:

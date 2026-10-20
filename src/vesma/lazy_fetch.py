@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404 - fixed argv mesh fetch, no shell
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -353,7 +353,7 @@ def fetch_from_peer(
         argv += ["--id", fed_id]
     argv += ["--json"]
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 - fixed argv to mesh CLI, no shell
             argv,
             capture_output=True,
             timeout=FETCH_TIMEOUT_S,

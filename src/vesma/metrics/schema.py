@@ -431,7 +431,7 @@ def migrate_awareness_events_kinds(conn: Any) -> None:
             + ";\n"  # nosec B608 - derived from the static table schema
             + "INSERT INTO "
             + _AWARENESS_KINDS_REBUILD_TABLE  # nosec B608 - static copy stmt
-            + " (id, ts, kind, project, agent, session, meta_json) "
+            + " (id, ts, kind, project, agent, session, meta_json) "  # nosec B608 - static copy stmt
             "SELECT id, ts, kind, project, agent, session, meta_json "
             "FROM awareness_events;\n"
             "DROP TABLE awareness_events;\n"

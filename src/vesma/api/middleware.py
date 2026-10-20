@@ -282,7 +282,7 @@ class VitalsVerbMiddleware(BaseHTTPMiddleware):
                     status_code=status_code,
                 )
             except Exception:
-                pass
+                logger.debug("verb vitals recording failed for %s", verb, exc_info=True)
 
 
 # ── REST deprecation aliases (card vesma-rest-deprecation-middleware) ────────

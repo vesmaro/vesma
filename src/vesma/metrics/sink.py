@@ -837,7 +837,7 @@ class MetricsStore(VerbLedgerMixin):
                     continue  # counted implicitly via the parent delete
                 if table == "verb_metrics_hourly":
                     cutoff_hour = int((now - timedelta(days=days)).timestamp() // 3600)
-                    cur = conn.execute(f"DELETE FROM {table} WHERE hour < ?", (cutoff_hour,))
+                    cur = conn.execute(f"DELETE FROM {table} WHERE hour < ?", (cutoff_hour,))  # nosec B608
                 elif table == "assemble_metrics":
                     cutoff: float = (now - timedelta(days=days)).timestamp()
                     # children first — their only time anchor is the parent's ts
@@ -851,10 +851,10 @@ class MetricsStore(VerbLedgerMixin):
                         " (SELECT id FROM assemble_metrics WHERE ts < ?)",
                         (cutoff,),
                     )
-                    cur = conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))
+                    cur = conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))  # nosec B608
                 else:
                     cutoff_ts = (now - timedelta(days=days)).timestamp()
-                    cur = conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff_ts,))
+                    cur = conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff_ts,))  # nosec B608
                 deleted[table] = cur.rowcount
             conn.commit()
         except Exception:

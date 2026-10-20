@@ -64,7 +64,7 @@ import logging
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - fixed argv systemctl/pip flows, no shell
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -225,7 +225,7 @@ def _go_binaries() -> list[str]:
 def _run_cmd(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str] | None:
     """Run a subprocess, returning ``None`` instead of raising on failure."""
     try:
-        return subprocess.run(
+        return subprocess.run(  # nosec B603 - internal systemctl/pip argv, no shell
             cmd,
             capture_output=True,
             text=True,
@@ -540,6 +540,7 @@ def _installed_legacy_dists() -> list[tuple[str, str]]:
         try:
             found.append((legacy, md.version(legacy)))
         except Exception:
+            logger.debug("legacy dist probe: %s unavailable", legacy)
             continue
     return found
 

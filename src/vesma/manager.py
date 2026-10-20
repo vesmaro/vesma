@@ -804,7 +804,10 @@ class MemoryManager:
                 baseline = DeterministicProvider()
                 baseline.evaluate(IsDuplicateRequest(), state)
             except Exception:
-                pass
+                logger.debug(
+                    "code=DECISION-E-PROBE baseline fallback evaluate failed",
+                    exc_info=True,
+                )
 
     @property
     def embedder(self) -> EmbeddingProvider:
@@ -3085,12 +3088,12 @@ class MemoryManager:
             conn = self.sqlite._get_conn()
             placeholders = ",".join("?" * len(memory_ids))
             outgoing = conn.execute(
-                "SELECT from_memory_id, to_memory_id, weight FROM memory_edges "
+                "SELECT from_memory_id, to_memory_id, weight FROM memory_edges "  # nosec B608
                 f"WHERE from_memory_id IN ({placeholders}) AND kind = ?",
                 (*memory_ids, kind),
             ).fetchall()
             incoming = conn.execute(
-                "SELECT to_memory_id, from_memory_id, weight FROM memory_edges "
+                "SELECT to_memory_id, from_memory_id, weight FROM memory_edges "  # nosec B608
                 f"WHERE to_memory_id IN ({placeholders}) AND kind = ?",
                 (*memory_ids, kind),
             ).fetchall()
@@ -5401,7 +5404,10 @@ class MemoryManager:
 
             raise GraphToolError("agent attribution is required (PG7): pass the caller's agent id")
         service = self.get_codegraph_service()
-        assert service is not None  # enabled ⇒ the lazy build always yields one
+        if service is None:  # enabled ⇒ the lazy build always yields one; fail closed
+            from vesma.codegraph.service import GraphToolError
+
+            raise GraphToolError("code graph service unavailable despite enabled=true")
         return self._get_graph_scheduler(service).register(
             project_id.strip(),
             agent=agent.strip(),

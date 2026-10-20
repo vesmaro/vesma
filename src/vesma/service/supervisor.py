@@ -82,7 +82,7 @@ import logging
 import os
 import random
 import signal
-import subprocess
+import subprocess  # nosec B404 - Popen argv from validated manifest, no shell
 import sys
 import threading
 import time
@@ -182,7 +182,7 @@ FORCE_KILL_DELAY_S = 0.5
 FIXED_PATH_TAIL = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PYTHONNO_USERSITE = "1"
 
-_SUPERVISOR_COMPONENT_TOKEN = "supervisor"
+_SUPERVISOR_COMPONENT_TOKEN = "supervisor"  # nosec B105 - journal label, not a credential
 _SIGNAL_PREFIX = "SIG"
 
 
@@ -1652,7 +1652,8 @@ class Supervisor:
 
 
 def _default_jitter(value: float) -> float:
-    return value * (1.0 + random.uniform(-JITTER_SPAN, JITTER_SPAN))
+    """Scheduling jitter (thundering-herd damping) — not a security primitive."""
+    return value * (1.0 + random.uniform(-JITTER_SPAN, JITTER_SPAN))  # nosec B311
 
 
 def _topological_order(manifests: Mapping[str, ComponentManifest]) -> list[str]:
