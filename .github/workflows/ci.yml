@@ -56,9 +56,15 @@ jobs:
         # (none of which had been changed in the PR). Pinning to the same
         # major.minor version local dev uses keeps CI deterministic.
         run: |
-          uv venv
-          source .venv/bin/activate
-          uv pip install -e ".[dev]"
+          # Bootstrap order: the editable build fails on a fresh checkout —
+          # hatchling force-include (pyproject.toml) requires the gitignored
+          # gRPC stubs at federation/gen/python, but scripts/gen-proto.sh
+          # needs grpc_tools from the dev deps. Install deps only first
+          # (--no-install-project skips the project build), generate the
+          # stubs with the locked toolchain, then install the project.
+          uv sync --no-install-project --extra dev
+          PYTHON=".venv/bin/python" bash scripts/gen-proto.sh
+          uv sync --extra dev
           uv pip install "ruff>=0.15,<0.16"
 
       - name: Lint (ruff)
@@ -115,6 +121,15 @@ jobs:
       # no privileged mode, and works on stock ubuntu-latest runners.
       - name: Install buildah
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends buildah
+
+      - name: Generate gRPC stubs
+        # federation/gen/python is gitignored; both the Dockerfile COPY and
+        # the in-image pip build (hatchling force-include in pyproject.toml)
+        # require it. Generated with the runner's system python — stub
+        # generation needs grpc_tools/protobuf, not the project install.
+        run: |
+          python -m pip install --quiet grpcio-tools protobuf
+          python scripts/gen-proto.sh
 
       - name: Build image
         run: buildah bud -t vesma:test .
