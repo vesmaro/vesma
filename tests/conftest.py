@@ -36,16 +36,54 @@ and strips path-bearing env vars (``VESMA_CONFIG``, store-path overrides,
 XDG roots), so no test resolves the invoking user's live ``~/.vesma`` —
 neither the config-search read nor call-time ``Path.home()`` writers such
 as the sync/scanner audit logs. Guard: ``tests/test_store_isolation_guard.py``.
+
+Console env profile (CI-only help-test failures, 2026-10-20)
+--------------------------------------------------------------
+CI runners export color-forcing variables (``FORCE_COLOR``,
+``CLICOLOR_FORCE``, ``GITHUB_ACTIONS``, …) that rich/typer/click honor even
+under CliRunner's pipe capture: typer BAKES ``FORCE_TERMINAL=True`` at
+``typer.rich_utils`` import time, and rich injects ANSI spans mid-string
+("Tip: add \\x1b[1;32m-h\\x1b[0m …", option names split as
+"-\\x1b[0m\\x1b[1;2;36m-check"), so plain substring assertions stop
+matching. The profile below strips those variables for the WHOLE pytest
+process BEFORE any vesma/typer import — per-invocation ``env=`` pins cannot
+undo import-time baking, so the process level is the only reliable seam.
+Under a clean shell this is a no-op (every locally-green test renders
+byte-identically); under CI it makes console output identical to local.
+Guard: ``tests/test_console_env_profile_guard.py``.
 """
 
 from __future__ import annotations
 
+import os
 import sys
-from collections.abc import Iterator
-from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
+#: Color-forcing variables deleted for the whole pytest run (see profile
+#: docstring). ``NO_COLOR`` is set as defense-in-depth for any consumer that
+#: checks it directly (rich's own ``no_color`` detection). Deliberately does
+#: NOT touch ``COLUMNS``/``TERM``: none of the observed failures involve
+#: wrapping, and pinning width would change rendering for every test.
+_COLOR_FORCING_VARS: tuple[str, ...] = (
+    "FORCE_COLOR",
+    "CLICOLOR_FORCE",
+    "PY_COLORS",
+    "GITHUB_ACTIONS",
+    "TTY_COMPATIBLE",
+)
+
+for _var in _COLOR_FORCING_VARS:
+    os.environ.pop(_var, None)
+os.environ.setdefault("NO_COLOR", "1")
+del _var
+
+# Imports deliberately AFTER the env surgery: the profile must be applied
+# before any import that could bake console state (same seam as the
+# `import vesma` noqa below).
+from collections.abc import Iterator  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
+
+import pytest  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Import pin (#288) — the suite MUST import THIS checkout's vesma
