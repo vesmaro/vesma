@@ -276,6 +276,19 @@ EXPECTED_EMBEDDER_FINGERPRINT: Final[str] = (
 #: JSON numbers remain the human-readable reference of the baseline run.
 BEHAVIORAL_SIMILARITY_BAND: Final[float] = 0.01
 
+#: Candidate membership depth for the baseline pin. The corpus's
+#: adversarial lookalike fixtures are deliberate NEAR-TIES: two candidates
+#: sit within platform SIMD noise (~6e-4 observed) and the exact argmax
+#: flips by runner hardware — CI runner #3 flipped
+#: edge-date-version-lookalike.json's top-1 between
+#: intake-report-week39.json and task.json (gap ~4e-4). Pinning top-1
+#: pins the noise, not the semantics; a different model/artifact instead
+#: SCRAMBLES the whole ranking, so top-K membership keeps that caught.
+#: Paired with the near-tie gap assert in the test: the frozen candidate
+#: and the actual winner must measure within BEHAVIORAL_SIMILARITY_BAND
+#: of each other, so a semantic reorder still fails here.
+TOP_K_CANDIDATES: Final[int] = 3
+
 _SNAPSHOT_PATH: Final[Path] = Path(__file__).parent / "data" / "w4b_corpus_snapshot.json"
 
 
@@ -382,13 +395,21 @@ def test_baseline_reproducible_on_corpus(
     provider: DeterministicProvider,
     embedder: NanoProvider,
 ) -> None:
-    """BEHAVIOR half of the baseline pin: decisions exact, similarity in band.
+    """BEHAVIOR half of the baseline pin: decisions exact, ranking stable.
 
     Same corpus pins, same embedder leg (NanoProvider / vesma-embed-v1 —
     the engine's own vector-leg embedder), same streaming policy. The
     layered contract:
 
-    * duplicate verdicts, candidates and record quality reproduce EXACTLY;
+    * duplicate verdicts and record quality reproduce EXACTLY;
+    * the frozen candidate must stay within the TOP_K_CANDIDATES ranking
+      of the record's priors — near-tie adversarial fixtures may flip the
+      exact argmax within SIMD noise, but a different model/artifact
+      scrambles the whole ranking (caught here);
+    * the measured gap between the frozen candidate and the ACTUAL winner
+      must stay within BEHAVIORAL_SIMILARITY_BAND — this is what makes the
+      membership contract sound: a noise-scale flip passes, a semantic
+      reorder pushes the winner far from the frozen candidate and fails;
     * similarities must land within BEHAVIORAL_SIMILARITY_BAND of the
       frozen reference numbers — the JSON numbers are the human-readable
       reference of the baseline run, not a float contract (platform noise
@@ -401,6 +422,7 @@ def test_baseline_reproducible_on_corpus(
     """
     vectors = [embedder.embed(view.embedding_text()) for _, view in corpus]
     index = {id(view): i for i, (_, view) in enumerate(corpus)}
+    views = dict(corpus)
 
     def cosine(a: CanonRecordView, b: CanonRecordView) -> float:
         va, vb = vectors[index[id(a)]], vectors[index[id(b)]]
@@ -411,12 +433,47 @@ def test_baseline_reproducible_on_corpus(
 
     verdicts = run_streaming_baseline(corpus, provider, cosine)
     assert len(verdicts) == len(EXPECTED_BASELINE) == 21
-    for verdict, expected in zip(verdicts, EXPECTED_BASELINE, strict=True):
+    for i, (verdict, expected) in enumerate(zip(verdicts, EXPECTED_BASELINE, strict=True)):
         key, prob, candidate, similarity = expected
         assert verdict.key == key
         actual_prob = None if verdict.is_duplicate is None else verdict.is_duplicate.probability
         assert actual_prob == prob, f"{key}: is-duplicate drifted: {actual_prob} != {prob}"
-        assert verdict.is_duplicate_candidate == candidate, f"{key}: candidate drifted"
+
+        if candidate is None:
+            # Unaskable record (streamed first — no prior to adjudicate).
+            assert verdict.is_duplicate_candidate is None, f"{key}: unexpected candidate"
+        else:
+            # Same ranking the runner performs (cosine over priors in
+            # corpus order, ties to the earliest) — lifted to top-K here
+            # because the verdict payload carries only the winner.
+            ranked = sorted(
+                (
+                    (cosine(corpus[i][1], prior_view), j)
+                    for j, (_, prior_view) in enumerate(corpus[:i])
+                ),
+                key=lambda pair: (-pair[0], pair[1]),
+            )
+            top_k = {corpus[j][0] for _, j in ranked[:TOP_K_CANDIDATES]}
+            assert candidate in top_k, (
+                f"{key}: frozen candidate left the top-{TOP_K_CANDIDATES} ranking: "
+                f"{candidate!r} not in {sorted(top_k)} (ranking: "
+                f"{[(corpus[j][0], round(s, 6)) for s, j in ranked[:TOP_K_CANDIDATES]]})"
+            )
+            # Near-tie soundness: the ACTUAL winner (product output, not
+            # our ranking) must measure within the noise band of the
+            # frozen candidate — a noise-scale argmax flip passes, a
+            # semantic reorder does not. Identity of the winner vs the
+            # frozen candidate is deliberately NOT pinned.
+            winner = verdict.is_duplicate_candidate
+            assert winner is not None, f"{key}: candidate vanished from the verdict"
+            winner_sim = cosine(corpus[i][1], views[winner])
+            expected_sim = cosine(corpus[i][1], views[candidate])
+            assert abs(winner_sim - expected_sim) <= BEHAVIORAL_SIMILARITY_BAND, (
+                f"{key}: winner {winner!r} is not a near-tie of the frozen "
+                f"candidate {candidate!r}: |{winner_sim:.6f} - {expected_sim:.6f}| "
+                f"exceeds {BEHAVIORAL_SIMILARITY_BAND}"
+            )
+
         actual_sim = None if verdict.similarity is None else round(verdict.similarity, 6)
         if similarity is None:
             assert actual_sim is None, f"{key}: unexpected similarity {actual_sim}"
