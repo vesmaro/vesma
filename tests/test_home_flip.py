@@ -69,6 +69,15 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for key in list(os.environ):
         if key.startswith("VESMA_"):
             monkeypatch.delenv(key, raising=False)
+    # The suite is offline by contract (conftest no_update_check_network).
+    # This fixture's VESMA_* wipe silently removed the update-check kill
+    # switch, so `vesma update check` performed a REAL PyPI fetch and —
+    # when config resolution failed on the seeded legacy layout — wrote
+    # its cache through the module's FALLBACK path (CI job 119044242827:
+    # created ~/.local/share/vesma/update-check.json in the REAL home;
+    # the user-store guard caught it). Keep the switch on: these tests
+    # exercise the migrate hint, not update info.
+    monkeypatch.setenv("VESMA_UPDATES_CHECK", "off")
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: home)

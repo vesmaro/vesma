@@ -51,7 +51,23 @@ CACHE_FILENAME = "update-check.json"
 CACHE_TTL = timedelta(hours=24)
 NEGATIVE_CACHE_TTL = timedelta(hours=1)
 HISTORY_FILENAME = "update-history.json"
-FALLBACK_UPDATE_DIR = Path("~/.local/share/vesma").expanduser()
+
+
+def _fallback_update_dir() -> Path:
+    """``~/.local/share/vesma``, resolved at CALL time — never at import.
+
+    The previous module-level ``FALLBACK_UPDATE_DIR = expanduser(...)`` froze
+    the INVOKING user's home when the module was first imported — and the
+    test suite imports it during collection, before the per-test HOME
+    isolation flips in. A fallback cache write then landed in the real
+    user store (observed on CI, job 119044242827: a created
+    ``~/.local/share/vesma/update-check.json`` tripped
+    tests/test_user_store_guard.py). Call-time resolution honors whatever
+    HOME is current, which is also the correct product behavior for any
+    surface that re-resolves its environment.
+    """
+    return Path("~/.local/share/vesma").expanduser()
+
 
 #: Pip distributions that can carry this server, in upgrade-priority order
 #: (first hit wins — this is the dist ``vesma update`` pip-upgrades).
@@ -184,7 +200,7 @@ def resolve_cache_path(settings: Settings | None = None) -> Path:
             settings = load_settings()
         return Path(settings.vesma.data_dir).expanduser() / CACHE_FILENAME
     except Exception:
-        return FALLBACK_UPDATE_DIR / CACHE_FILENAME
+        return _fallback_update_dir() / CACHE_FILENAME
 
 
 def _write_cache(
