@@ -193,3 +193,28 @@ stage-2 at `training/runs/embed-r8/`.
   CPUQuota=800%, stage A→G, resumable per marker. Preflight: RAM 19.8G
   avail, corpus/pairs/sibling/gate-set shas re-verified this session,
   harrier @ f9b9dc8d in shared cache, venvs import-verified host-side.
+
+## 2026-10-21 — STAGE-1 COMPLETE; selection = RAW BASE (rule fallback); plumbing repair
+
+- (stage A final, decisive) 4 FT epochs + base, all committed readouts on
+  file (full-1024): epoch1 llm 0.9934/sd 0.9961/mono 0.8364/cross 0.9667;
+  epoch2 0.9952/0.9964/0.8151/0.9667; epoch3 0.9954/0.9960/0.7854/0.9667;
+  epoch4 0.9957/0.9963/0.7781/cross 0.9694; loss 1.1305→0.7181. Walls
+  201.7/154.8/146.2/168.0 min (grad-checkpoint ON, CPUQuota 800%).
+- (SELECTION VERDICT — the rule worked as designed) ALL FT epochs FAIL the
+  pre-committed geometry_hold guard (cross R@5 ≥ base −0.01 = 0.9872): FT
+  traded ~3 points of native cross-lingual geometry for calibration
+  (composite 0.760 → 0.996). candidate_epochs = [0] → chosen_epoch = 0 —
+  the TEACHER IS THE RAW PINNED BASE (harrier @ f9b9dc8d, the sweep-audited
+  weights). This is the rule's designed degradation path, NOT a malfunction
+  and NOT checkpoint shopping. Scientific reading: the FT lever (in-batch
+  MN InfoNCE on the pair pool, conservative lr) CANNOT improve the base
+  without denting the geometry the round's thesis rests on — recorded as
+  the stage-1 negative result. The round's decisive variable becomes
+  «harrier-0.6b as-is» vs r7's Qwen3-0.6b as-is teacher.
+- (plumbing repair — NOT a rule change) stage C crashed on a missing
+  epoch0 checkpoint dir (epoch 0 records a readout, never saves weights —
+  by design). precompute_teacher_r8 now loads MODEL_ID @ pinned revision
+  from the HF cache when chosen_epoch == 0 (bit-identical to the weights
+  the epoch-0 readout measured); proof JSON records teacher_route.
+  Commit before relaunch; chain resumes at stage C per markers.

@@ -61,6 +61,10 @@ def corpus_texts() -> list[str]:
     return texts
 
 
+MODEL_ID = "microsoft/harrier-oss-v1-0.6b"
+MODEL_REVISION = "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--threads", type=int, default=THREADS)
@@ -70,9 +74,20 @@ def main() -> int:
     chosen = sel.get("chosen_epoch")
     if chosen is None:
         raise SystemExit("ft_selection.json has no chosen_epoch — run select_ft_r8 first")
-    ckpt = S1_DIR / f"epoch{chosen}"
-    if not (ckpt / "model.safetensors").exists() and not (ckpt / "config.json").exists():
-        raise SystemExit(f"chosen checkpoint missing: {ckpt}")
+    if chosen == 0:
+        # selection-rule fallback: the RAW pinned base is the teacher (the
+        # pre-committed rule degrades a geometry-harmful FT to the
+        # sweep-audited base). No epoch0 checkpoint exists by design — load
+        # the pinned HF snapshot: bit-identical to the weights the stage-1
+        # epoch-0 base readout measured.
+        ckpt = MODEL_ID
+        from_kw = {"revision": MODEL_REVISION}
+        print("teacher = RAW PINNED BASE (selection fallback, chosen_epoch=0)", flush=True)
+    else:
+        ckpt = S1_DIR / f"epoch{chosen}"
+        from_kw = {}
+        if not (ckpt / "model.safetensors").exists() and not (ckpt / "config.json").exists():
+            raise SystemExit(f"chosen checkpoint missing: {ckpt}")
 
     texts = corpus_texts()
     print(f"r8 corpus OK: {len(texts)} texts (fp {EXPECTED_FP[:12]}…); teacher = epoch{chosen}", flush=True)
@@ -84,8 +99,8 @@ def main() -> int:
     from training.distill import last_token_pool
 
     torch.set_num_threads(args.threads)
-    tok = AutoTokenizer.from_pretrained(ckpt)
-    model = AutoModel.from_pretrained(ckpt, dtype=torch.bfloat16).to("cpu").eval()
+    tok = AutoTokenizer.from_pretrained(ckpt, **from_kw)
+    model = AutoModel.from_pretrained(ckpt, dtype=torch.bfloat16, **from_kw).to("cpu").eval()
     assert int(getattr(model.config, "hidden_size", 0)) == 1024, "teacher hidden != 1024"
 
     vectors = np.zeros((len(texts), 1024), dtype=np.float32)
@@ -144,6 +159,9 @@ def main() -> int:
         "kind": "embed-r8-teacher-precompute-proof",
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "teacher_ckpt": str(ckpt),
+        "teacher_revision": MODEL_REVISION if chosen == 0 else "local stage-1 checkpoint",
+        "teacher_route": "selection fallback: raw pinned base (chosen_epoch=0)" if chosen == 0
+        else f"FT stage-1 checkpoint epoch{chosen}",
         "stage1_chosen_epoch": chosen,
         "npz_sha256": hashlib.sha256(OUT_NPZ.read_bytes()).hexdigest(),
         "out_shape": list(back["vectors"].shape),
