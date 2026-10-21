@@ -188,7 +188,8 @@ if [ ! -f "$RUN_DIR/export/measure_forms.json" ]; then
   fi
   EPOCH=$("$PY_S2" - "$RUN_DIR" <<'EOF'
 import json, sys
-sel = json.loads((sys.argv[1] + "/selection.json").read_text())
+from pathlib import Path
+sel = json.loads((Path(sys.argv[1]) / "selection.json").read_text())
 print(int(sel["chosen_epoch"]))
 EOF
 )
