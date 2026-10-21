@@ -253,6 +253,33 @@ def test_corrupt_cache_is_ignored(cache_file: Path) -> None:
     assert info.update_available is True
 
 
+def test_fallback_cache_path_resolves_at_call_time(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The no-settings fallback resolves HOME lazily, never frozen at import.
+
+    Regression pin (CI job 119044242827): the fallback directory used to be
+    an import-time ``expanduser()``, so importing ``vesma.updates`` during
+    collection baked the INVOKING user's real home into every fallback
+    cache write. When a config-resolution failure (e.g. the legacy-layout
+    seed in test_home_flip) pushed a write onto the fallback, it landed in
+    the operator's real ``~/.local/share/vesma`` and the user-store guard
+    failed CI-only. The fallback must honor whatever HOME is current at
+    the moment of the call.
+    """
+    flipped_home = tmp_path / "flipped-home"
+    flipped_home.mkdir()
+
+    def _raise(settings=None):  # type: ignore[no-untyped-def]
+        raise RuntimeError("settings intentionally unavailable in this scenario")
+
+    monkeypatch.setenv("HOME", str(flipped_home))
+    monkeypatch.setattr("vesma.config.load_settings", _raise)
+
+    resolved = updates.resolve_cache_path()  # settings=None → load_settings raises
+    assert resolved == flipped_home / ".local" / "share" / "vesma" / "update-check.json"
+
+
 # ── dist detection ───────────────────────────────────────────────────────────
 
 
