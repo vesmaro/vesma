@@ -22,6 +22,10 @@ State diagram (vesma #96, ArchCom 2026-07-18)::
 
     blocked → done   FORBIDDEN  (blocker must resolve first)
     done, withdrawn  terminal   (no further transitions)
+    tombstoned       terminal   (soft-delete marker, ArchCom 2026-10-18;
+                                 enterable from ANY state ONLY via the
+                                 owner-only delete path — the generic
+                                 workflow set surface refuses it)
 
 The forbidden ``blocked → done`` edge forces a blocker to go through
 ``resolved`` before a memory can be marked done — an agent cannot silently
@@ -39,7 +43,8 @@ class WorkflowStatus(StrEnum):
     Distinct from ``MemoryStatus`` (raw/processing/processed/published/
     archived), which tracks the *knowledge-pipeline* stage. ``WorkflowStatus``
     tracks the *work lifecycle* — whether a piece of work on the memory is
-    open, in progress, blocked, resolved, done, or withdrawn.
+    open, in progress, blocked, resolved, done, withdrawn — or deleted
+    (``tombstoned``).
     """
 
     OPEN = "open"
@@ -48,39 +53,64 @@ class WorkflowStatus(StrEnum):
     RESOLVED = "resolved"
     DONE = "done"
     WITHDRAWN = "withdrawn"
+    #: Stage 1 delete (ArchCom 2026-10-18, mnemos 24f32fa7): soft-delete
+    #: marker. Enterable from ANY state through the owner-only delete path
+    #: (deletion knows no workflow state — a done/blocked work item can be
+    #: deleted just like an open one). Terminal: no outgoing edges —
+    #: Stage 1 has NO undelete; Stage 2 (hard purge) consumes the row.
+    TOMBSTONED = "tombstoned"
 
 
 #: Terminal states — once reached, no further transition is permitted.
 TERMINAL_STATUSES: frozenset[WorkflowStatus] = frozenset(
-    {WorkflowStatus.DONE, WorkflowStatus.WITHDRAWN}
+    {WorkflowStatus.DONE, WorkflowStatus.WITHDRAWN, WorkflowStatus.TOMBSTONED}
 )
 
 #: Allowed transitions from each state. The absence of an edge is itself a
 #: rule: ``blocked`` has no edge to ``done``, so a stuck dependency must go
 #: through ``resolved`` first (the forbidden edge enforced server-side).
 #:
-#: ``open`` → ``in-progress`` (start work), ``withdrawn`` (cancel before start)
+#: ``open`` → ``in-progress`` (start work), ``withdrawn`` (cancel before start),
+#:           ``tombstoned`` (delete)
 #:           NOTE: ``open`` has no edge to ``blocked`` — a memory must enter
 #:           ``in-progress`` before it can be blocked (you cannot block work
 #:           that has not started).
 #: ``in-progress`` → ``blocked`` (hit a dependency/stuck), ``done`` (finish),
-#:                   ``withdrawn`` (abandon mid-work)
-#: ``blocked`` → ``resolved`` (blocker cleared), ``withdrawn`` (give up)
-#:               NOTE: no edge to ``done`` — the blocker must resolve first
+#:                   ``withdrawn`` (abandon mid-work), ``tombstoned`` (delete)
+#: ``blocked`` → ``resolved`` (blocker cleared), ``withdrawn`` (give up),
+#:              ``tombstoned`` (delete)
+#:              NOTE: no edge to ``done`` — the blocker must resolve first
 #: ``resolved`` → ``in-progress`` (resume work), ``done`` (finish post-resolve),
-#:                ``withdrawn`` (abandon post-resolve)
-#: ``done`` / ``withdrawn`` → (terminal, no outgoing edges)
+#:                ``withdrawn`` (abandon post-resolve), ``tombstoned`` (delete)
+#: ``done`` / ``withdrawn`` → ``tombstoned`` (delete) — the ONLY edge out of a
+#:              workflow-terminal state; ``tombstoned`` itself is terminal.
+#: ``tombstoned`` → (terminal, no outgoing edges)
 ALLOWED_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
-    WorkflowStatus.OPEN: frozenset({WorkflowStatus.IN_PROGRESS, WorkflowStatus.WITHDRAWN}),
+    WorkflowStatus.OPEN: frozenset(
+        {WorkflowStatus.IN_PROGRESS, WorkflowStatus.WITHDRAWN, WorkflowStatus.TOMBSTONED}
+    ),
     WorkflowStatus.IN_PROGRESS: frozenset(
-        {WorkflowStatus.BLOCKED, WorkflowStatus.DONE, WorkflowStatus.WITHDRAWN}
+        {
+            WorkflowStatus.BLOCKED,
+            WorkflowStatus.DONE,
+            WorkflowStatus.WITHDRAWN,
+            WorkflowStatus.TOMBSTONED,
+        }
     ),
-    WorkflowStatus.BLOCKED: frozenset({WorkflowStatus.RESOLVED, WorkflowStatus.WITHDRAWN}),
+    WorkflowStatus.BLOCKED: frozenset(
+        {WorkflowStatus.RESOLVED, WorkflowStatus.WITHDRAWN, WorkflowStatus.TOMBSTONED}
+    ),
     WorkflowStatus.RESOLVED: frozenset(
-        {WorkflowStatus.IN_PROGRESS, WorkflowStatus.DONE, WorkflowStatus.WITHDRAWN}
+        {
+            WorkflowStatus.IN_PROGRESS,
+            WorkflowStatus.DONE,
+            WorkflowStatus.WITHDRAWN,
+            WorkflowStatus.TOMBSTONED,
+        }
     ),
-    WorkflowStatus.DONE: frozenset(),
-    WorkflowStatus.WITHDRAWN: frozenset(),
+    WorkflowStatus.DONE: frozenset({WorkflowStatus.TOMBSTONED}),
+    WorkflowStatus.WITHDRAWN: frozenset({WorkflowStatus.TOMBSTONED}),
+    WorkflowStatus.TOMBSTONED: frozenset(),
 }
 
 
@@ -89,7 +119,7 @@ class WorkflowTransitionError(ValueError):
 
 
 def is_terminal(status: WorkflowStatus) -> bool:
-    """Return True if ``status`` is terminal (done / withdrawn)."""
+    """Return True if ``status`` is terminal (done / withdrawn / tombstoned)."""
     return status in TERMINAL_STATUSES
 
 
