@@ -353,8 +353,11 @@ class TestImportFederationInheritance:
             f"expected prompt-injection warning, got: {result['warnings']}"
         )
         # And the validation still passes (valid=True → no top-level error).
-        # Dry-run reports the validated count.
-        assert result["imported"] == 1
+        # The export was made from THIS store, so the merge dry-run sees an
+        # existing row and counts it as skipped — the same number a real
+        # merge would report (cli-audit 2026-10-08 P3 counter alignment).
+        assert result["imported"] == 0
+        assert result["skipped"] == 1
 
 
 # ── Argument validation ──────────────────────────────────────────────────────
