@@ -448,6 +448,9 @@ def test_second_run_on_migrated_store_politely_refuses(store_home: Path, tmp_pat
     )
     assert second.exit_code == 7
     assert "already carries the vesma:* namespace" in _output(second)
+    # cli-audit 2026-10-08 (P3): plain words, not internal jargon.
+    assert "0 tags to rewrite" in _output(second)
+    assert "re-slaggable" not in _output(second)
 
 
 def test_empty_store_moves_copy_only(tmp_path: Path) -> None:

@@ -542,17 +542,23 @@ def _import_json(
             return result
     result.warnings.extend(validation.warnings)
 
-    # ── Dry-run short-circuit ────────────────────────────────────────────
-    # Dry-run validates and reports; it does NOT write. The summary carries
-    # the validation report so the caller can decide whether to proceed.
+    # ── Dry-run: RESTORE short-circuits, MERGE walks the real loop ───────
+    # Dry-run validates and reports; it does NOT write. RESTORE keeps the
+    # short-circuit: a real restore wipes the store first, so per-row
+    # duplicate checks against the pre-wipe store would misreport — every
+    # validated record is going to land fresh. MERGE keeps walking the
+    # import loop below (write-guarded) so its counters mean the same as a
+    # real run's — cli-audit 2026-10-08 P3: dry-run printed "skipped: 0"
+    # where a real merge of the same data printed "skipped: 13".
     if dry_run:
-        result.imported = validation.records_validated
         result.warnings.append(
             f"Dry-run: validated {validation.records_validated} records, "
             f"{len(validation.errors)} errors, "
             f"{validation.records_with_warnings} records with warnings."
         )
-        return result
+        if mode == ImportMode.RESTORE:
+            result.imported = validation.records_validated
+            return result
 
     # ── Restore mode: wipe first (only when not dry-run) ────────────────
     if mode == ImportMode.RESTORE and not dry_run:
@@ -671,6 +677,10 @@ def _import_json(
                                 "stale embed delete on import refusal (non-fatal): %s", exc
                             )
                 _reembed(mgr, memory)
+            elif overwrite:
+                # Dry-run mirrors a real --overwrite run: an existing row
+                # would be UPDATED, not skipped (cli-audit 2026-10-08 P3).
+                result.updated += 1
             else:
                 result.skipped += 1
             continue
