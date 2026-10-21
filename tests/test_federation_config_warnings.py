@@ -143,7 +143,9 @@ def test_warns_per_peer_with_off_peer(tmp_path: Path, caplog: pytest.LogCaptureF
     with caplog.at_level(logging.WARNING, logger="vesma.config"):
         load_settings(cfg)
     msgs = [r.message for r in caplog.records if "pinning OFF" in r.message]
-    assert len(msgs) == 2
+    # Failure message carries the captured set so any future recurrence of
+    # the 2026-10-20 flap self-diagnoses (which peer warned / was silent).
+    assert len(msgs) == 2, f"expected 2 per-peer warnings, captured: {msgs}"
     assert any("mnemos-A" in m for m in msgs)
     assert any("mnemos-B" in m for m in msgs)
     assert not any("mnemos-C" in m for m in msgs)
