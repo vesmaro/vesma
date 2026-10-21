@@ -1,13 +1,14 @@
 vesma:
-  # Consolidated layout (v2.1): everything under ~/.mnemos/
-  #   ~/.mnemos/config.yaml  ← this file
-  #   ~/.mnemos/data/         ← SQLite DBs (mnemos.db, vectors.db)
-  #   ~/.mnemos/vault/        ← markdown vault
-  #   ~/.mnemos/logs/         ← log files
-  #   ~/.mnemos/cache/        ← embedding model cache, temp files
-  # Old paths (~/mnemos-vault, ~/.mnemos as data_dir) are auto-migrated on first run.
-  vault_path: ~/.mnemos/vault
-  data_dir: ~/.mnemos/data
+  # Canonical home (6.0+): everything under ~/.vesma/
+  #   ~/.vesma/config.yaml  ← this file (or ./config.yaml, or VESMA_CONFIG)
+  #   ~/.vesma/data/         ← SQLite DBs (vesma.db, vectors.db)
+  #   ~/.vesma/vault/        ← markdown vault (Obsidian-compatible mirror)
+  #   ~/.vesma/logs/         ← log files
+  # A 5.x-era ~/.mnemos home is NOT auto-migrated: a zero-config start over a
+  # substantial legacy home is refused — run
+  # `vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply` first.
+  vault_path: ~/.vesma/vault
+  data_dir: ~/.vesma/data
 
 embedding:
   # vesma-embed-v1: bundled local model, works offline; alternatives: onnx (any HF model), ollama, sentence-transformers
@@ -63,7 +64,7 @@ mcp:
   transport: stdio
 
 watcher:
-  # Directories to auto-index (used by `mnemos watch` when no args given)
+  # Directories to auto-index (used by `vesma watch` when no args given)
   paths: []
   # paths:
   #   - ~/Projects
@@ -126,7 +127,7 @@ code_graph:
   # read» baseline the token-economics verdict compares against; the
   # operator opts in deliberately.
   search_walk: false
-  # Watch poll (mnemos_watch_start / POST /watch/start): armed by default,
+  # Watch poll (vesma_watch_start / POST /watch/start): armed by default,
   # inert until an explicit registration; the master gate applies on top.
   watch: true
   # Fail-closed index ceilings per project (PG7).
@@ -175,7 +176,7 @@ code_graph:
   # Minimum seconds between background auto (re)index runs per project.
   auto_reindex_min_interval_sec: 300.0
   # May a connected MCP agent register project roots via
-  # mnemos_register_project? (issue #464) Registration IS a read-scope
+  # vesma_register_project? (issue #464) Registration IS a read-scope
   # grant: the registered tree becomes readable through the graph tools
   # by every agent on the server. false reserves registration to the
   # operator (vesma graph register — the CLI path is never gated); a
@@ -184,17 +185,17 @@ code_graph:
   agent_registration: true
 
 # ── Federation (Phase 0 batch sync, issue #85) ───────────────────────────────
-# Operator-curated, OFFLINE, cron-triggered batch sync between two mnemos
+# Operator-curated, OFFLINE, cron-triggered batch sync between two vesma
 # instances. NOT networked — transfer is out-of-band (rsync / scp / shared
 # volume by the operator). See ArchCom 2026-07-17 federation contract §3.1.
 federation:
   # Whitelist of project slugs eligible for sync. Only records whose
   # project: tag matches a slug in this list are included in
-  # `mnemos sync export`. Empty list = no projects are eligible.
+  # `vesma sync export`. Empty list = no projects are eligible.
   # The receiving side re-applies the same filter on import.
   shared_projects: []
   # shared_projects:
-  #   - mnemos
+  #   - vesma
   #   - project-umbra
   # TTL (hours) for the per-run moderation mapping table. The mapping is
   # in-memory only and NEVER replicated (it is a leak surface). After
@@ -207,7 +208,7 @@ federation:
   # Range: 0.0–1.0. Default: 0.8 (80%).
   moderation_refuse_threshold: 0.8
   # ── Per-peer ACL — Phase 1 prerequisite (contract §3.2, §6, ADR-0016) ──
-  # Keyed by peer A2A id (e.g. `mnemos-A`). Empty dict = no peers
+  # Keyed by peer A2A id (e.g. `vesma-A`). Empty dict = no peers
   # configured = the federation server refuses all pull requests
   # (fail-closed). Each peer defines its own bearer token env name,
   # allowed projects/types, rate limit, and optional mTLS cert
@@ -216,7 +217,7 @@ federation:
   # All values below are RFC-reserved dummies — never real tokens.
   peers: {}
   # peers:
-  #   mnemos-A:
+  #   vesma-A:
   #     # NAME of the env var holding the per-peer bearer token
   #     # (format: mnk_fed_<peer_id>_<random> per ADR-0016). Never the
   #     # value — the server reads the token from this env var at
@@ -224,9 +225,9 @@ federation:
   #     bearer_token_env: VESMA_FED_PEER_A_TOKEN
   #     # Which projects this peer may pull. Empty = none (fail-closed).
   #     # ["*"] = all projects in `shared_projects` (explicit wildcard).
-  #     allowed_projects:
-  #       - mnemos
-  #       - project-umbra
+    #     allowed_projects:
+    #       - vesma
+    #       - project-umbra
   #     # Which record types this peer may pull. Empty = none.
   #     # ["*"] = all types.
   #     # Valid: decision / learning / bug-pattern / rule / open-question
@@ -266,7 +267,7 @@ scanner:
   incremental: true
 
 # ── mnemos-mesh gRPC client (Phase 3, issue #105 M3) ─────────────────────────
-# Python gRPC client (mnemos.mesh_client.MeshClient) that talks to the
+# Python gRPC client (vesma.mesh_client.MeshClient) that talks to the
 # `mnemos-mesh` Go binary over a Unix socket. The mesh is a dumb transport
 # (criterion 1) — moderation and storage stay in Python (criterion 2/11).
 # OFF by default; enable after deploying the mesh binary. See ArchCom
@@ -277,9 +278,9 @@ mesh:
   # mesh binary is deployed and the socket is reachable.
   enabled: false
   # Filesystem path to the mnemos-mesh Unix socket. The mesh binary
-  # creates the socket; mnemos connects to it. Default follows the
-  # systemd-tmpfiles convention for runtime sockets owned by the
-  # mnemos user.
+  # creates the socket; vesma connects to it. The Linux default keeps the
+  # historical /run/mnemos path (frozen in 6.0); other unix platforms fall
+  # back to the user-owned ~/.vesma/run/core.sock.
   socket_path: /run/mnemos/core.sock
   # Per-RPC deadline in seconds. Short enough that a dead mesh is noticed
   # quickly, long enough for a local Unix-socket round trip.
@@ -289,7 +290,7 @@ mesh:
 # Quiet version check against PyPI: one stdlib GET of the version manifest
 # (3s timeout, no telemetry), served from a 24h cache in
 # <data_dir>/update-check.json. Surfaces: the `update_available` field of
-# `mnemos_stats`, a stderr hint on `vesma --version`, and one INFO line at
+# `vesma_stats`, a stderr hint on `vesma --version`, and one INFO line at
 # server start. Hard env kill switch (independent of this section):
 # VESMA_UPDATES_CHECK=off
 updates:
@@ -322,11 +323,11 @@ awareness:
   # Env: VESMA_AWARENESS__HEARTBEAT_RATE_LIMIT_PER_MINUTE=0
   heartbeat_rate_limit_per_minute: 30
 
-# ── Logging (v2.1) ───────────────────────────────────────────────────────────
+# ── Logging ─────────────────────────────────────────────────────────────────
 # File logging with rotation. Set log_file to empty ("") for stderr-only output.
 logging:
   level: INFO                    # DEBUG | INFO | WARNING | ERROR
-  log_file: ~/.mnemos/logs/mnemos.log
+  log_file: ~/.vesma/logs/vesma.log
   max_file_size_mb: 10           # rotating file handler — max size per file
   backup_count: 3                # keep N rotated files
   format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
