@@ -29,6 +29,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Final
 
 import pytest
 from typer.testing import CliRunner
@@ -61,7 +62,26 @@ TARIFFS = parse_tariffs(
 )
 
 
+#: Fixed wall-clock anchor for every generated turn timestamp (UTC
+#: 2026-10-15 12:00). The fixtures used to stamp «now minus hours»
+#: (``datetime.now``), and a CI run crossing UTC midnight split the daily
+#: bucket in two ({'2026-10-20': …, '2026-10-21': …}) — the assertion was
+#: effectively against the run's CALENDAR date, not the data. All
+#: build_report-level tests run on this anchor; only the CLI tests keep
+#: real-now seeds (the CLI derives its own window from the real clock, so
+#: the seeded rows must be fresh — their assertions are date-independent
+#: by construction: turn counts and money, never a day bucket).
+BASE_TS: Final[float] = datetime(2026, 10, 15, 12, 0, tzinfo=UTC).timestamp()
+
+
 def _ts(days_ago: float = 0.0) -> float:
+    """Deterministic «now»: the fixed BASE_TS anchor minus the offset."""
+    return BASE_TS - timedelta(days=days_ago).total_seconds()
+
+
+def _real_ts(days_ago: float = 0.0) -> float:
+    """Real wall clock — ONLY for CLI tests whose command derives its own
+    window from the actual clock, so the seeded rows must land inside it."""
     return (datetime.now(UTC) - timedelta(days=days_ago)).timestamp()
 
 
@@ -335,7 +355,7 @@ def test_cli_baseline_seeded_numbers_and_snapshot(ops_config: Path, tmp_path: Pa
             "INSERT INTO turn_usage (session, ts, model, status, input_tokens,"
             " cached_read_tokens, output_tokens) VALUES (?, ?, 'GLM-5.3-Flash',"
             " 'completed', ?, ?, 100_000)",
-            (f"sess_{i}", _ts(0.01 * (i + 1)), inp, cached),
+            (f"sess_{i}", _real_ts(0.01 * (i + 1)), inp, cached),
         )
     sconn.commit()
     sconn.close()
@@ -444,7 +464,9 @@ def test_by_harness_money_medians_daily_and_json(tmp_path: Path) -> None:
     assert {h["harness_id"] for h in doc["by_harness"]} == {"zcode", "other-harness"}
     zdoc = next(h for h in doc["by_harness"] if h["harness_id"] == "zcode")
     assert zdoc["cost_usd_per_day"] == pytest.approx(0.208)
-    assert zdoc["daily_costs"] and len(zdoc["daily_costs"]) == 1
+    # The bucket key derives from the FIXED fixture timestamps (all turns
+    # land on 2026-10-15 UTC) — never from the run's calendar date.
+    assert set(zdoc["daily_costs"]) == {"2026-10-15"}
 
 
 def test_by_harness_median_even_sample_and_unknown_flag() -> None:
@@ -546,7 +568,7 @@ def test_cli_baseline_by_harness_flag(ops_config: Path, tmp_path: Path) -> None:
         " cached_read_tokens, output_tokens, harness_id, project, agent)"
         " VALUES (?, ?, 'GLM-5.3-Flash', 'completed', 2000000, 1600000, 200000,"
         " 'zcode', 'proj', 'zcode-user')",
-        ("sess_z", _ts(0.01)),
+        ("sess_z", _real_ts(0.01)),
     )
     sconn.commit()
     sconn.close()
