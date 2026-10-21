@@ -698,7 +698,15 @@ def build_metadata_entry(
         source_agent=memory.agent or "",
         source_peer=source_peer,
         origin_peer=origin_peer,
-        content_state=CONTENT_STATE_AVAILABLE,
+        # Stage 1 delete (ArchCom 2026-10-18): a tombstoned local memory
+        # advertises content_state=tombstoned, never available — the peer
+        # import leg (lazy_fetch) already skips tombstoned entries, so the
+        # deletion propagates as a marker, not as content.
+        content_state=(
+            CONTENT_STATE_TOMBSTONED
+            if getattr(memory, "workflow_status", None) == "tombstoned"
+            else CONTENT_STATE_AVAILABLE
+        ),
         timestamp=_memory_timestamp(memory.created_at),
         schema_version=METADATA_SCHEMA,
         received_at="",  # stamped by the store at upsert time

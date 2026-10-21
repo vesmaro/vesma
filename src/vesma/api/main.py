@@ -695,6 +695,57 @@ async def withdraw_workflow(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+class DeleteMemoryRequest(BaseModel):
+    """Body for ``DELETE /memories/{memory_id}`` (Stage 1 tombstone)."""
+
+    actor: str
+    reason: str = ""
+
+
+@app.delete("/memories/{memory_id}")
+async def delete_memory(
+    memory_id: str, request: Request, req: DeleteMemoryRequest | None = None
+) -> dict[str, Any]:
+    """Tombstone a memory (Stage 1 soft delete, ArchCom 2026-10-18).
+
+    This is NOT the workflow-withdraw cancel (``DELETE .../workflow``) —
+    it is the **delete** surface: ``workflow_status`` → ``tombstoned``
+    (terminal), one hash-chained deletion-journal entry, lineage-broken
+    quarantine for derived_from children, embed removal, cache
+    invalidation. The row itself stays until Stage 2 (hard purge); there
+    is no undelete in Stage 1.
+
+    Owner-only (T-AUTH conventions, ADR-0014): with ``auth_enabled=true``
+    the request must carry an admitted session/token — agent-facing MCP
+    tokens get NO delete surface at all (the MCP tool registry has no
+    delete tool; the generic workflow transition refuses ``tombstoned``).
+    Loopback single-operator deploys (auth disabled) are owner context by
+    definition. A non-operator caller gets **403**, a missing memory
+    **404**, a state-machine/guardrail violation **409**.
+    """
+    if not _operator_context(request):
+        raise HTTPException(
+            status_code=403,
+            detail="delete is owner-only: an authenticated operator session/token "
+            "is required to tombstone a memory",
+        )
+    body = req or DeleteMemoryRequest(actor="")
+    if not body.actor.strip():
+        raise HTTPException(
+            status_code=422, detail="actor is required (owner identity recorded in the journal)"
+        )
+    mgr = get_manager()
+    try:
+        return mgr.delete_memory(memory_id, actor=body.actor, reason=body.reason)
+    except ValueError as exc:
+        # Unknown memory (404) vs guardrail/state-machine/journal (409):
+        # the manager's not-found message is stable ("not found'"), match
+        # on it so clients can distinguish the two classes.
+        if "not found" in str(exc):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 # ── Search ─────────────────────────────────────────────────────────────────────
 
 
@@ -2109,6 +2160,7 @@ class ExportRequest(BaseModel):
 @app.post("/api/v1/export")
 async def api_export(
     req: ExportRequest,
+    request: Request,
     passphrase: str | None = Header(None, alias="X-Mnemos-Passphrase"),
 ) -> StreamingResponse:
     """Export memories and stream the resulting file as a download.
@@ -2116,7 +2168,24 @@ async def api_export(
     Passphrase for encryption is read from the ``X-Mnemos-Passphrase``
     header (handled below) — kept out of the request body so it is not
     logged as a request parameter.
+
+    Stage 1 delete (F2, cascade review): operator-aware surface. The
+    ``sqlite`` format is the WHOLE database — tombstoned rows, the
+    deletion journal, workflow locks — so it requires operator context
+    (admitted session/token under ``auth_enabled=true``; loopback
+    single-operator by default), 403 otherwise. The ``json`` format
+    includes tombstoned rows only for an operator context; an
+    agent-context caller gets the default-filtered payload.
     """
+    operator = _operator_context(request)
+    if req.format == "sqlite" and not operator:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "format='sqlite' exports the full database (deleted memories "
+                "+ deletion journal) and requires an operator session/token"
+            ),
+        )
     import io
     import json as _json
 
@@ -2154,6 +2223,10 @@ async def api_export(
         tags=normalize_tag_aliases(req.tags) if req.tags else req.tags,
         since=since_dt,
         until=until_dt,
+        # Stage 1 delete (F2): tombstoned rows ship only to an operator
+        # context (round-trip fidelity); agent contexts get the filtered
+        # payload.
+        include_tombstoned=operator,
     )
 
     if fmt == ExportFormat.JSON:

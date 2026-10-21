@@ -117,7 +117,14 @@ class ExportResult:
 
 @dataclass
 class ExportFilter:
-    """Filter parameters for JSON export."""
+    """Filter parameters for JSON export.
+
+    ``include_tombstoned`` (Stage 1 delete, F2 cascade review): operator
+    surfaces only. The CLI ``vesma export`` (and an operator-context REST
+    caller) set it True for round-trip fidelity; agent-facing surfaces
+    (the MCP ``vesma_export`` tool, non-operator REST) keep the default
+    False so deleted content never reaches an agent-reachable path.
+    """
 
     project: str | None = None
     agent: str | None = None
@@ -125,6 +132,7 @@ class ExportFilter:
     tags: list[str] | None = None
     since: datetime | None = None
     until: datetime | None = None
+    include_tombstoned: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -134,6 +142,7 @@ class ExportFilter:
             "tags": self.tags,
             "since": self.since.isoformat() if self.since else None,
             "until": self.until.isoformat() if self.until else None,
+            "include_tombstoned": self.include_tombstoned,
         }
 
 
@@ -226,14 +235,23 @@ def build_json_payload(
         tags=filt.tags,
         since=filt.since,
         until=filt.until,
+        include_tombstoned=filt.include_tombstoned,
     )
 
     excluded_no_federate = 0
+    excluded_tombstoned = 0
     redacted_records = 0
     redaction_counts: dict[str, int] = {}
     export_memories: list[dict[str, Any]] = []
 
     for mem in memories:
+        # ── Stage 1 delete (F2): belt-and-braces tombstone filter ──────────
+        # list_for_export already excludes by default; this guard holds the
+        # line even if a caller flips the store flag without the filter.
+        if not filt.include_tombstoned and mem.workflow_status == "tombstoned":
+            excluded_tombstoned += 1
+            continue
+
         # ── Exclude no-federate records entirely ─────────────────────────
         if NO_FEDERATE_TAG in mem.tags:
             excluded_no_federate += 1
@@ -323,10 +341,17 @@ def build_json_payload(
         ],
         "redaction_summary": {
             "excluded_no_federate": excluded_no_federate,
+            "excluded_tombstoned": excluded_tombstoned,
             "redacted_records": redacted_records,
             "patterns": redaction_counts,
         },
     }
+    if excluded_tombstoned:
+        logger.info(
+            "export: excluded %d tombstoned record(s) — agent-facing export "
+            "never ships deleted content (Stage 1 delete)",
+            excluded_tombstoned,
+        )
     if excluded_no_federate or redacted_records:
         logger.info(
             "export redaction: excluded %d no-federate records, redacted %d records "

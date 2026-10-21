@@ -1297,6 +1297,100 @@ def tags_audit(
         console.print("[yellow]Dry-run only — re-run with --apply to heal.[/yellow]")
 
 
+# ── delete (Stage 1 tombstone, ArchCom 2026-10-18) ────────────────────────
+#
+# The owner-only soft delete. Interactive by design: the command shows
+# what is about to be deleted and requires the operator to TYPE the
+# memory id back (scripts must pass --yes explicitly). The enforcement
+# lives in MemoryManager.delete_memory (journal, lineage quarantine,
+# caches); this wrapper owns the human gate and the error mapping.
+
+
+@app.command(name="delete")
+def delete_memory(
+    memory_id: Annotated[str, typer.Argument(help="Target memory id.")],
+    actor: Annotated[
+        str, typer.Option("--actor", help="Operator identity recorded in the journal.")
+    ] = "owner-cli",
+    reason: Annotated[
+        str, typer.Option("--reason", help="Why the memory is being deleted (journal).")
+    ] = "",
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Skip the typed confirmation (non-interactive scripts).")
+    ] = False,
+    config: str = ConfigOption,
+) -> None:
+    """Delete a memory (soft delete → tombstoned; hard purge is Stage 2).
+
+    The memory becomes invisible to every read surface (search, list,
+    recall, mesh export), its embed is removed and derived_from children
+    are quarantined as lineage-broken. One hash-chained entry lands in
+    the deletion journal — tamper-evident, verified by `vesma doctor`.
+    There is NO undelete in Stage 1.
+    """
+    mgr = get_manager(config)
+
+    # Preview from the admin scope: the delete path is allowed to see the
+    # row it is about to delete (a default-filtered get would answer
+    # "not found" for an already-tombstoned id — that case is reported
+    # by the manager as an idempotent no-op instead).
+    preview = mgr.sqlite.get(memory_id, include_tombstoned=True)
+    if preview is None:
+        console.print(f"[red]✗[/red] Memory {memory_id!r} not found")
+        raise typer.Exit(1)
+    snippet = (preview.title or preview.content or "").strip().replace("\n", " ")
+    if len(snippet) > 60:
+        snippet = snippet[:57] + "…"
+
+    if not yes:
+        console.print(f"[yellow]Deleting memory[/yellow] {memory_id}")
+        console.print(f"  title/content: {snippet}")
+        console.print(f"  workflow_status: {preview.workflow_status or '(unset)'}")
+        console.print(f"  project: {preview.project or '—'}  agent: {preview.agent or '—'}")
+        console.print("[dim]No undelete exists in Stage 1 — the row stays tombstoned.[/dim]")
+        if sys.stdin is None:
+            console.print(
+                "[red]✗[/red] Non-interactive shell: pass --yes to delete without a prompt"
+            )
+            raise typer.Exit(1)
+        try:
+            typed = typer.prompt("Type the memory id to confirm deletion", default="")
+        except typer.Abort:
+            # EOF on a non-interactive stdin — same contract as a mismatch:
+            # aborted, nothing deleted.
+            console.print("[red]✗[/red] No confirmation received — aborted, nothing deleted")
+            raise typer.Exit(1) from None
+        if typed.strip() != memory_id:
+            console.print("[red]✗[/red] Confirmation did not match — aborted, nothing deleted")
+            raise typer.Exit(1)
+
+    try:
+        result = mgr.delete_memory(memory_id, actor=actor, reason=reason)
+    except ValueError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    if result["idempotent"]:
+        console.print(f"[yellow]=[/yellow] Memory {memory_id} is already tombstoned (no-op)")
+        return
+    table = Table(title=f"Deleted — {memory_id}", show_header=False)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="white")
+    table.add_row("from_status", str(result["from_status"]))
+    table.add_row("to_status", result["to_status"])
+    table.add_row("journal_id", str(result["journal_id"]))
+    table.add_row("entry_hash", str(result["entry_hash"])[:16] + "…")
+    if result["descendants_quarantined"]:
+        table.add_row(
+            "children quarantined",
+            ", ".join(result["descendants_quarantined"]) + " (lineage-broken)",
+        )
+    if result["descendants_skipped"]:
+        table.add_row("children already hidden", ", ".join(result["descendants_skipped"]))
+    console.print(table)
+    console.print("[dim]Verify the journal any time: vesma doctor[/dim]")
+
+
 # ── workflow (#96) ────────────────────────────────────────────────────────────
 #
 # Thin CLI wrappers over MemoryManager.workflow_set / workflow_get /
