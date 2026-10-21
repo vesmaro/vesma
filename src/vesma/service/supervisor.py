@@ -1351,6 +1351,13 @@ class Supervisor:
                 return False
             if component.manual_start_pending:
                 return True  # loop head resets the budget and respawns
+            # SL-10 cadence: this wake CONSUMES the dwell deadline. Leaving
+            # the stale (now past) lazy_retry_at armed made every retry
+            # after the first fire back-to-back at process-runtime cadence
+            # instead of every lazy_retry_s (ff53d420 flap root cause);
+            # the next death re-arms the dwell from `now` via the
+            # ``or`` branch above.
+            component.lazy_retry_at = None
             self._transition(component, FsmEvent.STOP)  # degraded → stopped (T14 family)
             return True  # fresh T1 spawn on the next pass
         # backoff scheduling (core + optional with live budget)
