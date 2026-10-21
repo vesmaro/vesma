@@ -65,7 +65,9 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Seam:
     """Stub every installer subprocess seam; record the calls."""
     record = Seam()
 
-    def fake_materialize(venv_dir: Path, requirements: tuple[str, ...]) -> dict[str, str]:
+    def fake_materialize(
+        venv_dir: Path, requirements: tuple[str, ...], mode: int
+    ) -> dict[str, str]:
         record.venvs.append((venv_dir, requirements))
         (venv_dir / "bin").mkdir(parents=True)
         (venv_dir / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -388,12 +390,14 @@ class TestSy08VenvMaterialization:
     ) -> None:
         monkeypatch.setattr(si, "_uv_path", lambda: None)
         with pytest.raises(SystemInstallError, match="uv is not on PATH"):
-            si._materialize_venv(sim / "usr/lib/vesma/venv-x", ("vesma==1.0.0",))
+            si._materialize_venv(sim / "usr/lib/vesma/venv-x", ("vesma==1.0.0",), 0o755)
 
     def test_pin_drift_after_materialization_is_loud(
         self, sim: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def lying_materialize(venv_dir: Path, requirements: tuple[str, ...]) -> dict[str, str]:
+        def lying_materialize(
+            venv_dir: Path, requirements: tuple[str, ...], mode: int
+        ) -> dict[str, str]:
             (venv_dir / "bin").mkdir(parents=True)
             (venv_dir / "bin" / "vesma").write_text("#!/bin/sh\n", encoding="utf-8")
             return {"vesma": "0.0.0-wrong"}  # freeze != the requested pin
@@ -544,7 +548,9 @@ class TestRealOwnership:
         )
         monkeypatch.setattr(si, "_systemctl_system", lambda args: "ok (stub)")
 
-        def net_free_venv(venv_dir: Path, requirements: tuple[str, ...]) -> dict[str, str]:
+        def net_free_venv(
+            venv_dir: Path, requirements: tuple[str, ...], mode: int
+        ) -> dict[str, str]:
             (venv_dir / "bin").mkdir(parents=True)
             (venv_dir / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
             (venv_dir / "bin" / "vesma").write_text("#!/bin/sh\n", encoding="utf-8")
