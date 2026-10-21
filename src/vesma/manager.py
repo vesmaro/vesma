@@ -108,6 +108,7 @@ from vesma.storage.sqlite_store import (
     FTS_SNIPPET_END_MARK,
     FTS_SNIPPET_START_MARK,
     SQLiteStore,
+    tombstones_visible,
 )
 from vesma.storage.vault import VaultManager
 from vesma.storage.vector_store import VectorStore
@@ -1857,6 +1858,186 @@ class MemoryManager:
         self.vectors.delete(memory_id)
         return self.sqlite.delete(memory_id)
 
+    # ── Stage 1 delete: tombstone (ArchCom 2026-10-18, mnemos 24f32fa7) ───
+    #
+    # ``vesma delete`` soft-deletes: workflow_status → ``tombstoned``
+    # (terminal), one hash-chained journal entry, lineage-broken quarantine
+    # for derived_from children, embed removal, cache invalidation. The
+    # row itself stays (hard purge is Stage 2). Owner-only enforcement
+    # lives at the surfaces: the interactive CLI (typed confirmation) and
+    # the REST DELETE endpoint (operator auth); MCP tokens get NO delete
+    # surface at all, and the generic workflow transition refuses
+    # ``tombstoned`` (see workflow_set). The write itself goes through the
+    # same set_workflow_status chokepoint as every workflow transition —
+    # the column has no other writer.
+
+    #: quarantine_reason stamped on derived_from children of a tombstoned
+    #: parent (the lineage-broken lane; explicit release stays available).
+    LINEAGE_BROKEN_REASON_PREFIX = "lineage-broken: derived-from parent"
+
+    def delete_memory(
+        self,
+        memory_id: str,
+        *,
+        actor: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Tombstone a memory (Stage 1 soft delete) and report the fallout.
+
+        Args:
+            memory_id: Target memory.
+            actor: Operator identity recorded in the audit history and the
+                deletion journal (owner-only surface; Phase 1 weak
+                identity).
+            reason: Optional free-text reason; stored in the journal.
+
+        Returns:
+            Result dict: ``memory_id``, ``from_status``, ``to_status``
+            (``tombstoned``), ``actor``, ``reason``, ``journal_id``,
+            ``entry_hash``, ``descendants_quarantined``,
+            ``descendants_skipped``, ``idempotent``, ``terminal``.
+
+        Raises:
+            ValueError: unknown memory, or the memory is already tombstoned
+                (surfaced as an idempotent no-op via the result dict
+                instead — a second delete is not an error), or a journal
+                append failure (fail loud: an unjournaled tombstone is an
+                integrity gap the owner must see).
+        """
+        from vesma.workflow import WorkflowStatus, validate_transition
+
+        if not actor or not actor.strip():
+            raise ValueError("actor is required (owner identity recorded in the journal)")
+        actor = actor.strip()
+        reason = reason.strip()
+
+        # The delete path is an admin scope: it needs to SEE the row it is
+        # deleting (and detect an already-tombstoned id for idempotency).
+        with tombstones_visible():
+            memory = self.sqlite.get(memory_id, include_tombstoned=True)
+            if memory is None:
+                raise ValueError(f"memory {memory_id!r} not found")
+            current = self.sqlite.get_workflow_status(memory_id)
+            if current is None:
+                raise ValueError(f"memory {memory_id!r} not found")
+            from_str = current["workflow_status"]
+            from_status = WorkflowStatus(from_str) if from_str else None
+
+            # Idempotent no-op: deleting a deleted memory changes nothing
+            # (second journal entry would be a lie — the first delete
+            # already owns the record).
+            if from_status is WorkflowStatus.TOMBSTONED:
+                return {
+                    "memory_id": memory_id,
+                    "from_status": WorkflowStatus.TOMBSTONED.value,
+                    "to_status": WorkflowStatus.TOMBSTONED.value,
+                    "actor": actor,
+                    "reason": reason,
+                    "journal_id": None,
+                    "entry_hash": None,
+                    "descendants_quarantined": [],
+                    "descendants_skipped": [],
+                    "idempotent": True,
+                    "terminal": True,
+                }
+
+            # State machine: tombstoned is enterable from ANY state, but
+            # still validated here so the transition is machine-checked
+            # (a future regression that removes an edge fails loudly).
+            validate_transition(from_status, WorkflowStatus.TOMBSTONED)
+
+            # Direct children (one hop — no transitive cascade in Stage 1;
+            # an explicit cascade command is a later stage). Quarantine is
+            # applied AFTER the parent write below; the list is taken now
+            # so the journal entry records the full fallout.
+            child_ids = self.sqlite.descendant_ids(memory_id)
+            quarantined: list[str] = []
+            skipped: list[str] = []
+            for child_id in child_ids:
+                child = self.sqlite.get(child_id)
+                if child is None:
+                    # Already invisible (tombstoned or quarantined) — do
+                    # not double-quarantine; the child keeps its own state.
+                    skipped.append(child_id)
+                else:
+                    quarantined.append(child_id)
+
+            # 1. The write chokepoint: the ONLY writer of the column.
+            self.sqlite.set_workflow_status(memory_id, WorkflowStatus.TOMBSTONED.value, None, None)
+            # 2. Audit history row (same table as every workflow transition).
+            now_iso = datetime.now(UTC).isoformat()
+            self.sqlite.add_workflow_history(
+                {
+                    "id": str(uuid.uuid4()),
+                    "memory_id": memory_id,
+                    "from_status": from_status.value if from_status else None,
+                    "to_status": WorkflowStatus.TOMBSTONED.value,
+                    "actor": actor,
+                    "reason": reason,
+                    "force_used": 0,
+                    "created_at": now_iso,
+                }
+            )
+            # 3. The hash-chained deletion journal (tamper-evident record;
+            #    no removal path exists anywhere).
+            journal_entry = self.sqlite.append_deletion_journal(
+                memory_id=memory_id,
+                actor=actor,
+                reason=reason,
+                descendants=quarantined,
+                created_at=now_iso,
+            )
+
+        # 4. Lineage-broken quarantine for the children (outside the
+        #    visibility context: quarantine_entry reads through the
+        #    default-filtered get — children listed above are visible).
+        for child_id in quarantined:
+            self.quarantine_entry(
+                child_id,
+                reason=(
+                    f"{self.LINEAGE_BROKEN_REASON_PREFIX} {memory_id} tombstoned "
+                    f"(journal {journal_entry['journal_id'][:8]})"
+                ),
+                source="tombstone-lineage",
+            )
+
+        # 5. Hygiene: the deleted row keeps no embed (a stale one would
+        #    keep the id warm in the vector leg — the N1 demotion pattern).
+        try:
+            self.vectors.delete(memory_id)
+        except Exception as exc:
+            logger.warning(
+                "tombstone: vector delete failed for %s (non-fatal): %s",
+                memory_id[:8],
+                exc,
+            )
+        # 6. In-process aggregate caches still describe the pre-delete
+        #    world (tags/counts/graph projections).
+        self.sqlite._invalidate_caches()
+
+        logger.info(
+            "tombstone: memory=%s from=%s actor=%s journal=%s children=%d/%d",
+            memory_id[:8],
+            from_status.value if from_status else "(unset)",
+            actor,
+            journal_entry["journal_id"][:8],
+            len(quarantined),
+            len(child_ids),
+        )
+        return {
+            "memory_id": memory_id,
+            "from_status": from_status.value if from_status else None,
+            "to_status": WorkflowStatus.TOMBSTONED.value,
+            "actor": actor,
+            "reason": reason,
+            "journal_id": journal_entry["journal_id"],
+            "entry_hash": journal_entry["entry_hash"],
+            "descendants_quarantined": quarantined,
+            "descendants_skipped": skipped,
+            "idempotent": False,
+            "terminal": True,
+        }
+
     # ── Workflow lifecycle (vesma #96) ────────────────────────────────────
     #
     # Server-side enforcement of the workflow state machine. The MCP tool
@@ -1923,6 +2104,21 @@ class MemoryManager:
         except ValueError as exc:
             valid = sorted(s.value for s in WorkflowStatus)
             raise ValueError(f"invalid workflow status {to!r}. Valid: {valid}") from exc
+
+        # Stage 1 delete (ArchCom 2026-10-18): ``tombstoned`` is RESERVED
+        # for the owner-only delete path. The generic workflow surface —
+        # the MCP ``vesma_workflow`` tool and the REST workflow endpoints
+        # both land here — must never be able to soft-delete a memory,
+        # because MCP tokens have no owner-authz (no-bypass contract,
+        # OWASP LLM01 / ASVS V7). Enforcement lives HERE (server-side),
+        # not in the wrappers, per the #96 doctrine.
+        if to_status is WorkflowStatus.TOMBSTONED:
+            raise ValueError(
+                "workflow status 'tombstoned' is reserved for the delete path. "
+                "Use `vesma delete <id>` (interactive, owner-only) or "
+                "DELETE /api/v1/memories/{id} (operator auth) — the generic "
+                "workflow surface cannot soft-delete a memory."
+            )
 
         if force and not (reason and reason.strip()):
             raise ValueError("reason is required when force=True (guardrail 4: force-unlock)")
@@ -4369,6 +4565,10 @@ class MemoryManager:
         ``graph_epoch`` durable meta-counters (edge-write generations).
         The in-memory counters above reset on restart; the epochs do not
         — a consumer keying on them survives restarts.
+
+        Documented Stage 1 remainder: latency/result samples include
+        queries whose candidate ids were tombstoned (filtered at read
+        time, after instrumentation).
         """
         with self._search_stats_lock:
             samples: list[float] = list(self._search_stats["latency_samples_ms"])
@@ -4828,6 +5028,12 @@ class MemoryManager:
         }
 
     def stats(self) -> dict[str, Any]:
+        """Store-wide aggregates.
+
+        Documented Stage 1 remainder (ArchCom 2026-10-20): tombstoned rows
+        still count into the by-status / queue aggregates (the row exists;
+        only row materialization is filtered). Hard purge lands in Stage 2.
+        """
         by_status = self.sqlite.count_by_status()
         filter_stats = self.sqlite.get_filter_stats()
         vector_count = self.vectors.count()
