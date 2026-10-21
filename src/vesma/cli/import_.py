@@ -73,6 +73,7 @@ from vesma.models import (
     MemoryStatus,
     PipelineState,
 )
+from vesma.storage.sqlite_store import tombstones_visible
 
 if TYPE_CHECKING:
     from vesma.manager import MemoryManager
@@ -605,6 +606,15 @@ def _import_json(
         except Exception as exc:
             result.errors.append(f"memory {entry.get('id', '?')}: {exc}")
             continue
+        # Stage 1 delete (no-resurrection, ArchCom 2026-10-18): a
+        # tombstoned export row stays deleted — the import filter skips it
+        # before any write. ``save()`` cannot write the workflow column
+        # (single-writer chokepoint), so admitting the row would land it
+        # AVAILABLE again. The lossless leg for tombstoned rows is the
+        # SQLite-snapshot restore (raw file swap, columns preserved).
+        if getattr(memory, "workflow_status", None) == "tombstoned":
+            result.skipped += 1
+            continue
         if stamp_federated and not dry_run:
             memory.metadata = {**memory.metadata, "federated_origin": "json-import"}
         # ── Cascade review SEC P3-5: strip canon-line server-minted ──────
@@ -717,6 +727,7 @@ def _gate_restored_rows(mgr: MemoryManager, result: ImportResult) -> None:
     # the PRE-swap DB — close() drops only the connection.
     mgr.sqlite._invalidate_caches()
     ungated = 0
+    tombstoned_kept = 0
     try:
         total = mgr.sqlite.count()
         # Raw rows through the STORE'S OWN connection — NOT list_all:
@@ -732,51 +743,72 @@ def _gate_restored_rows(mgr: MemoryManager, result: ImportResult) -> None:
         # Connection/store-level failure only — no row was gated.
         result.errors.append(f"post-restore gate sweep: store unreadable: {exc}")
         return
-    for row in raw_rows:
-        # Label errors by id when the column is readable — a corrupt
-        # snapshot row may not even carry one (keys-set idiom mirrors
-        # the merge branch).
-        cols = set(row.keys())
-        mem_id = row["id"] if "id" in cols else "?"
-        try:
-            memory = mgr.sqlite._row_to_memory(row)
-            # Status-based, mirroring the JSON overwrite branch: a
-            # PUBLISHED restored row was embedded when the snapshot was
-            # taken (the tar may carry vectors.db — the embed is live
-            # after the swap).
-            was_embedded = memory.status == MemoryStatus.PUBLISHED
-            memory, admitted = gate_imported_memory(mgr, memory, path="federation-restore")
-            mgr.sqlite.save(memory)
-            if not admitted:
-                result.warnings.append(
-                    f"memory {memory.id}: stored RAW — federation-import "
-                    "danger-gate refusal (zero-loss, invisible)"
-                )
-                if was_embedded:
-                    # N1 demotion hygiene (mirrors the JSON refusal path
-                    # and MemoryManager.update): the restored embed is
-                    # stale the moment the row is demoted. Non-fatal —
-                    # the resolve-time status guard already keeps the
-                    # row out of search results.
-                    try:
-                        mgr.vectors.delete(memory.id)
-                    except Exception as exc:
-                        logger.warning("stale embed delete on restore refusal (non-fatal): %s", exc)
-            else:
-                _reembed(mgr, memory)
-        except Exception as exc:
-            # Per-row isolation, mirroring the merge loop: one bad row
-            # (unreadable columns, invalid enum, failing save) is
-            # recorded and skipped — every servable row is still gated.
-            # An unreadable row is unservable by ANY canonical read path
-            # (get/list/search all reconstruct via ``_row_to_memory``),
-            # so it cannot leak into issuance.
-            ungated += 1
-            result.errors.append(f"memory {mem_id}: {exc}")
-            continue
+    # Stage 1 delete: restore is an ADMIN surface — it must SEE tombstoned
+    # rows (the raw file swap preserved their workflow_status column, and
+    # the sweep must not wedge on them). Tombstoned rows SKIP the gate +
+    # re-embed entirely: they stay deleted exactly as the snapshot had
+    # them (the visibility chokepoint enforces that on every read).
+    with tombstones_visible():
+        for row in raw_rows:
+            # Label errors by id when the column is readable — a corrupt
+            # snapshot row may not even carry one (keys-set idiom mirrors
+            # the merge branch).
+            cols = set(row.keys())
+            mem_id = row["id"] if "id" in cols else "?"
+            try:
+                memory = mgr.sqlite._row_to_memory(row)
+                if memory.workflow_status == "tombstoned":
+                    # Deleted in the snapshot — keep it deleted, invisible
+                    # and ungated (no re-embed: the embed was already
+                    # removed at delete time; a snapshot carrying a stale
+                    # embed stays cold because no read path resolves the
+                    # id — and the N1 guard below never sees the row).
+                    tombstoned_kept += 1
+                    continue
+                # Status-based, mirroring the JSON overwrite branch: a
+                # PUBLISHED restored row was embedded when the snapshot was
+                # taken (the tar may carry vectors.db — the embed is live
+                # after the swap).
+                was_embedded = memory.status == MemoryStatus.PUBLISHED
+                memory, admitted = gate_imported_memory(mgr, memory, path="federation-restore")
+                mgr.sqlite.save(memory)
+                if not admitted:
+                    result.warnings.append(
+                        f"memory {memory.id}: stored RAW — federation-import "
+                        "danger-gate refusal (zero-loss, invisible)"
+                    )
+                    if was_embedded:
+                        # N1 demotion hygiene (mirrors the JSON refusal path
+                        # and MemoryManager.update): the restored embed is
+                        # stale the moment the row is demoted. Non-fatal —
+                        # the resolve-time status guard already keeps the
+                        # row out of search results.
+                        try:
+                            mgr.vectors.delete(memory.id)
+                        except Exception as exc:
+                            logger.warning(
+                                "stale embed delete on restore refusal (non-fatal): %s", exc
+                            )
+                else:
+                    _reembed(mgr, memory)
+            except Exception as exc:
+                # Per-row isolation, mirroring the merge loop: one bad row
+                # (unreadable columns, invalid enum, failing save) is
+                # recorded and skipped — every servable row is still gated.
+                # An unreadable row is unservable by ANY canonical read path
+                # (get/list/search all reconstruct via ``_row_to_memory``),
+                # so it cannot leak into issuance.
+                ungated += 1
+                result.errors.append(f"memory {mem_id}: {exc}")
+                continue
     if ungated:
         result.warnings.append(
             f"post-restore gate sweep: {ungated} of {total} rows left ungated (unreadable)"
+        )
+    if tombstoned_kept:
+        result.warnings.append(
+            f"post-restore sweep: {tombstoned_kept} tombstoned row(s) kept deleted "
+            "(Stage 1 delete: a restore never resurrects)"
         )
     mgr.sqlite._invalidate_caches()
 
@@ -868,6 +900,13 @@ def _import_sqlite(
                     cols = set(row.keys())
                     mem_id = row["id"] if "id" in cols else "?"
                     try:
+                        # Stage 1 delete (no-resurrection): a tombstoned
+                        # snapshot row stays deleted — skip it BEFORE
+                        # materialization (the read-checkpoint would
+                        # otherwise refuse the row as an error).
+                        if "workflow_status" in cols and row["workflow_status"] == "tombstoned":
+                            result.skipped += 1
+                            continue
                         if mgr.sqlite.get(mem_id) is None:
                             # Reconstruct a Memory from the snapshot row. The
                             # store's own ``_row_to_memory`` is schema-drift safe:
