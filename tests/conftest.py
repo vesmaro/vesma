@@ -51,6 +51,22 @@ undo import-time baking, so the process level is the only reliable seam.
 Under a clean shell this is a no-op (every locally-green test renders
 byte-identically); under CI it makes console output identical to local.
 Guard: ``tests/test_console_env_profile_guard.py``.
+
+Real-store net-effect guard (chore/test-isolation)
+----------------------------------------------------
+The per-test checks above pin the isolation MECHANISM; this layer pins the
+suite-wide NET effect. At session start — before the first test, while
+HOME / XDG_* still point at the real environment — the session-scoped
+``real_user_store_baseline`` fixture lstats the real user store
+(``~/.vesma`` plus ``$XDG_DATA_HOME``/vesma). The companion guard
+(``tests/test_user_store_guard.py``) is sunk to the very end of the
+session by ``pytest_collection_modifyitems`` and re-scans: any created,
+deleted, or modified path there fails the suite — meaning the test
+process (or something it spawned) reached the production user store
+despite the per-test fixture. On a machine where unrelated live
+processes write to the store mid-run the guard names the changed paths
+so the operator can attribute them; on a clean CI runner it is
+deterministic.
 """
 
 from __future__ import annotations
@@ -84,6 +100,12 @@ from pathlib import Path  # noqa: E402
 from unittest.mock import MagicMock  # noqa: E402
 
 import pytest  # noqa: E402
+
+from tests._user_store_guard import (  # noqa: E402
+    USER_STORE_GUARD_TEST,
+    snapshot_roots,
+    store_roots,
+)
 
 # ---------------------------------------------------------------------------
 # Import pin (#288) — the suite MUST import THIS checkout's vesma
@@ -355,3 +377,30 @@ def isolate_root_logger():
     yield
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def real_user_store_baseline() -> tuple[list[Path], dict[str, tuple[int, int]]]:
+    """Snapshot the real user store before the first test runs.
+
+    Session-scoped autouse so the capture happens at session start — at
+    that point HOME / XDG_* still point at the real environment (the
+    per-test ``isolated_store_home`` fixture is function-scoped and has
+    not run yet). The guard test (sunk to the end of the session by the
+    hook below) diffs this snapshot against the store's post-suite state;
+    see ``tests/test_user_store_guard.py``.
+    """
+    roots = store_roots()
+    return roots, snapshot_roots(roots)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Sink the user-store guard to the very end of the session.
+
+    The guard compares the real store against its session-start baseline,
+    so it is only meaningful once every other test has finished.
+    """
+    guards = [item for item in items if item.name == USER_STORE_GUARD_TEST]
+    if guards:
+        rest = [item for item in items if item.name != USER_STORE_GUARD_TEST]
+        items[:] = rest + guards
