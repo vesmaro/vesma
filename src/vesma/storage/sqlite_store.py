@@ -10,6 +10,8 @@ Per-agent / per-project query helpers (M3).
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import logging
 import math
@@ -19,6 +21,7 @@ import threading
 import time
 import uuid
 from collections.abc import Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,6 +42,106 @@ from vesma.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Stage 1 delete: tombstone read-checkpoint primitives ─────────────────
+#
+# Default contract (ArchCom 2026-10-20 amendment): tombstoned rows are
+# invisible to every read surface. Two cooperating layers:
+#
+#   1. SQL layer — list/search methods take ``include_tombstoned: bool =
+#      False`` and push ``_TOMBSTONE_WHERE`` into the WHERE clause so
+#      pagination, counts and cursor semantics stay exact.
+#   2. Materialization layer — :meth:`SQLiteStore._row_to_memory` raises
+#      :class:`TombstonedRowFilteredError` for a tombstoned row unless the
+#      calling context opted in via :func:`tombstones_visible`. This is
+#      the fail-closed net: any present or FUTURE read path that forgets
+#      the SQL filter (single-row lookups, json_extract lookups, joins)
+#      still cannot materialize deleted content.
+#
+# Admin surfaces that MUST see tombstones (export / sync / doctor /
+# import-merge / import-restore / the delete path itself) opt in
+# explicitly — otherwise a deleted memory would resurrect from a stale
+# export or a restore sweep would wedge on it.
+
+#: WHERE fragment excluding tombstoned rows (NULL-safe: legacy rows and
+#: never-workflowed rows carry NULL and stay visible).
+_TOMBSTONE_WHERE: Final[str] = " (workflow_status IS NULL OR workflow_status != 'tombstoned')"
+
+#: Genesis predecessor for the deletion-journal hash chain.
+_TOMBSTONE_GENESIS_HASH: Final[str] = "0" * 64
+
+_TOMBSTONES_VISIBLE: ContextVar[bool] = ContextVar("tombstones_visible", default=False)
+
+
+class TombstonedRowFilteredError(RuntimeError):
+    """A tombstoned row reached :meth:`_row_to_memory` without opt-in.
+
+    Fail-closed guard of the Stage 1 read-checkpoint: the caller tried to
+    materialize deleted content on a path that did not declare admin
+    visibility. Never caught to *leak* the row — the only legitimate
+    handlers are the store's own ``get`` (maps to ``None``) and tests
+    asserting the refusal.
+    """
+
+
+@contextlib.contextmanager
+def tombstones_visible() -> Any:
+    """Opt the calling context into materializing tombstoned rows.
+
+    Admin-scope only: export, sync, doctor, import merge/restore and the
+    delete path itself. Re-entrant and exception-safe (the previous value
+    is restored on exit, including mid-exception).
+    """
+    token = _TOMBSTONES_VISIBLE.set(True)
+    try:
+        yield
+    finally:
+        _TOMBSTONES_VISIBLE.reset(token)
+
+
+def verify_deletion_journal_conn(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Recompute the deletion-journal hash chain over one connection.
+
+    Shared by :meth:`SQLiteStore.verify_deletion_journal` and the
+    ``vesma doctor`` check (which opens a bare read-only connection —
+    instantiating the full store there would run migrations as a side
+    effect). Returns ``{"ok": bool, "entries": int, "broken_seq": int |
+    None, "reason": str}``: ``ok=True`` only when every entry's stored
+    ``entry_hash`` matches the recomputation over its stored fields AND
+    each entry's ``prev_hash`` equals the previous entry's ``entry_hash``
+    (genesis = 64 zeros).
+    """
+    # Name-based access throughout; the doctor's bare read-only connection
+    # carries no row factory of its own.
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT seq, journal_id, memory_id, actor, reason, descendants, prev_hash, "
+        "entry_hash, created_at FROM deletion_journal ORDER BY seq ASC"
+    ).fetchall()
+    prev = _TOMBSTONE_GENESIS_HASH
+    for r in rows:
+        if r["prev_hash"] != prev:
+            return {
+                "ok": False,
+                "entries": len(rows),
+                "broken_seq": r["seq"],
+                "reason": f"chain break at seq {r['seq']}: prev_hash does not bind "
+                "to the previous entry",
+            }
+        expected = hashlib.sha256(
+            f"{r['prev_hash']}|{r['journal_id']}|{r['memory_id']}|{r['created_at']}|"
+            f"{r['actor']}|{r['reason']}|{r['descendants']}".encode()
+        ).hexdigest()
+        if expected != r["entry_hash"]:
+            return {
+                "ok": False,
+                "entries": len(rows),
+                "broken_seq": r["seq"],
+                "reason": f"entry hash mismatch at seq {r['seq']} — the entry was "
+                "edited after the fact",
+            }
+        prev = r["entry_hash"]
+    return {"ok": True, "entries": len(rows), "broken_seq": None, "reason": ""}
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +805,32 @@ CREATE TABLE IF NOT EXISTS memory_workflow_history (
 
 CREATE INDEX IF NOT EXISTS idx_wf_history_memory ON memory_workflow_history(memory_id);
 CREATE INDEX IF NOT EXISTS idx_wf_history_created ON memory_workflow_history(created_at);
+
+-- Stage 1 delete (ArchCom 2026-10-18, mnemos 24f32fa7): the hash-chained
+-- deletion journal. Every tombstone appends one row; the chain hash binds
+-- each entry to its predecessor, so any silent edit or removal of a past
+-- deletion breaks the chain and ``vesma doctor`` reports it. There is
+-- DELIBERATELY no removal path: no store method, CLI command, MCP tool or
+-- REST route deletes from this table (no-bypass contract; OWASP LLM01 /
+-- ASVS V7). Hard purge of journal rows is Stage 2 territory and will ride
+-- its own ratified design. ``seq`` is AUTOINCREMENT so rowids are never
+-- reused (an importer replaying an old backup cannot collide with a live
+-- seq). The journal records metadata only (ids, actor, reason, chain) —
+-- never memory content, so it stays safe to print in doctor output.
+CREATE TABLE IF NOT EXISTS deletion_journal (
+    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_id  TEXT NOT NULL UNIQUE,
+    memory_id   TEXT NOT NULL,
+    actor       TEXT NOT NULL,
+    reason      TEXT NOT NULL DEFAULT '',
+    descendants TEXT NOT NULL DEFAULT '[]',
+    prev_hash   TEXT NOT NULL,
+    entry_hash  TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_journal_memory ON deletion_journal(memory_id);
+CREATE INDEX IF NOT EXISTS idx_deletion_journal_created ON deletion_journal(created_at);
 
 CREATE TABLE IF NOT EXISTS projects (
     id          TEXT PRIMARY KEY,
@@ -1610,6 +1739,21 @@ class SQLiteStore:
         def _get(k: str, default: Any = None) -> Any:
             return row[k] if k in keys else default
 
+        # Stage 1 delete read-checkpoint (ArchCom 2026-10-20 amendment):
+        # the tombstoned filter lives at the SINGLE materialization point.
+        # Any read path — store SQL, manager, REST, CLI, future code — that
+        # reconstructs a Memory from a tombstoned row without explicit
+        # opt-in fails CLOSED here instead of leaking deleted content.
+        # Admin surfaces (export/sync/doctor/import/restore, the delete
+        # path itself) opt in via ``tombstones_visible()``; list methods
+        # additionally push the filter into SQL so pagination/count
+        # semantics stay exact.
+        if _get("workflow_status") == "tombstoned" and not _TOMBSTONES_VISIBLE.get():
+            raise TombstonedRowFilteredError(
+                f"memory {row['id'][:8]}… is tombstoned and this read path "
+                "did not opt in (wrap the admin surface in tombstones_visible())"
+            )
+
         return Memory(
             id=row["id"],
             content=row["content"],
@@ -1904,10 +2048,27 @@ class SQLiteStore:
         conn.commit()
         self._invalidate_caches()
 
-    def get(self, memory_id: str) -> Memory | None:
+    def get(self, memory_id: str, *, include_tombstoned: bool = False) -> Memory | None:
+        """Read one memory by id.
+
+        Stage 1 delete read-checkpoint: a tombstoned memory answers
+        ``None`` like a missing row unless the caller explicitly opts in
+        with ``include_tombstoned=True`` (admin scope: the delete path,
+        restore hygiene). This covers every edge-neighbour caller that
+        resolves a candidate id through ``get`` (vector/FTS/walk fusion
+        backends included) without each of them knowing about tombstones.
+        """
         conn = self._get_conn()
         row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
-        return self._row_to_memory(row) if row else None
+        if row is None:
+            return None
+        if not include_tombstoned:
+            keys = row.keys()
+            if "workflow_status" in keys and row["workflow_status"] == "tombstoned":
+                return None
+            return self._row_to_memory(row)
+        with tombstones_visible():
+            return self._row_to_memory(row)
 
     def delete(self, memory_id: str) -> bool:
         conn = self._get_conn()
@@ -1997,6 +2158,10 @@ class SQLiteStore:
             "        AS INTEGER) < ? "
             "    AND COALESCE(json_extract(metadata, '$.pipeline_retry_at'), '') <= ?))"
         )
+        # Stage 1 delete (no-resurrection): a tombstoned row is never
+        # intake-eligible — the B2 daemon must not re-process, swap or
+        # touch deleted content.
+        where += " AND" + _TOMBSTONE_WHERE
         return where, [max_attempts, now_iso]
 
     def list_refine_intake(
@@ -2198,6 +2363,9 @@ class SQLiteStore:
         """
         q = "SELECT * FROM memories WHERE pipeline_state=?"
         params: list[Any] = [pipeline_state.value]
+        # Stage 1 delete (no-resurrection): the sweeper must not swap,
+        # migrate or heal a tombstoned row — deleted content stays frozen.
+        q += " AND" + _TOMBSTONE_WHERE
         if project:
             q += " AND project=?"
             params.append(project)
@@ -2337,6 +2505,118 @@ class SQLiteStore:
         ).fetchone()
         return int(row["n"]) if row else 0
 
+    # ── Stage 1 delete: hash-chained deletion journal ─────────────────────
+    #
+    # Append-only by construction: these three methods are the ONLY code
+    # that touches ``deletion_journal`` (append / read / verify) and there
+    # is deliberately no UPDATE/DELETE against the table anywhere in the
+    # codebase — no CLI command, MCP tool or REST route exposes one either
+    # (no-bypass contract, ArchCom 2026-10-18). Chain integrity is checked
+    # by the standard ``vesma doctor`` command.
+
+    def append_deletion_journal(
+        self,
+        *,
+        memory_id: str,
+        actor: str,
+        reason: str,
+        descendants: Sequence[str],
+        created_at: str,
+    ) -> dict[str, Any]:
+        """Append one hash-chained entry and return the stored row fields.
+
+        ``entry_hash = SHA-256(prev_hash | journal_id | memory_id |
+        created_at | actor | reason | descendants_json)`` with ``|``
+        denoting raw concatenation and the genesis ``prev_hash`` being 64
+        zeros. ``journal_id`` is a fresh UUID4 — it binds the entry into
+        the hash so a replayed (deleted + re-created) memory id produces a
+        different chain link, and UNIQUE so a backup replay cannot
+        duplicate an entry.
+        """
+        conn = self._get_conn()
+        journal_id = str(uuid.uuid4())
+        descendants_json = json.dumps(list(descendants))
+        row = conn.execute(
+            "SELECT entry_hash FROM deletion_journal ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        prev_hash = row["entry_hash"] if row is not None else _TOMBSTONE_GENESIS_HASH
+        entry_hash = hashlib.sha256(
+            f"{prev_hash}|{journal_id}|{memory_id}|{created_at}|{actor}|{reason}|"
+            f"{descendants_json}".encode()
+        ).hexdigest()
+        conn.execute(
+            "INSERT INTO deletion_journal "
+            "(journal_id, memory_id, actor, reason, descendants, prev_hash, entry_hash, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (
+                journal_id,
+                memory_id,
+                actor,
+                reason,
+                descendants_json,
+                prev_hash,
+                entry_hash,
+                created_at,
+            ),
+        )
+        conn.commit()
+        return {
+            "journal_id": journal_id,
+            "memory_id": memory_id,
+            "actor": actor,
+            "reason": reason,
+            "descendants": list(descendants),
+            "prev_hash": prev_hash,
+            "entry_hash": entry_hash,
+            "created_at": created_at,
+        }
+
+    def list_deletion_journal(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return journal entries, oldest first (chain order)."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT seq, journal_id, memory_id, actor, reason, descendants, prev_hash, "
+            "entry_hash, created_at FROM deletion_journal ORDER BY seq ASC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return [
+            {
+                "seq": r["seq"],
+                "journal_id": r["journal_id"],
+                "memory_id": r["memory_id"],
+                "actor": r["actor"],
+                "reason": r["reason"],
+                "descendants": json.loads(r["descendants"]),
+                "prev_hash": r["prev_hash"],
+                "entry_hash": r["entry_hash"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def verify_deletion_journal(self) -> dict[str, Any]:
+        """Recompute the hash chain; report the first broken link.
+
+        Thin store wrapper over :func:`verify_deletion_journal_conn` (the
+        same walk the doctor runs over a read-only connection — one hash
+        implementation, no drift).
+        """
+        return verify_deletion_journal_conn(self._get_conn())
+
+    def descendant_ids(self, memory_id: str) -> list[str]:
+        """Ids of memories derived from ``memory_id`` (derived_from leg).
+
+        One hop only — Stage 1 does NOT cascade transitively; each direct
+        child is quarantined with the lineage-broken reason and reported.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT memories.id FROM memories, json_each(memories.derived_from) "
+            "WHERE json_each.value = ?",
+            (memory_id,),
+        ).fetchall()
+        return [str(r["id"]) for r in rows]
+
     # ── Listing ───────────────────────────────────────────────────────────
 
     def list_all(
@@ -2353,10 +2633,21 @@ class SQLiteStore:
         category: str | None = None,
         since: str | None = None,
         until: str | None = None,
+        include_tombstoned: bool = False,
     ) -> list[Memory]:
+        """List memories, newest first.
+
+        Stage 1 delete read-checkpoint: tombstoned rows are excluded by
+        default (the SQL keeps pagination/offset semantics exact); admin
+        callers (sync marker propagation) opt in with
+        ``include_tombstoned=True`` and must run under
+        :func:`tombstones_visible` for the materialization to pass.
+        """
         conn = self._get_conn()
         q = "SELECT * FROM memories WHERE 1=1"
         params: list[Any] = []
+        if not include_tombstoned:
+            q += " AND" + _TOMBSTONE_WHERE
         if source:
             q += " AND source=?"
             params.append(source.value)
@@ -2400,6 +2691,7 @@ class SQLiteStore:
         tags: list[str] | None = None,
         since: str | None = None,
         after_rowid: int = 0,
+        include_tombstoned: bool = False,
     ) -> list[tuple[Memory, int]]:
         """Mesh export listing with storage rowids, ordered for cursor resume.
 
@@ -2438,6 +2730,10 @@ class SQLiteStore:
         conn = self._get_conn()
         q = "SELECT rowid AS _mesh_rowid, * FROM memories WHERE 1=1"
         params: list[Any] = []
+        if not include_tombstoned:
+            # Stage 1 delete: a tombstoned memory is never served to the
+            # mesh as available content (no-resurrection, export leg).
+            q += " AND" + _TOMBSTONE_WHERE
         if projects:
             placeholders = ", ".join("?" for _ in projects)
             q += f" AND project IN ({placeholders})"
@@ -2468,7 +2764,7 @@ class SQLiteStore:
     ) -> list[Memory]:
         """M3 — most recent memories for a specific agent (+ optional project)."""
         conn = self._get_conn()
-        q = "SELECT * FROM memories WHERE agent=?"
+        q = "SELECT * FROM memories WHERE agent=? AND" + _TOMBSTONE_WHERE
         params: list[Any] = [agent]
         if project:
             q += " AND project=?"
@@ -2480,7 +2776,9 @@ class SQLiteStore:
     def list_by_cluster(self, cluster_id: str) -> list[Memory]:
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT * FROM memories WHERE cluster_id=? ORDER BY created_at ASC",
+            "SELECT * FROM memories WHERE cluster_id=? AND"
+            + _TOMBSTONE_WHERE
+            + " ORDER BY created_at ASC",
             (cluster_id,),
         ).fetchall()
         return [self._row_to_memory(r) for r in rows]
@@ -2504,6 +2802,12 @@ class SQLiteStore:
         (a memory is included if either timestamp falls within the window).
         When ``since`` is set, this implements incremental export: only
         memories created or updated after the boundary are returned.
+
+        Stage 1 delete: export is an ADMIN surface — it deliberately SEES
+        tombstoned rows (ArchCom 2026-10-20 amendment). Skipping them here
+        would silently drop deleted memories from round-trip exports (data
+        loss on restore); the import side re-applies the delete filter so
+        a merged/restore-imported tombstone stays deleted.
         """
         conn = self._get_conn()
         q = "SELECT * FROM memories WHERE 1=1"
@@ -2531,7 +2835,8 @@ class SQLiteStore:
         if limit is not None:
             q += " LIMIT ?"
             params.append(limit)
-        return [self._row_to_memory(r) for r in conn.execute(q, params).fetchall()]
+        with tombstones_visible():
+            return [self._row_to_memory(r) for r in conn.execute(q, params).fetchall()]
 
     def wipe_all(self) -> int:
         """Delete every memory row (and FTS shadow rows via triggers).
@@ -2579,9 +2884,14 @@ class SQLiteStore:
         by string-concatenating static fragments + `?` placeholders, so
         the resulting statement contains no user-controlled identifiers
         (B608-safe).
+
+        Stage 1 delete: tombstoned rows never match (read-checkpoint).
         """
         conn = self._get_conn()
         where_parts: list[str] = ["memories_fts MATCH ?"]
+        # Stage 1 delete read-checkpoint: tombstoned rows never match a
+        # full-text query (their content is deleted for every reader).
+        where_parts.append("(m.workflow_status IS NULL OR m.workflow_status != 'tombstoned')")
         if project:
             where_parts.append("m.project = ?")
         if agent:
@@ -2662,6 +2972,12 @@ class SQLiteStore:
     # ── Aggregates ────────────────────────────────────────────────────────
 
     def get_all_tags(self) -> dict[str, int]:
+        """Tag frequency aggregate.
+
+        Documented Stage 1 remainder (ArchCom 2026-10-20): tombstoned rows
+        still COUNT toward tag frequencies — aggregates are not filtered
+        in the MVP; only row materialization is.
+        """
         hit, val = self._cache.get("tags", 60)
         if hit:
             return cast(dict[str, int], val)
@@ -2681,6 +2997,8 @@ class SQLiteStore:
         return result
 
     def count(self) -> int:
+        """Total row count. Documented Stage 1 remainder: tombstoned rows
+        still count (aggregates are not filtered in the MVP)."""
         conn = self._get_conn()
         r = conn.execute("SELECT COUNT(*) FROM memories").fetchone()
         return int(r[0]) if r else 0
@@ -2833,14 +3151,36 @@ class SQLiteStore:
         }
 
     def get_by_file_path(self, file_path: str) -> Memory | None:
+        """Dedupe lookup for ingest (vault-path convention).
+
+        A tombstoned row answers ``None``: the deleted memory does not
+        dedupe a fresh ingest — re-adding the content creates a NEW row
+        (an explicit re-add by the caller), the tombstoned row stays
+        deleted.
+        """
         conn = self._get_conn()
         r = conn.execute("SELECT * FROM memories WHERE file_path=?", (file_path,)).fetchone()
-        return self._row_to_memory(r) if r else None
+        if r is None:
+            return None
+        try:
+            return self._row_to_memory(r)
+        except TombstonedRowFilteredError:
+            return None
 
     def get_by_source_url(self, source_url: str) -> Memory | None:
+        """Dedupe lookup for ingest (source-url convention).
+
+        Tombstoned semantics mirror :meth:`get_by_file_path`: the deleted
+        row answers ``None`` so an explicit re-add creates a fresh row.
+        """
         conn = self._get_conn()
         r = conn.execute("SELECT * FROM memories WHERE source_url=?", (source_url,)).fetchone()
-        return self._row_to_memory(r) if r else None
+        if r is None:
+            return None
+        try:
+            return self._row_to_memory(r)
+        except TombstonedRowFilteredError:
+            return None
 
     # ── Traces (M6) ───────────────────────────────────────────────────────
 
@@ -4191,7 +4531,12 @@ class SQLiteStore:
             "ORDER BY CAST(json_extract(metadata, '$.chunk_idx') AS INTEGER) ASC",
             (doc_id,),
         ).fetchall()
-        return [self._row_to_memory(r) for r in rows]
+        # Stage 1 delete: doc re-ingest is an explicit owner maintenance
+        # action — it SEES tombstoned chunks (a hidden chunk must not wedge
+        # the replace; the hard DELETE of the replaced row is purge-class
+        # and rides the journal in Stage 2 — documented remainder).
+        with tombstones_visible():
+            return [self._row_to_memory(r) for r in rows]
 
     def list_doc_chunk_ids(self, doc_id: str) -> list[str]:
         """Ids of every chunk row of ``doc_id`` (the Ф0 metadata convention).
