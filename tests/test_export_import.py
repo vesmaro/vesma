@@ -694,6 +694,65 @@ class TestImportDryRun:
         result = run_import(mgr, out, mode=ImportMode.MERGE, dry_run=True)
         assert result.format_version == "1.0"
 
+    def test_dry_run_merge_counts_skipped_like_real_merge(self, mgr, tmp_path):
+        """cli-audit 2026-10-08 (P3): merge dry-run counters match a real merge.
+
+        The same export merged into the same store: every record is an
+        existing row without --overwrite, so a real merge reports
+        ``skipped`` — the dry-run must report the SAME numbers, not
+        "skipped: 0" with every record counted as imported.
+        """
+        _add_memory(mgr, "x")
+        out = tmp_path / "backup.json"
+        run_export(mgr, fmt=ExportFormat.JSON, output=out)
+
+        dry = run_import(mgr, out, mode=ImportMode.MERGE, dry_run=True)
+        assert dry.dry_run is True
+        assert dry.imported == 0
+        assert dry.skipped == 1
+        assert dry.updated == 0
+        assert mgr.sqlite.count() == 1  # nothing written
+
+        real = run_import(mgr, out, mode=ImportMode.MERGE, dry_run=False)
+        assert (real.imported, real.skipped, real.updated) == (
+            dry.imported,
+            dry.skipped,
+            dry.updated,
+        )
+
+    def test_dry_run_merge_with_overwrite_counts_updated(self, mgr, tmp_path):
+        """cli-audit 2026-10-08 (P3): dry-run + --overwrite counts updated.
+
+        A real ``--overwrite`` merge UPDATES an existing row; the dry-run
+        must mirror that instead of falling into the skipped bucket.
+        """
+        _add_memory(mgr, "x")
+        out = tmp_path / "backup.json"
+        run_export(mgr, fmt=ExportFormat.JSON, output=out)
+
+        dry = run_import(mgr, out, mode=ImportMode.MERGE, dry_run=True, overwrite=True)
+        assert dry.imported == 0
+        assert dry.updated == 1
+        assert dry.skipped == 0
+        assert mgr.sqlite.count() == 1  # nothing written
+
+    def test_dry_run_restore_keeps_fresh_import_semantics(self, mgr, tmp_path):
+        """RESTORE dry-run counts every validated record as imported.
+
+        A real restore wipes the store first, so per-row duplicate checks
+        against the pre-wipe store would misreport; the short-circuit keeps
+        "everything lands fresh" semantics.
+        """
+        _add_memory(mgr, "a")
+        _add_memory(mgr, "b")
+        out = tmp_path / "backup.json"
+        run_export(mgr, fmt=ExportFormat.JSON, output=out)
+        before = mgr.sqlite.count()
+
+        result = run_import(mgr, out, mode=ImportMode.RESTORE, dry_run=True)
+        assert result.imported == 2
+        assert mgr.sqlite.count() == before  # nothing wiped
+
     def test_dry_run_on_missing_file_reports_error(self, mgr, tmp_path):
         result = run_import(mgr, tmp_path / "nope.json", mode=ImportMode.MERGE, dry_run=True)
         assert result.errors
