@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import dataclasses
 import getpass
+import grp
 import json
 import os
+import pwd
 import re
 import shlex
 import socket
@@ -29,9 +31,10 @@ from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 
-from vesma.service import layout, unitgen
+from vesma.service import fhs, layout, unitgen
 from vesma.service.install import engine_venv, parse_pin_line, read_lock
 from vesma.service.manifest import ComponentManifest, load_installation
+from vesma.service.system_install import SystemInstallError, read_system_state
 
 #: Free-space thresholds (DR-10; engine-owned numbers, documented).
 FREE_SPACE_WARN_BYTES = 500 * 1024 * 1024
@@ -947,16 +950,182 @@ def _dr19() -> Finding:
     )
 
 
+# ── DR-14: profile isolation — user ↔ system data roots (specs/layout/v2
+# §3.1; ADR-0045 rollout wave 2, minimal leg: the full DR-14 matrix —
+# config-root overlaps, stamp cross-checks — belongs to the doctor wave) ──
+
+
+def _roots_overlap(a: Path, b: Path) -> bool:
+    """True when one root IS the other or contains it (either direction)."""
+    return a == b or a in b.parents or b in a.parents
+
+
+def _dr14() -> Finding:
+    """Both profiles on one data root = FAIL («ERROR» verdict class, §3.1).
+
+    The profiles are disjoint BY CONSTRUCTION (/var/lib/vesma vs the
+    user's ~/.vesma) — a collision can only appear when the user profile
+    resolves INSIDE the system data root (the service-account HOME
+    scenario: HOME=/var/lib/vesma makes ~/.vesma a child of it). Read
+    only; the system side is detected by its install-state.
+    """
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        return Finding(
+            "DR-14",
+            "profile isolation (user ↔ system data roots)",
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    if state is None:
+        return Finding(
+            "DR-14",
+            "profile isolation (user ↔ system data roots)",
+            Severity.OK,
+            "no system-profile installation on this machine",
+        )
+    system_data_root = fhs.system_data_root()
+    user_roots = (layout.vesma_home(), layout.data_root())
+    overlapping = [str(root) for root in user_roots if _roots_overlap(root, system_data_root)]
+    if overlapping:
+        return Finding(
+            "DR-14",
+            "profile isolation (user ↔ system data roots)",
+            Severity.FAIL,
+            f"user profile root(s) {overlapping} collide with the system data"
+            f" root {system_data_root} — the profiles MUST have distinct data"
+            " roots (specs/layout/v2 §3.1); this is the «ERROR» verdict class",
+            "move the user profile off the system data root (consolidation"
+            " mover, ADR-0045 rollout wave 4); until then do not run both"
+            " profiles against the same tree",
+        )
+    return Finding(
+        "DR-14",
+        "profile isolation (user ↔ system data roots)",
+        Severity.OK,
+        f"profiles coexist with disjoint roots (system data root: {system_data_root})",
+    )
+
+
+# ── DR-15: system-profile rights vs the FHS manifest (minimal leg of the
+# install --system wave: mode+owner walk of the manifest-resolvable
+# entries; the unit-content leg is DR-18, rollout 4) ──────────────────────
+
+
+def _dr15() -> Finding:
+    """Walk the system tree against the manifest (modes + owners).
+
+    Degrades honestly when unreadable (the doctor typically runs as a
+    plain user; ``/etc/vesma`` is ``0750 root:vesma``): an unreadable
+    entry is a WARN naming the privilege needed — never a silent OK.
+    """
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        return Finding(
+            "DR-15",
+            "system-profile rights vs FHS manifest",
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    if state is None:
+        return Finding(
+            "DR-15",
+            "system-profile rights vs FHS manifest",
+            Severity.OK,
+            "no system-profile installation on this machine",
+        )
+    manifest = fhs.load_fhs_manifest()
+    problems: list[str] = []
+    unreadable: list[str] = []
+    checked = 0
+    for entry in manifest.entries:
+        if "<name>" in entry.system_path or "<rev>" in entry.system_path:
+            continue  # per-component slots are walked by the units wave
+        if entry.owner is None or entry.group is None:
+            continue  # /run/vesma — runtime ownership by the unit
+        path = fhs.resolve_system_path(entry)
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            continue  # optional/opt-in slots may be absent (log_root)
+        except PermissionError:
+            unreadable.append(str(path))
+            continue
+        except OSError as exc:
+            unreadable.append(f"{path} ({exc})")
+            continue
+        checked += 1
+        if stat.S_IMODE(info.st_mode) != entry.mode:
+            problems.append(
+                f"{path}: mode {format(stat.S_IMODE(info.st_mode), '04o')},"
+                f" manifest {format(entry.mode, '04o')}"
+            )
+        owner_name = _uid_to_name(info.st_uid)
+        group_name = _gid_to_name(info.st_gid)
+        if owner_name != entry.owner or group_name != entry.group:
+            problems.append(
+                f"{path}: owner {owner_name}:{group_name}, manifest {entry.owner}:{entry.group}"
+            )
+    if problems:
+        first = problems[0]
+        return Finding(
+            "DR-15",
+            "system-profile rights vs FHS manifest",
+            Severity.FAIL,
+            f"{len(problems)} right/owner drift(s) vs the FHS manifest;"
+            f" first: {first}" + (f"; also unreadable: {unreadable}" if unreadable else ""),
+            "sudo chmod/chown per the FHS manifest"
+            " (`vesma doctor` lists each path; the manifest is the source"
+            " of truth)",
+        )
+    if unreadable:
+        return Finding(
+            "DR-15",
+            "system-profile rights vs FHS manifest",
+            Severity.WARN,
+            f"{checked} entr(ies) verified OK; {len(unreadable)} unreadable"
+            f" without privileges: {unreadable[:3]} — re-run as root for a"
+            " full walk",
+            "sudo vesma doctor service",
+        )
+    return Finding(
+        "DR-15",
+        "system-profile rights vs FHS manifest",
+        Severity.OK,
+        f"{checked} entr(ies) match the FHS manifest (modes + owners)",
+    )
+
+
+def _uid_to_name(uid: int) -> str:
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return f"uid-{uid}"
+
+
+def _gid_to_name(gid: int) -> str:
+    try:
+        return grp.getgrgid(gid).gr_name
+    except KeyError:
+        return f"gid-{gid}"
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
 def run_service_checks() -> list[Finding]:
     """Run the doctor registry against the local installation. READ-ONLY.
 
-    DR-01…DR-13 (layout/service-lifecycle v1) + the user-profile legs of
-    v2 §3.14: DR-17 (generation mixing) and DR-19 (generation advisory).
-    DR-14…DR-16 and DR-18 belong to the system-profile waves (ADR-0045
-    rollout 2-3) and are deliberately absent here.
+    DR-01…DR-13 (layout/service-lifecycle v1) + the v2 §3.14 legs landed
+    so far: DR-14 (profile isolation) and DR-15 (system rights vs the
+    FHS manifest) — the minimal legs of the install --system wave — plus
+    the user-profile DR-17 (generation mixing) and DR-19 (generation
+    advisory). DR-16 (venv revisions) and DR-18 (unit drift) belong to
+    the doctor/update wave (ADR-0045 rollout 3) and are absent here.
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -988,6 +1157,8 @@ def run_service_checks() -> list[Finding]:
         ("DR-11", "journald Storage=persistent", _dr11),
         ("DR-12", "venv read-only at runtime", _dr12),
         ("DR-13", "container downgrade allowlist", _dr13),
+        ("DR-14", "profile isolation (user ↔ system data roots)", _dr14),
+        ("DR-15", "system-profile rights vs FHS manifest", _dr15),
         ("DR-17", "install-state ↔ filesystem (generation mixing)", _dr17),
         ("DR-19", "layout generation (user profile)", _dr19),
     ]

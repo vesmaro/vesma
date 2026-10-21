@@ -39,7 +39,13 @@ from vesma.service.client import (
 )
 from vesma.service.control import MAX_TAIL
 from vesma.service.errors import ManifestError
-from vesma.service.install import InstallError, install, uninstall
+from vesma.service.install import InstallError, UninstallResult, install, uninstall
+from vesma.service.system_install import (
+    SystemInstallError,
+    SystemUninstallResult,
+    install_system,
+    uninstall_system,
+)
 
 service_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -74,21 +80,36 @@ def _fail_install(exc: Exception) -> NoReturn:
 
 
 @service_app.command(name="install")
-def service_install() -> None:
+def service_install(
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Install the SYSTEM profile (FHS: /etc/vesma, /var/lib/vesma, "
+            "/usr/lib/vesma) — requires root (sudo). Default: the user profile.",
+        ),
+    ] = False,
+) -> None:
     """Install the service: pack manifests, data dirs, venvs, the unit.
 
     Idempotent — re-running regenerates every artifact (hand edits to the
     unit are overwritten by design, threat model "ручная правка юнита").
     Inside a container the filesystem hardening directives are loudly
     downgraded (marker in the unit + report lines).
+
+    With --system: the canonical system-profile installer
+    (specs/layout/v2 §3.13) — sysusers.d service account, the FHS tree
+    from the ONE declarative manifest, root-owned venv revisions
+    materialized by uv, install-state with exact-inverse uninstall.
     """
     try:
-        result = install()
-    except (InstallError, ManifestError) as exc:
+        result = install_system() if system else install()
+    except (InstallError, ManifestError, SystemInstallError) as exc:
         _fail_install(exc)
     for line in result.lines:
         downgraded_line = line.startswith("CONTAINER DOWNGRADE")
-        style = "[yellow]⚠[/yellow]" if downgraded_line else "[green]✓[/green]"
+        warn_line = line.startswith(("WARN:", "note:", "preserved"))
+        style = "[yellow]⚠[/yellow]" if (downgraded_line or warn_line) else "[green]✓[/green]"
         # Text(line): report lines carry operator data (paths, names) —
         # rendered without markup, only the prefix is styling.
         console.print(style, Text(line))
@@ -108,18 +129,40 @@ def service_uninstall(
             help="Uninstall everything: stop/disable + remove the unit and all components.",
         ),
     ] = False,
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Uninstall the SYSTEM profile: the exact inverse of the "
+            "install-state (recorded artifacts only; drift refuses loudly).",
+        ),
+    ] = False,
 ) -> None:
     """Uninstall one component, or the whole installation with --all.
 
     Only files the install flow owns are removed (manifest, env file,
     venv). Component data dirs are operator data and are preserved.
+
+    With --system: the exact-inverse uninstall of the system install-state
+    (specs/layout/v2 §3.13) — recorded artifacts only, reverse order; the
+    /var/lib/vesma data plane is preserved; state ↔ filesystem drift
+    refuses loudly.
     """
     try:
-        result = uninstall(name, remove_all=remove_all)
-    except (InstallError, ManifestError) as exc:
+        result: UninstallResult | SystemUninstallResult
+        if system:
+            if name is not None or remove_all:
+                raise SystemInstallError(
+                    "--system uninstalls the whole system profile — do not "
+                    "combine it with a component name or --all"
+                )
+            result = uninstall_system()
+        else:
+            result = uninstall(name, remove_all=remove_all)
+    except (InstallError, ManifestError, SystemInstallError) as exc:
         _fail_install(exc)
     for line in result.lines:
-        warn_line = line.startswith("WARN:")
+        warn_line = line.startswith(("WARN:", "preserved"))
         style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
         console.print(style, Text(line))
     console.print("[green]Uninstall complete.[/green]")
