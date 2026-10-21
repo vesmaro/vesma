@@ -71,6 +71,7 @@ documented elsewhere, or anything that fits in a code comment.
 | [0043](0043-awareness-machine-liveness.md) | Awareness machine-wide liveness — `scope="machine"` on `vesma_awareness`; «live» = a store write within window N=15 min; advisory-only, presence-not-lock; honest coverage marker; phases 5.6.x flag default-off → 5.7 exposure; OS-signals deferred with 5 Security conditions (extends ADR-0035/0036) | Accepted (ACCEPT WITH CONDITIONS — 6 binding conditions) | 2026-10-06 |
 | [0044](0044-store-migration.md) | Store migration — the 5.x → 6.0 store mover `vesma migrate-store` (explicit-only, dry-run default, snapshot gate, quiesce, verification, SAFER-variant deviations flagged for the ADR) | Accepted (cascade ACCEPT-AFTER-FIX 2026-10-07) | 2026-10-08 |
 | [0045](0045-dual-profile-fhs-layout.md) | Dual-profile installation — self-contained user profile (`~/.vesma`), FHS system profile (`install --system`, exact-inverse uninstall), one declarative FHS manifest (layout v2; v1.5 installs pinned, production mover deferred on owner's word) | Accepted | 2026-10-21 |
+| [0046](0046-memory-deletion-tombstone.md) | Memory deletion — tombstone Stage 1: terminal `tombstoned` workflow state, dual read/write chokepoints with fail-closed filtering, owner-only delete surfaces (CLI + REST, no MCP tool), hash-chained append-only deletion journal (Stage 2 hard purge gated, out of scope) | Accepted (ArchCom 2026-10-18; Stage 1 spec amended 2026-10-20; implemented) | 2026-10-20 |
 
 ## Themes
 
