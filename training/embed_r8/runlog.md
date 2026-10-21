@@ -218,3 +218,61 @@ stage-2 at `training/runs/embed-r8/`.
   from the HF cache when chosen_epoch == 0 (bit-identical to the weights
   the epoch-0 readout measured); proof JSON records teacher_route.
   Commit before relaunch; chain resumes at stage C per markers.
+
+## 2026-10-21 — DECISIVE RUN COMPLETE — single-shot gate pass — VERDICT: REJECT (FINAL, r8 prereg §5)
+
+- (chain) Stages A→G completed across three unit invocations (resumable
+  markers worked as designed): stage A 00:17–12:28 (12h11m), stage C
+  12:39–16:00 (3h21m), stage D 16:00–21:29 (5h29m, 20-epoch cap reached),
+  stage E 21:29, stage F (export) + G (single-shot gates) 21:32–21:39.
+  Wall total ≈ 21h20m under MemoryMax 14G / MemorySwapMax 16G /
+  CPUQuota 800% (peak 12.65G; zero OOM kills of the decisive unit).
+- (STAGE-1 result — FT lever NEGATIVE) 4 FT epochs: quality composite
+  0.760 → 0.996 (llm 0.9934–0.9957, seed-dup 1.0 shares, burned up to
+  0.9978) but cross R@5 fell 0.9972 → 0.9667–0.9694 — ALL epochs fail the
+  pre-committed geometry_hold (≥ 0.9872). Selection rule (fixed before the
+  run) → chosen_epoch = 0: TEACHER = RAW PINNED BASE harrier @ f9b9dc8d.
+  The committed rule refused to trade the round's thesis (native
+  cross-lingual geometry) for calibration.
+- (STAGE-2 result) 30M student, KD-only → KD-replay (20-epoch cap, no
+  contrastive): R@5@384 0.111 → 0.5454, min-slices 0.3809, cross 0.7417.
+  Selection: step1 candidates EMPTY (sd 0.7491 < 0.85, llm 0.8022 < 0.90 —
+  the recalibrated bar); step3 fallback → epoch 20 (max min-slices among
+  mono ≥ 0.8932). Route recorded in selection.json.
+- (EXPORT) int8-dynamic (prereg-fixed form; fp32 measured for record):
+  epoch-20 student, sha256 a436a074d277104a3a98a2358804a63fe82204590a7bbc3756c0c7168acd8109,
+  28.24 MB; int8 vs fp32 R@5@384 0.5479 vs 0.5454 (quantization harmless).
+- (SINGLE-SHOT GATE PASS — one pass, gate set cb367577 asserted, judged
+  c2ce056d single-touch, production mechanics, engine ORT 1.27):
+  | gate | threshold | measured | verdict |
+  |---|---|---|---|
+  | g1 S1m no-harm | ≥ 0.9252 | 0.9434 (ci95 0.0256, 191 queries) | PASS |
+  | gX0 mono Δ vs prod 0.8982 | \|Δ\| ≤ 0.005 | +0.0121 (0.9103) | FAIL |
+  | seed-dup | ≥ 0.85 ∧ share ≥ 0.50 | 0.7483 / 0.0 | FAIL |
+  | llm (RECALIBRATED 0.90/0.75) | ≥ 0.90 ∧ share ≥ 0.75 | 0.7995 / 0.1765 | FAIL |
+  | g6a latency | ≤ 45 ms | 5.394 ms (p95 5.842) | PASS |
+  | g7 size | ≤ 60 MB | 28.24 MB | PASS |
+  4 of 6 binding gates FAIL → **REJECT**.
+- (monitored) cross R@5 0.7417 fp32 / 0.7583 int8 (r7: 0.9556 — large
+  regression); sibling anchor, g3 per-slice, burned144, g2 0.9434 (<0.96
+  target) — all in gate_pass.json / g1_s1m_report.json.
+- (cosmetic, verdict-neutral) gate_r5's per-gate "threshold" LABEL string
+  still prints the superseded "0.93/0.90" — the APPLIED table was the
+  patched 0.90/0.75 (asserted pre-pass, carried in report.thresholds);
+  all failing values fail under BOTH tables, so no verdict impact.
+  Disclosed, not hidden.
+- (VERDICT — base lever EXHAUSTED) Round-8 asked: does swapping the KD
+  teacher base to a natively cross-lingual one (harrier-0.6b, FT'd or raw)
+  lift the 30M student past the llm/seed-dup ceiling? Answer: NO —
+  (a) FT cannot add calibration without destroying native geometry (stage-1
+  negative result under the committed rule); (b) the RAW harrier teacher
+  carries geometry but no corpus calibration in its bare-text space (the
+  sweep's "cured" anchors required the instruction recipe, which KD cannot
+  transfer — the student has no instruction concept); (c) the resulting
+  student REGRESSES vs r6/r7 on llm (0.7995 vs 0.8947/0.8920) and monitored
+  cross (0.74 vs 0.9556). Per r8 prereg §5: REJECT is FINAL for the whole
+  «data+schedule+selection+base» bundle — harrier was the last untried
+  base; reopen only with a fundamentally new approach.
+- (discipline) One measured pass, no re-rolls, no post-hoc switching;
+  judged corpus single-touch (g1 only, after export); branch pushed before
+  gates (61c5f0f); every deviation logged above and in-session.
