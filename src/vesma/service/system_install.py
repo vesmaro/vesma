@@ -332,18 +332,21 @@ def _systemctl_system(args: list[str]) -> str:
     return "ok"
 
 
-def _materialize_venv(venv_dir: Path, requirements: tuple[str, ...]) -> dict[str, str]:
+def _materialize_venv(venv_dir: Path, requirements: tuple[str, ...], mode: int) -> dict[str, str]:
     """``uv venv`` + exact pins via ``uv pip`` — the SY-08 leg.
 
-    The created venv has NO pip (uv default): pip-as-root is not merely
-    avoided, it does not exist in the tree. Returns the normalized
-    freeze map of the fresh venv. Broken/incomplete revision dirs are
-    rebuilt from scratch by the caller.
+    ``mode`` comes from the FHS manifest entry (0755 root:root for the
+    system venv trees, specs/layout/v2 §3.4) and is enforced BEFORE any
+    wheel content lands — never a hardcoded literal, never group- or
+    world-writable. The created venv has NO pip (uv default): pip-as-root
+    is not merely avoided, it does not exist in the tree. Returns the
+    normalized freeze map of the fresh venv. Broken/incomplete revision
+    dirs are rebuilt from scratch by the caller.
     """
     if venv_dir.exists():
         shutil.rmtree(venv_dir)
     _run_uv(["venv", str(venv_dir)], timeout=300)
-    os.chmod(venv_dir, 0o755)
+    os.chmod(venv_dir, mode)
     if requirements:
         _run_uv(
             [
@@ -730,7 +733,7 @@ def _ensure_venv_revision(
         os.chmod(rev_dir, entry.mode)
         report.append(f"venv revision (current): {rev_dir}")
     else:
-        frozen = _materialize_venv(rev_dir, requirements)
+        frozen = _materialize_venv(rev_dir, requirements, entry.mode)
         os.chmod(rev_dir, entry.mode)
         for line in requirements:
             dist, _, expected = line.partition("==")
