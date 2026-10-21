@@ -1365,15 +1365,24 @@ def _run_health_checks(*, json_output: bool, fix: bool = False, dry_run: bool = 
         console.print_json(json.dumps(payload))
         raise typer.Exit(exit_code)
 
+    if fix and dry_run:
+        # cli-audit 2026-10-08 (P3): the preview used to print the FULL
+        # health-check table (plus paths) under the planned-fix list — the
+        # operator asked for the fix plan, not another doctor run. The exit
+        # code still reflects the current (pre-fix) health.
+        code = _exit_code(results)
+        console.print()
+        console.print(f"[cyan][dry-run][/cyan] Would fix {len(_warn_names(results))} issue(s).")
+        raise typer.Exit(code)
+
     _render(results)
     if paths:
         _render_paths(paths)
     code = _exit_code(results)
     console.print()
     if fix:
-        if dry_run:
-            console.print(f"[cyan][dry-run][/cyan] Would fix {len(_warn_names(results))} issue(s).")
-        elif fixed:
+        # The fix+dry-run case returned above; here a real fix ran.
+        if fixed:
             console.print(f"[green]Fixed: {len(fixed)} issue(s).[/green]")
         if fix_skipped:
             console.print(f"[yellow]Could not auto-fix: {', '.join(fix_skipped)}[/yellow]")

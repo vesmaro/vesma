@@ -77,6 +77,19 @@ def test_fix_subcommand_dry_run_runs(isolated_home: Path) -> None:
     assert "fixing..." not in result.output
 
 
+def test_fix_dry_run_prints_no_full_health_table(isolated_home: Path) -> None:
+    """cli-audit 2026-10-08 (P3): the preview is the fix plan, not a doctor run.
+
+    The full health-check table (and the paths block) stay exclusive to
+    real runs; the dry-run keeps the "Would fix N" summary and the health
+    exit code.
+    """
+    result = runner.invoke(doctor_app, ["fix", "--dry-run"])
+    assert result.exit_code in (0, 1, 2), result.output
+    assert "Vesma Health Check" not in result.output
+    assert "Would fix" in result.output
+
+
 def test_fix_subcommand_real_run_runs(isolated_home: Path) -> None:
     """``doctor fix`` executes the fix path (writes stay in the tmp home)."""
     result = runner.invoke(doctor_app, ["fix"])
