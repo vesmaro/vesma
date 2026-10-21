@@ -148,7 +148,11 @@ def _check_vault(settings: Any) -> CheckResult:
 
 
 def _check_sqlite(settings: Any) -> CheckResult:
-    """SQLite DB exists, opens, and reports row count."""
+    """SQLite DB exists, opens, and reports row count.
+
+    Documented Stage 1 remainder (ArchCom 2026-10-20): the count includes
+    tombstoned rows (aggregates are not filtered in the MVP).
+    """
     db_path = settings.db_path
     if not db_path.exists():
         return CheckResult(

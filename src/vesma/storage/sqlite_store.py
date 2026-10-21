@@ -3396,6 +3396,12 @@ class SQLiteStore:
         Raises whatever sqlite raises — the CALLER (compose_heartbeat)
         owns the suppress-and-warn contract (a probe failure must never
         break the tool call it rides).
+
+        Documented Stage 1 remainder (ArchCom 2026-10-20): a tombstoned
+        row can still answer the probe (it exists and is not archived) —
+        the heartbeat stays the cheap over-approximation; the rows it
+        gates are filtered at materialization, so a tombstone can at most
+        trigger one empty compose, never leak content.
         """
         conn = self._get_conn()
         row = conn.execute(
