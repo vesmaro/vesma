@@ -131,7 +131,7 @@ jobs:
         # generation needs grpc_tools/protobuf, not the project install.
         run: |
           python -m pip install --quiet grpcio-tools protobuf
-          python scripts/gen-proto.sh
+          PYTHON=python bash scripts/gen-proto.sh
 
       - name: Build image
         run: buildah bud -t vesma:test .
