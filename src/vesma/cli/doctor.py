@@ -747,6 +747,54 @@ def _check_pending_refine(settings: Any) -> CheckResult:
 _TAG_CONTRACT_EXAMPLES = 5
 
 
+def _check_deletion_journal(settings: Any) -> CheckResult:
+    """Stage 1 delete — deletion-journal hash-chain integrity (ArchCom).
+
+    The journal is the tamper-evident record of every tombstone; a broken
+    chain means a past deletion was edited or removed outside the API.
+    There is no removal path in the product, so a healthy store always
+    verifies. The check reuses the store's chain walker over a bare
+    connection (no store instantiation → no migration side effects).
+    """
+    from vesma.storage.sqlite_store import verify_deletion_journal_conn
+
+    db_path = settings.db_path
+    if not db_path.exists():
+        return CheckResult("Deletion journal", CheckStatus.PASS, "no database yet")
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='deletion_journal'"
+            ).fetchone()
+            if table is None:
+                return CheckResult(
+                    "Deletion journal",
+                    CheckStatus.PASS,
+                    "pre-tombstone schema (no journal table yet)",
+                )
+            verdict = verify_deletion_journal_conn(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return CheckResult("Deletion journal", CheckStatus.FAIL, f"scan error: {exc}")
+    if not verdict["ok"]:
+        return CheckResult(
+            "Deletion journal",
+            CheckStatus.FAIL,
+            f"{verdict['reason']} — the deletion record was tampered with "
+            f"({verdict['entries']} entries total; verify backups before trusting "
+            "the store)",
+        )
+    entries = verdict["entries"]
+    plural = "entry" if entries == 1 else "entries"
+    return CheckResult(
+        "Deletion journal",
+        CheckStatus.PASS,
+        f"chain intact ({entries:,} {plural})",
+    )
+
+
 def _check_tag_contract(settings: Any) -> CheckResult:
     """Report tag contract mode + non-conformant entry count (if fast).
 
@@ -1025,6 +1073,7 @@ _SETTINGS_CHECKS = (
     _check_vector_store,
     _check_pending_refine,
     _check_tag_contract,
+    _check_deletion_journal,
 )
 
 
@@ -1336,7 +1385,7 @@ def doctor(
 
     Checks: config, data dir, vault, SQLite DB, vector store, pending
     refinement queue, MCP server, integration layer, agent wiring, tag
-    contract.
+    contract, deletion journal (tombstone chain integrity).
 
     Exit codes: 0 = all pass (or skipped as not applicable), 1 = one or
     more failed, 2 = warnings only.
