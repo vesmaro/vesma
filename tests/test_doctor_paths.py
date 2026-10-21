@@ -121,7 +121,8 @@ def test_collect_paths_completion_and_cache_show_real_writers(
 
     assert paths["completion"].endswith(".vesma/completion"), paths["completion"]
     assert "custom-cfg" not in paths["completion"]
-    assert paths["cache"].endswith(".cache/vesma"), paths["cache"]
+    # Virgin home = generation v2: cache resolves inside ~/.vesma.
+    assert paths["cache"].endswith(".vesma/cache"), paths["cache"]
     assert "custom-cfg" not in paths["cache"]
 
 

@@ -1,4 +1,10 @@
-"""Service install/uninstall flow (service-lifecycle v1 §3.6 + layout v1 §3.5/§3.8).
+"""Service install/uninstall flow (SL v1 §3.6; layout v1 §3.5/§3.8, v2 §3.1-3.3).
+
+Since the layout v2 resolver wave (ADR-0045) every path comes from
+:mod:`vesma.service.layout` generation-dispatched: a NEW installation is
+stamped and created in the self-contained v2 form; an existing v1.5
+install keeps the v1 tables (the stamp is written ONCE, from detection,
+and never rewritten by install).
 
 The single writer of the installation (layout §3.5): bundled pack
 manifests into ``components.d/<name>.yaml`` (atomic tmp + rename),
@@ -27,6 +33,7 @@ for v1, see ``_install_component_venv`` for the TODO.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import logging
@@ -144,29 +151,100 @@ def _atomic_write(path: Path, data: str, mode: int) -> None:
 
 
 def _unit_path() -> Path:
-    """``$XDG_CONFIG_HOME/systemd/user/vesma.service`` (user profile)."""
-    config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
-    base = Path(config_home) if config_home else layout.home() / ".config"
-    return base / "systemd" / "user" / "vesma.service"
+    """Where systemd reads the unit (both generations — the OS mandate)."""
+    return layout.installed_unit_path()
+
+
+def _validate_tree_name(name: str) -> None:
+    """Refuse component names colliding with the tree-root registry.
+
+    Layout v2 §3.2-e (the v1 §3.8 mechanism, extended additively): a
+    reserved name would collide with the tree structure itself — first at
+    consolidation (v1.5), immediately in the v2 tree. Enforced at install
+    time, generation-independently.
+    """
+    if layout.is_reserved_tree_name(name):
+        raise InstallError(
+            f"component name {name!r} is in the reserved-name registry of the "
+            "vesma tree (specs/layout/v2 §3.2-e) — rename the component"
+        )
+
+
+def _write_unit(unit_text: str, report: list[str]) -> Path:
+    """Write the generated unit; v2 keeps canonical storage in sync.
+
+    v1.5 (unchanged behavior): the unit file IS the only copy at the
+    systemd user dir. v2 (§3.2-a.1): the canonical copy lives at
+    ``~/.vesma/systemd/user/vesma.service`` and the systemd location gets
+    an atomic symlink — single source, no canonical↔installed drift.
+    """
+    installed = _unit_path()
+    if layout.detect_generation() is layout.LayoutGeneration.V2:
+        canonical = layout.unit_canonical_path()
+        layout.ensure_dir(canonical.parent, layout.MODE_DIR_DEFAULT)
+        _atomic_write(canonical, unit_text, 0o644)
+        layout.ensure_dir(installed.parent, layout.MODE_DIR_DEFAULT)
+        _atomic_symlink(canonical, installed)
+        report.append(f"unit canonical storage: {canonical} (0644)")
+        return installed
+    layout.ensure_dir(installed.parent, layout.MODE_DIR_DEFAULT)
+    _atomic_write(installed, unit_text, 0o644)
+    return installed
+
+
+def _atomic_symlink(target: Path, link_path: Path) -> None:
+    """Atomically point ``link_path`` at ``target`` (tmp link + rename).
+
+    ``os.replace`` swaps the final directory entry atomically — a partial
+    or missing unit can never be observed by ``daemon-reload``. Works over
+    an existing regular file (v1.5-shaped leftover) and over an older
+    symlink alike.
+    """
+    tmp = link_path.parent / f".{link_path.name}.tmp-link-{os.getpid()}"
+    with contextlib.suppress(FileNotFoundError):
+        tmp.unlink()
+    os.symlink(target, tmp)
+    os.replace(tmp, link_path)
+
+
+# ── Generation stamping (layout v2 §3.1/§3.3) ─────────────────────────
+
+
+def _ensure_generation_stamp(report: list[str] | None = None) -> layout.LayoutGeneration:
+    """Stamp the layout generation when absent; never rewrite a stamp.
+
+    The generation is FIXED at install time (§3.1): an existing stamp is
+    trusted untouched — a re-install on a v1.5 machine must keep the v1.5
+    resolution (zero-regression). Without a stamp the detected generation
+    is written: v1.5 when legacy service artifacts exist, else v2 (new
+    installations are always created in the v2 form, §3.3).
+    """
+    stamped = layout.read_generation_stamp()
+    if stamped is not None:
+        return stamped
+    generation = layout.detect_generation()
+    layout.write_generation_stamp(generation)
+    if report is not None:
+        report.append(
+            f"layout generation: {generation.value} stamped at {layout.install_state_path()}"
+        )
+    logger.info("layout generation stamped: %s", generation.value)
+    return generation
 
 
 # ── Install ───────────────────────────────────────────────────────────
 
 
 def _ensure_canonical_dirs() -> None:
-    """Every §3.2 root the install flow owns, explicit modes (LY-01)."""
-    for path in (
-        layout.config_root(),
-        layout.components_dir(),
-        layout.env_dir(),
-        layout.data_root(),
-        layout.data_root() / "venvs",
-        layout.state_root(),
-        layout.history_dir(),
-        layout.run_fallback_dir(),
-    ):
-        layout.ensure_dir(path, layout.MODE_DIR_DEFAULT)
-    layout.ensure_dir(layout.cache_base(), layout.MODE_DIR_CACHE)
+    """Every canonical root the install flow owns, explicit modes (LY-01).
+
+    Generation-aware (layout v2 §3.2): the v2 tree adds the logs root and
+    the systemd canonical storage; the state plane of v1.5 resolves as
+    one root. The resolver owns the table — no path math here.
+    """
+    specs = layout.canonical_dir_specs()
+    for path, mode in specs:
+        layout.ensure_dir(path, mode)
 
 
 def _write_bundled_manifests(components_dir: Path) -> list[Path]:
@@ -436,6 +514,11 @@ def install() -> InstallResult:
     """Install the service: manifests, data dirs, venvs, unit. Idempotent."""
     report: list[str] = []
 
+    # 0. Generation stamp (layout v2 §3.1/§3.3) — FIRST, before any dir is
+    # created: every resolver below dispatches on it, and the stamp fixes
+    # the plane for this and every future run (never rewritten here).
+    _ensure_generation_stamp(report)
+
     downgraded: tuple[str, ...] = ()
     if unitgen.container_detect():
         downgraded = tuple(sorted(unitgen.DOWNGRADE_ALLOWED))
@@ -464,6 +547,7 @@ def install() -> InstallResult:
 
     # 4. Per-component data dirs + config schemas.
     for manifest in sorted(installation.values(), key=lambda m: m.name):
+        _validate_tree_name(manifest.name)
         layout.ensure_dir(layout.data_dir(manifest.name), layout.MODE_DIR_DEFAULT)
         schema_path = _write_component_schemas(manifest)
         if schema_path is not None:
@@ -485,13 +569,11 @@ def install() -> InstallResult:
     unit_text = unitgen.generate(
         home=layout.home(),
         engine_venv=engine_venv(),
-        read_write_paths=(layout.state_root(), layout.cache_base(), layout.data_root()),
-        read_only_paths=(layout.engine_venv_dir(), layout.data_root() / "venvs"),
+        read_write_paths=layout.unit_rw_paths(),
+        read_only_paths=layout.unit_ro_paths(),
         downgraded=downgraded,
     )
-    unit_path = _unit_path()
-    layout.ensure_dir(unit_path.parent, layout.MODE_DIR_DEFAULT)
-    _atomic_write(unit_path, unit_text, 0o644)
+    unit_path = _write_unit(unit_text, report)
     report.append(f"unit: {unit_path} (0644, generated — do not edit)")
     reload_status = _daemon_reload()
     report.append(f"systemctl --user daemon-reload: {reload_status}")
@@ -559,10 +641,12 @@ def install_component(name: str) -> InstallComponentResult:
     :func:`install`).
     """
     components_dir = layout.components_dir()
+    _validate_tree_name(name)
+    report: list[str] = []
+    _ensure_generation_stamp(report)
     _ensure_canonical_dirs()
     target = components_dir / f"{name}.yaml"
     alt = components_dir / f"{name}.yml"
-    report: list[str] = []
     written = False
 
     if target.exists() and alt.exists():
@@ -982,7 +1066,7 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
                 for env_path in sorted(env_dir.glob("*.env")):
                     env_path.unlink()
                     lines.append(f"env file removed: {env_path}")
-            venvs_root = layout.data_root() / "venvs"
+            venvs_root = layout.component_venvs_root()
             if venvs_root.is_dir():
                 for venv_dir in sorted(venvs_root.iterdir()):
                     lines.append(_remove_venv_dir(venv_dir))

@@ -88,17 +88,7 @@ def _group_or_world_writable(mode: int) -> bool:
 
 
 def _dr01() -> Finding:
-    dir_specs: list[tuple[Path, int]] = [
-        (layout.config_root(), 0o700),
-        (layout.components_dir(), 0o700),
-        (layout.env_dir(), 0o700),
-        (layout.data_root(), 0o700),
-        (layout.data_root() / "venvs", 0o700),
-        (layout.state_root(), 0o700),
-        (layout.history_dir(), 0o700),
-        (layout.run_fallback_dir(), 0o700),
-        (layout.cache_base(), 0o750),
-    ]
+    dir_specs: list[tuple[Path, int]] = list(layout.canonical_dir_specs())
     problems: list[str] = []
     fixes: list[str] = []
     checked = 0
@@ -176,7 +166,7 @@ def _pip_freeze(venv_dir: Path) -> dict[str, str] | None:
 
 
 def _dr02() -> Finding:
-    venvs_root = layout.data_root() / "venvs"
+    venvs_root = layout.component_venvs_root()
     if not venvs_root.is_dir():
         return Finding("DR-02", "venv integrity", Severity.OK, "no component venvs (n/a)")
     problems: list[str] = []
@@ -415,7 +405,7 @@ def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
     engine_real = Path(os.path.realpath(engine_venv))
     engine_site = _site_packages(engine_venv) if engine_present else None
     engine_site_real = Path(os.path.realpath(engine_site)) if engine_site is not None else None
-    venvs_root = layout.data_root() / "venvs"
+    venvs_root = layout.component_venvs_root()
     problems: list[str] = []
     fixes: list[str] = []
     checked = 0
@@ -446,7 +436,7 @@ def _dr06(installation: dict[str, ComponentManifest] | None) -> Finding:
                     fixes.append("rebuild the component venv from scratch: vesma service install")
     components_dir = layout.components_dir()
     if components_dir.is_dir():
-        for reserved in ("venv", "venvs"):
+        for reserved in sorted(layout.RESERVED_TREE_NAMES):
             if (components_dir / f"{reserved}.yaml").exists():
                 problems.append(f"reserved component name installed: {reserved}")
                 fixes.append(f"remove {components_dir}/{reserved}.yaml")
@@ -479,17 +469,15 @@ def _read_unit() -> tuple[Path, str] | None:
 
 
 def _installed_unit_path() -> Path:
-    config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
-    base = Path(config_home) if config_home else layout.home() / ".config"
-    return base / "systemd" / "user" / "vesma.service"
+    return layout.installed_unit_path()
 
 
 def _regenerate_unit(downgraded: list[str]) -> str:
     return unitgen.generate(
         home=layout.home(),
         engine_venv=engine_venv(),
-        read_write_paths=(layout.state_root(), layout.cache_base(), layout.data_root()),
-        read_only_paths=(layout.engine_venv_dir(), layout.data_root() / "venvs"),
+        read_write_paths=layout.unit_rw_paths(),
+        read_only_paths=layout.unit_ro_paths(),
         downgraded=downgraded,
     )
 
@@ -634,12 +622,7 @@ def _dr09(installation: dict[str, ComponentManifest] | None) -> Finding:
 
 
 def _dr10() -> Finding:
-    roots = [
-        ("config", layout.config_root()),
-        ("data", layout.data_root()),
-        ("state", layout.state_root()),
-        ("cache", layout.cache_base()),
-    ]
+    roots = list(layout.free_space_roots())
     runtime = layout.resolve_runtime_dir()
     roots.append(("runtime", runtime.path))
     problems: list[str] = []
@@ -739,8 +722,7 @@ def _dr11() -> Finding:
 
 def _dr12() -> Finding:
     unit = _read_unit()
-    venv = layout.engine_venv_dir()
-    venvs = layout.data_root() / "venvs"
+    venv, venvs = layout.unit_ro_paths()
     problems: list[str] = []
     fixes: list[str] = []
     hard = False  # undocumented loss of coverage / fs-level weakening = FAIL
@@ -875,11 +857,107 @@ def _dr13() -> Finding:
     )
 
 
+# ── DR-17: install-state ↔ filesystem — the USER leg: generation mixing ──
+# (specs/layout/v2 §3.3/§3.14; the system-profile inversion leg is the
+# install --system wave of ADR-0045, together with DR-14…DR-16/DR-18.)
+
+
+def _dr17() -> Finding:
+    """A tree mixing v1.5 and v2 service artifacts is a FAIL (§3.3 MUST NOT).
+
+    The engine never writes the other generation's paths; artifacts in
+    both planes mean a mixed tree — silent-degradation class, resolved by
+    the consolidation mover (ADR-0045 rollout wave 4), not by hand here.
+    """
+    legacy_roots = list(layout.legacy_service_artifacts())
+    v2_dirs = [p for p in layout.v2_only_service_dirs() if p.exists()]
+    if not legacy_roots and not v2_dirs:
+        return Finding(
+            "DR-17",
+            "install-state ↔ filesystem (generation mixing)",
+            Severity.OK,
+            "no service stack on either plane (n/a)",
+        )
+    if legacy_roots and v2_dirs:
+        return Finding(
+            "DR-17",
+            "install-state ↔ filesystem (generation mixing)",
+            Severity.FAIL,
+            "MIXED generations: v1.5 plane "
+            f"{[str(p) for p in legacy_roots]} AND v2 plane "
+            f"{[str(p) for p in v2_dirs]} — the engine never writes both; "
+            "resolve before anything else touches the stack",
+            "consolidation (ADR-0045 rollout wave 4 mover); until then keep "
+            "the planes untouched — do NOT hand-delete either side",
+        )
+    generation = "v1.5 (legacy XDG spread)" if legacy_roots else "v2 (self-contained ~/.vesma)"
+    return Finding(
+        "DR-17",
+        "install-state ↔ filesystem (generation mixing)",
+        Severity.OK,
+        f"single plane: {generation}",
+    )
+
+
+# ── DR-19: layout generation of the user profile (specs/layout/v2 §3.3) ──
+
+
+def _dr19() -> Finding:
+    """Advisory about the detected layout generation (§3.3 SHOULD).
+
+    v1.5 → WARN with the consolidation pointer; v2 → OK; an UNSTAMPED v2
+    tree → WARN (§3.1 MUST: the generation is fixed at install time).
+    """
+    stamped = layout.read_generation_stamp()
+    generation = layout.detect_generation()
+    if generation is layout.LayoutGeneration.V1_5:
+        return Finding(
+            "DR-19",
+            "layout generation (user profile)",
+            Severity.WARN,
+            "generation v1.5 (legacy XDG spread) — keeps resolving per "
+            "layout v1; consolidation to the self-contained ~/.vesma form "
+            "is an explicit operator step (specs/layout/v2 §9.2)",
+            "consolidation mover lands with ADR-0045 rollout wave 4 — "
+            "re-run `vesma doctor` after it ships; until then no action",
+        )
+    v2_present = any(p.exists() for p in layout.v2_only_service_dirs())
+    if not v2_present and stamped is None:
+        return Finding(
+            "DR-19",
+            "layout generation (user profile)",
+            Severity.OK,
+            "no service stack installed — first install creates generation v2",
+        )
+    if stamped is None:
+        return Finding(
+            "DR-19",
+            "layout generation (user profile)",
+            Severity.WARN,
+            f"v2 tree without a generation stamp ({layout.install_state_path()} "
+            "absent or unparsable) — §3.1: the generation MUST be fixed at "
+            "install time",
+            "vesma service install",
+        )
+    return Finding(
+        "DR-19",
+        "layout generation (user profile)",
+        Severity.OK,
+        f"generation v2 (self-contained ~/.vesma), stamped at {layout.install_state_path()}",
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
 def run_service_checks() -> list[Finding]:
-    """Run DR-01…DR-13 against the local installation. READ-ONLY."""
+    """Run the doctor registry against the local installation. READ-ONLY.
+
+    DR-01…DR-13 (layout/service-lifecycle v1) + the user-profile legs of
+    v2 §3.14: DR-17 (generation mixing) and DR-19 (generation advisory).
+    DR-14…DR-16 and DR-18 belong to the system-profile waves (ADR-0045
+    rollout 2-3) and are deliberately absent here.
+    """
     installation: dict[str, ComponentManifest] | None = None
     try:
         components_dir = layout.components_dir()
@@ -910,6 +988,8 @@ def run_service_checks() -> list[Finding]:
         ("DR-11", "journald Storage=persistent", _dr11),
         ("DR-12", "venv read-only at runtime", _dr12),
         ("DR-13", "container downgrade allowlist", _dr13),
+        ("DR-17", "install-state ↔ filesystem (generation mixing)", _dr17),
+        ("DR-19", "layout generation (user profile)", _dr19),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

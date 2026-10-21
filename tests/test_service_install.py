@@ -93,15 +93,11 @@ class TestInstall:
         assert sorted(p.name for p in components.iterdir()) == ["board.yaml", "metrics.yaml"]
 
     def test_canonical_dirs_with_explicit_modes(self, installed: Path) -> None:
-        assert layout.verify_dir(layout.config_root(), 0o700)
-        assert layout.verify_dir(layout.components_dir(), 0o700)
-        assert layout.verify_dir(layout.env_dir(), 0o700)
-        assert layout.verify_dir(layout.data_root(), 0o700)
-        assert layout.verify_dir(layout.data_root() / "venvs", 0o700)
-        assert layout.verify_dir(layout.state_root(), 0o700)
-        assert layout.verify_dir(layout.history_dir(), 0o700)
-        assert layout.verify_dir(layout.run_fallback_dir(), 0o700)
-        assert layout.verify_dir(layout.cache_base(), 0o750)
+        # The full DR-01 table (generation-aware via the resolver).
+        for path, mode in layout.canonical_dir_specs():
+            assert layout.verify_dir(path, mode), f"{path} must be {mode:04o}"
+        if layout.detect_generation() is layout.LayoutGeneration.V1_5:
+            assert layout.verify_dir(layout.state_root(), 0o700)
 
     def test_exactly_one_component_venv_ly05(
         self, installed: Path, fake_venv_installer: list[str]
@@ -109,7 +105,7 @@ class TestInstall:
         # board is in-process (engine venv, no component venv by design);
         # metrics is the python child — exactly one venv dir.
         assert fake_venv_installer == ["metrics"]
-        venvs_root = layout.data_root() / "venvs"
+        venvs_root = layout.component_venvs_root()
         assert [p.name for p in venvs_root.iterdir()] == ["metrics"]
         assert layout.verify_dir(venvs_root / "metrics", 0o700)
 
@@ -196,7 +192,7 @@ class TestInstallValidation:
             "metrics.yaml",
             "notes.txt",
         ]
-        assert not (layout.data_root() / "venvs" / "metrics").exists()
+        assert not (layout.component_venvs_root() / "metrics").exists()
 
     def test_out_of_clamp_restart_override_surfaces_loader_error(
         self, isolated_home: Path, fake_venv_installer: list[str]
@@ -292,7 +288,7 @@ class TestUninstall:
 
         assert not (layout.components_dir() / "metrics.yaml").exists()
         assert not env_file.exists()
-        assert not (layout.data_root() / "venvs" / "metrics").exists()
+        assert not (layout.component_venvs_root() / "metrics").exists()
         # board untouched; data dirs preserved (operator data).
         assert (layout.components_dir() / "board.yaml").exists()
         assert layout.data_dir("metrics").is_dir()
@@ -333,7 +329,7 @@ class TestUninstall:
         components = layout.components_dir()
         assert list(components.iterdir()) == []  # every install-owned file gone
         assert not (installed / ".config/systemd/user/vesma.service").exists()
-        assert not (layout.data_root() / "venvs" / "metrics").exists()
+        assert not (layout.component_venvs_root() / "metrics").exists()
         # data dirs preserved
         assert layout.data_dir("board").is_dir()
         assert layout.data_dir("metrics").is_dir()
@@ -483,7 +479,7 @@ class TestReinstallDriftRebuild:
 
         # A REAL venv (offline `python -m venv`) carrying a foreign marker,
         # with a stale lock from before the hand install.
-        layout.ensure_dir(layout.data_root() / "venvs", layout.MODE_DIR_DEFAULT)
+        layout.ensure_dir(layout.component_venvs_root(), layout.MODE_DIR_DEFAULT)
         venv_dir = install_mod._create_component_venv("metrics")
         marker = venv_dir / "foreign-marker.txt"
         marker.write_text("hand installed", encoding="utf-8")
@@ -516,7 +512,7 @@ class TestReinstallDriftRebuild:
         clean = f"pip==99.0\nvesma=={__version__}\n"
         _stub_pip(monkeypatch, clean)
 
-        layout.ensure_dir(layout.data_root() / "venvs", layout.MODE_DIR_DEFAULT)
+        layout.ensure_dir(layout.component_venvs_root(), layout.MODE_DIR_DEFAULT)
         venv_dir = install_mod._create_component_venv("metrics")
         marker = venv_dir / "first-run-marker.txt"
         marker.write_text("survives", encoding="utf-8")

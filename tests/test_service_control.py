@@ -189,7 +189,9 @@ def test_cs2_fallback_path_and_warn(
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-    expected_dir = home / ".local" / "state" / "vesma" / "run"
+    # Virgin home = layout generation v2: the fallback lives in the
+    # self-contained tree (v1.5 pins cover the legacy state-plane slot).
+    expected_dir = home / ".vesma" / "run"
     with caplog.at_level("WARNING", logger="vesma.service.layout"):
         server = ControlServer(FakeBackend())
         result = server.bind()

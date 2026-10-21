@@ -31,11 +31,7 @@ from vesma.service import layout
 #: The generation stamp (specs/layout/v2 §3.1/§3.3; stored at the shared
 #: ``~/.vesma`` root — the one directory that exists in BOTH generations).
 #: Minimal YAML; the resolver reads the ``generation:`` key defensively.
-STAMP_V15 = (
-    "# vesma install-state (specs/layout/v2 §3.1/§3.3)\n"
-    "generation: v1.5\n"
-    "profile: user\n"
-)
+STAMP_V15 = "# vesma install-state (specs/layout/v2 §3.1/§3.3)\ngeneration: v1.5\nprofile: user\n"
 
 
 @pytest.fixture
@@ -156,23 +152,36 @@ class TestV15EnvOverrideSemanticsPinned:
     boundary: the service layout layer is driven by XDG_*/HOME only —
     engine-side VESMA_* overrides (config.py) must not leak into it."""
 
-    def test_xdg_overrides(self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_xdg_overrides(
+        self, v15_by_artifacts: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """XDG overrides are honored by BOTH resolution and generation
+        detection — one XDG view, consistently (an install whose artifacts
+        live under an override keeps legacy resolution there)."""
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+        for root in (
+            tmp_path / "cfg" / "vesma",
+            tmp_path / "data" / "vesma" / "board",
+            tmp_path / "state" / "vesma",
+            tmp_path / "cache" / "vesma",
+        ):
+            root.mkdir(parents=True)
+        assert layout.detect_generation() is layout.LayoutGeneration.V1_5
         assert layout.config_root() == tmp_path / "cfg" / "vesma"
         assert layout.data_root() == tmp_path / "data" / "vesma"
         assert layout.state_root() == tmp_path / "state" / "vesma"
         assert layout.cache_base() == tmp_path / "cache" / "vesma"
 
     def test_empty_xdg_var_means_default(
-        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+        self, v15_by_artifacts: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", "")
         monkeypatch.setenv("XDG_DATA_HOME", "   ")
-        assert layout.config_root() == isolated_home / ".config" / "vesma"
-        assert layout.data_root() == isolated_home / ".local" / "share" / "vesma"
+        assert layout.config_root() == v15_by_artifacts / ".config" / "vesma"
+        assert layout.data_root() == v15_by_artifacts / ".local" / "share" / "vesma"
 
     def test_vesma_star_envs_do_not_reach_the_service_layer(
         self, v15_by_artifacts: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
