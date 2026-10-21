@@ -386,27 +386,37 @@ def _looks_like_tool_manager() -> bool:
 
 
 def _canonical_engine_venv() -> Path:
-    """The layout-contract engine venv (``~/.local/share/vesma/venv``, XDG-honored)."""
+    """The layout-contract engine venv of the detected generation (lazy import)."""
     from vesma.service.layout import engine_venv_dir  # lazy: light import, CLI startup cost
 
     return engine_venv_dir()
 
 
 def _is_canonical_engine_venv(prefix: Path) -> bool:
-    """True when ``prefix`` IS the canonical engine venv from the layout contract.
+    """True when ``prefix`` IS a canonical engine venv from the layout contract.
 
-    The canonical-path fallback makes pre-marker installs owned (the
-    6.2.0 field case: a service-installed engine venv predates the
-    marker — the canonical path is the ownership proof there).
+    Ownership is generation-INDEPENDENT (layout v2 wave, ADR-0045): the
+    check accepts BOTH canonical slots — the generation's contract slot
+    AND the legacy v1.5 slot (``~/.local/share/vesma/venv``). A venv
+    installed at the legacy slot predates the generation question; the
+    canonical-path fallback must keep it owned (the 6.2.0 field case: a
+    service-installed engine venv predates the ``.vesma-venv`` marker —
+    the canonical path is the ownership proof there).
     """
-    try:
-        return prefix.resolve() == _canonical_engine_venv().resolve()
-    except OSError:  # pragma: no cover — an unresolvable prefix is not canonical
-        return False
+    from vesma.service.layout import legacy_engine_venv_dir  # lazy, same reason
+
+    for slot in (_canonical_engine_venv(), legacy_engine_venv_dir()):
+        try:
+            if prefix.resolve() == slot.resolve():
+                return True
+        except OSError:  # pragma: no cover — an unresolvable slot is not canonical
+            continue
+    return False
 
 
 def _user_site_marker_path() -> Path:
-    """``~/.local/share/vesma/.user-site-install`` (XDG-honored)."""
+    """``<data_root>/.user-site-install`` (XDG-honored; the generation's
+    data root — WRITE-ONLY audit stamp, never read back)."""
     from vesma.service.layout import data_root  # lazy, same reason as above
 
     return data_root() / _USER_SITE_MARKER

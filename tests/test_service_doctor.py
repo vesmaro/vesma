@@ -375,7 +375,7 @@ class TestDR05:
 class TestDR06:
     def test_symlinked_component_venv_fails(self, installed: Path) -> None:
         engine_venv = layout.engine_venv_dir()
-        link = layout.data_root() / "venvs" / "evil"
+        link = layout.component_venvs_root() / "evil"
         link.symlink_to(engine_venv)
         finding = _finding(run_service_checks(), "DR-06")
         assert finding.severity is Severity.FAIL
@@ -709,10 +709,12 @@ class TestDR12:
 
     def test_missing_coverage_fails_with_install_fix(self, installed: Path) -> None:
         unit = installed / ".config/systemd/user/vesma.service"
+        ro_paths = " ".join(unitgen.render_path(p, layout.home()) for p in layout.unit_ro_paths())
+        first_only = unitgen.render_path(layout.unit_ro_paths()[0], layout.home())
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "ReadOnlyPaths=%h/.local/share/vesma/venv %h/.local/share/vesma/venvs",
-                "ReadOnlyPaths=%h/.local/share/vesma/venv",
+                f"ReadOnlyPaths={ro_paths}",
+                f"ReadOnlyPaths={first_only}",
             ),
             encoding="utf-8",
         )
@@ -723,10 +725,11 @@ class TestDR12:
 
     def test_commented_readonlypaths_without_marker_fails(self, installed: Path) -> None:
         unit = installed / ".config/systemd/user/vesma.service"
+        ro_paths = " ".join(unitgen.render_path(p, layout.home()) for p in layout.unit_ro_paths())
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "ReadOnlyPaths=%h/.local/share/vesma/venv %h/.local/share/vesma/venvs",
-                "# ReadOnlyPaths=%h/.local/share/vesma/venv %h/.local/share/vesma/venvs",
+                f"ReadOnlyPaths={ro_paths}",
+                f"# ReadOnlyPaths={ro_paths}",
             ),
             encoding="utf-8",
         )
@@ -752,7 +755,7 @@ class TestDR12:
         assert finding.fix_command is not None  # LY-14: a ready command, honestly scoped
 
     def test_world_writable_venv_on_disk_fails(self, installed: Path) -> None:
-        os.chmod(layout.data_root() / "venvs", 0o777)
+        os.chmod(layout.component_venvs_root(), 0o777)
         finding = _finding(run_service_checks(), "DR-12")
         assert finding.severity is Severity.FAIL
         assert finding.fix_command is not None

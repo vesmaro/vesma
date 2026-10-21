@@ -30,6 +30,7 @@ from typer.testing import CliRunner
 
 from vesma.cli.components import _registry, _topo_order
 from vesma.cli.main import app
+from vesma.service import layout
 from vesma.service.client import ControlClientError
 from vesma.service.install import bundled_manifest_path
 from vesma.service.manifest import ComponentManifest
@@ -115,7 +116,9 @@ class TestInstall:
         assert before == after, "bare `vesma install` must not touch components.d"
 
     def test_bundled_installs_bundle_bytes(self, bundle_only_home: Path) -> None:
-        target = bundle_only_home / ".config" / "vesma" / "components.d" / "board.yaml"
+        # The fresh machine is layout generation v2 (ADR-0045): the drop-in
+        # dir resolves through the layout resolver, not a hardcoded plane.
+        target = layout.components_dir() / "board.yaml"
         result = runner.invoke(app, ["install", "board"])
         assert result.exit_code == 0, result.output
         assert target.read_bytes() == bundled_manifest_path("board").read_bytes()

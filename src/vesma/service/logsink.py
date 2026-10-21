@@ -360,14 +360,15 @@ def make_logsink(
     """The §3.7 mode decision, made ONCE: journald if reachable else files.
 
     ``state_logs_root`` injects the file-mode root (tests point it into a
-    tmp dir); default is the canonical ``~/.local/state/vesma/logs/``.
+    tmp dir); default is the generation's canonical logs root (layout v1:
+    ``~/.local/state/vesma/logs/``; layout v2: ``~/.vesma/logs/``).
     """
     if journal_socket_available(journal_socket_path):
         return JournaldSink(journal_socket_path)
     if state_logs_root is None:
-        from vesma.service.layout import state_root
+        from vesma.service.layout import logs_root
 
-        state_logs_root = state_root() / "logs"
+        state_logs_root = logs_root()
     return _FileModeRouter(state_logs_root)
 
 

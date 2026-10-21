@@ -29,6 +29,24 @@ from vesma.service.cache import CACHE_DIR_MODE, CacheWriteRefusedError, put_unde
 from vesma.service.envfile import TaintedValue, TaintedValues, load_env_file
 
 
+@pytest.fixture(autouse=True)
+def v15_cache_vehicle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the LY-12 vehicle to the v1.5 XDG-routed cache plane.
+
+    The suite predates the layout-v2 resolver wave and asserts the cache
+    writer at ``$XDG_CACHE_HOME/vesma/<name>`` — a v1.5-only routing (v2
+    ignores XDG cache dirs, §3.2-b, and resolves ``~/.vesma/cache/``; the
+    v2 slot's mode discipline is covered by
+    ``tests/test_service_layout.py::TestCachePlaneModeDiscipline``). The
+    conftest ``isolated_store_home`` autouse fixture has already flipped
+    HOME to a virgin fake home (v2 by detection) — stamping v1.5 here
+    restores the XDG-routing vehicle without touching the taint legs.
+    """
+    home = Path(os.environ["HOME"])
+    home.joinpath(".vesma").mkdir(exist_ok=True)
+    (home / ".vesma" / "install-state.yaml").write_text("generation: v1.5\n", encoding="utf-8")
+
+
 def _write_env(path: Path, body: str = "ALPHA=one\nTOKEN=super-secret-value\n") -> Path:
     path.write_text(body, encoding="utf-8")
     os.chmod(path, 0o600)
