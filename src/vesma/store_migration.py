@@ -1167,7 +1167,7 @@ def build_plan(source_home: Path, target_home: Path, *, apply: bool) -> Migratio
     if is_already_migrated(layout):
         raise AlreadyMigratedError(
             f"source {source_home} already carries the vesma:* namespace "
-            f"({stats.total} records, 0 re-slaggable) — nothing to migrate"
+            f"({stats.total} records, 0 tags to rewrite) — nothing to migrate"
         )
     if stats.unparseable_rows:
         raise InvalidSourceError(
