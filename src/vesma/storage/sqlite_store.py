@@ -2929,7 +2929,11 @@ class SQLiteStore:
     ) -> list[Memory]:
         """M3 — most recent memories for a specific agent (+ optional project)."""
         conn = self._get_conn()
-        q = "SELECT * FROM memories WHERE agent=? AND" + _TOMBSTONE_WHERE
+        q = (
+            # _TOMBSTONE_WHERE is a static module constant, never user input.
+            "SELECT * FROM memories WHERE agent=? AND"  # nosec B608 - static module constant
+            + _TOMBSTONE_WHERE
+        )
         params: list[Any] = [agent]
         if project:
             q += " AND project=?"
@@ -2941,7 +2945,8 @@ class SQLiteStore:
     def list_by_cluster(self, cluster_id: str) -> list[Memory]:
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT * FROM memories WHERE cluster_id=? AND"
+            # _TOMBSTONE_WHERE is a static module constant, never user input.
+            "SELECT * FROM memories WHERE cluster_id=? AND"  # nosec B608 - static module constant
             + _TOMBSTONE_WHERE
             + " ORDER BY created_at ASC",
             (cluster_id,),
