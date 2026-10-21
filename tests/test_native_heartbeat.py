@@ -499,8 +499,26 @@ class TestComposeSuppression:
 
 
 def _reset_call_tracker() -> dict[str, Any]:
-    """Snapshot/restore helper for the module-global reminder tracker."""
-    return dict(mcp_server_module._checkpoint_tracker)
+    """Reset the module-global reminder tracker to its FRESH state; return
+    the zeroed snapshot for the restore-between-paired-calls idiom.
+
+    The name always promised a reset but the body only SNAPSHOTTED the
+    suite-accumulated state. Once earlier tests in the session had made
+    enough ``call_tool`` dispatches (calls_since_save >= the reminder
+    threshold, or elapsed > the seconds threshold with calls > 0), the
+    checkpoint-reminder suffix — whose text embeds LIVE ``int(elapsed)``
+    monotonic seconds — rode the paired dispatches with DIFFERENT values
+    (the shadow heartbeat contour runs between the two legs), and the
+    byte-identity pins failed CI-only while passing solo (2026-10-21, CI
+    job 119044242827). Reminder-free dispatches are what these pins
+    always meant to compare; the real reminder behavior is pinned in its
+    own suites (test_usage_mcp and friends), which set the tracker state
+    they need themselves.
+    """
+    fresh: dict[str, Any] = {"calls_since_save": 0, "last_save_ts": 0.0}
+    mcp_server_module._checkpoint_tracker.clear()
+    mcp_server_module._checkpoint_tracker.update(fresh)
+    return dict(fresh)
 
 
 class TestOffByteIdentity:
