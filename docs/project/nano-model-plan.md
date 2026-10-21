@@ -20,17 +20,17 @@ flowchart TD
   subgraph TARGET["Целевое (NM-1..NM-3)"]
     B1["NanoProvider (ONNX int8<br/>мультиязычный дистиллят 45-60M<br/>weights_sha256-пин, офлайн)"] --> E1
     B2["LLM-стек веток:<br/>config→providers(Ollama/OpenAI/Anthropic)→<br/>router→RLM→nano (ONNX-genai int4)"] --> R1
-    CH["модель-канал: main wheel (эмбеддер ≤95МБ) /<br/>models-wheel или hash-pinned download (рефайнер) +<br/>MNEMOS_OFFLINE_MODELS_DIR"]
+    CH["модель-канал: main wheel (эмбеддер ≤95МБ) /<br/>models-wheel или hash-pinned download (рефайнер) +<br/>VESMA_OFFLINE_MODELS_DIR"]
     CH -.->|"эмбеддер: main wheel"| B1
     CH -.->|"рефайнер: ≤95МБ → wheel,<br/>иначе download"| B2
   end
 ```
 
 Швы готовности (проверено по коду):
-- **Эмбеддер-шов чист**: интерфейс `EmbeddingProvider` (embed/embed_batch/dimension) + фабрика `create_embedding_provider`; `ONNXHubProvider` уже умеет onnxruntime+tokenizers+revision-пин (CWE-494/B615), mean-pooling+L2, CPU-потоки через `MNEMOS_ORT_THREADS`.
+- **Эмбеддер-шов чист**: интерфейс `EmbeddingProvider` (embed/embed_batch/dimension) + фабрика `create_embedding_provider`; `ONNXHubProvider` уже умеет onnxruntime+tokenizers+revision-пин (CWE-494/B615), mean-pooling+L2, CPU-потоки через `VESMA_ORT_THREADS`.
 - **Refine-шов один**: `_produce_refined_projection` (pipeline/refine.py:129) — единственная точка замены; bump `REFINE_PROCESSING_VERSION` → `swap_key` меняется → корректный пере-свап.
 - **LLM-фундамент уже написан** (открытие фактчека): локальный стек веток `feat/llm-config → llm-standard-providers (Ollama/OpenAI/Anthropic + рабочая create_provider) → llm-router (routing + MemoryManager.llm) → llm-rlm-adapter (RLMProvider) → synthesize-real-llm (wiring синтеза)` с тестами (тысячи строк) запушен на origin 2026-09-01 (до этого существовал только локально). Это готовая база NM-3 — сначала смержить стек, затем NanoRefinerProvider встаёт как ещё один бэкенд роутера.
-- **Дыры, которые закрывает NM-1**: onnxruntime/tokenizers/huggingface_hub НЕ объявлены в pyproject (транзитивно через chromadb — после выпила обязаны стать прямыми); `MNEMOS_OFFLINE_MODELS_DIR` — только в ADR, кода нет; model_fingerprint для non-chromadb провайдеров — identifier-only (weights_sha256=None) — нужно расширение на NanoProvider (sha256 реального ONNX-файла).
+- **Дыры, которые закрывает NM-1**: onnxruntime/tokenizers/huggingface_hub НЕ объявлены в pyproject (транзитивно через chromadb — после выпила обязаны стать прямыми); `VESMA_OFFLINE_MODELS_DIR` — только в ADR, кода нет; model_fingerprint для non-chromadb провайдеров — identifier-only (weights_sha256=None) — нужно расширение на NanoProvider (sha256 реального ONNX-файла).
 - **Честное открытие по обучающей машине**: репозиторий mira — Rust-проект виртуализации (virtio-gpu), не ML-стенд; обучающего кода и torch/cuda там нет. Дистилляция требует явного решения о хосте (вопрос владельцу — см. §5.1).
 
 ## 3. Роадмап
@@ -38,7 +38,7 @@ flowchart TD
 | Этап | Что | Выход/гейт | Оценка |
 |---|---|---|---|
 | **NM-0** | Контур качества моделей | ✅ В main (#206): S1m, model_fingerprint, fail-loud | готово |
-| **NM-1a** | **Инфраструктура обучения**: выбор/подтверждение GPU-хоста; скелет репозитория обучения (или каталог `training/` в mnemos: датасет-преп, скрипт дистилляции, экспорт int8 ONNX, eval-джига); датасет: пары «текст→эмбеддинг-пространство учителя» на memory-shaped RU+EN корпусе (мнезаписи-подобные: заметки/чаты/код-сниппеты), ~100k–1M примеров | Скрипты детерминированы; eval-отчёт против учителя (косинус-сходство, retrieval-proxy) | S |
+| **NM-1a** | **Инфраструктура обучения**: выбор/подтверждение GPU-хоста; скелет репозитория обучения (каталог `training/` в vesma: датасет-преп, скрипт дистилляции, экспорт int8 ONNX, eval-джига); датасет: пары «текст→эмбеддинг-пространство учителя» на memory-shaped RU+EN корпусе (мнезаписи-подобные: заметки/чаты/код-сниппеты), ~100k–1M примеров | Скрипты детерминированы; eval-отчёт против учителя (косинус-сходство, retrieval-proxy) | S |
 | **NM-1b** | **Дистилляция базы**: мультиязычный учитель (paraphrase-multilingual-MiniLM-L12 или LaBSE-наследник) → студент 45–60M; калибровка int8 (static/PTQ), экспорт ONNX (opset пин), tokenizer | Артефакт ≤60МБ; eval: provisional cos-sim ≥0.95 к учителю на holdout (порог provisional до первого eval-прогона, пересматривается по директиве «пороги только из измерений»); RU-квота ≥40% provisional (обосновывается составом датасета) | M (GPU-часы) |
 | **NM-1c** | **NanoProvider + выпил хромадб**: провайдер за швом (реализовать weights_sha256 по локальному ONNX-файлу для model_fingerprint); deps: +onnxruntime/tokenizers/huggingface_hub объявить прямо, −chromadb; 22 тест-упоминания `provider: chromadb` → `nano`; model_contour → fingerprint по локальному файлу; docs-свип (~41 вхождение) | Сьют зелёный; S1m-коридор нано против эталона (не ниже baseline − max(0.02; 95% ДИ)); оффлайн-gonogo-тест; подпись артефакта в release-pipeline | M |
 | **NM-1d** | **Re-baseline + дефолт**: перезапись s1.json (model_fingerprint → nano), полный re-embed sweeper, конфиг-дефолт provider=nano, chromadb-значение → миграционное предупреждение | Все S1-инварианты зелёные с нано; dev-plan обновлён | S |
@@ -64,9 +64,9 @@ flowchart TD
 - [ ] Eval-отчёт: студент vs учитель vs текущий chromadb-MiniLM — порог перехода (provisional до первого eval-прогона, пересматривается по измерениям): retrieval-proxy не ниже учителя − 2%
 
 **Интеграция:**
-- [ ] NanoProvider (onnxruntime+tokenizers уже в зависимостях после выпила): weights_sha256 по локальному ONNX, dim probe, MNEMOS_ORT_THREADS
+- [ ] NanoProvider (onnxruntime+tokenizers уже в зависимостях после выпила): weights_sha256 по локальному ONNX, dim probe, VESMA_ORT_THREADS
 - [ ] model_fingerprint: non-chromadb ветка model_contour теперь возвращает weights_sha256 реального файла (сейчас identifier-only)
-- [ ] Пакет: весовой артефакт ≤95МБ в wheel ИЛИ канал download (по замеру); sdist без весов; MNEMOS_OFFLINE_MODELS_DIR реализован (load from file + hash-проверка)
+- [ ] Пакет: весовой артефакт ≤95МБ в wheel ИЛИ канал download (по замеру); sdist без весов; VESMA_OFFLINE_MODELS_DIR реализован (load from file + hash-проверка)
 - [ ] chromadb выпилен: pyproject, 22 тест-упоминания `provider: chromadb`, model_contour, 41 docs-вхождение, конфиги; `provider="chromadb"` → миграционное предупреждение
 - [ ] Подпись артефакта: release-pipeline подписывает модельный wheel (SHA256+cosign+GPG+SBOM-провенанс: base-модель, ревизия, лицензия Apache-2.0/MIT)
 - [ ] Гоного-тесты: инференс без сети; первая установка без сети; попытка записи в файл весов падает

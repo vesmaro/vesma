@@ -1,7 +1,7 @@
 # План разработки vesma — Фаза 5.0.0 (dev-plan)
 
 > **Живой документ.** Обновляется на закрытии каждой волны (каденция — §7).
-> Единый язык задач — GitHub-трекер [vesmaro/vesmaro](https://github.com/vesmaro/vesmaro/issues)
+> Единый язык задач — GitHub-трекер [vesmaro/vesma](https://github.com/vesmaro/vesma/issues)
 > (живые ссылки в §5). Архитектурные инварианты —
 > [ADR-0017](adr/0017-memory-system-evolution-roadmap.md) (дорожная карта памяти),
 > [ADR-0018](adr/0018-context-rewrite-ltm-bridge.md) (context-rewrite мост),
