@@ -443,7 +443,12 @@ def _require_root_for_real_prefix(prefix: Path) -> None:
 
 def install_system(prefix: Path | None = None) -> SystemInstallResult:
     """Install the system profile. Idempotent (§3.13: a re-run is a
-    refresh — byte-identical artifacts are kept, nothing duplicates)."""
+    refresh — byte-identical artifacts are kept, nothing duplicates).
+
+    Venv materialization is ONLINE by design: ``uv pip install`` pulls
+    the same-build wheel pin from PyPI at install time; offline bundling
+    of wheels is deferred to the packaging wave (deb/rpm, ADR-0045
+    rollout, last)."""
     resolved_prefix = fhs.default_prefix() if prefix is None else prefix
     _require_root_for_real_prefix(resolved_prefix)
     manifest = fhs.load_fhs_manifest()
@@ -571,6 +576,11 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     # 5. Code plane + engine venv revision (SY-07 groundwork, SY-08).
     make_dir("code_root", fhs.resolve_system_path(manifest.entry("code_root"), resolved_prefix))
     make_dir("venv_component_root", fhs.system_venvs_root(resolved_prefix))
+    # Revision id = the engine version for THIS wave (chairman
+    # ratification 2026-10-20): same build == same content-id, which is
+    # what keeps a re-install idempotent. A freeze-hash content-id is
+    # the updater wave's (ADR-0045 rollout 3) candidate — do not change
+    # it here without that wave's health-gate semantics.
     engine_rev_dir = fhs.system_venv_engine_revision(version, resolved_prefix)
     engine_symlink = fhs.system_venv_engine(resolved_prefix)
     # The engine venv's lock IS its wheel pin (vesma==version) — no lock
@@ -768,6 +778,11 @@ def _ensure_venv_symlink(
 def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
     """Exact-inverse uninstall: recorded artifacts only, reverse creation
     order, loud refusal on drift or foreign content (§3.13).
+
+    Operator data under ``/var/lib/vesma`` is preserved across uninstall
+    BY DESIGN (chairman ratification 2026-10-20): exact-inverse covers
+    only installer-created artifacts, mirroring the user-profile
+    uninstall; explicit data removal is the operator's action.
 
     Two phases: VALIDATE everything first (presence, type, foreign
     content) — a refusal leaves the tree untouched; then MUTATE in
