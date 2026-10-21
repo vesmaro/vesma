@@ -5,7 +5,7 @@ author: Korrnals
 license: Apache-2.0
 homepage: https://github.com/vesmaro/vesma
 requires:
-  - "the vesma package importable in the Hermes Python environment (pip install mnemos-memory-server) — no separate `vesma serve` process is needed"
+  - "the vesma package importable in the Hermes Python environment (pip install vesma) — no separate `vesma serve` process is needed"
 config_keys:
   data_dir:
     description: "Vesma data dir (empty = vesma default). One owner process per data dir (SQLite single-writer)."

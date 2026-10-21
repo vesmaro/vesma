@@ -21,7 +21,7 @@ pip install vesma
 > and installs the same server under the legacy name.
 
 No environment variables are required: the server defaults to
-`~/.mnemos/data` (store) and `~/.mnemos/vault` (Obsidian mirror) and creates
+`~/.vesma/data` (store) and `~/.vesma/vault` (Obsidian mirror) and creates
 both on first run. See [Tuning](#tuning) for custom locations.
 
 ---
@@ -237,15 +237,15 @@ documented form and win when both are set:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VESMA_VESMA__DATA_DIR` | `~/.mnemos/data` | SQLite store location |
-| `VESMA_VESMA__VAULT_PATH` | `~/.mnemos/vault` | Obsidian vault mirror |
+| `VESMA_VESMA__DATA_DIR` | `~/.vesma/data` | SQLite store location |
+| `VESMA_VESMA__VAULT_PATH` | `~/.vesma/vault` | Obsidian vault mirror |
 
 Example — Claude Code with an explicit store path (expanded by your shell):
 
 ```bash
 claude mcp add --scope user vesma \
-  --env VESMA_VESMA__DATA_DIR="$HOME/.mnemos/data" \
-  --env VESMA_VESMA__VAULT_PATH="$HOME/.mnemos/vault" \
+  --env VESMA_VESMA__DATA_DIR="$HOME/.vesma/data" \
+  --env VESMA_VESMA__VAULT_PATH="$HOME/.vesma/vault" \
   -- vesma mcp-server
 ```
 

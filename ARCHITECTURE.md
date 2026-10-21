@@ -267,7 +267,7 @@ Context Filter sits between interface input and downstream pipeline/recall so th
 
 ### Profiles
 
-Configured in `~/.mnemos/filter_profiles.yaml`:
+Configured in `~/.vesma/filter_profiles.yaml`:
 
 - `log`
 - `terminal`
@@ -286,7 +286,7 @@ Selection priority: explicit request → `source:` tag hint → content heuristi
 
 ## 5. Policy engine (M5)
 
-Declarative YAML rules (`~/.mnemos/policies.yaml`):
+Declarative YAML rules (`~/.vesma/policies.yaml`):
 - Auto-publish thresholds (quality + confidence + source-coverage).
 - Defer / archive rules based on age, status, cluster size.
 - Per-project overrides.
@@ -307,7 +307,7 @@ Reliability primitives:
 
 ## 7. Compaction detection (M7)
 
-Auto-collect signals (weighted, configurable in `~/.mnemos/auto_collect.yaml`):
+Auto-collect signals (weighted, configurable in `~/.vesma/auto_collect.yaml`):
 1. **Call counter** (inherited from ai-brain): N calls in T seconds → suggest checkpoint.
 2. **Context-size heuristic**: client-reported token estimate > 80 % of model limit.
 3. **Summary-marker detection**: regex on the most recent inbound messages for `<conversation-summary>` / `<compacted>`.
@@ -666,7 +666,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    YAML["policies.yaml\n~/.mnemos/policies.yaml"]
+    YAML["policies.yaml\n~/.vesma/policies.yaml"]
 
     subgraph PE_B["Policy Engine — policy/"]
         SCH["scheduler.py\nAPScheduler cron / interval"]

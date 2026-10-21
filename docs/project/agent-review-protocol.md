@@ -1,7 +1,7 @@
 # Agent Review Protocol (agent-driven merges)
 
 **Status:** Active (owner authorization 2026-08-22, this repository only)
-**Scope:** every agent-driven merge to `main` in vesmaro/vesmaro
+**Scope:** every agent-driven merge to `main` in vesmaro/vesma
 **Why it exists:** branch protection requires 1 approving review, but the
 repository has a single GitHub identity — the account that opens a PR cannot
 approve it. Until a GitHub App reviewer bot exists, agent merges use the
