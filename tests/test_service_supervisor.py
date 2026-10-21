@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -37,6 +38,7 @@ from typing import Any
 import pytest
 import yaml
 
+from vesma.service.fsm import ChildState, FsmEvent
 from vesma.service.logsink import HistoryJournal
 from vesma.service.manifest import ComponentManifest, load_manifest
 from vesma.service.supervisor import (
@@ -779,7 +781,12 @@ class TestSL10LazyRetry:
                 timeout=30,
             )
             assert _error_count(sink) == 1  # SL-10: no alert spam in lazy mode
-            gaps = [b - a for a, b in zip(lazy_spawns()[2:], lazy_spawns()[3:], strict=False)]
+            # ONE journal snapshot for count + gaps: two separate reads can
+            # straddle a landing spawn record and zip MISALIGNED lists
+            # (a phantom gap between non-adjacent stamps — the CI flap's
+            # test-side half, ff53d420).
+            stamps = lazy_spawns()
+            gaps = [b - a for a, b in itertools.pairwise(stamps[2:])]
             assert gaps and all(0.2 < gap < 2.5 for gap in gaps), f"lazy cadence: {gaps}"
 
             # Manual start resets the budget (§3.5): a fresh burn re-alerts.
@@ -791,6 +798,72 @@ class TestSL10LazyRetry:
             )
         finally:
             sup.shutdown()
+
+    def test_lazy_dwell_rearms_per_retry_on_the_fake_clock(
+        self, isolated_xdg: Path, tmp_path: Path
+    ) -> None:
+        """SL-10 cadence regression (ff53d420): every natural lazy-retry wake
+        CONSUMES the dwell deadline — the next retry re-arms from ``now``,
+        never fires off a stale (past) deadline. The stale-deadline bug made
+        retries 2+ run back-to-back at process-runtime cadence (~30ms) after
+        the first honored dwell — invisible in this e2e test's 4-spawn
+        snapshot and fatal to the gap bound once CI load delayed it.
+
+        Driving ``_after_exit`` directly on the fake clock (the SL-12 idiom:
+        a process-level fake-clock loop races the dwell-entry absorption, so
+        the timing contract is pinned as the pure policy it is)."""
+        manifests = _write_manifests(
+            tmp_path, {"opt": _child_doc("opt", "exiter.py", ("--code", "1"))}
+        )
+        clock = Clock(fake=True)
+        sup = _make_supervisor(tmp_path, manifests, clock=clock, jitter=lambda value: value)
+        _override_policy(sup, "opt", lazy_retry_s=0.4)
+        component = sup._components["opt"]
+        dwell_returned: list[bool] = []
+
+        def run_after_exit() -> None:
+            dwell_returned.append(sup._after_exit(component))
+
+        def lazy_death() -> None:
+            """One natural death up to the dwell: fresh T1 spawn, then the
+            real exit path — `_handle_exit` consults `_budget_exhausted`
+            (arms the dwell on the crossing death; early-True on retries)
+            and applies the T11 EXIT into terminal degraded."""
+            component.fsm.transition(FsmEvent.SPAWN)
+            sup._handle_exit(component, None)
+            assert component.fsm.state is ChildState.DEGRADED
+
+        # FIRST dwell: the exhaustion path arms lazy_retry_at = now + s.
+        component.window.extend([clock.now() - 1.0 - i * 0.1 for i in range(5)])
+        lazy_death()
+        assert component.lazy_retry_at == clock.now() + 0.4
+        dwell_thread = threading.Thread(target=run_after_exit, daemon=True)
+        dwell_thread.start()
+        clock.advance(0.39)  # just before the deadline: the dwell must hold
+        assert component.fsm.state is ChildState.DEGRADED, "dwell fired before its deadline"
+        clock.advance(0.01)
+        dwell_thread.join(timeout=10)
+        assert not dwell_thread.is_alive(), "dwell did not wake at its deadline"
+        assert dwell_returned == [True]
+        assert component.lazy_retry_at is None  # consumed by the wake
+
+        # SECOND dwell (the regression leg): a retry death re-enters
+        # `_after_exit` — the fresh deadline must be now + lazy_retry_s.
+        # Pre-fix the stale past deadline survived and the dwell fired
+        # immediately (degraded never held for the 0.39 advance).
+        lazy_death()
+        assert component.lazy_retry_at is None
+        dwell_thread = threading.Thread(target=run_after_exit, daemon=True)
+        dwell_thread.start()
+        clock.advance(0.39)
+        assert component.fsm.state is ChildState.DEGRADED, (
+            "second lazy retry fired off a stale deadline (back-to-back retries)"
+        )
+        clock.advance(0.01)
+        dwell_thread.join(timeout=10)
+        assert not dwell_thread.is_alive()
+        assert dwell_returned == [True, True]
+        assert component.fsm.state is ChildState.STOPPED  # fresh T1 spawn next pass
 
 
 # ── SL-11 core crash-loop at 10 → global degraded + alert, no stall ───

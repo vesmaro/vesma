@@ -170,10 +170,25 @@ class TestMechanics:
         assert [r.seq for r in results] == [0, 1, 2]
 
     def test_thread_safety_smoke(self) -> None:
+        """Concurrent-access smoke on the product's REAL sharing pattern
+        (fsm.py module docstring): one WRITER thread drives a legal
+        lifecycle per FSM while READER threads hammer the lock-taking
+        accessors (state / transition_count / in_state / snapshot) —
+        the supervision loop transitions, the control plane and board read.
+
+        The earlier shape ran TWO full lifecycle drivers per FSM: two
+        interleaved sequences are an ILLEGAL event stream by construction
+        (SPAWN exists only from ``stopped`` — SL-07), so the FSM correctly
+        refused with TransitionError whenever the scheduler interleaved the
+        drivers (ff53d420: ``healthy --spawn--> ???`` / ``starting
+        --spawn--> ???`` on CI). That refusal is the contract working, not
+        a race — the deterministic expectation for one lifecycle per FSM
+        is exactly 150 transitions."""
         fsms = [ChildFsm(f"c{i}") for i in range(8)]
         errors: list[Exception] = []
+        readers_done = threading.Event()
 
-        def worker(fsm: ChildFsm) -> None:
+        def writer(fsm: ChildFsm) -> None:
             try:
                 for _ in range(50):
                     fsm.transition(FsmEvent.SPAWN)
@@ -182,10 +197,29 @@ class TestMechanics:
             except Exception as exc:  # pragma: no cover - failure reporting
                 errors.append(exc)
 
-        threads = [threading.Thread(target=worker, args=(fsm,)) for fsm in fsms for _ in range(2)]
-        for thread in threads:
+        def reader(fsm: ChildFsm) -> None:
+            try:
+                while not readers_done.is_set():
+                    # every read takes the instance lock; a torn read or a
+                    # spurious exception fails the smoke
+                    assert fsm.state in ChildState
+                    assert fsm.transition_count >= 0
+                    fsm.in_state(ChildState.HEALTHY, ChildState.STARTING)
+                    fsm.snapshot()
+            except Exception as exc:  # pragma: no cover - failure reporting
+                errors.append(exc)
+
+        writer_threads = [threading.Thread(target=writer, args=(fsm,)) for fsm in fsms]
+        reader_threads = [
+            threading.Thread(target=reader, args=(fsm,)) for fsm in fsms for _ in range(2)
+        ]
+        for thread in writer_threads + reader_threads:
             thread.start()
-        for thread in threads:
+        for thread in writer_threads:
+            thread.join()
+        readers_done.set()
+        for thread in reader_threads:
             thread.join()
         assert not errors
-        assert all(fsm.transition_count == 300 for fsm in fsms)
+        assert all(fsm.transition_count == 150 for fsm in fsms)
+        assert all(fsm.state is ChildState.STOPPED for fsm in fsms)
