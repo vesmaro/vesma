@@ -31,6 +31,8 @@ from pathlib import Path
 import numpy as np
 
 TRAIN_DIR = Path(__file__).resolve().parents[1]
+if str(TRAIN_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(TRAIN_DIR.parent))
 CORPUS_DIR = Path(
     "/var/home/abyss/LABs/Projects/Project-Vesma/vesma-cortex/wt/embed-r5-corpus/data/embed-r7/corpus"
 )
