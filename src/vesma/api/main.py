@@ -2160,6 +2160,7 @@ class ExportRequest(BaseModel):
 @app.post("/api/v1/export")
 async def api_export(
     req: ExportRequest,
+    request: Request,
     passphrase: str | None = Header(None, alias="X-Mnemos-Passphrase"),
 ) -> StreamingResponse:
     """Export memories and stream the resulting file as a download.
@@ -2167,7 +2168,24 @@ async def api_export(
     Passphrase for encryption is read from the ``X-Mnemos-Passphrase``
     header (handled below) — kept out of the request body so it is not
     logged as a request parameter.
+
+    Stage 1 delete (F2, cascade review): operator-aware surface. The
+    ``sqlite`` format is the WHOLE database — tombstoned rows, the
+    deletion journal, workflow locks — so it requires operator context
+    (admitted session/token under ``auth_enabled=true``; loopback
+    single-operator by default), 403 otherwise. The ``json`` format
+    includes tombstoned rows only for an operator context; an
+    agent-context caller gets the default-filtered payload.
     """
+    operator = _operator_context(request)
+    if req.format == "sqlite" and not operator:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "format='sqlite' exports the full database (deleted memories "
+                "+ deletion journal) and requires an operator session/token"
+            ),
+        )
     import io
     import json as _json
 
@@ -2205,6 +2223,10 @@ async def api_export(
         tags=normalize_tag_aliases(req.tags) if req.tags else req.tags,
         since=since_dt,
         until=until_dt,
+        # Stage 1 delete (F2): tombstoned rows ship only to an operator
+        # context (round-trip fidelity); agent contexts get the filtered
+        # payload.
+        include_tombstoned=operator,
     )
 
     if fmt == ExportFormat.JSON:

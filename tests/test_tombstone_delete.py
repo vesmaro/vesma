@@ -405,6 +405,30 @@ class TestJournal:
         assert verdict["ok"] is False
         assert verdict["broken_seq"] == 2
 
+    def test_tail_removal_not_detectable_by_chain_alone(self, manager: MemoryManager) -> None:
+        """F3 (honest scope, cascade review 2026-10-20): removing the LAST
+        entry leaves a chain that still verifies — the walk simply ends one
+        entry earlier. This test pins the REAL behavior so the boundary is
+        explicit: closing it needs an external head-hash/count anchor
+        (Stage-2 candidate, see verify_deletion_journal_conn). The journal
+        count visible in `vesma doctor` is the only observable trace."""
+        only = _add(manager, content="only")
+        _tombstone(manager, only.id)
+        assert manager.sqlite.verify_deletion_journal()["entries"] == 1
+        conn = manager.sqlite._get_conn()
+        conn.execute("DELETE FROM deletion_journal WHERE seq = 1")
+        conn.commit()
+        verdict = verify_deletion_journal_conn(conn)
+        assert verdict["ok"] is True  # honest: not detectable by the chain alone
+        assert verdict["entries"] == 0
+        # The tombstoned ROW, however, still carries no journal entry —
+        # the doctor's F4 cross-check is the compensating control.
+        from vesma.cli.doctor import _check_deletion_journal
+
+        result = _check_deletion_journal(manager.settings)
+        assert result.status.value == "fail"
+        assert "WITHOUT a journal entry" in result.detail
+
     def test_journal_descendants_recorded(self, manager: MemoryManager) -> None:
         parent = _add(manager)
         child = _add_child(manager, parent.id)
@@ -414,13 +438,14 @@ class TestJournal:
         assert result["descendants_quarantined"] == [child.id]
 
     def test_no_removal_path_in_store_api(self) -> None:
-        """No-bypass: the store exposes append/list/verify ONLY — no
+        """No-bypass: the store exposes append/count/list/verify ONLY — no
         update/delete/wipe surface exists for the journal."""
         journal_methods = [
             name for name in dir(SQLiteStore) if "journal" in name and not name.startswith("_")
         ]
         assert sorted(journal_methods) == [
             "append_deletion_journal",
+            "journal_entry_count",
             "list_deletion_journal",
             "verify_deletion_journal",
         ]
@@ -706,13 +731,116 @@ class TestNoResurrection:
 
 
 class TestAdminSurfaces:
-    def test_export_sees_tombstoned(self, manager: MemoryManager) -> None:
-        """Export is the round-trip fidelity surface: tombstoned rows are
-        INCLUDED (dropping them would lose data on restore)."""
+    def test_export_default_excludes_optin_sees(self, manager: MemoryManager) -> None:
+        """F2 (cascade review): list_for_export EXCLUDES tombstoned by
+        default (it feeds agent-facing surfaces — MCP export, scanner);
+        the explicit operator opt-in keeps round-trip fidelity."""
         mem = _add(manager)
         _tombstone(manager, mem.id)
-        rows = manager.sqlite.list_for_export()
+        assert not any(m.id == mem.id for m in manager.sqlite.list_for_export())
+        rows = manager.sqlite.list_for_export(include_tombstoned=True)
         assert any(m.id == mem.id and m.workflow_status == "tombstoned" for m in rows)
+
+    def test_build_json_payload_default_excludes_tombstoned(self, manager: MemoryManager) -> None:
+        """F2: the shared payload builder filters tombstoned rows for
+        agent-facing filters (belt over the store flag)."""
+        from vesma.cli.export import ExportFilter, build_json_payload
+
+        mem = _add(manager, content="secret deleted body", title="gone")
+        _tombstone(manager, mem.id)
+        payload = build_json_payload(manager, ExportFilter())
+        assert not any(m["id"] == mem.id for m in payload["memories"])
+        # Operator opt-in keeps round-trip fidelity.
+        payload = build_json_payload(manager, ExportFilter(include_tombstoned=True))
+        assert any(m["id"] == mem.id for m in payload["memories"])
+
+    def test_mcp_export_json_excludes_tombstoned(
+        self, manager: MemoryManager, tmp_path: Path
+    ) -> None:
+        """F2 pin: the MCP vesma_export tool NEVER ships deleted content
+        to the agent-facing file."""
+        from vesma.mcp_server import _handle_export
+
+        mem = _add(manager, content="agent must not read this", title="mcp-leak")
+        _tombstone(manager, mem.id)
+        out = tmp_path / "mcp-export.json"
+        result = _handle_export(manager, {"output_path": str(out), "format": "json"})
+        assert "error" not in result, result
+        payload = json.loads(out.read_text())
+        assert not any(m["id"] == mem.id for m in payload["memories"])
+        assert "agent must not read this" not in out.read_text()
+
+    def test_mcp_export_sqlite_refused(self, manager: MemoryManager, tmp_path: Path) -> None:
+        """F2 pin: format=sqlite from the MCP surface is refused — the
+        full snapshot carries tombstoned rows + the journal."""
+        from vesma.mcp_server import _handle_export
+
+        out = tmp_path / "mcp-export.tar.gz"
+        result = _handle_export(manager, {"output_path": str(out), "format": "sqlite"})
+        assert "error" in result
+        assert "operator-only" in result["error"]
+        assert not out.exists()
+
+    def test_rest_export_sqlite_requires_operator(
+        self, manager: MemoryManager, tmp_path: Path
+    ) -> None:
+        """F2 pin: the REST /api/v1/export sqlite leg (whole DB + journal)
+        answers 403 without operator context, 200 with one."""
+        settings = manager.settings
+        settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+        auth_store = AuthStore(settings.db_path)
+        _token_id, plaintext = auth_store.create_token(name="owner", totp_required=False)
+        auth_store.close()
+        test_app = _test_app(manager, auth_enabled=True)
+        with TestClient(test_app) as tc:
+            refused = tc.request(
+                "POST",
+                "/api/v1/export",
+                json={"format": "sqlite"},
+            )
+            assert refused.status_code == 401, refused.text  # middleware closes first
+            ok = tc.request(
+                "POST",
+                "/api/v1/export",
+                json={"format": "sqlite"},
+                headers={"Authorization": f"Bearer {plaintext}"},
+            )
+            assert ok.status_code == 200, ok.text
+
+    def test_rest_export_json_operator_includes_tombstoned(
+        self, manager: MemoryManager, tmp_path: Path
+    ) -> None:
+        """F2 pin (REST semantics): under the T-AUTH trust model an
+        ADMITTED REST token IS an operator (no token roles exist), so the
+        json leg keeps round-trip fidelity and includes the tombstoned
+        row. The agent-facing exclusion lives on the MCP leg (no operator
+        concept: tombstoned always excluded, sqlite refused) and in the
+        default list_for_export filter (scanner, sync)."""
+        settings = manager.settings
+        settings.vesma.data_dir.mkdir(parents=True, exist_ok=True)
+        auth_store = AuthStore(settings.db_path)
+        _token_id, plaintext = auth_store.create_token(name="owner", totp_required=False)
+        auth_store.close()
+        test_app = _test_app(manager, auth_enabled=True)
+        mem = _add(manager, content="operator round-trip keeps me", title="rest-op")
+        _tombstone(manager, mem.id)
+        with TestClient(test_app) as tc:
+            resp = tc.post(
+                "/api/v1/export",
+                json={"format": "json"},
+                headers={"Authorization": f"Bearer {plaintext}"},
+            )
+            assert resp.status_code == 200, resp.text
+            assert "operator round-trip keeps me" in resp.text
+
+    def test_scanner_walk_excludes_tombstoned(self, manager: MemoryManager) -> None:
+        """F2: list_for_export's default exclusion also covers the pipeline
+        scanner's corpus walk — the sweeper never reprocesses a deleted
+        row's content."""
+        mem = _add(manager, content="scanner bait")
+        _tombstone(manager, mem.id)
+        rows = manager.sqlite.list_for_export(since=None, limit=None)
+        assert not any(m.id == mem.id for m in rows)
 
     def test_sync_export_excludes_tombstoned_content(self, manager: MemoryManager) -> None:
         """Guard-refusal posture (Stage 1): the compact sync payload never
@@ -819,6 +947,177 @@ class TestCliDelete:
         result = runner.invoke(app, ["delete", mem.id, "--yes"])
         assert result.exit_code == 0, result.output
         assert "already tombstoned" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 10c. Cascade-review fixes (F1/F4/F5)
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowOracleClosed:
+    """F1: the workflow projection is not a deletion oracle."""
+
+    def test_workflow_get_tombstoned_answers_not_found(self, manager: MemoryManager) -> None:
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        assert manager.workflow_get(mem.id) is None
+
+    def test_workflow_history_tombstoned_answers_empty(self, manager: MemoryManager) -> None:
+        """The history rows carry operator actor/reason strings — they have
+        no agent-reachable read path once the memory is deleted."""
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        assert manager.workflow_history(mem.id) == []
+
+    def test_rest_workflow_get_tombstoned_404(self, manager: MemoryManager) -> None:
+        test_app = _test_app(manager, auth_enabled=False)
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        with TestClient(test_app) as tc:
+            resp = tc.get(f"/memories/{mem.id}/workflow")
+        assert resp.status_code == 404, resp.text
+
+    def test_rest_memory_get_tombstoned_404(self, manager: MemoryManager) -> None:
+        test_app = _test_app(manager, auth_enabled=False)
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        with TestClient(test_app) as tc:
+            resp = tc.get(f"/memories/{mem.id}")
+        assert resp.status_code == 404, resp.text
+
+    def test_workflow_set_on_tombstoned_refused(self, manager: MemoryManager) -> None:
+        """Both layers refuse: the existence pre-check answers not-found
+        (F1 — no oracle), and even a direct status read hits the terminal
+        edge refusal. Either way the transition never lands."""
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        with pytest.raises(ValueError):
+            manager.workflow_set(mem.id, "open", actor="someone")
+        assert _raw_workflow_status(manager.sqlite, mem.id) == "tombstoned"
+
+
+class TestAtomicTombstone:
+    """F4: the three Stage-1 writes are one transaction; the idempotent
+    branch repairs a pre-atomic gap; the doctor cross-checks."""
+
+    def test_delete_writes_all_three_records(self, manager: MemoryManager) -> None:
+        mem = _add(manager)
+        result = _tombstone(manager, mem.id)
+        assert _raw_workflow_status(manager.sqlite, mem.id) == "tombstoned"
+        assert manager.sqlite.get_workflow_history(mem.id)
+        assert manager.sqlite.journal_entry_count(mem.id) == 1
+        assert result["journal_repaired"] is False
+
+    def test_idempotent_redelete_rebuilds_missing_journal(self, manager: MemoryManager) -> None:
+        """A pre-atomic tombstone (journal row lost to a crash) is REPAIRED
+        on re-delete: the entry is rebuilt and the chain verifies."""
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        conn = manager.sqlite._get_conn()
+        conn.execute("DELETE FROM deletion_journal WHERE memory_id = ?", (mem.id,))
+        conn.commit()
+        result = manager.delete_memory(mem.id, actor="owner")
+        assert result["idempotent"] is True
+        assert result["journal_repaired"] is True
+        assert result["journal_id"] is not None
+        assert manager.sqlite.journal_entry_count(mem.id) == 1
+        assert manager.sqlite.verify_deletion_journal()["ok"] is True
+
+    def test_idempotent_redelete_without_gap_stays_noop(self, manager: MemoryManager) -> None:
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        result = manager.delete_memory(mem.id, actor="owner")
+        assert result["journal_repaired"] is False
+        assert result["journal_id"] is None
+        assert manager.sqlite.journal_entry_count(mem.id) == 1
+
+    def test_doctor_crosscheck_unjournaled_fails(self, manager: MemoryManager) -> None:
+        from vesma.cli.doctor import _check_deletion_journal
+
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        conn = manager.sqlite._get_conn()
+        conn.execute("DELETE FROM deletion_journal WHERE memory_id = ?", (mem.id,))
+        conn.commit()
+        result = _check_deletion_journal(manager.settings)
+        assert result.status.value == "fail"
+        assert "WITHOUT a journal entry" in result.detail
+
+    def test_doctor_crosscheck_purged_predecessor_informational(
+        self, manager: MemoryManager
+    ) -> None:
+        """A journal entry whose memory row was hard-purged (doc re-ingest
+        / restore classes) is NOT a failure — informational only."""
+        from vesma.cli.doctor import _check_deletion_journal
+
+        mem = _add(manager)
+        _tombstone(manager, mem.id)
+        conn = manager.sqlite._get_conn()
+        conn.execute("DELETE FROM memories WHERE id = ?", (mem.id,))
+        conn.commit()
+        result = _check_deletion_journal(manager.settings)
+        assert result.status.value == "pass", result.detail
+        assert "purged rows" in result.detail
+
+
+class TestImportCollision:
+    """F5: a locally tombstoned id wins over any import."""
+
+    def _export_entry(self, manager: MemoryManager, mem_id: str) -> dict[str, Any]:
+        mem = manager.sqlite.get(mem_id, include_tombstoned=True)
+        assert mem is not None
+        return json.loads(mem.model_dump_json())
+
+    def test_json_merge_collision_skips_and_keeps_deleted(self, manager: MemoryManager) -> None:
+        from vesma.cli.import_ import _import_json
+
+        mem = _add(manager, content="original deleted body")
+        _tombstone(manager, mem.id)
+        entry = self._export_entry(manager, mem.id)
+        entry["content"] = "resurrected body from export"
+        entry["workflow_status"] = None  # a non-tombstoned export row
+        payload = {"format_version": 3, "memories": [entry], "projects": []}
+        result = _import_json(manager, payload, mode="merge", overwrite=True, dry_run=False)
+        assert result.errors == []
+        assert result.imported == 0 and result.updated == 0
+        assert result.skipped == 1
+        assert any("locally tombstoned" in w for w in result.warnings)
+        stored = manager.sqlite.get(mem.id, include_tombstoned=True)
+        assert stored is not None
+        assert stored.content == "original deleted body"  # NOT mutated
+        assert stored.workflow_status == "tombstoned"
+
+    def test_sqlite_merge_collision_skips_and_keeps_deleted(
+        self, manager: MemoryManager, tmp_path: Path
+    ) -> None:
+        """The SQLite merge leg: a snapshot row colliding with a locally
+        tombstoned id is skipped — the deleted row is not mutated."""
+        from vesma.cli.import_ import _import_sqlite
+
+        mem = _add(manager, content="original deleted body")
+        _tombstone(manager, mem.id)
+        # A snapshot from a store where the same id is alive, with new content.
+        snap = tmp_path / "snap.db"
+        _snapshot_db(manager.settings.db_path, snap)
+        conn = sqlite3.connect(str(snap))
+        conn.execute(
+            "UPDATE memories SET workflow_status = NULL, content = 'snapshot body' WHERE id = ?",
+            (mem.id,),
+        )
+        conn.commit()
+        conn.close()
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            tar.add(snap, arcname="mnemos.db")
+        result = _import_sqlite(
+            manager, buf.getvalue(), mode="merge", dry_run=False, backup_dir=None
+        )
+        assert result.skipped >= 1
+        assert any("locally tombstoned" in w for w in result.warnings)
+        stored = manager.sqlite.get(mem.id, include_tombstoned=True)
+        assert stored is not None
+        assert stored.content == "original deleted body"
+        assert stored.workflow_status == "tombstoned"
 
 
 # ---------------------------------------------------------------------------

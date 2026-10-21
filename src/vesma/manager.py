@@ -1923,18 +1923,46 @@ class MemoryManager:
             from_str = current["workflow_status"]
             from_status = WorkflowStatus(from_str) if from_str else None
 
-            # Idempotent no-op: deleting a deleted memory changes nothing
-            # (second journal entry would be a lie — the first delete
-            # already owns the record).
+            # Idempotent no-op: deleting a deleted memory changes nothing.
+            # F4 (cascade review 2026-10-20): a crash between the old
+            # non-atomic writes could leave a tombstoned row WITHOUT its
+            # journal entry — the idempotent branch now REPAIRS that hole
+            # (one repair entry, chain-verified) instead of silently
+            # returning None fields.
             if from_status is WorkflowStatus.TOMBSTONED:
+                journal_id: str | None = None
+                entry_hash: str | None = None
+                repaired = False
+                if self.sqlite.journal_entry_count(memory_id) == 0:
+                    repair_entry = self.sqlite.append_deletion_journal(
+                        memory_id=memory_id,
+                        actor=actor,
+                        reason=(
+                            "journal repair: the original tombstone predates the "
+                            "atomic write (crash between writes) — entry rebuilt "
+                            "on re-delete"
+                        ),
+                        descendants=[],
+                        created_at=datetime.now(UTC).isoformat(),
+                    )
+                    journal_id = repair_entry["journal_id"]
+                    entry_hash = repair_entry["entry_hash"]
+                    repaired = True
+                    logger.warning(
+                        "tombstone repair: memory=%s had no journal entry — "
+                        "rebuilt as %s (F4 recovery path)",
+                        memory_id[:8],
+                        journal_id[:8],
+                    )
                 return {
                     "memory_id": memory_id,
                     "from_status": WorkflowStatus.TOMBSTONED.value,
                     "to_status": WorkflowStatus.TOMBSTONED.value,
                     "actor": actor,
                     "reason": reason,
-                    "journal_id": None,
-                    "entry_hash": None,
+                    "journal_id": journal_id,
+                    "entry_hash": entry_hash,
+                    "journal_repaired": repaired,
                     "descendants_quarantined": [],
                     "descendants_skipped": [],
                     "idempotent": True,
@@ -1962,12 +1990,15 @@ class MemoryManager:
                 else:
                     quarantined.append(child_id)
 
-            # 1. The write chokepoint: the ONLY writer of the column.
-            self.sqlite.set_workflow_status(memory_id, WorkflowStatus.TOMBSTONED.value, None, None)
-            # 2. Audit history row (same table as every workflow transition).
+            # F4 (cascade review 2026-10-20): the three Stage-1 records —
+            # the workflow column, the audit history row and the
+            # hash-chained journal entry — land in ONE transaction
+            # (tombstone_atomic). A crash can no longer strand a
+            # tombstoned row without its journal entry.
             now_iso = datetime.now(UTC).isoformat()
-            self.sqlite.add_workflow_history(
-                {
+            journal_entry = self.sqlite.tombstone_atomic(
+                memory_id,
+                history_entry={
                     "id": str(uuid.uuid4()),
                     "memory_id": memory_id,
                     "from_status": from_status.value if from_status else None,
@@ -1976,16 +2007,10 @@ class MemoryManager:
                     "reason": reason,
                     "force_used": 0,
                     "created_at": now_iso,
-                }
-            )
-            # 3. The hash-chained deletion journal (tamper-evident record;
-            #    no removal path exists anywhere).
-            journal_entry = self.sqlite.append_deletion_journal(
-                memory_id=memory_id,
-                actor=actor,
-                reason=reason,
-                descendants=quarantined,
-                created_at=now_iso,
+                },
+                journal_actor=actor,
+                journal_reason=reason,
+                journal_descendants=quarantined,
             )
 
         # 4. Lineage-broken quarantine for the children (outside the
@@ -2032,6 +2057,7 @@ class MemoryManager:
             "reason": reason,
             "journal_id": journal_entry["journal_id"],
             "entry_hash": journal_entry["entry_hash"],
+            "journal_repaired": False,
             "descendants_quarantined": quarantined,
             "descendants_skipped": skipped,
             "idempotent": False,
@@ -2275,11 +2301,19 @@ class MemoryManager:
         Returns ``None`` when the memory does not exist. The ``workflow_status``
         is normalised to ``open`` when the memory has never had its workflow
         set (legacy / freshly created), so callers always see a valid state.
+
+        Stage 1 delete (F1, cascade review 2026-10-20): a tombstoned memory
+        answers ``None`` — the same not-found contract as every read
+        surface. Leaving it visible here would make the workflow projection
+        a deletion oracle (any id probed for existence) on the MCP tool and
+        REST endpoints, which have no operator gate.
         """
         current = self.sqlite.get_workflow_status(memory_id)
         if current is None:
             return None
         status = current["workflow_status"]
+        if status == "tombstoned":
+            return None
         return {
             "memory_id": memory_id,
             "workflow_status": status if status is not None else "open",
@@ -2293,7 +2327,17 @@ class MemoryManager:
         Returns an empty list if the memory has no recorded transitions
         (including when the memory does not exist — history is a projection
         of past events, not a memory existence check).
+
+        Stage 1 delete (F1, cascade review 2026-10-20): a tombstoned
+        memory's history answers EMPTY on every surface — the transition
+        rows carry operator actor/reason strings, and the MCP/REST surfaces
+        that serve history have no operator gate. Deletion forensics live
+        in the hash-chained deletion journal (``vesma doctor``), which has
+        no agent-facing read path.
         """
+        current = self.sqlite.get_workflow_status(memory_id)
+        if current is not None and current["workflow_status"] == "tombstoned":
+            return []
         return self.sqlite.get_workflow_history(memory_id, limit=limit)
 
     # ── Workflow helpers ─────────────────────────────────────────────────

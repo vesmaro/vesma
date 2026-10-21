@@ -633,7 +633,21 @@ def _import_json(
                     f"keys={stripped_keys}"
                 )
 
-        existing_mem = mgr.sqlite.get(memory.id)
+        # F5 (cascade review 2026-10-20): the collision check must see the
+        # RAW row — the default-filtered get() answers None for a locally
+        # tombstoned id, and the flow would fall through to the write path:
+        # save()'s internal existence check would land the UPDATE branch and
+        # MUTATE the deleted row's content, then _reembed() would warm a
+        # vector embed for it. A local tombstone WINS over any import: the
+        # entry is skipped with a warning, the deleted row untouched.
+        existing_mem = mgr.sqlite.get(memory.id, include_tombstoned=True)
+        if existing_mem is not None and existing_mem.workflow_status == "tombstoned":
+            result.skipped += 1
+            result.warnings.append(
+                f"memory {memory.id}: skipped — locally tombstoned "
+                "(a deleted memory wins over an import; no overwrite, no embed)"
+            )
+            continue
         if existing_mem is not None:
             if overwrite and not dry_run:
                 was_embedded = existing_mem.status == MemoryStatus.PUBLISHED
@@ -684,7 +698,13 @@ def _reembed(mgr: MemoryManager, memory: Memory) -> None:
     stamps the ``content_hash`` freshness key and emits the
     ``embed_upserted`` audit event — a raw ``vectors.upsert`` here would
     leave an unhealable, unhashed embed behind.
+
+    Stage 1 delete (F5, cascade review 2026-10-20): a tombstoned memory is
+    never re-embedded — a warm embed would keep the deleted id resolvable
+    in the vector leg.
     """
+    if memory.workflow_status == "tombstoned":
+        return
     if memory.status != MemoryStatus.PUBLISHED:
         return
     try:
@@ -907,7 +927,20 @@ def _import_sqlite(
                         if "workflow_status" in cols and row["workflow_status"] == "tombstoned":
                             result.skipped += 1
                             continue
-                        if mgr.sqlite.get(mem_id) is None:
+                        # F5 (cascade review): the collision check must see
+                        # the RAW row — a locally tombstoned id would answer
+                        # None through the filtered get() and the flow would
+                        # mutate the deleted row via save()'s UPDATE branch.
+                        # A local tombstone WINS over a snapshot row.
+                        local_row = mgr.sqlite.get(mem_id, include_tombstoned=True)
+                        if local_row is not None and local_row.workflow_status == "tombstoned":
+                            result.skipped += 1
+                            result.warnings.append(
+                                f"memory {mem_id}: skipped — locally tombstoned "
+                                "(a deleted memory wins over an import)"
+                            )
+                            continue
+                        if local_row is None:
                             # Reconstruct a Memory from the snapshot row. The
                             # store's own ``_row_to_memory`` is schema-drift safe:
                             # every post-day-1 column (pipeline_state,

@@ -1646,12 +1646,15 @@ async def _canonical_tools() -> list[Tool]:
         Tool(
             name="vesma_export",
             description=(
-                "Export memories to a file (JSON or SQLite snapshot). Writes the "
+                "Export memories to a JSON file. Writes the "
                 "result to disk and returns metadata only (path, memory_count, "
                 "format, bytes) — the content is NOT returned inline (stdio "
                 "transport limitation). Thin wrapper over the CLI export logic. "
                 "Inherits #86 federation defence: excludes mnemos:no-federate "
-                "records and redacts detected secrets in passing records. "
+                "records and redacts detected secrets in passing records; also "
+                "excludes DELETED (tombstoned) memories — an agent-facing "
+                "export never ships deleted content. format='sqlite' (full "
+                "database snapshot) is operator-only and refused here. "
                 "When encrypt=true the passphrase is read from the "
                 "VESMA_EXPORT_PASSPHRASE environment variable — never pass the "
                 "passphrase value in the tool arguments (it would appear in logs)."
@@ -1661,11 +1664,12 @@ async def _canonical_tools() -> list[Tool]:
                 "properties": {
                     "format": {
                         "type": "string",
-                        "enum": ["json", "sqlite"],
+                        "enum": ["json"],
                         "default": "json",
                         "description": (
-                            "json = metadata-only export with filters; "
-                            "sqlite = full tar.gz snapshot (filters ignored)."
+                            "json = metadata-only export with filters. "
+                            "'sqlite' (full snapshot) is operator-only and "
+                            "refused on the agent surface."
                         ),
                     },
                     "compress": {
@@ -2472,6 +2476,20 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         return {"error": f"Invalid format '{fmt_str}': {exc}"}
 
+    # Stage 1 delete (F2, cascade review 2026-10-20): the MCP tool is an
+    # AGENT-facing surface. The sqlite snapshot is the WHOLE database —
+    # tombstoned rows, the deletion journal, workflow locks — so it must
+    # never leave through an agent-reachable path. Operator surfaces only.
+    if fmt == ExportFormat.SQLITE:
+        return {
+            "error": (
+                "format='sqlite' is operator-only: the full snapshot carries "
+                "deleted (tombstoned) memories and the deletion journal, which "
+                "an agent-facing surface must not export. Use the CLI "
+                "`vesma export --format sqlite` at the operator console."
+            )
+        }
+
     compress_str = args.get("compress", "none")
     try:
         compress = CompressMode(compress_str)
@@ -2503,6 +2521,9 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         tags=args.get("tags"),
         since=since_dt,
         until=until_dt,
+        # Stage 1 delete (F2): agent-facing export NEVER ships deleted
+        # content — the default keeps tombstoned rows out of the payload.
+        include_tombstoned=False,
     )
 
     # ── Encryption: passphrase from env, never from args ───────────────────

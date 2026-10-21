@@ -120,6 +120,10 @@ def export_cmd(
         tags=tag_list,
         since=_parse_since(since),
         until=_parse_since(until),
+        # The CLI is an operator surface: round-trip fidelity keeps
+        # tombstoned rows in the export (Stage 1 delete, F2 — agent-facing
+        # surfaces keep the default False).
+        include_tombstoned=True,
     )
 
     passphrase: str | None = None

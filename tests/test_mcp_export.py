@@ -11,10 +11,8 @@ All secret fixtures are OBVIOUSLY FAKE (per ``sensitive-data.instructions.md``).
 
 from __future__ import annotations
 
-import io
 import json
 import os
-import tarfile
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -203,33 +201,36 @@ class TestExportHappyPath:
 
 
 class TestExportSqlite:
-    async def test_sqlite_snapshot_writes_tar_gz(
+    async def test_sqlite_format_refused_on_agent_surface(
         self, mgr: MemoryManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """F2 (cascade review 2026-10-20): the MCP tool is an AGENT-facing
+        surface; the sqlite snapshot is the WHOLE database (tombstoned rows
+        + the deletion journal) and is refused there. The operator path is
+        the CLI (`vesma export --format sqlite`), pinned by
+        tests/test_export_import.py."""
         _add(mgr, "snapshot me")
         out = tmp_path / "backup.tar.gz"
 
         result = await _export(mgr, output_path=str(out), format="sqlite")
 
-        assert result["format"] == "sqlite"
-        assert out.exists()
-        with tarfile.open(fileobj=io.BytesIO(out.read_bytes()), mode="r:gz") as tar:
-            assert "mnemos.db" in tar.getnames()
+        assert "error" in result
+        assert "operator-only" in result["error"]
+        assert not out.exists()
 
-    async def test_sqlite_ignores_filters_with_warning(
+    async def test_sqlite_refusal_precedes_filters(
         self, mgr: MemoryManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """F2: the operator-only refusal fires before any filter work — no
+        snapshot is written regardless of the requested filters."""
         _add(mgr, "a", project="mnemos")
         _add(mgr, "b", project="other")
         out = tmp_path / "snap.tar.gz"
 
-        # A filter that would match only 1 record in JSON mode.
         result = await _export(mgr, output_path=str(out), format="sqlite", project="mnemos")
 
-        assert result["format"] == "sqlite"
-        # SQLite is a full snapshot → memory_count reflects all records.
-        assert result["memory_count"] == 2
-        assert any("ignored for sqlite" in w.lower() for w in result.get("warnings", []))
+        assert "error" in result
+        assert not out.exists()
 
 
 # ── Compression ──────────────────────────────────────────────────────────────

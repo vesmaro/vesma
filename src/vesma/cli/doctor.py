@@ -790,12 +790,49 @@ def _check_deletion_journal(settings: Any) -> CheckResult:
             f"({verdict['entries']} entries total; verify backups before trusting "
             "the store)",
         )
+    # F4 cross-check (cascade review 2026-10-20): every TOMBSTONED row must
+    # have its journal entry (the atomic write guarantees it; a miss means
+    # a pre-atomic tombstone was never repaired — re-run `vesma delete <id>`
+    # to rebuild the entry). The reverse direction is informational only:
+    # journal entries whose memory row is gone are legitimately purged
+    # predecessors (doc re-ingest replace / restore wipe — Stage 2 will
+    # journal those classes).
+    unjournaled = 0
+    purged = 0
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE workflow_status = 'tombstoned' "
+                "AND id NOT IN (SELECT memory_id FROM deletion_journal)"
+            ).fetchone()
+            unjournaled = int(row[0]) if row else 0
+            row = conn.execute(
+                "SELECT COUNT(*) FROM deletion_journal "
+                "WHERE memory_id NOT IN (SELECT id FROM memories)"
+            ).fetchone()
+            purged = int(row[0]) if row else 0
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return CheckResult("Deletion journal", CheckStatus.FAIL, f"cross-check error: {exc}")
     entries = verdict["entries"]
     plural = "entry" if entries == 1 else "entries"
+    if unjournaled:
+        return CheckResult(
+            "Deletion journal",
+            CheckStatus.FAIL,
+            f"{unjournaled} tombstoned row(s) WITHOUT a journal entry — the "
+            "deletion record is incomplete (pre-atomic tombstone; re-run "
+            "`vesma delete <id>` on the affected memory to rebuild the entry)",
+        )
+    detail = f"chain intact ({entries:,} {plural})"
+    if purged:
+        detail += f"; {purged:,} entry(ies) reference purged rows (informational)"
     return CheckResult(
         "Deletion journal",
         CheckStatus.PASS,
-        f"chain intact ({entries:,} {plural})",
+        detail,
     )
 
 
