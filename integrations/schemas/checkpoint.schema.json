@@ -16,7 +16,7 @@
     "tags": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, vesma:checkpoint."
+      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, mnemos:checkpoint."
     },
     "metadata": {
       "type": "object",

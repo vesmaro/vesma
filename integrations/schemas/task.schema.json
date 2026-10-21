@@ -16,7 +16,7 @@
     "tags": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, vesma:open-question + task:queue."
+      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, mnemos:open-question + task:queue."
     },
     "metadata": {
       "type": "object",
