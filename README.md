@@ -109,7 +109,7 @@ Full guide: **[container deployment](docs/en/admin/runbooks/container-deployment
 # legacy-named asset — unit file stays vesma.container until the deploy wave renames it
 cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # add the TOTP key to ~/.vesma.env (both env spellings), then:
-podman pull ghcr.io/vesmaro/vesma:6.3.0  # container images ship with every release
+podman pull ghcr.io/vesmaro/vesma:6.4.0  # container images ship with every release
 # quadlet derives the unit name from the file name — the unit is vesma.service for now
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health

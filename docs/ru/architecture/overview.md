@@ -2,7 +2,7 @@
 
 **🌐 Language / Язык:** [English](../../en/architecture/overview.md) · Русский
 
-> Снимок архитектуры актуален для Vesma **6.3.0**. Нормативные контракты
+> Снимок архитектуры актуален для Vesma **6.4.0**. Нормативные контракты
 > сервисного слоя (component-manifest, service-lifecycle, control-socket,
 > layout — все v1.0.0) живут в отдельном репо
 > [vesma-specs](https://github.com/vesmaro/vesma-specs).
