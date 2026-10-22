@@ -140,7 +140,7 @@ import subprocess  # nosec B404 - fixed-argv systemctl probes, no shell
 import time
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, get_args
@@ -919,7 +919,14 @@ def make_snapshot(
     # the source has not moved under us since the snapshot was taken.
     snapshot_layout = _resolve_layout(snapshot_dir)
     snap_stats = read_store_stats(snapshot_layout.db_path)
-    live_stats = read_store_stats(source.db_path, read_only=source_read_only)
+    try:
+        live_stats = read_store_stats(source.db_path, read_only=source_read_only)
+    except (OSError, sqlite3.Error) as exc:
+        # P3-1: the apply-phase source re-read goes through the SAME typed
+        # classifier as the plan phase — a source that turned
+        # recovery-needing between plan and apply is exit 14, never a raw
+        # traceback.
+        raise _classify_source_ro_failure(source.db_path, exc) from exc
     if snap_stats.total != live_stats.total or snap_stats.ids_digest != live_stats.ids_digest:
         raise SnapshotError(
             "the source store changed while the snapshot was taken "
@@ -2779,7 +2786,13 @@ def _run_system_migration(
             + "; ".join(source_fatal)
         )
 
-    pre_stats = read_store_stats(layout.db_path, read_only=True)
+    try:
+        pre_stats = read_store_stats(layout.db_path, read_only=True)
+    except (OSError, sqlite3.Error) as exc:
+        # P3-1: same typed classifier as the plan phase — the source may
+        # turn recovery-needing BETWEEN plan and apply; that is exit 14,
+        # never a raw traceback.
+        raise _classify_source_ro_failure(layout.db_path, exc) from exc
     snapshot = make_snapshot(
         layout,
         plan.snapshot_dir,
@@ -2858,6 +2871,26 @@ def _run_system_migration(
     try:
         _fsync_tree(plan.staging_dir)
         for index, entry in enumerate(entries, start=1):
+            if entry.cross_fs:
+                # P3-2 (C3 TOCTOU): the empty-conffile disposition was
+                # decided in phase 5, but the conffile may change under the
+                # run. Re-evaluate it on the FRESH stat immediately before
+                # the overwrite_ok write — through the SAME typed decision
+                # path as phase 5 (_config_publish_target raises the
+                # phase-5 ConfigMigrationError when the conffile cannot be
+                # read). Only a CLASS change redirects the write (and the
+                # audit row): a still-non-empty conffile keeps its phase-5
+                # sidecar stamp, never a silent fallback.
+                fresh_final = _config_publish_target(config_target)
+                if (fresh_final == config_target) != entry.overwrite_ok:
+                    entry = replace(
+                        entry, final=fresh_final, overwrite_ok=fresh_final == config_target
+                    )
+                    config_final = fresh_final
+                    expectations = [
+                        replace(exp, path=fresh_final) if exp.staged == entry.staged else exp
+                        for exp in expectations
+                    ]
             if not entry.overwrite_ok and (entry.final.exists() or entry.final.is_symlink()):
                 raise TargetStoreContentError(
                     f"publish target appeared mid-run: {entry.final} — refusing (a racing actor?)"
@@ -2881,7 +2914,14 @@ def _run_system_migration(
     emit("[system migrate] 7/7 post-publish audit")
     audit_problems = _stat_audit_problems(expectations, ownership_applied=ownership_applied)
     if audit_problems:
-        raise VerificationError("post-publish stat audit failed (C4): " + "; ".join(audit_problems))
+        # P3-3: after publish there is NO retry — the store IS published;
+        # a re-run is refused with exit 11 (the data root already carries
+        # the migrated store). One message, no new exit code.
+        raise VerificationError(
+            "post-publish stat audit failed (C4) — the store IS PUBLISHED "
+            "and stays published; a re-run will be refused with exit 11 "
+            "(the migrated store is already in the data root): " + "; ".join(audit_problems)
+        )
     verification["stat_audit"] = "ok"
     verification["ownership_applied"] = ownership_applied
 
