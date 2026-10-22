@@ -1608,4 +1608,18 @@ def exit_code(findings: list[Finding]) -> int:
     return 0
 
 
-__all__ = ["Finding", "Severity", "exit_code", "run_service_checks"]
+def system_target_forecast() -> list[Finding]:
+    """The system-profile legs the ``migrate-store --target=system``
+    dry-run renders as its DR forecast (ADR-0047 C13).
+
+    ONE implementation rule: the forecast calls the very same doctor
+    check functions the ``vesma doctor`` registry runs — the mover never
+    re-derives a DR predicate of its own, so a diagnosis and the
+    migration plan cannot disagree. The caller renders the results
+    marked as a FORECAST (a dry-run prediction about the environment the
+    migration would land in, not a post-migration verdict). Read-only.
+    """
+    return [_dr14(), _dr15(), _dr17()]
+
+
+__all__ = ["Finding", "Severity", "exit_code", "run_service_checks", "system_target_forecast"]

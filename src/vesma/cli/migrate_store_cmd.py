@@ -1,12 +1,18 @@
-"""``vesma migrate-store`` CLI — the B3 store mover 5.x → 6.0.
+"""``vesma migrate-store`` CLI — the B3 store mover 5.x → 6.0 plus the
+system-profile relocation target (ADR-0047).
 
 Thin wiring over :mod:`vesma.store_migration` (all semantics live there;
-see that module's docstring for the normative safety contract).
+see that module's docstring for the normative safety contracts).
 
 Exit codes: 0 success · 2 usage error · 3 discovery refused (explicit
 ``--from`` required) · 4 quiesce violation · 5 snapshot failure ·
 6 verification failure · 7 already migrated · 8 invalid source ·
-9 config migration blocked.
+9 config migration blocked · 10 system profile not installed ·
+11 store content already in the system data root · 12 profile isolation
+(DR-14) · 13 install-state drift (DR-17) · 14 source recovery required
+(read-only probe, owner must repair) · 15 activation gate (--apply for
+the system target before soak + owner's word) · 16 insufficient free
+space.
 """
 
 from __future__ import annotations
@@ -20,11 +26,14 @@ import typer
 
 from vesma.cli.util import console
 from vesma.store_migration import (
+    SYSTEM_TARGET,
+    ActivationGateError,
     DiscoveryRefusedError,
     MigrationPlan,
     MigrationReport,
     StoreMigrationError,
     UsageError,
+    activation_gate_open,
     build_plan,
     discover_source_candidates,
     run_migration,
@@ -34,17 +43,20 @@ _FROM_OPTION = Annotated[
     Path | None,
     typer.Option(
         "--from",
-        help="REQUIRED explicit source store home (e.g. ~/.mnemos). "
-        "Never guessed; omitted -> read-only discovery SUGGESTS candidates.",
+        help="REQUIRED explicit source store home (e.g. ~/.mnemos or a 6.0 "
+        "~/.vesma for --target=system). Never guessed; omitted -> read-only "
+        "discovery SUGGESTS candidates.",
     ),
 ]
 _TO_OPTION = Annotated[
     Path | None,
     typer.Option(
         "--to",
-        help="REQUIRED explicit target store home (6.0 layout). "
-        "Must not exist at all (even an empty directory is refused — "
-        "choose a fresh target); snapshot lands next to it.",
+        help="REQUIRED explicit target store home for the classic 5.x → 6.0 "
+        "move (6.0 layout). Must not exist at all (even an empty directory "
+        "is refused — choose a fresh target); snapshot lands next to it. "
+        "NOT used with --target=system (that target is resolved from the "
+        "system install-state + the FHS manifest).",
     ),
 ]
 _APPLY_OPTION = Annotated[
@@ -53,18 +65,38 @@ _APPLY_OPTION = Annotated[
         "--apply",
         help="Write the migration. WITHOUT this flag the command is a "
         "dry-run: plan + counters via read-only opens; the source's "
-        "records stay unchanged.",
+        "records stay unchanged. For --target=system the apply is GATED "
+        "(soak + owner's word, ADR-0045 Decision 9).",
     ),
 ]
 _JSON_OPTION = Annotated[
     bool,
     typer.Option("--json", help="Machine-readable report (paths and numbers only)."),
 ]
+_TARGET_OPTION = Annotated[
+    str | None,
+    typer.Option(
+        "--target",
+        help="'system': relocate a store INTO the installed system profile "
+        "(data root + config plane resolved from the install-state and the "
+        "FHS manifest; ADR-0047). Default: classic explicit --to move.",
+    ),
+]
+_SNAPSHOT_DIR_OPTION = Annotated[
+    Path | None,
+    typer.Option(
+        "--snapshot-dir",
+        help="System target only: explicit snapshot location (default: next "
+        "to the SOURCE, operator-owned 0700). Never inside the source or "
+        "the target trees.",
+    ),
+]
 
 
 def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "mode": plan.mode,
+        "target": plan.target,
         "source_home": str(plan.source_home),
         "target_home": str(plan.target_home),
         "snapshot_dir": str(plan.snapshot_dir),
@@ -77,6 +109,8 @@ def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
         "trust_markers_kept": plan.stats.trust_markers_kept,
         "vault_present": plan.vault_present,
         "config_present": plan.config_present,
+        "fast_path": plan.fast_path,
+        "source_wal_bytes": plan.wal_bytes,
         "quiesce_warnings": list(plan.quiesce_warnings),
         "planned_files": [
             {
@@ -88,11 +122,19 @@ def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
             for f in plan.planned_files
         ],
     }
+    if plan.target == SYSTEM_TARGET:
+        payload["data_root"] = str(plan.data_root)
+        payload["system_config_path"] = str(plan.system_config_path)
+        payload["remaining_cargo"] = list(plan.remaining_cargo)
+        payload["precondition_lines"] = list(plan.precondition_lines)
+        payload["secret_path_warnings"] = list(plan.secret_path_warnings)
+    return payload
 
 
 def _report_payload(report: MigrationReport) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "mode": report.mode,
+        "target": report.target,
         "source_home": str(report.source_home),
         "target_home": str(report.target_home),
         "snapshot_dir": str(report.snapshot_dir),
@@ -105,6 +147,8 @@ def _report_payload(report: MigrationReport) -> dict[str, Any]:
         "project_breakdown": report.project_breakdown,
         "files_copied": report.files_copied,
         "sqlite_via_backup_api": report.sqlite_via_backup_api,
+        "fast_path": report.fast_path,
+        "source_wal_bytes": report.wal_bytes,
         "verification": report.verification,
         "warnings": list(report.warnings),
     }
@@ -118,15 +162,25 @@ def _report_payload(report: MigrationReport) -> dict[str, Any]:
             "paths_rerooted": report.config.paths_rerooted,
             "db_name_pinned": report.config.db_name_pinned,
         }
+    if report.target == SYSTEM_TARGET:
+        payload["config_disposition"] = report.config_disposition
+        payload["config_final_path"] = (
+            str(report.config_final_path) if report.config_final_path else None
+        )
+        payload["ownership_applied"] = report.ownership_applied
+        payload["remaining_cargo"] = list(report.remaining_cargo)
     return payload
 
 
 def _print_plan(plan: MigrationPlan) -> None:
     stats = plan.stats
     console.print(f"[bold]migrate-store[/bold] — mode: [yellow]{plan.mode}[/yellow]")
+    console.print(f"  target profile: {plan.target}")
     console.print(f"  from: {plan.source_home}")
     console.print(f"  to:   {plan.target_home}")
     console.print(f"  snapshot (on --apply): {plan.snapshot_dir}")
+    if plan.target == SYSTEM_TARGET:
+        console.print(f"  system config plane: {plan.system_config_path}")
     console.print()
     console.print("  [bold]Records[/bold]")
     console.print(f"    total:                 {stats.total}")
@@ -141,6 +195,13 @@ def _print_plan(plan: MigrationPlan) -> None:
     console.print(
         f"    trust markers kept byte-stable:       {stats.trust_markers_kept} (mnemos:no-federate)"
     )
+    if plan.target == SYSTEM_TARGET and plan.fast_path:
+        console.print(
+            "    fast path: ZERO rewrites — the apply will be a pure "
+            "backup-API copy (no UPDATE sweep)"
+        )
+    if plan.target == SYSTEM_TARGET:
+        console.print(f"    source WAL size (advisory): {plan.wal_bytes} bytes")
     console.print("  [bold]Files[/bold]")
     for planned in plan.planned_files:
         via = "sqlite backup API" if planned.via_backup_api else "byte copy"
@@ -149,12 +210,46 @@ def _print_plan(plan: MigrationPlan) -> None:
         )
     console.print(f"    vault present: {plan.vault_present}")
     console.print(f"    config present: {plan.config_present}")
+    if plan.target == SYSTEM_TARGET:
+        if plan.remaining_cargo:
+            console.print("  [bold]NOT carried (the mover moves the store only)[/bold]")
+            for line in plan.remaining_cargo:
+                console.print(f"    - {line}")
+        if plan.precondition_lines:
+            console.print("  [bold]Preconditions (operator, before service start)[/bold]")
+            for line in plan.precondition_lines:
+                console.print(f"    ! {line}")
+        for line in plan.secret_path_warnings:
+            console.print(f"  [yellow]warning: {line}[/yellow]")
+        for line in _forecast_lines():
+            console.print(f"  [cyan]forecast: {line}[/cyan]")
     for warning in plan.quiesce_warnings:
         console.print(f"  [yellow]warning: {warning}[/yellow]")
     if plan.mode == "dry-run":
-        console.print(
-            "\n  dry-run: nothing was written. Re-run with [bold]--apply[/bold] to migrate."
-        )
+        if plan.target == SYSTEM_TARGET:
+            console.print(
+                "\n  dry-run: nothing was written. --apply is GATED for the "
+                "system target (ADR-0045 Decision 9): it stays refused until "
+                "the round-trip soak closes green AND the owner gives the word."
+            )
+        else:
+            console.print(
+                "\n  dry-run: nothing was written. Re-run with [bold]--apply[/bold] to migrate."
+            )
+
+
+def _forecast_lines() -> list[str]:
+    """The DR forecast (C13): the doctor's own check functions, rendered
+    marked as a FORECAST — one implementation with `vesma doctor`."""
+    from vesma.service.doctor_checks import system_target_forecast
+
+    lines: list[str] = []
+    for finding in system_target_forecast():
+        line = f"{finding.check_id} [{finding.severity.value}]: {finding.detail}"
+        if finding.fix_command:
+            line += f" | fix: {finding.fix_command}"
+        lines.append(line)
+    return lines
 
 
 def _print_report(report: MigrationReport) -> None:
@@ -166,6 +261,9 @@ def _print_report(report: MigrationReport) -> None:
     console.print(f"  project:mnemos -> project:vesma:      {report.project_slug_rewritten}")
     console.print(f"  duplicate tags removed:               {report.duplicates_removed}")
     console.print(f"  trust markers kept byte-stable:       {report.trust_markers_kept}")
+    if report.target == SYSTEM_TARGET:
+        console.print(f"  fast path (no UPDATE sweep): {report.fast_path}")
+        console.print(f"  source WAL size (advisory): {report.wal_bytes} bytes")
     if report.config is not None:
         console.print("  [bold]Config[/bold]")
         if report.config.synthesized:
@@ -175,6 +273,9 @@ def _print_report(report: MigrationReport) -> None:
         console.print(f"    section mnemos: -> vesma: renamed: {report.config.section_renamed}")
         console.print(f"    paths re-rooted: {report.config.paths_rerooted}")
         console.print(f"    db_name pinned to vesma.db: {report.config.db_name_pinned}")
+    if report.target == SYSTEM_TARGET:
+        console.print(f"    disposition: {report.config_disposition}")
+        console.print(f"    final path:  {report.config_final_path}")
     if report.verification is not None:
         console.print("  [bold]Verification[/bold]")
         console.print("    record counts equal: True")
@@ -185,14 +286,36 @@ def _print_report(report: MigrationReport) -> None:
         )
         console.print("    FTS rebuilt + integrity ok: True")
         console.print("    sqlite quick_check: ok on all moved databases")
+        if report.target == SYSTEM_TARGET:
+            console.print(f"    per-file sha256 parity: {report.verification.get('sha256_parity')}")
+            console.print(
+                f"    sibling per-table counts: {report.verification.get('sibling_table_parity')}"
+            )
+            console.print(f"    post-publish stat audit: {report.verification.get('stat_audit')}")
+            console.print(
+                "    owner/group applied (root run): "
+                f"{report.verification.get('ownership_applied')}"
+            )
+    if report.target == SYSTEM_TARGET and report.remaining_cargo:
+        console.print("  [bold]NOT carried (the mover moves the store only)[/bold]")
+        for line in report.remaining_cargo:
+            console.print(f"    - {line}")
     for warning in report.warnings:
         console.print(f"  [yellow]warning: {warning}[/yellow]")
-    console.print(
-        "\n  [yellow]Note:[/yellow] the canonical tag namespace is vesma:* "
-        "(legacy mnemos:* accepted on input; the mnemos:no-federate trust "
-        "marker stays byte-stable). Point the service at the new home only "
-        "together with this canonical-prefix code wave (see ADR-0044)."
-    )
+    if report.target == SYSTEM_TARGET:
+        console.print(
+            "\n  [yellow]Note:[/yellow] the trust marker mnemos:no-federate "
+            "stays byte-stable; the mover wrote NO installer artifacts and "
+            "left the install-state untouched (an uninstall never silently "
+            "deletes a migrated store). See ADR-0047."
+        )
+    else:
+        console.print(
+            "\n  [yellow]Note:[/yellow] the canonical tag namespace is vesma:* "
+            "(legacy mnemos:* accepted on input; the mnemos:no-federate trust "
+            "marker stays byte-stable). Point the service at the new home only "
+            "together with this canonical-prefix code wave (see ADR-0044)."
+        )
 
 
 def _refuse_discovery() -> DiscoveryRefusedError:
@@ -218,33 +341,69 @@ def _refuse_discovery() -> DiscoveryRefusedError:
     )
 
 
+def _emit_progress(line: str) -> None:
+    """C14 progress: plain stderr lines (paths and numbers only) — grep- and
+    ssh-safe, no spinner, no cursor games."""
+    print(f"migrate-store: {line}", file=sys.stderr, flush=True)
+
+
 def migrate_store(
     from_home: _FROM_OPTION = None,
     to_home: _TO_OPTION = None,
     apply: _APPLY_OPTION = False,
     json_out: _JSON_OPTION = False,
+    target: _TARGET_OPTION = None,
+    snapshot_dir: _SNAPSHOT_DIR_OPTION = None,
 ) -> None:
-    """Move a 5.x store to the 6.0 layout: vesma.db, vesma:* tags, vesma: config.
+    """Move a store: 5.x → 6.0 (explicit --to), or relocate into the
+    installed system profile (--target=system, ADR-0047).
 
-    Safety: explicit --from/--to only; dry-run by default (read-only opens,
-    the source's records stay unchanged); SQLite backup-API snapshot gate;
-    quiesce gate on --apply; the mnemos:no-federate trust marker stays
-    byte-stable; the report prints paths and numbers only. The legacy
-    `vesma migrate` (ai-brain) command is unaffected.
+    Safety: explicit --from only; dry-run by default (read-only opens, the
+    source's records stay unchanged); SQLite backup-API snapshot gate;
+    quiesce gates; the mnemos:no-federate trust marker stays byte-stable;
+    the report prints paths and numbers only. For --target=system the
+    apply is hard-gated until the round-trip soak closes and the owner
+    gives the word (ADR-0045 Decision 9); the dry-run (plan + DR forecast)
+    is fully functional. The legacy `vesma migrate` (ai-brain) command is
+    unaffected.
     """
     try:
+        if target is not None and target != SYSTEM_TARGET:
+            raise UsageError(f"unknown --target {target!r} (only 'system' is defined)")
+        system_mode = target == SYSTEM_TARGET
+        if system_mode and to_home is not None:
+            raise UsageError(
+                "--to is not used with --target=system — the target resolves "
+                "from the system install-state + the FHS manifest"
+            )
+        if system_mode and apply and not activation_gate_open():
+            raise ActivationGateError(
+                "--apply is GATED for --target=system (ADR-0045 Decision 9 / "
+                "ADR-0047 C13): it refuses until the round-trip soak has "
+                "closed green AND the owner has given the word. The dry-run "
+                "(plan + DR forecast) is fully functional and is the soak's "
+                "own tool"
+            )
+        if not system_mode and snapshot_dir is not None:
+            raise UsageError("--snapshot-dir applies to --target=system only")
         if from_home is None:
             raise _refuse_discovery()
-        if to_home is None:
+        if to_home is None and not system_mode:
             raise UsageError("--to is required (explicit target path)")
-        plan = build_plan(from_home, to_home, apply=apply)
+        plan = build_plan(
+            from_home,
+            to_home,
+            apply=apply,
+            target=SYSTEM_TARGET if system_mode else "user",
+            snapshot_dir=snapshot_dir,
+        )
         if not apply:
             if json_out:
                 console.print_json(json.dumps(_plan_payload(plan)))
             else:
                 _print_plan(plan)
             return
-        report = run_migration(plan)
+        report = run_migration(plan, progress=None if json_out else _emit_progress)
     except StoreMigrationError as exc:
         # Plain stderr write on purpose: no rich wrapping, so paths and
         # exit-code messages stay grep-able and machine-parseable.
