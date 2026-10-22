@@ -287,19 +287,20 @@ class TestSelfUpdateOwnershipAcrossGenerations:
 
 
 class TestDoctorRegistryOrdering:
-    def test_system_profile_checks_are_absent(self) -> None:
-        """Registry composition pin, updated by the install --system wave:
-        DR-14 (profile isolation) and DR-15 (system rights vs the FHS
-        manifest) landed with the system installer — their conformance
-        legs are SY-01/SY-03; DR-16 (venv revisions) and DR-18 (unit
-        drift) still belong to the doctor/update wave (ADR-0045
-        rollout 3) and stay absent."""
+    def test_system_profile_checks_are_present(self) -> None:
+        """Registry composition pin, updated by the doctor/update wave
+        (ADR-0045 rollout 3): DR-14 (profile isolation, full matrix) and
+        DR-15 (system rights vs the FHS manifest) landed with the system
+        installer; DR-16 (symlink-revision integrity) and DR-18 (system
+        unit vs regeneration) complete the §3.14 gate set alongside the
+        DR-17 (state↔fs, both planes) / DR-19 (generation advisories)
+        user legs."""
         ids = [f.check_id for f in run_service_checks()]
         assert "DR-14" in ids
         assert "DR-15" in ids
-        assert "DR-16" not in ids
-        assert "DR-18" not in ids
+        assert "DR-16" in ids
         assert "DR-17" in ids
+        assert "DR-18" in ids
         assert "DR-19" in ids
 
 

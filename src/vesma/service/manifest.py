@@ -217,6 +217,14 @@ _REQUIREMENT_PIN_RE = re.compile(
 
 _MANIFEST_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+#: SY-05 conffile discipline (ADR-0045 rollout 3): when an operator edit
+#: diverges from the bundled default, the default lands NEXT TO the kept
+#: file as ``<name>.yaml.rpmnew`` (the ``.rpmnew`` operator convention:
+#: diff, merge, remove). The loader treats that exact suffix as a
+#: sanctioned companion of the drop-in zone — everything else remains a
+#: stray-file load error (fail-closed).
+CONFFILE_NEW_SUFFIX = ".rpmnew"
+
 
 # ── Schema access ─────────────────────────────────────────────────────
 
@@ -1090,7 +1098,9 @@ def load_installation(dir_path: str | os.PathLike[str]) -> dict[str, ComponentMa
     Layout §3.5: every file in the manifests directory MUST be a valid
     manifest (``*.yaml`` / ``*.yml``; any stray file is a load error) —
     an invalid file is a load error,
-    never a silent skip. Also enforces name uniqueness (NAME_DUPLICATED),
+    never a silent skip. The ONE sanctioned companion is a pending
+    ``<name>.yaml.rpmnew`` (SY-05: the new default beside a kept operator
+    edit). Also enforces name uniqueness (NAME_DUPLICATED),
     depends_on resolvability (DEPENDS_MISSING) and acyclicity
     (DEPENDS_CYCLE, the cycle is reported in the message).
     """
@@ -1108,8 +1118,16 @@ def load_installation(dir_path: str | os.PathLike[str]) -> dict[str, ComponentMa
     )
     # Layout §3.5: EVERY file in the manifests directory must be a valid
     # manifest — a stray non-YAML file is a load error, never a silent skip.
+    # Sanctioned exception (SY-05 conffile discipline): a pending
+    # ``<name>.yaml.rpmnew`` (the new default written beside a kept
+    # operator edit by the system installer/updater) is not a stray —
+    # it is installer-created content awaiting the operator's merge.
     stray = sorted(
-        p for p in manifests_dir.iterdir() if p.is_file() and p.suffix not in {".yaml", ".yml"}
+        p
+        for p in manifests_dir.iterdir()
+        if p.is_file()
+        and p.suffix not in {".yaml", ".yml"}
+        and not p.name.endswith(("yaml" + CONFFILE_NEW_SUFFIX, "yml" + CONFFILE_NEW_SUFFIX))
     )
     if stray:
         raise ManifestError(

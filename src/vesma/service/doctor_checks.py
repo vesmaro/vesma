@@ -30,11 +30,18 @@ import urllib.parse
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from vesma.service import fhs, layout, unitgen
 from vesma.service.install import engine_venv, parse_pin_line, read_lock
-from vesma.service.manifest import ComponentManifest, load_installation
-from vesma.service.system_install import SystemInstallError, read_system_state
+from vesma.service.manifest import CONFFILE_NEW_SUFFIX, ComponentManifest, load_installation
+from vesma.service.system_install import (
+    REVISION_ROLES,
+    SystemInstallError,
+    read_system_state,
+    regenerate_system_unit,
+    system_state_drift,
+)
 
 #: Free-space thresholds (DR-10; engine-owned numbers, documented).
 FREE_SPACE_WARN_BYTES = 500 * 1024 * 1024
@@ -860,31 +867,33 @@ def _dr13() -> Finding:
     )
 
 
-# ── DR-17: install-state ↔ filesystem — the USER leg: generation mixing ──
-# (specs/layout/v2 §3.3/§3.14; the system-profile inversion leg is the
-# install --system wave of ADR-0045, together with DR-14…DR-16/DR-18.)
+# ── DR-17: install-state ↔ filesystem — user generation mixing + the
+# system-profile inversion leg (specs/layout/v2 §3.3/§3.14; the system
+# leg shares the updater preflight's predicate verbatim —
+# system_install.system_state_drift — so diagnosis and refusal can never
+# disagree) ────────────────────────────────────────────────────────────────
+
+_SEVERITY_RANK: dict[Severity, int] = {Severity.FAIL: 0, Severity.WARN: 1, Severity.OK: 2}
 
 
 def _dr17() -> Finding:
-    """A tree mixing v1.5 and v2 service artifacts is a FAIL (§3.3 MUST NOT).
+    """Two legs, worst severity wins:
 
-    The engine never writes the other generation's paths; artifacts in
-    both planes mean a mixed tree — silent-degradation class, resolved by
-    the consolidation mover (ADR-0045 rollout wave 4), not by hand here.
+    - user plane: a tree mixing v1.5 and v2 service artifacts is a FAIL
+      (§3.3 MUST NOT — the engine never writes the other generation's
+      paths; resolved by the consolidation mover, not by hand);
+    - system plane: recorded-but-missing artifacts, type drift and
+      unrecorded content in strict dirs (conffile zone exempt) — the
+      exact predicate the updater refuses on, rendered for diagnosis.
     """
+    title = "install-state ↔ filesystem (generations + system inversion)"
+    # User plane (generation mixing).
     legacy_roots = list(layout.legacy_service_artifacts())
     v2_dirs = [p for p in layout.v2_only_service_dirs() if p.exists()]
-    if not legacy_roots and not v2_dirs:
-        return Finding(
-            "DR-17",
-            "install-state ↔ filesystem (generation mixing)",
-            Severity.OK,
-            "no service stack on either plane (n/a)",
-        )
     if legacy_roots and v2_dirs:
-        return Finding(
+        user_finding = Finding(
             "DR-17",
-            "install-state ↔ filesystem (generation mixing)",
+            title,
             Severity.FAIL,
             "MIXED generations: v1.5 plane "
             f"{[str(p) for p in legacy_roots]} AND v2 plane "
@@ -893,30 +902,78 @@ def _dr17() -> Finding:
             "consolidation (ADR-0045 rollout wave 4 mover); until then keep "
             "the planes untouched — do NOT hand-delete either side",
         )
-    generation = "v1.5 (legacy XDG spread)" if legacy_roots else "v2 (self-contained ~/.vesma)"
-    return Finding(
-        "DR-17",
-        "install-state ↔ filesystem (generation mixing)",
-        Severity.OK,
-        f"single plane: {generation}",
+    elif legacy_roots or v2_dirs:
+        generation = "v1.5 (legacy XDG spread)" if legacy_roots else "v2 (self-contained ~/.vesma)"
+        user_finding = Finding("DR-17", title, Severity.OK, f"single user plane: {generation}")
+    else:
+        user_finding = Finding("DR-17", title, Severity.OK, "no user service stack (n/a)")
+
+    # System plane (state ↔ filesystem, the updater's preflight predicate).
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        system_finding = Finding(
+            "DR-17",
+            title,
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    else:
+        if state is None:
+            system_finding = Finding(
+                "DR-17", title, Severity.OK, "no system-profile installation on this machine"
+            )
+        else:
+            drift = system_state_drift()
+            if drift:
+                system_finding = Finding(
+                    "DR-17",
+                    title,
+                    Severity.FAIL,
+                    f"system profile state ↔ filesystem drift ({len(drift)}"
+                    f" problem(s)); first: {drift[0]} — the updater and the"
+                    " exact-inverse uninstall both refuse on this",
+                    "inventory with `vesma doctor`, adopt or fix the drift, then"
+                    " re-run; do NOT hand-edit the install-state",
+                )
+            else:
+                system_finding = Finding(
+                    "DR-17", title, Severity.OK, "system profile: state ↔ filesystem consistent"
+                )
+
+    worst = min((user_finding, system_finding), key=lambda f: _SEVERITY_RANK[f.severity])
+    if worst.severity is Severity.OK:
+        return Finding(
+            "DR-17",
+            title,
+            Severity.OK,
+            f"{user_finding.detail}; {system_finding.detail}",
+        )
+    details = [f.detail for f in (user_finding, system_finding) if f.severity == worst.severity]
+    fix = worst.fix_command or next(
+        (f.fix_command for f in (user_finding, system_finding) if f.fix_command), None
     )
+    return Finding("DR-17", title, worst.severity, "; ".join(details), fix)
 
 
-# ── DR-19: layout generation of the user profile (specs/layout/v2 §3.3) ──
+# ── DR-19: layout generation advisories (specs/layout/v2 §3.3/§3.14) ──
 
 
 def _dr19() -> Finding:
-    """Advisory about the detected layout generation (§3.3 SHOULD).
+    """Generation advisory, both profiles (§3.3 SHOULD; non-fatal by
+    contract — WARN, never FAIL):
 
-    v1.5 → WARN with the consolidation pointer; v2 → OK; an UNSTAMPED v2
-    tree → WARN (§3.1 MUST: the generation is fixed at install time).
+    - user plane: v1.5 → WARN with the consolidation pointer; an
+      UNSTAMPED v2 tree → WARN (§3.1 MUST: fixed at install time); v2 → OK;
+    - system plane: the install-state's ``generation:`` key must say
+      ``v2`` — missing/unknown → WARN (re-stamp with a re-install).
     """
+    title = "layout generation advisories"
     stamped = layout.read_generation_stamp()
     generation = layout.detect_generation()
     if generation is layout.LayoutGeneration.V1_5:
-        return Finding(
-            "DR-19",
-            "layout generation (user profile)",
+        user_sev, user_detail, user_fix = (
             Severity.WARN,
             "generation v1.5 (legacy XDG spread) — keeps resolving per "
             "layout v1; consolidation to the self-contained ~/.vesma form "
@@ -924,35 +981,61 @@ def _dr19() -> Finding:
             "consolidation mover lands with ADR-0045 rollout wave 4 — "
             "re-run `vesma doctor` after it ships; until then no action",
         )
-    v2_present = any(p.exists() for p in layout.v2_only_service_dirs())
-    if not v2_present and stamped is None:
-        return Finding(
-            "DR-19",
-            "layout generation (user profile)",
-            Severity.OK,
-            "no service stack installed — first install creates generation v2",
-        )
-    if stamped is None:
-        return Finding(
-            "DR-19",
-            "layout generation (user profile)",
-            Severity.WARN,
-            f"v2 tree without a generation stamp ({layout.install_state_path()} "
-            "absent or unparsable) — §3.1: the generation MUST be fixed at "
-            "install time",
-            "vesma service install",
-        )
-    return Finding(
-        "DR-19",
-        "layout generation (user profile)",
-        Severity.OK,
-        f"generation v2 (self-contained ~/.vesma), stamped at {layout.install_state_path()}",
+    else:
+        v2_present = any(p.exists() for p in layout.v2_only_service_dirs())
+        if not v2_present and stamped is None:
+            user_sev, user_detail, user_fix = (
+                Severity.OK,
+                "no user service stack installed — first install creates generation v2",
+                None,
+            )
+        elif stamped is None:
+            user_sev, user_detail, user_fix = (
+                Severity.WARN,
+                f"v2 tree without a generation stamp ({layout.install_state_path()} "
+                "absent or unparsable) — §3.1: the generation MUST be fixed at "
+                "install time",
+                "vesma service install",
+            )
+        else:
+            user_sev, user_detail, user_fix = (
+                Severity.OK,
+                "generation v2 (self-contained ~/.vesma), stamped at "
+                f"{layout.install_state_path()}",
+                None,
+            )
+
+    try:
+        state = read_system_state()
+    except SystemInstallError:
+        state = None
+    system_notes: list[str] = []
+    system_warn = False
+    if state is not None:
+        system_generation = state.get("generation")
+        if system_generation == "v2":
+            system_notes.append("system profile: generation v2")
+        else:
+            system_warn = True
+            system_notes.append(
+                f"system profile: generation stamp missing/unknown"
+                f" (got {system_generation!r}) — §3.1: stamped at install"
+            )
+
+    severity = Severity.WARN if (user_sev is Severity.WARN or system_warn) else Severity.OK
+    detail = user_detail + ("; " + "; ".join(system_notes) if system_notes else "")
+    fix = user_fix or (
+        "sudo vesma service install --system (re-stamps the system profile)"
+        if system_warn
+        else None
     )
+    return Finding("DR-19", title, severity, detail, fix)
 
 
-# ── DR-14: profile isolation — user ↔ system data roots (specs/layout/v2
-# §3.1; ADR-0045 rollout wave 2, minimal leg: the full DR-14 matrix —
-# config-root overlaps, stamp cross-checks — belongs to the doctor wave) ──
+# ── DR-14: profile isolation — user ↔ system roots + stamp cross-checks
+# (specs/layout/v2 §3.1; the data-root minimal leg landed with rollout 2,
+# the config-root overlap and the stamp cross-checks complete the matrix
+# here — the doctor wave, ADR-0045 rollout 3) ─────────────────────────────
 
 
 def _roots_overlap(a: Path, b: Path) -> bool:
@@ -960,21 +1043,29 @@ def _roots_overlap(a: Path, b: Path) -> bool:
     return a == b or a in b.parents or b in a.parents
 
 
-def _dr14() -> Finding:
-    """Both profiles on one data root = FAIL («ERROR» verdict class, §3.1).
+_STAMP_PROFILE_RE = re.compile(r"^\s*profile:\s*(\S+)\s*$", re.MULTILINE)
 
-    The profiles are disjoint BY CONSTRUCTION (/var/lib/vesma vs the
-    user's ~/.vesma) — a collision can only appear when the user profile
-    resolves INSIDE the system data root (the service-account HOME
-    scenario: HOME=/var/lib/vesma makes ~/.vesma a child of it). Read
-    only; the system side is detected by its install-state.
+
+def _dr14() -> Finding:
+    """Profile isolation, full matrix (§3.1; «ERROR» verdict class):
+
+    - user- and system-profile data roots collide → FAIL;
+    - the user profile root(s) resolve inside the system CONFIG root →
+      FAIL (the config plane is the other trust boundary);
+    - stamp cross-checks: the system install-state must say
+      ``profile: system``; the user stamp must never claim the system
+      profile (a cross-contaminated stamp corrupts every resolver that
+      trusts it) → FAIL.
+
+    Read-only; the system side is detected by its install-state.
     """
+    title = "profile isolation (user ↔ system roots + stamps)"
     try:
         state = read_system_state()
     except SystemInstallError as exc:
         return Finding(
             "DR-14",
-            "profile isolation (user ↔ system data roots)",
+            title,
             Severity.WARN,
             f"the system install-state is unreadable: {exc}",
             "vesma doctor  (inventory the broken install-state)",
@@ -982,36 +1073,74 @@ def _dr14() -> Finding:
     if state is None:
         return Finding(
             "DR-14",
-            "profile isolation (user ↔ system data roots)",
+            title,
             Severity.OK,
             "no system-profile installation on this machine",
         )
     system_data_root = fhs.system_data_root()
-    user_roots = (layout.vesma_home(), layout.data_root())
-    overlapping = [str(root) for root in user_roots if _roots_overlap(root, system_data_root)]
-    if overlapping:
+    system_config_root = fhs.system_config_root()
+    user_data_roots = (layout.vesma_home(), layout.data_root())
+    user_config_roots = (
+        layout.components_dir().parent,
+        layout.env_dir().parent,
+        layout.vesma_home(),
+    )
+    problems: list[str] = []
+    data_collisions = [str(r) for r in user_data_roots if _roots_overlap(r, system_data_root)]
+    if data_collisions:
+        problems.append(
+            f"user profile data root(s) {data_collisions} collide with the"
+            f" system data root {system_data_root} — the profiles MUST have"
+            " distinct data roots (§3.1, the «ERROR» class)"
+        )
+    config_collisions = [str(r) for r in user_config_roots if _roots_overlap(r, system_config_root)]
+    if config_collisions:
+        problems.append(
+            f"user profile root(s) {config_collisions} collide with the"
+            f" system config root {system_config_root} (§3.1 isolation)"
+        )
+    profile = state.get("profile")
+    if profile != "system":
+        problems.append(
+            f"the system install-state says profile={profile!r}, expected"
+            " 'system' — the state is the trust anchor for every system"
+            " surface"
+        )
+    try:
+        user_stamp_text = layout.install_state_path().read_text(encoding="utf-8")
+    except OSError:
+        user_stamp_text = ""
+    claimed = _STAMP_PROFILE_RE.search(user_stamp_text)
+    if claimed is not None and claimed.group(1) == "system":
+        problems.append(
+            "the USER install-state claims profile: system — a"
+            " cross-contaminated stamp (every user-surface resolver that"
+            " trusts it is corrupted)"
+        )
+    if problems:
         return Finding(
             "DR-14",
-            "profile isolation (user ↔ system data roots)",
+            title,
             Severity.FAIL,
-            f"user profile root(s) {overlapping} collide with the system data"
-            f" root {system_data_root} — the profiles MUST have distinct data"
-            " roots (specs/layout/v2 §3.1); this is the «ERROR» verdict class",
-            "move the user profile off the system data root (consolidation"
-            " mover, ADR-0045 rollout wave 4); until then do not run both"
-            " profiles against the same tree",
+            "; ".join(problems),
+            "move the user profile off the system roots and restore the"
+            " stamps (fix the state files by hand — they are trust"
+            " anchors —, then re-run `vesma doctor`)",
         )
     return Finding(
         "DR-14",
-        "profile isolation (user ↔ system data roots)",
+        title,
         Severity.OK,
-        f"profiles coexist with disjoint roots (system data root: {system_data_root})",
+        f"profiles coexist with disjoint roots (system data root:"
+        f" {system_data_root}; stamps consistent)",
     )
 
 
-# ── DR-15: system-profile rights vs the FHS manifest (minimal leg of the
-# install --system wave: mode+owner walk of the manifest-resolvable
-# entries; the unit-content leg is DR-18, rollout 4) ──────────────────────
+# ── DR-15: system-profile rights vs the FHS manifest (the fixed-table
+# leg landed with rollout 2; the doctor wave completes it: per-component
+# template slots, the revision trees, the env.d 0600 FAIL gate and the
+# conffile zone — any env.d mode drift is a FAIL, ADR-0045 Decision 4
+# footnote 1) ──────────────────────────────────────────────────────────────
 
 
 def _dr15() -> Finding:
@@ -1020,13 +1149,22 @@ def _dr15() -> Finding:
     Degrades honestly when unreadable (the doctor typically runs as a
     plain user; ``/etc/vesma`` is ``0750 root:vesma``): an unreadable
     entry is a WARN naming the privilege needed — never a silent OK.
+
+    Two problem classes: HARD (weakened modes, ownership drift, any
+    env.d drift — trust boundaries) → FAIL; SOFT (a stricter-than-manifest
+    mode on operator conffile-zone content — safe, review-worthy) → WARN
+    when nothing hard was found. env.d secrets are HARD on ANY drift:
+    the normative invariant is exactly ``0600`` (fail-closed loader,
+    supervisor-only readable). File CONTENTS are never read or logged
+    here — modes/owners only.
     """
+    title = "system-profile rights vs FHS manifest"
     try:
         state = read_system_state()
     except SystemInstallError as exc:
         return Finding(
             "DR-15",
-            "system-profile rights vs FHS manifest",
+            title,
             Severity.WARN,
             f"the system install-state is unreadable: {exc}",
             "vesma doctor  (inventory the broken install-state)",
@@ -1034,50 +1172,161 @@ def _dr15() -> Finding:
     if state is None:
         return Finding(
             "DR-15",
-            "system-profile rights vs FHS manifest",
+            title,
             Severity.OK,
             "no system-profile installation on this machine",
         )
     manifest = fhs.load_fhs_manifest()
-    problems: list[str] = []
+    hard: list[str] = []
+    soft: list[str] = []
     unreadable: list[str] = []
     checked = 0
-    for entry in manifest.entries:
-        if "<name>" in entry.system_path or "<rev>" in entry.system_path:
-            continue  # per-component slots are walked by the units wave
-        if entry.owner is None or entry.group is None:
-            continue  # /run/vesma — runtime ownership by the unit
-        path = fhs.resolve_system_path(entry)
+
+    def audit(
+        path: Path,
+        entry: fhs.FhsEntry,
+        *,
+        exact_mode: bool,
+        label: str,
+    ) -> None:
+        """Mode+owner audit of one concrete path against one entry.
+
+        ``exact_mode`` (machine-owned content): any mode drift is hard.
+        Otherwise (operator conffile zone): weakened mode is hard, a
+        stricter mode is soft (safe — review). Ownership drift is always
+        hard.
+        """
+        nonlocal checked
         try:
             info = path.stat()
         except FileNotFoundError:
-            continue  # optional/opt-in slots may be absent (log_root)
+            return  # optional slot (opt-in log root, unseeded conffile)
         except PermissionError:
             unreadable.append(str(path))
-            continue
+            return
         except OSError as exc:
             unreadable.append(f"{path} ({exc})")
-            continue
+            return
         checked += 1
-        if stat.S_IMODE(info.st_mode) != entry.mode:
-            problems.append(
-                f"{path}: mode {format(stat.S_IMODE(info.st_mode), '04o')},"
-                f" manifest {format(entry.mode, '04o')}"
+        mode = stat.S_IMODE(info.st_mode)
+        if mode != entry.mode:
+            weakened = (mode & 0o077) & ~entry.mode != 0
+            complaint = (
+                f"{path} ({label}): mode {format(mode, '04o')}, manifest"
+                f" {format(entry.mode, '04o')}"
             )
+            if exact_mode or weakened:
+                hard.append(complaint)
+            else:
+                soft.append(complaint + " (stricter than the manifest — review)")
         owner_name = _uid_to_name(info.st_uid)
         group_name = _gid_to_name(info.st_gid)
-        if owner_name != entry.owner or group_name != entry.group:
-            problems.append(
-                f"{path}: owner {owner_name}:{group_name}, manifest {entry.owner}:{entry.group}"
+        if (
+            entry.owner is not None
+            and entry.group is not None
+            and (owner_name != entry.owner or group_name != entry.group)
+        ):
+            hard.append(
+                f"{path} ({label}): owner {owner_name}:{group_name}, manifest"
+                f" {entry.owner}:{entry.group}"
             )
+
+    for entry in manifest.entries:
+        if "<name>" in entry.system_path or "<rev>" in entry.system_path:
+            continue  # per-component slots are walked below
+        if entry.owner is None or entry.group is None:
+            continue  # /run/vesma — runtime ownership by the unit
+        audit(
+            fhs.resolve_system_path(entry),
+            entry,
+            exact_mode=True,
+            label=entry.role,
+        )
+
+    # Concrete per-component slots: names come from the install-state's
+    # component_data rows plus whatever manifests sit in the drop-in dir.
+    raw_artifacts = state.get("artifacts")
+    state_rows: list[Any] = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
+    names: set[str] = set()
+    revision_dirs: list[Path] = []
+    for raw in state_rows:
+        if not isinstance(raw, dict):
+            continue
+        role = str(raw.get("role"))
+        if role == "component_data":
+            names.add(Path(str(raw["path"])).name)
+        elif role in REVISION_ROLES:  # one source with the updater (cascade fix)
+            revision_dirs.append(Path(str(raw["path"])))
+    components_dir = fhs.system_components_dir()
+    if components_dir.is_dir():
+        names.update(p.stem for p in components_dir.glob("*.yaml"))
+    manifest_entry = manifest.entry("component_manifest")
+    for name in sorted(names):
+        manifest_file = components_dir / f"{name}.yaml"
+        if manifest_file.is_file():
+            audit(manifest_file, manifest_entry, exact_mode=False, label="component conffile")
+        try:
+            data_dir = fhs.system_component_data_dir(name)
+            venv_link = fhs.system_venv_component(name)
+        except ValueError:
+            continue  # operator filename outside the component-name grammar
+        audit(data_dir, manifest.entry("component_data"), exact_mode=True, label="component_data")
+        audit(venv_link, manifest.entry("venv_component"), exact_mode=True, label="venv_component")
+    venvs_root = fhs.system_venvs_root()
+    for rev_dir in sorted(revision_dirs):
+        role = "venv_component_revision" if rev_dir.parent == venvs_root else "venv_engine_revision"
+        audit(rev_dir, manifest.entry(role), exact_mode=True, label=role)
+
+    # env.d secrets: the 0600 FAIL gate (ADR-0045 Decision 4¹) — operator
+    # files, walked from the directory, never through the state.
+    env_entry = manifest.entry("env_secrets")
+    env_dir_path = fhs.system_env_dir()
+    if env_dir_path.is_dir():
+        for env_file in sorted(env_dir_path.glob("*.env")):
+            try:
+                info = env_file.stat()
+            except PermissionError:
+                unreadable.append(str(env_file))
+                continue
+            except OSError as exc:
+                unreadable.append(f"{env_file} ({exc})")
+                continue
+            checked += 1
+            mode = stat.S_IMODE(info.st_mode)
+            if mode != 0o600:
+                hard.append(
+                    f"{env_file}: mode {format(mode, '04o')} (env.d files MUST"
+                    " be exactly 0600 — ANY drift is the FAIL gate)"
+                )
+            owner_name = _uid_to_name(info.st_uid)
+            group_name = _gid_to_name(info.st_gid)
+            if owner_name != env_entry.owner or group_name != env_entry.group:
+                hard.append(
+                    f"{env_file}: owner {owner_name}:{group_name}, manifest"
+                    f" {env_entry.owner}:{env_entry.group}"
+                )
+
+    # Pending conffile defaults (SY-05 .rpmnew) audit like their manifests.
+    if components_dir.is_dir():
+        for pending in sorted(components_dir.glob(f"*{CONFFILE_NEW_SUFFIX}")):
+            audit(pending, manifest_entry, exact_mode=False, label="conffile .rpmnew")
+
+    problems = hard + soft
     if problems:
-        first = problems[0]
+        severity = Severity.FAIL if hard else Severity.WARN
+        # The fix command promises "vesma doctor lists each path" — the
+        # detail carries the FULL list (capped only against a wildly
+        # drifted tree producing an endless cell).
+        cap = 30
+        listed = "; ".join(problems[:cap])
+        if len(problems) > cap:
+            listed += f"; … {len(problems) - cap} further drift(s) suppressed"
         return Finding(
             "DR-15",
-            "system-profile rights vs FHS manifest",
-            Severity.FAIL,
-            f"{len(problems)} right/owner drift(s) vs the FHS manifest;"
-            f" first: {first}" + (f"; also unreadable: {unreadable}" if unreadable else ""),
+            title,
+            severity,
+            f"{len(problems)} drift(s) vs the FHS manifest: {listed}"
+            + (f"; also unreadable: {unreadable}" if unreadable else ""),
             "sudo chmod/chown per the FHS manifest"
             " (`vesma doctor` lists each path; the manifest is the source"
             " of truth)",
@@ -1085,7 +1334,7 @@ def _dr15() -> Finding:
     if unreadable:
         return Finding(
             "DR-15",
-            "system-profile rights vs FHS manifest",
+            title,
             Severity.WARN,
             f"{checked} entr(ies) verified OK; {len(unreadable)} unreadable"
             f" without privileges: {unreadable[:3]} — re-run as root for a"
@@ -1094,9 +1343,179 @@ def _dr15() -> Finding:
         )
     return Finding(
         "DR-15",
-        "system-profile rights vs FHS manifest",
+        title,
         Severity.OK,
         f"{checked} entr(ies) match the FHS manifest (modes + owners)",
+    )
+
+
+# ── DR-16: symlink-revision integrity under /usr/lib/vesma (layout v2
+# §3.10; ADR-0045 Decision 6 — the doctor wave, rollout 3) ────────────────
+
+
+def _dr16() -> Finding:
+    """Every stable venv slot must be a symlink whose target exists and
+    resolves INSIDE its manifest root (a link that escapes the revision
+    tree is a path-traversal vector, not just drift); revision dirs no
+    symlink points at are leftover updates (post-rollback diagnosis
+    state) → WARN, never silent.
+    """
+    title = "symlink-revision integrity (/usr/lib/vesma)"
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        return Finding(
+            "DR-16",
+            title,
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    if state is None:
+        return Finding(
+            "DR-16",
+            title,
+            Severity.OK,
+            "no system-profile installation on this machine",
+        )
+    manifest = fhs.load_fhs_manifest()
+    code_root = fhs.resolve_system_path(manifest.entry("code_root"))
+    venvs_root = fhs.system_venvs_root()
+    hard: list[str] = []
+    leftovers: list[str] = []
+
+    def check_link(link_path: Path, boundary: Path, label: str) -> str | None:
+        """Returns the revision-dir name when the link is healthy."""
+        if not link_path.is_symlink():
+            hard.append(
+                f"{link_path}: the {label} slot must be a symlink to a"
+                " revision (layout v2 §3.10), found a non-symlink"
+            )
+            return None
+        target_name = os.readlink(link_path)
+        rev_dir = link_path.parent / target_name
+        if not rev_dir.is_dir():
+            hard.append(f"{link_path}: dangling symlink -> {target_name}")
+            return None
+        real_target = Path(os.path.realpath(rev_dir))
+        real_boundary = Path(os.path.realpath(boundary))
+        if real_target != real_boundary and real_boundary not in real_target.parents:
+            hard.append(
+                f"{link_path}: revision target {target_name} resolves OUTSIDE"
+                f" {boundary} — refusing to treat an escaping revision slot"
+                " as healthy"
+            )
+            return None
+        return target_name
+
+    engine_target = check_link(fhs.system_venv_engine(), code_root, "engine venv")
+    if engine_target is not None:
+        # Engine-side leftovers: venv-<rev> dirs no symlink points at.
+        for child in sorted(code_root.iterdir()) if code_root.is_dir() else []:
+            if (
+                child.is_dir()
+                and not child.is_symlink()
+                and child.name.startswith("venv-")
+                and child.name != engine_target
+            ):
+                leftovers.append(str(child))
+
+    linked_targets: set[str] = set()
+    if venvs_root.is_dir():
+        for child in sorted(venvs_root.iterdir()):
+            if child.is_symlink():
+                target = check_link(child, venvs_root, f"component venv {child.name}")
+                if target is not None:
+                    linked_targets.add(target)
+            elif child.is_dir():
+                if child.name not in linked_targets:
+                    leftovers.append(str(child))
+            else:
+                hard.append(f"{child}: non-dir, non-symlink content in the venvs root")
+
+    if hard:
+        return Finding(
+            "DR-16",
+            title,
+            Severity.FAIL,
+            "; ".join(hard) + (f"; leftover revision(s): {leftovers[:3]}" if leftovers else ""),
+            "re-materialize and re-point the revisions:"
+            " `sudo vesma service install --system` (an escaping slot must"
+            " be removed by hand first)",
+        )
+    if leftovers:
+        return Finding(
+            "DR-16",
+            title,
+            Severity.WARN,
+            "leftover revision dir(s) no symlink points at (an update"
+            " rollback left them for diagnosis?): " + ", ".join(leftovers[:5]),
+            "after diagnosis remove the leftover revision(s), or re-run"
+            " `sudo vesma service update --system`",
+        )
+    return Finding(
+        "DR-16",
+        title,
+        Severity.OK,
+        "revision symlinks resolve inside their roots; no leftovers",
+    )
+
+
+# ── DR-18: system unit presence + drift vs the canon regeneration ──────
+
+
+def _dr18() -> Finding:
+    """The system unit must exist and match
+    :func:`vesma.service.system_install.regenerate_system_unit`
+    byte-for-byte (the DR-07 leg for the system profile: a hand edit or
+    a generator upgrade without reinstall is tampering/drift class).
+    """
+    title = "system unit vs regeneration"
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        return Finding(
+            "DR-18",
+            title,
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    if state is None:
+        return Finding(
+            "DR-18",
+            title,
+            Severity.OK,
+            "no system-profile installation on this machine (n/a)",
+        )
+    unit_path = fhs.system_unit_path()
+    try:
+        text = unit_path.read_text(encoding="utf-8")
+    except OSError:
+        return Finding(
+            "DR-18",
+            title,
+            Severity.FAIL,
+            f"the system unit is MISSING at {unit_path} (a recorded"
+            " artifact) — the supervisor has no unit to run from",
+            "sudo vesma service install --system",
+        )
+    expected = regenerate_system_unit()
+    if text != expected:
+        return Finding(
+            "DR-18",
+            title,
+            Severity.FAIL,
+            f"{unit_path} differs from the regenerated unit (hand edit or"
+            " generator upgrade) — note: run `vesma doctor` from the engine"
+            " venv, a dev-checkout interpreter will not match",
+            "sudo vesma service install --system",
+        )
+    return Finding(
+        "DR-18",
+        title,
+        Severity.OK,
+        f"{unit_path} matches the regeneration byte-for-byte",
     )
 
 
@@ -1120,12 +1539,12 @@ def _gid_to_name(gid: int) -> str:
 def run_service_checks() -> list[Finding]:
     """Run the doctor registry against the local installation. READ-ONLY.
 
-    DR-01…DR-13 (layout/service-lifecycle v1) + the v2 §3.14 legs landed
-    so far: DR-14 (profile isolation) and DR-15 (system rights vs the
-    FHS manifest) — the minimal legs of the install --system wave — plus
-    the user-profile DR-17 (generation mixing) and DR-19 (generation
-    advisory). DR-16 (venv revisions) and DR-18 (unit drift) belong to
-    the doctor/update wave (ADR-0045 rollout 3) and are absent here.
+    DR-01…DR-13 (layout/service-lifecycle v1) + the layout v2 §3.14
+    system-profile gates (ADR-0045 rollout 3): DR-14 (profile isolation,
+    full matrix), DR-15 (system rights vs the FHS manifest incl. the
+    env.d 0600 FAIL gate), DR-16 (symlink-revision integrity),
+    DR-17 (generation mixing + system state↔fs inversion), DR-18 (system
+    unit vs regeneration), DR-19 (generation advisories, both profiles).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -1157,10 +1576,12 @@ def run_service_checks() -> list[Finding]:
         ("DR-11", "journald Storage=persistent", _dr11),
         ("DR-12", "venv read-only at runtime", _dr12),
         ("DR-13", "container downgrade allowlist", _dr13),
-        ("DR-14", "profile isolation (user ↔ system data roots)", _dr14),
+        ("DR-14", "profile isolation (user ↔ system roots + stamps)", _dr14),
         ("DR-15", "system-profile rights vs FHS manifest", _dr15),
-        ("DR-17", "install-state ↔ filesystem (generation mixing)", _dr17),
-        ("DR-19", "layout generation (user profile)", _dr19),
+        ("DR-16", "symlink-revision integrity (/usr/lib/vesma)", _dr16),
+        ("DR-17", "install-state ↔ filesystem (generations + system inversion)", _dr17),
+        ("DR-18", "system unit vs regeneration", _dr18),
+        ("DR-19", "layout generation advisories", _dr19),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

@@ -46,6 +46,7 @@ from vesma.service.system_install import (
     install_system,
     uninstall_system,
 )
+from vesma.service.system_update import SystemUpdateResult, update_system
 
 service_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -166,6 +167,48 @@ def service_uninstall(
         style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
         console.print(style, Text(line))
     console.print("[green]Uninstall complete.[/green]")
+
+
+@service_app.command(name="update")
+def service_update(
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Update the SYSTEM profile in place: materialize the running "
+            "build's venv revisions beside the current ones, atomic symlink "
+            "swap, health gate, previous revision retired only after health "
+            "passes. Requires root (sudo).",
+        ),
+    ] = False,
+) -> None:
+    """Update the service installation.
+
+    The user profile updates through `vesma self-update` (the pip channel
+    owns user installs); this command updates the SYSTEM profile
+    (specs/layout/v2 §3.13): drift refuses loudly BEFORE any action, a
+    failed health gate rolls back to the previous revision, re-runs are
+    idempotent.
+    """
+    if not system:
+        _fail_install(
+            SystemInstallError(
+                "`vesma service update` targets the SYSTEM profile only —"
+                " add --system; the user profile updates via `vesma"
+                " self-update`"
+            )
+        )
+    try:
+        result: SystemUpdateResult = update_system()
+    except (InstallError, ManifestError, SystemInstallError) as exc:
+        _fail_install(exc)
+    for line in result.lines:
+        warn_line = line.startswith(("WARN:", "note:", "preserved", "rollback:", "conffile kept"))
+        style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
+        # Text(line): report lines carry operator data (paths, names) —
+        # rendered without markup, only the prefix is styling.
+        console.print(style, Text(line))
+    console.print(f"[green]System profile updated ({result.engine_venv}).[/green]")
 
 
 # ── control plane: shared plumbing (wave W3) ──────────────────────────
