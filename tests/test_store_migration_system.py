@@ -1227,3 +1227,176 @@ def test_p3_json_dry_run_payload_carries_forecast(sys_env: dict[str, Path], tmp_
     )
     assert result.exit_code == 0, _output(result)
     assert "forecast" not in json.loads(result.output)
+
+
+# ── Wave-5 soak pins (round-trip soak 2026-10-22): parity x WAL sidecars
+#    (F6) and cross-fs publish ownership (F7) ─────────────────────────────
+
+
+def test_c8_sha_parity_ignores_sidecars_materialized_by_readonly_opens(
+    tmp_path: Path,
+) -> None:
+    """F6 soak pin: the staging build reads the SNAPSHOT's databases
+    through read-only URIs (`_copy_sqlite` source side); a WAL-mode
+    database materializes transient ``-wal``/``-shm`` sidecars on ANY
+    open, and a read-only connection never removes them on close. The
+    C8 parity set must exclude sqlite read machinery on BOTH sides — a
+    real engine store (every db journal_mode=wal) refused with exit 6
+    before the fix. The fixture db is REAL WAL mode: the old delete-mode
+    fixtures are exactly why the hole passed the suite."""
+    snap = tmp_path / "snapshot" / "data"
+    stag = tmp_path / "staging" / "data"
+    snap.mkdir(parents=True)
+    stag.mkdir(parents=True)
+    db = snap / "vectors.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        assert conn.execute("PRAGMA journal_mode=wal").fetchone()[0] == "wal"
+        conn.execute("CREATE TABLE vec (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO vec VALUES ('id-1')")
+        conn.commit()
+    finally:
+        conn.close()
+    # WAL mode lives in the header (write/read format version bytes); the
+    # backup-API copy keeps it — that is what makes sidecars reappear.
+    assert db.read_bytes()[18:20] == b"\x02\x02"
+    # a clean writer close checkpointed the sidecars away…
+    assert not (snap / "vectors.db-wal").exists()
+    # …and the mover's read-only reopen materializes them again — the
+    # exact shape of the live failure.
+    ro = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        ro.execute("SELECT count(*) FROM vec").fetchone()
+    finally:
+        ro.close()
+    assert (snap / "vectors.db-wal").exists() or (snap / "vectors.db-shm").exists()
+    # the staging copy folds the WAL in through the backup API: content
+    # intact, and no sidecar ever lands on the staging side
+    sm._copy_sqlite(db, stag / "vectors.db")
+    assert sm._table_counts(stag / "vectors.db") == {"vec": 1}
+    assert not (stag / "vectors.db-wal").exists()
+    assert not (stag / "vectors.db-shm").exists()
+    assert sm._sha256_parity_problems(snap, stag) == []
+
+
+def test_c8_sha_parity_still_validates_plain_files_and_excludes_sidecars_both_sides(
+    tmp_path: Path,
+) -> None:
+    """F6 inverse pin: sidecars are excluded from BOTH sides (even a
+    one-sided or content-mismatched one is never reported — they are
+    sqlite read machinery, never cargo), while foreign plain files keep
+    the full validation: content mismatches and one-sided presence are
+    still problems, with the directional messages intact."""
+    snap = tmp_path / "s"
+    stag = tmp_path / "t"
+    snap.mkdir()
+    stag.mkdir()
+    (snap / "readme.txt").write_text("ok", encoding="utf-8")
+    (stag / "readme.txt").write_text("ok", encoding="utf-8")
+    # sidecars: both sides, mismatched content, one-sided presence
+    (snap / "vectors.db-wal").write_bytes(b"\x00")
+    (stag / "vectors.db-wal").write_bytes(b"\x01")
+    (stag / "vectors.db-shm").write_bytes(b"\x00")
+    assert sm._sha256_parity_problems(snap, stag) == []
+    # a foreign plain file is still validated: tamper → mismatch
+    (stag / "readme.txt").write_text("tampered", encoding="utf-8")
+    problems = sm._sha256_parity_problems(snap, stag)
+    assert problems == ["readme.txt: sha256 mismatch between snapshot and staging"]
+    # missing on one side keeps the directional messages
+    (stag / "readme.txt").unlink()
+    assert sm._sha256_parity_problems(snap, stag) == [
+        "readme.txt: in the snapshot but missing in staging"
+    ]
+    (stag / "readme.txt").write_text("ok", encoding="utf-8")
+    (snap / "readme.txt").unlink()
+    assert sm._sha256_parity_problems(snap, stag) == [
+        "readme.txt: in staging but not in the snapshot"
+    ]
+
+
+def test_c8_wal_mode_sibling_db_does_not_break_the_apply(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+) -> None:
+    """The live soak failure end-to-end: a REAL engine store keeps its
+    databases in journal_mode=wal; before the fix this apply died with
+    exit 6 (sidecars in the snapshot flagged by the sha256 parity). The
+    pin builds such a sibling and walks the FULL system-target apply."""
+    home = make_source_6x(tmp_path)
+    conn = sqlite3.connect(str(home / "data" / "vectors.db"))
+    try:
+        assert conn.execute("PRAGMA journal_mode=wal").fetchone()[0] == "wal"
+        conn.execute("CREATE TABLE vec (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO vec VALUES ('id-1')")
+        conn.commit()
+    finally:
+        conn.close()
+    report = _apply_system(home, sys_env)
+    assert report.verification["sha256_parity"] == "ok"
+    assert report.verification["sibling_table_parity"] == "ok"
+    assert sm._table_counts(sys_env["data_root"] / "vectors.db") == {"vec": 1}
+
+
+def test_c4_cross_fs_publish_fchowns_tmp_from_staged_when_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F7 soak pin: the cross-fs publish must carry the ownership pass's
+    uid/gid onto the tmp file BEFORE fsync/replace — shutil.copy2 copies
+    the mode but never the owner/group, so a root run published the
+    config root:root and failed the C4 stat audit. Non-root CI cannot
+    fchown for real, so the pin mocks euid→0 and captures the call."""
+    staged_dir = tmp_path / "staging"
+    staged_dir.mkdir()
+    staged = staged_dir / "config.yaml"
+    staged.write_text("vesma:\n  data_dir: /var/lib/vesma\n", encoding="utf-8")
+    staged.chmod(0o640)
+    final_dir = tmp_path / "etc"
+    final_dir.mkdir()
+    entry = sm._PublishEntry(staged, final_dir / "config.yaml", cross_fs=True)
+
+    events: list[tuple[str, int, int] | tuple[str]] = []
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "fchown", lambda fd, uid, gid: events.append(("fchown", uid, gid)))
+    real_fsync = os.fsync
+
+    def recording_fsync(fd: int) -> None:
+        events.append(("fsync",))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+
+    sm._publish_entry(entry)
+    staged_stat = staged.stat()
+    # ownership rides onto the tmp fd BEFORE the durability barrier (the
+    # trailing fsync is _fsync_dir's post-replace directory barrier)
+    assert events[0] == ("fchown", staged_stat.st_uid, staged_stat.st_gid)
+    assert events[1] == ("fsync",)
+    final = final_dir / "config.yaml"
+    assert final.read_text(encoding="utf-8") == "vesma:\n  data_dir: /var/lib/vesma\n"
+    assert stat_mod.S_IMODE(final.stat().st_mode) == 0o640  # copy2 carries the mode
+    assert not (final_dir / ".config.yaml.publish-tmp").exists()  # atomic replace
+
+
+def test_c4_cross_fs_publish_skips_fchown_for_non_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F7 inverse pin: a non-root run keeps the recorded-intent contract —
+    no fchown is attempted, the publish itself is unchanged (the C4 audit
+    checks modes only there)."""
+    staged_dir = tmp_path / "staging"
+    staged_dir.mkdir()
+    staged = staged_dir / "config.yaml"
+    staged.write_text("api:\n  host: 127.0.0.1\n", encoding="utf-8")
+    staged.chmod(0o640)
+    final_dir = tmp_path / "etc"
+    final_dir.mkdir()
+    entry = sm._PublishEntry(staged, final_dir / "config.yaml", cross_fs=True)
+
+    fchown_calls: list[Any] = []
+    monkeypatch.setattr(os, "geteuid", lambda: 2345)
+    monkeypatch.setattr(os, "fchown", lambda fd, uid, gid: fchown_calls.append((fd, uid, gid)))
+
+    sm._publish_entry(entry)
+    assert fchown_calls == []
+    final = final_dir / "config.yaml"
+    assert final.is_file()
+    assert stat_mod.S_IMODE(final.stat().st_mode) == 0o640

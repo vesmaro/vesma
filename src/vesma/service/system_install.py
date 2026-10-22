@@ -370,7 +370,6 @@ def _materialize_venv(venv_dir: Path, requirements: tuple[str, ...], mode: int) 
                 "install",
                 "--python",
                 str(venv_dir / "bin" / "python"),
-                "--no-input",
                 *requirements,
             ],
             timeout=1800,

@@ -1818,16 +1818,29 @@ def _sha256_file(path: Path) -> str:
 
 def _sha256_parity_problems(snapshot_root: Path, staging_root: Path) -> list[str]:
     """C8: per-file sha256 parity of every NON-sqlite regular file (vault
-    and other plain files)."""
+    and other plain files).
+
+    sqlite ``-wal``/``-shm`` sidecars are excluded on BOTH sides: the
+    mover never copies them (their content folds in through the backup
+    API), and a READ-ONLY open of a WAL-mode database materializes
+    transient sidecars beside the copy — the staging build reads the
+    snapshot's databases, so the snapshot tree legitimately carries
+    them mid-run. They are sqlite read machinery, never cargo."""
     snap_files = {
         p.relative_to(snapshot_root): p
         for p in snapshot_root.rglob("*")
-        if p.is_file() and not _is_sqlite(p) and p.name != _MARKER_FILE_NAME
+        if p.is_file()
+        and not _is_sqlite(p)
+        and not _is_sidecar(p.name)
+        and p.name != _MARKER_FILE_NAME
     }
     stag_files = {
         p.relative_to(staging_root): p
         for p in staging_root.rglob("*")
-        if p.is_file() and not _is_sqlite(p) and p.name != _MARKER_FILE_NAME
+        if p.is_file()
+        and not _is_sqlite(p)
+        and not _is_sidecar(p.name)
+        and p.name != _MARKER_FILE_NAME
     }
     problems: list[str] = []
     for rel in sorted(set(snap_files) | set(stag_files)):
@@ -2238,12 +2251,19 @@ def _publish_entry(entry: _PublishEntry) -> None:
         return
     # Cross-filesystem (config → its plane): copy to a tmp name in the
     # destination dir, fsync, atomic replace. copy2 carries the mode the
-    # ownership pass set on the staged file — no re-hardening here (the
-    # manifest mode wins, never a mover-wide floor).
+    # ownership pass set on the staged file — but NOT the owner/group
+    # (shutil never chowns): the tmp file would land root:root on a root
+    # run and fail the C4 post-publish stat audit. The staged file is the
+    # ownership-pass truth (C4 ran over it pre-publish), so its uid/gid
+    # ride onto the tmp fd before the replace. Non-root runs keep the
+    # recorded-intent contract: the audit checks modes only there.
     tmp = entry.final.parent / f".{entry.final.name}.publish-tmp"
     shutil.copy2(entry.staged, tmp)
     fd = os.open(tmp, os.O_RDONLY)
     try:
+        if os.geteuid() == 0:
+            staged_stat = entry.staged.stat()
+            os.fchown(fd, staged_stat.st_uid, staged_stat.st_gid)
         os.fsync(fd)
     finally:
         os.close(fd)
