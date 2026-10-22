@@ -93,6 +93,24 @@ _SNAPSHOT_DIR_OPTION = Annotated[
 ]
 
 
+def _forecast_dicts() -> list[dict[str, Any]]:
+    """The C13 DR forecast serialized for ``--json`` — the SAME findings
+    from ``system_target_forecast()`` (one implementation with
+    ``vesma doctor``, same field shape as its JSON output)."""
+    from vesma.service.doctor_checks import system_target_forecast
+
+    return [
+        {
+            "check_id": f.check_id,
+            "title": f.title,
+            "severity": f.severity.value,
+            "detail": f.detail,
+            "fix_command": f.fix_command,
+        }
+        for f in system_target_forecast()
+    ]
+
+
 def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "mode": plan.mode,
@@ -128,6 +146,7 @@ def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
         payload["remaining_cargo"] = list(plan.remaining_cargo)
         payload["precondition_lines"] = list(plan.precondition_lines)
         payload["secret_path_warnings"] = list(plan.secret_path_warnings)
+        payload["forecast"] = _forecast_dicts()  # P3-4: C13 promised it in dry-run
     return payload
 
 

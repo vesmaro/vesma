@@ -1069,3 +1069,161 @@ def test_round_trip_user_to_system_to_fresh_user_equivalence(
     sm.run_migration(plan3)
     assert stats_of(fresh) == base
     assert vault_shas(fresh) == vault_shas(user6)
+
+
+# ── Wave-5 P3 tails (security spot-check follow-ups) ─────────────────────────
+
+
+def test_p3_apply_phase_pre_stats_reread_classified_exit14(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-1: the apply-phase source re-read goes through the SAME typed
+    classifier as the plan phase — a source that turned recovery-needing
+    between plan and apply is exit 14, never a raw traceback."""
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    source_db = home / "data" / STORE_DB_NAME
+    real = sm.read_store_stats
+
+    def failing(db_path: Path, *, read_only: bool = False) -> Any:
+        if read_only and db_path == source_db:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real(db_path, read_only=read_only)
+
+    monkeypatch.setattr(sm, "read_store_stats", failing)
+    with pytest.raises(sm.SourceRecoveryRequiredError) as ei:
+        sm.run_migration(plan, progress=lambda _l: None)
+    assert ei.value.exit_code == 14
+
+
+def test_p3_apply_phase_live_stats_reread_classified_exit14(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-1 (snapshot leg): the liveness comparison re-read of the SOURCE
+    inside make_snapshot is classified too — the first read-only pass
+    (pre_stats) succeeds, the snapshot-time re-read fails recovery-shaped."""
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    source_db = home / "data" / STORE_DB_NAME
+    real = sm.read_store_stats
+    seen = {"n": 0}
+
+    def failing_second(db_path: Path, *, read_only: bool = False) -> Any:
+        if read_only and db_path == source_db:
+            seen["n"] += 1
+            if seen["n"] == 2:  # pre_stats passed; the snapshot re-read fails
+                raise sqlite3.OperationalError("attempt to write a readonly database")
+        return real(db_path, read_only=read_only)
+
+    monkeypatch.setattr(sm, "read_store_stats", failing_second)
+    with pytest.raises(sm.SourceRecoveryRequiredError) as ei:
+        sm.run_migration(plan, progress=lambda _l: None)
+    assert ei.value.exit_code == 14
+    assert seen["n"] == 2
+
+
+def _race_at_publish_gate(
+    monkeypatch: pytest.MonkeyPatch, sys_env: dict[str, Path], payload: bytes
+) -> None:
+    """Lands a conffile mutation exactly between the phase-5 disposition
+    and the publish loop — the phase-6 gate call is the seam."""
+    real_gate = sm.system_quiesce_problems
+
+    def racing_gate(data_root: Path, *, with_wal_sampling: bool) -> Any:
+        if with_wal_sampling:  # the pre-publish (phase 6) call only
+            sys_env["config"].write_bytes(payload)
+        return real_gate(data_root, with_wal_sampling=with_wal_sampling)
+
+    monkeypatch.setattr(sm, "system_quiesce_problems", racing_gate)
+
+
+def test_p3_conffile_toctou_emptied_to_nonempty_keeps_contents(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-2: empty at the phase-5 disposition, NON-EMPTY by publish — the
+    fresh stat re-decides through the phase-5 decision path: the racing
+    conffile is never overwritten, the incoming config lands beside it."""
+    sys_env["config"].write_text("", encoding="utf-8")
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    _race_at_publish_gate(monkeypatch, sys_env, b"raced: true\n")
+    report = sm.run_migration(plan, progress=lambda _l: None)
+    assert sys_env["config"].read_bytes() == b"raced: true\n"
+    migrated = list(sys_env["config_root"].glob("config.yaml.migrated-*"))
+    assert len(migrated) == 1
+    assert "vesma" in migrated[0].read_text(encoding="utf-8")
+    assert report.config_disposition == "migrated-<ts>"
+
+
+def test_p3_conffile_toctou_nonempty_to_empty_gets_the_write(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-2 (vice versa): non-empty at the disposition, emptied by publish —
+    the fresh stat gives the EMPTY conffile the write (C3), no sidecar."""
+    sys_env["config"].write_text("stale: full\n", encoding="utf-8")
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    _race_at_publish_gate(monkeypatch, sys_env, b"")
+    report = sm.run_migration(plan, progress=lambda _l: None)
+    assert "data_dir" in sys_env["config"].read_text(encoding="utf-8")
+    assert not list(sys_env["config_root"].glob("config.yaml.migrated-*"))
+    assert report.config_disposition == "written"
+
+
+def test_p3_conffile_toctou_unreadable_at_publish_refuses_typed_and_rolls_back(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-2 (typed-refusal leg): a conffile that turned unreadable by
+    publish hits the SAME ConfigMigrationError as the phase-5 decision —
+    and the already-published entries roll back (no silent fallback)."""
+    sys_env["config"].write_text("", encoding="utf-8")
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    _race_at_publish_gate(monkeypatch, sys_env, b"\xff\xfe not utf-8")
+    with pytest.raises(sm.ConfigMigrationError) as ei:
+        sm.run_migration(plan, progress=lambda _l: None)
+    assert ei.value.exit_code == 9
+    assert sys_env["config"].read_bytes() == b"\xff\xfe not utf-8"
+    assert not (sys_env["data_root"] / STORE_DB_NAME).exists()  # rolled back
+
+
+def test_p3_phase7_audit_refusal_says_published_no_retry(
+    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-3: the post-publish audit refusal must not read as retryable —
+    the store IS published; a re-run is refused with exit 11."""
+    home = make_source_6x(tmp_path)
+    plan = _plan_system(home, apply=True)
+    monkeypatch.setattr(
+        sm, "_stat_audit_problems", lambda exps, *, ownership_applied: ["fake drift row"]
+    )
+    with pytest.raises(sm.VerificationError) as ei:
+        sm.run_migration(plan, progress=lambda _l: None)
+    assert ei.value.exit_code == 6
+    message = str(ei.value)
+    assert "IS PUBLISHED" in message
+    assert "exit 11" in message
+    assert (sys_env["data_root"] / STORE_DB_NAME).is_file()  # the message is honest
+
+
+def test_p3_json_dry_run_payload_carries_forecast(sys_env: dict[str, Path], tmp_path: Path) -> None:
+    """P3-4: the --json dry-run payload carries the C13 DR forecast (the
+    same doctor findings the text render shows); the classic --to payload
+    does not."""
+    home = make_source_6x(tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(home), "--target", "system", "--json"]
+    )
+    assert result.exit_code == 0, _output(result)
+    payload = json.loads(result.output)
+    assert [f["check_id"] for f in payload["forecast"]] == ["DR-14", "DR-15", "DR-17"]
+    for finding in payload["forecast"]:
+        assert set(finding) == {"check_id", "title", "severity", "detail", "fix_command"}
+        assert finding["severity"] in {"OK", "WARN", "FAIL"}
+    classic_home = make_source_5x(tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(classic_home), "--to", str(tmp_path / "classic"), "--json"],
+    )
+    assert result.exit_code == 0, _output(result)
+    assert "forecast" not in json.loads(result.output)
