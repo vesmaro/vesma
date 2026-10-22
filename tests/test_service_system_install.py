@@ -234,7 +234,7 @@ class TestSy02ManifestSingleSource:
         # Every concrete path the flow CAN create: manifest entries with
         # the bundled component names and this build's revision filled in.
         names = ("board", "metrics")
-        derived_suffixes = ("requirements-lock.txt", ".pre-regen.bak")
+        derived_suffixes = ("requirements-lock.txt", ".rpmnew")
         allowed: set[str] = set()
         for entry in manifest.entries:
             if "<name>" in entry.system_path and "<rev>" in entry.system_path:
