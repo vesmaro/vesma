@@ -17,6 +17,12 @@ Owns conformance SY-01…SY-04, SY-08, SY-09:
 - **SY-04** — the service account comes from the sysusers.d fragment
   (static content — a re-install writes byte-identical bytes and never
   duplicates the account; systemd-sysusers is idempotent by design);
+- **SY-05** (completed by rollout 3) — the conffile discipline: a
+  bundled manifest that diverges from the operator's on-disk edit NEVER
+  overwrites it; the new default lands next to it as
+  ``<name>.yaml.rpmnew`` (the ``.rpmnew`` convention: diff, merge,
+  remove), pending defaults are never clobbered, ``config.yaml`` is
+  never seeded or touched;
 - **SY-08** — venvs are materialized by the installer: ``uv venv`` +
   ``uv pip install`` of the SAME-BUILD wheel pin (``vesma==<running
   version>``). ``pip`` as root is never invoked — the venv has no pip
@@ -36,9 +42,13 @@ monkeypatch :func:`vesma.service.fhs.default_prefix` to a temp dir; the
 real-prefix run refuses to start without euid 0 (sudo), and ownership
 application is skipped (recorded, not applied) in a simulation.
 
-Deliberately NOT this wave (ADR-0045 rollout 3): the conffile update
-policy beyond the one-time backup, the symlink-swap UPDATER with its
-health gate, doctor DR-16/DR-17(system)/DR-18.
+Rollout 3 (ADR-0045) added HERE: the SY-05 conffile discipline (this
+module), the shared drift predicate :func:`system_state_drift` (doctor
+DR-17's system leg AND the updater's preflight — one predicate, so
+diagnosis and refusal can never disagree) and the canon unit text
+:func:`regenerate_system_unit` (install + doctor DR-18 read ONE
+source). The symlink-swap UPDATER itself lives in
+:mod:`vesma.service.system_update`.
 """
 
 from __future__ import annotations
@@ -61,12 +71,18 @@ import yaml
 
 from vesma.service import fhs, unitgen
 from vesma.service import install as user_install
-from vesma.service.manifest import bundled_manifest_path, load_installation
+from vesma.service.manifest import CONFFILE_NEW_SUFFIX, bundled_manifest_path, load_installation
 
 logger = logging.getLogger("vesma.service.system_install")
 
 #: Install-state schema version (additive growth only).
 STATE_SCHEMA: Final[int] = 1
+
+#: Roles whose state rows name one materialized venv revision (the
+#: updater's retirement set and the doctor's revision walkers).
+REVISION_ROLES: Final[frozenset[str]] = frozenset(
+    {"venv_engine_revision", "venv_component_revision"}
+)
 
 #: The sysusers.d fragment content (§3.13: the service account comes from
 #: HERE — static text, so a re-install can never duplicate the account;
@@ -427,6 +443,80 @@ def read_system_profile(prefix: Path | None = None) -> str | None:
     return str(profile) if profile is not None else None
 
 
+#: How many drift problems system_state_drift reports before it stops
+#: walking (a wildly drifted tree must not produce an endless list; the
+#: verdict is the same either way — refuse).
+_DRIFT_REPORT_CAP: Final[int] = 50
+
+
+def system_state_drift(prefix: Path | None = None) -> list[str]:
+    """Install-state ↔ filesystem drift of the system profile — the ONE
+    predicate behind doctor DR-17's system leg AND the updater's
+    preflight (specs/layout/v2 §3.14; ADR-0045 Decision 6).
+
+    Both directions are drift, both loud:
+
+    - a recorded artifact (status ≠ ``planned``) missing on disk;
+    - a recorded artifact that changed type (symlink → dir, file → dir, …);
+    - unrecorded content inside a recorded strict-dir — EXCEPT the
+      operator conffile zone (everything under ``/etc/vesma``:
+      ``config.yaml``, ``components.d`` drop-ins and ``env.d`` secrets
+      are operator-provisioned by the manifest, so their presence is
+      never drift).
+
+    ``planned`` rows (interrupted install) are tolerated, mirroring the
+    uninstall discipline. Read-only; the updater refuses on ANY returned
+    problem BEFORE its first mutation, and the doctor renders the same
+    list — one predicate, so diagnosis and refusal cannot disagree.
+    """
+    resolved_prefix = fhs.default_prefix() if prefix is None else prefix
+    doc = read_system_state(resolved_prefix)
+    if doc is None:
+        return []
+    try:
+        artifacts = [StateArtifact.from_dict(a) for a in doc["artifacts"]]
+    except (KeyError, TypeError, ValueError) as exc:
+        return [f"install-state artifact records malformed: {exc}"]
+    config_root = str(fhs.system_config_root(resolved_prefix))
+    recorded = {a.path for a in artifacts}
+    drift: list[str] = []
+    for artifact in artifacts:
+        if artifact.status == "planned":
+            continue
+        path = Path(artifact.path)
+        if not path.exists() and not path.is_symlink():
+            drift.append(f"recorded {artifact.kind} {path} is MISSING")
+        else:
+            try:
+                _check_type(artifact, path)
+            except SystemInstallError as exc:
+                drift.append(str(exc))
+            else:
+                if artifact.remove_mode == "strict-dir" and not _in_conffile_zone(
+                    path, config_root
+                ):
+                    try:
+                        children = sorted(path.iterdir())
+                    except OSError as exc:
+                        drift.append(f"recorded dir {path} is unreadable: {exc}")
+                        children = []
+                    for child in children:
+                        if str(child) in recorded:
+                            continue
+                        drift.append(
+                            f"unrecorded content: {child} (inside the recorded tree {path})"
+                        )
+                        if len(drift) >= _DRIFT_REPORT_CAP:
+                            drift.append("… further drift suppressed (cap reached)")
+                            return drift
+    return drift
+
+
+def _in_conffile_zone(path: Path, config_root: str) -> bool:
+    """True when ``path`` IS the conffile zone root or lives under it."""
+    return str(path) == config_root or str(path).startswith(config_root + os.sep)
+
+
 # ── Install ───────────────────────────────────────────────────────────
 
 
@@ -442,6 +532,27 @@ def _require_root_for_real_prefix(prefix: Path) -> None:
             "the system profile installs into the real FHS tree — run it as"
             " root: `sudo vesma service install --system`"
         )
+
+
+def regenerate_system_unit(prefix: Path | None = None) -> str:
+    """The canon system unit text — the ONE source for the installer and
+    the doctor's DR-18 leg (layout v2 §3.4; the DR-07 precedent: a
+    doctor diff against a separately-maintained recipe is a drift bug
+    waiting to happen, so both read this function).
+
+    Pure path math from the FHS manifest + the deployment prefix; no
+    filesystem I/O.
+    """
+    manifest = fhs.load_fhs_manifest()
+    return unitgen.generate_system_unit(
+        engine_venv=fhs.system_venv_engine(prefix),
+        read_write_paths=(fhs.system_data_root(prefix), fhs.system_cache_root(prefix)),
+        read_only_paths=(
+            fhs.resolve_system_path(manifest.entry("code_root"), prefix),
+            fhs.system_static_root(prefix),
+        ),
+        optional_read_write_paths=(fhs.resolve_system_path(manifest.entry("log_root"), prefix),),
+    )
 
 
 def install_system(prefix: Path | None = None) -> SystemInstallResult:
@@ -600,34 +711,64 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     )
     _ensure_venv_symlink("venv_engine", engine_symlink, engine_rev_dir, plan, report)
 
-    # 6. Bundled components: manifests (conffile backup discipline),
-    #    data dirs, python children's venvs.
+    # 6. Bundled components: manifests (SY-05 conffile discipline), data
+    #    dirs, python children's venvs.
     components_dir = fhs.system_components_dir(resolved_prefix)
     for name in user_install.BUNDLED_COMPONENTS:
         bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
         target = components_dir / f"{name}.yaml"
         entry = manifest.entry("component_manifest")
-        if target.exists() and target.read_text(encoding="utf-8") != bundle_text:
-            backup = components_dir.parent / f"{target.name}.pre-regen.bak"
-            if not backup.exists():
-                _atomic_write(backup, target.read_text(encoding="utf-8"), 0o600)
-                ownership.apply_to(backup, entry.owner, entry.group)
-                backup_artifact = StateArtifact(
-                    role="component_manifest_backup",
+        if not target.exists():
+            _atomic_write(target, bundle_text, entry.mode)
+            ownership.apply_to(target, entry.owner, entry.group)
+            plan("component_manifest", target, remove_mode="file").status = "created"
+            report.append(f"manifest: {target}")
+        elif target.read_text(encoding="utf-8") == bundle_text:
+            # Byte-identical: keep the file untouched (an operator file is
+            # never rewritten needlessly — mtime discipline).
+            plan("component_manifest", target, remove_mode="file").status = "kept"
+            report.append(f"manifest (unchanged): {target}")
+        else:
+            # SY-05: the operator's edit is the file of record — NEVER
+            # overwritten. The new default lands NEXT TO it as
+            # `<name>.yaml.rpmnew` (the .rpmnew convention: diff, merge,
+            # remove), and a pending .rpmnew is never clobbered either —
+            # an unreviewed default must not silently disappear.
+            new_default = components_dir / f"{target.name}{CONFFILE_NEW_SUFFIX}"
+            if new_default.exists():
+                report.append(
+                    f"conffile kept (operator edit): {target}; a new default"
+                    f" already waits at {new_default} (SY-05: diff, merge,"
+                    " remove the .rpmnew)"
+                )
+            else:
+                _atomic_write(new_default, bundle_text, entry.mode)
+                ownership.apply_to(new_default, entry.owner, entry.group)
+                report.append(
+                    f"conffile kept (operator edit): {target}; new default"
+                    f" written to {new_default} (SY-05: diff, merge, remove"
+                    " the .rpmnew)"
+                )
+            plan("component_manifest", target, remove_mode="file").status = "kept"
+        # Every pending .rpmnew in the drop-in zone is recorded (status
+        # kept) — installer-created content the exact-inverse uninstall
+        # owns, never invisible to the state.
+        for pending in sorted(components_dir.glob(f"*{CONFFILE_NEW_SUFFIX}")):
+            if any(a.path == str(pending) for a in artifacts):
+                continue
+            pending_entry = manifest.entry("component_manifest")
+            artifacts.append(
+                StateArtifact(
+                    role="component_manifest_rpmnew",
                     kind="file",
-                    path=str(backup),
-                    mode=0o600,
-                    owner=entry.owner,
-                    group=entry.group,
-                    status="created",
+                    path=str(pending),
+                    mode=pending_entry.mode,
+                    owner=pending_entry.owner,
+                    group=pending_entry.group,
+                    status="kept",
                     remove_mode="file",
                 )
-                artifacts.append(backup_artifact)
-                report.append(f"backup: {backup} (previous manifest preserved)")
-        _atomic_write(target, bundle_text, entry.mode)
-        ownership.apply_to(target, entry.owner, entry.group)
-        plan("component_manifest", target, remove_mode="file").status = "created"
-        report.append(f"manifest: {target}")
+            )
 
     installation = load_installation(components_dir)  # fail-closed (SY-02/LY-02)
     report.append(
@@ -672,18 +813,11 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     make_dir("distro_static", fhs.system_static_root(resolved_prefix))
 
     # 8. The system unit (§3.4; coexists with the user unit by scope).
+    #    The text comes from regenerate_system_unit — the ONE source the
+    #    doctor's DR-18 leg re-reads, so install and doctor can never
+    #    disagree on the canon.
     unit_path = fhs.system_unit_path(resolved_prefix)
-    unit_text = unitgen.generate_system_unit(
-        engine_venv=engine_symlink,
-        read_write_paths=(data_root, cache_root),
-        read_only_paths=(
-            fhs.resolve_system_path(manifest.entry("code_root"), resolved_prefix),
-            fhs.system_static_root(resolved_prefix),
-        ),
-        optional_read_write_paths=(
-            fhs.resolve_system_path(manifest.entry("log_root"), resolved_prefix),
-        ),
-    )
+    unit_text = regenerate_system_unit(resolved_prefix)
     write_file("system_unit", unit_path, unit_text)
     report.append(f"unit: {unit_path} (0644, generated — do not edit)")
     report.append(f"systemctl daemon-reload: {_systemctl_system(['daemon-reload'])}")
@@ -910,6 +1044,8 @@ def _refuse_foreign(artifact: StateArtifact, path: Path, recorded: set[str]) -> 
 
 
 __all__ = [
+    "CONFFILE_NEW_SUFFIX",
+    "REVISION_ROLES",
     "STATE_SCHEMA",
     "StateArtifact",
     "SystemInstallError",
@@ -918,5 +1054,7 @@ __all__ = [
     "install_system",
     "read_system_profile",
     "read_system_state",
+    "regenerate_system_unit",
+    "system_state_drift",
     "uninstall_system",
 ]
