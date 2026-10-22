@@ -136,6 +136,31 @@ G0 остаётся жёстким предохранителем теперь, 
 несовпадении имени/версии с нашим проектом отклоняется без
 `--i-own-name`.
 
+## Чек-лист заморозки релиза — поверхности версии
+
+ Freeze-коммит поднимает ВСЁ перечисленное синхронно (гейты G2/G3
+`--publish` ловят дрейф pyproject, но корневой файл `VERSION` сверяет
+только сьютовский `test_version_guard` (#204) — `scripts/check_version.py`
+VERSION не читает, поэтому пропущенный `VERSION` уходит локально зелёным и
+краснеет уже на CI):
+
+1. `VERSION` (корень репо — гард #204; пропущен на freeze 6.4.0, исправлено
+   train-follow-up-коммитом)
+2. `pyproject.toml` `version`
+3. `packaging/npm/package.json` `version` (гейт V1)
+4. `uv.lock` (только строка версии `vesma`; ревизия лока сохраняется)
+5. `README.md` / `README.ru.md` пины тега контейнерного образа
+6. штампы актуальности в доках: `docs/{en,ru}/user/getting-started.md`,
+   `docs/{en,ru}/architecture/overview.md`, `docs/{en,ru}/features.md`,
+   `docs/{en,ru}/admin/runbooks/pypi-publish.md`
+
+CI в окне релиза: тестовые ноги, резолвящие `vesma==<running version>` из
+PyPI по сети (real-pip ноги, напр.
+`test_service_system_install.py::test_user_and_system_coexist_disjoint`),
+краснеют в СОБСТВЕННОМ окне поезда — CI стартует раньше, чем публикация
+PyPI доезжает. Это ожидаемые красные до завершения публикации: после неё
+перезапускайте упавшие джобы, а не триажьте их как дефекты кода.
+
 ## Container image — обязательная половина поезда
 
 Директива владельца 2026-10-05 (карта `vesma-ghcr-5x-parity`; повод —

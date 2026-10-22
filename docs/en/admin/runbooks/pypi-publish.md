@@ -134,6 +134,30 @@ an already-published version fails cleanly BEFORE any upload attempt
 against a name/version state that does not match our project is refused
 without `--i-own-name`.
 
+## Release-freeze checklist — version surfaces
+
+The freeze commit must bump ALL of these synchronously (`--publish` gates
+G2/G3 catch pyproject drift, but only the suite's `test_version_guard`
+(#204) compares the root `VERSION` file — `scripts/check_version.py` does
+NOT read it, so a missed `VERSION` ships green locally and goes red on CI):
+
+1. `VERSION` (repo root — #204 guard; missed on the 6.4.0 freeze, fixed by
+   train follow-up)
+2. `pyproject.toml` `version`
+3. `packaging/npm/package.json` `version` (V1 gate)
+4. `uv.lock` (the `vesma` version line only; lock revision preserved)
+5. `README.md` / `README.ru.md` container image tag pins
+6. doc currency stamps: `docs/{en,ru}/user/getting-started.md`,
+   `docs/{en,ru}/architecture/overview.md`, `docs/{en,ru}/features.md`,
+   `docs/{en,ru}/admin/runbooks/pypi-publish.md`
+
+CI in the release window: test legs that resolve `vesma==<running version>`
+from PyPI over the network (real-pip legs, e.g.
+`test_service_system_install.py::test_user_and_system_coexist_disjoint`)
+go red in the train's OWN window — CI starts before the PyPI publish lands.
+These are expected reds until the publish completes: rerun the failed jobs
+afterwards instead of triaging them as code defects.
+
 ## Container image — mandatory half of the train
 
 Owner directive 2026-10-05 (card `vesma-ghcr-5x-parity`, after the 5.3.0 /
