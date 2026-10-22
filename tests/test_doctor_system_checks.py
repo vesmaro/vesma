@@ -308,6 +308,20 @@ class TestDr17SystemInversion:
         finding = _finding(run_service_checks(), "DR-17")
         assert finding.severity is Severity.FAIL
 
+    def test_malformed_artifact_records_fail(self, sim: Path) -> None:
+        """Coverage pin (cascade fix): a malformed install-state row is a
+        loud DR-17 FAIL — never a silent skip of the unvalidatable row."""
+        install_system()
+        state_path = sim / "var/lib/vesma/install-state.yaml"
+        doc = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+        doc["artifacts"].append({"role": "broken-row"})  # no path/kind/mode
+        state_path.write_text(
+            yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
+        finding = _finding(run_service_checks(), "DR-17")
+        assert finding.severity is Severity.FAIL
+        assert "malformed" in (finding.detail or "")
+
     def test_same_predicate_as_the_updater_preflight(self, sim: Path) -> None:
         """Detection and refusal share one function — the doctor renders
         the same drift the updater refuses on."""

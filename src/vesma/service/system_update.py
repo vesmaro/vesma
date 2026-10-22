@@ -32,7 +32,10 @@ The update contract, in execution order:
    BACK to the recorded targets, the install-state text and the
    component locks are restored — the previous revision is active and
    fully recorded again; the failed new revision stays on disk for
-   diagnosis (DR-16 reports it as a leftover; the loud error says so).
+   diagnosis (DR-16 reports it as a leftover). The raised error carries
+   the rollback log with an honest verdict — ROLLED BACK vs ROLLBACK
+   INCOMPLETE when the restore itself partly failed (the CLI prints
+   report lines only on success, so the log must ride the error).
 6. **Retirement**: only after the gate passes, the previous revision
    dirs are removed (``rmtree``) — they are venv code trees, not
    operator data and not memory records (the wave's P0 record-deletion
@@ -48,6 +51,7 @@ import contextlib
 import dataclasses
 import logging
 import os
+import re
 import shutil
 import subprocess  # nosec B404 - fixed-argv health probe, no shell
 from collections.abc import Mapping
@@ -131,6 +135,33 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
     old_rev_dirs = {
         Path(a.path) for a in old_rows if a.role in si.REVISION_ROLES and a.status != "planned"
     }
+    # Security containment (cascade fix, P1): every path the retirement
+    # step may rmtree MUST resolve inside the manifest code plane — the
+    # install-state is installer-written but the retirement acts on the
+    # SNAPSHOT taken here, before the installer rewrites the state, so a
+    # tampered row must be caught BEFORE any mutation. Validate ALL
+    # paths first, delete later (no partial removals). Boundary
+    # semantics mirror doctor DR-16's check_link (realpath containment).
+    boundary_roots = (
+        Path(
+            os.path.realpath(
+                fhs.resolve_system_path(fhs.load_fhs_manifest().entry("code_root"), resolved_prefix)
+            )
+        ),
+        Path(os.path.realpath(fhs.system_venvs_root(resolved_prefix))),
+    )
+    for rev_dir in old_rev_dirs:
+        if not rev_dir.exists():
+            continue  # absent rows are skipped by the retirement loop too
+        real = Path(os.path.realpath(rev_dir))
+        if not any(real == root or root in real.parents for root in boundary_roots):
+            raise SystemInstallError(
+                f"install-state names a revision path OUTSIDE the code"
+                f" plane: {rev_dir} — refusing the update BEFORE any action"
+                " (tampered install-state?); inventory with `vesma doctor`,"
+                " repair the state, then re-run"
+                " `sudo vesma service update --system`"
+            )
     ownership = si._Ownership(apply_ownership=os.geteuid() == 0)
     lock_paths = {
         Path(a.path) / "requirements-lock.txt" for a in old_rows if a.role == "component_data"
@@ -142,25 +173,41 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
     # Steps 2-3: materialize + swap through the canonical installer. ANY
     # failure past the preflight rolls the visible world back (best
     # effort, never masking the original error) — the operator keeps a
-    # working, fully recorded install.
+    # working, fully recorded install, and the raised error CARRIES the
+    # rollback log (the CLI prints report lines only on success — a
+    # failure text claiming a clean rollback while the restore itself
+    # partly failed would be a lie; cascade fix P2).
+    rollback_log: list[str] = []
     try:
         result = si.install_system(resolved_prefix)
-    except Exception:
+    except SystemInstallError as exc:
         with contextlib.suppress(Exception):
-            _rollback(resolved_prefix, old_links, old_state_text, old_lock_text, ownership, lines)
-        raise
+            _rollback(
+                resolved_prefix, old_links, old_state_text, old_lock_text, ownership, rollback_log
+            )
+        raise SystemInstallError(_failure_text(str(exc), rollback_log)) from exc
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            _rollback(
+                resolved_prefix, old_links, old_state_text, old_lock_text, ownership, rollback_log
+            )
+        raise SystemInstallError(
+            _failure_text(f"{type(exc).__name__}: {exc}", rollback_log)
+        ) from exc
     failures = _health_gate(resolved_prefix, result.revisions, version, lines)
     if failures:
         with contextlib.suppress(Exception):
-            _rollback(resolved_prefix, old_links, old_state_text, old_lock_text, ownership, lines)
+            _rollback(
+                resolved_prefix, old_links, old_state_text, old_lock_text, ownership, rollback_log
+            )
         raise SystemInstallError(
-            "health gate FAILED after the swap — ROLLED BACK to the previous"
-            f" revision(s) ({len(failures)} failure(s); first: {failures[0]})."
-            " The failed new revision(s) stay on disk for diagnosis (doctor"
-            " DR-16 reports them as leftovers); the install-state describes"
-            " the previous, ACTIVE revision — inventory with"
-            " `vesma doctor`, fix, then re-run"
-            " `sudo vesma service update --system`"
+            _failure_text(
+                "health gate FAILED after the swap"
+                f" ({len(failures)} failure(s); first: {failures[0]})."
+                " The failed new revision(s) stay on disk for diagnosis"
+                " (doctor DR-16 reports them as leftovers)",
+                rollback_log,
+            )
         )
 
     # Step 6: retirement — only the gate's survivors reach this line.
@@ -185,6 +232,28 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
         engine_venv=result.engine_venv,
         revisions=result.revisions,
         rolled_back=False,
+    )
+
+
+def _failure_text(problem: str, rollback_log: list[str]) -> str:
+    """The operator-facing failure text: the problem, the rollback
+    verdict (clean vs INCOMPLETE — a partial rollback must never claim a
+    clean one) and the rollback log lines. The log rides the ERROR
+    because the CLI prints report lines only on success — without this,
+    "could not restore" lines were lost exactly when they mattered
+    (cascade fix P2)."""
+    partial = any(line.startswith("rollback: could not") for line in rollback_log)
+    verdict = (
+        "ROLLBACK INCOMPLETE — the restore itself partly failed"
+        if partial
+        else "ROLLED BACK to the previous revision(s)"
+    )
+    log = "; ".join(rollback_log) if rollback_log else "no rollback steps were needed"
+    return (
+        f"{problem} — {verdict}. Rollback log: {log}. The install-state"
+        " describes the previous, ACTIVE revision — inventory with"
+        " `vesma doctor`, fix, then re-run"
+        " `sudo vesma service update --system`"
     )
 
 
@@ -242,9 +311,18 @@ def _probe_revision(rev_dir: Path, done_marker: str, *, expected: str | None) ->
     if result.returncode != 0:
         return False, f"exit {result.returncode}: {result.stderr.strip()[-300:]}"
     output = result.stdout.strip()[:200]
-    if expected is not None and expected not in output:
+    if expected is not None and not _version_token_present(expected, output):
         return False, f"entrypoint reports {output!r}, expected {expected!r}"
     return True, output or "exit 0"
+
+
+def _version_token_present(expected: str, output: str) -> bool:
+    """Token-boundary version match (cascade fix, P2): ``6.3.0`` must
+    NOT match ``6.3.01`` / ``6.3.0rc1`` / ``16.3.0`` — the expected
+    version must appear as a standalone token on non-identifier
+    boundaries (a plain substring check accepted all of those)."""
+    pattern = rf"(?<![0-9A-Za-z_.-]){re.escape(expected)}(?![0-9A-Za-z_.-])"
+    return re.search(pattern, output) is not None
 
 
 def _rollback(

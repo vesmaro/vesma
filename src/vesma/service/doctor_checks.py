@@ -36,6 +36,7 @@ from vesma.service import fhs, layout, unitgen
 from vesma.service.install import engine_venv, parse_pin_line, read_lock
 from vesma.service.manifest import CONFFILE_NEW_SUFFIX, ComponentManifest, load_installation
 from vesma.service.system_install import (
+    REVISION_ROLES,
     SystemInstallError,
     read_system_state,
     regenerate_system_unit,
@@ -1254,7 +1255,7 @@ def _dr15() -> Finding:
         role = str(raw.get("role"))
         if role == "component_data":
             names.add(Path(str(raw["path"])).name)
-        elif role in ("venv_engine_revision", "venv_component_revision"):
+        elif role in REVISION_ROLES:  # one source with the updater (cascade fix)
             revision_dirs.append(Path(str(raw["path"])))
     components_dir = fhs.system_components_dir()
     if components_dir.is_dir():

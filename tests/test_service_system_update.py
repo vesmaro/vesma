@@ -147,6 +147,60 @@ class TestUpdatePreconditions:
         with pytest.raises(SystemInstallError, match="sudo vesma service install --system"):
             update_system()
 
+    def test_refuses_revision_path_outside_code_plane(
+        self, installed_old: Path, seams: Seam, tmp_path: Path
+    ) -> None:
+        """P1 containment pin (cascade fix): a tampered install-state row
+        (role venv_engine_revision, path = a decoy dir OUTSIDE the code
+        plane, with content) must be refused BEFORE any mutation — the
+        decoy survives byte-for-byte and nothing is materialized."""
+        import yaml
+
+        decoy = tmp_path / "decoy-outside-code-plane"
+        decoy.mkdir()
+        (decoy / "precious.txt").write_text("operator data\n", encoding="utf-8")
+        state_path = installed_old / "var/lib/vesma/install-state.yaml"
+        doc = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+        doc["artifacts"].append(
+            {
+                "role": "venv_engine_revision",
+                "kind": "dir",
+                "path": str(decoy),
+                "mode": "0755",
+                "owner": None,
+                "group": None,
+                "status": "created",
+                "remove_mode": "rmtree",
+            }
+        )
+        state_path.write_text(
+            yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
+        before = sorted(str(p.relative_to(installed_old)) for p in installed_old.rglob("*"))
+        with pytest.raises(SystemInstallError, match="OUTSIDE the code"):
+            update_system()
+        after = sorted(str(p.relative_to(installed_old)) for p in installed_old.rglob("*"))
+        assert before == after, "the containment refusal must be a no-op"
+        assert (decoy / "precious.txt").read_text(encoding="utf-8") == "operator data\n"
+        assert len(seams.venvs) == 2, "nothing may be materialized on a tampered state"
+
+    def test_refuses_malformed_artifact_records(self, installed_old: Path, seams: Seam) -> None:
+        """Coverage pin (cascade fix): a malformed install-state row makes
+        system_state_drift report the malformed leg and the updater
+        refuse BEFORE any action."""
+        import yaml
+
+        state_path = installed_old / "var/lib/vesma/install-state.yaml"
+        doc = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+        doc["artifacts"].append({"role": "broken-row"})  # no path/kind/mode
+        state_path.write_text(
+            yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
+        drift = si.system_state_drift()
+        assert any("malformed" in problem for problem in drift)
+        with pytest.raises(SystemInstallError, match="refusing the update BEFORE"):
+            update_system()
+
 
 # ── SY-07: the update mechanics ───────────────────────────────────────
 
@@ -260,6 +314,77 @@ class TestUpdateMechanics:
         failing.chmod(0o755)
         ok, detail = su._probe_revision(rev, "bin/boom", expected=None)
         assert not ok and "exit 3" in detail
+
+    @pytest.mark.parametrize(
+        ("printed", "expected", "accept"),
+        [
+            ("vesma 1.0", "1.0", True),  # exact token passes
+            ("vesma 1.01", "1.0", False),  # prefix-padded version must NOT pass
+            ("vesma 1.0rc1", "1.0", False),  # suffix-attached must NOT pass
+            ("vesma 21.0", "1.0", False),  # digit-prepended must NOT pass
+            ("1.0.5", "1.0", False),  # longer dotted token must NOT pass
+            ("vesma 1.0\n", "1.0", True),  # trailing newline is stripped upstream
+        ],
+    )
+    def test_probe_version_token_boundary(
+        self, tmp_path: Path, printed: str, expected: str, accept: bool
+    ) -> None:
+        """P2 pin (cascade fix): the version check is token-boundary, not
+        substring — "1.01"/"1.0rc1"/"21.0" must never pass as "1.0"."""
+        rev = tmp_path / "rev"
+        (rev / "bin").mkdir(parents=True)
+        entrypoint = rev / "bin" / "vesma"
+        entrypoint.write_text(f"#!/bin/sh\necho '{printed}'\n", encoding="utf-8")
+        entrypoint.chmod(0o755)
+        ok, detail = su._probe_revision(rev, "bin/vesma", expected=expected)
+        assert ok is accept, (printed, expected, detail)
+
+    def test_rollback_failure_reported_in_error(
+        self, installed_old: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P2 pin (cascade fix): when the ROLLBACK itself partly fails,
+        the raised error carries the restore lines and says INCOMPLETE —
+        it must not claim a clean rollback."""
+        monkeypatch.setattr(
+            su, "_probe_revision", lambda rev_dir, marker, *, expected: (False, "stub failure")
+        )
+
+        # Fail the ROLLBACK's symlink restores only — install_system's own
+        # swaps (engine + metrics) must succeed so the run reaches the
+        # health gate with the rollback leg broken.
+        real_symlink = su.si._atomic_symlink
+        calls = {"n": 0}
+
+        def flaky_symlink(target: Path, link_path: Path) -> None:
+            calls["n"] += 1
+            if calls["n"] > 2:
+                raise OSError("simulated restore failure")
+            real_symlink(target, link_path)
+
+        monkeypatch.setattr(su.si, "_atomic_symlink", flaky_symlink)
+        with pytest.raises(SystemInstallError) as excinfo:
+            update_system()
+        text = str(excinfo.value)
+        assert "ROLLBACK INCOMPLETE" in text, text
+        assert "could not restore" in text, text
+        assert "health gate FAILED" in text
+        # The state text itself still restored (only the symlink leg failed).
+        doc = read_system_state()
+        assert doc is not None
+        assert doc["engine_version"] == OLD_VERSION
+
+    def test_clean_rollback_verdict_without_restore_failures(
+        self, installed_old: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            su, "_probe_revision", lambda rev_dir, marker, *, expected: (False, "stub failure")
+        )
+        with pytest.raises(SystemInstallError) as excinfo:
+            update_system()
+        text = str(excinfo.value)
+        assert "ROLLED BACK to the previous revision(s)" in text
+        assert "INCOMPLETE" not in text
+        assert "Rollback log:" in text  # the log rides the error (CLI prints lines on success only)
 
     def test_no_shell_subprocess_anywhere(self) -> None:
         """Security pin (the wave is lifecycle/trusted-boundary code):
