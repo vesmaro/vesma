@@ -66,7 +66,10 @@ service_app = typer.Typer(
         "systemd user unit and per-component venvs, and `run` starts the "
         "supervisor itself in the foreground. Every client verb accepts "
         "`--socket` to point at a non-default control socket (tests, "
-        "multi-instance machines).\n\n"
+        "multi-instance machines). The component registry verbs "
+        "(install/update/configs/status of component MANIFESTS) live on "
+        "`vesma service components`; `start/stop/restart` take one NAME or "
+        "`--all` (topological order — wave B of CLI topology v2).\n\n"
         "The SYSTEM profile (FHS, root) is the `vesma system` domain: "
         "`vesma system install` / `uninstall` / `update`. The former "
         "`--system` flag forms here remain as hidden deprecated aliases."
@@ -76,6 +79,16 @@ service_app = typer.Typer(
 
 console = Console()
 logger = logging.getLogger("vesma.cli.service")
+
+#: The log source named by the explicit empty-output message (the P2
+#: cli-audit 2026-10-08 finding: `service logs` printed NOTHING on an
+#: empty tail — silence is never an answer). Wave B of CLI topology v2
+#: carried it from the former top-level `vesma logs` verb into `service
+#: logs` (its canonical home since the wave).
+LOG_SOURCE_NOTE = (
+    "source: supervisor ring buffer via the control socket — lines emitted "
+    "since the supervisor started; the component may not have run yet"
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -327,59 +340,117 @@ def health(
 
 @service_app.command("start")
 def start(
-    component: Annotated[str, typer.Argument(help="Component name from the manifest registry.")],
-    socket: Annotated[
-        Path | None, typer.Option("--socket", help="Control socket override (tests).")
+    component: Annotated[
+        str | None,
+        typer.Argument(help="Component name from the manifest registry.", show_default=False),
     ] = None,
-) -> None:
-    """Start a component (idempotent: already-running is not an error).
-
-    Asks the supervisor to launch the component from its installed manifest;
-    an already-running component is reported as-is instead of failing, so
-    start scripts can run this unconditionally. Prints the resulting state;
-    check `vesma service health` afterwards to confirm readiness.
-    """
-    state = _with_client(socket, lambda client: client.start(component))
-    console.print(f"{component}: {state}")
-
-
-@service_app.command("stop")
-def stop(
-    component: Annotated[str, typer.Argument(help="Component name from the manifest registry.")],
-    force: Annotated[
-        bool, typer.Option("--force", help="Skip the graceful phase (SIGKILL after a short delay).")
+    all_components: Annotated[
+        bool,
+        typer.Option("--all", help="Start every installed component (dependency order)."),
     ] = False,
     socket: Annotated[
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Stop a component (idempotent: already-stopped is not an error).
+    """Start a component — or every installed one with --all (topo order).
 
-    Stops gracefully first (SIGTERM, short grace period); `--force` skips the
-    graceful phase and SIGKILLs after a short delay — for a wedged process
-    only, since in-flight work is lost. An already-stopped component is
-    reported as-is instead of failing.
+    The single-component path is the same control-plane dispatch as
+    always (idempotent: an already-running component is reported as-is,
+    so start scripts can run this unconditionally) behind the wave-61
+    target resolution: the NAME is checked against the registry first,
+    bare invocation refuses (never a bulk mutation). `--all` starts in
+    dependency order (`depends_on` before dependents) — lifted here from
+    the former top-level `vesma start --all` (CLI topology v2 wave B).
+    The hidden top-level `vesma start` alias calls the SAME function.
+    Check `vesma service health` afterwards to confirm readiness.
     """
-    state = _with_client(socket, lambda client: client.stop(component, force=force))
-    console.print(f"{component}: {state}")
+    from vesma.cli.components import start_command
+
+    start_command(
+        component,
+        all_components=all_components,
+        socket=socket,
+        invoked_as="vesma service start",
+        install_hint="vesma service components install --all",
+        registry_hint="vesma service components status",
+    )
 
 
-@service_app.command("restart")
-def restart(
-    component: Annotated[str, typer.Argument(help="Component name from the manifest registry.")],
+@service_app.command("stop")
+def stop(
+    component: Annotated[
+        str | None,
+        typer.Argument(help="Component name from the manifest registry.", show_default=False),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Skip the graceful phase (SIGKILL after a short delay).")
+    ] = False,
+    all_components: Annotated[
+        bool,
+        typer.Option("--all", help="Stop every installed component (reverse dependency order)."),
+    ] = False,
     socket: Annotated[
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
 ) -> None:
-    """Restart a component (not idempotent by contract).
+    """Stop a component — or every installed one with --all (reverse topo).
+
+    Graceful first (SIGTERM, short grace period); `--force` skips the
+    graceful phase and SIGKILLs after a short delay — for a wedged
+    process only, since in-flight work is lost. Idempotent per
+    component: an already-stopped component is reported as-is. `--all`
+    stops in REVERSE dependency order (dependents torn down before what
+    they depend on) — lifted here from the former top-level `vesma stop
+    --all` (CLI topology v2 wave B). The hidden top-level `vesma stop`
+    alias calls the SAME function.
+    """
+    from vesma.cli.components import stop_command
+
+    stop_command(
+        component,
+        all_components=all_components,
+        socket=socket,
+        force=force,
+        invoked_as="vesma service stop",
+        install_hint="vesma service components install --all",
+        registry_hint="vesma service components status",
+    )
+
+
+@service_app.command("restart")
+def restart(
+    component: Annotated[
+        str | None,
+        typer.Argument(help="Component name from the manifest registry.", show_default=False),
+    ] = None,
+    all_components: Annotated[
+        bool,
+        typer.Option("--all", help="Restart every installed component (dependency order)."),
+    ] = False,
+    socket: Annotated[
+        Path | None, typer.Option("--socket", help="Control socket override (tests).")
+    ] = None,
+) -> None:
+    """Restart a component — or every installed one with --all (topo order).
 
     A restart is a real stop-then-start cycle, not a no-op replay: unlike
-    start/stop it is NOT idempotent — a retry after a lost response performs
-    a second restart. Use it to reload a component after config or manifest
-    changes; confirm readiness with `vesma service health`.
+    start/stop it is NOT idempotent — a retry after a lost response
+    performs a second restart. `--all` restarts in dependency order —
+    lifted here from the former top-level `vesma restart --all` (CLI
+    topology v2 wave B). The hidden top-level `vesma restart` alias
+    calls the SAME function. Confirm readiness with `vesma service
+    health`.
     """
-    state = _with_client(socket, lambda client: client.restart(component))
-    console.print(f"{component}: {state}")
+    from vesma.cli.components import restart_command
+
+    restart_command(
+        component,
+        all_components=all_components,
+        socket=socket,
+        invoked_as="vesma service restart",
+        install_hint="vesma service components install --all",
+        registry_hint="vesma service components status",
+    )
 
 
 @service_app.command("logs")
@@ -401,20 +472,27 @@ def logs(
     Prints the last `--tail` lines (default 100, capped at 10000 — the
     same cap the `--tail` option enforces) from the component's log
     source, or keeps streaming new lines with `--follow`/`-f` until the
-    component stops. Pass a component name from the manifest registry;
-    `--socket` overrides the control socket.
+    component stops. The canonical home of component logs since CLI
+    topology v2 (wave B): the former top-level `vesma logs NAME` verb
+    moved here; log lines are OPERATOR DATA rendered through Text() —
+    never through rich markup (a child emitting "[red]…" must not style
+    the trusted CLI) — and an EMPTY result says so explicitly with the
+    source named: silence is never an answer.
     """
     if follow:
         _with_client(
             socket,
             lambda client: client.follow_logs(
-                component, lambda line: console.print(line), tail=tail
+                component, lambda line: console.print(Text(line)), tail=tail
             ),
         )
         return
     lines = _with_client(socket, lambda client: client.logs(component, tail=tail))
+    if not lines:
+        console.print(f"no log lines available for {component} ({LOG_SOURCE_NOTE})", style="yellow")
+        return
     for line in lines:
-        console.print(line)
+        console.print(Text(line))
 
 
 # ── verb: run — the supervisor entrypoint (server side) ───────────────

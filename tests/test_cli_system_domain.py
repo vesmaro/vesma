@@ -46,8 +46,8 @@ def _fake_install_system(called: list[bool]) -> Any:
 
 
 def _fake_uninstall_system(called: list[bool]) -> Any:
-    def fake() -> si.SystemUninstallResult:
-        called.append(True)
+    def fake(*, dry_run: bool = False) -> si.SystemUninstallResult:
+        called.append(dry_run)
         return si.SystemUninstallResult(lines=("removed: x",))
 
     return fake
@@ -74,10 +74,13 @@ class TestRegistration:
         registered = {getattr(g, "name", None) for g in app.registered_groups}
         assert "system" in registered
 
-    def test_system_exposes_exactly_the_three_verbs(self) -> None:
+    def test_system_exposes_exactly_the_four_verbs(self) -> None:
+        """Topology v2 wave A: the three lifecycle verbs + `doctor` (the
+        SAME doctor app additionally registered here; removal-safety: any
+        new verb must be a conscious contract change, not drift)."""
         click_root = get_command(app)
         system = click_root.commands["system"]
-        assert set(system.commands) == {"install", "uninstall", "update"}
+        assert set(system.commands) == {"install", "uninstall", "update", "doctor"}
         for verb_cmd in system.commands.values():
             assert not verb_cmd.hidden, "system verbs must be visible (tab-completable)"
 
@@ -104,11 +107,13 @@ class TestSystemVerbsDispatch:
         assert "Service installed" in result.output
 
     def test_uninstall_dispatches_to_impl_seam(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Wave B (G4): the typed confirmation — `--yes` bypasses the prompt
+        and dispatches; the impl seam sees a plain (non-dry-run) run."""
         called: list[bool] = []
         monkeypatch.setattr(system_cli, "uninstall_system", _fake_uninstall_system(called))
-        result = runner.invoke(system_cli.system_app, ["uninstall"])
+        result = runner.invoke(system_cli.system_app, ["uninstall", "--yes"])
         assert result.exit_code == 0, result.output
-        assert called == [True]
+        assert called == [False]
         assert "Uninstall complete" in result.output
 
     def test_update_dispatches_to_impl_seam(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,7 +162,7 @@ class TestDeprecatedAliases:
         monkeypatch.setattr(service_cli, "uninstall_system", _fake_uninstall_system(called))
         result = runner.invoke(service_cli.service_app, ["uninstall", "--system"])
         assert result.exit_code == 0, result.output
-        assert called == [True]
+        assert called == [False], "dispatched as a plain (non-dry-run) run"
         assert "use: vesma system uninstall" in result.stderr
         assert "[deprecated]" in result.stderr
         assert "deprecated" not in result.stdout, "stdout stays clean for pipes"

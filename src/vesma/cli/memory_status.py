@@ -1,4 +1,4 @@
-"""``vesma memory status`` — read-only memory-attachment status (ADR-0034, MS-0).
+"""``vesma integration memory`` — read-only memory-attachment status (ADR-0034, MS-0).
 
 One read-only surface that answers «what is the memory situation on this
 harness?» per detected target:
@@ -11,6 +11,12 @@ harness?» per detected target:
   dir, SQLite DB — existence and mtime ONLY.
 * **Active precedence** — the target's memory-switch mode (default
   ``overlay+mirror``; ADR-0034).
+
+CLI topology v2 wave A: the canonical home is ``vesma integration
+memory`` (the harness layer domain — the wide ``memory`` name frees up);
+the former top-level ``vesma memory status`` stays as a HIDDEN
+deprecated alias with a stderr hint (identical behavior, removal not
+before 9.0).
 
 Hygiene contract (ArchCom B3, owner directive 2026-10-01):
 
@@ -144,7 +150,7 @@ def _format_markers(rows: list[tuple[str, bool, str]]) -> str:
 
 
 @memory_app.command(name="status")
-def memory_status_cmd(
+def memory_status_alias(
     target: Annotated[
         list[str] | None,
         typer.Option(
@@ -161,12 +167,80 @@ def memory_status_cmd(
         ),
     ] = None,
 ) -> None:
+    """Hidden deprecated alias — the canonical spelling is `vesma integration memory`.
+
+    Same read-only report as before the CLI topology v2 wave: per harness,
+    the vesma pack attachment (stamps), the MCP registration (server KEYS
+    only), the built-in store markers (existence + mtime, never contents)
+    and the active memory-switch precedence. One stderr hint names the
+    new home; stdout is byte-identical (removal not before 9.0).
+    """
+    typer.echo(
+        "[deprecated] `vesma memory status` is deprecated — use: vesma integration memory",
+        err=True,
+    )
+    memory_status_cmd(target=target, home=home)
+
+
+# ── the canonical home: `vesma integration memory` ────────────────────
+
+
+def _register_integration_memory() -> None:
+    """Attach ``vesma integration memory`` to the integration domain app.
+
+    Deferred import + registration function: keeps the module importable
+    in any order (util.py owns the integration app; this module owns the
+    memory report) while the command code stays HERE, next to the report
+    it wraps.
+    """
+    from vesma.cli.util import integration_app
+
+    @integration_app.command(name="memory")
+    def integration_memory(
+        target: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--target",
+                "-t",
+                help="Narrow to specific harness(es); repeatable. Default: all detected.",
+            ),
+        ] = None,
+        home: Annotated[
+            Path | None,
+            typer.Option(
+                "--home",
+                help="Inspect an alternate home directory (cross-environment installs).",
+            ),
+        ] = None,
+    ) -> None:
+        """Show the memory-attachment status per detected harness (read-only).
+
+        The memory-switch status report (ADR-0034) under its canonical
+        home since CLI topology v2: per harness — the vesma pack
+        attachment (stamps), the MCP registration (server KEYS only, the
+        vesma entry and any external memory engines), the built-in store
+        markers (existence + mtime, never contents) and the active
+        precedence. The diagnostic for "which memory engine is my agent
+        actually on?". Same implementation as the hidden `vesma memory
+        status` alias.
+        """
+        memory_status_cmd(target=target, home=home)
+
+
+_register_integration_memory()
+
+
+def memory_status_cmd(
+    target: list[str] | None = None,
+    home: Path | None = None,
+) -> None:
     """Show the memory-attachment status per detected harness (read-only).
 
-    Reports, per harness: the vesma pack attachment (stamps), the MCP
-    registration (server KEYS only — the vesma entry and any external
-    memory engines), the built-in store markers (existence + mtime, never
-    contents) and the active memory-switch precedence (ADR-0034).
+    The implementation both spellings share: reports, per harness, the
+    vesma pack attachment (stamps), the MCP registration (server KEYS
+    only — the vesma entry and any external memory engines), the built-in
+    store markers (existence + mtime, never contents) and the active
+    memory-switch precedence (ADR-0034).
     """
     cfg = load_targets(home=home)
 

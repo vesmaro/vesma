@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from vesma.cli.main import app
@@ -99,25 +100,36 @@ class TestLogsCommand:
         assert "mnemos" not in result.output or "other-project" in result.output
 
     def test_logs_empty_db_prints_no_traces(self, isolated_config):
-        """Empty trace store says so — under the `task-logs` alias.
+        """Empty trace store says so — under BOTH spellings.
 
-        Wave 61: bare `vesma logs` is the COMPONENT logs verb now (usage
-        error without a NAME); the pipeline-trace viewer lives on as
-        `vesma task-logs` with identical behavior.
+        Topology v2 wave A: `vesma logs` IS the trace viewer (renamed from
+        task-logs); the `task-logs` spelling stays as a hidden deprecated
+        alias with identical behavior.
         """
-        result = runner.invoke(app, ["task-logs"])
-        assert result.exit_code == 0, result.output
-        assert "no" in result.output.lower() or "trace" in result.output.lower()
+        for args in (["logs"], ["task-logs"]):
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0, (args, result.output)
+            assert "no" in result.output.lower() or "trace" in result.output.lower()
 
     def test_logs_invalid_since_date_exits_nonzero(self, isolated_config, traces_db):
         result = runner.invoke(app, ["logs", "--since", "not-a-date"])
         assert result.exit_code != 0
 
     def test_logs_command_registered(self):
-        """The trace viewer is registered as `task-logs` (wave 61 alias).
-
-        The top-level `logs` name belongs to the component logs verb; the
-        trace viewer keeps its full surface under the alias.
-        """
+        """Topology v2 wave A registration: the trace viewer owns the
+        top-level `logs` name (a group); `task-logs` is the hidden
+        deprecated alias command (stderr hint, still completable)."""
         registered_groups = {getattr(g, "name", None) for g in app.registered_groups}
-        assert "task-logs" in registered_groups
+        assert "logs" in registered_groups
+        click_root = get_command(app)
+        assert "task-logs" in click_root.commands
+        assert click_root.commands["task-logs"].hidden
+
+    def test_task_logs_alias_hint_on_stderr(self, isolated_config):
+        """The alias answers with the deprecation hint on stderr and a clean
+        stdout — the established compat pattern (removal not before 9.0)."""
+        result = runner.invoke(app, ["task-logs"])
+        assert result.exit_code == 0, result.output
+        assert "[deprecated]" in result.stderr
+        assert "use: vesma logs" in result.stderr
+        assert "deprecated" not in result.stdout

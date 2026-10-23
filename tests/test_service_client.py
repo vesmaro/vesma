@@ -370,12 +370,53 @@ def test_cli_service_start_stop_against_fake_server(server: RunningServer) -> No
     assert "board: stopped" in stopped.output
 
 
-def test_cli_service_error_mapping_unknown_component(server: RunningServer) -> None:
+def test_cli_service_error_mapping_unknown_component(
+    sock_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two refusal layers since CLI topology v2 wave B (the service verbs
+    resolve targets through the registry first — same-function as the
+    top-level aliases):
+
+    * a name unknown to the REGISTRY refuses at the CLI with the
+      actionable registry message (exit 1, the supervisor is never
+      contacted);
+    * a name the registry knows but the SUPERVISOR rejects still maps
+      the §4.8 protocol error — exit 1, "supervisor rejected the
+      request" (the original intent of this pin, driven through a
+      backend that deliberately lacks the component).
+    """
     from vesma.cli.main import app
 
-    result = CliRunner().invoke(app, ["service", "start", "ghost", "--socket", str(server.path)])
+    # Isolated home: the registry falls back to the bundle view, so
+    # board resolves client-side while the backend below rejects it.
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for var in (
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    result = CliRunner().invoke(app, ["service", "start", "ghost", "--socket", str(sock_path)])
     assert result.exit_code == 1
-    assert "unknown component: ghost" in result.output
+    assert "component 'ghost' is not installed" in result.output
+
+    from tests.control_fakes import FakeBackend
+
+    rejecting = RunningServer(FakeBackend(("metrics",)), sock_path)
+    try:
+        rejected = CliRunner().invoke(
+            app, ["service", "start", "board", "--socket", str(sock_path)]
+        )
+        assert rejected.exit_code == 1
+        assert "supervisor rejected the request" in rejected.output
+        assert "unknown component: board" in rejected.output
+    finally:
+        rejecting.stop()
 
 
 def test_cli_service_preflight_failure_prints_fix_command(tmp_path: Path) -> None:

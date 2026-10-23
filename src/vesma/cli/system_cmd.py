@@ -16,7 +16,7 @@ before 9.0).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import typer
 from rich.console import Console
@@ -39,16 +39,20 @@ system_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     name="system",
     help=(
-        "Install, update, or uninstall the vesma SYSTEM profile (FHS: "
-        "/etc/vesma, /var/lib/vesma, /usr/lib/vesma) — requires root (sudo).\n\n"
-        "The system domain owns the SYSTEM profile's lifecycle: `install` "
+        "The SYSTEM profile domain: install, update, uninstall — plus doctor.\n\n"
+        "Install/update/uninstall own the SYSTEM profile's lifecycle (FHS: "
+        "/etc/vesma, /var/lib/vesma, /usr/lib/vesma, root required): `install` "
         "lays down the FHS tree, the sysusers.d service account, root-owned "
         "venv revisions and the systemd system unit; `update` materializes "
         "the running build's revisions beside the current ones with an "
         "atomic symlink swap and a health gate; `uninstall` removes exactly "
-        "the recorded install-state artifacts. Runtime control of the daemon "
-        "(status/health/start/stop/restart/logs/run) and the user-profile "
-        "install stay on `vesma service`; the user profile updates via "
+        "the recorded install-state artifacts (typed confirmation — `--yes` "
+        "for scripts, `--dry-run` for the plan). `doctor` is the SAME health "
+        "pass as the L1 `vesma doctor` (additionally registered here; it "
+        "checks BOTH profiles and under root names the roots it is "
+        "diagnosing). Runtime control of the daemon (status/health/start/"
+        "stop/restart/logs/run), the user-profile install and the component "
+        "registry stay on `vesma service`; the user profile updates via "
         "`vesma self-update`."
     ),
     no_args_is_help=True,
@@ -103,7 +107,23 @@ def system_install() -> None:
 
 
 @system_app.command(name="uninstall")
-def system_uninstall() -> None:
+def system_uninstall(
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Skip the confirmation prompt (scripts, automation).",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show the validated removal plan (phase 1) without touching anything.",
+        ),
+    ] = False,
+) -> None:
     """Uninstall the SYSTEM profile: the exact inverse of the install-state.
 
     Removes the recorded artifacts only, in reverse creation order (specs/
@@ -112,9 +132,40 @@ def system_uninstall() -> None:
     profile is one unit — there are no per-component or --all forms here
     (that is the user-profile `vesma service uninstall`). Requires root
     (sudo).
+
+    Typed confirmation (G4, CLI topology v2 wave B — the last unguarded
+    destructive): interactive `[y/N]` prompt, `--yes` for scripts, and
+    `--dry-run` to preview the plan — the full phase-1 validation runs,
+    then the removal steps print as `dry-run:` lines and NOTHING is
+    touched (no systemctl calls, no unlinks). A non-interactive stdin
+    without `--yes` aborts with exit 1 — an unattended pipe must never
+    silently uninstall the system profile.
     """
+    if dry_run:
+        try:
+            result: SystemUninstallResult = uninstall_system(dry_run=True)
+        except (InstallError, ManifestError, SystemInstallError) as exc:
+            _fail_system(exc)
+        _print_report(result.lines, ("WARN:", "preserved", "dry-run: data plane"))
+        console.print("[cyan]Dry-run complete — nothing was removed.[/cyan]")
+        return
+    if not yes:
+        try:
+            confirmed = typer.confirm(
+                "Uninstall the SYSTEM profile? (exact inverse of the recorded "
+                "install-state; /var/lib/vesma data is preserved)",
+                default=False,
+            )
+        except typer.Abort:
+            # EOF on a non-interactive stdin — same contract as the memory
+            # delete confirm: aborted, nothing removed (exit 1, loud).
+            console.print("[red]✗[/red] No confirmation received — aborted, nothing removed")
+            raise typer.Exit(1) from None
+        if not confirmed:
+            console.print("[yellow]=[/yellow] Aborted — nothing was removed")
+            return
     try:
-        result: SystemUninstallResult = uninstall_system()
+        result = uninstall_system()
     except (InstallError, ManifestError, SystemInstallError) as exc:
         _fail_system(exc)
     _print_report(result.lines, ("WARN:", "preserved"))

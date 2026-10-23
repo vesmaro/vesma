@@ -1054,7 +1054,7 @@ def _sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
+def uninstall_system(prefix: Path | None = None, *, dry_run: bool = False) -> SystemUninstallResult:
     """Exact-inverse uninstall: recorded artifacts only, reverse creation
     order, loud refusal on drift or foreign content (§3.13).
 
@@ -1067,6 +1067,12 @@ def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
     content) — a refusal leaves the tree untouched; then MUTATE in
     reverse creation order. A half-removed tree that would poison every
     re-run with drift is exactly the failure class this split prevents.
+
+    ``dry_run=True`` (G4, CLI topology v2 wave B) stops AFTER phase 1:
+    the plan prints as ``dry-run:`` lines (including the preserved /
+    not-materialized rows) and NOTHING is touched — no systemctl calls,
+    no unlinks. Drift refuses identically in both modes: a plan over a
+    drifted tree is a lie, never shown.
     """
     resolved_prefix = fhs.default_prefix() if prefix is None else prefix
     _require_root_for_real_prefix(resolved_prefix)
@@ -1161,11 +1167,33 @@ def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
             " (post-migration edits are operator data, never silently"
             " deleted)"
         )
-    lines: list[str] = [
+    lines: list[str] = []
+    removed = 0
+    if dry_run:
+        lines.append("dry-run: would run: systemctl disable --now vesma.service")
+        if adoptable and adopt_evidence is not None:
+            lines.append(f"dry-run: would unlink (adopted conffile): {shared_config}")
+        for artifact in reversed(artifacts):
+            path = Path(artifact.path)
+            if artifact.preserve or artifact.remove_mode == "skip":
+                lines.append(f"preserved (operator data): {path}")
+                continue
+            if not path.exists() and not path.is_symlink():
+                lines.append(f"not materialized (interrupted install): {path}")
+                continue
+            lines.append(f"dry-run: would remove ({artifact.remove_mode}): {path}")
+        lines.append("dry-run: would run: systemctl daemon-reload")
+        lines.append(
+            "dry-run: data plane preserved: "
+            + str(fhs.system_data_root(resolved_prefix))
+            + " (store home — never touched by uninstall)"
+        )
+        logger.info("system profile uninstall dry-run: prefix=%s", resolved_prefix)
+        return SystemUninstallResult(lines=tuple(lines))
+    lines.append(
         "systemctl disable --now vesma.service: "
         + _systemctl_system(["disable", "--now", "vesma.service"])
-    ]
-    removed = 0
+    )
     if adoptable and adopt_evidence is not None:
         shared_config.unlink()
         removed += 1

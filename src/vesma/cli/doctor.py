@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import tomllib
 from collections.abc import Callable
@@ -38,7 +39,9 @@ doctor_app = typer.Typer(
         "integration, completion, tags).\n\n"
         "One pass over the local installation: every check reports PASS, WARN "
         "or FAIL with a concrete fix hint. Exit 0 = healthy, 1 = at least one "
-        "FAIL, 2 = warnings only. `doctor paths` prints just the paths table."
+        "FAIL, 2 = warnings only. `doctor paths` prints just the paths table. "
+        "Also registered as `vesma system doctor` (the same pass; it checks "
+        "the USER profile's paths, and under root it names them loudly)."
     ),
     no_args_is_help=False,
 )
@@ -1306,8 +1309,48 @@ def _run_paths_overview(*, json_output: bool) -> None:
     raise typer.Exit(0)
 
 
+def _print_root_profile_disambiguation() -> None:
+    """G2 (ArchCom 2026-10-23): under euid==0, name the roots being diagnosed.
+
+    Doctor never escalates and never switches targets by itself — under
+    root it still diagnoses the USER-profile paths AS ROOT RESOLVES THEM
+    (root's ``$HOME`` unless the environment overrides it), which is easy
+    to misread as "the system profile was checked". One loud line naming
+    the resolved config + data root kills the ambiguity. Best-effort on
+    both resolutions — a broken config must not hide the line (the
+    checks below report the breakage in detail).
+    """
+    if os.geteuid() != 0:
+        return
+    from vesma.config import find_config_file
+
+    # The banner is best-effort on both resolutions — the checks below
+    # report any breakage in detail.
+    try:
+        cfg_path = find_config_file()
+        cfg_desc = str(cfg_path) if cfg_path else "none found (defaults)"
+    except Exception:
+        cfg_desc = "unresolved (config check reports the failure)"
+    try:
+        settings = load_settings()
+        settings.resolve_paths()
+        data_desc = str(settings.vesma.data_dir)
+    except Exception:
+        data_desc = "unresolved (config check reports the failure)"
+    console.print(
+        f"[bold yellow]root shell:[/bold yellow] diagnosing the USER profile as root"
+        f" sees it — config: {cfg_desc}, data root: {data_desc}; the SYSTEM profile"
+        " (/etc/vesma + /var/lib/vesma) is a separate install — `vesma system"
+        " install/uninstall/update` owns it"
+    )
+
+
 def _run_health_checks(*, json_output: bool, fix: bool = False, dry_run: bool = False) -> None:
     """Run every health check, optionally auto-fixing WARN-level results."""
+    if not json_output:
+        # G2 root disambiguation — first line of the report, never in --json
+        # (the JSON payload must stay pure for scripted consumers).
+        _print_root_profile_disambiguation()
     results = _run_all_checks()
 
     # Collect paths from the config check's settings (already loaded).
