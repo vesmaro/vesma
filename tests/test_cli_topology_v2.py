@@ -221,6 +221,9 @@ class TestUpdateLegacyFlagPin:
             (["--to", "9.9.9"], {"check": False, "yes": False, "to": "9.9.9"}),
             (["--scope", "user"], {"check": False, "yes": False, "scope": "user"}),
             (["--install-timer"], {"check": False, "yes": False, "install_timer": True}),
+            # security spot-check P3-2: `--timer` folds into install_timer
+            # (components.py legacy-flag block) — pinned like the rest.
+            (["--timer"], {"check": False, "yes": False, "install_timer": True}),
             (["--uninstall-timer"], {"check": False, "yes": False, "uninstall_timer": True}),
         ),
     )
@@ -483,3 +486,27 @@ class TestServiceLogsPort:
         assert result.exit_code == 0, result.output
         assert "no log lines available for board" in result.output
         assert "source: supervisor ring buffer" in result.output
+
+
+class TestFreshMachineNoticeSpelling:
+    """Security spot-check P3-1: the fresh-machine registry notice («no
+    installation found … install it with …») names the install spelling of
+    the surface that shows it — the ``service components`` home teaches its
+    own verb, the hidden top-level alias keeps the frozen legacy bytes."""
+
+    def test_home_teaches_its_own_verb_alias_stays_frozen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            components_cli.layout,
+            "components_dir",
+            lambda: tmp_path / "absent-components.d",
+        )
+        _, home_notice = components_cli._registry(
+            install_hint="vesma service components install --all"
+        )
+        _, alias_notice = components_cli._registry()
+        assert home_notice is not None
+        assert "`vesma service components install --all`" in home_notice
+        assert alias_notice is not None
+        assert "`vesma install --all`" in alias_notice

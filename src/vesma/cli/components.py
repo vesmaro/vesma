@@ -102,7 +102,9 @@ class ComponentRecord:
 # ── registry (disk state) ─────────────────────────────────────────────
 
 
-def _registry() -> tuple[list[ComponentRecord], str | None]:
+def _registry(
+    install_hint: str = "vesma install --all",
+) -> tuple[list[ComponentRecord], str | None]:
     """The component registry: installed manifests, or the bundle view.
 
     When ``components.d`` does not exist NOTHING is installed — the
@@ -110,6 +112,10 @@ def _registry() -> tuple[list[ComponentRecord], str | None]:
     a notice, so bare ``status``/``install`` answer usefully on a fresh
     machine instead of failing. An EXISTING components.d loads
     fail-closed (a broken manifest is an error, never a silent skip).
+    ``install_hint`` names the install spelling for that notice: the
+    hidden top-level aliases keep the frozen legacy default; the
+    ``service components`` home teaches its own (topology v2, security
+    P3-1).
     """
     components_dir = layout.components_dir()
     if not components_dir.is_dir():
@@ -125,7 +131,7 @@ def _registry() -> tuple[list[ComponentRecord], str | None]:
         ]
         notice = (
             f"no installation found ({components_dir} does not exist) — showing "
-            "the release bundle; install it with `vesma install --all`"
+            f"the release bundle; install it with `{install_hint}`"
         )
         return records, notice
     installation = load_installation(components_dir)
@@ -142,7 +148,9 @@ def _registry() -> tuple[list[ComponentRecord], str | None]:
     return records, None
 
 
-def _registry_or_fail() -> tuple[list[ComponentRecord], str | None]:
+def _registry_or_fail(
+    install_hint: str = "vesma install --all",
+) -> tuple[list[ComponentRecord], str | None]:
     """``_registry`` with the fail-closed load rendered as a CLEAN refusal.
 
     A broken components.d must never surface as a traceback — the verbs
@@ -152,7 +160,7 @@ def _registry_or_fail() -> tuple[list[ComponentRecord], str | None]:
     post-upgrade reconciliation).
     """
     try:
-        return _registry()
+        return _registry(install_hint=install_hint)
     except ManifestError as exc:
         _fail(
             f"components.d fails fail-closed validation: {exc} — fix the "
@@ -310,7 +318,7 @@ def install_command(
         console.print(f"Service installed ({full.unit_path}).", style="green")
         return
     # Bare: the installable set + how to proceed. Informational — exit 0.
-    records, notice = _registry_or_fail()
+    records, notice = _registry_or_fail(install_hint=f"{invoked_as} --all")
     if notice is not None:
         console.print(f"note: {notice}", style="yellow")
     table = Table(title="Installable components", show_header=True, header_style="bold")
@@ -362,6 +370,7 @@ def status_command(
     ] = None,
     *,
     registry_hint: str = "vesma status",
+    install_hint: str = "vesma install --all",
 ) -> None:
     """Show every component: origin, version, live state (or one component).
 
@@ -372,7 +381,7 @@ def status_command(
     machine-readably — the supervisor reachability travels INSIDE the
     payload, so pipes never parse prose.
     """
-    records, notice = _registry_or_fail()
+    records, notice = _registry_or_fail(install_hint=install_hint)
     if name is not None:
         records = [_require_component(records, name, registry_hint=registry_hint)]
     # P2-2 (cascade fix): the live leg is queried for the BUNDLE VIEW
@@ -818,6 +827,7 @@ def configs_command(
     ] = False,
     *,
     registry_hint: str = "vesma status",
+    install_hint: str = "vesma install --all",
 ) -> None:
     """Show component config paths (all components, or one in detail).
 
@@ -826,7 +836,7 @@ def configs_command(
     config fields (origin, schema, env file, venv). Writing configs is
     out of scope — edit the manifest or config file directly.
     """
-    records, notice = _registry_or_fail()
+    records, notice = _registry_or_fail(install_hint=install_hint)
     if name is not None:
         records = [_require_component(records, name, registry_hint=registry_hint)]
     if json_output:
@@ -1002,7 +1012,12 @@ def components_configs(
     as the hidden top-level `vesma configs` alias. Writing configs is
     out of scope — edit the manifest or config file directly.
     """
-    configs_command(name, json_output, registry_hint="vesma service components status")
+    configs_command(
+        name,
+        json_output,
+        registry_hint="vesma service components status",
+        install_hint="vesma service components install --all",
+    )
 
 
 @service_components_app.command(name="status")
@@ -1031,6 +1046,7 @@ def components_status(
         json_output,
         socket,
         registry_hint="vesma service components status",
+        install_hint="vesma service components install --all",
     )
 
 
