@@ -1,6 +1,7 @@
-"""``vesma service update --system`` — the mode-aware system-profile
-updater (specs/layout v2 §3.13; ADR-0045 Decision 6, rollout wave 3;
-conformance SY-07/SY-10/SY-11).
+"""``vesma system update`` — the mode-aware system-profile updater
+(specs/layout v2 §3.13; ADR-0045 Decision 6, rollout wave 3; conformance
+SY-07/SY-10/SY-11). The former ``vesma service update --system`` spelling
+is a hidden deprecated alias (CLI topology v2; removal not before 9.0).
 
 The update contract, in execution order:
 
@@ -95,7 +96,7 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
         raise SystemInstallError(
             f"no system profile is installed ({si._state_path(resolved_prefix)}"
             " absent) — update needs an existing installation"
-            " (fix: `sudo vesma service install --system`)"
+            " (fix: `sudo vesma system install`)"
         )
     # Preflight (step 1): DR-17's exact predicate, BEFORE any action.
     drift = si.system_state_drift(resolved_prefix)
@@ -104,7 +105,7 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
             "install-state ↔ filesystem drift — refusing the update BEFORE"
             f" any action ({len(drift)} problem(s)); first: {drift[0]} —"
             " inventory with `vesma doctor`, resolve the drift, then re-run"
-            " `sudo vesma service update --system`"
+            " `sudo vesma system update`"
         )
 
     version = si._engine_version()
@@ -160,7 +161,7 @@ def update_system(prefix: Path | None = None) -> SystemUpdateResult:
                 f" plane: {rev_dir} — refusing the update BEFORE any action"
                 " (tampered install-state?); inventory with `vesma doctor`,"
                 " repair the state, then re-run"
-                " `sudo vesma service update --system`"
+                " `sudo vesma system update`"
             )
     ownership = si._Ownership(apply_ownership=os.geteuid() == 0)
     lock_paths = {
@@ -253,7 +254,7 @@ def _failure_text(problem: str, rollback_log: list[str]) -> str:
         f"{problem} — {verdict}. Rollback log: {log}. The install-state"
         " describes the previous, ACTIVE revision — inventory with"
         " `vesma doctor`, fix, then re-run"
-        " `sudo vesma service update --system`"
+        " `sudo vesma system update`"
     )
 
 

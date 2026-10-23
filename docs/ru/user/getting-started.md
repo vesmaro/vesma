@@ -207,30 +207,31 @@ vesma service run
 
 Vesma поставляет бандл компонентов — `board` (локальный дашборд) и `metrics` —
 и принимает **operator-authored компоненты**: любой валидный манифест,
-положенный в `~/.config/vesma/components.d/`. Одно топ-левел семейство глаголов
-управляет всеми (`vesma install` / `status` / `start` / `stop` / `restart` /
-`logs` / `update` / `configs`):
+положенный в `~/.config/vesma/components.d/`. Двумя каноническими
+семействами глаголов управляют все (CLI topology v2): глаголы реестра на
+`vesma service components` (`install` / `update` / `configs` / `status`) и
+рантайм-глаголы на `vesma service` (`start` / `stop` / `restart` / `logs`):
 
 ```bash
-vesma install --all        # манифесты, per-component venv, юнит systemd user
-vesma status               # реестр: происхождение, версия, live-состояние
-vesma start --all          # или NAME — голые вызовы массовых мутаций не делают
-vesma logs board --follow  # хвост лога одного компонента
+vesma service components install --all   # манифесты, per-component venv, юнит systemd user
+vesma service components status          # реестр: происхождение, версия, live-состояние
+vesma service start --all                # или NAME — голые вызовы массовых мутаций не делают
+vesma service logs board --follow        # хвост лога одного компонента
 ```
 
-`vesma install --all` — та же полная установка, что `vesma service install`;
-далее `vesma status` — ответ одним взглядом: он читает состояние с диска и
-работает даже при выключенном супервизоре, честно помечая live-колонку, когда
-дотянуться до него не удалось. Голые вызовы жизненного цикла (`vesma start`
-без NAME или `--all`) громко отказывают — массовыми мутациями они никогда
-не бывают.
+`vesma service components install --all` — та же полная установка, что
+`vesma service install`; далее `vesma service components status` — ответ
+одним взглядом: он читает состояние с диска и работает даже при выключенном
+супервизоре, честно помечая live-колонку, когда дотянуться до него не
+удалось. Голые вызовы жизненного цикла (`vesma service start` без NAME или
+`--all`) громко отказывают — массовыми мутациями они никогда не бывают.
 
 **Operator-authored компоненты.** Манифест, который вы сами положили в
-`components.d`, — ваш: движок никогда его не перезаписывает — `vesma update
-NAME` для такого файла отказывает («managed by operator, edit the file»).
-Из бандла релиза перегенерируются только бандл-манифесты (`board`, `metrics`)
-(`vesma update NAME` / `--all`; прошлые байты сохраняются как бэкап
-`.pre-regen.bak`).
+`components.d`, — ваш: движок никогда его не перезаписывает —
+`vesma service components update NAME` для такого файла отказывает
+(«managed by operator, edit the file»). Из бандла релиза перегенерируются
+только бандл-манифесты (`board`, `metrics`) (`vesma service components
+update NAME` / `--all`; прошлые байты сохраняются как бэкап `.pre-regen.bak`).
 
 Полный справочник глаголов с кодами выхода — в
 [cli-reference.md](cli-reference.md#команды-компонентов).
@@ -313,12 +314,13 @@ vesma integration update -t zcode   # только один
 харнесу:
 
 ```bash
-vesma memory status
+vesma integration memory
 ```
 
 Отчёт только для чтения, по каждому харнесу: состояние пака (штампы),
 MCP-регистрация (только ключи серверов), маркеры локального хранилища и активный
-режим приоритета (`overlay+mirror` по умолчанию; ADR-0034).
+режим приоритета (`overlay+mirror` по умолчанию; ADR-0034). Прежнее написание
+`vesma memory status` работает как скрытый устаревший алиас.
 
 Полная карта таргетов и флагов — [руководство по интеграции](integration-guide.md);
 копипаст-блоки для нестандартных харнесов — [mcp-presets.md](../../../integrations/mcp-presets.md).
@@ -476,14 +478,16 @@ vesma integration setup
 харнесу:
 
 ```bash
-vesma memory status
+vesma integration memory
 ```
 
 Отчёт только для чтения, по каждому харнесу: состояние пака (штампы),
 MCP-регистрация (только ключи серверов — vesma и внешние движки памяти,
 видимые в конфиге харнесса), маркеры локального хранилища (существование и
 время изменения, никогда не содержимое) и активный режим приоритета
-(`overlay+mirror` по умолчанию; ADR-0034).
+(`overlay+mirror` по умолчанию; ADR-0034). Канонический домен с CLI
+topology v2; прежнее написание `vesma memory status` — скрытый устаревший
+алиас.
 
 Ручная справка для VS Code — `mcp.json` уровня user или workspace:
 

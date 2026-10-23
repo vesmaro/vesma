@@ -19,10 +19,36 @@
 # ground truth — and compares its MAJOR against the installed runtime
 # major. Only a matching generation is moved into federation/gen/python;
 # on mismatch the script fails loudly and the existing stubs stay valid.
+#
+# TARGET-VENV RESOLUTION (CLI topology v2 wave D): the runtime side of the
+# comparison is the protobuf ACTUALLY installed in the interpreter that
+# will IMPORT the stubs — the worktree venv — NEVER the generation
+# interpreter's own runtime. A bare PATH `python` (or an explicit $PYTHON)
+# can be a FOREIGN venv (another product's environment): it then
+# self-consistently generates 6.33 gencode against its own 6.33 runtime,
+# the guard passes, and the stubs still fail under this checkout's 5.29
+# venv (wave-A finding: test_cli_mesh_stubs red on base, gencode 6.33.5 vs
+# runtime 5.29.6). Two independent resolutions:
+#   GEN python (protoc): $PYTHON → ./.venv/bin/python → PATH python
+#   RUNTIME python (guard): ./.venv/bin/python when it exists — the
+#     canonical import environment for the suite and the wheel build —
+#     else the generation interpreter (nothing better to anchor to).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PYTHON="${PYTHON:-python}"
+PYTHON="${PYTHON:-}"
+if [ -z "${PYTHON}" ]; then
+  if [ -x ".venv/bin/python" ]; then
+    PYTHON=".venv/bin/python"
+  else
+    PYTHON="python"
+    echo "NOTE: no ./.venv/bin/python — generating with PATH python" \
+         "($(command -v python)). Without a worktree venv the guard can" \
+         "only compare against that same runtime." >&2
+  fi
+fi
+RUNTIME_PY=".venv/bin/python"
+[ -x "${RUNTIME_PY}" ] || RUNTIME_PY="${PYTHON}"
 GEN_DIR="federation/gen/python"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -38,9 +64,12 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
   federation/proto/agent_gateway.proto \
   federation/proto/mnemos_core_api.proto
 
-# --- gencode guard: embedded gencode major == protobuf runtime major ----
+# --- gencode guard: embedded gencode major == TARGET-VENV runtime major ----
+# The check runs under RUNTIME_PY: `import google.protobuf` there reads the
+# runtime the stubs will actually be imported by — not the generation
+# interpreter's, not a pip-resolved string.
 
-read -r GENCODE_MAJOR RUNTIME_MAJOR < <("$PYTHON" - "${TMP_DIR}" <<'PYEOF'
+read -r GENCODE_MAJOR RUNTIME_MAJOR < <("$RUNTIME_PY" - "${TMP_DIR}" <<'PYEOF'
 import re
 import sys
 from pathlib import Path
@@ -71,11 +100,17 @@ if [ "${GENCODE_MAJOR}" -ne "${RUNTIME_MAJOR}" ]; then
 ERROR: protobuf gencode/runtime mismatch — refusing to install stubs.
 
   embedded gencode major (generated stubs): ${GENCODE_MAJOR}.x
-  protobuf runtime major (installed):       ${RUNTIME_MAJOR}.x
+  target-venv runtime major (imports them): ${RUNTIME_MAJOR}.x
+  generation interpreter:                   $("$PYTHON" -c 'import sys; print(sys.executable)')
+  runtime interpreter (guard anchor):       $("$RUNTIME_PY" -c 'import sys; print(sys.executable)')
 
 Stubs with gencode ${GENCODE_MAJOR}.x raise
 google.protobuf.runtime_version.VersionError at import time when the
-runtime is older (protobuf ≥ 5.27 cross-version guarantee). Fix the
+runtime is older (protobuf ≥ 5.27 cross-version guarantee). The runtime
+side is the protobuf installed in the GUARD ANCHOR interpreter above —
+the worktree venv that imports the stubs. A foreign generation
+interpreter producing a different gencode major is exactly this failure:
+re-run with PYTHON=/path/to/the/target/venv/bin/python. Fix the
 environment first, e.g.:
 
   uv sync --extra dev    # align grpc_tools with the pinned protobuf
@@ -87,7 +122,7 @@ EOF
   exit 1
 fi
 
-echo "gencode guard OK: generated gencode ${GENCODE_MAJOR}.x == protobuf runtime ${RUNTIME_MAJOR}.x"
+echo "gencode guard OK: generated gencode ${GENCODE_MAJOR}.x == target-venv runtime ${RUNTIME_MAJOR}.x (gen: $("$PYTHON" -c 'import sys; print(sys.executable)'), runtime: $("$RUNTIME_PY" -c 'import sys; print(sys.executable)'))"
 
 # --- atomically install the validated stubs ------------------------------
 

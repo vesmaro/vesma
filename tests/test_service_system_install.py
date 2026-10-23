@@ -179,9 +179,11 @@ class TestSy01ProfileAndIsolation:
     ) -> None:
         monkeypatch.setattr(fhs, "default_prefix", lambda: Path(os.sep))
         monkeypatch.setattr(si.os, "geteuid", lambda: 1000)
-        with pytest.raises(SystemInstallError, match="sudo vesma service install --system"):
+        with pytest.raises(SystemInstallError, match="sudo vesma system install"):
             install_system()
-        with pytest.raises(SystemInstallError, match="sudo vesma service install --system"):
+        # The uninstall root gate is the SHARED _require_root_for_real_prefix
+        # (its fix hint names the install verb — the entry point into the flow).
+        with pytest.raises(SystemInstallError, match="sudo vesma system install"):
             uninstall_system()
 
 

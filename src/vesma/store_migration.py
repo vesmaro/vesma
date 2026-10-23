@@ -1625,13 +1625,13 @@ def _system_preconditions(prefix: Path | None) -> Path:
     except system_install.SystemInstallError as exc:
         raise SystemProfileNotInstalledError(
             f"the system install-state cannot be used: {exc} — remediation: "
-            "`sudo vesma service install --system`, stop the service "
+            "`sudo vesma system install`, stop the service "
             "(`sudo systemctl stop vesma.service`), re-run this command"
         ) from exc
     if state is None:
         raise SystemProfileNotInstalledError(
             "no system profile is installed on this machine (no install-"
-            "state) — remediation: `sudo vesma service install --system`, "
+            "state) — remediation: `sudo vesma system install`, "
             "stop the service, re-run this command. The mover NEVER "
             "installs the profile itself (no auto-install, C1)"
         )
@@ -1691,12 +1691,12 @@ def _remaining_cargo_advisory(source_home: Path, prefix: Path | None) -> list[st
         (
             "venv",
             "the engine venv is NOT carried: materialize it with "
-            "`sudo vesma service install --system` (installer-owned)",
+            "`sudo vesma system install` (installer-owned)",
         ),
         (
             "venvs",
             "component venvs are NOT carried: materialize them with "
-            "`sudo vesma service install --system` (installer-owned)",
+            "`sudo vesma system install` (installer-owned)",
         ),
         (
             "systemd",

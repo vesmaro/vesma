@@ -144,7 +144,7 @@ class TestUpdatePreconditions:
     ) -> None:
         monkeypatch.setattr(fhs, "default_prefix", lambda: Path(os.sep))
         monkeypatch.setattr(si.os, "geteuid", lambda: 1000)
-        with pytest.raises(SystemInstallError, match="sudo vesma service install --system"):
+        with pytest.raises(SystemInstallError, match="sudo vesma system install"):
             update_system()
 
     def test_refuses_revision_path_outside_code_plane(
