@@ -208,30 +208,31 @@ by identifier); without systemd — to `~/.local/state/vesma/logs/<name>/` with
 
 Vesma ships a component bundle — `board` (the local dashboard) and `metrics` —
 and accepts **operator-authored components**: any valid manifest dropped into
-`~/.config/vesma/components.d/`. One top-level verb family drives them all
-(`vesma install` / `status` / `start` / `stop` / `restart` / `logs` / `update` /
-`configs`):
+`~/.config/vesma/components.d/`. Two canonical verb families drive them all
+(CLI topology v2): the registry verbs on `vesma service components`
+(`install` / `update` / `configs` / `status`) and the runtime verbs on
+`vesma service` (`start` / `stop` / `restart` / `logs`):
 
 ```bash
-vesma install --all        # manifests, per-component venvs, the systemd user unit
-vesma status               # the registry: origin, version, live state
-vesma start --all          # or NAME — bare calls never bulk-mutate
-vesma logs board --follow  # tail one component's log
+vesma service components install --all   # manifests, per-component venvs, the systemd user unit
+vesma service components status          # the registry: origin, version, live state
+vesma service start --all                # or NAME — bare calls never bulk-mutate
+vesma service logs board --follow        # tail one component's log
 ```
 
-`vesma install --all` is the same full installation as
-`vesma service install`; afterwards `vesma status` is the one-look answer —
-it reads disk state and works even with the supervisor down, marking the
-live column explicitly when it cannot reach it. Bare lifecycle calls
-(`vesma start` without a NAME or `--all`) refuse loudly — they are never
-bulk mutations.
+`vesma service components install --all` is the same full installation as
+`vesma service install`; afterwards `vesma service components status` is the
+one-look answer — it reads disk state and works even with the supervisor
+down, marking the live column explicitly when it cannot reach it. Bare
+lifecycle calls (`vesma service start` without a NAME or `--all`) refuse
+loudly — they are never bulk mutations.
 
 **Operator-authored components.** A manifest you place in `components.d`
-yourself is yours: the engine never rewrites it — `vesma update NAME` on such
-a file is refused with "managed by operator, edit the file". Only the bundled
-manifests (`board`, `metrics`) are regenerated from the release bundle
-(`vesma update NAME` / `--all`; the previous bytes are kept as a
-`.pre-regen.bak` backup).
+yourself is yours: the engine never rewrites it — `vesma service components
+update NAME` on such a file is refused with "managed by operator, edit the
+file". Only the bundled manifests (`board`, `metrics`) are regenerated from
+the release bundle (`vesma service components update NAME` / `--all`; the
+previous bytes are kept as a `.pre-regen.bak` backup).
 
 The full verb reference with exit codes lives in
 [cli-reference.md](cli-reference.md#component-commands).
@@ -314,12 +315,13 @@ pack's stamp).
 At any moment you can see how memory is attached to every detected harness:
 
 ```bash
-vesma memory status
+vesma integration memory
 ```
 
 A read-only report per harness: pack state (stamps), MCP registration (server
 keys only), local store markers and the active priority mode
-(`overlay+mirror` by default; ADR-0034).
+(`overlay+mirror` by default; ADR-0034). The former spelling `vesma memory
+status` still works as a hidden deprecated alias.
 
 The full target and flag map is in the [integration guide](integration-guide.md);
 copy-paste blocks for non-standard harnesses live in
@@ -461,14 +463,15 @@ harness, `--no-wire-agents` skips agent wiring. See the
 At any point, check how memory is attached to each detected harness:
 
 ```bash
-vesma memory status
+vesma integration memory
 ```
 
 A read-only report per harness: pack attachment (stamps), the MCP
 registration (server keys only — vesma plus any external memory engines
 seen in the harness config), the local store markers (existence/mtime,
 never contents) and the active precedence mode (`overlay+mirror` by
-default; ADR-0034).
+default; ADR-0034). Canonical home since CLI topology v2; the former
+`vesma memory status` spelling is a hidden deprecated alias.
 
 Manual VS Code reference — user- or workspace-scope `mcp.json`:
 

@@ -39,23 +39,38 @@ vesma [GLOBAL-OPTIONS] SUBCOMMAND [SUBCOMMAND-OPTIONS] [ARGS]
 | [`integration`](#integration) | Deploy / verify the integration layer (`setup` / `update` / `verify` / `detect` / `uninstall`; full guide: [integration-guide.md](integration-guide.md)) |
 | [`completion`](#completion) | Install shell completion (bash / zsh / fish) |
 | [`doctor`](#doctor) | Diagnose the installation (`fix` / `paths` / `service` subcommands; checks: config, database, vault, …) |
-| [`install`](#install) | Components: install one manifest (NAME) or the whole installation (`--all`) |
-| [`status`](#status) | The component registry: origin, version, live state (`--json`); answers even with the supervisor down |
-| [`start`](#start--stop--restart) · [`stop`](#start--stop--restart) · [`restart`](#start--stop--restart) | Component lifecycle via the supervisor (NAME or `--all`; bare calls refuse) |
-| [`logs`](#logs) | Component logs (`--tail N`, `--follow`); bare call is a usage error |
-| [`update`](#update) | Regenerate bundled component manifests (NAME or `--all`); operator-authored files are never rewritten |
-| [`configs`](#configs) | Component config paths: manifest, env file, data dir (`--json`) |
+| [`service`](#service) | Vesma service (USER profile): `install` / `uninstall` + supervisor control (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`); lifecycle verbs take NAME or `--all` in topological order |
+| [`service components`](#component-commands) | Component registry: `install` / `update` / `configs` / `status` — the canonical home of the former top-level component verbs |
+| [`system`](#system) | SYSTEM profile (FHS, root): `install` / `update` / `uninstall` — plus `doctor` and `config` (`set --file` is the only conffile write) |
+| [`config`](#config) | Inspect / validate the USER profile's config — read-only (`show` / `validate` / `paths`) |
 | [`self-update`](#self-update) | Application self-update family (`check` / `apply` / `timer` / `components`) — the canonical name of the former top-level `update` |
-| [`service`](#service) | Vesma service: `install` / `uninstall` + supervisor control (`status` / `health` / `start` / `stop` / `restart` / `logs` / `run`) |
 | [`export`](export-import.md) | Export memories to a JSON / SQLite backup (dedicated page) |
 | [`import`](export-import.md) | Import memories from an export file (dedicated page) |
-| [`task-logs`](#task-logs) | View pipeline traces — the canonical name of the former top-level `logs` |
+| [`logs`](#logs) | View pipeline traces (`--task`, `--project`, `--follow`); `logs NAME` answers the old component habit with a redirect to `service logs` |
+| [`integration memory`](#integration-memory) | Memory-attachment status per harness — the canonical home of the former `memory status` |
 | [`sync`](sync.md) | Federation batch sync export / import (dedicated page) |
 | [`meta-poll`](#meta-poll) | Federation metadata poll: run one poller pass manually (S2 phase 2) |
 | [`scanner`](#scanner) | Background secrets scanner: `run` / `status` |
 | [`awareness`](#awareness) | Native awareness heartbeat: `get` / `set` (mode switch) / `stats` (gate metrics) |
 
 > The `tags` group also provides `tags normalize` and `tags rename` (bulk prefix rename with dry-run); `migrate tags` is a deprecated alias for `vesma tags rename --from gcw: --to vesma: --no-dry-run`. Renames of the project namespace do not touch the subtype prefix. `vesma:` is the canonical storage prefix (6.0 flip); the legacy `mnemos:` spelling is accepted as an input alias everywhere (see [tag-contract.md](tag-contract.md)).
+
+### Hidden deprecated aliases (CLI topology v2)
+
+The pre-topology-v2 spellings still run — identical behavior plus a one-line `[deprecated]` hint on stderr, hidden from `--help`; removal not before 9.0. The canonical home of each (documented in its section below):
+
+| Hidden deprecated spelling | Canonical |
+|----------------------------|-----------|
+| `vesma install [NAME\|--all]` | `vesma service components install` |
+| `vesma update [NAME\|--all]` | `vesma service components update` (the app self-update flag forms live on `vesma self-update`) |
+| `vesma status [NAME]` | `vesma service components status` |
+| `vesma configs [NAME]` | `vesma service components configs` |
+| `vesma start\|stop\|restart NAME\|--all` | `vesma service start\|stop\|restart` |
+| `vesma task-logs` | `vesma logs` |
+| `vesma memory status` | `vesma integration memory` |
+| `vesma service install\|uninstall\|update --system` | `vesma system install\|uninstall\|update` |
+
+`vesma logs NAME` (the old component-logs habit) is not an error and not an alias swap: the trace view still prints, plus a loud stderr redirect naming `vesma service logs NAME` — the canonical component-logs home.
 
 ---
 
@@ -937,6 +952,8 @@ vesma doctor service [--json]
 
 Exit codes: `0` = all checks pass (checks reported as `skip` — not applicable to this machine — count as pass), `1` = one or more checks failed, `2` = warnings only.
 
+> **The system twin and the root line.** The SAME pass is additionally registered as [`vesma system doctor`](#system) (visible, one module — two doors, no logic fork); the L1 `vesma doctor` stays the primary entry. Doctor never escalates and never switches targets by itself: under a root shell (euid 0) it still diagnoses the USER profile's paths as root resolves them, so the report opens with the G2 disambiguation line naming the resolved config + data root and pointing the SYSTEM profile (`/etc/vesma` + `/var/lib/vesma`) at `vesma system install/uninstall/update`. The line never appears in `--json` (the payload stays pure for scripts).
+
 > `doctor` does not take `--config`; it reads the config from `$VESMA_CONFIG` (the 5.0–5.2 `VESMA_CONFIG` and 4.x `VESMA_CONFIG` spellings are no longer read as of 6.0.0) or the default search path (`./config.yaml`, `~/.vesma/config.yaml`).
 
 ### `doctor paths`
@@ -987,121 +1004,102 @@ vesma doctor --json
 
 ---
 
-## `memory status`
+## `integration memory`
 
-Read-only per-harness memory-attachment report (ADR-0034, MS-0). Never
-writes, never touches the network; MCP configs are read to enumerate server
-KEYS only (never env values or command lines), and store markers are
-reported as existence + mtime.
+The memory-switch status report (ADR-0034, MS-0) under its canonical home since CLI topology v2 — the harness layer belongs to the `integration` domain. Read-only per-harness memory-attachment report: never writes, never touches the network; MCP configs are read to enumerate server KEYS only (never env values or command lines), and store markers are reported as existence + mtime. The diagnostic for "which memory engine is my agent actually on?".
 
 ```text
-vesma memory status [OPTIONS]
+vesma integration memory [OPTIONS]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--target <name>` | all detected | Narrow to specific harness(es); repeatable. |
+| `--target / -t <name>` | all detected | Narrow to specific harness(es); repeatable. |
 | `--home <dir>` | `~` | Inspect an alternate home directory. |
 
-Per harness the table shows: pack attachment (stamps: attached / stale /
-missing counts), MCP registration (whether the `vesma` server entry is
-present), external memory engines (other server keys seen in the harness
-config), the built-in store markers (`data`, `vault`, `data/vesma.db` —
-existence + mtime) and the active precedence mode (`overlay+mirror`;
-`replace`/`off` arrive with MS-1).
+Per harness the table shows: pack attachment (stamps: attached / stale / missing counts), MCP registration (whether the `vesma` server entry is present, plus any external memory engines seen in the harness config), the built-in store markers (`data`, `vault`, `data/vesma.db` — existence + mtime) and the active precedence mode (`overlay+mirror`; `replace`/`off` arrive with MS-1).
+
+The former top-level spelling `vesma memory status` remains as a hidden deprecated alias — identical behavior plus a one-line `[deprecated]` hint on stderr (see [Hidden deprecated aliases](#hidden-deprecated-aliases-cli-topology-v2)).
 
 ### Example
 
 ```bash
-vesma memory status
+vesma integration memory
 # ┌─────────┬──────────────┬─────────┬─────────────────┬─────────────┬───────────────┐
 # │ Harness │ Pack         │ MCP     │ External engines │ Vesma store │ Precedence    │
 # │ zcode   │ attached (25)│ vesma ✓ │ obsidian-mcp     │ db ✓ 10:01  │ overlay+mirror│
 ```
 
-Exit codes: `0` when the report was produced (it is a status surface, not a
-health gate — `doctor` and `integration verify` govern health).
+Exit codes: `0` when the report was produced (it is a status surface, not a health gate — `doctor` and `integration verify` govern health).
 
 ---
 
 ## Component commands
 
-Since 6.2.0 the top-level verbs `install`, `status`, `start`, `stop`, `restart`, `logs`, `update` and `configs` drive **components** — one unified surface for every component: the built-in bundle (`board`, `metrics`) and operator-authored external ones alike. A component is any valid manifest in `~/.config/vesma/components.d/`. The release bundle owns `board.yaml` / `metrics.yaml`; **anything else in that directory is operator-authored and never rewritten by the engine** — `vesma update` on such a file is refused with "managed by operator, edit the file".
+The component surface of the USER profile — registry verbs on `vesma service components`, lifecycle control on [`vesma service`](#service) itself. One unified surface for every component: the built-in bundle (`board`, `metrics`) and operator-authored external ones alike. A component is any valid manifest in `~/.config/vesma/components.d/`. The release bundle owns `board.yaml` / `metrics.yaml`; **anything else in that directory is operator-authored and never rewritten by the engine** — `vesma service components update` on such a file is refused with "managed by operator, edit the file".
+
+The pre-topology-v2 top-level spellings (`vesma install` / `status` / `start` / `stop` / `restart` / `update` / `configs`) remain as hidden deprecated aliases of the verbs below — identical behavior plus a one-line `[deprecated]` hint on stderr; removal not before 9.0 (see [Hidden deprecated aliases](#hidden-deprecated-aliases-cli-topology-v2)).
 
 Semantics shared by the whole family:
 
 | Rule | Behavior |
 |------|----------|
 | `NAME` xor `--all` | Specify one or the other — both together is a refusal (exit 1) |
-| Bare calls never bulk-mutate | `start` / `stop` / `restart` / `update` without a target refuse loudly with the component list and the `--all` hint; bare `install` lists what is installable and changes nothing (exit 0); bare `logs` is a usage error (exit 2) |
+| Bare calls never bulk-mutate | `start` / `stop` / `restart` / `update` without a target refuse loudly with the component list and the `--all` hint; bare `components install` lists what is installable and changes nothing (exit 0); bare `service logs` is a usage error (exit 2) |
 | Exit codes | `0` success (informational listings included) · `1` refusal (unknown component, missing target, supervisor unreachable) · `2` usage error |
-| Offline registry | `status` / `configs` read disk state and answer with the supervisor down; the live column says "unknown" explicitly instead of failing |
+| Offline registry | `components status` / `components configs` read disk state and answer with the supervisor down; the live column says "unknown" explicitly instead of failing |
 
-### `install`
+### `service components install`
 
 ```text
-vesma install NAME
-vesma install --all
-vesma install            # informational: the installable set, changes nothing (exit 0)
+vesma service components install NAME
+vesma service components install --all
+vesma service components install            # informational: the installable set, changes nothing (exit 0)
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
 | `NAME` | Per-component manifest install. A bundled component is (re)written from this release's bundle (a diverging installed manifest is preserved as a one-time `.pre-regen.bak` backup); an operator-authored manifest is validated fail-closed and left untouched. Data dirs and config schemas are materialized. Idempotent. |
-| `--all` | The full installation: manifests, per-component venvs and the systemd user unit — identical to `vesma service install`. |
+| `--all` | The full installation: manifests, per-component venvs and the systemd user unit — identical to [`vesma service install`](#service). |
 
-### `status`
+### `service components status`
 
 ```text
-vesma status [NAME] [--json]
+vesma service components status [NAME] [--json] [--socket PATH]
 ```
 
-The registry table: Component · Origin (`bundled` / `operator`) · Version · State. The registry half is disk-state and works with the supervisor down; the live state (`running` / `stopped` / `failed` + pid) comes from the supervisor over its control socket and reads `unknown (supervisor not reachable)` when it does not answer.
+The registry table: Component · Origin (`bundled` / `operator`) · Version · State. The registry half is disk-state and works with the supervisor down; the live state (`running` / `stopped` / `failed` + pid) comes from the supervisor over its control socket and reads `unknown` when it does not answer (with an explicit note).
 
 `--json` emits the same data machine-readably — the supervisor reachability travels INSIDE the payload (`supervisor.reachable`, with `reason` when false), so pipes never parse prose.
 
-### `start` / `stop` / `restart`
+### Runtime lifecycle: `service start` / `stop` / `restart`
 
 ```text
-vesma start NAME | --all
-vesma stop NAME | --all [--force]
-vesma restart NAME | --all
+vesma service start NAME | --all
+vesma service stop NAME | --all [--force]
+vesma service restart NAME | --all
 ```
 
-Thin delegation to the same control-plane client `vesma service start` / `stop` / `restart` uses — zero supervisor logic of its own. `start` and `stop` are idempotent (an already-running / already-stopped component is reported as-is); `restart` is a real stop-then-start cycle and NOT idempotent — a retry after a lost response performs a second restart.
+The same control-plane dispatch [`vesma service start` / `stop` / `restart`](#service) use (details in the `service` section): `start` and `stop` are idempotent (an already-running / already-stopped component is reported as-is); `restart` is a real stop-then-start cycle and NOT idempotent — a retry after a lost response performs a second restart. `--all` walks every installed component in topological order (`stop --all` in reverse); a bare call refuses — never a bulk mutation.
 
-- `--all` walks every installed component in dependency order (`restart` too); `stop --all` walks in reverse dependency order.
-- `--force` (stop only) skips the graceful phase and SIGKILLs after a short delay — for a wedged process only.
-- A bare call refuses with the installed list and the `NAME` / `--all` hint (exit 1); so does a silent control socket. Confirm readiness afterwards with `vesma service health`.
-
-### `logs`
+### `service components update`
 
 ```text
-vesma logs NAME [--tail N] [--follow]
+vesma service components update NAME
+vesma service components update --all
 ```
 
-Prints the last `--tail` lines (default 100, cap 10000) from the component's log source through the supervisor control socket; `--follow` / `-f` streams new lines until the component stops. An EMPTY result says so explicitly and names the source — silence is never an answer.
-
-Bare `vesma logs` is a usage error (exit 2) listing the installed components. The former pipeline-trace viewer lives on as `vesma task-logs`; its flag forms (`--task`, `--project`, `--since`, `--limit`, `--config`) still work here as hidden aliases — identical behavior plus a one-line `[deprecated]` hint on stderr, then the call is delegated to `vesma task-logs`.
-
-### `update`
-
-```text
-vesma update NAME
-vesma update --all
-```
-
-Regenerates a component's manifest from this release's bundle. With NAME: a **bundled** component's manifest is rewritten when its bytes differ from the shipped bundle (the previous bytes are kept as a one-time `.pre-regen.bak` backup) — after a regeneration, restart `vesma.service`; an **operator-authored** manifest is REFUSED ("managed by operator"). With `--all`: every stale bundled manifest at once. Bare `vesma update` refuses — it is never a bulk mutation.
+Regenerates a component's manifest from this release's bundle. With NAME: a **bundled** component's manifest is rewritten when its bytes differ from the shipped bundle (the previous bytes are kept as a one-time `.pre-regen.bak` backup) — after a regeneration, restart `vesma.service`; an **operator-authored** manifest is REFUSED ("managed by operator"). With `--all`: every stale bundled manifest at once. Bare invocation refuses — it is never a bulk mutation.
 
 Two contract details worth knowing:
 
-- Targets are resolved **by file stem**, not through the fail-closed registry — a stale (schema-invalid) bundled manifest is exactly what `vesma update` exists to heal.
-- The application self-update family moved to [`vesma self-update`](#self-update). Its legacy flag forms (`--check`, `--yes/-y`, `--verbose`, `--scope`, `--to`, `--install-timer`, `--uninstall-timer`, `--timer`) still work here as hidden aliases so installed units and scripts keep running. A legacy flag TOGETHER with a component NAME is refused loudly — the flag belongs to the self-update family and must never silently swallow the NAME.
+- Targets are resolved **by file stem**, not through the fail-closed registry — a stale (schema-invalid) bundled manifest is exactly what `update` exists to heal.
+- The application self-update family lives on [`vesma self-update`](#self-update) (the top-level `update` spelling additionally carries the legacy self-update FLAG forms as hidden aliases so installed units and scripts keep running). A legacy flag TOGETHER with a component NAME is refused loudly — the flag belongs to the self-update family and must never silently swallow the NAME.
 
-### `configs`
+### `service components configs`
 
 ```text
-vesma configs [NAME] [--json]
+vesma service components configs [NAME] [--json]
 ```
 
 Bare: the per-component table Manifest · Env file · Data dir. With NAME: the effective config path the component receives plus its key config fields — origin, manifest, config path, env file, data dir, runtime dir, venv bin, config schema. `--json` emits the same machine-readably. Writing configs is out of scope — edit the manifest or the config file directly.
@@ -1110,7 +1108,7 @@ Bare: the per-component table Manifest · Env file · Data dir. With NAME: the e
 
 ## `self-update`
 
-> **Canonical name since the component UX (6.2.0).** The application self-update family lives under `vesma self-update` — the top-level [`update`](#update) name now belongs to the component-manifest verb. The legacy FLAG forms (`vesma update --yes`, `--check`, …) keep working as hidden aliases on both surfaces so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep running; the legacy SUBCOMMAND spellings are gone — `vesma update check` would now read `check` as a component name and refuse.
+> **Canonical name since the component UX (6.2.0).** The application self-update family lives under `vesma self-update` — the component-manifest verb lives under [`vesma service components update`](#component-commands) (the former top-level `update` spelling is its hidden deprecated alias). The legacy FLAG forms (`vesma update --yes`, `--check`, …) keep working as hidden aliases on both surfaces so scripts and the shipped systemd unit (`vesma update --yes --scope=user`) keep running; the legacy SUBCOMMAND spellings are gone — `vesma update check` would now read `check` as a component name and refuse.
 
 One command family for updating Vesma. Plain `vesma self-update` keeps its 5.2.0 behavior: report every update surface found on this machine and — in an interactive terminal, when a pip update is pending — ask `Apply update? [y/N]` and apply on confirmation. In non-interactive contexts (pipes, CI) it stays check-only and prints `apply with: vesma self-update apply`. The distinct operations are SUBCOMMANDS (standing design rule: flags do not replace subcommands); the old flag forms remain as hidden deprecated aliases — identical behavior plus a one-line stderr hint naming the canonical spelling.
 
@@ -1187,57 +1185,104 @@ Restart running clients (MCP / `serve`) after a successful update to pick up the
 
 ---
 
+## `config`
+
+Inspect and validate the **USER profile's** config — read-only, never a write verb (edit the file directly with your editor of choice; the SYSTEM conffile is a different domain: [`vesma system config`](#system)). This domain never switches targets by euid/env — two explicit verbs, no auto-detect.
+
+```text
+vesma config show [--json]
+vesma config validate
+vesma config paths [--json]
+```
+
+| Subcommand | Purpose |
+|------------|---------|
+| `show` | The resolved USER config path + the effective settings (env overrides included). An absent config file is an honest note + exit 0 (zero-config baseline). |
+| `validate` | Parse + schema-validate the resolved config — the SAME `load_settings` check [`doctor`](#doctor) runs; one-line verdict, exit 0/1. |
+| `paths` | The USER profile's paths — the SAME table `doctor paths` renders. |
+
+The resolved config file follows the doctor's search order: `$VESMA_CONFIG` → `./config.yaml` → `~/.vesma/config.yaml`. `--json` (show / paths) emits the same data machine-readably.
+
+---
+
 ## `system`
 
-The SYSTEM profile's lifecycle — apt vs systemctl: `vesma system` installs, updates and uninstalls the system profile (the FHS tree: `/etc/vesma`, `/var/lib/vesma`, `/usr/lib/vesma`); `vesma service` drives the daemon's runtime and the user-profile install. All three verbs require root (`sudo`) and delegate to the same machinery as the former `vesma service <verb> --system` spellings, which remain as hidden deprecated aliases (a `[deprecated]` hint on stderr; removal not before 9.0).
+The SYSTEM profile's domain — apt vs systemctl: `vesma system` installs, updates and uninstalls the system profile (the FHS tree: `/etc/vesma`, `/var/lib/vesma`, `/usr/lib/vesma`); [`vesma service`](#service) drives the daemon's runtime and the user-profile install; the user's config is the [`vesma config`](#config) domain. The lifecycle verbs require root (`sudo`) and delegate to the same machinery as the former `vesma service <verb> --system` spellings, which remain as hidden deprecated aliases (a `[deprecated]` hint on stderr; removal not before 9.0).
 
 ```text
 vesma system install
-vesma system uninstall
 vesma system update
+vesma system uninstall [--yes] [--dry-run]
+vesma system doctor
+vesma system config show|validate|paths|set --file PATH
 ```
 
 | Verb | Purpose |
 |------|---------|
 | `install` | Install the SYSTEM profile: the FHS tree, the `vesma` service account, root-owned venv revisions, the systemd system unit, install-state. |
-| `uninstall` | Uninstall the SYSTEM profile: the exact inverse of the install-state (recorded artifacts only; `/var/lib/vesma` data is preserved; drift refuses loudly). |
-| `update` | Update the SYSTEM profile in place: materialize the running build's revisions beside the current ones, atomic symlink swap, health gate, rollback on failure. |
+| `update` | Update the SYSTEM profile in place: materialize the running build's revisions beside the current ones, atomic symlink swap, health gate, rollback on failure; drift refuses loudly BEFORE any action; re-runs are idempotent. |
+| `uninstall` | Uninstall the SYSTEM profile: the exact inverse of the install-state (recorded artifacts only, removed in reverse creation order; `/var/lib/vesma` data is preserved; state ↔ filesystem drift refuses loudly without touching the tree). |
+| `doctor` | The SAME health pass as the L1 [`vesma doctor`](#doctor) — additionally registered here; checks BOTH profiles; under root names the roots it is diagnosing (G2). The L1 spelling stays primary. |
+| `config` | The SYSTEM conffile sub-domain (`/etc/vesma/config.yaml` through the FHS manifest resolver — never a user path); see below. |
 
 ```bash
 # On a server (root):
 sudo vesma system install    # lay down the FHS profile
 sudo vesma system update     # roll out a new build with a health gate
-sudo vesma system uninstall  # remove exactly what install recorded
+sudo vesma system uninstall --dry-run   # preview the validated removal plan
+sudo vesma system uninstall --yes       # execute (scripts; interactive prompt otherwise)
 ```
+
+The whole profile is one unit — there are no per-component or `--all` forms here (that is the user-profile `vesma service uninstall`). `uninstall` carries a typed confirmation: an interactive prompt in a terminal, `--yes` for scripts/automation, `--dry-run` to print the validated plan as `dry-run:` lines without touching anything (no systemctl calls, no unlinks); a non-interactive stdin without `--yes` aborts with exit 1 — an unattended pipe must never silently uninstall the system profile.
+
+### `system config` — the conffile sub-domain
+
+Target is `/etc/vesma/config.yaml` resolved through the FHS manifest — never a user path. `show` / `validate` / `paths` are read-only and work unprivileged EXCEPT where the `0640 root:vesma` mode blocks reading: then the command says so loudly with the sudo hint and exits 1 (it never escalates itself and never falls back to user paths — the USER config is the `vesma config` domain).
+
+| Subcommand | Purpose |
+|------------|---------|
+| `show` (`--json`) | The SYSTEM conffile path + its effective settings (root tree). Absent conffile = zero-config baseline, honest note, exit 0. |
+| `validate` | Parse + schema-validate the SYSTEM conffile (the same `load_settings` validation the doctor runs, pointed at the FHS path only). Absent conffile is valid; invalid exits 1. |
+| `paths` (`--json`) | The SYSTEM profile's paths — every row from the FHS manifest resolver (config root, conffile, components.d, env.d, data root, install state, unit, cache, static). Path math only — readable without root: seeing where the system profile lives must not require the privileges of changing it. |
+| `set --file PATH` | Install a validated config as the SYSTEM conffile — the ONLY write. |
+
+The `set --file` discipline:
+
+- **Validate-first**: the candidate goes through the SAME `load_settings` validation; an invalid candidate is refused with the tree untouched (no backup, no replace) — exactly the bytes you wrote are what gets validated, then installed.
+- **Backup**: the current conffile is backed up same-dir (`.bak-<ts>`), atomically, manifest-owned.
+- **Atomic install**: same-dir tmp + rename, with mode/owner per the FHS manifest (`0640 root:vesma`).
+- **Gates**: requires root; refuses when the system profile is not installed (the install-state IS the gate — a hand-created `/etc/vesma` without a system install is refused).
+- **No editor from root (G3)**: the manual path is `sudoedit /etc/vesma/config.yaml`.
+- The report names from/to/backup plus the restart note — the daemon reads the config once at startup, so restart the service after a `set`.
 
 ---
 
 ## `service`
 
-Installing the Vesma service (USER profile) and driving the supervisor — nine verbs in one group (service-lifecycle v1). Installer verbs prepare files and the unit; client verbs (`status` / `health` / `start` / `stop` / `restart` / `logs`) talk to the running supervisor over its control socket. The SYSTEM profile lives on `vesma system`; the former `--system` flag forms on `install` / `uninstall` / `update` are hidden deprecated aliases of the `vesma system` verbs (identical behavior + a `[deprecated]` hint on stderr), and bare `vesma service update` refuses, pointing at `vesma system update` (the user profile updates via `vesma self-update`).
+Installing the Vesma service (USER profile) and driving the supervisor (service-lifecycle v1). Installer verbs prepare files and the unit; client verbs (`status` / `health` / `start` / `stop` / `restart` / `logs`) talk to the running supervisor over its control socket (every client verb accepts `--socket` to point at a non-default control socket — tests, multi-instance machines). The component registry verbs live on [`vesma service components`](#component-commands). The SYSTEM profile lives on [`vesma system`](#system); the former `--system` flag forms on `install` / `uninstall` / `update` are hidden deprecated aliases of the `vesma system` verbs (identical behavior + a `[deprecated]` hint on stderr; removal not before 9.0), and `vesma service update` exists only as that deprecated alias surface — bare it refuses, pointing at `vesma system update` (the user profile updates via `vesma self-update`).
 
 ```text
 vesma service install
 vesma service uninstall [name] [--all]
 vesma service status [component] [--socket PATH]
 vesma service health [component] [--socket PATH]
-vesma service start {component} [--socket PATH]
-vesma service stop {component} [--force] [--socket PATH]
-vesma service restart {component} [--socket PATH]
+vesma service start {component} | --all [--socket PATH]
+vesma service stop {component} | --all [--force] [--socket PATH]
+vesma service restart {component} | --all [--socket PATH]
 vesma service logs {component} [--follow] [--tail N] [--socket PATH]
 vesma service run [--socket PATH] [--config PATH]
 ```
 
 | Verb | Purpose |
 |------|---------|
-| `install` | Install the service: component manifests, data dirs, venvs, the unit. |
+| `install` | Install the service (USER profile): component manifests, data dirs, venvs, the systemd user unit. |
 | `uninstall [name]` | Remove one component; with `--all`, the whole installation. |
 | `status [component]` | Live component state (or one component) as JSON. |
 | `health [component]` | Global and per-component health — the supervisor's own verdict. |
-| `start {component}` | Start a component (idempotent). |
-| `stop {component}` | Stop (idempotent); `--force` is the hard kill. |
-| `restart {component}` | Restart (NOT idempotent by contract). |
-| `logs {component}` | Recent component log lines; `--follow` streams. |
+| `start {component} \| --all` | Start a component (idempotent) — or every installed one in dependency order (topo). |
+| `stop {component} \| --all` | Stop (idempotent), `--force` is the hard kill — `--all` in REVERSE dependency order. |
+| `restart {component} \| --all` | Restart (NOT idempotent by contract) — `--all` in dependency order. |
+| `logs {component}` | Recent component log lines (Text-safe rendering); `--follow` streams. The canonical home of component logs since topology v2. |
 | `run` | Run the service in the foreground: supervisor + control socket + in-process core. |
 
 ### `service install`
@@ -1254,10 +1299,10 @@ All client verbs require a running supervisor (`vesma service run`); with a sile
 
 - `status` prints the live state (running / stopped / failed plus PID and uptime where available) as JSON for every installed component — or only the one named as the argument.
 - `health` is the supervisor's own verdict (healthz semantics): `OK` when the component process answers its readiness probe; `DEGRADED` / `FAIL` with the reason otherwise. Run it after `start` / `restart` to confirm the component actually came up.
-- `start` launches the component from its installed manifest. An already-running component is reported as-is instead of failing — start scripts can invoke it unconditionally. Confirm readiness with `vesma service health`.
-- `stop` stops gracefully first (SIGTERM, short grace period); `--force` skips the graceful phase and SIGKILLs after a short delay — for a wedged process only, since in-flight work is lost. An already-stopped component is reported as-is.
-- `restart` is a real stop-then-start cycle, not a no-op: unlike `start`/`stop` it is NOT idempotent — a retry after a lost response performs a second restart. Use it to reload a component after a config or manifest change.
-- `logs` prints the last `--tail` lines (default 100, cap 10000) from the component's log source, or keeps streaming new lines with `--follow` / `-f` until the component stops.
+- `start` launches the component from its installed manifest. An already-running component is reported as-is instead of failing — start scripts can invoke it unconditionally. Bare invocation refuses (never a bulk mutation); `--all` starts in dependency order (`depends_on` before dependents). Confirm readiness with `vesma service health`.
+- `stop` stops gracefully first (SIGTERM, short grace period); `--force` skips the graceful phase and SIGKILLs after a short delay — for a wedged process only, since in-flight work is lost. An already-stopped component is reported as-is. `--all` stops in REVERSE dependency order (dependents torn down before what they depend on).
+- `restart` is a real stop-then-start cycle, not a no-op: unlike `start`/`stop` it is NOT idempotent — a retry after a lost response performs a second restart. Use it to reload a component after a config or manifest change. `--all` restarts in dependency order.
+- `logs` prints the last `--tail` lines (default 100, cap 10000) from the component's log source, or keeps streaming new lines with `--follow` / `-f` until the component stops. Log lines are OPERATOR DATA rendered through plain `Text()` — never through rich markup (a child emitting markup must not style the trusted CLI) — and an EMPTY result says so explicitly with the source named: silence is never an answer. The former top-level `vesma logs NAME` habit answers with a loud stderr redirect here.
 
 ### `service run`
 
@@ -1287,19 +1332,19 @@ Installation diagnostics — `vesma doctor service` (read-only, DR-01…DR-13).
 
 ---
 
-## `task-logs`
+## `logs`
 
-> **Canonical name since the component UX (6.2.0).** The pipeline-trace viewer lives under `vesma task-logs` — the top-level [`logs`](#logs) name now shows **component** logs. The trace-filter flags (`--task`, `--project`, `--since`, `--limit`, `--config`) still work on `vesma logs` as hidden aliases with a deprecation hint; the bare form (`vesma logs` with no arguments) is now a component-logs usage error.
+> **Canonical home since CLI topology v2.** The top-level `logs` name belongs to the PIPELINE-TRACE viewer (its former `task-logs` spelling remains as a hidden deprecated alias with a `[deprecated]` stderr hint); component (supervisor) logs live on [`vesma service logs NAME`](#service). The old habit `vesma logs NAME` — a positional that used to mean component logs — still prints the trace view plus a loud stderr redirect naming `vesma service logs NAME` (no silent substitution; a non-component positional stays a usage error exactly as before).
 
-View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table.
+View pipeline traces (M6 explainability layer) — a compact table over the append-only `traces` table the knowledge pipeline writes per task: what ran, on which memories, with what outcome.
 
 ```text
-vesma task-logs [OPTIONS]
+vesma logs [OPTIONS]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--task / -t` | — | Filter by task label (`cluster`, `synthesize`, `publish`, `recall`). |
+| `--task / -t` | — | Filter by task label (free string; known: `cluster`, `synthesize`, `publish`, `recall`, `tags_add`, `tags_remove`, `tags_rename`). |
 | `--project / -p` | — | Filter by project slug. |
 | `--limit / -l` | `50` | Maximum number of traces to show. |
 | `--since` | — | Only traces after this ISO date (e.g. `2026-06-01`). |
@@ -1309,10 +1354,14 @@ vesma task-logs [OPTIONS]
 ### Example
 
 ```bash
-vesma task-logs --task cluster --project vesma --limit 20
+vesma logs --task cluster --project vesma --limit 20
 
 # Watch the pipeline live
-vesma task-logs --follow
+vesma logs --follow
+
+# The old component habit: traces still print + a redirect to service logs
+vesma logs board
+# [deprecated] component logs moved — use: `vesma service logs board` (stderr)
 ```
 
 ### Related
@@ -1456,7 +1505,7 @@ slugs never print (zero peer content, ADR-0035 CWE-359 posture).
 |------|---------|
 | 0 | Success |
 | 1 | User error (missing argument, invalid tag, component refusal, supervisor unreachable, etc.) |
-| 2 | Usage error (unknown flag, bare `vesma logs`); `vesma doctor`: one or more checks warn, nothing is broken |
+| 2 | Usage error (unknown flag, bare `vesma service logs`); `vesma doctor`: one or more checks warn, nothing is broken |
 
 The CLI does not return non-zero for "no results" — `vesma search` exits 0 with an empty table.
 
@@ -1474,4 +1523,4 @@ The CLI does not return non-zero for "no results" — `vesma search` exits 0 wit
 
 ---
 
-_Last updated: 2026-10-10_
+_Last updated: 2026-10-23_
