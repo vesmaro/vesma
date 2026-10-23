@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **C13 activation (ratification act, ADR-0047 / ADR-0045 Decision 9): `vesma migrate-store --target=system --apply` is ACTIVE since 6.5.0 — the owner gave the word 2026-10-23 after the green round-trip soak (round 1 + round 2 on ca534ff, evidence `/tmp/vesma-soak-stand`)** — the `_ACTIVATION_GATE_OPEN` constant flips open. The dry-run (plan + DR forecast) is unchanged; the typed refusal (exit 15, `ActivationGateError`) stays as belt-and-braces in both the CLI gate and the mover machinery, pinned by a closed-gate monkeypatch test; the «GATED» wording in `--apply` help and the dry-run footer now states the ratification facts.
+
 ## [6.4.0] — 2026-10-22
 
 ### Added

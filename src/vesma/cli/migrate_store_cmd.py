@@ -65,8 +65,9 @@ _APPLY_OPTION = Annotated[
         "--apply",
         help="Write the migration. WITHOUT this flag the command is a "
         "dry-run: plan + counters via read-only opens; the source's "
-        "records stay unchanged. For --target=system the apply is GATED "
-        "(soak + owner's word, ADR-0045 Decision 9).",
+        "records stay unchanged. For --target=system the apply is active "
+        "since 6.5.0 (owner-ratified 2026-10-23 after the green soak, "
+        "ADR-0045 Decision 9).",
     ),
 ]
 _JSON_OPTION = Annotated[
@@ -247,9 +248,9 @@ def _print_plan(plan: MigrationPlan) -> None:
     if plan.mode == "dry-run":
         if plan.target == SYSTEM_TARGET:
             console.print(
-                "\n  dry-run: nothing was written. --apply is GATED for the "
-                "system target (ADR-0045 Decision 9): it stays refused until "
-                "the round-trip soak closes green AND the owner gives the word."
+                "\n  dry-run: nothing was written. --apply for the system "
+                "target is active since 6.5.0 (owner-ratified 2026-10-23 "
+                "after the green round-trip soak, ADR-0045 Decision 9)."
             )
         else:
             console.print(
@@ -380,10 +381,10 @@ def migrate_store(
     Safety: explicit --from only; dry-run by default (read-only opens, the
     source's records stay unchanged); SQLite backup-API snapshot gate;
     quiesce gates; the mnemos:no-federate trust marker stays byte-stable;
-    the report prints paths and numbers only. For --target=system the
-    apply is hard-gated until the round-trip soak closes and the owner
-    gives the word (ADR-0045 Decision 9); the dry-run (plan + DR forecast)
-    is fully functional. The legacy `vesma migrate` (ai-brain) command is
+    the report prints paths and numbers only. For --target=system the apply
+    is active since 6.5.0 — owner-ratified 2026-10-23 after the green
+    round-trip soak (ADR-0045 Decision 9); the dry-run (plan + DR forecast)
+    stays fully functional. The legacy `vesma migrate` (ai-brain) command is
     unaffected.
     """
     try:
