@@ -2844,6 +2844,18 @@ from vesma.cli.service import service_app  # noqa: E402
 
 app.add_typer(service_app, name="service")
 
+# ── system (CLI-topology wave, variant B — owner-ratified 2026-10-23) ──
+#    The SYSTEM profile domain: install/uninstall/update of the FHS tree
+#    (apt vs systemctl: `system` owns the system profile, `service` owns
+#    runtime control + the user profile). Each verb delegates to the SAME
+#    impl functions as the `service <verb> --system` spellings, which stay
+#    as hidden deprecated aliases with a stderr hint (removal not before
+#    9.0); `migrate-store --target=system` (data plane) is unaffected.
+
+from vesma.cli.system_cmd import system_app  # noqa: E402
+
+app.add_typer(system_app, name="system")
+
 # ── top-level component verbs (wave 61, board card vesma-61-wave) ──────
 #    vesma install|status|start|stop|restart|logs|update|configs [NAME]
 #    — ONE unified surface for built-in AND operator-authored

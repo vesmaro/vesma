@@ -1209,9 +1209,34 @@ vesma self-update components
 
 ---
 
+## `system`
+
+Жизненный цикл СИСТЕМНОГО профиля — модель «apt против systemctl»: `vesma system` устанавливает, обновляет и удаляет системный профиль (FHS-дерево: `/etc/vesma`, `/var/lib/vesma`, `/usr/lib/vesma`); `vesma service` управляет рантаймом демона и установкой пользовательского профиля. Все три глагола требуют root (`sudo`) и вызывают ту же машинерию, что и прежние написания `vesma service <глагол> --system`, оставленные скрытыми устаревшими алиасами (подсказка `[deprecated]` в stderr; удаление не раньше 9.0).
+
+```text
+vesma system install
+vesma system uninstall
+vesma system update
+```
+
+| Глагол | Назначение |
+|--------|----------- |
+| `install` | Установить СИСТЕМНЫЙ профиль: FHS-дерево, сервисная учётная запись `vesma`, venv-ревизии под root, systemd-юнит системы, install-state. |
+| `uninstall` | Удалить СИСТЕМНЫЙ профиль: точная обратная операция по install-state (только записанные артефакты; данные `/var/lib/vesma` сохраняются; расхождение громко отказывает). |
+| `update` | Обновить СИСТЕМНЫЙ профиль на месте: материализация ревизий текущей сборки рядом с существующими, атомарная подмена симлинков, health-гейт, откат при сбое. |
+
+```bash
+# На сервере (root):
+sudo vesma system install    # разложить FHS-профиль
+sudo vesma system update     # выкатить новую сборку с health-гейтом
+sudo vesma system uninstall  # удалить ровно то, что записал install
+```
+
+---
+
 ## `service`
 
-Установка службы Vesma и управление супервизором — девять глаголов в одной группе (service-lifecycle v1). Инсталляторные глаголы готовят файлы и юнит; клиентские глаголы (`status` / `health` / `start` / `stop` / `restart` / `logs`) общаются с работающим супервизором по его control-сокету.
+Установка службы Vesma (ПОЛЬЗОВАТЕЛЬСКИЙ профиль) и управление супервизором — девять глаголов в одной группе (service-lifecycle v1). Инсталляторные глаголы готовят файлы и юнит; клиентские глаголы (`status` / `health` / `start` / `stop` / `restart` / `logs`) общаются с работающим супервизором по его control-сокету. СИСТЕМНЫЙ профиль живёт в домене `vesma system`; прежние флаги `--system` у `install` / `uninstall` / `update` — скрытые устаревшие алиасы глаголов `vesma system` (то же поведение + подсказка `[deprecated]` в stderr), а голый `vesma service update` отказывает и указывает на `vesma system update` (пользовательский профиль обновляется через `vesma self-update`).
 
 ```text
 vesma service install
