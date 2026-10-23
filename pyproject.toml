@@ -163,11 +163,15 @@ dev = [
     "pip-audit>=2.7",
     # Security floors for tooling pip-audit scans in the dev venv (#267):
     # `pip` arrives transitively via pip-audit -> pip-api, `setuptools` via
-    # grpcio-tools' runtime dependency — both land in the audited
-    # environment without any direct pin. PYSEC-2026-3721 fixed in pip 26.2;
-    # PYSEC-2026-3447 fixed in setuptools 83.0.0.
+    # grpcio-tools' runtime dependency, `filelock` via the vector/embedding
+    # stack — all land in the audited environment without any direct pin.
+    # PYSEC-2026-3721 fixed in pip 26.2; PYSEC-2026-3447 fixed in
+    # setuptools 83.0.0; GHSA-xmj3-9gf7-h52w fixed in setuptools 84.1.0;
+    # CVE-2026-112940/112913/112907 fixed in filelock 4.2.1 (advisory drop
+    # 2026-10-23 — all three CI legs red at the pip-audit step).
     "pip>=26.2",
-    "setuptools>=83.0.0",
+    "setuptools>=84.1.0",
+    "filelock>=4.2.1",
     "types-PyYAML",
 ]
 all = [
