@@ -4,8 +4,10 @@ Every test pins a numbered contract point of ADR-0047 (C1-C15, ratified
 ArchCom 2026-10-22). The fake system profile uses the dest-dir technique:
 ``fhs.default_prefix`` is monkeypatched to a temp prefix, the systemctl
 probes are monkeypatched (hermetic: the host's real unit state must not
-decide a test), and the full apply path runs behind the C13 activation
-gate constant, which only tests flip.
+decide a test). The C13 activation gate is OPEN in the product (owner
+ratification 2026-10-23), so apply-path tests run against the real
+constant; the typed refusal stays pinned via the ``gate_closed``
+fixture, which flips the constant back to False.
 """
 
 from __future__ import annotations
@@ -189,9 +191,10 @@ def sys_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
 
 
 @pytest.fixture
-def gate_open(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Flip the C13 activation gate (tests/soak only — never the product)."""
-    monkeypatch.setattr(sm, "_ACTIVATION_GATE_OPEN", True)
+def gate_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Close the C13 gate (the product surface is open since the
+    2026-10-23 ratification): pins the belt-and-braces typed refusal."""
+    monkeypatch.setattr(sm, "_ACTIVATION_GATE_OPEN", False)
 
 
 def _tree_digest(root: Path) -> list[tuple[str, int, int, int, str]]:
@@ -350,7 +353,7 @@ def test_c1_to_flag_forbidden_with_system_target(sys_env: dict[str, Path], tmp_p
 
 
 def test_c2_cargo_is_store_only_and_advisory_lists_remainder(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_6x(tmp_path)
     (home / "env.d").mkdir()
@@ -380,7 +383,7 @@ def _apply_system(home: Path, sys_env: dict[str, Path]) -> sm.MigrationReport:
 
 
 def test_c3_nonempty_conffile_never_touched_incoming_lands_as_migrated(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     sys_env["config"].write_text("api:\n  host: 127.0.0.1\n", encoding="utf-8")
     original = sys_env["config"].read_bytes()
@@ -395,7 +398,7 @@ def test_c3_nonempty_conffile_never_touched_incoming_lands_as_migrated(
 
 @pytest.mark.parametrize("payload", ["", "   \n", "\n"])
 def test_c3_empty_or_absent_conffile_gets_the_write(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, payload: str
+    sys_env: dict[str, Path], tmp_path: Path, payload: str
 ) -> None:
     sys_env["config"].write_text(payload, encoding="utf-8")
     home = make_source_6x(tmp_path)
@@ -407,9 +410,7 @@ def test_c3_empty_or_absent_conffile_gets_the_write(
 # ── C4: ownership by FHS manifest roles ──────────────────────────────────────
 
 
-def test_c4_published_modes_equal_manifest_roles(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c4_published_modes_equal_manifest_roles(sys_env: dict[str, Path], tmp_path: Path) -> None:
     """Modes come FROM THE MANIFEST (never literals, never a blanket 0700
     floor) — dirs take the data-root role, files the store-db role."""
     manifest = fhs.load_fhs_manifest()
@@ -452,9 +453,7 @@ def test_c4_expectation_roles_derived_from_manifest_roles(
         assert exp.mode == expected_mode
 
 
-def test_c4_post_publish_audit_rejects_mode_drift(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c4_post_publish_audit_rejects_mode_drift(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     _apply_system(home, sys_env)
     db = sys_env["data_root"] / STORE_DB_NAME
@@ -475,7 +474,7 @@ def test_c4_post_publish_audit_rejects_mode_drift(
 
 
 def test_c4_nonroot_run_records_intent_not_applied(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_6x(tmp_path)
     report = _apply_system(home, sys_env)
@@ -487,7 +486,7 @@ def test_c4_nonroot_run_records_intent_not_applied(
 
 
 def test_c5_publish_interruption_rolls_back_and_keeps_snapshot(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The Ctrl-C pin: source untouched, staging removed, snapshot kept,
     the data root back to fresh (published entries rolled back)."""
@@ -515,7 +514,7 @@ def test_c5_publish_interruption_rolls_back_and_keeps_snapshot(
 
 
 def test_c5_quiesce_double_run_plan_and_prepublish(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = {"n": 0}
     real = sm.system_quiesce_problems
@@ -530,9 +529,7 @@ def test_c5_quiesce_double_run_plan_and_prepublish(
     assert calls["n"] >= 2  # plan phase + right before publish (C7)
 
 
-def test_c5_midrun_store_content_refuses_publish(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c5_midrun_store_content_refuses_publish(sys_env: dict[str, Path], tmp_path: Path) -> None:
     """A racing actor planting store content between plan and publish hits
     the pre-publish freshness guard, never an overwrite."""
     home = make_source_6x(tmp_path)
@@ -546,9 +543,7 @@ def test_c5_midrun_store_content_refuses_publish(
 # ── C6: the source is never written ──────────────────────────────────────────
 
 
-def test_c6_source_tree_byte_and_stat_untouched(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c6_source_tree_byte_and_stat_untouched(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_5x(tmp_path)
     before = _tree_digest(home)
     _apply_system(home, sys_env)
@@ -557,7 +552,7 @@ def test_c6_source_tree_byte_and_stat_untouched(
 
 
 def test_c6_foreign_euid_probes_read_only(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = make_source_6x(tmp_path)
     owner_uid = (home / "data" / STORE_DB_NAME).stat().st_uid
@@ -644,7 +639,7 @@ def test_c7_locked_sqlite_under_data_root_is_fatal(
 
 
 def test_c8_sha256_parity_detects_tampered_plain_file(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = make_source_6x(tmp_path)
     real_copy = sm.shutil.copy2
@@ -663,7 +658,7 @@ def test_c8_sha256_parity_detects_tampered_plain_file(
 
 
 def test_c8_sibling_table_parity_detects_count_drift(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = make_source_5x(tmp_path)
     real_copy_sqlite = sm._copy_sqlite
@@ -690,9 +685,7 @@ def test_c8_sample_size_grows_on_large_stores() -> None:
     assert sm._sample_size_for(1_000_001) == 100
 
 
-def test_c8_verification_dict_carries_system_legs(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c8_verification_dict_carries_system_legs(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     report = _apply_system(home, sys_env)
     assert report.verification is not None
@@ -705,7 +698,7 @@ def test_c8_verification_dict_carries_system_legs(
 
 
 def test_c9_snapshot_defaults_next_to_source_and_mode_0700(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_6x(tmp_path)
     _apply_system(home, sys_env)
@@ -716,9 +709,7 @@ def test_c9_snapshot_defaults_next_to_source_and_mode_0700(
     assert st.st_uid == os.getuid()  # operator-owned (non-root run: self)
 
 
-def test_c9_snapshot_placement_refusals(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c9_snapshot_placement_refusals(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     for bad in (
         home / "inside-source",
@@ -741,9 +732,7 @@ def test_c9_snapshot_placement_refusals(
         assert result.exit_code == 2, f"{bad}: {_output(result)}"
 
 
-def test_c9_explicit_snapshot_dir_honored(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c9_explicit_snapshot_dir_honored(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     explicit = tmp_path / "snaps"
     report = sm.run_migration(
@@ -783,7 +772,7 @@ def test_c10_out_of_home_secret_path_warned_by_key_name_only(
 
 
 def test_c10_signing_key_travels_with_data_siblings(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_5x(tmp_path)
     _apply_system(home, sys_env)
@@ -794,7 +783,7 @@ def test_c10_signing_key_travels_with_data_siblings(
 
 
 def test_c11_trust_marker_byte_stable_and_counts_equal(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_5x(tmp_path)
     _apply_system(home, sys_env)
@@ -813,9 +802,7 @@ def test_c11_trust_marker_byte_stable_and_counts_equal(
 # ── C12: the mover never writes the install-state ────────────────────────────
 
 
-def test_c12_install_state_bytes_untouched(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c12_install_state_bytes_untouched(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     state_path = sys_env["data_root"] / "install-state.yaml"
     before = state_path.read_bytes()
@@ -828,7 +815,7 @@ def test_c12_install_state_bytes_untouched(
 
 
 def test_c12_uninstall_never_silently_deletes_a_migrated_store(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The C12 safety property: whatever `uninstall --system` does after a
     migration (the data root is recorded preserve-by-design), the migrated
@@ -847,7 +834,13 @@ def test_c12_uninstall_never_silently_deletes_a_migrated_store(
 # ── C13: activation gate ─────────────────────────────────────────────────────
 
 
-def test_c13_apply_refused_until_gate(sys_env: dict[str, Path], tmp_path: Path) -> None:
+def test_c13_gate_closed_refusal_stays_typed(
+    sys_env: dict[str, Path], tmp_path: Path, gate_closed: None
+) -> None:
+    """Belt-and-braces pin: with the gate CLOSED (monkeypatched — the
+    product surface opened by the 2026-10-23 ratification), a system-target
+    apply still refuses with the typed exit 15 and writes nothing. The
+    refusal machinery must not rot."""
     home = make_source_6x(tmp_path)
     result = runner.invoke(
         app, ["migrate-store", "--from", str(home), "--target", "system", "--apply"]
@@ -861,9 +854,7 @@ def test_c13_apply_refused_until_gate(sys_env: dict[str, Path], tmp_path: Path) 
     assert not list(sys_env["data_root"].parent.glob("vesma.staging-*"))
 
 
-def test_c13_gate_open_machinery_works_end_to_end(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c13_gate_open_machinery_works_end_to_end(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     report = _apply_system(home, sys_env)
     assert (sys_env["data_root"] / STORE_DB_NAME).is_file()
@@ -874,7 +865,9 @@ def test_c13_dry_run_works_ungated_with_forecast(sys_env: dict[str, Path], tmp_p
     home = make_source_6x(tmp_path)
     result = runner.invoke(app, ["migrate-store", "--from", str(home), "--target", "system"])
     assert result.exit_code == 0, _output(result)
-    assert "GATED" in _output(result)
+    footer = " ".join(_output(result).split())  # the console wraps lines
+    assert "dry-run: nothing was written" in footer
+    assert "--apply for the system target is active since 6.5.0" in footer
     forecast = system_target_forecast()
     assert [f.check_id for f in forecast] == ["DR-14", "DR-15", "DR-17"]
 
@@ -902,9 +895,7 @@ def test_c13_forecast_uses_the_doctor_functions_one_implementation(
 # ── C14: fast path + progress + preflight ────────────────────────────────────
 
 
-def test_c14_six_zero_source_takes_fast_path(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c14_six_zero_source_takes_fast_path(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_6x(tmp_path)
     plan = _plan_system(home)
     assert plan.fast_path is True
@@ -914,9 +905,7 @@ def test_c14_six_zero_source_takes_fast_path(
     assert report.records == 1
 
 
-def test_c14_legacy_source_full_sweep_not_fast(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
-) -> None:
+def test_c14_legacy_source_full_sweep_not_fast(sys_env: dict[str, Path], tmp_path: Path) -> None:
     home = make_source_5x(tmp_path)
     plan = _plan_system(home)
     assert plan.fast_path is False
@@ -975,7 +964,7 @@ def test_c14_sidecar_pin_blocks_publish(sys_env: dict[str, Path], tmp_path: Path
 
 
 def test_c14_progress_banners_stream_no_record_content(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     home = make_source_5x(tmp_path)
     lines: list[str] = []
@@ -1012,7 +1001,7 @@ def test_c15_error_taxonomy_unique_and_additive() -> None:
 
 
 def test_round_trip_user_to_system_to_fresh_user_equivalence(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     """A 5.x store migrates to a 6.0 user home, relocates into the system
     data root, and re-lands on a fresh user home — logical equivalence
@@ -1075,7 +1064,7 @@ def test_round_trip_user_to_system_to_fresh_user_equivalence(
 
 
 def test_p3_apply_phase_pre_stats_reread_classified_exit14(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-1: the apply-phase source re-read goes through the SAME typed
     classifier as the plan phase — a source that turned recovery-needing
@@ -1097,7 +1086,7 @@ def test_p3_apply_phase_pre_stats_reread_classified_exit14(
 
 
 def test_p3_apply_phase_live_stats_reread_classified_exit14(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-1 (snapshot leg): the liveness comparison re-read of the SOURCE
     inside make_snapshot is classified too — the first read-only pass
@@ -1138,7 +1127,7 @@ def _race_at_publish_gate(
 
 
 def test_p3_conffile_toctou_emptied_to_nonempty_keeps_contents(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-2: empty at the phase-5 disposition, NON-EMPTY by publish — the
     fresh stat re-decides through the phase-5 decision path: the racing
@@ -1156,7 +1145,7 @@ def test_p3_conffile_toctou_emptied_to_nonempty_keeps_contents(
 
 
 def test_p3_conffile_toctou_nonempty_to_empty_gets_the_write(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-2 (vice versa): non-empty at the disposition, emptied by publish —
     the fresh stat gives the EMPTY conffile the write (C3), no sidecar."""
@@ -1171,7 +1160,7 @@ def test_p3_conffile_toctou_nonempty_to_empty_gets_the_write(
 
 
 def test_p3_conffile_toctou_unreadable_at_publish_refuses_typed_and_rolls_back(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-2 (typed-refusal leg): a conffile that turned unreadable by
     publish hits the SAME ConfigMigrationError as the phase-5 decision —
@@ -1188,7 +1177,7 @@ def test_p3_conffile_toctou_unreadable_at_publish_refuses_typed_and_rolls_back(
 
 
 def test_p3_phase7_audit_refusal_says_published_no_retry(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None, monkeypatch: pytest.MonkeyPatch
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """P3-3: the post-publish audit refusal must not read as retryable —
     the store IS published; a re-run is refused with exit 11."""
@@ -1315,7 +1304,7 @@ def test_c8_sha_parity_still_validates_plain_files_and_excludes_sidecars_both_si
 
 
 def test_c8_wal_mode_sibling_db_does_not_break_the_apply(
-    sys_env: dict[str, Path], tmp_path: Path, gate_open: None
+    sys_env: dict[str, Path], tmp_path: Path
 ) -> None:
     """The live soak failure end-to-end: a REAL engine store keeps its
     databases in journal_mode=wal; before the fix this apply died with

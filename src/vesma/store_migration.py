@@ -114,9 +114,11 @@ is normative here; the load-bearing points:
 - C12: the mover does NOT write the store into the system install-state
   and creates no installer artifacts (an uninstall must never silently
   delete a migrated store).
-- C13: ``--apply`` for the system target is HARD-GATED until the
-  round-trip soak closes AND the owner gives the word (ADR-0045 Decision
-  9). The dry-run is fully functional — it is the soak's own tool.
+- C13: ``--apply`` for the system target was HARD-GATED until the
+  round-trip soak closed green AND the owner gave the word (ADR-0045
+  Decision 9); ACTIVE since 6.5.0 — ratified by the owner 2026-10-23
+  after the green soak (ca534ff). The typed refusal (exit 15) stays as
+  belt-and-braces.
 - C14: zero rewrite counters ⇒ the UPDATE sweep is skipped (pure backup-API
   copy); bulk reads always fetch in batches; phased progress banners +
   streaming counters; stepped backup for large databases; preflight
@@ -217,12 +219,13 @@ _SIDECAR_SUFFIXES = ("-wal", "-shm")
 _PRIVATE_FILE_MODE = 0o600
 _PRIVATE_DIR_MODE = 0o700
 # ── System-target contract constants (ADR-0047) ──────────────────────────────
-#: C13 activation gate: ``--apply --target=system`` stays REFUSED until the
-#: round-trip soak (full install → run → update → uninstall → restore) has
-#: closed green AND the owner has given the word (ADR-0045 Decision 9). The
-#: dry-run is fully functional and is the soak's own tool. Flipping this
-#: constant is a separate ratification act — never a wave-side convenience.
-_ACTIVATION_GATE_OPEN: bool = False
+#: C13 activation gate: OPEN — ``--apply --target=system`` is active since
+#: 6.5.0, ratified by the owner 2026-10-23 after the green round-trip soak
+#: (round 1 + round 2 on ca534ff, evidence /tmp/vesma-soak-stand), per
+#: ADR-0047 C13 / ADR-0045 Decision 9. The typed refusal (exit 15) stays as
+#: belt-and-braces; flipping this constant is a ratification act — never a
+#: wave-side convenience.
+_ACTIVATION_GATE_OPEN: bool = True
 #: C14: bulk reads always fetch in batches (a full-table materialization
 #: used to buffer gigabytes of RAM); batch rows, not spinner frames.
 _FETCH_BATCH_ROWS = 512
@@ -359,9 +362,9 @@ class InsufficientSpaceError(StoreMigrationError):
 
 
 def activation_gate_open() -> bool:
-    """C13 gate state (module-global so tests can exercise the apply
-    machinery behind it; the PRODUCT surface stays closed until the soak
-    closes and the owner speaks)."""
+    """C13 gate state (module-global so tests can exercise both sides: the
+    product surface opened by the 2026-10-23 ratification; tests flip the
+    constant to False to pin the typed refusal)."""
     return _ACTIVATION_GATE_OPEN
 
 
