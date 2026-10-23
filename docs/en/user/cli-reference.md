@@ -1187,9 +1187,34 @@ Restart running clients (MCP / `serve`) after a successful update to pick up the
 
 ---
 
+## `system`
+
+The SYSTEM profile's lifecycle — apt vs systemctl: `vesma system` installs, updates and uninstalls the system profile (the FHS tree: `/etc/vesma`, `/var/lib/vesma`, `/usr/lib/vesma`); `vesma service` drives the daemon's runtime and the user-profile install. All three verbs require root (`sudo`) and delegate to the same machinery as the former `vesma service <verb> --system` spellings, which remain as hidden deprecated aliases (a `[deprecated]` hint on stderr; removal not before 9.0).
+
+```text
+vesma system install
+vesma system uninstall
+vesma system update
+```
+
+| Verb | Purpose |
+|------|---------|
+| `install` | Install the SYSTEM profile: the FHS tree, the `vesma` service account, root-owned venv revisions, the systemd system unit, install-state. |
+| `uninstall` | Uninstall the SYSTEM profile: the exact inverse of the install-state (recorded artifacts only; `/var/lib/vesma` data is preserved; drift refuses loudly). |
+| `update` | Update the SYSTEM profile in place: materialize the running build's revisions beside the current ones, atomic symlink swap, health gate, rollback on failure. |
+
+```bash
+# On a server (root):
+sudo vesma system install    # lay down the FHS profile
+sudo vesma system update     # roll out a new build with a health gate
+sudo vesma system uninstall  # remove exactly what install recorded
+```
+
+---
+
 ## `service`
 
-Installing the Vesma service and driving the supervisor — nine verbs in one group (service-lifecycle v1). Installer verbs prepare files and the unit; client verbs (`status` / `health` / `start` / `stop` / `restart` / `logs`) talk to the running supervisor over its control socket.
+Installing the Vesma service (USER profile) and driving the supervisor — nine verbs in one group (service-lifecycle v1). Installer verbs prepare files and the unit; client verbs (`status` / `health` / `start` / `stop` / `restart` / `logs`) talk to the running supervisor over its control socket. The SYSTEM profile lives on `vesma system`; the former `--system` flag forms on `install` / `uninstall` / `update` are hidden deprecated aliases of the `vesma system` verbs (identical behavior + a `[deprecated]` hint on stderr), and bare `vesma service update` refuses, pointing at `vesma system update` (the user profile updates via `vesma self-update`).
 
 ```text
 vesma service install
