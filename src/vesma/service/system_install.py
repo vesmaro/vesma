@@ -1,5 +1,7 @@
-"""``vesma service install --system`` — the canonical system-profile
-installer (specs/layout v2 §3.13; ADR-0045 Decisions 4-6, rollout wave 2).
+"""``vesma system install`` — the canonical system-profile installer
+(specs/layout v2 §3.13; ADR-0045 Decisions 4-6, rollout wave 2). The former
+``vesma service install --system`` spelling is a hidden deprecated alias
+(CLI topology v2; removal not before 9.0).
 
 Owns conformance SY-01…SY-04, SY-08, SY-09:
 
@@ -30,7 +32,7 @@ Owns conformance SY-01…SY-04, SY-08, SY-09:
   path is manifest-derived);
 - **SY-09** — every artifact is recorded in the install-state AT/BEFORE
   creation (the full plan is written before the first mutation);
-  ``uninstall --system`` is the EXACT INVERSE: recorded artifacts only,
+  ``vesma system uninstall`` is the EXACT INVERSE: recorded artifacts only,
   reverse creation order, foreign content = loud refusal (never a
   silent skip), state ↔ filesystem drift = loud refusal with a doctor
   pointer. Operator data (the store home plane) is preserved and
@@ -93,7 +95,7 @@ REVISION_ROLES: Final[frozenset[str]] = frozenset(
 #: systemd-sysusers creates users with a nologin shell by design).
 _SYSUSERS_TEMPLATE = (
     "# vesma service account (specs/layout/v2 §3.4/§3.13; written by"
-    " `vesma service install --system`).\n"
+    " `vesma system install`).\n"
     "# systemd-sysusers(8): system user, nologin shell, home = the data root.\n"
     "#Type Name   ID GECOS              Home directory\n"
     "g     vesma  -  -\n"
@@ -215,7 +217,7 @@ class _Ownership:
         if self.sysusers_path is None:
             return (
                 "the sysusers.d fragment must be applied first"
-                " (fix: re-run `sudo vesma service install --system`, it"
+                " (fix: re-run `sudo vesma system install`, it"
                 " applies the fragment via systemd-sysusers)"
             )
         return (
@@ -223,7 +225,7 @@ class _Ownership:
             f" of this run (systemd-sysusers: {self.sysusers_status}) —"
             " fix the reported systemd-sysusers failure (or reboot: the"
             f" fragment at {self.sysusers_path} applies on boot), then"
-            " re-run `sudo vesma service install --system`"
+            " re-run `sudo vesma system install`"
         )
 
     def uid(self, name: str | None) -> int | None:
@@ -320,7 +322,7 @@ def _run_uv(args: list[str], *, timeout: int, env: dict[str, str] | None = None)
             "uv is not on PATH — the system installer materializes venvs with"
             " `uv venv` (pip-as-root is forbidden, specs/layout/v2 §3.10)"
             " — fix: install uv (https://docs.astral.sh/uv/), then re-run"
-            " `sudo vesma service install --system`"
+            " `sudo vesma system install`"
         )
     try:
         result = subprocess.run(  # nosec B603 - fixed argv, no shell
@@ -577,7 +579,7 @@ def _require_root_for_real_prefix(prefix: Path) -> None:
     if prefix == Path(os.sep) and os.geteuid() != 0:
         raise SystemInstallError(
             "the system profile installs into the real FHS tree — run it as"
-            " root: `sudo vesma service install --system`"
+            " root: `sudo vesma system install`"
         )
 
 
@@ -698,8 +700,8 @@ def install_system_conffile(source: Path, prefix: Path | None = None) -> SystemC
     """
     resolved_prefix = fhs.default_prefix() if prefix is None else prefix
     # The _require_root_for_real_prefix IDIOM (prefix-aware gate), with THIS
-    # verb's own canonical spelling in the hint — the install gate's frozen
-    # message names `service install --system`, wrong for a config verb.
+    # verb's own canonical spelling in the hint — the install gate's message
+    # names `vesma system install`, wrong for a config verb.
     if resolved_prefix == Path(os.sep) and os.geteuid() != 0:
         raise SystemInstallError(
             f"the system conffile lives in the real FHS tree — run it as"
@@ -1111,7 +1113,7 @@ def _ensure_venv_revision(
                 raise SystemInstallError(
                     f"venv drift right after materialization ({rev_dir}): "
                     f"{dist}=={expected} expected, freeze reports {actual!r} — "
-                    "fix: re-run `sudo vesma service install --system`"
+                    "fix: re-run `sudo vesma system install`"
                 )
         report.append(
             f"venv revision materialized: {rev_dir} (uv venv, no pip;"
@@ -1325,7 +1327,7 @@ def uninstall_system(prefix: Path | None = None, *, dry_run: bool = False) -> Sy
             "install-state ↔ filesystem drift — refusing the exact inverse"
             f" ({len(drift)} problem(s)); first: {drift[0]} — inventory with"
             " `vesma doctor`, fix or adopt the drift, then re-run"
-            " `sudo vesma service uninstall --system`"
+            " `sudo vesma system uninstall`"
         )
 
     # Phase 2 — mutate, reverse creation order. The adopted conffile is
@@ -1449,7 +1451,7 @@ def _refuse_foreign(
             f" {path}) is NOT in the install-state — refusing to remove"
             " the directory (fix: inventory with `vesma doctor`, remove"
             " or adopt the foreign file, then re-run"
-            " `sudo vesma service uninstall --system`)"
+            " `sudo vesma system uninstall`)"
         )
 
 

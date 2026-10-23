@@ -5,7 +5,7 @@
 # package.json (pi-mnemos, frozen) is NOT touched by this pipeline.
 #
 # The package is a metadata/marker dist (README + manifest; no JS code):
-# it feeds the npm version badge and the `vesma update` npm leg. The
+# it feeds the npm version badge and the `vesma self-update` npm leg. The
 # published 5.5.0 composition is package.json + README.md — this script
 # reproduces exactly that from the checkout (the published tarball also
 # carried a stray pack-preview.tgz from the manual flow; that accident

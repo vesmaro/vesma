@@ -1025,9 +1025,7 @@ def _dr19() -> Finding:
     severity = Severity.WARN if (user_sev is Severity.WARN or system_warn) else Severity.OK
     detail = user_detail + ("; " + "; ".join(system_notes) if system_notes else "")
     fix = user_fix or (
-        "sudo vesma service install --system (re-stamps the system profile)"
-        if system_warn
-        else None
+        "sudo vesma system install (re-stamps the system profile)" if system_warn else None
     )
     return Finding("DR-19", title, severity, detail, fix)
 
@@ -1440,7 +1438,7 @@ def _dr16() -> Finding:
             Severity.FAIL,
             "; ".join(hard) + (f"; leftover revision(s): {leftovers[:3]}" if leftovers else ""),
             "re-materialize and re-point the revisions:"
-            " `sudo vesma service install --system` (an escaping slot must"
+            " `sudo vesma system install` (an escaping slot must"
             " be removed by hand first)",
         )
     if leftovers:
@@ -1450,8 +1448,7 @@ def _dr16() -> Finding:
             Severity.WARN,
             "leftover revision dir(s) no symlink points at (an update"
             " rollback left them for diagnosis?): " + ", ".join(leftovers[:5]),
-            "after diagnosis remove the leftover revision(s), or re-run"
-            " `sudo vesma service update --system`",
+            "after diagnosis remove the leftover revision(s), or re-run `sudo vesma system update`",
         )
     return Finding(
         "DR-16",
@@ -1498,7 +1495,7 @@ def _dr18() -> Finding:
             Severity.FAIL,
             f"the system unit is MISSING at {unit_path} (a recorded"
             " artifact) — the supervisor has no unit to run from",
-            "sudo vesma service install --system",
+            "sudo vesma system install",
         )
     expected = regenerate_system_unit()
     if text != expected:
@@ -1509,7 +1506,7 @@ def _dr18() -> Finding:
             f"{unit_path} differs from the regenerated unit (hand edit or"
             " generator upgrade) — note: run `vesma doctor` from the engine"
             " venv, a dev-checkout interpreter will not match",
-            "sudo vesma service install --system",
+            "sudo vesma system install",
         )
     return Finding(
         "DR-18",

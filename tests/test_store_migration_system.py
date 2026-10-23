@@ -233,7 +233,7 @@ def test_c1_no_install_state_refuses_typed_with_remediation(
     result = runner.invoke(app, ["migrate-store", "--from", str(home), "--target", "system"])
     assert result.exit_code == 10, _output(result)
     text = _output(result)
-    assert "vesma service install --system" in text
+    assert "vesma system install" in text
     assert "NEVER" in text or "never" in text  # no auto-install (C1)
     # nothing was written anywhere (no snapshot next to the source)
     assert not list((tmp_path).glob("migrate-snapshot-*"))
