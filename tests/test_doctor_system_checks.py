@@ -64,7 +64,7 @@ def _stub_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     with executable sh-stubs (the DR-16/DR-18 legs read, not execute)."""
 
     def fake_materialize(
-        venv_dir: Path, requirements: tuple[str, ...], mode: int
+        venv_dir: Path, requirements: tuple[str, ...], mode: int, **_kwargs: object
     ) -> dict[str, str]:
         version = next(
             line.split("==", 1)[1] for line in requirements if line.startswith("vesma==")

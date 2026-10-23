@@ -156,6 +156,8 @@ __all__ = [
     "CANONICAL_PROJECT_SLUG",
     "LEGACY_DB_NAME",
     "LEGACY_PROJECT_SLUG",
+    "MIGRATE_CONFFILE_HEADER",
+    "MIGRATION_MARKER_NAME",
     "NEW_TAG_PREFIX",
     "OLD_TAG_PREFIX",
     "SNAPSHOT_DIR_PREFIX",
@@ -207,6 +209,12 @@ SOURCE_SOCKET: Path = Path("/run/mnemos/core.sock")
 USER_TARGET: str = "user"
 SYSTEM_TARGET: str = "system"
 _MARKER_FILE_NAME = ".migrate-store-applied.json"
+#: Public names for the cross-module contract with the system
+#: uninstaller (F9): the uninstall adopt evidence reads the marker and
+#: recognizes the provenance header — ONE constant each, never a second
+#: literal drifting elsewhere.
+MIGRATION_MARKER_NAME = _MARKER_FILE_NAME
+MIGRATE_CONFFILE_HEADER = "# written by vesma migrate-store"
 _SQLITE_HEADER = b"SQLite format 3\x00"
 _QUIESCE_WAL_SAMPLE_SECONDS = 0.7
 _SIDECAR_SUFFIXES = ("-wal", "-shm")
@@ -2839,6 +2847,19 @@ def _run_system_migration(
     # Phase 3 — config leg (C3 disposition decided at publish, C10 pins).
     emit("[system migrate] 3/7 config leg")
     config_staged, _config_plan = _migrate_config_system(layout, data_root, plan.staging_dir)
+    # F9 adopt evidence: the published config gets the provenance header
+    # (stamped BEFORE hashing), and the marker gains the conffile record
+    # (canonical path + sha as published) plus the recoverability
+    # pointers — pre-publish, into staging, so rollback/parity semantics
+    # are untouched.
+    conffile_bytes = _stamp_conffile_provenance(config_staged)
+    _record_conffile_evidence(
+        plan.staging_dir / "data",
+        config_target,
+        hashlib.sha256(conffile_bytes).hexdigest(),
+        source_home=plan.source_home,
+        snapshot_dir=plan.snapshot_dir,
+    )
     warnings.extend(plan.precondition_lines)
     warnings.extend(plan.secret_path_warnings)
 
@@ -2995,3 +3016,48 @@ def _config_publish_target(config_target: Path) -> Path:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         return config_target.with_name(f"{config_target.name}{_MIGRATED_CONFIG_INFIX}{stamp}")
     return config_target
+
+
+def _stamp_conffile_provenance(config_staged: Path) -> bytes:
+    """Prepend the mover provenance header to the staged system conffile
+    (F9) and return the final bytes. A YAML comment — ``yaml.safe_load``
+    sees the same document with or without it; the stamp happens BEFORE
+    hashing, so the marker's sha256 covers exactly the bytes that land on
+    disk (the cross-fs publish copies them verbatim)."""
+    stamp = datetime.now(UTC).isoformat(timespec="seconds")
+    body = config_staged.read_bytes()
+    final = f"{MIGRATE_CONFFILE_HEADER} {stamp}\n".encode() + body
+    config_staged.write_bytes(final)
+    _harden_file(config_staged)
+    return final
+
+
+def _record_conffile_evidence(
+    staged_data: Path,
+    config_target: Path,
+    conffile_sha256: str,
+    *,
+    source_home: Path,
+    snapshot_dir: Path,
+) -> None:
+    """Give the preservation marker its conffile record (F9): the
+    CANONICAL shared_config path + the sha of the bytes AS PUBLISHED,
+    plus the recoverability pointers (source home + snapshot) the
+    uninstaller reports on adopt. Written INTO STAGING pre-publish — the
+    C5 rollback semantics and the C8 parity (which excludes the marker)
+    stay intact; the marker rides the ordinary publish into the data
+    root. The install-state is NEVER touched here (C12 verbatim)."""
+    marker = _marker_file(staged_data)
+    try:
+        doc = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise VerificationError(
+            f"the migration marker at {marker} cannot be read back for the "
+            f"conffile record ({exc}) — refusing to publish without the "
+            "uninstall adopt evidence (F9)"
+        ) from exc
+    doc["conffile"] = {"path": str(config_target), "sha256": conffile_sha256}
+    doc["source_home"] = str(source_home)
+    doc["snapshot_dir"] = str(snapshot_dir)
+    marker.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+    _harden_file(marker)

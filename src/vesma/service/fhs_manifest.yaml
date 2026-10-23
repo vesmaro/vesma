@@ -105,6 +105,24 @@ paths:
     owner: root
     group: root
 
+  # The uv-managed toolchain pythons (installer wave 2026-10-23): the
+  # canonical, HOME-independent location the installer's venv
+  # materialization resolves/downloads interpreters into
+  # (UV_PYTHON_INSTALL_DIR). Never under $HOME (sudo's HOME=/root is
+  # 0700 — the service account could not execute the engine), never
+  # inside the venv revision trees (C1 store-content cleanliness),
+  # never the data plane. uv populates it as a side effect of the
+  # materialize leg, so the installer owns the whole tree (rmtree on
+  # uninstall; re-materialized on the next install).
+  - role: toolchain_pythons
+    system_path: /usr/lib/vesma/pythons
+    user_path: null              # user profile: uv resolves its own install dir
+    kind: dir
+    mode: "0755"
+    owner: root
+    group: root
+    flags: [installer-materialized]
+
   - role: venv_engine_revision
     system_path: /usr/lib/vesma/venv-<rev>
     user_path: null              # user profile: one engine venv, no revisions

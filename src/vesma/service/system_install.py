@@ -57,6 +57,8 @@ import contextlib
 import dataclasses
 import datetime
 import grp
+import hashlib
+import json
 import logging
 import os
 import pwd
@@ -184,6 +186,26 @@ class _Ownership:
         self.apply = apply_ownership
         self._uids: dict[str, int] = {}
         self._gids: dict[str, int] = {}
+        # F2: the installer reports HERE what step 0 (the sysusers leg)
+        # already did, so a resolution failure can never hand out a
+        # remediation that points at a step that has not run.
+        self.sysusers_path: Path | None = None
+        self.sysusers_status: str | None = None
+
+    def _account_hint(self) -> str:
+        if self.sysusers_path is None:
+            return (
+                "the sysusers.d fragment must be applied first"
+                " (fix: re-run `sudo vesma service install --system`, it"
+                " applies the fragment via systemd-sysusers)"
+            )
+        return (
+            "the sysusers.d fragment was written and applied at the START"
+            f" of this run (systemd-sysusers: {self.sysusers_status}) —"
+            " fix the reported systemd-sysusers failure (or reboot: the"
+            f" fragment at {self.sysusers_path} applies on boot), then"
+            " re-run `sudo vesma service install --system`"
+        )
 
     def uid(self, name: str | None) -> int | None:
         if name is None:
@@ -193,10 +215,7 @@ class _Ownership:
                 self._uids[name] = pwd.getpwnam(name).pw_uid
             except KeyError as exc:
                 raise SystemInstallError(
-                    f"system account {name!r} does not exist — the sysusers.d"
-                    " fragment must be applied first"
-                    " (fix: re-run `sudo vesma service install --system`, it"
-                    " applies the fragment via systemd-sysusers)"
+                    f"system account {name!r} does not exist — {self._account_hint()}"
                 ) from exc
         return self._uids[name]
 
@@ -208,9 +227,7 @@ class _Ownership:
                 self._gids[name] = grp.getgrnam(name).gr_gid
             except KeyError as exc:
                 raise SystemInstallError(
-                    f"system group {name!r} does not exist — the sysusers.d"
-                    " fragment must be applied first"
-                    " (fix: re-run `sudo vesma service install --system`)"
+                    f"system group {name!r} does not exist — {self._account_hint()}"
                 ) from exc
         return self._gids[name]
 
@@ -277,7 +294,7 @@ def _uv_path() -> str | None:
     return shutil.which("uv")
 
 
-def _run_uv(args: list[str], *, timeout: int) -> str:
+def _run_uv(args: list[str], *, timeout: int, env: dict[str, str] | None = None) -> str:
     uv = _uv_path()
     if uv is None:
         raise SystemInstallError(
@@ -295,6 +312,7 @@ def _run_uv(args: list[str], *, timeout: int) -> str:
             errors="replace",
             timeout=timeout,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise SystemInstallError(f"uv {' '.join(args[:2])} timed out") from exc
@@ -348,20 +366,29 @@ def _systemctl_system(args: list[str]) -> str:
     return "ok"
 
 
-def _materialize_venv(venv_dir: Path, requirements: tuple[str, ...], mode: int) -> dict[str, str]:
+def _materialize_venv(
+    venv_dir: Path,
+    requirements: tuple[str, ...],
+    mode: int,
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, str]:
     """``uv venv`` + exact pins via ``uv pip`` — the SY-08 leg.
 
     ``mode`` comes from the FHS manifest entry (0755 root:root for the
     system venv trees, specs/layout/v2 §3.4) and is enforced BEFORE any
     wheel content lands — never a hardcoded literal, never group- or
-    world-writable. The created venv has NO pip (uv default): pip-as-root
-    is not merely avoided, it does not exist in the tree. Returns the
-    normalized freeze map of the fresh venv. Broken/incomplete revision
-    dirs are rebuilt from scratch by the caller.
+    world-writable. ``env`` carries UV_PYTHON_INSTALL_DIR for the run
+    (the canonical toolchain-pythons role — a managed python downloaded
+    under sudo's $HOME would be 0700 root and unexecutable by the
+    service account). The created venv has NO pip (uv default):
+    pip-as-root is not merely avoided, it does not exist in the tree.
+    Returns the normalized freeze map of the fresh venv. Broken/incomplete
+    revision dirs are rebuilt from scratch by the caller.
     """
     if venv_dir.exists():
         shutil.rmtree(venv_dir)
-    _run_uv(["venv", str(venv_dir)], timeout=300)
+    _run_uv(["venv", str(venv_dir)], timeout=300, env=env)
     os.chmod(venv_dir, mode)
     if requirements:
         _run_uv(
@@ -373,10 +400,12 @@ def _materialize_venv(venv_dir: Path, requirements: tuple[str, ...], mode: int) 
                 *requirements,
             ],
             timeout=1800,
+            env=env,
         )
     freeze_out = _run_uv(
         ["pip", "freeze", "--python", str(venv_dir / "bin" / "python")],
         timeout=300,
+        env=env,
     )
     frozen: dict[str, str] = {}
     for line in freeze_out.splitlines():
@@ -637,8 +666,30 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         plan(role, path, remove_mode="file").status = "created"
         return path
 
-    # 1. Data plane first — the install-state lives inside it (§3.13).
+    # 0. Service account FIRST (SY-04; installer wave 2026-10-23, F2):
+    #    the sysusers fragment is written and applied BEFORE the first
+    #    ownership application that resolves the vesma account — on a
+    #    fresh machine the old order (fragment at step 3, vesma chown at
+    #    step 1) was unsolvable: the remediation text pointed at a step
+    #    that had not run yet. The fragment write itself needs only
+    #    root:root, never the vesma account.
     data_root = fhs.system_data_root(resolved_prefix)
+    sysusers_path = fhs.system_sysusers_path(resolved_prefix)
+    fragment = _SYSUSERS_TEMPLATE.format(home=str(data_root))
+    existed = sysusers_path.exists()
+    write_file("sysusers_fragment", sysusers_path, fragment)
+    report.append(
+        f"sysusers fragment: {sysusers_path}"
+        + (" (unchanged — the account is not duplicated on re-install)" if existed else "")
+    )
+    sysusers_status = _apply_sysusers(sysusers_path)
+    report.append(f"systemd-sysusers: {sysusers_status}")
+    ownership.sysusers_path = sysusers_path
+    ownership.sysusers_status = sysusers_status
+
+    # 1. Data plane next — the install-state lives inside it (§3.13);
+    #    every vesma chown from here on resolves against an account the
+    #    step above just made sure exists.
     make_dir("data_root", data_root, preserve=True)
     history = fhs.resolve_system_path(manifest.entry("supervisor_history"), resolved_prefix)
     make_dir("supervisor_history", history, preserve=True)
@@ -647,8 +698,12 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
 
     # 2. The PLAN is written before any further mutation (§3.13: every
     #    artifact recorded at/before creation — a crash leaves a
-    #    complete plan, and uninstall can reason about it). The state
-    #    file's own record joins the plan.
+    #    complete plan, and uninstall can reason about it). The two
+    #    mutations that precede it are the crash-tolerant ones: the
+    #    sysusers fragment (step 0 — it must precede the first vesma
+    #    resolution, F2) and the data-plane dirs (the state file lives
+    #    inside the data root). The state file's own record joins the
+    #    plan.
     state_entry = manifest.entry("install_state")
     state_artifact = StateArtifact(
         role="install_state",
@@ -664,19 +719,7 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     state_doc["artifacts"] = [a.to_dict() for a in artifacts]
     _write_state(resolved_prefix, state_doc, ownership)
 
-    # 3. Service account via sysusers.d (§3.13; SY-04) — static content,
-    #    idempotent by construction.
-    sysusers_path = fhs.system_sysusers_path(resolved_prefix)
-    fragment = _SYSUSERS_TEMPLATE.format(home=str(data_root))
-    existed = sysusers_path.exists()
-    write_file("sysusers_fragment", sysusers_path, fragment)
-    report.append(
-        f"sysusers fragment: {sysusers_path}"
-        + (" (unchanged — the account is not duplicated on re-install)" if existed else "")
-    )
-    report.append(f"systemd-sysusers: {_apply_sysusers(sysusers_path)}")
-
-    # 4. Config plane (root-owned, group vesma reads — SY-03).
+    # 3. Config plane (root-owned, group vesma reads — SY-03).
     config_root = fhs.system_config_root(resolved_prefix)
     make_dir("config_root", config_root)
     make_dir("manifest_dir", fhs.system_components_dir(resolved_prefix))
@@ -686,8 +729,16 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         " operator-provisioned and is NOT seeded by the installer"
     )
 
-    # 5. Code plane + engine venv revision (SY-07 groundwork, SY-08).
+    # 4. Code plane + toolchain + engine venv revision (SY-07
+    #    groundwork, SY-08; F3 toolchain slot).
     make_dir("code_root", fhs.resolve_system_path(manifest.entry("code_root"), resolved_prefix))
+    toolchain_dir = fhs.system_toolchain_pythons(resolved_prefix)
+    make_dir("toolchain_pythons", toolchain_dir, remove_mode="rmtree")
+    # The materialize leg resolves/downloads interpreters into the
+    # canonical toolchain slot — never sudo's $HOME/.local/share/uv
+    # (0700 root: the service account could not execute the engine) and
+    # never a path inside the revision trees (C1 freshness).
+    uv_env = {**os.environ, "UV_PYTHON_INSTALL_DIR": str(toolchain_dir)}
     make_dir("venv_component_root", fhs.system_venvs_root(resolved_prefix))
     # Revision id = the engine version for THIS wave (chairman
     # ratification 2026-10-20): same build == same content-id, which is
@@ -707,10 +758,11 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         report,
         ownership,
         done_marker="bin/vesma",
+        uv_env=uv_env,
     )
     _ensure_venv_symlink("venv_engine", engine_symlink, engine_rev_dir, plan, report)
 
-    # 6. Bundled components: manifests (SY-05 conffile discipline), data
+    # 5. Bundled components: manifests (SY-05 conffile discipline), data
     #    dirs, python children's venvs.
     components_dir = fhs.system_components_dir(resolved_prefix)
     for name in user_install.BUNDLED_COMPONENTS:
@@ -796,6 +848,7 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
             report,
             ownership,
             done_marker="bin/python",
+            uv_env=uv_env,
         )
         symlink = fhs.system_venv_component(comp.name, resolved_prefix)
         _ensure_venv_symlink("venv_component", symlink, rev_dir, plan, report)
@@ -808,10 +861,10 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         ownership.apply_to(lock_path, "vesma", "vesma")
         report.append(f"lock: {lock_path}")
 
-    # 7. Distro static (read-only at runtime; content ships later waves).
+    # 6. Distro static (read-only at runtime; content ships later waves).
     make_dir("distro_static", fhs.system_static_root(resolved_prefix))
 
-    # 8. The system unit (§3.4; coexists with the user unit by scope).
+    # 7. The system unit (§3.4; coexists with the user unit by scope).
     #    The text comes from regenerate_system_unit — the ONE source the
     #    doctor's DR-18 leg re-reads, so install and doctor can never
     #    disagree on the canon.
@@ -821,7 +874,7 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     report.append(f"unit: {unit_path} (0644, generated — do not edit)")
     report.append(f"systemctl daemon-reload: {_systemctl_system(['daemon-reload'])}")
 
-    # 9. Final state reconcile (statuses final; the exact-inverse source).
+    # 8. Final state reconcile (statuses final; the exact-inverse source).
     state_doc["artifacts"] = [a.to_dict() for a in artifacts]
     _write_state(resolved_prefix, state_doc, ownership)
     report.append(f"install-state: {_state_path(resolved_prefix)} (profile: system)")
@@ -852,13 +905,16 @@ def _ensure_venv_revision(
     ownership: _Ownership,
     *,
     done_marker: str,
+    uv_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Materialize one venv revision dir (SY-08) and record it; returns
     the normalized freeze map of the (fresh or reused) revision.
 
     Idempotent: the current build's revision dir is reused when its
     done-marker exists; an incomplete one (interrupted install) is
-    rebuilt from scratch — the installer owns its own revision trees."""
+    rebuilt from scratch — the installer owns its own revision trees.
+    ``uv_env`` (UV_PYTHON_INSTALL_DIR) rides only the materialize leg —
+    a reused healthy revision resolves no interpreters."""
     entry = fhs.load_fhs_manifest().entry(role)
     healthy = (rev_dir / done_marker).exists()
     frozen: dict[str, str] = {}
@@ -866,7 +922,7 @@ def _ensure_venv_revision(
         os.chmod(rev_dir, entry.mode)
         report.append(f"venv revision (current): {rev_dir}")
     else:
-        frozen = _materialize_venv(rev_dir, requirements, entry.mode)
+        frozen = _materialize_venv(rev_dir, requirements, entry.mode, env=uv_env)
         os.chmod(rev_dir, entry.mode)
         for line in requirements:
             dist, _, expected = line.partition("==")
@@ -911,6 +967,93 @@ def _ensure_venv_symlink(
 # ── Uninstall (SY-09 — exact inverse) ─────────────────────────────────
 
 
+@dataclasses.dataclass(frozen=True)
+class _AdoptEvidence:
+    """The migration marker's conffile record + recoverability pointers
+    (ADR-0047 F9: the ONLY evidence that lets uninstall delete a conffile
+    it did not record)."""
+
+    marker_path: str
+    sha256: str
+    source_home: str | None
+    snapshot_dir: str | None
+
+
+def _read_adopt_evidence(prefix: Path) -> _AdoptEvidence | None:
+    """Parse the mover's preservation marker in the data root.
+
+    ``None`` when the marker is absent, unreadable, malformed, or predates
+    the conffile record (old markers adopt NOTHING — no guessing, F9 §4).
+    The store_migration import is lazy: that module lazily imports THIS
+    one (C1 preconditions), so a module-level edge would be circular.
+    """
+    from vesma.store_migration import MIGRATION_MARKER_NAME
+
+    marker = fhs.system_data_root(prefix) / MIGRATION_MARKER_NAME
+    try:
+        doc = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    record = doc.get("conffile")
+    if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+        return None
+    if not isinstance(record.get("sha256"), str):
+        return None
+    return _AdoptEvidence(
+        marker_path=str(record["path"]),
+        sha256=str(record["sha256"]),
+        source_home=str(doc["source_home"]) if isinstance(doc.get("source_home"), str) else None,
+        snapshot_dir=str(doc["snapshot_dir"]) if isinstance(doc.get("snapshot_dir"), str) else None,
+    )
+
+
+def _adopted_migrated_conffile(path: Path, state: dict[str, Any] | None, *, prefix: Path) -> bool:
+    """TRUE iff uninstall may adopt ``path`` as mover-published bytes.
+
+    ALL five evidence checks must hold (F9; ArchCom-ratified 2026-10-23):
+    (a) the path IS the fhs-resolved shared_config role — zero literals,
+    the adopt scope never widens by so much as a byte;
+    (b) the install-state exists and says ``profile: system``;
+    (c) the migration marker in the data root carries a conffile record
+    naming exactly this path (old markers without the record → False →
+    the current loud refusal);
+    (d) the file carries the mover's provenance header (operator-written
+    bytes never carry it);
+    (e) sha256 of the on-disk bytes equals the marker's recorded sha.
+    Small, single-purpose, AND-composed — the security shape: no check
+    can be skipped by an earlier one succeeding.
+    """
+    from vesma.store_migration import MIGRATE_CONFFILE_HEADER
+
+    if state is None or state.get("profile") != "system":  # (b)
+        return False
+    if path != fhs.system_config_path(prefix):  # (a)
+        return False
+    evidence = _read_adopt_evidence(prefix)  # (c)
+    if evidence is None or evidence.marker_path != str(path):
+        return False
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            first_line = handle.readline()
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not first_line.startswith(MIGRATE_CONFFILE_HEADER):  # (d)
+        return False
+    return _sha256_of(path) == evidence.sha256  # (e)
+
+
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
     """Exact-inverse uninstall: recorded artifacts only, reverse creation
     order, loud refusal on drift or foreign content (§3.13).
@@ -945,6 +1088,18 @@ def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
 
     recorded_paths = {a.path for a in artifacts}
 
+    # The F9 adopt decision is made ONCE, before validation: the shared
+    # config is adoptable ONLY when every evidence check holds. The
+    # adopted row stays IN-MEMORY for this run — the install-state is
+    # never written by uninstall (consumer, not writer; C12 verbatim).
+    shared_config = fhs.system_config_path(resolved_prefix)
+    adopt_evidence = _read_adopt_evidence(resolved_prefix)
+    adoptable: set[str] = set()
+    if shared_config.is_file() and _adopted_migrated_conffile(
+        shared_config, doc, prefix=resolved_prefix
+    ):
+        adoptable.add(str(shared_config))
+
     # Phase 1 — full validation, zero mutation.
     drift: list[str] = []
     for artifact in reversed(artifacts):
@@ -958,7 +1113,26 @@ def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
             continue
         try:
             _check_type(artifact, path)
-            _refuse_foreign(artifact, path, recorded_paths)
+            _refuse_foreign(artifact, path, recorded_paths, adoptable)
+        except SystemInstallError as exc:
+            drift.append(str(exc))
+    if adoptable:
+        # The adopted conffile follows the recorded-artifact discipline
+        # (kind=file): type drift on it refuses exactly like a recorded
+        # file's would.
+        config_entry = fhs.load_fhs_manifest().entry("shared_config")
+        adopt_artifact = StateArtifact(
+            role="shared_config_adopted",
+            kind="file",
+            path=str(shared_config),
+            mode=config_entry.mode,
+            owner=config_entry.owner,
+            group=config_entry.group,
+            status="kept",
+            remove_mode="file",
+        )
+        try:
+            _check_type(adopt_artifact, shared_config)
         except SystemInstallError as exc:
             drift.append(str(exc))
     if drift:
@@ -969,12 +1143,39 @@ def uninstall_system(prefix: Path | None = None) -> SystemUninstallResult:
             " `sudo vesma service uninstall --system`"
         )
 
-    # Phase 2 — mutate, reverse creation order.
+    # Phase 2 — mutate, reverse creation order. The adopted conffile is
+    # the NEWEST artifact (the mover published it after the install), so
+    # its unlink leads the mutations — and re-hashes the evidence
+    # against the FRESH bytes IMMEDIATELY before the unlink, BEFORE any
+    # phase-2 side effect (the two-phase discipline, symmetric to the
+    # mover's C7 double quiesce): evidence that went stale between
+    # validate and mutate refuses the run with NOTHING touched.
+    if (
+        adoptable
+        and adopt_evidence is not None
+        and _sha256_of(shared_config) != adopt_evidence.sha256
+    ):
+        raise SystemInstallError(
+            f"the adopted conffile {shared_config} changed between"
+            " validation and removal (sha256 mismatch) — refusing"
+            " (post-migration edits are operator data, never silently"
+            " deleted)"
+        )
     lines: list[str] = [
         "systemctl disable --now vesma.service: "
         + _systemctl_system(["disable", "--now", "vesma.service"])
     ]
     removed = 0
+    if adoptable and adopt_evidence is not None:
+        shared_config.unlink()
+        removed += 1
+        lines.append(
+            f"adopted-from-migrate-store: {shared_config} (unlinked —"
+            " mover-published bytes, provenance header + sha256 verified;"
+            " content recoverable from the migration snapshot: "
+            f"{adopt_evidence.snapshot_dir or 'not recorded'}, source"
+            f" home: {adopt_evidence.source_home or 'not recorded'})"
+        )
     for artifact in reversed(artifacts):
         path = Path(artifact.path)
         if artifact.preserve or artifact.remove_mode == "skip":
@@ -1025,21 +1226,24 @@ def _check_type(artifact: StateArtifact, path: Path) -> None:
         )
 
 
-def _refuse_foreign(artifact: StateArtifact, path: Path, recorded: set[str]) -> None:
-    """A strict dir must contain ONLY recorded artifacts before its
-    rmdir/rmtree — foreign content = loud refusal (SY-09), never a
-    silent skip."""
+def _refuse_foreign(
+    artifact: StateArtifact, path: Path, recorded: set[str], adopted: set[str]
+) -> None:
+    """A strict dir must contain ONLY recorded artifacts (or the ONE
+    evidence-checked adopted conffile, F9) before its rmdir/rmtree —
+    foreign content = loud refusal (SY-09), never a silent skip."""
     if artifact.remove_mode != "strict-dir":
         return
     for child in sorted(path.iterdir()):
-        if str(child) not in recorded:
-            raise SystemInstallError(
-                f"foreign content in the recorded tree: {child} (inside"
-                f" {path}) is NOT in the install-state — refusing to remove"
-                " the directory (fix: inventory with `vesma doctor`, remove"
-                " or adopt the foreign file, then re-run"
-                " `sudo vesma service uninstall --system`)"
-            )
+        if str(child) in recorded or str(child) in adopted:
+            continue
+        raise SystemInstallError(
+            f"foreign content in the recorded tree: {child} (inside"
+            f" {path}) is NOT in the install-state — refusing to remove"
+            " the directory (fix: inventory with `vesma doctor`, remove"
+            " or adopt the foreign file, then re-run"
+            " `sudo vesma service uninstall --system`)"
+        )
 
 
 __all__ = [
