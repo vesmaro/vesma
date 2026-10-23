@@ -1,18 +1,23 @@
-"""Top-level component verbs (wave 61 component UX) — verb x component matrix.
+"""Component verbs (wave 61 → CLI topology v2) — verb x component matrix.
 
-The unified surface: ``vesma install|status|start|stop|restart|logs|update|
-configs [NAME]``. Covered here, per the wave acceptance matrix:
+The unified surface: ``vesma service components
+install|update|configs|status`` + ``vesma service start|stop|restart|logs``
+(the former top-level spellings are hidden deprecated aliases — pinned in
+test_cli_topology_v2.py). Covered here, per the wave acceptance matrix:
 
 * bare calls never bulk-mutate (install lists; start/stop/restart/update
-  refuse with the component list + the --all hint; logs is a usage error);
+  refuse with the component list + the --all hint);
 * NAME semantics: bundled manifests install/regenerate from the release
   bundle behind a one-time ``.pre-regen.bak`` backup, operator-authored
   manifests are validated but NEVER rewritten ("managed by operator"),
   unknown names refuse with the installed list;
-* ``logs`` empty output says so explicitly with the source named (the P2
-  cli-audit 2026-10-08 finding: `service logs` printed NOTHING);
-* collision resolution: ``vesma self-update`` / ``vesma task-logs`` are
-  live aliases, and the legacy self-update flag forms still delegate.
+* ``service logs`` empty output says so explicitly with the source named
+  (the P2 cli-audit 2026-10-08 finding) and log lines render as DATA
+  (Text(), never markup);
+* collision resolution: the application self-update family lives on
+  ``vesma self-update``, the pipeline-trace viewer on ``vesma logs``
+  (``task-logs`` = hidden alias), and the legacy self-update flag forms
+  still delegate from the top-level ``update`` alias.
 
 Test discipline: XDG roots isolated into tmp dirs, the supervisor is
 NEVER contacted live — lifecycle verbs run against a bogus socket path
@@ -198,7 +203,7 @@ class TestStatus:
         )
 
     def test_json_shape(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["status", "--json"])
+        result = runner.invoke(app, ["service", "components", "status", "--json"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["supervisor"]["reachable"] is False
@@ -265,7 +270,7 @@ class TestStatus:
             )
 
         monkeypatch.setattr("vesma.cli.components._open_client", raising_client)
-        result = runner.invoke(app, ["status", "--json"])
+        result = runner.invoke(app, ["service", "components", "status", "--json"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["supervisor"]["reachable"] is False
@@ -293,7 +298,7 @@ class TestStatus:
                 pass
 
         monkeypatch.setattr("vesma.cli.components._open_client", lambda socket: FakeClient())
-        result = runner.invoke(app, ["status", "--json"])
+        result = runner.invoke(app, ["service", "components", "status", "--json"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["supervisor"]["reachable"] is True
@@ -392,15 +397,17 @@ class TestLifecycleBulk:
         assert order.index("a") < order.index("b") < order.index("c") < order.index("d")
 
 
-# ── logs ──────────────────────────────────────────────────────────────
+# ── logs (the home since topology v2 wave B: `vesma service logs`) ────
 
 
 class TestLogs:
-    def test_bare_is_usage_error_with_list(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["logs"])
+    def test_bare_is_a_click_usage_error(self, components_home: Path) -> None:
+        """`vesma service logs` keeps its component argument REQUIRED — bare
+        invocation stays the parser's usage error (exit 2), unchanged by the
+        topology v2 wave."""
+        result = runner.invoke(app, ["service", "logs"])
         assert result.exit_code == 2, result.output
-        assert "board, mesh, metrics" in result.output
-        assert "task-logs" in result.output, "the alias hint must name the old surface"
+        assert "Missing argument" in result.output
 
     def test_empty_output_is_explicit(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -408,8 +415,8 @@ class TestLogs:
         def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> list[str]:
             return []
 
-        monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
-        result = runner.invoke(app, ["logs", "board"])
+        monkeypatch.setattr("vesma.cli.service._with_client", fake_with_client)
+        result = runner.invoke(app, ["service", "logs", "board"])
         assert result.exit_code == 0, result.output
         assert "no log lines available for board" in result.output
         assert "source:" in result.output, "the empty message must name the source"
@@ -420,40 +427,112 @@ class TestLogs:
         def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> list[str]:
             return ["board line one", "board line two"]
 
-        monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
-        result = runner.invoke(app, ["logs", "board", "--tail", "5"])
+        monkeypatch.setattr("vesma.cli.service._with_client", fake_with_client)
+        result = runner.invoke(app, ["service", "logs", "board", "--tail", "5"])
         assert result.exit_code == 0, result.output
         assert "board line one" in result.output and "board line two" in result.output
-
-    def test_legacy_trace_flags_delegate(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded: dict[str, object] = {}
-
-        def fake_logs_cmd(**kwargs: object) -> None:
-            recorded.update(kwargs)
-
-        monkeypatch.setattr("vesma.cli.components.logs_cmd", fake_logs_cmd)
-        result = runner.invoke(app, ["logs", "--task", "cluster", "--limit", "7"])
-        assert result.exit_code == 0, result.output
-        assert recorded.get("task") == "cluster" and recorded.get("limit") == 7
-        assert "task-logs" in result.output, "the deprecation hint must name the alias"
 
     def test_log_lines_render_as_data_not_markup(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Security F1 (cascade): a component's log text is DATA — a child
-        emitting rich markup must not style the trusted CLI."""
+        """Security F1 (cascade, ported by wave B): a component's log text is
+        DATA — a child emitting rich markup must not style the trusted CLI."""
 
         def fake_with_client(socket: Path | None, action: Callable[[object], object]) -> list[str]:
             return ["[red]injected[/red] plain line"]
 
-        monkeypatch.setattr("vesma.cli.components._with_client", fake_with_client)
-        result = runner.invoke(app, ["logs", "board"])
+        monkeypatch.setattr("vesma.cli.service._with_client", fake_with_client)
+        result = runner.invoke(app, ["service", "logs", "board"])
         assert result.exit_code == 0, result.output
         assert "[red]injected[/red]" in result.output, (
             "markup must reach the terminal verbatim (Text), not be interpreted"
         )
+
+    def test_trace_viewer_flags_are_native_on_logs(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Topology v2 wave A: `vesma logs` IS the trace viewer now — its
+        --task/--limit flags are first-class (no deprecation hint), and the
+        SQLiteStore seam receives them unchanged."""
+        cfg = components_home / "vesma.yaml"
+        cfg.write_text(
+            f"vesma:\n  vault_path: {components_home}/vault\n"
+            f"  data_dir: {components_home}/data\n  db_name: logs-test.db\n"
+            "embedding:\n  provider: nano\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+        recorded: dict[str, object] = {}
+
+        import vesma.cli.logs as logs_cli
+
+        class FakeStore:
+            def __init__(self, path: object) -> None:
+                pass
+
+            def list_traces(self, **kw: object) -> list[object]:
+                recorded.update(kw)
+                return []
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(logs_cli, "SQLiteStore", FakeStore)
+        result = runner.invoke(app, ["logs", "--task", "cluster", "--limit", "7"])
+        assert result.exit_code == 0, result.output
+        assert recorded.get("task_label") == "cluster" and recorded.get("limit") == 7
+        assert result.stderr == "", "native flags carry no deprecation hint"
+
+    def test_logs_positional_component_redirects(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`vesma logs NAME` (the wave-61 component habit): loud stderr
+        redirect to `vesma service logs NAME` AND the trace view still runs —
+        no silent substitution."""
+        cfg = components_home / "vesma.yaml"
+        cfg.write_text(
+            f"vesma:\n  vault_path: {components_home}/vault\n"
+            f"  data_dir: {components_home}/data\n  db_name: logs-test.db\n"
+            "embedding:\n  provider: nano\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+
+        import vesma.cli.logs as logs_cli
+
+        class FakeStore:
+            def __init__(self, path: object) -> None:
+                pass
+
+            def list_traces(self, **kw: object) -> list[object]:
+                return []
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(logs_cli, "SQLiteStore", FakeStore)
+        result = runner.invoke(app, ["logs", "board"])
+        assert result.exit_code == 0, result.output
+        assert "component logs moved" in result.stderr
+        assert "vesma service logs board" in result.stderr
+        assert "No traces found" in result.output, "the trace view still ran"
+
+    def test_logs_positional_non_component_is_usage_error(
+        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-component positional was never valid on the trace viewer —
+        it stays a usage error (exit 2), exactly as under task-logs."""
+        cfg = components_home / "vesma.yaml"
+        cfg.write_text(
+            f"vesma:\n  vault_path: {components_home}/vault\n"
+            f"  data_dir: {components_home}/data\n  db_name: logs-test.db\n"
+            "embedding:\n  provider: nano\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
+        result = runner.invoke(app, ["logs", "cluster"])
+        assert result.exit_code == 2, result.output
+        assert "unexpected extra argument" in result.output
 
 
 # ── update ────────────────────────────────────────────────────────────
@@ -591,7 +670,7 @@ class TestConfigs:
             assert needle in result.output
 
     def test_json_shape(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["configs", "--json"])
+        result = runner.invoke(app, ["service", "components", "configs", "--json"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["config_path"].endswith("vesma.yaml")

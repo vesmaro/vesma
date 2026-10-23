@@ -2745,10 +2745,13 @@ app.add_typer(integration_app, name="integration")
 # ── memory (memory-switch status surface, ADR-0034 MS-0) ──────────────────────
 # Subcommand tree:
 #   vesma memory status — read-only per-harness memory attachment report
+# CLI topology v2 wave A: the canonical home is `vesma integration
+# memory` (the harness layer domain); this top-level group stays as a
+# HIDDEN deprecated alias (stderr hint inside, removal not before 9.0).
 
 from vesma.cli.memory_status import memory_app  # noqa: E402
 
-app.add_typer(memory_app, name="memory")
+app.add_typer(memory_app, name="memory", hidden=True)
 
 
 # ── completion ─────────────────────────────────────────────────────────────────
@@ -2782,6 +2785,11 @@ app.command(
 
 # ── doctor ─────────────────────────────────────────────────────────────────────
 # Health-check: config + data dir + vault + SQLite + vectors + MCP + integration + tags.
+# CLI topology v2 wave A: `vesma doctor` stays the PRIMARY L1 entry
+# (both profiles, read-only, never escalates — ArchCom G2); the SAME
+# doctor app is ADDITIONALLY registered under the system domain
+# (`vesma system doctor`, visible) so the system-profile door leads to
+# the identical pass — one module, two doors, no logic fork.
 
 from vesma.cli.doctor import doctor_app  # noqa: E402
 
@@ -2793,7 +2801,7 @@ app.add_typer(doctor_app, name="doctor")
 from vesma.cli.agent_token_cmd import agent_token_app  # noqa: E402
 from vesma.cli.export_cmd import export_app  # noqa: E402
 from vesma.cli.import_cmd import import_cmd  # noqa: E402
-from vesma.cli.logs import logs_app  # noqa: E402
+from vesma.cli.logs import logs_app, task_logs_alias  # noqa: E402
 from vesma.cli.metrics_cmd import _metrics_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
@@ -2805,10 +2813,13 @@ app.add_typer(export_app, name="export")
 # first positional (click MultiCommand), so `import f.json --mode merge`
 # died with "Missing argument 'source'" (cli-audit 2026-10-08 #4).
 app.command(name="import")(import_cmd)
-# Wave 61 component UX: the top-level `logs` name belongs to the
-# COMPONENT logs verb (vesma.cli.components); the pipeline-trace viewer
-# keeps its full surface under the `task-logs` alias.
-app.add_typer(logs_app, name="task-logs")
+# CLI topology v2 wave A: the top-level `logs` name belongs to the
+# PIPELINE-TRACE viewer (its `task-logs` spelling stays as a hidden
+# deprecated alias with a stderr hint); component logs live on
+# `vesma service logs NAME`, and `vesma logs NAME` answers the old
+# component habit with a loud redirect (see vesma/cli/logs.py).
+app.add_typer(logs_app, name="logs")
+app.command(name="task-logs", hidden=True)(task_logs_alias)
 app.add_typer(_metrics_app, name="metrics")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
@@ -2851,15 +2862,23 @@ app.add_typer(service_app, name="service")
 #    impl functions as the `service <verb> --system` spellings, which stay
 #    as hidden deprecated aliases with a stderr hint (removal not before
 #    9.0); `migrate-store --target=system` (data plane) is unaffected.
+#    CLI topology v2 wave A: `vesma system doctor` — the SAME doctor app
+#    additionally registered here (visible; checks BOTH profiles; the L1
+#    `vesma doctor` stays primary per ArchCom G2 — no hidden alias).
 
 from vesma.cli.system_cmd import system_app  # noqa: E402
 
 app.add_typer(system_app, name="system")
+system_app.add_typer(doctor_app, name="doctor")
 
-# ── top-level component verbs (wave 61, board card vesma-61-wave) ──────
-#    vesma install|status|start|stop|restart|logs|update|configs [NAME]
+# ── top-level component verbs (wave 61 → CLI-topology v2 aliases) ──────
+#    vesma install|status|start|stop|restart|update|configs [NAME]
 #    — ONE unified surface for built-in AND operator-authored
-#    components; thin delegation onto the service/manifest core.
+#    components; thin delegation onto the service/manifest core. Since
+#    topology v2 wave A these spellings are HIDDEN deprecated aliases:
+#    the canonical homes are `vesma service components *` and
+#    `vesma service start|stop|restart` (identical behavior + a stderr
+#    hint; removal not before 9.0).
 
 from vesma.cli.components import register_component_commands  # noqa: E402
 

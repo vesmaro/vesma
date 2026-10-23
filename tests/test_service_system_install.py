@@ -444,11 +444,36 @@ class TestSy09ExactInverseUninstall:
         ):
             assert not (sim / gone).exists(), f"{gone} survived uninstall"
         # Foreign file untouched.
-        assert foreign.read_text(encoding="utf-8") == "not vesma's\n"
+        assert foreign.read_text("utf-8") == "not vesma's\n"
         # Operator data preserved.
         assert (sim / "var/lib/vesma/history").is_dir()
         preserved_lines = [line for line in result.lines if line.startswith("preserved")]
         assert any("var/lib/vesma" in line for line in preserved_lines)
+
+    def test_uninstall_dry_run_shows_plan_and_touches_nothing(self, sim: Path, seams: Seam) -> None:
+        """G4 (CLI topology v2 wave B): dry-run = full phase-1 validation +
+        the plan as ``dry-run:`` lines — zero mutations, zero systemctl."""
+        install_system()
+        systemctl_before = [list(c) for c in seams.systemctl]
+        result = uninstall_system(dry_run=True)
+        # The plan names every removal step without executing any.
+        assert any(
+            line.startswith("dry-run: would run: systemctl disable") for line in result.lines
+        )
+        assert any(line.startswith("dry-run: would remove") for line in result.lines)
+        assert any(
+            line.startswith("dry-run: would run: systemctl daemon-reload") for line in result.lines
+        )
+        assert any(line.startswith("dry-run: data plane preserved") for line in result.lines)
+        assert not any(line.startswith("removed:") for line in result.lines)
+        # Nothing was touched: the tree is exactly as the installer left it.
+        assert (sim / "etc/vesma").is_dir()
+        assert (sim / "usr/lib/vesma").is_dir()
+        assert (sim / "var/lib/vesma/install-state.yaml").is_file()
+        assert [list(c) for c in seams.systemctl] == systemctl_before
+        # And the real uninstall still completes afterwards (same state).
+        real = uninstall_system()
+        assert any(line.startswith("removed:") for line in real.lines)
 
     def test_operator_data_survives_uninstall(self, sim: Path, seams: Seam) -> None:
         install_system()
