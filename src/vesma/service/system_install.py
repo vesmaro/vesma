@@ -638,6 +638,29 @@ def _validate_conffile_candidate(source: Path, data: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def _atomic_backup(target: Path, backup: Path, entry: Any, ownership: _Ownership) -> None:
+    """Land the conffile backup through the same atomic discipline as the
+    install itself (security spot-check P3-2): mkstemp same-dir → the
+    CURRENT bytes (read once) → the previous mode → ``os.replace`` — a
+    torn ``.bak`` on a mid-write crash is impossible, and the manifest
+    ownership keeps the backup readable by the vesma group."""
+    old_mode = target.stat().st_mode & 0o777
+    data = target.read_bytes()
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(backup.parent), prefix=f".{backup.name}.", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.chmod(tmp, old_mode)
+        os.replace(tmp, backup)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    ownership.apply_to(backup, entry.owner, entry.group)
+
+
 def install_system_conffile(source: Path, prefix: Path | None = None) -> SystemConfigSetResult:
     """Install an operator-provided config as the system conffile (CLI
     topology v2 wave C: the ONLY write of the ``vesma system config``
@@ -697,11 +720,15 @@ def install_system_conffile(source: Path, prefix: Path | None = None) -> SystemC
     entry = fhs.load_fhs_manifest().entry("shared_config")
     target = fhs.system_config_path(resolved_prefix)
     config_root = fhs.system_config_root(resolved_prefix)
-    if not config_root.is_dir():
+    # Security spot-check P3-1: the gate is the INSTALL-STATE, not the
+    # bare directory — a hand-created /etc/vesma without `system install`
+    # must not receive a root-owned conffile (fail-closed on anything but
+    # an installed system profile; subsumes the absent-config-root case).
+    if read_system_profile(resolved_prefix) != "system" or not config_root.is_dir():
         raise SystemInstallError(
-            f"the system config root {config_root} does not exist — `set`"
-            " configures an installed system profile; install it first:"
-            " `sudo vesma system install`"
+            "the system profile is not installed (no install-state with"
+            " `profile: system`) — `set` configures an INSTALLED system"
+            " profile; install it first: `sudo vesma system install`"
         )
 
     # Resolve the manifest owner/group BEFORE any mutation (the F2 lesson):
@@ -721,8 +748,7 @@ def install_system_conffile(source: Path, prefix: Path | None = None) -> SystemC
         while backup.exists():  # same-second collision: never clobber a backup
             backup = target.with_name(f"{target.name}.bak-{stamp}-{counter}")
             counter += 1
-        backup.write_bytes(target.read_bytes())
-        os.chmod(backup, target.stat().st_mode & 0o777)
+        _atomic_backup(target, backup, entry, ownership)
 
     _atomic_write(target, data, entry.mode)
     ownership.apply_to(target, entry.owner, entry.group)

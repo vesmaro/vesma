@@ -61,10 +61,15 @@ def user_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def system_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """The dest-dir deployment prefix: /etc/vesma exists, FHS resolvers
-    resolve under it (the call-time ``fhs.default_prefix`` seam)."""
+    resolve under it (the call-time ``fhs.default_prefix`` seam), and a
+    minimal install-state says `profile: system` (the P3-1 gate — `set`
+    configures an INSTALLED profile)."""
     prefix = tmp_path / "deploy"
     (prefix / "etc" / "vesma").mkdir(parents=True)
     monkeypatch.setattr(fhs, "default_prefix", lambda: prefix)
+    state = fhs.system_install_state_path()
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text("profile: system\nartifacts: []\n", encoding="utf-8")
     return prefix
 
 
@@ -358,4 +363,97 @@ class TestSystemConfigSet:
         candidate.write_text(_VALID_YAML, encoding="utf-8")
         result = runner.invoke(app, ["system", "config", "set", "--file", str(candidate)])
         assert result.exit_code == 1
-        assert "sudo vesma system install" in result.output
+        assert "sudo vesma system install" in _flat(result.output)
+
+
+class TestSecuritySpotcheckP3Pins:
+    """The security spot-check P3 tails folded into the wave (the P3-1
+    fix is behavioral — the gate is the install-state, not the bare
+    directory; P3-2 makes the backup atomic; P3-5 adds the missing
+    pins)."""
+
+    def test_hand_created_etc_without_install_state_refuses(
+        self, system_prefix: Path, user_env: Path, tmp_path: Path, root_seams: list[str]
+    ) -> None:
+        """P3-1: /etc/vesma existing WITHOUT `system install` (no
+        install-state) must not receive a root-owned conffile."""
+        fhs.system_install_state_path().unlink()
+        candidate = tmp_path / "candidate.yaml"
+        candidate.write_text(_VALID_YAML, encoding="utf-8")
+        result = runner.invoke(app, ["system", "config", "set", "--file", str(candidate)])
+        assert result.exit_code == 1
+        assert "not installed" in _flat(result.output)
+        assert "sudo vesma system install" in _flat(result.output)
+        assert not fhs.system_config_path().exists(), "nothing was written"
+
+    def test_missing_vesma_group_refuses_with_tree_untouched(
+        self,
+        system_prefix: Path,
+        user_env: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """P3-5: the F2 lesson on THIS verb — the account resolution runs
+        BEFORE any mutation, so a machine without the vesma group refuses
+        with the tree untouched."""
+        import grp
+        import pwd
+
+        real_pw = pwd.getpwnam  # capture BEFORE patching (si.pwd IS pwd)
+        real_gr = grp.getgrnam
+
+        def fake_gr(name: str) -> Any:
+            if name == "root":
+                return real_gr("root")
+            raise KeyError(name)
+
+        monkeypatch.setattr(si.os, "geteuid", lambda: 0)
+        monkeypatch.setattr(si.pwd, "getpwnam", lambda n: real_pw("root"))
+        monkeypatch.setattr(si.grp, "getgrnam", fake_gr)
+        candidate = tmp_path / "candidate.yaml"
+        candidate.write_text(_VALID_YAML, encoding="utf-8")
+        result = runner.invoke(app, ["system", "config", "set", "--file", str(candidate)])
+        assert result.exit_code == 1
+        assert "group" in _flat(result.output)
+        assert not fhs.system_config_path().exists(), "the tree stays untouched"
+
+    def test_backup_keeps_previous_mode_and_is_atomic_discipline(
+        self, system_prefix: Path, user_env: Path, tmp_path: Path, root_seams: list[str]
+    ) -> None:
+        """P3-2: the backup lands through mkstemp+chmod+replace — same
+        bytes, same mode as the previous conffile, no torn .bak, and the
+        manifest ownership applied (the vesma group can read it)."""
+        target = fhs.system_config_path()
+        import os
+
+        target.write_text(_VALID_YAML, encoding="utf-8")
+        os.chmod(target, 0o640)
+        candidate = tmp_path / "candidate.yaml"
+        candidate.write_text(_VALID_YAML.replace("9999", "7777"), encoding="utf-8")
+        result = runner.invoke(app, ["system", "config", "set", "--file", str(candidate)])
+        assert result.exit_code == 0, result.output
+        backups = sorted(target.parent.glob("config.yaml.bak-*"))
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == _VALID_YAML
+        assert backups[0].stat().st_mode & 0o777 == 0o640
+        assert not list(target.parent.glob(".config.yaml.bak-*")), "no tmp leftovers"
+        assert any(e == "chown:0:4242" for e in root_seams), "backup chowned per manifest"
+
+    def test_same_second_backup_collision_grows_a_counter(
+        self, system_prefix: Path, user_env: Path, tmp_path: Path, root_seams: list[str]
+    ) -> None:
+        """The collision counter: a pre-existing same-stamp backup is
+        never clobbered — the new one grows a -1 suffix."""
+        target = fhs.system_config_path()
+        target.write_text(_VALID_YAML, encoding="utf-8")
+        import time as time_mod
+
+        stamp = time_mod.strftime("%Y%m%d-%H%M%S")
+        squat = target.with_name(f"config.yaml.bak-{stamp}")
+        squat.write_text("SQUATTED", encoding="utf-8")
+        candidate = tmp_path / "candidate.yaml"
+        candidate.write_text(_VALID_YAML.replace("9999", "7777"), encoding="utf-8")
+        result = runner.invoke(app, ["system", "config", "set", "--file", str(candidate)])
+        assert result.exit_code == 0, result.output
+        assert squat.read_text(encoding="utf-8") == "SQUATTED", "earlier backup intact"
+        assert len(list(target.parent.glob("config.yaml.bak-*"))) == 2
