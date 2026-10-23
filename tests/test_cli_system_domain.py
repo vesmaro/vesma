@@ -74,13 +74,14 @@ class TestRegistration:
         registered = {getattr(g, "name", None) for g in app.registered_groups}
         assert "system" in registered
 
-    def test_system_exposes_exactly_the_four_verbs(self) -> None:
-        """Topology v2 wave A: the three lifecycle verbs + `doctor` (the
-        SAME doctor app additionally registered here; removal-safety: any
-        new verb must be a conscious contract change, not drift)."""
+    def test_system_exposes_exactly_the_five_verbs(self) -> None:
+        """Topology v2 waves A+C: the three lifecycle verbs + `doctor`
+        (the SAME doctor app additionally registered here) + the `config`
+        sub-domain (wave C, the ratified contract table); removal-safety:
+        any new verb must be a conscious contract change, not drift)."""
         click_root = get_command(app)
         system = click_root.commands["system"]
-        assert set(system.commands) == {"install", "uninstall", "update", "doctor"}
+        assert set(system.commands) == {"install", "uninstall", "update", "doctor", "config"}
         for verb_cmd in system.commands.values():
             assert not verb_cmd.hidden, "system verbs must be visible (tab-completable)"
 

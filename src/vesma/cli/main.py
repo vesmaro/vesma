@@ -2871,6 +2871,23 @@ from vesma.cli.system_cmd import system_app  # noqa: E402
 app.add_typer(system_app, name="system")
 system_app.add_typer(doctor_app, name="doctor")
 
+# ── config domains (CLI-topology v2 wave C, ArchCom 2026-10-23) ────────
+#    TWO EXPLICIT verbs, no euid/env auto-detect (committee 2:1): L1
+#    `vesma config` owns the USER profile only (the find_config_file
+#    search order — exactly what doctor loads); `vesma system config`
+#    owns the SYSTEM conffile only (/etc/vesma/config.yaml through the
+#    FHS manifest resolver). Validation is ONE implementation
+#    (load_settings — the doctor's own check); the user paths table is
+#    the doctor's own collector; `set --file` is the system domain's
+#    ONLY write (validate-first, same-dir backup, atomic replace,
+#    0640 root:vesma; no editor from root — G3, sudoedit is the manual
+#    path). Each help names the sibling domain.
+
+from vesma.cli.config_cmd import config_app, system_config_app  # noqa: E402
+
+app.add_typer(config_app, name="config")
+system_app.add_typer(system_config_app, name="config")
+
 # ── top-level component verbs (wave 61 → CLI-topology v2 aliases) ──────
 #    vesma install|status|start|stop|restart|update|configs [NAME]
 #    — ONE unified surface for built-in AND operator-authored

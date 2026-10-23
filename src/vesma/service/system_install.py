@@ -66,11 +66,13 @@ import re
 import shutil
 import subprocess  # nosec B404 - fixed-argv installer subprocesses
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Final
 
 import yaml
 
+from vesma.config import load_settings
 from vesma.service import fhs, unitgen
 from vesma.service import install as user_install
 from vesma.service.manifest import CONFFILE_NEW_SUFFIX, bundled_manifest_path, load_installation
@@ -119,6 +121,23 @@ class SystemUninstallResult:
     """Outcome of one system uninstall run."""
 
     lines: tuple[str, ...]
+
+
+@dataclasses.dataclass(frozen=True)
+class SystemConfigSetResult:
+    """Outcome of one ``system config set --file`` run (CLI report + tests).
+
+    ``backup`` is ``None`` when no previous conffile existed (the first
+    config lands with nothing to preserve). ``first_conffile`` lets the
+    CLI phrase the report honestly instead of guessing from ``backup``.
+    """
+
+    target: Path
+    backup: Path | None
+    mode: int
+    owner: str | None
+    group: str | None
+    first_conffile: bool
 
 
 @dataclasses.dataclass
@@ -580,6 +599,166 @@ def regenerate_system_unit(prefix: Path | None = None) -> str:
             fhs.system_static_root(prefix),
         ),
         optional_read_write_paths=(fhs.resolve_system_path(manifest.entry("log_root"), prefix),),
+    )
+
+
+def _validate_conffile_candidate(source: Path, data: str) -> None:
+    """Validate EXACTLY the bytes that will be written — the ONE machinery.
+
+    The candidate text is staged to a 0600 ``mkstemp`` copy and loaded
+    through :func:`vesma.config.load_settings` (the same validation
+    ``vesma doctor`` and the system daemon's own startup run), so the
+    validated bytes and the installed bytes are the SAME bytes — a naive
+    ``load_settings(source)`` followed by a second read would leave a
+    window where a swapped file lands unvalidated in the root-owned FHS
+    tree. The refusal names the OPERATOR's path, never the staging temp.
+    """
+    try:
+        fd, tmp_name = tempfile.mkstemp(suffix=".yaml", prefix="vesma-config-candidate-")
+    except OSError as exc:
+        raise SystemInstallError(
+            f"cannot stage candidate config {source} for validation ({exc}) — nothing was changed"
+        ) from exc
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+        try:
+            load_settings(tmp)
+        except Exception as exc:  # candidate bytes are operator data — refuse loud
+            raise SystemInstallError(
+                f"candidate config {source} is NOT valid ({exc}) — refused BEFORE"
+                " any mutation: nothing was backed up, nothing was replaced"
+            ) from exc
+    except OSError as exc:
+        raise SystemInstallError(
+            f"cannot stage candidate config {source} for validation ({exc}) — nothing was changed"
+        ) from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _atomic_backup(target: Path, backup: Path, entry: Any, ownership: _Ownership) -> None:
+    """Land the conffile backup through the same atomic discipline as the
+    install itself (security spot-check P3-2): mkstemp same-dir → the
+    CURRENT bytes (read once) → the previous mode → ``os.replace`` — a
+    torn ``.bak`` on a mid-write crash is impossible, and the manifest
+    ownership keeps the backup readable by the vesma group."""
+    old_mode = target.stat().st_mode & 0o777
+    data = target.read_bytes()
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(backup.parent), prefix=f".{backup.name}.", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.chmod(tmp, old_mode)
+        os.replace(tmp, backup)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    ownership.apply_to(backup, entry.owner, entry.group)
+
+
+def install_system_conffile(source: Path, prefix: Path | None = None) -> SystemConfigSetResult:
+    """Install an operator-provided config as the system conffile (CLI
+    topology v2 wave C: the ONLY write of the ``vesma system config``
+    domain — ``set --file``).
+
+    Discipline (ratified contract, ArchCom 2026-10-23):
+
+    * root for the real prefix (the :func:`_require_root_for_real_prefix`
+      IDIOM — prefix-aware gate, this verb's own canonical spelling in
+      the hint; the dest-dir simulation runs unprivileged);
+    * VALIDATE FIRST through the ONE settings machinery
+      (:func:`vesma.config.load_settings` — the same validation ``vesma
+      doctor`` and the system daemon's startup run) on EXACTLY the bytes
+      that will be written (staged to a 0600 temp copy, so a candidate
+      swapped mid-command can never land unvalidated): an invalid
+      candidate is refused BEFORE any mutation — no backup, no replace,
+      the tree stays byte-identical;
+    * the previous conffile is backed up SAME-DIR as
+      ``config.yaml.bak-<ts>`` (append-only: a same-second collision
+      grows a counter, an earlier backup is never clobbered);
+    * the install is ATOMIC (:func:`_atomic_write` — same-dir tmp +
+      ``os.replace``; a pre-placed symlink at the target can never be
+      followed) with the manifest role's mode (0640);
+    * ownership per the manifest row (root:vesma), resolved BEFORE any
+      mutation (a missing account refuses with the tree untouched) and
+      applied only under real root (the :class:`_Ownership` simulation
+      discipline);
+    * the written bytes are EXACTLY the candidate's bytes — NO mover
+      provenance header is added, so the uninstall adopt predicate
+      (F9) keeps refusing a set-installed conffile (operator content).
+
+    Refuses (typed, tree untouched) when the system config root does
+    not exist — ``set`` configures an INSTALLED system profile, it
+    never lays down the FHS tree itself.
+    """
+    resolved_prefix = fhs.default_prefix() if prefix is None else prefix
+    # The _require_root_for_real_prefix IDIOM (prefix-aware gate), with THIS
+    # verb's own canonical spelling in the hint — the install gate's frozen
+    # message names `service install --system`, wrong for a config verb.
+    if resolved_prefix == Path(os.sep) and os.geteuid() != 0:
+        raise SystemInstallError(
+            f"the system conffile lives in the real FHS tree — run it as"
+            f" root: `sudo vesma system config set --file {source}`"
+        )
+    if not source.is_file():
+        raise SystemInstallError(
+            f"candidate config {source} not found (or not a regular file) — nothing was changed"
+        )
+    try:
+        data = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SystemInstallError(
+            f"cannot read candidate config {source} ({exc}) — nothing was changed"
+        ) from exc
+    _validate_conffile_candidate(source, data)
+
+    entry = fhs.load_fhs_manifest().entry("shared_config")
+    target = fhs.system_config_path(resolved_prefix)
+    config_root = fhs.system_config_root(resolved_prefix)
+    # Security spot-check P3-1: the gate is the INSTALL-STATE, not the
+    # bare directory — a hand-created /etc/vesma without `system install`
+    # must not receive a root-owned conffile (fail-closed on anything but
+    # an installed system profile; subsumes the absent-config-root case).
+    if read_system_profile(resolved_prefix) != "system" or not config_root.is_dir():
+        raise SystemInstallError(
+            "the system profile is not installed (no install-state with"
+            " `profile: system`) — `set` configures an INSTALLED system"
+            " profile; install it first: `sudo vesma system install`"
+        )
+
+    # Resolve the manifest owner/group BEFORE any mutation (the F2 lesson):
+    # a machine without the vesma account/group (sysusers never ran) must
+    # refuse with the tree untouched — not after the conffile was already
+    # replaced. The resolution is cached; apply_to below re-uses it.
+    ownership = _Ownership(apply_ownership=os.geteuid() == 0)
+    ownership.uid(entry.owner)
+    ownership.gid(entry.group)
+
+    backup: Path | None = None
+    first_conffile = not (target.is_file() and not target.is_symlink())
+    if not first_conffile:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        backup = target.with_name(f"{target.name}.bak-{stamp}")
+        counter = 1
+        while backup.exists():  # same-second collision: never clobber a backup
+            backup = target.with_name(f"{target.name}.bak-{stamp}-{counter}")
+            counter += 1
+        _atomic_backup(target, backup, entry, ownership)
+
+    _atomic_write(target, data, entry.mode)
+    ownership.apply_to(target, entry.owner, entry.group)
+    return SystemConfigSetResult(
+        target=target,
+        backup=backup,
+        mode=entry.mode,
+        owner=entry.owner,
+        group=entry.group,
+        first_conffile=first_conffile,
     )
 
 
