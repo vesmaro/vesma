@@ -1389,3 +1389,82 @@ def test_c4_cross_fs_publish_skips_fchown_for_non_root(
     final = final_dir / "config.yaml"
     assert final.is_file()
     assert stat_mod.S_IMODE(final.stat().st_mode) == 0o640
+
+
+# ── F9: uninstall adopts the migrated conffile (installer wave 2026-10-23) ────
+
+
+def test_f9_round_trip_install_migrate_uninstall_adopt(
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F9 pin 1 — the happy round trip: install → migrate apply →
+    uninstall exits clean; the adopted conffile is unlinked, the config
+    root removed, the data plane + snapshot stay intact, the report
+    carries the adopt line, and nothing else moved (store db, vault and
+    marker keep their bytes)."""
+    monkeypatch.setattr(system_install_mod, "_systemctl_system", lambda args: "ok")
+    home = make_source_6x(tmp_path)
+    report = _apply_system(home, sys_env)
+    config = sys_env["config"]
+    marker = sys_env["data_root"] / sm.MIGRATION_MARKER_NAME
+    db = sys_env["data_root"] / STORE_DB_NAME
+    vault_note = sys_env["data_root"] / "vault" / "a.md"
+    db_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+    marker_sha = hashlib.sha256(marker.read_bytes()).hexdigest()
+    vault_sha = hashlib.sha256(vault_note.read_bytes()).hexdigest()
+    # The REAL mover shape: the marker carries the conffile record
+    # (canonical path + sha as published) and the published config
+    # carries the provenance header.
+    marker_doc = json.loads(marker.read_text(encoding="utf-8"))
+    assert marker_doc["conffile"]["path"] == str(config)
+    assert marker_doc["conffile"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
+    assert marker_doc["source_home"] == str(home)
+    assert config.read_text(encoding="utf-8").startswith(sm.MIGRATE_CONFFILE_HEADER)
+    snapshot = Path(report.snapshot_dir)
+    assert snapshot.is_dir()
+
+    result = system_install.uninstall_system(sys_env["prefix"])
+    adopt_lines = [line for line in result.lines if line.startswith("adopted-from-migrate-store")]
+    assert len(adopt_lines) == 1
+    assert str(config) in adopt_lines[0]
+    assert str(snapshot) in adopt_lines[0]  # recoverability pointer
+    assert not config.exists()
+    assert not sys_env["config_root"].exists()
+    # The data plane survives untouched: store, vault, marker.
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == db_sha
+    assert hashlib.sha256(marker.read_bytes()).hexdigest() == marker_sha
+    assert hashlib.sha256(vault_note.read_bytes()).hexdigest() == vault_sha
+
+
+def test_f9_narrowness_preexisting_conffile_refuses_uninstall(
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F9 pin 2 — narrowness: a pre-existing NON-EMPTY conffile makes the
+    mover land the incoming config as a .migrated-<ts> sidecar; the
+    uninstall then REFUSES — the operator file AND the sidecar are
+    foreign (the marker's canonical-path sha cannot match operator
+    bytes)."""
+    monkeypatch.setattr(system_install_mod, "_systemctl_system", lambda args: "ok")
+    sys_env["config"].write_text("api:\n  host: 127.0.0.1\n", encoding="utf-8")
+    operator_bytes = sys_env["config"].read_bytes()
+    home = make_source_6x(tmp_path)
+    _apply_system(home, sys_env)
+    assert sys_env["config"].read_bytes() == operator_bytes  # never touched
+    sidecars = list(sys_env["config_root"].glob("config.yaml.migrated-*"))
+    assert len(sidecars) == 1
+
+    with pytest.raises(system_install.SystemInstallError, match="foreign content"):
+        system_install.uninstall_system(sys_env["prefix"])
+    # Nothing was removed: the operator file and the sidecar survive.
+    assert sys_env["config"].read_bytes() == operator_bytes
+    assert sidecars[0].is_file()
+
+
+def test_f9_source_scan_no_install_state_write_in_mover() -> None:
+    """F9 pin 6 — mirror of the C1 zero-literals pin: the mover NEVER
+    writes the install-state (C12 verbatim; the adopt row lives in the
+    uninstaller's memory for one run, and the marker is the only
+    evidence the mover publishes)."""
+    source = Path(sm.__file__).read_text(encoding="utf-8")
+    assert "_write_state" not in source
+    assert "install_state.yaml" not in source

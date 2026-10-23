@@ -300,6 +300,13 @@ def system_venv_engine(prefix: Path | None = None) -> Path:
     return resolve_system_path(load_fhs_manifest().entry("venv_engine"), prefix)
 
 
+def system_toolchain_pythons(prefix: Path | None = None) -> Path:
+    """/usr/lib/vesma/pythons — the canonical uv toolchain install dir
+    (UV_PYTHON_INSTALL_DIR for the installer's materialize leg; never
+    $HOME-dependent, never the data plane)."""
+    return resolve_system_path(load_fhs_manifest().entry("toolchain_pythons"), prefix)
+
+
 def system_venv_engine_revision(rev: str, prefix: Path | None = None) -> Path:
     """/usr/lib/vesma/venv-<rev> — one materialized engine revision."""
     entry = load_fhs_manifest().entry("venv_engine_revision")
@@ -358,6 +365,7 @@ __all__ = [
     "system_ipc_dir",
     "system_static_root",
     "system_sysusers_path",
+    "system_toolchain_pythons",
     "system_unit_path",
     "system_venv_component",
     "system_venv_component_revision",

@@ -18,10 +18,13 @@ The one root-dependent leg (real ownership application) is env-gated:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -34,6 +37,7 @@ from vesma.service.system_install import (
     read_system_state,
     uninstall_system,
 )
+from vesma.store_migration import MIGRATE_CONFFILE_HEADER, MIGRATION_MARKER_NAME
 
 ENGINE_VERSION = si._engine_version()
 
@@ -48,6 +52,7 @@ class Seam:
     sysusers: list[Path] = field(default_factory=list)
     systemctl: list[list[str]] = field(default_factory=list)
     venvs: list[tuple[Path, tuple[str, ...]]] = field(default_factory=list)
+    uv_envs: list[dict[str, str] | None] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -66,9 +71,14 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Seam:
     record = Seam()
 
     def fake_materialize(
-        venv_dir: Path, requirements: tuple[str, ...], mode: int
+        venv_dir: Path,
+        requirements: tuple[str, ...],
+        mode: int,
+        *,
+        env: dict[str, str] | None = None,
     ) -> dict[str, str]:
         record.venvs.append((venv_dir, requirements))
+        record.uv_envs.append(env)
         (venv_dir / "bin").mkdir(parents=True)
         (venv_dir / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
         (venv_dir / "bin" / "vesma").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -191,6 +201,7 @@ class TestSy02ManifestSingleSource:
             "sysusers_fragment",
             "system_unit",
             "code_root",
+            "toolchain_pythons",
             "venv_engine",
             "venv_component",
             "distro_static",
@@ -222,6 +233,9 @@ class TestSy02ManifestSingleSource:
         assert by_role["install_state"].mode == 0o640
         assert by_role["system_unit"].mode == 0o644
         assert by_role["venv_engine"].mode == 0o755
+        assert by_role["toolchain_pythons"].mode == 0o755
+        assert by_role["toolchain_pythons"].owner == "root"
+        assert by_role["toolchain_pythons"].group == "root"
         assert by_role["ipc_runtime"].has_flag("runtime-directory")
         assert by_role["log_root"].has_flag("opt-in")
         assert by_role["file_logs"].has_flag("opt-in")
@@ -396,7 +410,10 @@ class TestSy08VenvMaterialization:
         self, sim: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def lying_materialize(
-            venv_dir: Path, requirements: tuple[str, ...], mode: int
+            venv_dir: Path,
+            requirements: tuple[str, ...],
+            mode: int,
+            **_kwargs: object,
         ) -> dict[str, str]:
             (venv_dir / "bin").mkdir(parents=True)
             (venv_dir / "bin" / "vesma").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -489,6 +506,248 @@ class TestSy09ExactInverseUninstall:
         assert any("not materialized" in line for line in result.lines)
 
 
+# ── Installer wave 2026-10-23: F2 sysusers ordering ───────────────────
+
+
+class _FakeAccount:
+    """Duck-typed ``pwd.struct_passwd``/``grp.struct_group`` for the fake
+    account database."""
+
+    def __init__(self, uid: int, gid: int) -> None:
+        self.pw_uid = uid
+        self.pw_gid = gid
+        self.gr_gid = gid
+
+
+class TestF2SysusersOrdering:
+    def test_fresh_machine_fragment_precedes_first_vesma_resolution(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The F2 pin: a machine with NO vesma account installs cleanly —
+        the sysusers fragment is written and applied BEFORE the first
+        ownership resolution that needs the account (the old order was
+        dead-on-arrival: the remediation pointed at a step that had not
+        run)."""
+        import grp as grp_mod
+        import pwd as pwd_mod
+
+        events: list[str] = []
+        accounts: dict[str, Any] = {"root": pwd_mod.getpwnam("root")}
+        groups: dict[str, Any] = {"root": grp_mod.getgrnam("root")}
+
+        def fake_getpwnam(name: str) -> Any:
+            events.append(f"resolve-user:{name}")
+            if name not in accounts:
+                raise KeyError(name)
+            return accounts[name]
+
+        def fake_getgrnam(name: str) -> Any:
+            events.append(f"resolve-group:{name}")
+            if name not in groups:
+                raise KeyError(name)
+            return groups[name]
+
+        def fake_apply_sysusers(fragment: Path) -> str:
+            events.append("sysusers-applied")
+            # systemd-sysusers did its job: the account now exists.
+            accounts["vesma"] = _FakeAccount(4242, 4242)
+            groups["vesma"] = _FakeAccount(4242, 4242)
+            return "ok"
+
+        monkeypatch.setattr(si.pwd, "getpwnam", fake_getpwnam)
+        monkeypatch.setattr(si.grp, "getgrnam", fake_getgrnam)
+        monkeypatch.setattr(si, "_apply_sysusers", fake_apply_sysusers)
+        monkeypatch.setattr(si.os, "geteuid", lambda: 0)  # ownership APPLIED
+        monkeypatch.setattr(  # a non-root runner cannot chown — record only
+            si.os, "chown", lambda p, u, g: events.append(f"chown:{u}:{g}")
+        )
+        result = install_system()
+        assert read_system_profile() == "system"
+        assert "sysusers-applied" in events
+        assert events.index("sysusers-applied") < events.index("resolve-user:vesma")
+        assert any(event == "chown:4242:4242" for event in events)  # the data-root chown
+        assert result.state_path.exists()
+
+    def test_failed_sysusers_leaves_an_honest_remediation(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When systemd-sysusers cannot create the account, the refusal
+        must describe THIS run's reality (fragment written + applied at
+        the start, its status reported) — never the old dead-on-arrival
+        «re-run and it will apply the fragment»."""
+        sysusers_skip = "skipped: systemd-sysusers not found (fragment applied on next boot)"
+        monkeypatch.setattr(si, "_apply_sysusers", lambda fragment: sysusers_skip)
+        monkeypatch.setattr(si.os, "geteuid", lambda: 0)
+        import pwd as pwd_mod
+
+        real_getpwnam = pwd_mod.getpwnam  # captured BEFORE the patch
+
+        def no_vesma_user(name: str) -> Any:
+            if name == "vesma":
+                raise KeyError(name)
+            return real_getpwnam(name)
+
+        monkeypatch.setattr(si.pwd, "getpwnam", no_vesma_user)
+        monkeypatch.setattr(si.os, "chown", lambda p, u, g: None)  # non-root runner
+        with pytest.raises(SystemInstallError) as excinfo:
+            install_system()
+        message = str(excinfo.value)
+        assert "does not exist" in message
+        assert "applied at the START of this run" in message
+        assert "systemd-sysusers: skipped" in message
+        # The fragment IS on disk (step 0 ran before the failure).
+        assert fhs.system_sysusers_path(sim).exists()
+
+
+# ── Installer wave 2026-10-23: F3 canonical toolchain path ────────────
+
+
+class TestF3CanonicalToolchain:
+    def test_materialize_leg_targets_the_manifest_toolchain_slot(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """UV_PYTHON_INSTALL_DIR for the materialize leg is the
+        manifest-resolved toolchain slot — an ambient (sudo's) value
+        never wins, and the slot is HOME-independent, never the data
+        plane, never a revision tree."""
+        monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", "/tmp/decoy-sudo-uv-pythons")
+        install_system()
+        toolchain = fhs.system_toolchain_pythons(sim)
+        assert seams.uv_envs, "the materialize leg never ran"
+        for env in seams.uv_envs:
+            assert env is not None
+            assert env["UV_PYTHON_INSTALL_DIR"] == str(toolchain)
+        home = Path(os.environ.get("HOME", "/root"))
+        assert not toolchain.is_relative_to(home)
+        assert not toolchain.is_relative_to(fhs.system_data_root(sim))
+        # C1 freshness: no pythons under the data root, none under a revision.
+        assert not (fhs.system_data_root(sim) / "pythons").exists()
+        for venv_dir, _ in seams.venvs:
+            assert not (venv_dir / "pythons").exists()
+
+    def test_toolchain_slot_state_row_and_rights(self, sim: Path, seams: Seam) -> None:
+        install_system()
+        doc = read_system_state()
+        assert doc is not None
+        row = next(a for a in doc["artifacts"] if a["role"] == "toolchain_pythons")
+        assert row["remove_mode"] == "rmtree"  # uv owns the content — exact-inverse
+        assert (row["mode"], row["owner"], row["group"]) == ("0755", "root", "root")
+        slot = fhs.system_toolchain_pythons(sim)
+        assert slot.is_dir()
+        assert stat.S_IMODE(slot.stat().st_mode) == 0o755
+
+    def test_toolchain_slot_follows_the_exact_inverse(self, sim: Path, seams: Seam) -> None:
+        install_system()
+        assert fhs.system_toolchain_pythons(sim).is_dir()
+        uninstall_system()
+        assert not fhs.system_toolchain_pythons(sim).exists()
+
+
+# ── Installer wave 2026-10-23: F9 adopted-conffile uninstall ──────────
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _plant_migration_marker(sim: Path, config: Path, sha: str) -> None:
+    """Plant the mover-shaped marker (the REAL mover shape is pinned by
+    the round-trip test in test_store_migration_system.py)."""
+    marker = fhs.system_data_root(sim) / MIGRATION_MARKER_NAME
+    marker.write_text(
+        json.dumps(
+            {
+                "migrated_at": "2026-10-23T00:00:00+00:00",
+                "records": 1,
+                "conffile": {"path": str(config), "sha256": sha},
+                "source_home": "/home/operator/.vesma",
+                "snapshot_dir": "/tmp/migrate-snapshot-1",
+                "tool": "vesma migrate-store",
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestF9AdoptedConffile:
+    def _installed_and_migrated(self, sim: Path) -> Path:
+        config = fhs.system_config_path(sim)
+        config.write_text(
+            f"{MIGRATE_CONFFILE_HEADER} 2026-10-23T00:00:00+00:00\nvesma:\n  db_name: vesma.db\n",
+            encoding="utf-8",
+        )
+        _plant_migration_marker(sim, config, _sha256(config))
+        return config
+
+    def test_stale_evidence_refuses_and_keeps_the_file(self, sim: Path, seams: Seam) -> None:
+        install_system()
+        config = fhs.system_config_path(sim)
+        # Scenario A: operator-written bytes (no mover header), marker
+        # claims them — the header check refuses the adoption.
+        config.write_text("api:\n  host: 127.0.0.1\n", encoding="utf-8")
+        _plant_migration_marker(sim, config, _sha256(config))
+        with pytest.raises(SystemInstallError, match="foreign content"):
+            uninstall_system()
+        assert config.read_text(encoding="utf-8") == "api:\n  host: 127.0.0.1\n"
+        # Scenario B: header present, marker sha does not match the bytes.
+        config.write_text(
+            f"{MIGRATE_CONFFILE_HEADER} 2026-10-23T00:00:00+00:00\nreal: bytes\n",
+            encoding="utf-8",
+        )
+        _plant_migration_marker(sim, config, "0" * 64)
+        with pytest.raises(SystemInstallError, match="foreign content"):
+            uninstall_system()
+        assert config.read_text(encoding="utf-8").endswith("real: bytes\n")
+
+    def test_operator_edit_after_migrate_refuses(self, sim: Path, seams: Seam) -> None:
+        install_system()
+        config = self._installed_and_migrated(sim)
+        # The operator edits AFTER the migration: post-migration edits
+        # are operator data, never silently deleted.
+        config.write_text(
+            f"{MIGRATE_CONFFILE_HEADER} 2026-10-23T00:00:00+00:00\noperator: edit\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(SystemInstallError, match="foreign content"):
+            uninstall_system()
+        assert "operator: edit" in config.read_text(encoding="utf-8")
+        # The refusal mutated nothing: the install-state is untouched.
+        assert (fhs.system_install_state_path(sim)).exists()
+
+    def test_marker_without_install_state_refuses_typed(self, sim: Path) -> None:
+        data_root = fhs.system_data_root(sim)
+        data_root.mkdir(parents=True, exist_ok=True)
+        _plant_migration_marker(sim, fhs.system_config_path(sim), "0" * 64)
+        with pytest.raises(SystemInstallError, match="no system install-state"):
+            uninstall_system()
+
+    def test_predicate_holds_all_five_checks(self, sim: Path, seams: Seam) -> None:
+        """Scope + evidence: (a) ONLY the fhs-resolved shared_config path
+        can ever adopt; (b) the state must say profile: system; (c/d/e)
+        the marker record, header and sha must all match."""
+        install_system()
+        config = self._installed_and_migrated(sim)
+        state = read_system_state()
+        assert state is not None
+        assert si._adopted_migrated_conffile(config, state, prefix=sim) is True
+        # (b) broken: a user-profile stamp adopts nothing.
+        wrong_profile = dict(state)
+        wrong_profile["profile"] = "user"
+        assert si._adopted_migrated_conffile(config, wrong_profile, prefix=sim) is False
+        # (a) broken: a secrets-zone path is refused even with a marker
+        # record naming it — forgeable evidence never widens the scope.
+        evil = fhs.system_env_dir(sim) / "evil.env"
+        evil.parent.mkdir(parents=True, exist_ok=True)
+        evil.write_text("K=v\n", encoding="utf-8")
+        _plant_migration_marker(sim, evil, _sha256(evil))
+        assert si._adopted_migrated_conffile(evil, state, prefix=sim) is False
+        # (e) broken: an edited file adopts nothing.
+        config.write_text("tampered: yes\n", encoding="utf-8")
+        assert si._adopted_migrated_conffile(config, state, prefix=sim) is False
+
+
 # ── The system unit (unitgen.generate_system_unit) ────────────────────
 
 
@@ -549,7 +808,10 @@ class TestRealOwnership:
         monkeypatch.setattr(si, "_systemctl_system", lambda args: "ok (stub)")
 
         def net_free_venv(
-            venv_dir: Path, requirements: tuple[str, ...], mode: int
+            venv_dir: Path,
+            requirements: tuple[str, ...],
+            mode: int,
+            **_kwargs: object,
         ) -> dict[str, str]:
             (venv_dir / "bin").mkdir(parents=True)
             (venv_dir / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")

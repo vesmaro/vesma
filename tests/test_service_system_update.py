@@ -66,7 +66,7 @@ def _make_fake_materializer(record: Seam):  # type: ignore[no-untyped-def]
     pin the venv was built from (the real health probe runs against them)."""
 
     def fake_materialize(
-        venv_dir: Path, requirements: tuple[str, ...], mode: int
+        venv_dir: Path, requirements: tuple[str, ...], mode: int, **_kwargs: object
     ) -> dict[str, str]:
         version = _version_from_pins(requirements)
         record.venvs.append((venv_dir, requirements))

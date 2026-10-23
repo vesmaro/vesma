@@ -163,6 +163,28 @@ refusal phrasing stays true only for future strict-dir slots. If the
 committee wants the loud-refusal shape, that is an installer-wave
 amendment, not a mover change.
 
+**F9 — uninstall adoption of the migrated conffile (installer wave,
+2026-10-23).** The ONE deletion path beyond the recorded artifacts: when
+every evidence check holds — the fhs-resolved `shared_config` path, an
+install-state saying `profile: system`, a marker conffile record naming
+exactly that path, the mover provenance header on the file, and a
+sha256 match — the exact-inverse uninstall may unlink the mover-published
+config (recorded-artifact discipline, kind=file; two-phase: validated at
+validate, re-hashed immediately before unlink), with a loud
+`adopted-from-migrate-store` report line naming the recoverability
+pointers (source home + snapshot). Scope is EXACTLY the `shared_config`
+role: sidecars (`config.yaml.migrated-*`), `env.d/`, `components.d/`
+content always refuse — forgeable-by-service-account evidence must never
+widen to secrets zones. **The predicate asymmetry is INTENTIONAL:**
+`system_state_drift` tolerates ANY operator content in the conffile zone
+(the manifest says the zone is operator-provisioned), while uninstall
+adopts ONLY mover-stamped bytes — tolerance is a diagnosis posture,
+adoption is a deletion decision, and deletion demands stronger evidence.
+Heads-up for operators: content you place in `env.d` (e.g. the TOTP
+master key, C10) makes `uninstall --system` REFUSE by design — remove it
+explicitly first; that is the secrets zone refusing to be swept by a
+conffile-grade evidence class.
+
 **C13 — Activation gate.** `--apply` for `--target=system` REFUSES (exit
 15) until the round-trip soak closes green AND the owner gives the word
 (ADR-0045 Decision 9). The dry-run — plan + the DR forecast — is fully
