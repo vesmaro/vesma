@@ -12,10 +12,11 @@ harness?» per detected target:
 * **Active precedence** — the target's memory-switch mode (default
   ``overlay+mirror``; ADR-0034).
 
-CLI topology FINAL (owner doctrine 2026-10-24, 7.0.0): ``vesma
-integration memory`` is the ONE home of this surface (the harness layer
-domain); the former top-level ``vesma memory`` spelling is REMOVED — one
-name, one meaning.
+CLI topology v2 wave A: the canonical home is ``vesma integration
+memory`` (the harness layer domain — the wide ``memory`` name frees up);
+the former top-level ``vesma memory status`` stays as a HIDDEN
+deprecated alias with a stderr hint (identical behavior, removal not
+before 9.0).
 
 Hygiene contract (ArchCom B3, owner directive 2026-10-01):
 
@@ -48,6 +49,19 @@ from vesma.cli.integration import (
 )
 
 console = Console()
+
+memory_app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    name="memory",
+    help=(
+        "Memory-switch status surface (ADR-0034).\n\n"
+        "Read-only report of how each detected harness currently sources its "
+        "memory: the vesma pack attachment, the MCP registration (server "
+        "keys only, never values), and which built-in store markers exist. "
+        'The diagnostic for "which memory engine is my agent actually on?".'
+    ),
+    no_args_is_help=True,
+)
 
 #: Well-known legacy VS Code MCP config (where ``mcp-setup.sh`` registers the
 #: server for targets without their own ``mcp.config``). Keys only are read.
@@ -135,6 +149,39 @@ def _format_markers(rows: list[tuple[str, bool, str]]) -> str:
     return " · ".join(parts)
 
 
+@memory_app.command(name="status")
+def memory_status_alias(
+    target: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Narrow to specific harness(es); repeatable. Default: all detected.",
+        ),
+    ] = None,
+    home: Annotated[
+        Path | None,
+        typer.Option(
+            "--home",
+            help="Inspect an alternate home directory (cross-environment installs).",
+        ),
+    ] = None,
+) -> None:
+    """Hidden deprecated alias — the canonical spelling is `vesma integration memory`.
+
+    Same read-only report as before the CLI topology v2 wave: per harness,
+    the vesma pack attachment (stamps), the MCP registration (server KEYS
+    only), the built-in store markers (existence + mtime, never contents)
+    and the active memory-switch precedence. One stderr hint names the
+    new home; stdout is byte-identical (removal not before 9.0).
+    """
+    typer.echo(
+        "[deprecated] `vesma memory status` is deprecated — use: vesma integration memory",
+        err=True,
+    )
+    memory_status_cmd(target=target, home=home)
+
+
 # ── the canonical home: `vesma integration memory` ────────────────────
 
 
@@ -174,7 +221,8 @@ def _register_integration_memory() -> None:
         vesma entry and any external memory engines), the built-in store
         markers (existence + mtime, never contents) and the active
         precedence. The diagnostic for "which memory engine is my agent
-        actually on?" — the ONE spelling of this surface since 7.0.0.
+        actually on?". Same implementation as the hidden `vesma memory
+        status` alias.
         """
         memory_status_cmd(target=target, home=home)
 

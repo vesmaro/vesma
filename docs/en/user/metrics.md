@@ -287,5 +287,5 @@ runtime ships with, or is required by, Vesma.
 ## See also
 
 - [HTTP API Reference](http-api.md) — every endpoint.
-- [CLI Reference](cli-reference.md) — `vesma stats`, `vesma traces`.
+- [CLI Reference](cli-reference.md) — `vesma stats`, `vesma logs`.
 - [Context Filter](context-filter.md) — the `filter` section in stats.

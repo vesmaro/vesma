@@ -9,11 +9,12 @@ Two command groups share this sub-app:
   plus ``run`` — the supervisor entrypoint that owns the socket and the
   component tree in one process (wave W3).
 
-CLI topology (variant B, owner-ratified 2026-10-23; FINAL doctrine
-2026-10-24): the SYSTEM profile lives on the ``vesma system`` domain
-(:mod:`vesma.cli.system_cmd`) — the former ``--system`` flag forms here
-are REMOVED (7.0.0); bare ``update`` stays registered as a refusal that
-names the canonical spellings (it is guidance, not an alias).
+CLI topology (variant B, owner-ratified 2026-10-23): the SYSTEM profile
+moved to the ``vesma system`` domain (:mod:`vesma.cli.system_cmd`). The
+former ``--system`` flag forms here stay as hidden deprecated aliases —
+identical behavior + a one-line stderr hint (removal not before 9.0);
+``update`` without ``--system`` refuses, pointing at the canonical
+spelling.
 
 MERGE NOTE (W3/W4 collision): both waves created this file; the resolved
 shape is the concatenation of the two groups — one command function per
@@ -46,7 +47,13 @@ from vesma.service.client import (
 from vesma.service.control import MAX_TAIL
 from vesma.service.errors import ManifestError
 from vesma.service.install import InstallError, UninstallResult, install, uninstall
-from vesma.service.system_install import SystemInstallError
+from vesma.service.system_install import (
+    SystemInstallError,
+    SystemUninstallResult,
+    install_system,
+    uninstall_system,
+)
+from vesma.service.system_update import SystemUpdateResult, update_system
 
 service_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -64,7 +71,8 @@ service_app = typer.Typer(
         "`vesma service components`; `start/stop/restart` take one NAME or "
         "`--all` (topological order — wave B of CLI topology v2).\n\n"
         "The SYSTEM profile (FHS, root) is the `vesma system` domain: "
-        "`vesma system install` / `uninstall` / `update`."
+        "`vesma system install` / `uninstall` / `update`. The former "
+        "`--system` flag forms here remain as hidden deprecated aliases."
     ),
     no_args_is_help=True,
 )
@@ -95,8 +103,30 @@ def _fail_install(exc: Exception) -> NoReturn:
     raise typer.Exit(1) from exc
 
 
+def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
+    """One-line deprecation hint for a hidden legacy flag form (stderr).
+
+    Standing design rule: flags do not replace subcommands. The
+    ``--system`` flag forms moved to the ``vesma system`` domain (variant
+    B, owner-ratified 2026-10-23); they keep working here — identical
+    behavior, scripts must not be able to tell the difference — but point
+    at the canonical spelling. stderr only — stdout stays clean for pipes
+    and JSON consumers. Removal not before 9.0 (MAJOR).
+    """
+    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
+
+
 @service_app.command(name="install")
-def service_install() -> None:
+def service_install(
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Deprecated flag form — use: `vesma system install`.",
+            hidden=True,
+        ),
+    ] = False,
+) -> None:
     """Install the service (the USER profile): pack manifests, dirs, venvs, unit.
 
     Idempotent — re-running regenerates every artifact (hand edits to the
@@ -105,10 +135,14 @@ def service_install() -> None:
     downgraded (marker in the unit + report lines).
 
     The SYSTEM profile has its own domain: `vesma system install` (FHS:
-    /etc/vesma, /var/lib/vesma, /usr/lib/vesma; requires root).
+    /etc/vesma, /var/lib/vesma, /usr/lib/vesma; requires root). The former
+    `--system` flag form remains here as a hidden deprecated alias —
+    identical behavior, removal not before 9.0.
     """
+    if system:
+        _deprecated_flag_hint("vesma service install --system", "vesma system install")
     try:
-        result = install()
+        result = install_system() if system else install()
     except (InstallError, ManifestError, SystemInstallError) as exc:
         _fail_install(exc)
     for line in result.lines:
@@ -134,6 +168,14 @@ def service_uninstall(
             help="Uninstall everything: stop/disable + remove the unit and all components.",
         ),
     ] = False,
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Deprecated flag form — use: `vesma system uninstall`.",
+            hidden=True,
+        ),
+    ] = False,
 ) -> None:
     """Uninstall one component, or the whole USER installation with --all.
 
@@ -141,10 +183,23 @@ def service_uninstall(
     venv). Component data dirs are operator data and are preserved.
 
     The SYSTEM profile has its own domain: `vesma system uninstall` (the
-    exact inverse of the install-state; requires root).
+    exact inverse of the install-state; requires root). The former
+    `--system` flag form remains here as a hidden deprecated alias —
+    identical behavior, removal not before 9.0.
     """
+    if system:
+        _deprecated_flag_hint("vesma service uninstall --system", "vesma system uninstall")
     try:
-        result: UninstallResult = uninstall(name, remove_all=remove_all)
+        result: UninstallResult | SystemUninstallResult
+        if system:
+            if name is not None or remove_all:
+                raise SystemInstallError(
+                    "--system uninstalls the whole system profile — do not "
+                    "combine it with a component name or --all"
+                )
+            result = uninstall_system()
+        else:
+            result = uninstall(name, remove_all=remove_all)
     except (InstallError, ManifestError, SystemInstallError) as exc:
         _fail_install(exc)
     for line in result.lines:
@@ -155,24 +210,46 @@ def service_uninstall(
 
 
 @service_app.command(name="update")
-def service_update() -> None:
-    """Guidance surface: no service-level update exists — name your target.
+def service_update(
+    system: Annotated[
+        bool,
+        typer.Option(
+            "--system",
+            help="Deprecated flag form — use: `vesma system update`.",
+            hidden=True,
+        ),
+    ] = False,
+) -> None:
+    """Deprecated alias surface: the SYSTEM profile lives on `vesma system update`.
 
     The user profile updates through `vesma self-update` (the pip channel
-    owns user installs); the SYSTEM profile updates through `vesma
-    system update` (specs/layout/v2 §3.13 — drift refuses loudly BEFORE
-    any action, a failed health gate rolls back to the previous
-    revision, re-runs are idempotent). This verb has no implementation
-    by design — invoking it ALWAYS refuses with the two canonical
-    spellings (it exists so the obvious guess teaches, not dead-ends).
+    owns user installs); the SYSTEM profile updates through
+    `vesma system update` (specs/layout/v2 §3.13 — drift refuses loudly
+    BEFORE any action, a failed health gate rolls back to the previous
+    revision, re-runs are idempotent). The former `--system` flag form
+    remains here as a hidden deprecated alias — identical behavior,
+    removal not before 9.0; the bare form refuses.
     """
-    _fail_install(
-        SystemInstallError(
-            "`vesma service update` targets the SYSTEM profile only —"
-            " use: `vesma system update`; the user profile updates via"
-            " `vesma self-update`"
+    if not system:
+        _fail_install(
+            SystemInstallError(
+                "`vesma service update` targets the SYSTEM profile only —"
+                " use: `vesma system update`; the user profile updates via"
+                " `vesma self-update`"
+            )
         )
-    )
+    _deprecated_flag_hint("vesma service update --system", "vesma system update")
+    try:
+        result: SystemUpdateResult = update_system()
+    except (InstallError, ManifestError, SystemInstallError) as exc:
+        _fail_install(exc)
+    for line in result.lines:
+        warn_line = line.startswith(("WARN:", "note:", "preserved", "rollback:", "conffile kept"))
+        style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
+        # Text(line): report lines carry operator data (paths, names) —
+        # rendered without markup, only the prefix is styling.
+        console.print(style, Text(line))
+    console.print(f"[green]System profile updated ({result.engine_venv}).[/green]")
 
 
 # ── control plane: shared plumbing (wave W3) ──────────────────────────
@@ -283,9 +360,9 @@ def start(
     target resolution: the NAME is checked against the registry first,
     bare invocation refuses (never a bulk mutation). `--all` starts in
     dependency order (`depends_on` before dependents) — lifted here from
-    the former top-level `vesma start --all` (CLI topology v2 wave B;
-    that spelling is REMOVED since 7.0.0). Check `vesma service health`
-    afterwards to confirm readiness.
+    the former top-level `vesma start --all` (CLI topology v2 wave B).
+    The hidden top-level `vesma start` alias calls the SAME function.
+    Check `vesma service health` afterwards to confirm readiness.
     """
     from vesma.cli.components import start_command
 
@@ -324,8 +401,8 @@ def stop(
     component: an already-stopped component is reported as-is. `--all`
     stops in REVERSE dependency order (dependents torn down before what
     they depend on) — lifted here from the former top-level `vesma stop
-    --all` (CLI topology v2 wave B; that spelling is REMOVED since
-    7.0.0).
+    --all` (CLI topology v2 wave B). The hidden top-level `vesma stop`
+    alias calls the SAME function.
     """
     from vesma.cli.components import stop_command
 
@@ -360,8 +437,9 @@ def restart(
     start/stop it is NOT idempotent — a retry after a lost response
     performs a second restart. `--all` restarts in dependency order —
     lifted here from the former top-level `vesma restart --all` (CLI
-    topology v2 wave B; that spelling is REMOVED since 7.0.0). Confirm
-    readiness with `vesma service health`.
+    topology v2 wave B). The hidden top-level `vesma restart` alias
+    calls the SAME function. Confirm readiness with `vesma service
+    health`.
     """
     from vesma.cli.components import restart_command
 

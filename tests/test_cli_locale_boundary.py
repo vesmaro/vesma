@@ -113,9 +113,7 @@ class TestCLocaleBoundary:
     """Core read paths survive ANSI_X3.4-1968 preferred encoding."""
 
     def test_add_file_cyrillic_round_trips_byte_for_byte(self, tmp_path: Path) -> None:
-        """`ingest file` on a cyrillic note: no decode crash, store keeps the exact bytes
-        (7.0.0: the file leg lives on the ingest subcommand — the `add --file`
-        flag form is REMOVED)."""
+        """`add --file` on a cyrillic note: no decode crash, store keeps the exact bytes."""
         home = tmp_path / "home"
         home.mkdir()
         cfg = tmp_path / "config.yaml"
@@ -124,8 +122,8 @@ class TestCLocaleBoundary:
         note.write_text(_PHRASE + "\n", encoding="utf-8")
 
         env = _c_locale_env(home, cfg)
-        proc = _run(env, home, "ingest", "file", str(note), "--tags", _TAGS)
-        _assert_clean(proc, "ingest file")
+        proc = _run(env, home, "add", "--file", str(note), "--tags", _TAGS)
+        _assert_clean(proc, "add --file")
         assert "Saved" in proc.stdout, proc.stdout
 
         stored = _export_contents(env, home, cfg, tmp_path / "export.json")

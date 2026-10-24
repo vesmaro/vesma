@@ -1,11 +1,13 @@
-"""``vesma traces`` — view pipeline traces (M6 explainability layer).
+"""``vesma logs`` — view pipeline traces (M6 explainability layer).
 
-CLI topology FINAL (owner doctrine 2026-10-24, 7.0.0): the trace viewer
-owns the top-level ``vesma traces`` name — the word "logs" belongs ONLY
-to the daemon world (``vesma service logs NAME``, the supervisor ring
-buffer). The former spellings (``vesma logs``, ``vesma task-logs``) are
-REMOVED; ``vesma traces`` takes no positional argument (components are
-not trace subjects).
+CLI topology v2 (ArchCom 2026-10-23, wave A): the trace viewer takes the
+top-level ``vesma logs`` name (its previous ``task-logs`` spelling stays
+as a hidden deprecated alias with a stderr hint). A positional argument
+that names a KNOWN component answers the wave-61 habit — ``vesma logs
+NAME`` used to mean component logs — with a loud redirect to ``vesma
+service logs NAME`` on stderr while STILL running the trace view (no
+silent substitution); a non-component positional stays a usage error
+exactly as it was under ``task-logs``.
 
 Reads the ``traces`` table via :meth:`SQLiteStore.list_traces` and prints
 a compact, ``tail -f``-style table. Supports filtering by task label,
@@ -13,15 +15,16 @@ project, and a time boundary.
 
 Usage::
 
-    vesma traces                            # last 50 traces
-    vesma traces --task cluster             # only cluster traces
-    vesma traces --project vesma            # filter by project
-    vesma traces --limit 100                # more rows
-    vesma traces --follow                   # poll for new traces (tail -f)
+    vesma logs                            # last 50 traces
+    vesma logs --task cluster             # only cluster traces
+    vesma logs --project vesma            # filter by project
+    vesma logs --limit 100                # more rows
+    vesma logs --follow                   # poll for new traces (tail -f)
 """
 
 from __future__ import annotations
 
+import functools
 import time
 from datetime import datetime
 from typing import Annotated, Any
@@ -37,9 +40,9 @@ from vesma.storage.sqlite_store import SQLiteStore
 # contexts (CliRunner, piped output). 200 chars fits all columns comfortably.
 console = Console(width=200)
 
-traces_app = typer.Typer(
+logs_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
-    name="traces",
+    name="logs",
     help=(
         "View pipeline traces.\n\n"
         "Reads the trace table the knowledge pipeline writes per task: what "
@@ -89,8 +92,16 @@ def _render_table(traces: list[Any], *, title: str = "Traces") -> Table:
     return table
 
 
-@traces_app.callback(invoke_without_command=True)
-def traces_cmd(
+@logs_app.callback(invoke_without_command=True)
+def logs_cmd(
+    name: Annotated[
+        str | None,
+        typer.Argument(
+            help="Known component name — answers the old `vesma logs NAME` habit "
+            "with a redirect to `vesma service logs NAME` (traces still print).",
+            show_default=False,
+        ),
+    ] = None,
     task: Annotated[
         str | None,
         typer.Option(
@@ -126,9 +137,39 @@ def traces_cmd(
     Prints the newest traces (default 50) as a table — timestamp, stage,
     project and summary — newest first. Combine `--since`, `--project` and
     `--limit` to narrow the window; `--follow` keeps polling for new traces
-    tail -f style until interrupted. Components are not trace subjects —
-    component (supervisor) logs live on `vesma service logs NAME`.
+    tail -f style until interrupted.
+
+    A positional NAME that matches a known component does NOT filter
+    traces — components are not trace subjects — it prints a loud stderr
+    redirect to `vesma service logs NAME` (the component-logs home since
+    the topology v2 wave) and still runs the trace view; a non-component
+    positional is a usage error (exit 2), as it always was.
     """
+    if name is not None:
+        # CLI topology v2 wave A: `vesma logs NAME` was the component-logs
+        # spelling for a wave; catch the habit loudly, never silently
+        # substitute a different view. The registry listing is disk-state
+        # (never raises); the deferred import breaks the import cycle
+        # (components imports this module for its own legacy surfaces).
+        from vesma.cli.components import _manifest_stems
+
+        if name in _manifest_stems():
+            typer.echo(
+                f"[deprecated] component logs moved — use: `vesma service logs {name}` "
+                "(this view shows pipeline traces)",
+                err=True,
+            )
+        else:
+            # A positional was never part of the trace-viewer surface —
+            # answer as the parser would have: usage error, exit 2 (the
+            # codebase idiom — a raised click.UsageError would traceback
+            # under typer's non-standalone invocation).
+            console.print(
+                f"[red]error:[/red] got unexpected extra argument ({name}) — this view "
+                "shows PIPELINE traces (no positional arguments); component logs: "
+                "`vesma service logs NAME`",
+            )
+            raise typer.Exit(code=2) from None
     settings = load_settings_or_exit(config)
     settings.resolve_paths()
     store = SQLiteStore(settings.db_path)
@@ -177,5 +218,8 @@ def traces_cmd(
         store.close()
 
 
-if __name__ == "__main__":  # pragma: no cover — manual invocation
-    traces_app()
+@functools.wraps(logs_cmd)
+def task_logs_alias(*args: Any, **kwargs: Any) -> None:
+    """Hidden top-level registration wrapper — prints the deprecation hint."""
+    typer.echo("[deprecated] `vesma task-logs` is deprecated — use: vesma logs", err=True)
+    logs_cmd(*args, **kwargs)

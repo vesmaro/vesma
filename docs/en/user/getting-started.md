@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
 > The complete Vesma user lifecycle: install → service → integration →
-> doctor → updates → legacy cleanup. Current for release 7.0.0. The store
+> doctor → updates → legacy cleanup. Current for release 6.5.0. The store
 > home is `~/.vesma/` (since 6.0.0; the 5.x move is covered in
 > [migration-6-0.md](migration-6-0.md)).
 
@@ -100,14 +100,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:7.0.0
+  ghcr.io/vesmaro/vesma:6.5.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:7.0.0` (pinned) · `:latest` (rolling).
+Tags: `:6.5.0` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -116,7 +116,7 @@ Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md)
 
 <!-- version:pip -->
 ```bash
-pip install vesma==7.0.0
+pip install vesma==6.5.0
 ```
 <!-- /version:pip -->
 
@@ -546,11 +546,10 @@ updates:
 
 ### The `vesma self-update` subcommands
 
-> The application self-update family lives under `vesma self-update`; the
-> component-manifest verb lives under `vesma service components update`. Since
-> 7.0.0 the former top-level `vesma update` command and its legacy flag forms
-> (`--yes`, `--check`, …) are REMOVED — timers installed before the rename
-> migrate with `vesma self-update timer install` (one command per box).
+> Since the component UX (6.2.0) the application self-update family lives under
+> `vesma self-update` — the top-level `update` is now the component-manifest
+> verb. Legacy flag forms (`vesma update --yes`, `--check`, …) still work as
+> hidden aliases.
 
 | Command | Purpose |
 |---------|---------|
@@ -861,4 +860,4 @@ note in the [integration guide](integration-guide.md).
 
 ---
 
-_Last updated: 2026-10-24 (release 7.0.0)_
+_Last updated: 2026-10-24 (release 6.5.0)_

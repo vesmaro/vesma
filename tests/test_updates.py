@@ -541,7 +541,7 @@ def test_update_check_pip_latest_unknown_offline(
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "check_for_update", lambda settings=None, **kw: None)
     monkeypatch.setattr(updates_cli, "family_latest", lambda: None)
-    result = _invoke_update(["check"], monkeypatch)
+    result = _invoke_update(["--check"], monkeypatch)
     assert result.exit_code == 0
     assert "latest unknown" in result.output
 
@@ -576,7 +576,7 @@ def test_update_yes_runs_pip_user_upgrade(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "_pep668_externally_managed", lambda: False)
-    result = _invoke_update(["apply", "--scope=user"], monkeypatch)
+    result = _invoke_update(["--yes", "--scope=user"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert recorded, "pip must have been invoked"
     cmd = recorded[0]
@@ -601,7 +601,7 @@ def test_update_yes_pinned_to_version_is_rollback_path(
 
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply", "--to", "5.1.0"], monkeypatch)
+    result = _invoke_update(["--yes", "--to", "5.1.0"], monkeypatch)
     assert result.exit_code == 0, result.output
     cmd = recorded[0]
     assert any(c == "vesma==5.1.0" for c in cmd)
@@ -620,7 +620,7 @@ def test_update_yes_adds_break_system_packages_under_pep668(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
     monkeypatch.setattr(updates_cli, "_pep668_externally_managed", lambda: True)
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert "--break-system-packages" in recorded[0]
 
@@ -631,7 +631,7 @@ def test_update_yes_records_failure_rc(quiet_home: Path, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 1
     history = json.loads((quiet_home / ".local/share/vesma/update-history.json").read_text())
     assert history[0]["rc"] == 1
@@ -645,7 +645,7 @@ def test_update_yes_fails_cleanly_offline(
 
     monkeypatch.setattr(updates_cli, "fetch_latest", boom)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 1
     assert "cannot reach PyPI" in result.output
 
@@ -654,13 +654,13 @@ def test_update_yes_without_pip_dist_fails(
     quiet_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: None)
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 1
     assert "no pip-installed" in result.output
 
 
 def test_update_rejects_unknown_scope(quiet_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    result = _invoke_update(["apply", "--scope=binaries"], monkeypatch)
+    result = _invoke_update(["--yes", "--scope=binaries"], monkeypatch)
     assert result.exit_code == 1
     assert "only --scope=user" in result.output
 
@@ -789,7 +789,7 @@ def test_update_check_flag_never_prompts_even_when_pending(
     monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
     calls = _spy_confirm(monkeypatch, answer=True)
 
-    result = _invoke_update(["check"], monkeypatch)
+    result = _invoke_update(["--check"], monkeypatch)
     assert result.exit_code == 0
     assert not calls, "--check is always check-only"
     assert "apply with" not in result.output
@@ -811,7 +811,7 @@ def test_update_y_alias_applies_without_prompt(
     monkeypatch.setattr(updates_cli, "_stdin_is_tty", lambda: True)
     calls = _spy_confirm(monkeypatch, answer=True)
 
-    result = _invoke_update(["apply", "-y"], monkeypatch)
+    result = _invoke_update(["-y"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert not calls, "-y must skip the prompt"
     assert recorded, "-y must apply"
@@ -832,7 +832,7 @@ def test_update_yes_quiet_pip_success_prints_summary_line(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: next(versions))
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert f"pip: vesma {INSTALLED} → {LATEST}" in result.output
     assert "Requirement already satisfied" not in result.output
@@ -848,7 +848,7 @@ def test_update_yes_quiet_pip_already_current(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: INSTALLED)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert "already current" in result.output
 
@@ -864,7 +864,7 @@ def test_update_yes_verbose_prints_full_pip_output(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply", "--verbose"], monkeypatch)
+    result = _invoke_update(["--yes", "--verbose"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert "Requirement already satisfied: noise-00" in result.output
     assert "Requirement already satisfied: noise-19" in result.output
@@ -882,7 +882,7 @@ def test_update_yes_quiet_pip_failure_shows_tail_and_verbose_hint(
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "fetch_latest", lambda dist: LATEST)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply"], monkeypatch)
+    result = _invoke_update(["--yes"], monkeypatch)
     assert result.exit_code == 1
     assert "pip upgrade failed" in result.output
     assert "pip exploded" in result.output
@@ -918,12 +918,12 @@ def test_install_timer_writes_units_and_enables(
 ) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(updates_cli, "_systemctl", lambda *args: calls.append(args) or 0)
-    result = _invoke_update(["timer", "install"], monkeypatch)
+    result = _invoke_update(["--install-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     unit_dir = quiet_home / ".config/systemd/user"
     service = (unit_dir / "vesma-update.service").read_text()
     timer = (unit_dir / "vesma-update.timer").read_text()
-    assert "self-update apply --scope user" in service
+    assert "--yes --scope=user" in service
     assert "Type=oneshot" in service
     assert "OnCalendar=weekly" in timer
     assert "Persistent=true" in timer
@@ -936,18 +936,18 @@ def test_install_timer_env_fallback_exec_start(
     quiet_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(updates_cli, "_systemctl", lambda *args: 0)
-    result = _invoke_update(["timer", "install"], monkeypatch)
+    result = _invoke_update(["--install-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     service = (quiet_home / ".config/systemd/user/vesma-update.service").read_text()
     # quiet_home has no ~/.local/bin/vesma launcher — /usr/bin/env fallback.
-    assert "/usr/bin/env vesma self-update apply --scope user" in service
+    assert "/usr/bin/env vesma self-update --yes --scope=user" in service
 
 
 def test_install_timer_prints_instructions_when_systemctl_unavailable(
     quiet_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(updates_cli, "_systemctl", lambda *args: None)
-    result = _invoke_update(["timer", "install"], monkeypatch)
+    result = _invoke_update(["--install-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert "systemctl --user daemon-reload" in result.output
     assert "enable --now vesma-update.timer" in result.output
@@ -958,14 +958,22 @@ def test_uninstall_timer_disables_and_removes(
 ) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(updates_cli, "_systemctl", lambda *args: calls.append(args) or 0)
-    assert _invoke_update(["timer", "install"], monkeypatch).exit_code == 0
+    assert _invoke_update(["--install-timer"], monkeypatch).exit_code == 0
     unit_dir = quiet_home / ".config/systemd/user"
     assert (unit_dir / "vesma-update.service").exists()
-    result = _invoke_update(["timer", "uninstall"], monkeypatch)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert not (unit_dir / "vesma-update.service").exists()
     assert not (unit_dir / "vesma-update.timer").exists()
     assert ("disable", "--now", "vesma-update.timer") in calls
+
+
+def test_timer_flags_are_mutually_exclusive(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = _invoke_update(["--install-timer", "--uninstall-timer"], monkeypatch)
+    assert result.exit_code == 1
+    assert "mutually exclusive" in result.output
 
 
 # ── CLI: timer install / removal inside a distrobox (#468) ───────────────────
@@ -1048,7 +1056,7 @@ def test_install_timer_in_box_writes_host_units(
     service = (unit_dir / "vesma-update.service").read_text()
     assert (
         f"ExecStart={host_home}/.local/bin/distrobox-enter -n ubuntu -- /bin/sh -c "
-        "'exec \"$HOME/.local/bin/vesma\" self-update apply --scope user'"
+        "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
     ) in service
     timer = (unit_dir / "vesma-update.timer").read_text()
     assert "OnCalendar=weekly" in timer
@@ -1097,7 +1105,7 @@ def test_uninstall_timer_in_box_removes_only_own_line(
     assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
 
     monkeypatch.setenv("HOME", str(host_home / ".distrobox" / "ubuntu" / "home"))
-    result = _invoke_update(["timer", "uninstall"], monkeypatch)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     unit_dir = host_home / ".config/systemd/user"
     service = (unit_dir / "vesma-update.service").read_text()
@@ -1116,7 +1124,7 @@ def test_uninstall_timer_last_box_removes_units(
     assert _invoke_update(["timer", "install", "--force"], monkeypatch).exit_code == 0
 
     calls = _spy_systemctl(monkeypatch, rc=0)
-    result = _invoke_update(["timer", "uninstall"], monkeypatch)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
     assert result.exit_code == 0, result.output
     unit_dir = host_home / ".config/systemd/user"
     assert not (unit_dir / "vesma-update.service").exists()
@@ -1196,16 +1204,16 @@ def test_update_check_subcommand_never_prompts_or_applies(
     assert "apply with" not in result.output
 
 
-def test_update_check_subcommand_matches_plain_report(
+def test_update_check_subcommand_matches_deprecated_flag(
     quiet_home: Path,
     monkeypatch: pytest.MonkeyPatch,
     no_pypi: None,
     pending_check: None,
     forbid_pip: None,
 ) -> None:
-    """`check` renders the same report as the plain (no-subcommand) form."""
+    """`check` and the deprecated `--check` render the same report."""
     plain = _invoke_update(["check"], monkeypatch)
-    flag = _invoke_update(["check"], monkeypatch)
+    flag = _invoke_update(["--check"], monkeypatch)
     assert plain.exit_code == flag.exit_code == 0
     assert "UPDATE AVAILABLE" in plain.output
     assert "UPDATE AVAILABLE" in flag.output
@@ -1256,39 +1264,82 @@ def test_update_apply_yes_flag_is_a_noop(quiet_home: Path, monkeypatch: pytest.M
     assert recorded
 
 
-# ── 7.0.0: the flag forms are REMOVED (no-aliases doctrine) ──────────────────
+# ── hidden deprecated flag aliases + stderr hints (standing rule) ─────────────
 
 
-def test_removed_flag_forms_are_usage_errors(quiet_home: Path) -> None:
-    """The former hidden flag aliases no longer PARSE — the subcommands
-    (`check` / `apply` / `timer …`) are the only spellings."""
-    for argv in (
-        ["--check"],
-        ["--yes"],
-        ["-y"],
-        ["--to", "5.1.0"],
-        ["--scope=user"],
-        ["--install-timer"],
-        ["--uninstall-timer"],
-    ):
-        result = _invoke_update(argv, None)
-        assert result.exit_code == 2, (argv, result.output)
+def test_deprecated_check_alias_hints_on_stderr_stdout_clean(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    result = _invoke_update(["--check"], monkeypatch)
+    assert result.exit_code == 0
+    assert "use: vesma self-update check" in result.stderr
+    assert "[deprecated]" in result.stderr
+    assert "use: vesma self-update check" not in result.stdout, "stdout stays clean for pipes/JSON"
+    assert "UPDATE AVAILABLE" in result.stdout, "the flag still works identically"
 
 
-def test_help_carries_no_deprecated_note_or_flags(quiet_home: Path) -> None:
+def test_deprecated_yes_alias_hints_and_applies(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(cmd, timeout=900):
+        recorded.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
+    monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
+    result = _invoke_update(["--yes"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "use: vesma self-update apply" in result.stderr
+    assert "deprecated" not in result.stdout
+    assert recorded, "the alias must keep working"
+
+
+def test_deprecated_to_and_scope_aliases_hint(
+    quiet_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_pypi: None,
+    pending_check: None,
+    forbid_pip: None,
+) -> None:
+    result = _invoke_update(["--to", "5.1.0", "--scope=user"], monkeypatch)
+    assert result.exit_code == 0
+    assert "use: vesma self-update apply --to VERSION" in result.stderr
+    assert "use: vesma self-update apply --scope user" in result.stderr
+
+
+def test_deprecated_uninstall_timer_alias_hints_and_removes(
+    quiet_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _spy_systemctl(monkeypatch, rc=0)
+    result = _invoke_update(["--uninstall-timer"], monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "use: vesma self-update timer uninstall" in result.stderr
+    assert "removed" in result.stdout
+    assert calls, "the alias must route to the same removal"
+
+
+def test_deprecated_flags_hidden_from_help(quiet_home: Path) -> None:
     from vesma.cli.main import app
 
     # The count relies on plain console rendering: under CI color-forcing
-    # env vars rich splits the option name with ANSI spans (2026-10-20 CI
-    # wave) — the conftest console env profile keeps this test's input
-    # identical on any runner.
+    # env vars rich splits the option name with ANSI spans and the count
+    # drops to 0 (2026-10-20 CI wave) — the conftest console env profile
+    # keeps this test's input identical on any runner.
     result = runner.invoke(app, ["self-update", "--help"])
     assert result.exit_code == 0
-    assert "--check" not in result.output, "the retired flag must be gone"
-    assert "--install-timer" not in result.output
-    assert "deprecated" not in result.output, "the deprecation note died with the flags"
+    # The deprecation NOTE mentions --check once; a visible option would
+    # render a second time in the Options panel.
+    assert result.output.count("--check") == 1, "deprecated flags stay hidden options"
+    assert result.output.count("--install-timer") == 1
     for subcommand in ("check", "apply", "timer", "components"):
         assert subcommand in result.output
+    assert "deprecated" in result.output, "the help must carry the deprecation note"
 
 
 def test_options_before_subcommand_warn_not_drop(
@@ -1302,18 +1353,16 @@ def test_options_before_subcommand_warn_not_drop(
 
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["--verbose", "apply"], monkeypatch)
+    result = _invoke_update(["--yes", "apply"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert "options placed before the subcommand are ignored" in result.stderr
     assert recorded, "the subcommand still runs (the misplaced option is dropped)"
 
 
-def test_shipped_unit_exec_start_is_canonical_subcommand(
+def test_systemd_unit_exec_start_forms_still_work(
     quiet_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The shipped unit's ExecStart (`self-update apply --scope user`) applies
-    — the 7.0.0 template spelling; the pre-7.0.0 flag-form line is pinned
-    REMOVED by test_removed_flag_forms_are_usage_errors above."""
+    """Scripted dependency: the shipped unit's `--yes --scope=user` applies."""
     recorded: list[list[str]] = []
 
     def fake_run(cmd, timeout=900):
@@ -1322,7 +1371,7 @@ def test_shipped_unit_exec_start_is_canonical_subcommand(
 
     monkeypatch.setattr(updates_cli, "_run_cmd", fake_run)
     monkeypatch.setattr(updates_cli, "detect_installed_dist", lambda: ("vesma", INSTALLED))
-    result = _invoke_update(["apply", "--scope=user"], monkeypatch)
+    result = _invoke_update(["--yes", "--scope=user"], monkeypatch)
     assert result.exit_code == 0, result.output
     assert recorded, "the unit's ExecStart form must keep applying"
 
@@ -1458,15 +1507,14 @@ def test_timer_install_refused_in_box_with_force_hint(
     assert not (box_home / ".config/systemd").exists(), "no dead units in the box home"
 
 
-def test_timer_install_refused_in_box_without_force(
+def test_timer_install_alias_refused_in_box(
     box_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, forbid_pip: None
 ) -> None:
     _spy_systemctl(monkeypatch, rc=0)
-    result = _invoke_update(["timer", "install"], monkeypatch)
+    result = _invoke_update(["--install-timer"], monkeypatch)
     assert result.exit_code == 1
+    assert "use: vesma self-update timer install" in result.stderr
     assert "dead units" in result.output
-    # Rich wraps the refusal line — match on whitespace-normalized text.
-    assert "vesma self-update timer install" in " ".join(result.output.split())
 
 
 def test_timer_install_container_env_only_detection(

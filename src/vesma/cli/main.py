@@ -316,6 +316,22 @@ def add(
             "accepted as an input alias everywhere."
         ),
     ),
+    file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            "-f",
+            help="Deprecated flag form — use: `vesma ingest file PATH`.",
+            hidden=True,
+        ),
+    ] = None,
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Deprecated flag form — use: `vesma ingest url URL`.",
+        hidden=True,
+    ),
     source: Annotated[MemorySource, typer.Option("--source", "-s")] = MemorySource.CLI,
     memory_type: Annotated[MemoryType, typer.Option("--type")] = MemoryType.NOTE,
     dry_run: Annotated[
@@ -330,9 +346,10 @@ def add(
 ) -> None:
     """Add a new memory entry (quick-capture).
 
-    URL and file ingest live on their own subcommands (CLI-architecture
-    rework W3, ONE spelling per operation since 7.0.0): `vesma ingest url
-    URL` / `vesma ingest file PATH`.
+    URL and file ingest are subcommands now (CLI-architecture rework W3):
+    `vesma ingest url URL` / `vesma ingest file PATH`. The old flag forms
+    (--url / --file) still work — hidden deprecated aliases with identical
+    behavior and a stderr hint; removal is not before 6.0.
 
     With ``--dry-run``: validates the tag contract, runs the context filter
     pipeline on the content, and prints filter stats **without saving**.
@@ -345,6 +362,11 @@ def add(
         normalize_tag_aliases([t.strip() for t in tags.split(",") if t.strip()]) if tags else []
     )
 
+    if url:
+        _deprecated_flag_hint("vesma add --url URL", "vesma ingest url URL")
+    if file:
+        _deprecated_flag_hint("vesma add --file PATH", "vesma ingest file PATH")
+
     # cli-audit 2026-10-08 (P1 #7): enforce the tag contract BEFORE anything
     # saves or previews — the CLI must not silently save a row the MCP
     # surface refuses (strict default), and in lax mode it patches exactly
@@ -355,7 +377,15 @@ def add(
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
-        if content:
+        if url:
+            console.print(
+                "[red]--dry-run is not supported with --url (content is fetched at "
+                "ingest time).[/red]"
+            )
+            raise typer.Exit(1)
+        if file:
+            text = Path(file).read_text(encoding="utf-8")
+        elif content:
             text = content
         else:
             stdin_text = sys.stdin.read().strip()
@@ -368,7 +398,17 @@ def add(
 
     mgr = get_manager(config)
 
-    if content:
+    if url:
+        memory = _save_url_ingest(mgr, url, tag_list)
+    elif file:
+        memory = _save_file_ingest(
+            mgr,
+            text=Path(file).read_text(encoding="utf-8"),
+            title=title,
+            tag_list=tag_list,
+            source=source,
+        )
+    elif content:
         data = MemoryCreate(
             content=content, title=title, tags=tag_list, source=source, memory_type=memory_type
         )
@@ -388,8 +428,9 @@ def add(
 # ── ingest (CLI-architecture rework W3) ───────────────────────────────────────
 # Standing design rule (docs/project/cli-architecture-rework.md §2.5): a
 # subcommand names the function (WHAT), a flag only configures it (HOW).
-# URL and file ingest live here (ONE spelling per operation since 7.0.0 —
-# the former `add --url` / `add --file` flag forms are REMOVED).
+# URL and file ingest moved here from `add --url/--file`; the flag forms
+# stay on `add` as hidden deprecated aliases (identical behavior + stderr
+# hint; soft mode — removal not before 6.0, design doc §3).
 
 _ingest_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -398,7 +439,8 @@ _ingest_app = typer.Typer(
         "Ingest external content into the memory store.\n\n"
         "Subcommands: `url` — fetch a web page, extract the main text, save "
         "it as a memory; `file` — save a local file's text content as a "
-        "memory."
+        "memory. (Former `add --url` / `add --file` flag forms; those remain "
+        "as hidden deprecated aliases.)"
     ),
     no_args_is_help=True,
 )
@@ -637,9 +679,20 @@ def search(
 # CLI-architecture rework W2 (docs/project/cli-architecture-rework.md §2.4):
 # standing design rule — a subcommand names the function (WHAT), a flag only
 # configures it (HOW). `recall` is a group whose callback keeps the bare
-# `vesma recall` behavior byte-identical; per-agent recall is the subcommand
-# `vesma recall agent SLUG [QUERY]` (ONE spelling per operation since 7.0.0 —
-# the former `--agent` flag form is REMOVED).
+# `vesma recall` behavior byte-identical; per-agent recall moved to the
+# canonical subcommand `vesma recall agent SLUG [QUERY]`; the legacy `--agent`
+# flag stays as a hidden deprecated alias with a stderr hint (identical
+# behavior; removal not before 6.0, design doc §3).
+
+
+def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
+    """One-line deprecation hint for a hidden legacy flag form (stderr).
+
+    Per-module copy of the W-C precedent (update_cmd.py, doctor.py):
+    each CLI module that retracts a flag form owns its hint helper.
+    stdout stays clean for pipes and JSON consumers.
+    """
+    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
 
 
 def _print_recall_memories(memories: list[Memory]) -> None:
@@ -673,18 +726,27 @@ def recall(
     project: str = typer.Option(
         None, "--project", "-p", help="Filter by project slug (e.g. `project:vesma`)."
     ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Deprecated flag form — use: `vesma recall agent SLUG`.",
+        hidden=True,
+    ),
     limit: int = typer.Option(10, "--limit", "-l", help="Max memories to print."),
     config: str = ConfigOption,
 ) -> None:
     """Recall recent memories, optionally filtered by project.
 
-    Per-agent recall (M3) is a subcommand: `vesma recall agent SLUG
-    [QUERY]`.
+    Per-agent recall (M3) is a subcommand now: `vesma recall agent SLUG
+    [QUERY]`. The old flag form (--agent) still works — a hidden
+    deprecated alias with identical behavior and a stderr hint; removal
+    is not before 6.0.
     """
     if ctx.invoked_subcommand is not None:
         # The subcommand (`agent`) runs its own logic; options placed
         # BEFORE the subcommand word would be silently dropped otherwise.
-        if project is not None or limit != 10 or config is not None:
+        if project is not None or agent is not None or limit != 10 or config is not None:
             typer.echo(
                 "note: options placed before the subcommand are ignored — "
                 "pass them after it (e.g. `vesma recall agent SLUG --project x`)",
@@ -692,6 +754,11 @@ def recall(
             )
         return
     mgr = get_manager(config)
+    if agent:
+        _deprecated_flag_hint("vesma recall --agent SLUG", "vesma recall agent SLUG")
+        results = mgr.agent_recall(AgentRecallQuery(agent=agent, project=project, limit=limit))
+        _print_recall_memories([r.memory for r in results])
+        return
     # cli-audit 2026-10-08 (P1 #5): bare recall used to delegate to
     # recall_context — checkpoint-scoped by contract — so only
     # vesma:checkpoint rows ever surfaced while the help promised "the
@@ -2675,6 +2742,18 @@ from vesma.cli.util import integration_app  # noqa: E402
 app.add_typer(integration_app, name="integration")
 
 
+# ── memory (memory-switch status surface, ADR-0034 MS-0) ──────────────────────
+# Subcommand tree:
+#   vesma memory status — read-only per-harness memory attachment report
+# CLI topology v2 wave A: the canonical home is `vesma integration
+# memory` (the harness layer domain); this top-level group stays as a
+# HIDDEN deprecated alias (stderr hint inside, removal not before 9.0).
+
+from vesma.cli.memory_status import memory_app  # noqa: E402
+
+app.add_typer(memory_app, name="memory", hidden=True)
+
+
 # ── completion ─────────────────────────────────────────────────────────────────
 # Auto-detect current shell, generate completion script, auto-install into rc.
 
@@ -2706,24 +2785,26 @@ app.command(
 
 # ── doctor ─────────────────────────────────────────────────────────────────────
 # Health-check: config + data dir + vault + SQLite + vectors + MCP + integration + tags.
-# CLI topology FINAL (2026-10-24): `vesma doctor` is the ONE doctor (both
-# profiles, read-only, never escalates — ArchCom G2; the former
-# `vesma system doctor` additional registration is REMOVED).
+# CLI topology v2 wave A: `vesma doctor` stays the PRIMARY L1 entry
+# (both profiles, read-only, never escalates — ArchCom G2); the SAME
+# doctor app is ADDITIONALLY registered under the system domain
+# (`vesma system doctor`, visible) so the system-profile door leads to
+# the identical pass — one module, two doors, no logic fork.
 
 from vesma.cli.doctor import doctor_app  # noqa: E402
 
 app.add_typer(doctor_app, name="doctor")
 
 
-# ── export / import / traces (M17 — backup/restore + trace viewer) ────────────
+# ── export / import / logs (M17 — backup/restore + trace viewer) ──────────────
 
 from vesma.cli.agent_token_cmd import agent_token_app  # noqa: E402
 from vesma.cli.export_cmd import export_app  # noqa: E402
 from vesma.cli.import_cmd import import_cmd  # noqa: E402
+from vesma.cli.logs import logs_app, task_logs_alias  # noqa: E402
 from vesma.cli.metrics_cmd import _metrics_app  # noqa: E402
 from vesma.cli.scanner_cmd import scanner_app  # noqa: E402
 from vesma.cli.sync_cmd import sync_app  # noqa: E402
-from vesma.cli.traces import traces_app  # noqa: E402
 from vesma.cli.update_cmd import update_app  # noqa: E402
 
 app.add_typer(agent_token_app, name="agent-token")
@@ -2732,11 +2813,13 @@ app.add_typer(export_app, name="export")
 # first positional (click MultiCommand), so `import f.json --mode merge`
 # died with "Missing argument 'source'" (cli-audit 2026-10-08 #4).
 app.command(name="import")(import_cmd)
-# CLI topology FINAL (2026-10-24, 7.0.0): the pipeline-trace viewer owns
-# the top-level `traces` name — "logs" belongs ONLY to the daemon world
-# (`vesma service logs NAME`); the former `vesma logs` / `vesma task-logs`
-# spellings are REMOVED.
-app.add_typer(traces_app, name="traces")
+# CLI topology v2 wave A: the top-level `logs` name belongs to the
+# PIPELINE-TRACE viewer (its `task-logs` spelling stays as a hidden
+# deprecated alias with a stderr hint); component logs live on
+# `vesma service logs NAME`, and `vesma logs NAME` answers the old
+# component habit with a loud redirect (see vesma/cli/logs.py).
+app.add_typer(logs_app, name="logs")
+app.command(name="task-logs", hidden=True)(task_logs_alias)
 app.add_typer(_metrics_app, name="metrics")
 app.add_typer(sync_app, name="sync")
 app.add_typer(scanner_app, name="scanner")
@@ -2757,10 +2840,11 @@ from vesma.cli.graph_cmd import graph_app  # noqa: E402
 app.add_typer(graph_app, name="graph")
 
 # self-update family: a sub-app (board card vesma-update-family-components) —
-# the APPLICATION self-update (check/apply/timer/components). The one
-# spelling since 7.0.0: the former top-level `update` name and its legacy
-# flag forms are REMOVED (timers installed before wave 61 migrate with
-# `vesma self-update timer install`).
+# the APPLICATION self-update (check/apply/timer/components). Wave 61
+# component UX moved it off the top-level `update` name — that name now
+# belongs to the component-manifest verb (vesma.cli.components); the
+# legacy flag forms the shipped systemd unit depends on keep working as
+# hidden aliases on both surfaces.
 app.add_typer(update_app, name="self-update")
 
 # ── service (engine waves W3/W4, one sub-app) — install/uninstall (W4)
@@ -2774,14 +2858,18 @@ app.add_typer(service_app, name="service")
 # ── system (CLI-topology wave, variant B — owner-ratified 2026-10-23) ──
 #    The SYSTEM profile domain: install/uninstall/update of the FHS tree
 #    (apt vs systemctl: `system` owns the system profile, `service` owns
-#    runtime control + the user profile). CLI topology FINAL (2026-10-24,
-#    7.0.0): the `service <verb> --system` hidden flag forms are REMOVED
-#    and doctor lives ONLY on L1 (`vesma doctor`); `migrate-store
-#    --target=system` (data plane) is unaffected.
+#    runtime control + the user profile). Each verb delegates to the SAME
+#    impl functions as the `service <verb> --system` spellings, which stay
+#    as hidden deprecated aliases with a stderr hint (removal not before
+#    9.0); `migrate-store --target=system` (data plane) is unaffected.
+#    CLI topology v2 wave A: `vesma system doctor` — the SAME doctor app
+#    additionally registered here (visible; checks BOTH profiles; the L1
+#    `vesma doctor` stays primary per ArchCom G2 — no hidden alias).
 
 from vesma.cli.system_cmd import system_app  # noqa: E402
 
 app.add_typer(system_app, name="system")
+system_app.add_typer(doctor_app, name="doctor")
 
 # ── config domains (CLI-topology v2 wave C, ArchCom 2026-10-23) ────────
 #    TWO EXPLICIT verbs, no euid/env auto-detect (committee 2:1): L1
@@ -2800,13 +2888,18 @@ from vesma.cli.config_cmd import config_app, system_config_app  # noqa: E402
 app.add_typer(config_app, name="config")
 system_app.add_typer(system_config_app, name="config")
 
-# ── top-level component verbs — REMOVED (CLI topology FINAL, 7.0.0) ────
-#    The former `vesma install|status|start|stop|restart|update|configs`
-#    hidden aliases are gone: the component verbs live on `vesma service
-#    components *` and the lifecycle verbs on `vesma service start|stop|
-#    restart` (registered inside vesma.cli.components / vesma.cli.service).
-#    Every removed spelling now answers with the standard typer
-#    "no such command" error — no stubs, no redirects.
+# ── top-level component verbs (wave 61 → CLI-topology v2 aliases) ──────
+#    vesma install|status|start|stop|restart|update|configs [NAME]
+#    — ONE unified surface for built-in AND operator-authored
+#    components; thin delegation onto the service/manifest core. Since
+#    topology v2 wave A these spellings are HIDDEN deprecated aliases:
+#    the canonical homes are `vesma service components *` and
+#    `vesma service start|stop|restart` (identical behavior + a stderr
+#    hint; removal not before 9.0).
+
+from vesma.cli.components import register_component_commands  # noqa: E402
+
+register_component_commands(app)
 
 # ── awareness (ADR-0035 operator surface, board card vesma-ops-mode-ux) ──
 #    get/set — the heartbeat mode switch in the resolved config file (the

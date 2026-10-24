@@ -501,19 +501,19 @@ only.
 
 ---
 
-## `vesma traces` — pipeline traces (renamed from `logs` in 7.0.0)
+## `vesma logs` — pipeline traces
 
 View the pipeline trace log (the `traces` table) directly from the CLI.
 Shows cluster, synthesize, publish, and recall steps with latency, LLM,
 cache, and fallback flags.
 
 ```bash
-vesma traces                      # last 50 traces
-vesma traces --task cluster       # only cluster traces
-vesma traces --project vesma      # filter by project
-vesma traces --limit 100          # more rows
-vesma traces --since 2026-06-01   # only traces after this date
-vesma traces --follow             # poll for new traces (tail -f)
+vesma logs                       # last 50 traces
+vesma logs --task cluster        # only cluster traces
+vesma logs --project vesma      # filter by project
+vesma logs --limit 100           # more rows
+vesma logs --since 2026-06-01    # only traces after this date
+vesma logs --follow              # poll for new traces (tail -f)
 ```
 
 | Flag | Description |

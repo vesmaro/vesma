@@ -255,7 +255,7 @@ def _write_bundled_manifests(components_dir: Path) -> list[Path]:
     ``.pre-regen.bak`` backup next to components.d BEFORE the overwrite
     — the SAME single-writer discipline as ``install_component`` and the
     update reconciliation. The old no-backup asymmetry was a cascade
-    finding: `vesma service components install --all` must not be the one verb that can
+    finding: `vesma install --all` must not be the one verb that can
     destroy operator edits silently.
     """
     written: list[Path] = []
@@ -673,7 +673,7 @@ def install_component(name: str) -> InstallComponentResult:
                 raise InstallError(
                     f"cannot move {alt.name} to the canonical spelling "
                     f"{target.name}: {exc} — rename it manually, then re-run "
-                    f"`vesma service components install {name}`"
+                    f"`vesma install {name}`"
                 ) from exc
             report.append(f"moved: {alt.name} → {target.name} (canonical .yaml spelling)")
         bundle_text = bundled_manifest_path(name).read_text(encoding="utf-8")
@@ -759,7 +759,7 @@ def _reconcile_bundled_manifest(components_dir: Path, name: str) -> list[str]:
     """Reconcile ONE installed bundled manifest with THIS engine's bundle.
 
     The per-name body of :func:`regenerate_stale_manifests` (shared with
-    the per-component ``vesma service components update NAME`` verb): bytes-diff = stale, a
+    the per-component ``vesma update NAME`` verb): bytes-diff = stale, a
     one-time 0600 ``.pre-regen.bak`` backup preserves operator edits
     before the overwrite, and the backup lives in the config root (next
     to components.d, NOT inside it: layout §3.5 fail-closed refuses any
@@ -794,7 +794,7 @@ def _reconcile_bundled_manifest(components_dir: Path, name: str) -> list[str]:
             lines.append(
                 f"WARN: {target.name} DIFFERS from the bundle and the backup "
                 f"failed ({exc}) — NOT overwriting: keep or move the operator "
-                f"edits, then re-run `vesma self-update apply`"
+                f"edits, then re-run `vesma update apply`"
             )
             return lines
     _atomic_write(target, bundle_text, 0o644)
@@ -808,7 +808,7 @@ def _reconcile_bundled_manifest(components_dir: Path, name: str) -> list[str]:
 
 
 def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
-    """Regenerate ONE component's manifest (``vesma service components update NAME`` core).
+    """Regenerate ONE component's manifest (``vesma update NAME`` core).
 
     The SINGLE SOURCE OF TRUTH for target resolution (P3-3, cascade fix):
     resolution goes by FILE STEM — never a fail-closed installation load —
@@ -834,7 +834,7 @@ def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
             if not target.exists():
                 raise InstallError(
                     f"component {name!r} is not installed ({target} does not exist) — "
-                    f"install it first: `vesma service components install {name}`"
+                    f"install it first: `vesma install {name}`"
                 )
             lines = [f"current: {target} (matches the engine bundle)"]
         return lines, any(line.startswith("regenerated:") for line in lines)
@@ -864,7 +864,7 @@ def regenerate_component_manifest(name: str) -> tuple[list[str], bool]:
 def regenerate_stale_manifests() -> tuple[list[str], int]:
     """Reconcile installed manifests with THIS engine after an upgrade.
 
-    P0 (cli-audit 2026-10-08): the engine self-update upgraded the engine
+    P0 (cli-audit 2026-10-08): ``vesma update apply`` upgraded the engine
     while the installed ``components.d`` manifests stayed on the old era —
     the next ``vesma service run`` died fail-closed with
     ``[REQUIREMENTS_INVALID] $.launch.python.requirements ...`` and ANY
@@ -898,7 +898,7 @@ def regenerate_stale_manifests() -> tuple[list[str], int]:
     #    sections, old-era version markers, schema drift — everything the
     #    validator of the new engine would refuse). The per-name body
     #    (backup discipline included) is shared with the per-component
-    #    `vesma service components update NAME` verb — see _reconcile_bundled_manifest.
+    #    `vesma update NAME` verb — see _reconcile_bundled_manifest.
     for name in BUNDLED_COMPONENTS:
         report.extend(_reconcile_bundled_manifest(components_dir, name))
 

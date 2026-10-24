@@ -1,14 +1,11 @@
-"""Tests for the ``vesma doctor paths`` overview (Part 3).
+"""Tests for ``mnemos doctor`` paths overview (Part 3).
 
 Covers:
-- ``doctor paths`` subcommand shows only the paths table
-- ``doctor paths --json`` emits a ``"paths"`` key
+- ``--paths`` flag shows only the paths table
+- ``--paths --json`` emits a ``"paths"`` key
 - Regular ``--json`` output includes ``"paths"``
 - Paths table renders in normal (non-JSON) output
 - Paths dict contains all expected keys
-
-(7.0.0: the former ``--paths`` FLAG form is REMOVED — the subcommand is
-the only spelling.)
 """
 
 from __future__ import annotations
@@ -163,36 +160,40 @@ def test_host_venv_from_box_note_absent_on_host(
     assert doctor_mod._host_venv_from_box_note() is None
 
 
-# ── `doctor paths` subcommand ─────────────────────────────────────────────────
+# ── --paths flag ──────────────────────────────────────────────────────────────
 
 
-def test_doctor_paths_subcommand_exits_zero(isolated_home: Path) -> None:
-    """``vesma doctor paths`` exits 0 and shows paths."""
-    result = runner.invoke(doctor_app, ["paths"])
+def test_doctor_paths_flag_exits_zero(isolated_home: Path) -> None:
+    """``mnemos doctor --paths`` exits 0 and shows paths."""
+    result = runner.invoke(doctor_app, ["--paths"])
     assert result.exit_code == 0
 
 
-def test_doctor_paths_subcommand_shows_paths_table(isolated_home: Path) -> None:
-    """``paths`` renders a paths table (not the health check table)."""
-    result = runner.invoke(doctor_app, ["paths"])
+def test_doctor_paths_flag_shows_paths_table(isolated_home: Path) -> None:
+    """``--paths`` renders a paths table (not the health check table)."""
+    result = runner.invoke(doctor_app, ["--paths"])
     assert "Paths" in result.output
     assert "Root" in result.output
     assert "Config" in result.output
     assert "Vault" in result.output
 
 
-def test_doctor_paths_subcommand_no_health_checks(isolated_home: Path) -> None:
-    """``paths`` should NOT run health checks (no 'Vesma Health Check' table)."""
-    result = runner.invoke(doctor_app, ["paths"])
+def test_doctor_paths_flag_no_health_checks(isolated_home: Path) -> None:
+    """``--paths`` should NOT run health checks (no 'Vesma Health Check' table)."""
+    result = runner.invoke(doctor_app, ["--paths"])
     assert "Mnemos Health Check" not in result.output
-    assert "Vesma Health Check" not in result.output
 
 
 def test_doctor_paths_json(isolated_home: Path) -> None:
-    """``paths --json`` emits a JSON object with a 'paths' key."""
-    result = runner.invoke(doctor_app, ["paths", "--json"])
+    """``--paths --json`` emits a JSON object with a 'paths' key.
+
+    The deprecated flag alias prints a one-line hint to STDERR (real
+    stdout stays pure JSON — verified against a real process); this
+    runner merges both streams, so parse from the first ``{``.
+    """
+    result = runner.invoke(doctor_app, ["--paths", "--json"])
     assert result.exit_code == 0
-    payload = json.loads(result.output)
+    payload = json.loads(result.output[result.output.index("{") :])
     assert "paths" in payload
     paths = payload["paths"]
     assert "root" in paths

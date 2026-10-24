@@ -288,5 +288,5 @@ GET /memories?project=vesma&status=published&tags=vesma:decision&limit=10&offset
 ## См. также
 
 - [Справочник HTTP API](http-api.md) — все эндпоинты.
-- [Справочник CLI](cli-reference.md) — `vesma stats`, `vesma traces`.
+- [Справочник CLI](cli-reference.md) — `vesma stats`, `vesma logs`.
 - [Контекстный фильтр](context-filter.md) — секция `filter` в статистике.
