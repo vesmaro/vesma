@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from vesma.service import layout
+from vesma.service import fhs, layout
 
 #: The normative stamp text (same format as the resolver writes).
 STAMP_V2 = "# vesma install-state (specs/layout/v2 §3.1/§3.3)\ngeneration: v2\nprofile: user\n"
@@ -466,3 +466,98 @@ class TestReservedTreeNames:
     )
     def test_is_reserved_tree_name(self, name: str, reserved: bool) -> None:
         assert layout.is_reserved_tree_name(name) is reserved
+
+
+def _stamp_system_state(prefix: Path, profile: str = "system") -> Path:
+    """Write a system install-state under an FHS test prefix (the dest-dir
+    technique — same shape the installer dumps: ``profile:`` + artifacts)."""
+    state = prefix / "var/lib/vesma/install-state.yaml"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(
+        "# vesma system install-state (§3.13)\n"
+        'updated: "2026-10-24T00:00:00+00:00"\n'
+        f"profile: {profile}\n"
+        "artifacts: []\n",
+        encoding="utf-8",
+    )
+    return state
+
+
+class TestSystemProfileDispatch:
+    """The system-profile dispatch of ``resolve_component_paths`` (layout v2
+    §3.12/§3.13; ADR-0045; soak finding F5): ``profile: system`` in the
+    SYSTEM install-state resolves the §3.4 table through the FHS manifest
+    instead of the user-layout generators."""
+
+    def test_system_state_resolves_fhs_slots(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        _stamp_system_state(tmp_path)
+        paths = layout.resolve_component_paths("metrics")
+        assert paths.config_path == tmp_path / "etc/vesma/config.yaml"
+        assert paths.data_dir == tmp_path / "var/lib/vesma/metrics"
+        assert paths.runtime_dir == tmp_path / "run/vesma"
+        assert paths.venv_bin == tmp_path / "usr/lib/vesma/venvs/metrics/bin"
+
+    def test_profile_stamp_reader(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        assert layout.read_system_profile_stamp() is None
+        assert layout.system_profile_active() is False
+        _stamp_system_state(tmp_path)
+        assert layout.read_system_profile_stamp() == "system"
+        assert layout.system_profile_active() is True
+
+    def test_absent_system_state_resolves_user_layout(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        paths = layout.resolve_component_paths("board")
+        tree = isolated_home / ".vesma"
+        assert paths.config_path == tree / "config.yaml"
+        assert paths.data_dir == tree / "components" / "board"
+        assert paths.runtime_dir == tmp_path / "run" / "vesma"
+        assert paths.venv_bin == tree / "venvs" / "board" / "bin"
+
+    def test_user_profile_state_resolves_user_layout(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        _stamp_system_state(tmp_path, profile="user")
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        paths = layout.resolve_component_paths("board")
+        tree = isolated_home / ".vesma"
+        assert paths.config_path == tree / "config.yaml"
+        assert paths.data_dir == tree / "components" / "board"
+        assert paths.runtime_dir == tmp_path / "run" / "vesma"
+        assert paths.venv_bin == tree / "venvs" / "board" / "bin"
+
+    def test_unparsable_system_state_resolves_user_layout(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The read_generation_stamp canon: a broken stamp is "no stamp" —
+        a path resolver never crashes on a state file the installer owns."""
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        state = tmp_path / "var/lib/vesma/install-state.yaml"
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_bytes(b"\x00\x01 not yaml \xff[")
+        assert layout.read_system_profile_stamp() is None
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        paths = layout.resolve_component_paths("board")
+        tree = isolated_home / ".vesma"
+        assert paths.venv_bin == tree / "venvs" / "board" / "bin"
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses DAC — EACCES leg is unreachable")
+    def test_unreadable_system_state_resolves_user_layout(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A plain user on a system-profile machine gets EACCES on the
+        state file — that account resolves ITS user layout, not a guess."""
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        state = _stamp_system_state(tmp_path)
+        state.chmod(0o000)
+        assert layout.read_system_profile_stamp() is None
+        assert layout.system_profile_active() is False
