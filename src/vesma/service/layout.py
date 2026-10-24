@@ -55,6 +55,8 @@ import tempfile
 from enum import StrEnum
 from pathlib import Path
 
+from vesma.service import fhs
+
 logger = logging.getLogger("vesma.service.layout")
 
 # ── Canonical modes (layout v1 §3.2 / v2 §3.2 tables) ─────────────────
@@ -146,6 +148,51 @@ def write_generation_stamp(generation: LayoutGeneration) -> Path:
         MODE_FILE_ENV,
     )
     return install_state_path()
+
+
+#: The ``profile:`` line of the SYSTEM install-state — the system-profile
+#: dispatch key (layout v2 §3.13; ADR-0045). The state file lives at the
+#: FHS slot (``/var/lib/vesma/install-state.yaml`` via
+#: :func:`vesma.service.fhs.system_install_state_path`) and is written by
+#: the system installer with ``profile: system``; the user stamp above
+#: carries ``profile: user`` in ITS root. Only the ``profile:`` value
+#: participates in layout dispatch — artifacts/ownership stay installer
+#: concerns (:mod:`vesma.service.system_install`).
+_SYSTEM_PROFILE_RE = re.compile(r"^\s*profile:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$", re.MULTILINE)
+
+_SYSTEM_PROFILE = "system"
+
+
+def read_system_profile_stamp() -> str | None:
+    """``profile:`` from the SYSTEM install-state, or ``None``.
+
+    Deliberately crash-proof and permission-blind (the
+    :func:`read_generation_stamp` canon): on a user-profile machine the
+    system state is absent, and for a plain user account on a
+    system-profile machine it is ``EACCES`` — both mean "resolve the user
+    layout" here. The LOUD unparsable-state semantics belong to the
+    installer flows (:func:`vesma.service.system_install.read_system_state`),
+    where acting half-blind is the hazard, not to a path resolver.
+    """
+    try:
+        text = fhs.system_install_state_path().read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        # OSError covers absent/EACCES; UnicodeDecodeError (a ValueError)
+        # covers a state file that is not text at all — both degrade to
+        # "no stamp" for a path resolver.
+        return None
+    found = _SYSTEM_PROFILE_RE.search(text)
+    if found is None:
+        return None
+    return found.group(1)
+
+
+def system_profile_active() -> bool:
+    """True when the SYSTEM install-state stamps ``profile: system``.
+
+    Call-time evaluation, no caching (the module canon).
+    """
+    return read_system_profile_stamp() == _SYSTEM_PROFILE
 
 
 def detect_generation() -> LayoutGeneration:
@@ -560,11 +607,29 @@ class ComponentPaths:
 def resolve_component_paths(name: str) -> ComponentPaths:
     """Resolve the four §3.4 placeholder targets for one component.
 
+    Profile-dispatched (layout v2 §3.12/§3.13; ADR-0045): when the SYSTEM
+    install-state stamps ``profile: system`` every target resolves through
+    the FHS manifest — :mod:`vesma.service.fhs` is the single system-path
+    resolution point — giving ``/etc/vesma/config.yaml``,
+    ``/var/lib/vesma/<name>``, ``/run/vesma`` (the systemd
+    ``RuntimeDirectory`` slot, §3.8 — the system profile has no XDG
+    fallback chain) and ``/usr/lib/vesma/venvs/<name>/bin``. Otherwise
+    (user profile, no system state, or a state unreadable to this
+    account) the generation tables of THIS module resolve —
+    byte-for-byte as before.
+
     ``venv_bin`` is resolved unconditionally here (the layout path);
     whether a component HAS a venv is a manifest-level fact — expanding
     ``{venv_bin}`` for a venv-less component is refused by
     :mod:`vesma.service.placeholders` (fail-closed, §3.4).
     """
+    if system_profile_active():
+        return ComponentPaths(
+            config_path=fhs.system_config_path(),
+            data_dir=fhs.system_component_data_dir(name),
+            runtime_dir=fhs.system_ipc_dir(),
+            venv_bin=fhs.system_venv_component(name) / "bin",
+        )
     return ComponentPaths(
         config_path=canonical_config_path(),
         data_dir=data_dir(name),

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **F5 (system profile, soak wave 5): `resolve_component_paths` is profile-dispatched — the system-profile supervisor resolves the §3.4 component table through the FHS manifest instead of the user layout** — previously the resolver ALWAYS generated user-layout targets (`~/.vesma/venvs/<name>/bin`, …), so under an installed system profile (`/var/lib/vesma/install-state.yaml` → `profile: system`) the supervisor's spawn-time `{venv_bin}` expansion missed `/usr/lib/vesma/venvs/<name>` and venv components (metrics) refused to start (PLACEHOLDER_UNKNOWN, fail-closed — the last blocker of the prod system-profile migration). Dispatch: `layout.read_system_profile_stamp()` reads the SYSTEM state defensively (the `read_generation_stamp` canon — absent/unreadable/unparsable ⇒ user layout, never a crash: a plain user on a system-profile machine gets EACCES and resolves their own user layout; the LOUD unparsable-state semantics stay with the installer flows), and on `profile: system` the four targets come from `vesma.service.fhs` (`/etc/vesma/config.yaml`, `/var/lib/vesma/<name>`, `/run/vesma` — the systemd RuntimeDirectory slot; the system profile has no XDG fallback chain — and `/usr/lib/vesma/venvs/<name>/bin`). User profile / no system state: byte-identical resolution as before (pinned). Files: `src/vesma/service/layout.py`; tests `tests/test_service_layout.py` (the FHS-slot pin via the dest-dir prefix technique, the stamp reader, and the absent/user/unparsable/EACCES regression matrix).
+
 ## [6.5.0] — 2026-10-24
 
 ### Added
