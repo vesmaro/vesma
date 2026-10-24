@@ -251,9 +251,7 @@ class TestOneDoctor:
 
 
 class TestIntegrationMemory:
-    def test_new_home_answers(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_new_home_answers(self, components_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Pin the surface with DETERMINISTIC detection: ambient harness
         discovery depends on the runner's real home/config (an earlier
         suite in a full run can leave detectable state behind), so the
@@ -262,9 +260,7 @@ class TestIntegrationMemory:
         from vesma.cli.integration import TargetsConfig
 
         empty_cfg = TargetsConfig(targets=())
-        monkeypatch.setattr(
-            ms_mod, "load_targets", lambda config_path=None, home=None: empty_cfg
-        )
+        monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: empty_cfg)
         result = runner.invoke(app, ["integration", "memory"])
         assert result.exit_code == 0, result.output
         assert "No agent harnesses detected" in result.output
