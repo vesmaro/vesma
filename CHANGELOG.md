@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **C13 activation (ratification act, ADR-0047 / ADR-0045 Decision 9): `vesma migrate-store --target=system --apply` is ACTIVE since 6.5.0 — the owner gave the word 2026-10-23 after the green round-trip soak (round 1 + round 2 on ca534ff, evidence `/tmp/vesma-soak-stand`)** — the `_ACTIVATION_GATE_OPEN` constant flips open. The dry-run (plan + DR forecast) is unchanged; the typed refusal (exit 15, `ActivationGateError`) stays as belt-and-braces in both the CLI gate and the mover machinery, pinned by a closed-gate monkeypatch test; the «GATED» wording in `--apply` help and the dry-run footer now states the ratification facts.
 
+### Security
+
+- **Dependency security floors (pip-audit advisory drop 2026-10-23): `setuptools>=84.1.0` (GHSA-xmj3-9gf7-h52w), `filelock>=4.2.1` (CVE-2026-112940/112913/112907)** (`pyproject.toml`, `uv.lock`) — the advisory drop turned all three CI legs red at the pip-audit step; floors raised to the minimal fixed versions, `uv.lock` refreshed (filelock 4.2.4, setuptools 84.2.1), audit clean on all legs. Backfilled by train follow-up: the floors shipped in the 6.5.0 tree (b2b81be, recorded in the release-commit message) but the changelog line was missed at the freeze.
+
 ## [6.4.0] — 2026-10-22
 
 ### Added
