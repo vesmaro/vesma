@@ -1,8 +1,8 @@
-"""Component verbs (wave 61 → CLI topology v2) — verb x component matrix.
+"""Component verbs (CLI topology FINAL, 7.0.0) — verb x component matrix.
 
 The unified surface: ``vesma service components
 install|update|configs|status`` + ``vesma service start|stop|restart|logs``
-(the former top-level spellings are hidden deprecated aliases — pinned in
+(the former top-level spellings are REMOVED — the removal pins live in
 test_cli_topology_v2.py). Covered here, per the wave acceptance matrix:
 
 * bare calls never bulk-mutate (install lists; start/stop/restart/update
@@ -15,9 +15,8 @@ test_cli_topology_v2.py). Covered here, per the wave acceptance matrix:
   (the P2 cli-audit 2026-10-08 finding) and log lines render as DATA
   (Text(), never markup);
 * collision resolution: the application self-update family lives on
-  ``vesma self-update``, the pipeline-trace viewer on ``vesma logs``
-  (``task-logs`` = hidden alias), and the legacy self-update flag forms
-  still delegate from the top-level ``update`` alias.
+  ``vesma self-update``, the pipeline-trace viewer on ``vesma traces``
+  (completely different objects than component manifests).
 
 Test discipline: XDG roots isolated into tmp dirs, the supervisor is
 NEVER contacted live — lifecycle verbs run against a bogus socket path
@@ -109,14 +108,14 @@ def bundle_only_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 class TestInstall:
     def test_bare_lists_installables_and_hints(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["install"])
+        result = runner.invoke(app, ["service", "components", "install"])
         assert result.exit_code == 0, result.output
         for needle in ("board", "metrics", "mesh", "bundled", "operator", "--all"):
             assert needle in result.output, f"bare install must list {needle}"
 
     def test_bare_mutates_nothing(self, components_home: Path) -> None:
         before = {p.name: p.read_bytes() for p in components_home.iterdir()}
-        runner.invoke(app, ["install"])
+        runner.invoke(app, ["service", "components", "install"])
         after = {p.name: p.read_bytes() for p in components_home.iterdir()}
         assert before == after, "bare `vesma install` must not touch components.d"
 
@@ -124,14 +123,14 @@ class TestInstall:
         # The fresh machine is layout generation v2 (ADR-0045): the drop-in
         # dir resolves through the layout resolver, not a hardcoded plane.
         target = layout.components_dir() / "board.yaml"
-        result = runner.invoke(app, ["install", "board"])
+        result = runner.invoke(app, ["service", "components", "install", "board"])
         assert result.exit_code == 0, result.output
         assert target.read_bytes() == bundled_manifest_path("board").read_bytes()
 
     def test_bundled_is_idempotent(self, components_home: Path) -> None:
         target = components_home / "board.yaml"
         for _ in range(2):
-            result = runner.invoke(app, ["install", "board"])
+            result = runner.invoke(app, ["service", "components", "install", "board"])
             assert result.exit_code == 0, result.output
         assert target.read_bytes() == bundled_manifest_path("board").read_bytes()
         assert not list(components_home.parent.glob("*.pre-regen.bak")), (
@@ -142,7 +141,7 @@ class TestInstall:
         target = components_home / "board.yaml"
         operator_edit = "apiVersion: vesma.component/v1\nmetadata:\n  name: board\n"
         target.write_text(operator_edit, encoding="utf-8")
-        result = runner.invoke(app, ["install", "board"])
+        result = runner.invoke(app, ["service", "components", "install", "board"])
         assert result.exit_code == 0, result.output
         backup = components_home.parent / "board.yaml.pre-regen.bak"
         assert backup.read_text(encoding="utf-8") == operator_edit
@@ -151,23 +150,23 @@ class TestInstall:
     def test_operator_authored_validated_not_touched(self, components_home: Path) -> None:
         target = components_home / "mesh.yaml"
         before = target.read_bytes()
-        result = runner.invoke(app, ["install", "mesh"])
+        result = runner.invoke(app, ["service", "components", "install", "mesh"])
         assert result.exit_code == 0, result.output
         assert "operator-authored" in result.output
         assert target.read_bytes() == before, "install must never rewrite operator manifests"
 
     def test_unknown_name_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["install", "ghost"])
+        result = runner.invoke(app, ["service", "components", "install", "ghost"])
         assert result.exit_code == 1, result.output
         assert "ghost" in result.output and "bundled" in result.output
 
     def test_name_and_all_are_exclusive(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["install", "board", "--all"])
+        result = runner.invoke(app, ["service", "components", "install", "board", "--all"])
         assert result.exit_code == 1, result.output
         assert "not both" in result.output
 
     def test_python_child_gets_venv_pointer(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["install", "metrics"])
+        result = runner.invoke(app, ["service", "components", "install", "metrics"])
         assert result.exit_code == 0, result.output
         assert "vesma service install" in result.output, (
             "a venv-needing component must be told where venvs are built"
@@ -183,7 +182,7 @@ class TestInstall:
             raise OSError(28, "No space left on device")
 
         monkeypatch.setattr("vesma.cli.components.install_component", raise_disk_full)
-        result = runner.invoke(app, ["install", "board"])
+        result = runner.invoke(app, ["service", "components", "install", "board"])
         assert result.exit_code == 1, result.output
         assert "No space left on device" in result.output
         assert "Traceback" not in result.output
@@ -194,7 +193,7 @@ class TestInstall:
 
 class TestStatus:
     def test_table_lists_every_component_with_origin(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["status"])
+        result = runner.invoke(app, ["service", "components", "status"])
         assert result.exit_code == 0, result.output
         for needle in ("board", "metrics", "mesh", "bundled", "operator"):
             assert needle in result.output
@@ -220,16 +219,16 @@ class TestStatus:
             assert row["installed"] is True
 
     def test_single_component(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["status", "mesh"])
+        result = runner.invoke(app, ["service", "components", "status", "mesh"])
         assert result.exit_code == 0, result.output
         assert "mesh" in result.output and "board" not in result.output.split("mesh")[0]
 
     def test_unknown_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["status", "ghost"])
+        result = runner.invoke(app, ["service", "components", "status", "ghost"])
         assert result.exit_code == 1, result.output
 
     def test_fresh_machine_shows_bundle(self, bundle_only_home: Path) -> None:
-        result = runner.invoke(app, ["status"])
+        result = runner.invoke(app, ["service", "components", "status"])
         assert result.exit_code == 0, result.output
         assert "not installed" in result.output
         assert "no installation found" in result.output
@@ -251,7 +250,7 @@ class TestStatus:
                 pass
 
         monkeypatch.setattr("vesma.cli.components._open_client", lambda socket: FakeClient())
-        result = runner.invoke(app, ["status"])
+        result = runner.invoke(app, ["service", "components", "status"])
         assert result.exit_code == 0, result.output
         assert "running (pid 4242) (bundle fallback)" in result.output, result.output
         assert result.output.count("not installed") == 1, (
@@ -280,7 +279,7 @@ class TestStatus:
         """Consistency (cascade finding): on the bundle view nothing is
         installed — the refusal must not call board/metrics 'installed'
         when the notice itself calls them the release bundle."""
-        result = runner.invoke(app, ["status", "mesh"])
+        result = runner.invoke(app, ["service", "components", "status", "mesh"])
         assert result.exit_code == 1, result.output
         assert "nothing installed" in result.output
         assert "release bundle provides: board, metrics" in result.output
@@ -312,7 +311,7 @@ class TestStatus:
 class TestLifecycleBare:
     @pytest.mark.parametrize("verb", ["start", "stop", "restart"])
     def test_bare_refuses_with_list_and_hint(self, components_home: Path, verb: str) -> None:
-        result = runner.invoke(app, [verb])
+        result = runner.invoke(app, ["service", verb])
         assert result.exit_code == 1, result.output
         assert "not a bulk mutation" in result.output
         assert "board, mesh, metrics" in result.output
@@ -320,16 +319,18 @@ class TestLifecycleBare:
 
     @pytest.mark.parametrize("verb", ["start", "stop", "restart"])
     def test_name_and_all_are_exclusive(self, components_home: Path, verb: str) -> None:
-        result = runner.invoke(app, [verb, "board", "--all"])
+        result = runner.invoke(app, ["service", verb, "board", "--all"])
         assert result.exit_code == 1, result.output
         assert "not both" in result.output
 
     def test_unknown_name_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["start", "ghost"])
+        result = runner.invoke(app, ["service", "start", "ghost"])
         assert result.exit_code == 1, result.output
 
     def test_bogus_socket_error_path(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["start", "board", "--socket", "/nonexistent/bogus.sock"])
+        result = runner.invoke(
+            app, ["service", "start", "board", "--socket", "/nonexistent/bogus.sock"]
+        )
         assert result.exit_code == 1, result.output
         assert "supervisor running?" in result.output, (
             "the thin-client error path must name its cause"
@@ -351,7 +352,7 @@ class TestLifecycleBulk:
         under test is observable in the OUTPUT without an internal spy
         (cascade finding: don't pin internals the output already carries)."""
         self._stub_client(monkeypatch)
-        result = runner.invoke(app, ["start", "--all"])
+        result = runner.invoke(app, ["service", "start", "--all"])
         assert result.exit_code == 0, result.output
         printed = [line.split(":")[0] for line in result.output.splitlines() if ":" in line]
         assert printed.index("board") < printed.index("mesh"), (
@@ -362,7 +363,7 @@ class TestLifecycleBulk:
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._stub_client(monkeypatch)
-        result = runner.invoke(app, ["stop", "--all"])
+        result = runner.invoke(app, ["service", "stop", "--all"])
         assert result.exit_code == 0, result.output
         printed = [line.split(":")[0] for line in result.output.splitlines() if ":" in line]
         assert printed.index("mesh") < printed.index("board"), (
@@ -448,12 +449,12 @@ class TestLogs:
             "markup must reach the terminal verbatim (Text), not be interpreted"
         )
 
-    def test_trace_viewer_flags_are_native_on_logs(
+    def test_trace_viewer_flags_are_native_on_traces(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Topology v2 wave A: `vesma logs` IS the trace viewer now — its
-        --task/--limit flags are first-class (no deprecation hint), and the
-        SQLiteStore seam receives them unchanged."""
+        """`vesma traces` is the trace viewer (7.0.0 rename from `logs`) —
+        its --task/--limit flags are first-class, and the SQLiteStore seam
+        receives them unchanged."""
         cfg = components_home / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n  vault_path: {components_home}/vault\n"
@@ -464,7 +465,7 @@ class TestLogs:
         monkeypatch.setenv("VESMA_CONFIG", str(cfg))
         recorded: dict[str, object] = {}
 
-        import vesma.cli.logs as logs_cli
+        import vesma.cli.traces as traces_cli
 
         class FakeStore:
             def __init__(self, path: object) -> None:
@@ -477,18 +478,19 @@ class TestLogs:
             def close(self) -> None:
                 pass
 
-        monkeypatch.setattr(logs_cli, "SQLiteStore", FakeStore)
-        result = runner.invoke(app, ["logs", "--task", "cluster", "--limit", "7"])
+        monkeypatch.setattr(traces_cli, "SQLiteStore", FakeStore)
+        result = runner.invoke(app, ["traces", "--task", "cluster", "--limit", "7"])
         assert result.exit_code == 0, result.output
         assert recorded.get("task_label") == "cluster" and recorded.get("limit") == 7
-        assert result.stderr == "", "native flags carry no deprecation hint"
+        assert result.stderr == ""
 
-    def test_logs_positional_component_redirects(
+    def test_traces_positional_is_usage_error(
         self, components_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`vesma logs NAME` (the wave-61 component habit): loud stderr
-        redirect to `vesma service logs NAME` AND the trace view still runs —
-        no silent substitution."""
+        """Components are not trace subjects: ANY positional on the trace
+        viewer is the parser's usage error (exit 2) — the former
+        `vesma logs NAME` component-redirect special case is GONE (7.0.0);
+        component logs live on `vesma service logs NAME`."""
         cfg = components_home / "vesma.yaml"
         cfg.write_text(
             f"vesma:\n  vault_path: {components_home}/vault\n"
@@ -497,42 +499,9 @@ class TestLogs:
             encoding="utf-8",
         )
         monkeypatch.setenv("VESMA_CONFIG", str(cfg))
-
-        import vesma.cli.logs as logs_cli
-
-        class FakeStore:
-            def __init__(self, path: object) -> None:
-                pass
-
-            def list_traces(self, **kw: object) -> list[object]:
-                return []
-
-            def close(self) -> None:
-                pass
-
-        monkeypatch.setattr(logs_cli, "SQLiteStore", FakeStore)
-        result = runner.invoke(app, ["logs", "board"])
-        assert result.exit_code == 0, result.output
-        assert "component logs moved" in result.stderr
-        assert "vesma service logs board" in result.stderr
-        assert "No traces found" in result.output, "the trace view still ran"
-
-    def test_logs_positional_non_component_is_usage_error(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A non-component positional was never valid on the trace viewer —
-        it stays a usage error (exit 2), exactly as under task-logs."""
-        cfg = components_home / "vesma.yaml"
-        cfg.write_text(
-            f"vesma:\n  vault_path: {components_home}/vault\n"
-            f"  data_dir: {components_home}/data\n  db_name: logs-test.db\n"
-            "embedding:\n  provider: nano\n",
-            encoding="utf-8",
-        )
-        monkeypatch.setenv("VESMA_CONFIG", str(cfg))
-        result = runner.invoke(app, ["logs", "cluster"])
+        result = runner.invoke(app, ["traces", "board"])
         assert result.exit_code == 2, result.output
-        assert "unexpected extra argument" in result.output
+        assert "No such command" in result.output
 
 
 # ── update ────────────────────────────────────────────────────────────
@@ -540,13 +509,13 @@ class TestLogs:
 
 class TestUpdate:
     def test_bare_refuses_and_names_self_update(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["update"])
+        result = runner.invoke(app, ["service", "components", "update"])
         assert result.exit_code == 1, result.output
         assert "not a bulk mutation" in result.output
         assert "vesma self-update" in result.output
 
     def test_bundled_current_says_so(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["update", "board"])
+        result = runner.invoke(app, ["service", "components", "update", "board"])
         assert result.exit_code == 0, result.output
         assert "current" in result.output
         assert not list(components_home.parent.glob("*.pre-regen.bak"))
@@ -562,7 +531,7 @@ class TestUpdate:
             ),
             encoding="utf-8",
         )
-        result = runner.invoke(app, ["update", "metrics"])
+        result = runner.invoke(app, ["service", "components", "update", "metrics"])
         assert result.exit_code == 0, result.output
         assert "regenerated" in result.output
         assert "restart vesma.service" in result.output
@@ -571,7 +540,7 @@ class TestUpdate:
         assert stale.read_bytes() == bundled_manifest_path("metrics").read_bytes()
 
     def test_operator_authored_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["update", "mesh"])
+        result = runner.invoke(app, ["service", "components", "update", "mesh"])
         assert result.exit_code == 1, result.output
         # rich word-wraps the (long, path-bearing) refusal line — assert
         # against whitespace-normalized output so the wrap point, which
@@ -582,7 +551,7 @@ class TestUpdate:
         assert (components_home / "mesh.yaml").read_text(encoding="utf-8") == MESH_MANIFEST
 
     def test_unknown_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["update", "ghost"])
+        result = runner.invoke(app, ["service", "components", "update", "ghost"])
         assert result.exit_code == 1, result.output
 
     def test_bundled_on_bundle_only_home_refuses_with_install_hint(
@@ -591,20 +560,20 @@ class TestUpdate:
         """No components.d at all: `update board` must refuse with the
         install pointer — never regenerate out of thin air (the bundle
         fallback means no installation exists, not a stale manifest)."""
-        result = runner.invoke(app, ["update", "board"])
+        result = runner.invoke(app, ["service", "components", "update", "board"])
         assert result.exit_code == 1, result.output
         # Whitespace-normalized: the path-bearing line wraps at the rich
         # console width, and the wrap point moves with the tmp path length.
         flat = " ".join(result.output.split())
         assert "install it first" in flat
-        assert "`vesma install board`" in flat
+        assert "`vesma service components install board`" in flat
 
     def test_all_regenerates_stale_bundled(self, components_home: Path) -> None:
         stale = components_home / "metrics.yaml"
         stale.write_text(
             "apiVersion: vesma.component/v1\nmetadata:\n  name: metrics\n", encoding="utf-8"
         )
-        result = runner.invoke(app, ["update", "--all"])
+        result = runner.invoke(app, ["service", "components", "update", "--all"])
         assert result.exit_code == 0, result.output
         assert "regenerated" in result.output
         assert stale.read_bytes() == bundled_manifest_path("metrics").read_bytes()
@@ -612,59 +581,13 @@ class TestUpdate:
             "--all must never rewrite operator manifests"
         )
 
-    def test_legacy_yes_form_delegates_to_self_update(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded: dict[str, object] = {}
-
-        def fake_dispatch(console: object, **kwargs: object) -> None:
-            recorded.update(kwargs)
-
-        monkeypatch.setattr("vesma.cli.update_cmd._legacy_flag_dispatch", fake_dispatch)
-        result = runner.invoke(app, ["update", "--yes", "--scope=user"])
-        assert result.exit_code == 0, result.output
-        assert recorded.get("yes") is True and recorded.get("scope") == "user", (
-            "the shipped systemd unit's ExecStart form must keep applying"
-        )
-
-    def test_legacy_flag_with_name_refuses_loudly(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """P2-1 (cascade): `vesma update board --yes` must NOT silently
-        swallow the NAME and run the APPLICATION self-update — it refuses
-        naming both spellings instead."""
-
-        def boom(console: object, **kwargs: object) -> None:
-            raise AssertionError("legacy dispatch must not run for NAME + legacy flag")
-
-        monkeypatch.setattr("vesma.cli.update_cmd._legacy_flag_dispatch", boom)
-        result = runner.invoke(app, ["update", "board", "--yes"])
-        assert result.exit_code == 1, result.output
-        assert "--yes" in result.output and "vesma self-update" in result.output
-        assert "vesma update board" in result.output, (
-            "the refusal must spell out BOTH unambiguous spellings"
-        )
-
-    def test_timer_alias_delegates(
-        self, components_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded: dict[str, object] = {}
-
-        def fake_dispatch(console: object, **kwargs: object) -> None:
-            recorded.update(kwargs)
-
-        monkeypatch.setattr("vesma.cli.update_cmd._legacy_flag_dispatch", fake_dispatch)
-        result = runner.invoke(app, ["update", "--timer"])
-        assert result.exit_code == 0, result.output
-        assert recorded.get("install_timer") is True
-
 
 # ── configs ───────────────────────────────────────────────────────────
 
 
 class TestConfigs:
     def test_table_lists_every_component(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["configs"])
+        result = runner.invoke(app, ["service", "components", "configs"])
         assert result.exit_code == 0, result.output
         for needle in ("board", "metrics", "mesh", "components.d", "env"):
             assert needle in result.output
@@ -680,7 +603,7 @@ class TestConfigs:
         assert rows["board"]["manifest_path"].endswith("board.yaml")
 
     def test_name_detail_shows_key_fields(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["configs", "board"])
+        result = runner.invoke(app, ["service", "components", "configs", "board"])
         assert result.exit_code == 0, result.output
         for needle in ("config path:", "env file:", "data dir:", "config schema:"):
             assert needle in result.output
@@ -689,7 +612,7 @@ class TestConfigs:
         )
 
     def test_unknown_refuses(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["configs", "ghost"])
+        result = runner.invoke(app, ["service", "components", "configs", "ghost"])
         assert result.exit_code == 1, result.output
 
 
@@ -697,22 +620,10 @@ class TestConfigs:
 
 
 class TestSurface:
-    def test_self_update_alias_is_live(self, bundle_only_home: Path) -> None:
+    def test_self_update_group_is_live(self, bundle_only_home: Path) -> None:
         result = runner.invoke(app, ["self-update", "--help"])
         assert result.exit_code == 0, result.output
         assert "Usage:" in result.output
-
-    def test_task_logs_alias_is_live(self, bundle_only_home: Path) -> None:
-        result = runner.invoke(app, ["task-logs", "--help"])
-        assert result.exit_code == 0, result.output
-        assert "Usage:" in result.output
-
-    def test_old_update_subcommand_spelling_hints_at_alias(self, components_home: Path) -> None:
-        result = runner.invoke(app, ["update", "check"])
-        assert result.exit_code == 1, result.output
-        assert "self-update" in result.output, (
-            "the moved subcommand spellings must point at their new home"
-        )
 
     def test_origin_survives_operator_edit_on_bundled_file(self, components_home: Path) -> None:
         """Documented discriminator: origin = name ∈ BUNDLED_COMPONENTS.
@@ -747,7 +658,12 @@ class TestSurface:
         (components_home / "broken.yaml").write_text(
             "apiVersion: vesma.component/v1\nmetadata:\n  name: broken\n", encoding="utf-8"
         )
-        for argv in (["status"], ["configs"], ["start", "--all"], ["install"]):
+        for argv in (
+            ["service", "components", "status"],
+            ["service", "components", "configs"],
+            ["service", "components", "install"],
+            ["service", "start", "--all"],
+        ):
             result = runner.invoke(app, argv)
             assert result.exit_code == 1, (argv, result.output)
             assert "fail-closed validation" in result.output, (argv, result.output)

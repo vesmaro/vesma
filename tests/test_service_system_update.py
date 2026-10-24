@@ -532,41 +532,19 @@ class TestTreeRightsAfterUpdate:
         assert stat.S_IMODE(state.stat().st_mode) == 0o640
 
 
-# ── CLI wiring: `vesma service update --system` ───────────────────────
+# ── CLI wiring (7.0.0): bare `vesma service update` is guidance ────────
+# The former `--system` flag form is REMOVED (owner doctrine 2026-10-24):
+# the system profile updates via `vesma system update`. Bare `service
+# update` keeps its refusal naming both canonical spellings.
 
 
 class TestCliWiring:
-    def test_update_system_flag_dispatches(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_service_update_refuses_pointing_at_both_domains(self) -> None:
         from typer.testing import CliRunner
 
         from vesma.cli import service as service_cli
 
-        called: list[bool] = []
-
-        def fake_update_system() -> su.SystemUpdateResult:
-            called.append(True)
-            return su.SystemUpdateResult(
-                lines=("health: ok",),
-                engine_venv=Path("/tmp/venv"),
-                revisions=(),
-                rolled_back=False,
-            )
-
-        monkeypatch.setattr(service_cli, "update_system", fake_update_system)
-        result = CliRunner().invoke(service_cli.service_app, ["update", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [True]
-
-    def test_update_without_system_refuses_pointing_at_self_update(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from typer.testing import CliRunner
-
-        from vesma.cli import service as service_cli
-
-        monkeypatch.setattr(
-            service_cli, "update_system", lambda: pytest.fail("must refuse before dispatch")
-        )
         result = CliRunner().invoke(service_cli.service_app, ["update"])
         assert result.exit_code == 1
+        assert "vesma system update" in " ".join(result.output.split())
         assert "self-update" in result.output

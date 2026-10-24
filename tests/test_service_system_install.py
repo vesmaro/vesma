@@ -864,57 +864,9 @@ class TestRealOwnership:
         shutil.rmtree(prefix, ignore_errors=True)
 
 
-# ── CLI wiring: `vesma service install|uninstall --system` ────────────
-
-
-class TestCliWiring:
-    def test_install_system_flag_dispatches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from typer.testing import CliRunner
-
-        from vesma.cli import service as service_cli
-
-        called: list[bool] = []
-
-        def fake_install_system() -> si.SystemInstallResult:
-            called.append(True)
-            return si.SystemInstallResult(
-                lines=("line",),
-                state_path=Path("/tmp/state.yaml"),
-                unit_path=Path("/tmp/vesma.service"),
-                engine_venv=Path("/tmp/venv"),
-                revisions=(),
-            )
-
-        monkeypatch.setattr(service_cli, "install_system", fake_install_system)
-        result = CliRunner().invoke(service_cli.service_app, ["install", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [True]
-
-    def test_uninstall_system_flag_dispatches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from typer.testing import CliRunner
-
-        from vesma.cli import service as service_cli
-
-        called: list[bool] = []
-
-        def fake_uninstall_system() -> si.SystemUninstallResult:
-            called.append(True)
-            return si.SystemUninstallResult(lines=("removed: x",))
-
-        monkeypatch.setattr(service_cli, "uninstall_system", fake_uninstall_system)
-        result = CliRunner().invoke(service_cli.service_app, ["uninstall", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [True]
-
-    def test_uninstall_system_refuses_name_and_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from typer.testing import CliRunner
-
-        from vesma.cli import service as service_cli
-
-        monkeypatch.setattr(
-            service_cli, "uninstall_system", lambda: pytest.fail("must refuse before dispatch")
-        )
-        for args in (["uninstall", "--system", "board"], ["uninstall", "--system", "--all"]):
-            result = CliRunner().invoke(service_cli.service_app, args)
-            assert result.exit_code == 1, args
-            assert "do not combine" in result.output
+# ── CLI wiring note (7.0.0) ────────────────────────────────────────────
+# The former `vesma service install|uninstall --system` hidden flag forms
+# are REMOVED (owner doctrine 2026-10-24): the system profile is its own
+# domain (`vesma system install|uninstall`). The flag-form dispatch pins
+# died with the flags; the domain-side seam pins live in
+# tests/test_cli_system_domain.py.

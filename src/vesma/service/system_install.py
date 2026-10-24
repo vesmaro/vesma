@@ -1,7 +1,7 @@
 """``vesma system install`` — the canonical system-profile installer
 (specs/layout v2 §3.13; ADR-0045 Decisions 4-6, rollout wave 2). The former
-``vesma service install --system`` spelling is a hidden deprecated alias
-(CLI topology v2; removal not before 9.0).
+``vesma service install --system`` flag form is REMOVED (CLI topology
+FINAL, 7.0.0) — this is the one spelling.
 
 Owns conformance SY-01…SY-04, SY-08, SY-09:
 
