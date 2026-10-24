@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
 > The complete Vesma user lifecycle: install → service → integration →
-> doctor → updates → legacy cleanup. Current for release 6.4.0. The store
+> doctor → updates → legacy cleanup. Current for release 6.5.0. The store
 > home is `~/.vesma/` (since 6.0.0; the 5.x move is covered in
 > [migration-6-0.md](migration-6-0.md)).
 
@@ -100,14 +100,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:6.4.0
+  ghcr.io/vesmaro/vesma:6.5.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:6.4.0` (pinned) · `:latest` (rolling).
+Tags: `:6.5.0` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -116,7 +116,7 @@ Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md)
 
 <!-- version:pip -->
 ```bash
-pip install vesma==6.4.0
+pip install vesma==6.5.0
 ```
 <!-- /version:pip -->
 
@@ -860,4 +860,4 @@ note in the [integration guide](integration-guide.md).
 
 ---
 
-_Last updated: 2026-10-22 (release 6.4.0)_
+_Last updated: 2026-10-24 (release 6.5.0)_

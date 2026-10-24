@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** [English](../../en/user/getting-started.md) · Русский
 
 > Полный жизненный цикл пользователя Vesma: установка → сервис → интеграция →
-> doctor → обновления → вычистка легаси. Актуально для релиза 6.4.0. Дом
+> doctor → обновления → вычистка легаси. Актуально для релиза 6.5.0. Дом
 > стора — `~/.vesma/` (с 6.0.0; переезд с 5.x описан в
 > [migration-6-0.md](migration-6-0.md)).
 
@@ -98,7 +98,7 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:6.4.0
+  ghcr.io/vesmaro/vesma:6.5.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
@@ -114,7 +114,7 @@ curl -s http://localhost:8787/health | jq
 
 <!-- version:pip -->
 ```bash
-pip install vesma==6.4.0
+pip install vesma==6.5.0
 ```
 <!-- /version:pip -->
 
@@ -877,4 +877,4 @@ ADR-0023; после переустановки транспорт подтве�
 
 ---
 
-_Последнее обновление: 2026-10-21 (релиз 6.4.0)_
+_Последнее обновление: 2026-10-24 (релиз 6.5.0)_
