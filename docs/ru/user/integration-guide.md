@@ -514,19 +514,19 @@ vesma doctor fix --dry-run   # предпросмотр исправлений
 
 ---
 
-## `vesma logs` — трассы пайплайна
+## `vesma traces` — трассы пайплайна (переименован из `logs` в 7.0.0)
 
 Просмотр журнала трасс пайплайна (таблица `traces`) прямо из CLI.
 Показывает шаги cluster, synthesize, publish и recall с задержкой,
 LLM-флагами, кэшем и fallback.
 
 ```bash
-vesma logs                       # последние 50 трасс
-vesma logs --task cluster        # только cluster-трассы
-vesma logs --project vesma      # фильтр по проекту
-vesma logs --limit 100           # больше строк
-vesma logs --since 2026-06-01    # только трассы после этой даты
-vesma logs --follow              # опрос новых трасс (tail -f)
+vesma traces                      # последние 50 трасс
+vesma traces --task cluster       # только cluster-трассы
+vesma traces --project vesma      # фильтр по проекту
+vesma traces --limit 100          # больше строк
+vesma traces --since 2026-06-01   # только трассы после этой даты
+vesma traces --follow             # опрос новых трасс (tail -f)
 ```
 
 | Флаг | Описание |

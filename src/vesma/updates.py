@@ -2,7 +2,7 @@
 
 One quiet question — "is there a newer release than what I run?" — answered
 from PyPI with a 24h disk cache, plus the install-side helpers the
-``vesma update`` CLI command drives (history append, systemd user-timer
+``vesma self-update apply`` CLI command drives (history append, systemd user-timer
 units live in :mod:`vesma.cli.update_cmd`).
 
 Design contract:
@@ -70,7 +70,7 @@ def _fallback_update_dir() -> Path:
 
 
 #: Pip distributions that can carry this server, in upgrade-priority order
-#: (first hit wins — this is the dist ``vesma update`` pip-upgrades).
+#: (first hit wins — this is the dist ``vesma self-update apply`` pip-upgrades).
 CANDIDATE_DISTS = ("vesma-memory-server", "vesma")
 
 #: Version-DETECTION priority: the canonical name WINS. When a legacy
@@ -486,7 +486,7 @@ def log_update_if_available(settings: Settings | None = None) -> None:
         return
     if info is not None and info.update_available:
         logger.info(
-            "update available: %s (installed %s) — run 'vesma update' to upgrade",
+            "update available: %s (installed %s) — run 'vesma self-update apply' to upgrade",
             info.latest,
             info.installed,
         )

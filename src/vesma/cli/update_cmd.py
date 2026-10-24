@@ -41,13 +41,13 @@ Subcommands (standing design rule: flags do not replace subcommands):
   integration pack, cortex bundle, embedder, npm package, timer,
   prod-venvs, Go binaries) with each piece's update path. No network.
 
-Deprecated flag forms (``--check``, ``--yes``/``-y``, ``--to``,
-``--scope``, ``--install-timer``, ``--uninstall-timer``) still work on
-the plain form — hidden aliases with identical behavior and a one-line
-stderr hint pointing at the subcommand. The same forms remain hidden
-aliases on the COMPONENT ``vesma update`` verb (delegating HERE) — units
-installed before the rename keep running (``vesma update --yes
---scope=user`` in a shipped ExecStart applies the self-update).
+The former deprecated FLAG forms (``--check``, ``--yes``/``-y``,
+``--to``, ``--scope``, ``--install-timer``, ``--uninstall-timer``) and
+the top-level ``vesma update`` dispatch are REMOVED (CLI topology FINAL,
+7.0.0): timers installed before wave 61 called ``vesma update --yes`` in
+their ExecStart and migrate with ONE command per box — ``vesma
+self-update timer install`` (rewrites ExecStart to the canonical
+spelling).
 
 The systemd unit files ship as ``contrib/vesma-update.{service,timer}``
 AND as the ``_SERVICE_TEMPLATE`` / ``_TIMER_TEMPLATE`` constants below —
@@ -119,8 +119,8 @@ def _prod_venv_bases() -> tuple[Path, ...]:
 
 _GO_BIN_NAMES = ("vesmaro-agent", "vesma-agent", "mnemos-mesh", "vesma-mesh")
 
-_DEFAULT_EXEC_START = "%h/.local/bin/vesma self-update --yes --scope=user"
-_FALLBACK_EXEC_START = "/usr/bin/env vesma self-update --yes --scope=user"
+_DEFAULT_EXEC_START = "%h/.local/bin/vesma self-update apply --scope user"
+_FALLBACK_EXEC_START = "/usr/bin/env vesma self-update apply --scope user"
 
 _SERVICE_TEMPLATE = """\
 # vesma-update.service — weekly user-site auto-update (issue #445).
@@ -137,13 +137,16 @@ _SERVICE_TEMPLATE = """\
 # Install with `vesma self-update timer install`, remove with
 # `vesma self-update timer uninstall`. The installer writes
 # this file with the ExecStart chosen for this machine (%h launcher when
-# present, /usr/bin/env fallback otherwise).
+# present, /usr/bin/env fallback otherwise). 7.0.0: the ExecStart uses
+# the canonical SUBCOMMAND spelling (`self-update apply`) — re-run
+# `timer install` to migrate a unit written before 7.0.0 (its flag-form
+# ExecStart no longer parses).
 #
 # Distrobox hosts: a systemd USER timer on the HOST cannot reach the
 # boxes' pip user-sites. Adapt this unit the way the prod units do —
 # one ExecStart line per box, e.g.:
-#   ExecStart=distrobox-enter ubuntu-box -- vesma self-update --yes --scope=user
-#   ExecStart=distrobox-enter vscode-box -- vesma self-update --yes --scope=user
+#   ExecStart=distrobox-enter ubuntu-box -- vesma self-update apply --scope user
+#   ExecStart=distrobox-enter vscode-box -- vesma self-update apply --scope user
 # (systemd accumulates ExecStart= lines; keep the primary one first).
 
 [Unit]
@@ -1058,6 +1061,22 @@ def _box_exec_start_value(box: str, host_home: Path) -> str:
     enter = host_home / ".local" / "bin" / "distrobox-enter"
     return (
         f"{enter} -n {box} -- /bin/sh -c "
+        "'exec \"$HOME/.local/bin/vesma\" self-update apply --scope user'"
+    )
+
+
+def _legacy_box_exec_start_value(box: str, host_home: Path) -> str:
+    """This box's PRE-7.0.0 ExecStart line (the removed flag form).
+
+    7.0.0 removed the `self-update --yes --scope=user` flag form, so a
+    box line written before the release no longer parses. A re-run of
+    ``timer install --force`` from the box RETIRES that stale line when
+    appending the canonical one — otherwise systemd (Type=oneshot) would
+    run the dead line FIRST and fail the unit before the live one.
+    """
+    enter = host_home / ".local" / "bin" / "distrobox-enter"
+    return (
+        f"{enter} -n {box} -- /bin/sh -c "
         "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
     )
 
@@ -1111,7 +1130,7 @@ def _install_timer(console: Console, *, force: bool = False) -> None:
         )
         console.print(
             "  ExecStart=<host-home>/.local/bin/distrobox-enter -n <box> -- /bin/sh -c "
-            "'exec \"$HOME/.local/bin/vesma\" self-update --yes --scope=user'"
+            "'exec \"$HOME/.local/bin/vesma\" self-update apply --scope user'"
         )
         raise typer.Exit(1)
     if in_container:
@@ -1183,13 +1202,22 @@ def _install_timer_in_box(console: Console, box: str, host_home: Path) -> None:
     unit_dir = host_home / ".config" / "systemd" / "user"
     exec_value = _box_exec_start_value(box, host_home)
     line = f"ExecStart={exec_value}"
+    legacy_line = f"ExecStart={_legacy_box_exec_start_value(box, host_home)}"
     try:
         unit_dir.mkdir(parents=True, exist_ok=True)
         service_path = unit_dir / SERVICE_UNIT
         if service_path.exists():
-            text = service_path.read_text(encoding="utf-8")
+            original = service_path.read_text(encoding="utf-8")
+            text = original
+            if legacy_line in text:
+                # 7.0.0 migration: the pre-7.0.0 flag-form line no longer
+                # parses — retire it (a Type=oneshot unit runs its lines
+                # sequentially and would fail on the dead one FIRST).
+                text = "\n".join(ln for ln in text.splitlines() if ln != legacy_line) + "\n"
             if line not in text:  # idempotent — never duplicate a box line
-                service_path.write_text(_append_exec_start_line(text, line), encoding="utf-8")
+                text = _append_exec_start_line(text, line)
+            if text != original:
+                service_path.write_text(text, encoding="utf-8")
         else:
             service_path.write_text(
                 _SERVICE_TEMPLATE.format(exec_start=exec_value), encoding="utf-8"
@@ -1494,28 +1522,13 @@ def _component_rows() -> list[tuple[str, str, str]]:
 
 # ── the command ──────────────────────────────────────────────────────────────
 
-
-def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
-    """One-line deprecation hint for a hidden legacy flag form (stderr).
-
-    Standing design rule: flags do not replace subcommands. Legacy flag
-    forms keep working (the shipped systemd unit depends on them) but
-    point at the canonical subcommand spelling. stderr only — stdout
-    stays clean for pipes and JSON consumers.
-    """
-    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
-
-
 update_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     help="Check for updates / update the installed vesma (issues #445, #460).\n\n"
     "Subcommands: `check` (report only), `apply` (the update path), `timer "
     "install|uninstall|status` (the weekly systemd timer), `components` (the "
-    "component inventory). Plain `vesma self-update` keeps the 5.2.0 behavior: report "
-    "+ interactive apply prompt in a TTY. The old flag forms (--check, --yes/-y, "
-    "--to, --scope, --install-timer, --uninstall-timer) still work as hidden "
-    "deprecated aliases with a stderr hint (scripts and the shipped systemd unit "
-    "depend on them).",
+    "component inventory). Plain `vesma self-update` keeps the 5.2.0 behavior: "
+    "report + interactive apply prompt in a TTY (pipes/CI stay check-only).",
     no_args_is_help=False,
 )
 
@@ -1523,23 +1536,6 @@ update_app = typer.Typer(
 @update_app.callback(invoke_without_command=True)
 def update(
     ctx: typer.Context,
-    check: Annotated[
-        bool,
-        typer.Option(
-            "--check",
-            help="Deprecated flag form — use: `vesma self-update check`.",
-            hidden=True,
-        ),
-    ] = False,
-    yes: Annotated[
-        bool,
-        typer.Option(
-            "--yes",
-            "-y",
-            help="Deprecated flag form — use: `vesma self-update apply`.",
-            hidden=True,
-        ),
-    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1548,150 +1544,35 @@ def update(
             "(on failure the last pip lines are shown either way).",
         ),
     ] = False,
-    scope: Annotated[
-        str | None,
-        typer.Option(
-            "--scope",
-            help="Deprecated flag form — use: `vesma self-update apply --scope user`.",
-            hidden=True,
-        ),
-    ] = None,
-    to: Annotated[
-        str | None,
-        typer.Option(
-            "--to",
-            help="Deprecated flag form — use: `vesma self-update apply --to VERSION`.",
-            hidden=True,
-        ),
-    ] = None,
-    install_timer: Annotated[
-        bool,
-        typer.Option(
-            "--install-timer",
-            help="Deprecated flag form — use: `vesma self-update timer install`.",
-            hidden=True,
-        ),
-    ] = False,
-    uninstall_timer: Annotated[
-        bool,
-        typer.Option(
-            "--uninstall-timer",
-            help="Deprecated flag form — use: `vesma self-update timer uninstall`.",
-            hidden=True,
-        ),
-    ] = False,
 ) -> None:
     """Check for updates / update the installed vesma (issues #445, #460).
 
-    Plain `vesma self-update`: the surfaces report, then — in an interactive
-    terminal, when a pip update is pending — a confirmation prompt before
-    applying (pipes/CI stay check-only and print `apply with: vesma
-    update apply`).
+    Plain `vesma self-update`: the surfaces report, then — in an
+    interactive terminal, when a pip update is pending — a confirmation
+    prompt before applying (pipes/CI stay check-only and print `apply
+    with: vesma self-update apply`).
 
     Subcommands: `check` (report only), `apply` (the update path),
     `timer install|uninstall|status` (the weekly systemd timer),
     `components` (the component inventory).
-
-    Deprecated flag forms (--check, --yes/-y, --to, --scope,
-    --install-timer, --uninstall-timer) still work — hidden aliases with
-    identical behavior and a stderr hint; scripts (incl. the shipped
-    systemd unit) keep running.
     """
     console = Console()
     if ctx.invoked_subcommand is not None:
         # The subcommand runs its own logic; options placed BEFORE the
         # subcommand word would be silently dropped otherwise.
-        deprecated_used = (
-            check
-            or yes
-            or verbose
-            or scope is not None
-            or to is not None
-            or install_timer
-            or uninstall_timer
-        )
-        if deprecated_used:
+        if verbose:
             typer.echo(
                 "note: options placed before the subcommand are ignored — "
-                "pass them after it (e.g. `vesma self-update apply --yes`)",
+                "pass them after it (e.g. `vesma self-update apply --verbose`)",
                 err=True,
             )
         return
-    _legacy_flag_dispatch(
-        console,
-        check=check,
-        yes=yes,
-        verbose=verbose,
-        scope=scope,
-        to=to,
-        install_timer=install_timer,
-        uninstall_timer=uninstall_timer,
-    )
-
-
-def _legacy_flag_dispatch(
-    console: Console,
-    *,
-    check: bool,
-    yes: bool,
-    verbose: bool,
-    scope: str | None,
-    to: str | None,
-    install_timer: bool,
-    uninstall_timer: bool,
-) -> None:
-    """The deprecated FLAG forms' dispatch — one code path, two surfaces.
-
-    Shared by the ``vesma self-update`` group callback AND the hidden
-    legacy flags on the component ``vesma update`` verb (units installed
-    before the rename keep working, with a stderr hint naming the
-    canonical spelling).
-    """
-    if install_timer and uninstall_timer:
-        console.print("[red]✗[/red] --install-timer and --uninstall-timer are mutually exclusive")
-        raise typer.Exit(1)
-    if install_timer:
-        _deprecated_flag_hint(
-            "vesma self-update --install-timer", "vesma self-update timer install"
-        )
-        _install_timer(console)
-        return
-    if uninstall_timer:
-        _deprecated_flag_hint(
-            "vesma self-update --uninstall-timer", "vesma self-update timer uninstall"
-        )
-        _uninstall_timer(console)
-        return
-    if scope is not None and scope != "user":
-        console.print(
-            "[red]✗[/red] only --scope=user is supported: prod venvs, Go binaries "
-            "and containers are manual surfaces by design"
-        )
-        raise typer.Exit(1)
-    if yes:
-        _deprecated_flag_hint("vesma self-update --yes", "vesma self-update apply")
-        _run_user_update(console, to, verbose=verbose)
-        return
-    # Hints precede the report: the first line a human sees names the
-    # canonical spelling; stdout itself stays hint-free for pipes/JSON.
-    if to is not None:
-        _deprecated_flag_hint(
-            "vesma self-update --to VERSION", "vesma self-update apply --to VERSION"
-        )
-    if scope is not None:
-        _deprecated_flag_hint(
-            "vesma self-update --scope user", "vesma self-update apply --scope user"
-        )
-    if check:
-        _deprecated_flag_hint("vesma self-update --check", "vesma self-update check")
     info = _print_check(console)
-    if check:
-        return
     if info is None or not info.update_available:
         return  # nothing pending — the report stands as-is
     if _stdin_is_tty():
         if typer.confirm("Apply update?", default=False):
-            _run_user_update(console, to, verbose=verbose)
+            _run_user_update(console, None, verbose=verbose)
         return
     console.print("[dim]apply with: vesma self-update apply[/dim]")
 
@@ -1700,8 +1581,10 @@ def _legacy_flag_dispatch(
 def update_check() -> None:
     """Report every update surface without changing anything.
 
-    Never prompts, never applies — identical to the deprecated
-    `vesma self-update --check`, safe in pipes and CI.
+    Walks the local component inventory (pip dist, integration pack,
+    timer, …) plus the PyPI latest for the pip channel and prints one
+    line per surface. Never prompts, never applies — safe in pipes and
+    CI (the apply path is the `apply` subcommand).
     """
     _print_check(Console())
 
@@ -1740,8 +1623,7 @@ def update_apply(
 ) -> None:
     """Apply the update now: upgrade the pip copy this vesma owns (+ npm).
 
-    The apply path behind the deprecated `vesma self-update --yes`. Never
-    prompts — invoking `apply` IS the confirmation; `-y/--yes` is
+    Never prompts — invoking `apply` IS the confirmation; `-y/--yes` is
     accepted but changes nothing. `--to VERSION` pins a (rollback)
     version. Install-shape aware: a marked/canonical venv upgrades in
     place (no --user), a bare user-site install uses pip --user, a

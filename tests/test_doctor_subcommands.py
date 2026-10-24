@@ -3,10 +3,10 @@
 Standing design rule: FLAGS DO NOT REPLACE SUBCOMMANDS.
 
 * ``vesma doctor fix [--dry-run] [--json]`` — the repair path as a
-  subcommand; the legacy ``--fix`` flag stays as a HIDDEN deprecated
-  alias (identical behavior + a one-line stderr hint).
+  subcommand; the legacy ``--fix`` flag form is REMOVED (7.0.0, the
+  no-aliases doctrine — it parses as a usage error now).
 * ``vesma doctor paths [--json]`` — the paths overview as a subcommand;
-  the legacy ``--paths`` flag is the same kind of hidden alias.
+  the legacy ``--paths`` flag is gone the same way.
 * ``--json`` stays a normal flag (output format) on the default run.
 * The Integration check names the concrete missing/stale files
   (``target: path`` lines, capped at 5 + "…and N more").
@@ -138,32 +138,24 @@ def test_paths_subcommand_runs_no_health_checks(isolated_home: Path) -> None:
     assert "Vesma Health Check" not in result.output
 
 
-# ── hidden deprecated flag aliases ────────────────────────────────────────────
+# ── removed flag forms (7.0.0, no-aliases doctrine) ───────────────────────────
 
 
-def test_fix_flag_alias_still_works_with_hint(isolated_home: Path) -> None:
-    """``doctor --fix --dry-run`` behaves like the subcommand + stderr hint."""
-    result = runner.invoke(doctor_app, ["--fix", "--dry-run"])
-    assert result.exit_code in (0, 1, 2), result.output
-    assert "Preview of auto-fixes" in result.output
-    assert "would run:" in result.output
-    assert "use: vesma doctor fix" in result.stderr
+def test_legacy_flag_forms_are_usage_errors(isolated_home: Path) -> None:
+    """``doctor --fix`` / ``doctor --paths`` no longer PARSE: each is the
+    standard usage error (exit 2) — the subcommands are the only spelling."""
+    for legacy in ("--fix", "--fix --dry-run", "--paths"):
+        result = runner.invoke(doctor_app, legacy.split())
+        assert result.exit_code == 2, (legacy, result.output)
+        assert "Error" in result.output or "error" in result.output, legacy
 
 
-def test_paths_flag_alias_still_works_with_hint(isolated_home: Path) -> None:
-    """``doctor --paths`` behaves like the subcommand + stderr hint."""
-    result = runner.invoke(doctor_app, ["--paths"])
-    assert result.exit_code == 0
-    assert "Root" in result.output
-    assert "use: vesma doctor paths" in result.stderr
-
-
-def test_deprecated_flags_are_hidden_from_help(isolated_home: Path) -> None:
-    """The legacy flag forms no longer appear in ``doctor --help``."""
+def test_help_lists_no_legacy_flags(isolated_home: Path) -> None:
+    """The retired flag forms do not appear in ``doctor --help``."""
     result = runner.invoke(doctor_app, ["--help"])
     assert result.exit_code == 0
     for legacy in ("--fix", "--paths"):
-        assert legacy not in result.output, f"{legacy} must be hidden"
+        assert legacy not in result.output, f"{legacy} must be gone"
 
 
 def test_help_lists_the_subcommands(isolated_home: Path) -> None:

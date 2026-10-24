@@ -1,16 +1,17 @@
 """CLI-topology wave (variant B, owner-ratified 2026-10-23) — `vesma system`.
 
-Pins the NEW system-profile domain wiring and the deprecated aliases:
+Pins the system-profile domain wiring after the 7.0.0 alias removal
+(owner doctrine 2026-10-24 — ONE spelling per operation):
 
-* ``vesma system install|uninstall|update`` — each verb calls the SAME
-  impl seam the old ``vesma service <verb> --system`` spellings call
-  (seam-level pin: monkeypatch the impl function in the CLI module, no
-  filesystem, no root);
-* the old spellings keep working with a one-line ``[deprecated]`` hint on
-  stderr — stdout stays clean, exit codes unchanged (behavior-identical
-  aliases; removal not before 9.0);
-* bare ``vesma service update`` still refuses (exit 1) but the hint now
-  names the canonical ``vesma system update`` spelling.
+* ``vesma system install|uninstall|update`` — each verb calls its impl
+  seam (seam-level pin: monkeypatch the impl function in the CLI module,
+  no filesystem, no root);
+* the domain exposes EXACTLY the lifecycle verbs + the ``config``
+  sub-domain (wave C) — ``doctor`` is NOT registered here anymore (the
+  ONE doctor is the L1 ``vesma doctor``);
+* the former ``service <verb> --system`` hidden flags are GONE (usage
+  errors); bare ``vesma service update`` keeps its refusal naming
+  ``vesma system update`` (guidance, not an alias).
 """
 
 from __future__ import annotations
@@ -74,28 +75,31 @@ class TestRegistration:
         registered = {getattr(g, "name", None) for g in app.registered_groups}
         assert "system" in registered
 
-    def test_system_exposes_exactly_the_five_verbs(self) -> None:
-        """Topology v2 waves A+C: the three lifecycle verbs + `doctor`
-        (the SAME doctor app additionally registered here) + the `config`
-        sub-domain (wave C, the ratified contract table); removal-safety:
-        any new verb must be a conscious contract change, not drift)."""
+    def test_system_exposes_exactly_the_lifecycle_verbs_plus_config(self) -> None:
+        """Topology FINAL (7.0.0): the three lifecycle verbs + the
+        `config` sub-domain (wave C, the ratified contract table); the
+        `doctor` twin registration is REMOVED (the L1 `vesma doctor` is
+        the one doctor). Removal-safety: any new verb must be a conscious
+        contract change, not drift."""
         click_root = get_command(app)
         system = click_root.commands["system"]
-        assert set(system.commands) == {"install", "uninstall", "update", "doctor", "config"}
+        assert set(system.commands) == {"install", "uninstall", "update", "config"}
         for verb_cmd in system.commands.values():
             assert not verb_cmd.hidden, "system verbs must be visible (tab-completable)"
 
-    def test_service_system_flags_are_hidden(self) -> None:
-        """The --system alias flags are hidden (deprecated aliases) but present."""
+    def test_service_system_flags_are_gone(self) -> None:
+        """The former hidden ``--system`` alias flags left the surface —
+        the system profile is its own domain (usage errors, not hints)."""
         click_root = get_command(app)
         service = click_root.commands["service"]
         for verb in ("install", "uninstall", "update"):
             options = {p.name: p for p in service.commands[verb].params}
-            assert "system" in options, f"service {verb} lost the --system alias"
-            assert options["system"].hidden, f"--system must stay hidden on service {verb}"
+            assert "system" not in options, f"service {verb} lost the --system alias"
+            result = runner.invoke(service_cli.service_app, [verb, "--system"])
+            assert result.exit_code == 2, (verb, result.output)
 
 
-# ── the new domain: seam-level dispatch pins ─────────────────────────────────
+# ── the domain: seam-level dispatch pins ─────────────────────────────────────
 
 
 class TestSystemVerbsDispatch:
@@ -144,59 +148,13 @@ class TestSystemVerbsDispatch:
         assert "vesma self-update" in result.output
 
 
-# ── the deprecated aliases: identical behavior + stderr hint ─────────────────
+# ── the guidance surface: bare `service update` ──────────────────────────────
 
 
-class TestDeprecatedAliases:
-    def test_service_install_system_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        called: list[bool] = []
-        monkeypatch.setattr(service_cli, "install_system", _fake_install_system(called))
-        result = runner.invoke(service_cli.service_app, ["install", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [True]
-        assert "use: vesma system install" in result.stderr
-        assert "[deprecated]" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
-
-    def test_service_uninstall_system_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        called: list[bool] = []
-        monkeypatch.setattr(service_cli, "uninstall_system", _fake_uninstall_system(called))
-        result = runner.invoke(service_cli.service_app, ["uninstall", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [False], "dispatched as a plain (non-dry-run) run"
-        assert "use: vesma system uninstall" in result.stderr
-        assert "[deprecated]" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
-
-    def test_service_update_system_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        called: list[bool] = []
-        monkeypatch.setattr(service_cli, "update_system", _fake_update_system(called))
-        result = runner.invoke(service_cli.service_app, ["update", "--system"])
-        assert result.exit_code == 0, result.output
-        assert called == [True]
-        assert "use: vesma system update" in result.stderr
-        assert "[deprecated]" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
-
-    def test_alias_hint_prints_even_when_impl_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Boundary: the hint fires at dispatch, before any impl outcome."""
-
-        def broken_update() -> su.SystemUpdateResult:
-            raise si.SystemInstallError("drift refuses loudly")
-
-        monkeypatch.setattr(service_cli, "update_system", broken_update)
-        result = runner.invoke(service_cli.service_app, ["update", "--system"])
-        assert result.exit_code == 1
-        assert "[deprecated]" in result.stderr, "hint must precede the dispatch"
-        assert "use: vesma system update" in result.stderr
-        assert "drift refuses loudly" in result.output
-
-    def test_plain_service_update_refuses_naming_system_domain(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            service_cli, "update_system", lambda: pytest.fail("must refuse before dispatch")
-        )
+class TestServiceUpdateGuidance:
+    def test_plain_service_update_refuses_naming_system_domain(self) -> None:
+        """The refusal is unconditional (guidance, not an alias — there is
+        no dispatch behind it to guard anymore)."""
         result = runner.invoke(service_cli.service_app, ["update"])
         assert result.exit_code == 1
         # Rich wraps the console line — match on whitespace-normalized text.

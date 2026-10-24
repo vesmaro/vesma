@@ -6,12 +6,10 @@ lifecycle — the FHS tree (``/etc/vesma``, ``/var/lib/vesma``,
 daemon's RUNTIME control (status/health/start/stop/restart/logs/run) and
 the user-profile install; the user profile updates via ``vesma self-update``.
 
-Each verb delegates to the SAME implementation functions the deprecated
-``vesma service <verb> --system`` spellings call (CLI-topology wave,
-variant B — owner-ratified 2026-10-23): zero logic duplication, wiring
-only. The old spellings remain as hidden deprecated aliases on ``vesma
-service`` (identical behavior + a one-line stderr hint; removal not
-before 9.0).
+CLI topology FINAL (owner doctrine 2026-10-24, 7.0.0): these are the ONE
+spellings for the system profile — the former ``vesma service <verb>
+--system`` hidden flag forms are REMOVED, and doctor lives ONLY on L1
+(``vesma doctor``, which checks both profiles).
 """
 
 from __future__ import annotations
@@ -39,7 +37,7 @@ system_app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     name="system",
     help=(
-        "The SYSTEM profile domain: install, update, uninstall — plus doctor.\n\n"
+        "The SYSTEM profile domain: install, update, uninstall.\n\n"
         "Install/update/uninstall own the SYSTEM profile's lifecycle (FHS: "
         "/etc/vesma, /var/lib/vesma, /usr/lib/vesma, root required): `install` "
         "lays down the FHS tree, the sysusers.d service account, root-owned "
@@ -47,13 +45,11 @@ system_app = typer.Typer(
         "the running build's revisions beside the current ones with an "
         "atomic symlink swap and a health gate; `uninstall` removes exactly "
         "the recorded install-state artifacts (typed confirmation — `--yes` "
-        "for scripts, `--dry-run` for the plan). `doctor` is the SAME health "
-        "pass as the L1 `vesma doctor` (additionally registered here; it "
-        "checks BOTH profiles and under root names the roots it is "
-        "diagnosing). Runtime control of the daemon (status/health/start/"
-        "stop/restart/logs/run), the user-profile install and the component "
-        "registry stay on `vesma service`; the user profile updates via "
-        "`vesma self-update`."
+        "for scripts, `--dry-run` for the plan). The health pass that "
+        "checks BOTH profiles is the L1 `vesma doctor`. Runtime control of "
+        "the daemon (status/health/start/stop/restart/logs/run), the "
+        "user-profile install and the component registry stay on `vesma "
+        "service`; the user profile updates via `vesma self-update`."
     ),
     no_args_is_help=True,
 )

@@ -341,14 +341,16 @@ class TestAddDryRun:
         isolated_config: Path,
         tmp_path: Path,
     ) -> None:
-        """``--dry-run --file`` reads the file and shows filter stats."""
+        """``ingest file PATH --dry-run`` reads the file and shows filter
+        stats (7.0.0: the file leg lives on the ingest subcommand — the
+        former ``add --file`` flag form is REMOVED)."""
         content_file = tmp_path / "input.txt"
         content_file.write_text("hello world\nhello world\n", encoding="utf-8")
         result = runner.invoke(
             app,
             [
-                "add",
-                "--file",
+                "ingest",
+                "file",
                 str(content_file),
                 "--tags",
                 "project:dry,agent:test,vesma:learning",
@@ -363,27 +365,30 @@ class TestAddDryRun:
         self,
         isolated_config: Path,
     ) -> None:
-        """``--dry-run --url`` is rejected (content fetched at ingest time)."""
+        """``ingest url URL`` has no --dry-run at all (content is fetched
+        at ingest time — the same contract the former ``add --url`` leg
+        had): the option does not parse, a clean usage error."""
         result = runner.invoke(
             app,
             [
-                "add",
-                "--url",
+                "ingest",
+                "url",
                 "https://example.com",
                 "--tags",
                 "project:dry,agent:test,vesma:learning",
                 "--dry-run",
             ],
         )
-        assert result.exit_code != 0
-        assert "not supported" in result.output.lower()
+        assert result.exit_code == 2, result.output
+        assert "no such option" in result.output.lower()
 
 
 # ── Task 3: vesma doctor --fix ───────────────────────────────────────────────
 
 
 class TestDoctorFix:
-    """``vesma doctor --fix`` auto-fixes WARN-level checks."""
+    """``vesma doctor fix`` auto-fixes WARN-level checks (7.0.0: the
+    former ``--fix`` flag form is REMOVED)."""
 
     @pytest.fixture(autouse=True)
     def _isolate_vscode_mcp_surface(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -405,11 +410,11 @@ class TestDoctorFix:
         fake_pack: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``--fix --dry-run`` previews fixes without executing."""
+        """``fix --dry-run`` previews fixes without executing."""
         monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
-        result = runner.invoke(app, ["doctor", "--fix", "--dry-run", "--json"])
+        result = runner.invoke(app, ["doctor", "fix", "--dry-run", "--json"])
 
         # Exit code may be 2 (warnings still present in dry-run).
         assert result.exit_code in (0, 2), result.output
@@ -470,11 +475,11 @@ class TestDoctorFix:
         fake_pack: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``doctor --fix --json`` includes the ``fixed`` array in output."""
+        """``doctor fix --json`` includes the ``fixed`` array in output."""
         monkeypatch.setattr("vesma.cli.agent_wiring.DEFAULT_AGENTS_DIR", agents_dir)
         _patch_integration(monkeypatch, fake_pack)
 
-        result = runner.invoke(app, ["doctor", "--fix", "--json"])
+        result = runner.invoke(app, ["doctor", "fix", "--json"])
 
         # After fix, exit code should be 0 (all fixable warnings resolved)
         # or 2 (some warnings remain — e.g. SQLite/vector missing in tmp).

@@ -1,4 +1,4 @@
-"""Component verbs — ``vesma service components`` home + hidden L1 aliases.
+"""Component verbs — the ``vesma service components`` home.
 
 The owner-facing component UX (wave 61, board card vesma-61-wave): ONE
 unified verb set that works for EVERY component — the built-in bundle
@@ -6,16 +6,14 @@ unified verb set that works for EVERY component — the built-in bundle
 manifest dropped into ``~/.config/vesma/components.d/``, e.g.
 ``mesh.yaml``) alike.
 
-CLI topology v2 (ArchCom 2026-10-23, ratified; waves A+B): the CANONICAL
-home for the component verbs is ``vesma service components
-install|update|configs|status`` — runtime-owned component definitions
-under the supervisor's domain — while ``start/stop/restart`` batch
-semantics live directly on ``vesma service start/stop/restart``. The
-former top-level spellings remain as HIDDEN deprecated aliases (one
-stderr hint per verb, identical behavior, removal not before 9.0), and
-the former top-level ``vesma logs`` name belongs to the pipeline-trace
-viewer (:mod:`vesma.cli.logs`) — ``vesma logs NAME`` answers the old
-component habit with a loud redirect to ``vesma service logs NAME``.
+CLI topology FINAL (owner doctrine 2026-10-24, 7.0.0): ONE spelling per
+operation — the component verbs live on ``vesma service components
+install|update|configs|status`` and the lifecycle batch semantics on
+``vesma service start/stop/restart``; the former top-level spellings
+(``vesma install|update|status|configs|start|stop|restart``) are REMOVED
+with no alias layer, and the pipeline-trace viewer owns ``vesma traces``
+(:mod:`vesma.cli.traces`) while "logs" belongs solely to the daemon
+world (``vesma service logs``).
 
 Design contract (TL, wave 61 — unchanged):
 
@@ -34,10 +32,9 @@ Design contract (TL, wave 61 — unchanged):
   operator-authored and NEVER rewritten by the engine; a byte-diff on a
   bundled manifest means "stale" (regenerated behind a ``.pre-regen.bak``
   backup), not "operator-owned".
-* COLLISION RESOLUTION: ``vesma update`` was the application self-update
-  group — the legacy FLAG forms the shipped systemd timer depends on
-  keep working as hidden aliases on the top-level ``update`` alias
-  (delegating to the self-update machinery with a stderr hint).
+* COLLISION RESOLUTION: the application self-update family lives on
+  ``vesma self-update`` — a completely different object than component
+  manifests (the user-profile pip copy vs runtime-owned definitions).
 
 ``status`` and ``configs`` degrade gracefully when the supervisor is
 down — the registry view is disk-state and works offline; the live state
@@ -49,7 +46,6 @@ data (paths, names, error text) is rendered through ``rich.text.Text``
 from __future__ import annotations
 
 import dataclasses
-import functools
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -103,7 +99,7 @@ class ComponentRecord:
 
 
 def _registry(
-    install_hint: str = "vesma install --all",
+    install_hint: str = "vesma service components install --all",
 ) -> tuple[list[ComponentRecord], str | None]:
     """The component registry: installed manifests, or the bundle view.
 
@@ -112,10 +108,10 @@ def _registry(
     a notice, so bare ``status``/``install`` answer usefully on a fresh
     machine instead of failing. An EXISTING components.d loads
     fail-closed (a broken manifest is an error, never a silent skip).
-    ``install_hint`` names the install spelling for that notice: the
-    hidden top-level aliases keep the frozen legacy default; the
-    ``service components`` home teaches its own (topology v2, security
-    P3-1).
+    ``install_hint`` names the install spelling for that notice — every
+    surface here teaches the canonical ``service components`` spelling
+    (security P3-1: the notice names the install spelling of the surface
+    that shows it).
     """
     components_dir = layout.components_dir()
     if not components_dir.is_dir():
@@ -149,7 +145,7 @@ def _registry(
 
 
 def _registry_or_fail(
-    install_hint: str = "vesma install --all",
+    install_hint: str = "vesma service components install --all",
 ) -> tuple[list[ComponentRecord], str | None]:
     """``_registry`` with the fail-closed load rendered as a CLEAN refusal.
 
@@ -233,7 +229,9 @@ def _fail(message: str) -> NoReturn:
 
 
 def _require_component(
-    records: list[ComponentRecord], name: str, registry_hint: str = "vesma status"
+    records: list[ComponentRecord],
+    name: str,
+    registry_hint: str = "vesma service components status",
 ) -> ComponentRecord:
     for record in records:
         if record.name == name:
@@ -257,7 +255,12 @@ def _require_component(
     )
 
 
-# ── vesma install ─────────────────────────────────────────────────────
+# ── install (the `service components install` implementation) ─────────
+
+
+#: The canonical install spelling every hint here teaches (ONE spelling
+#: per operation — owner doctrine 2026-10-24).
+_INSTALL_SPELLING = "vesma service components install"
 
 
 def install_command(
@@ -277,8 +280,6 @@ def install_command(
             "systemd user unit (the full service-install flow).",
         ),
     ] = False,
-    *,
-    invoked_as: str = "vesma install",
 ) -> None:
     """Install components: manifests (NAME) or the whole installation (--all).
 
@@ -318,7 +319,7 @@ def install_command(
         console.print(f"Service installed ({full.unit_path}).", style="green")
         return
     # Bare: the installable set + how to proceed. Informational — exit 0.
-    records, notice = _registry_or_fail(install_hint=f"{invoked_as} --all")
+    records, notice = _registry_or_fail(install_hint=f"{_INSTALL_SPELLING} --all")
     if notice is not None:
         console.print(f"note: {notice}", style="yellow")
     table = Table(title="Installable components", show_header=True, header_style="bold")
@@ -331,11 +332,11 @@ def install_command(
         state = "installed" if record.manifest is not None else "not installed"
         table.add_row(record.name, record.origin, version, state)
     console.print(table)
-    console.print(f"install one component:  {invoked_as} NAME")
-    console.print(f"install everything (manifests, venvs, unit):  {invoked_as} --all")
+    console.print(f"install one component:  {_INSTALL_SPELLING} NAME")
+    console.print(f"install everything (manifests, venvs, unit):  {_INSTALL_SPELLING} --all")
 
 
-# ── vesma status ──────────────────────────────────────────────────────
+# ── status (the `service components status` implementation) ───────────────────────────────────────
 
 
 def _live_states(socket: Path | None, name: str | None) -> tuple[dict[str, Any] | None, str | None]:
@@ -369,8 +370,8 @@ def status_command(
         Path | None, typer.Option("--socket", help="Control socket override (tests).")
     ] = None,
     *,
-    registry_hint: str = "vesma status",
-    install_hint: str = "vesma install --all",
+    registry_hint: str = "vesma service components status",
+    install_hint: str = "vesma service components install --all",
 ) -> None:
     """Show every component: origin, version, live state (or one component).
 
@@ -454,7 +455,7 @@ def _status_json_row(record: ComponentRecord, live: dict[str, Any] | None) -> di
     }
 
 
-# ── vesma start / stop / restart ──────────────────────────────────────
+# ── start / stop / restart (the `service <verb>` implementations) ─────────────────────────────────
 
 
 def _lifecycle_targets(
@@ -464,16 +465,16 @@ def _lifecycle_targets(
     verb: str,
     *,
     invoked_as: str | None = None,
-    install_hint: str = "vesma install --all",
-    registry_hint: str = "vesma status",
+    install_hint: str = "vesma service components install --all",
+    registry_hint: str = "vesma service components status",
 ) -> list[str]:
     """The explicit target list — bare lifecycle calls never bulk-mutate.
 
-    ``invoked_as`` (default ``vesma <verb>``) names the spelling the
-    refusal should teach — the top-level aliases keep their frozen
-    wording, the ``vesma service <verb>`` home names its own.
+    ``invoked_as`` (default ``vesma service <verb>``) names the spelling
+    the refusal should teach — every lifecycle surface lives on
+    ``vesma service <verb>`` (ONE spelling per operation).
     """
-    spelling = invoked_as or f"vesma {verb}"
+    spelling = invoked_as or f"vesma service {verb}"
     if name is not None:
         if all_components:
             _fail("specify either a component NAME or --all, not both")
@@ -519,17 +520,16 @@ def start_command(
     ] = None,
     *,
     invoked_as: str | None = None,
-    install_hint: str = "vesma install --all",
-    registry_hint: str = "vesma status",
+    install_hint: str = "vesma service components install --all",
+    registry_hint: str = "vesma service components status",
 ) -> None:
     """Start a component (or every one with --all) via the supervisor.
 
     Thin delegation to the same control-plane client the service verbs
     use; idempotent — an already-running component is reported as-is.
     Bare invocation refuses: name a component or pass --all. The
-    same-function canonical home is `vesma service start`; the top-level
-    spelling is a hidden deprecated alias (removal not before 9.0).
-    Check `vesma service health` afterwards to confirm readiness.
+    canonical home is `vesma service start`. Check `vesma service
+    health` afterwards to confirm readiness.
     """
     records, _notice = _registry_or_fail()
     for target in _lifecycle_targets(
@@ -560,17 +560,16 @@ def stop_command(
     ] = None,
     *,
     invoked_as: str | None = None,
-    install_hint: str = "vesma install --all",
-    registry_hint: str = "vesma status",
+    install_hint: str = "vesma service components install --all",
+    registry_hint: str = "vesma service components status",
 ) -> None:
     """Stop a component (or every one with --all) via the supervisor.
 
     Thin delegation to the same control-plane client the service verbs
     use; idempotent — an already-stopped component is reported as-is.
     `--force` skips the graceful phase (for a wedged process only). Bare
-    invocation refuses: name a component or pass --all. The same-function
-    canonical home is `vesma service stop`; the top-level spelling is a
-    hidden deprecated alias (removal not before 9.0).
+    invocation refuses: name a component or pass --all. The canonical
+    home is `vesma service stop`.
     """
     records, _notice = _registry_or_fail()
     for target in _lifecycle_targets(
@@ -596,18 +595,17 @@ def restart_command(
     ] = None,
     *,
     invoked_as: str | None = None,
-    install_hint: str = "vesma install --all",
-    registry_hint: str = "vesma status",
+    install_hint: str = "vesma service components install --all",
+    registry_hint: str = "vesma service components status",
 ) -> None:
     """Restart a component (or every one with --all) via the supervisor.
 
     Thin delegation to the same control-plane client the service verbs
     use; a restart is a real stop-then-start cycle, NOT idempotent — a
     retry after a lost response performs a second restart. Bare
-    invocation refuses: name a component or pass --all. The same-function
-    canonical home is `vesma service restart`; the top-level spelling is
-    a hidden deprecated alias (removal not before 9.0). Confirm readiness
-    with `vesma service health`.
+    invocation refuses: name a component or pass --all. The canonical
+    home is `vesma service restart`. Confirm readiness with `vesma
+    service health`.
     """
     records, _notice = _registry_or_fail()
     for target in _lifecycle_targets(
@@ -623,157 +621,20 @@ def restart_command(
         console.print(f"{target}: {state}")
 
 
-# ── vesma update ──────────────────────────────────────────────────────
+# ── update (the `service components update` implementation) ───────────
 
 
-def update_command(
-    name: Annotated[
-        str | None,
-        typer.Argument(help="Component whose manifest to regenerate.", show_default=False),
-    ] = None,
-    all_components: Annotated[
-        bool,
-        typer.Option(
-            "--all",
-            help="Regenerate every stale bundled manifest (operator-authored are never rewritten).",
-        ),
-    ] = False,
-    check: Annotated[
-        bool,
-        typer.Option(
-            "--check", hidden=True, help="Deprecated flag form — use: `vesma self-update check`."
-        ),
-    ] = False,
-    yes: Annotated[
-        bool,
-        typer.Option(
-            "--yes",
-            "-y",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update apply`.",
-        ),
-    ] = False,
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose", hidden=True, help="Deprecated flag form — use: `vesma self-update apply`."
-        ),
-    ] = False,
-    scope: Annotated[
-        str | None,
-        typer.Option(
-            "--scope",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update apply --scope user`.",
-        ),
-    ] = None,
-    to: Annotated[
-        str | None,
-        typer.Option(
-            "--to",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update apply --to VERSION`.",
-        ),
-    ] = None,
-    install_timer: Annotated[
-        bool,
-        typer.Option(
-            "--install-timer",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update timer install`.",
-        ),
-    ] = False,
-    uninstall_timer: Annotated[
-        bool,
-        typer.Option(
-            "--uninstall-timer",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update timer uninstall`.",
-        ),
-    ] = False,
-    timer_alias: Annotated[
-        bool,
-        typer.Option(
-            "--timer",
-            hidden=True,
-            help="Deprecated flag form — use: `vesma self-update timer install`.",
-        ),
-    ] = False,
-) -> None:
-    """Update component manifests: regenerate bundled ones from this release.
+def _update_components(name: str | None, all_components: bool) -> None:
+    """The component-manifest update verb (``vesma service components
+    update`` — the one spelling since 7.0.0).
 
-    Hidden deprecated alias of `vesma service components update` (CLI
-    topology v2 wave A): identical component behavior, one stderr hint,
-    removal not before 9.0. With NAME: a bundled component's manifest is
-    regenerated when its bytes differ from this release's bundle (the
-    previous bytes are kept as a one-time .pre-regen.bak backup); an
-    operator-authored manifest is REFUSED — managed by operator, edit the
-    file. With --all: every stale bundled manifest at once. Bare
-    invocation refuses — it is never a bulk mutation.
-
-    The legacy application self-update FLAG forms (--yes, --check, --to,
-    --scope, --install-timer, --uninstall-timer) still work here as
-    hidden aliases so installed units and scripts keep running (they
-    predate the rename; the family lives on `vesma self-update`). A
-    legacy flag TOGETHER with a component NAME is refused loudly (P2,
-    cascade fix): the flag belongs to the self-update family and would
-    otherwise silently swallow the NAME — the operator gets both
-    spellings instead of the wrong mutation.
-    """
-    legacy_flags: list[tuple[str, str]] = [
-        entry
-        for entry, used in (
-            (("--check", "vesma self-update check"), check),
-            (("--yes", "vesma self-update apply"), yes),
-            (("--verbose", "vesma self-update apply"), verbose),
-            (("--scope", "vesma self-update apply --scope user"), scope is not None),
-            (("--to", "vesma self-update apply --to VERSION"), to is not None),
-            (("--install-timer", "vesma self-update timer install"), install_timer),
-            (("--uninstall-timer", "vesma self-update timer uninstall"), uninstall_timer),
-            (("--timer", "vesma self-update timer install"), timer_alias),
-        )
-        if used
-    ]
-    if name is not None and legacy_flags:
-        # P2-1 (cascade fix): the legacy dispatch runs the APPLICATION
-        # self-update — it must never silently swallow a component NAME.
-        flags = ", ".join(flag for flag, _canonical in legacy_flags)
-        _fail(
-            f"{flags} belongs to `vesma self-update`; given NAME — either "
-            f"`vesma update {name}` or `{legacy_flags[0][1]}` (without the "
-            "component name)"
-        )
-    if legacy_flags:
-        from vesma.cli.update_cmd import _legacy_flag_dispatch
-
-        _legacy_flag_dispatch(
-            console,
-            check=check,
-            yes=yes,
-            verbose=verbose,
-            scope=scope,
-            to=to,
-            install_timer=install_timer or timer_alias,
-            uninstall_timer=uninstall_timer,
-        )
-        return
-    _update_components(name, all_components)
-
-
-def _update_components(
-    name: str | None, all_components: bool, *, invoked_as: str = "vesma update"
-) -> None:
-    """The component-manifest half of the update verb (both spellings).
-
-    Called by the hidden top-level alias (frozen wording via the default
-    ``invoked_as``) and by ``vesma service components update`` (the
-    canonical home). The update verb resolves targets in the CORE
-    (single source of truth — see regenerate_component_manifest), by
-    FILE STEM, not through the fail-closed registry: a stale
-    (schema-invalid) bundled manifest is exactly what `update` exists to
-    heal — demanding a valid components.d here would make the medicine
-    require the patient to be healthy first (the same warn-based
-    discipline as the 6.1.0 post-upgrade reconciliation).
+    The update verb resolves targets in the CORE (single source of truth
+    — see regenerate_component_manifest), by FILE STEM, not through the
+    fail-closed registry: a stale (schema-invalid) bundled manifest is
+    exactly what `update` exists to heal — demanding a valid
+    components.d here would make the medicine require the patient to be
+    healthy first (the same warn-based discipline as the 6.1.0
+    post-upgrade reconciliation).
     """
     if name is not None:
         if all_components:
@@ -794,9 +655,10 @@ def _update_components(
     if not all_components:
         known = ", ".join(_manifest_stems()) or "nothing"
         _fail(
-            f"refusing to update without an explicit target — bare `{invoked_as}` "
-            f"is not a bulk mutation (components: {known}) — specify "
-            "NAME or --all; the application self-update moved to `vesma self-update`"
+            "refusing to update without an explicit target — bare `vesma service "
+            "components update` is not a bulk mutation "
+            f"(components: {known}) — specify NAME or --all; the application "
+            "self-update lives on `vesma self-update`"
         )
     try:
         all_lines, regenerated_count = regenerate_stale_manifests()
@@ -815,7 +677,7 @@ def _update_components(
         console.print("service manifests current", style="cyan")
 
 
-# ── vesma configs ─────────────────────────────────────────────────────
+# ── configs (the `service components configs` implementation) ─────────────────────────────────────
 
 
 def configs_command(
@@ -826,8 +688,8 @@ def configs_command(
         bool, typer.Option("--json", help="Machine-readable config paths.")
     ] = False,
     *,
-    registry_hint: str = "vesma status",
-    install_hint: str = "vesma install --all",
+    registry_hint: str = "vesma service components status",
+    install_hint: str = "vesma service components install --all",
 ) -> None:
     """Show component config paths (all components, or one in detail).
 
@@ -951,20 +813,15 @@ def components_install(
 ) -> None:
     """Install a component's manifest (NAME), or the whole installation (--all).
 
-    Same implementation as the hidden top-level `vesma install` alias,
-    taught under its canonical spelling. With NAME: the per-component
-    manifest install — bundled components are (re)written from this
-    release's bundle (a diverging installed manifest is preserved as a
-    one-time .pre-regen.bak backup), operator-authored manifests are
-    validated fail-closed and left untouched, data dirs and config
-    schemas are materialized. Bare invocation lists what is installable
-    and how to proceed (never mutates).
+    With NAME: the per-component manifest install — bundled components
+    are (re)written from this release's bundle (a diverging installed
+    manifest is preserved as a one-time .pre-regen.bak backup),
+    operator-authored manifests are validated fail-closed and left
+    untouched, data dirs and config schemas are materialized. Bare
+    invocation lists what is installable and how to proceed (never
+    mutates).
     """
-    install_command(
-        name,
-        all_components,
-        invoked_as="vesma service components install",
-    )
+    install_command(name, all_components)
 
 
 @service_components_app.command(name="update")
@@ -983,16 +840,13 @@ def components_update(
 ) -> None:
     """Regenerate component manifests from this release (NAME or --all).
 
-    The component-manifest half of the update verb under its canonical
-    spelling (the hidden top-level `vesma update` alias delegates here
-    and additionally carries the legacy application self-update FLAG
-    forms for units installed before the rename). A bundled component's
-    manifest is regenerated when its bytes differ from this release's
-    bundle; an operator-authored manifest is REFUSED — managed by
-    operator, edit the file. Bare invocation refuses: it is never a bulk
-    mutation. The application self-update lives on `vesma self-update`.
+    A bundled component's manifest is regenerated when its bytes differ
+    from this release's bundle; an operator-authored manifest is REFUSED
+    — managed by operator, edit the file. Bare invocation refuses: it is
+    never a bulk mutation. The application self-update lives on `vesma
+    self-update`.
     """
-    _update_components(name, all_components, invoked_as="vesma service components update")
+    _update_components(name, all_components)
 
 
 @service_components_app.command(name="configs")
@@ -1008,16 +862,10 @@ def components_configs(
 
     Bare: the per-component manifest / env-file / data-dir table. With
     NAME: the effective config path the component receives plus its key
-    config fields (origin, schema, env file, venv). Same implementation
-    as the hidden top-level `vesma configs` alias. Writing configs is
+    config fields (origin, schema, env file, venv). Writing configs is
     out of scope — edit the manifest or config file directly.
     """
-    configs_command(
-        name,
-        json_output,
-        registry_hint="vesma service components status",
-        install_hint="vesma service components install --all",
-    )
+    configs_command(name, json_output)
 
 
 @service_components_app.command(name="status")
@@ -1038,16 +886,9 @@ def components_status(
     the live state (running/stopped/failed + pid) comes from the
     supervisor over its control socket and reads "unknown" with an
     explicit note when it does not answer. `--json` emits the same data
-    machine-readably. Same implementation as the hidden top-level
-    `vesma status` alias, taught under its canonical spelling.
+    machine-readably.
     """
-    status_command(
-        name,
-        json_output,
-        socket,
-        registry_hint="vesma service components status",
-        install_hint="vesma service components install --all",
-    )
+    status_command(name, json_output, socket)
 
 
 # Registered at import time (the same module-level discipline main.py
@@ -1055,78 +896,3 @@ def components_status(
 # sub-app; components.py already imports service.py for the control
 # client, so the registration direction introduces no cycle.
 service_app.add_typer(service_components_app, name="components")
-
-
-# ── the hidden top-level aliases ──────────────────────────────────────
-
-
-def _deprecated_alias_hint(old: str, new: str) -> None:
-    """One-line deprecation hint for a hidden legacy top-level verb (stderr).
-
-    CLI topology v2 (ArchCom 2026-10-23): the top-level supervisor
-    shortcuts re-parented under their domain homes; the old spellings
-    keep working — identical behavior, scripts must not be able to tell
-    the difference — but point at the canonical spelling. stderr only:
-    stdout stays clean for pipes and JSON consumers. Removal not before
-    9.0 (MAJOR).
-    """
-    typer.echo(f"[deprecated] `{old}` is deprecated — use: {new}", err=True)
-
-
-def _hidden_alias(old: str, new: str, fn: Callable[..., None]) -> Callable[..., None]:
-    """Wrap ``fn`` as a hidden deprecated alias printing the stderr hint.
-
-    ``functools.wraps`` preserves the full typer signature (params,
-    defaults, help text) — the alias IS the same command under the old
-    spelling; the only difference is the one stderr line before dispatch.
-    """
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> None:
-        _deprecated_alias_hint(old, new)
-        fn(*args, **kwargs)
-
-    return wrapper
-
-
-def register_component_commands(app: typer.Typer) -> None:
-    """Attach the top-level component verbs as HIDDEN deprecated aliases.
-
-    CLI topology v2 wave A: the canonical homes are ``vesma service
-    components install|update|configs|status`` and ``vesma service
-    start|stop|restart``; the former top-level spellings stay registered
-    (hidden from ``--help``, still tab-completable, byte-identical
-    behavior + one stderr hint) until the 9.0 MAJOR. The former
-    top-level ``vesma logs`` name belongs to the pipeline-trace viewer
-    (``vesma.cli.logs``); its component habit is caught by that viewer's
-    positional redirect.
-    """
-    app.command(name="install", hidden=True)(
-        _hidden_alias(
-            "vesma install",
-            "vesma service components install (component) / vesma service install (user profile)",
-            install_command,
-        )
-    )
-    app.command(name="update", hidden=True)(
-        _hidden_alias(
-            "vesma update",
-            "vesma service components update (application: vesma self-update)",
-            update_command,
-        )
-    )
-    app.command(name="status", hidden=True)(
-        _hidden_alias("vesma status", "vesma service components status", status_command)
-    )
-    app.command(name="configs", hidden=True)(
-        _hidden_alias("vesma configs", "vesma service components configs", configs_command)
-    )
-    app.command(name="start", hidden=True)(
-        _hidden_alias("vesma start", "vesma service start", start_command)
-    )
-    app.command(name="stop", hidden=True)(
-        _hidden_alias("vesma stop", "vesma service stop", stop_command)
-    )
-    app.command(name="restart", hidden=True)(
-        _hidden_alias("vesma restart", "vesma service restart", restart_command)
-    )

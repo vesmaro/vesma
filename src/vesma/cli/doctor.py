@@ -1283,16 +1283,6 @@ def _render(results: list[CheckResult]) -> None:
 # ── Command ───────────────────────────────────────────────────────────────────
 
 
-def _deprecated_flag_hint(old_form: str, new_form: str) -> None:
-    """One-line deprecation hint for a hidden legacy flag form (stderr).
-
-    Standing design rule: flags do not replace subcommands. Legacy flag
-    forms keep working (scripts may depend on them) but point at the
-    canonical subcommand spelling.
-    """
-    typer.echo(f"[deprecated] `{old_form}` is deprecated — use: {new_form}", err=True)
-
-
 def _run_paths_overview(*, json_output: bool) -> None:
     """Print the paths overview table and exit 0 (no health checks)."""
     try:
@@ -1448,31 +1438,6 @@ def doctor(
             help="Emit results as JSON (for scripting / CI) instead of a table.",
         ),
     ] = False,
-    fix: Annotated[
-        bool,
-        typer.Option(
-            "--fix",
-            help="Deprecated flag form — use: `vesma doctor fix`.",
-            hidden=True,
-        ),
-    ] = False,
-    dry_run: Annotated[
-        bool,
-        typer.Option(
-            "--dry-run",
-            help="With the deprecated --fix flag: preview without executing. "
-            "Canonical form: `vesma doctor fix --dry-run`.",
-            hidden=True,
-        ),
-    ] = False,
-    paths_only: Annotated[
-        bool,
-        typer.Option(
-            "--paths",
-            help="Deprecated flag form — use: `vesma doctor paths`.",
-            hidden=True,
-        ),
-    ] = False,
 ) -> None:
     """Run Vesma health checks and report status.
 
@@ -1489,20 +1454,13 @@ def doctor(
     if ctx.invoked_subcommand is not None:
         # The subcommand (fix/paths) runs its own logic; options placed
         # BEFORE the subcommand word would be silently dropped otherwise.
-        if json_output or fix or dry_run or paths_only:
+        if json_output:
             typer.echo(
                 "note: options placed before the subcommand are ignored — "
                 "pass them after it (e.g. `vesma doctor fix --json`)",
                 err=True,
             )
         return
-    # ── No subcommand: legacy flag forms, then the default check run ────
-    if paths_only:
-        _deprecated_flag_hint("vesma doctor --paths", "vesma doctor paths")
-        _run_paths_overview(json_output=json_output)
-    if fix:
-        _deprecated_flag_hint("vesma doctor --fix", "vesma doctor fix")
-        _run_health_checks(json_output=json_output, fix=True, dry_run=dry_run)
     _run_health_checks(json_output=json_output)
 
 

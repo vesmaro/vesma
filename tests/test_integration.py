@@ -3900,7 +3900,8 @@ class TestEngineManifest:
 
 
 class TestMemoryStatus:
-    """``vesma memory status`` — read-only per-harness report (ADR-0034 MS-0)."""
+    """``vesma integration memory`` — read-only per-harness report (ADR-0034 MS-0;
+    the ONE spelling since 7.0.0 — the former top-level alias is REMOVED)."""
 
     @staticmethod
     def _build(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -3968,7 +3969,7 @@ class TestMemoryStatus:
         cfg = load_targets(pack / "targets.yaml")
         IntegrationManager(version="1.0.0", pack_root=pack, targets_config=cfg).deploy("zcode")
 
-        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+        result = runner.invoke(app, ["integration", "memory", "--home", str(home)])
 
         assert result.exit_code == 0, result.output
         assert "zcode" in result.output
@@ -3983,7 +3984,7 @@ class TestMemoryStatus:
         home, pack, _ = self._build(tmp_path)
         self._patch(monkeypatch, home, pack)
 
-        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+        result = runner.invoke(app, ["integration", "memory", "--home", str(home)])
 
         assert result.exit_code == 0, result.output
         assert "vesma" in result.output  # the key, not the entry
@@ -3998,7 +3999,7 @@ class TestMemoryStatus:
         cfg = TargetsConfig(targets=())
         monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
 
-        result = runner.invoke(app, ["memory", "status", "--home", str(empty)])
+        result = runner.invoke(app, ["integration", "memory", "--home", str(empty)])
 
         assert result.exit_code == 0, result.output
         assert "No agent harnesses detected" in result.output
@@ -4009,7 +4010,7 @@ class TestMemoryStatus:
         home, pack, _ = self._build(tmp_path)
         self._patch(monkeypatch, home, pack)
 
-        result = runner.invoke(app, ["memory", "status", "--target", "ghost"])
+        result = runner.invoke(app, ["integration", "memory", "--target", "ghost"])
 
         assert result.exit_code == 1
         assert "Unknown target" in result.output
@@ -4022,7 +4023,7 @@ class TestMemoryStatus:
         (home / ".vesma" / "data").mkdir(parents=True)
         (home / ".vesma" / "data" / "vesma.db").write_bytes(b"")  # marker only
 
-        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+        result = runner.invoke(app, ["integration", "memory", "--home", str(home)])
 
         assert result.exit_code == 0, result.output
         assert "vesma.db ✓" in result.output
@@ -4668,7 +4669,7 @@ class TestMemoryStatusCodex:
         monkeypatch.setattr(ms_mod, "load_targets", lambda config_path=None, home=None: cfg)
         monkeypatch.setattr(ms_mod, "_manager", lambda home=None: mgr)
 
-        result = runner.invoke(app, ["memory", "status", "--home", str(home)])
+        result = runner.invoke(app, ["integration", "memory", "--home", str(home)])
         assert result.exit_code == 0, result.output
         assert "codex" in result.output
         assert "obsidian-mcp" in result.output  # external engine KEY

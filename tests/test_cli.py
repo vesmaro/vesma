@@ -1229,10 +1229,9 @@ class TestProcessorSubapp:
 # ── recall group (CLI-architecture rework W2) ────────────────────────────────
 #
 # Bare `vesma recall` keeps its pre-W2 behavior (default command on a group
-# with invoke_without_command); per-agent recall moved to the canonical
-# subcommand `vesma recall agent SLUG [QUERY]`; the legacy `--agent` flag
-# stays as a hidden deprecated alias (identical behavior + stderr hint,
-# removal not before 6.0).
+# with invoke_without_command); per-agent recall is the canonical
+# subcommand `vesma recall agent SLUG [QUERY]` (7.0.0: the former
+# `--agent` flag form is REMOVED — a usage error now).
 
 
 def _seed_agent_memory(isolated_config: Path, content: str, agent: str) -> None:
@@ -1322,11 +1321,12 @@ class TestRecallGroup:
         assert "deprecated" not in result.output
 
     def test_help_advertises_agent_subcommand_and_hides_flag(self, isolated_config: Path) -> None:
-        """`recall --help` names `agent`; the legacy --agent flag is hidden."""
+        """`recall --help` names `agent`; the legacy --agent flag is GONE
+        (7.0.0 — the subcommand is the only spelling)."""
         result = runner.invoke(app, ["recall", "--help"])
         assert result.exit_code == 0, result.output
         assert "agent" in result.output
-        assert "--agent" not in result.output, "the deprecated flag must be hidden"
+        assert "--agent" not in result.output, "the retired flag must be gone"
 
     def test_agent_subcommand_recency_path(self, isolated_config: Path) -> None:
         """`vesma recall agent SLUG` lists the agent's entries (no query)."""
@@ -1365,17 +1365,12 @@ class TestRecallGroup:
         assert result.exit_code == 2, result.output
         assert "vacuum" in result.output
 
-    def test_deprecated_agent_alias_hints_on_stderr_stdout_clean(
-        self, isolated_config: Path
-    ) -> None:
-        """`recall --agent` still works identically and prints the stderr hint."""
+    def test_agent_flag_form_is_a_usage_error(self, isolated_config: Path) -> None:
+        """7.0.0: `recall --agent` no longer PARSES — `vesma recall agent
+        SLUG` is the only spelling."""
         _seed_agent_memory(isolated_config, "w2 alias form entry", "cli")
         result = runner.invoke(app, ["recall", "--agent", "cli"])
-        assert result.exit_code == 0, result.output
-        assert "w2 alias form entry" in result.output, "the alias must keep working"
-        assert "[deprecated]" in result.stderr
-        assert "use: vesma recall agent SLUG" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
+        assert result.exit_code == 2, result.output
 
     def test_options_before_subcommand_are_not_silently_dropped(
         self, isolated_config: Path
@@ -1387,10 +1382,9 @@ class TestRecallGroup:
 
 
 # `vesma ingest url|file` (CLI-architecture rework W3): URL and file ingest
-# moved to the canonical subcommands; the legacy `add --url` / `add --file`
-# flag forms stay as hidden deprecated aliases (identical behavior + stderr
-# hint, removal not before 6.0). `vesma add <content>` remains the canonical
-# quick-capture.
+# live on the canonical subcommands — the former `add --url` / `add --file`
+# flag forms are REMOVED (7.0.0, the no-aliases doctrine). `vesma add
+# <content>` remains the canonical quick-capture.
 
 
 def _fake_ingested_memory(content: str) -> object:
@@ -1531,16 +1525,29 @@ class TestIngestSubApp:
 
 
 class TestAddIngestAliases:
-    def test_help_hides_deprecated_flags(self, isolated_config: Path) -> None:
-        """`add --help` must not advertise the retired --url/--file forms.
+    """7.0.0 (no-aliases doctrine): the `add --url` / `add --file` flag
+    forms no longer PARSE — the ingest subcommands are the only spelling."""
 
-        The options panel must not list them; the docstring's plain-text
-        mention of the old forms (alias policy) is expected and allowed.
-        """
+    def test_help_carries_no_url_or_file_options(self, isolated_config: Path) -> None:
+        """`add --help` must not advertise the retired --url/--file forms."""
         result = runner.invoke(app, ["add", "--help"])
         assert result.exit_code == 0, result.output
-        assert "-u, --url" not in result.output, "the deprecated flag must be hidden"
-        assert "-f, --file" not in result.output, "the deprecated flag must be hidden"
+        assert "--url" not in result.output, "the retired flag must be gone"
+        assert "--file" not in result.output, "the retired flag must be gone"
+
+    def test_url_flag_form_is_a_usage_error(self, isolated_config: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["add", "--url", "https://example.com/x", "--tags", "project:p,agent:a"],
+        )
+        assert result.exit_code == 2, result.output
+
+    def test_file_flag_form_is_a_usage_error(self, isolated_config: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["add", "--file", "note.md", "--tags", "project:p,agent:a"],
+        )
+        assert result.exit_code == 2, result.output
 
     def test_content_form_stays_canonical_and_hint_free(self, isolated_config: Path) -> None:
         """`vesma add <content>` keeps working with no deprecation noise."""
@@ -1558,91 +1565,6 @@ class TestAddIngestAliases:
         assert "Saved" in result.output
         assert "deprecated" not in result.output
         assert "deprecated" not in result.stderr
-
-    def test_url_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
-        """`add --url` keeps identical behavior + prints the stderr hint."""
-        from unittest.mock import patch
-
-        from vesma.manager import MemoryManager
-
-        with patch.object(
-            MemoryManager,
-            "ingest_url",
-            return_value=_fake_ingested_memory("w3 alias page body"),
-        ) as mock_ingest:
-            result = runner.invoke(
-                app,
-                [
-                    "add",
-                    "--url",
-                    "https://example.com/alias",
-                    "--tags",
-                    "project:cli-smoke,agent:cli,mnemos:learning",
-                ],
-            )
-        assert result.exit_code == 0, result.output
-        mock_ingest.assert_called_once()
-        assert "Saved" in result.output
-        assert "[deprecated]" in result.stderr
-        assert "use: vesma ingest url URL" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
-
-    def test_file_alias_still_works_and_hints_on_stderr(self, isolated_config: Path) -> None:
-        """`add --file` keeps identical behavior + prints the stderr hint."""
-        note = isolated_config.parent / "w3-alias-note.md"
-        note.write_text("w3 file alias body\n", encoding="utf-8")
-        result = runner.invoke(
-            app,
-            [
-                "add",
-                "--file",
-                str(note),
-                "--tags",
-                "project:cli-smoke,agent:cli,mnemos:learning",
-            ],
-        )
-        assert result.exit_code == 0, result.output
-        assert "Saved" in result.output
-        assert "w3 file alias body" in result.output
-        assert "[deprecated]" in result.stderr
-        assert "use: vesma ingest file PATH" in result.stderr
-        assert "deprecated" not in result.stdout, "stdout stays clean for pipes"
-
-    def test_url_alias_dry_run_refused_as_before(self, isolated_config: Path) -> None:
-        """`add --url --dry-run` keeps its historical refusal (exit 1)."""
-        result = runner.invoke(
-            app,
-            [
-                "add",
-                "--url",
-                "https://example.com/x",
-                "--dry-run",
-                "--tags",
-                "project:cli-smoke,agent:cli,mnemos:learning",
-            ],
-        )
-        assert result.exit_code == 1, result.output
-        assert "--dry-run is not supported with --url" in result.output
-
-    def test_file_alias_dry_run_still_previews(self, isolated_config: Path) -> None:
-        """`add --file --dry-run` keeps the preview behavior + the hint."""
-        note = isolated_config.parent / "w3-alias-dry.md"
-        note.write_text("w3 alias dry run body\n", encoding="utf-8")
-        result = runner.invoke(
-            app,
-            [
-                "add",
-                "--file",
-                str(note),
-                "--dry-run",
-                "--tags",
-                "project:test,agent:cli,mnemos:learning",
-            ],
-        )
-        assert result.exit_code == 0, result.output
-        assert "Filter preview" in result.output
-        assert "Saved" not in result.output
-        assert "[deprecated]" in result.stderr
 
 
 class TestGraphLifecycleCli:

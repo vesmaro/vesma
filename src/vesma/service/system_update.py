@@ -1,7 +1,7 @@
 """``vesma system update`` — the mode-aware system-profile updater
 (specs/layout v2 §3.13; ADR-0045 Decision 6, rollout wave 3; conformance
-SY-07/SY-10/SY-11). The former ``vesma service update --system`` spelling
-is a hidden deprecated alias (CLI topology v2; removal not before 9.0).
+SY-07/SY-10/SY-11). The former ``vesma service update --system`` flag
+form is REMOVED (CLI topology FINAL, 7.0.0) — this is the one spelling.
 
 The update contract, in execution order:
 

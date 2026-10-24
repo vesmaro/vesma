@@ -546,10 +546,11 @@ updates:
 
 ### The `vesma self-update` subcommands
 
-> Since the component UX (6.2.0) the application self-update family lives under
-> `vesma self-update` — the top-level `update` is now the component-manifest
-> verb. Legacy flag forms (`vesma update --yes`, `--check`, …) still work as
-> hidden aliases.
+> The application self-update family lives under `vesma self-update`; the
+> component-manifest verb lives under `vesma service components update`. Since
+> 7.0.0 the former top-level `vesma update` command and its legacy flag forms
+> (`--yes`, `--check`, …) are REMOVED — timers installed before the rename
+> migrate with `vesma self-update timer install` (one command per box).
 
 | Command | Purpose |
 |---------|---------|
