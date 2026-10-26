@@ -94,7 +94,12 @@ is normative here; the load-bearing points:
 - C6: the source is NEVER written: when the effective uid differs from the
   source owner every source probe goes through read-only URIs; a stale
   sidecar requiring recovery is a typed refusal (repair is the owner's
-  job). No checkpoint is ever truncated on the source.
+  job). No checkpoint is ever truncated on the source. The guarantee is
+  VERIFIED, not assumed: every sibling sqlite under the data root
+  (component scratch databases included, sidecars excluded) is digested
+  before and after the snapshot copy window — drift is a typed snapshot
+  refusal naming the file (F8: a component writer touching its scratch
+  db mid-copy must stop the run, never ride along undetected).
 - C7: target quiesce is a triple gate (system unit state via systemctl,
   the system control socket as a warning, file probes decisive) run twice:
   in the plan and immediately before publish.
@@ -858,6 +863,56 @@ def _snapshot_data_files(data_dir: Path, main_db_name: str, *, flat_layout: bool
     ]
 
 
+def _sibling_sqlite_digests(source: _StoreLayout) -> dict[str, str]:
+    """(relpath → sha256) of every sqlite main file under the data root
+    besides the main db — component scratch databases included (F8).
+
+    Sidecars are excluded (transient by design; their content folds into
+    the main file at the writer's checkpoint), and — flat layout only —
+    the home-root non-data entries stay out: they ride their own contract
+    branches (vault/config) or are not store data (logs/cache), the SAME
+    scoping as :func:`_snapshot_data_files`.
+    """
+    digests: dict[str, str] = {}
+    flat_layout = source.data_dir == source.home
+    for entry in sorted(source.data_dir.iterdir()):
+        if entry.name == source.db_path.name or _is_sidecar(entry.name):
+            continue
+        if _is_non_data_entry(entry, flat_layout=flat_layout):
+            continue
+        if entry.is_file():
+            if _is_sqlite(entry):
+                digests[entry.name] = _sha256_file(entry)
+        elif entry.is_dir():
+            for root, _dirs, files in os.walk(entry):
+                for name in files:
+                    if _is_sidecar(name):
+                        continue
+                    path = Path(root) / name
+                    if path.is_file() and _is_sqlite(path):
+                        digests[str(path.relative_to(source.data_dir))] = _sha256_file(path)
+    return digests
+
+
+def _assert_sibling_sqlite_untouched(before: dict[str, str], after: dict[str, str]) -> None:
+    """C6/F8: refuse when any sibling sqlite drifted across the copy window.
+
+    A byte change, a NEW sqlite born mid-copy or a vanished one are all a
+    live component writer — the run stops instead of migrating a source
+    that was moving (names only in the refusal; content never echoed).
+    """
+    changed = sorted(name for name, digest in after.items() if before.get(name) != digest)
+    gone = sorted(set(before) - set(after))
+    drifted = changed + [f"{name} (vanished)" for name in gone]
+    if drifted:
+        names = ", ".join(drifted[:5]) + ("…" if len(drifted) > 5 else "")
+        raise SnapshotError(
+            "sibling sqlite changed while the snapshot was taken (live "
+            f"component writer?): {names} — stop the vesma service "
+            "components and retry"
+        )
+
+
 def make_snapshot(
     source: _StoreLayout,
     snapshot_dir: Path,
@@ -875,6 +930,7 @@ def make_snapshot(
     a silent root-owned artifact."""
 
     copy_warnings: list[str] = []
+    sibling_before = _sibling_sqlite_digests(source)
     try:
         (snapshot_dir / "data").mkdir(parents=True)
         _harden_dir(snapshot_dir)
@@ -943,6 +999,10 @@ def make_snapshot(
             "the source store changed while the snapshot was taken "
             "(live writer detected) — stop the vesma service and retry"
         )
+    # C6/F8: the same "not moved under us" verdict for EVERY sibling
+    # sqlite under the data root — the copy window must leave them
+    # byte-identical (a component writer stops the run by name).
+    _assert_sibling_sqlite_untouched(sibling_before, _sibling_sqlite_digests(source))
     return _Snapshot(
         layout=snapshot_layout,
         path=snapshot_dir,
