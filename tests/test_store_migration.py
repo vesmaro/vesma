@@ -1350,3 +1350,74 @@ def test_drill_full_cycle_on_operator_clone() -> None:
     finally:
         src_count.close()
     assert payload["records"] == expected
+
+
+# ── F8 (card 491a2236): sibling sqlite coverage of the C6 source-untouched gate ──
+
+
+def test_sibling_sqlite_live_writer_refused(
+    store_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F8/C6: a sibling sqlite (component scratch db) that changes during
+    the snapshot copy window is a typed exit-5 refusal NAMING the file —
+    the run never migrates a moving source. (The mover itself never writes
+    it: strace shows source-sibling opens are O_RDONLY only — header
+    sniff, digest, ro-URI backup; the soak's writer was the component
+    lifecycle, which this gate now catches by name.)"""
+    import vesma.store_migration as sm
+
+    real_copy = sm._copy_sqlite
+    fired: list[bool] = []
+
+    def mutating_copy(src: Path, dst: Path, **kwargs: Any) -> None:
+        # A "live component writer" lands one row mid-window, before the
+        # main-db copy leg — the soak-observed shape.
+        if src.name == "mnemos.db" and not fired:
+            fired.append(True)
+            writer = sqlite3.connect(str(store_home / "data" / "metrics.sqlite"))
+            try:
+                writer.execute("INSERT INTO m VALUES ('late', 1)")
+                writer.commit()
+            finally:
+                writer.close()
+        real_copy(src, dst, **kwargs)
+
+    monkeypatch.setattr(sm, "_copy_sqlite", mutating_copy)
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app, ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply"]
+    )
+    assert result.exit_code == 5
+    assert "sibling sqlite changed" in _output(result)
+    assert "metrics.sqlite" in _output(result)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.staging-*"))
+
+
+def test_sibling_sqlite_static_passes_and_walks_subdirs(store_home: Path, tmp_path: Path) -> None:
+    """F8/C6 pin: the snapshot-gate digest covers component scratch dbs at
+    the data top level AND nested — a quiescent sibling migrates with the
+    source copy byte-identical (the probe's before/after comparison held)."""
+    import vesma.store_migration as sm
+
+    nested = store_home / "data" / "agents"
+    nested.mkdir()
+    scratch = sqlite3.connect(str(nested / "scratch.db"))
+    try:
+        scratch.execute("CREATE TABLE s (k TEXT)")
+        scratch.commit()
+    finally:
+        scratch.close()
+
+    before_top = sm._sha256_file(store_home / "data" / "metrics.sqlite")
+    before_nested = sm._sha256_file(nested / "scratch.db")
+    target = _target_of(store_home, tmp_path)
+    result = runner.invoke(
+        app,
+        ["migrate-store", "--from", str(store_home), "--to", str(target), "--apply", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sm._sha256_file(store_home / "data" / "metrics.sqlite") == before_top
+    assert sm._sha256_file(nested / "scratch.db") == before_nested
+    assert (target / "data" / "metrics.sqlite").is_file()
+    assert (target / "data" / "agents" / "scratch.db").is_file()
