@@ -551,6 +551,17 @@ KEY_TOKEN_DIFF_LOG_MAX_CHARS: Final[int] = 120
 _HAS_DIGIT: Final = re.compile(r"[0-9]")
 
 
+# ── Structural self-pair guard (watchlist near-0009; #480 class) ──────────────
+
+#: The machine-parseable override marker carried on the DECISION line when
+#: the structural self-pair guard fires.
+SELF_PAIR_GUARD_MARKER: Final[str] = "self-pair-guard"
+
+#: The guard's reason string, carried in the DECISION line's override
+#: detail slot — greppable attribution for the forced verdict.
+SELF_PAIR_GUARD_REASON: Final[str] = "self-pair structural identity guard"
+
+
 def _key_token_guard_tokens(view: CanonRecordView) -> frozenset[str]:
     """Whitespace tokens of the cortex-normalized title+body text.
 
@@ -893,6 +904,20 @@ class VesmaProvider:
     blindness; extending the step rule's contract is a minting
     call-site policy decision, not a wrapper's silent move.
 
+    Structural self-pair guard (watchlist near-0009 — v42 adoption
+    05.10; the #480 inversion class; owner directive 27.10): a pair
+    whose MEASURED cosine is 1.0 (``state.similarity >= 1.0`` —
+    identical embeddings, float overshoot ulps included) is identity by
+    construction and is answered with a duplicate verdict
+    ``probability = 1.0`` BEFORE any model scoring, carrying the
+    ``override=self-pair-guard`` DECISION marker with reason
+    ``self-pair structural identity guard``. The guard exists because
+    the frozen 13-feature contract has a type-less double-null corner
+    (``type_match = 0.0``) where a record against itself graded
+    P(dup) ≈ 0.0039 — below the cut — on v42; the structural identity
+    closes that class by construction. The ``cos < 1.0`` path is
+    untouched.
+
     Network isolation (spec §9): this module carries ZERO network
     imports — the provider is local-only by construction, pinned by the
     AST tripwire ``tests/test_cortex_network_isolation.py``.
@@ -1027,6 +1052,25 @@ class VesmaProvider:
                     "is-duplicate requires measured evidence: state.candidate and "
                     "state.similarity (vector-leg cosine) must be provided"
                 )
+            if state.similarity >= 1.0:
+                # Structural self-pair guard — watchlist near-0009 (v42
+                # adoption 05.10), the #480 inversion class, owner
+                # directive 27.10. A record measured against ITSELF is
+                # identity by construction; the frozen 13-feature
+                # contract cannot see the type-less double-null corner
+                # (type_match = 0.0 by the frozen rule), where the model
+                # graded P(dup) ≈ 0.0039 — BELOW the cut. The verdict is
+                # forced here, BEFORE any model scoring (>= 1.0 covers
+                # the float-overshoot ulps a self-cosine can produce;
+                # the cos < 1.0 path below is untouched).
+                answer = Noul(question=QUESTION_IS_DUPLICATE, probability=1.0)
+                log_decision_telemetry(
+                    self.name,
+                    answer,
+                    override=SELF_PAIR_GUARD_MARKER,
+                    override_detail=SELF_PAIR_GUARD_REASON,
+                )
+                return answer
             try:
                 values = cortex_pair_features(state.record, state.candidate, state.similarity)
                 probability = self._run_graph(np.array(values, dtype=np.float32))
