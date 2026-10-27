@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **ADR-0048 ratified: the installer-lane code plane moves to `/usr/local`** — the `vesma system install` lane is an ADMIN tool, not a distro package: FHS reserves `/usr` for the package manager (distro policies forbid non-package writes there), the canonical admin-software home is `/usr/local`, and on ostree/atomic distros (Silverblue/CoreOS/Bluefin) `/usr/local` is a symlink to persistent `../var/usrlocal` (verified on Fedora Silverblue 44, 2026-10-27) while `/usr` is an immutable mount. Decision: the installer lane's shipped manifest moves the code-plane roles to `/usr/local/lib/vesma/…` + `/usr/local/share/vesma` + `/usr/local/lib/sysusers.d/vesma.conf` (a systemd-sysusers search dir); per-lane shipped manifests — ONE resolver (`vesma.service.fhs`), the future rpm lane ships its OWN manifest keeping `/usr/lib/vesma` (for a package that is exactly the right place); config/data/cache/log/IPC planes unchanged; doctor DR-14…DR-19 and the exact-inverse uninstall stay manifest-driven (self-configuration without a code fork, ADR-0045 Decision 5). ADR: `docs/project/adr/0048-installer-lane-code-plane-usrlocal.md` (new; README index row).
+
 ## [7.1.0] — 2026-10-27
 
 ### Changed
