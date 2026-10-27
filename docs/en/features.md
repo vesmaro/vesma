@@ -63,6 +63,19 @@ questions over prepared record pairs. Selected by pre-registered
 calibration against the deterministic baseline (sealed holdout:
 sensitivity 1.0, specificity 0.98, Brier 0.0053 vs baseline 0.81).
 
+**Current revision — v42** (weights `00fc6b71…`), serving since
+**vesma 6.6.0** (2026-10-27); revision B1 (`beb0a65d…`) served before.
+What improved: on the modern hard exam (holdout-276, razor-parity)
+balanced accuracy is **0.9662 vs 0.5473** for the previously served
+revision; specificity **0.94 vs 0.30** (the previous revision falsely
+collapsed ~7 of 10 non-duplicates on hard material). Revision history:
+an interim revision `71f0572d…` was recalled (incident #480 — a record
+failed to recognize itself) and replaced by the inversion-clean v42
+(self-pair 0.998). A structural guard in the provider (since 6.6.0):
+a measured cosine of exactly 1.0 (a record graded against an identical
+embedding) → guaranteed duplicate verdict with P = 1.0 — the «record
+fails to recognize itself» error class is closed by construction.
+
 Hard guarantees shipped with the bundle: eager load with a full
 validation pass (identity, ≤5 MB gate, weights sha256 into telemetry, a
 frozen feature-set hash, and an **embedder pin** — the model refuses
@@ -70,8 +83,9 @@ loudly, as a recalibration event, if the live embedding model does not
 match the one it was calibrated on); zero network imports (AST-guarded);
 any `CORTEX-E-*` failure degrades to the deterministic rule with a
 machine-parseable warning — ingest is never blocked. Enabled with
-`decision_provider = "vesma"` in config; **off by default** — flipping
-the flag is an owner decision after field experience.
+`decision_provider = "vesma"` in config; **the code default remains the
+deterministic provider** — the flag has been enabled for production
+vesma by the owner since 2026-10-03.
 
 ## Planned
 
