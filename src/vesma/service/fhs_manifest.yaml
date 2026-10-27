@@ -1,10 +1,18 @@
 # The ONE declarative FHS manifest of the vesma system profile
-# (specs/layout/v2 §3.12; ADR-0045 Decision 5) — the single source of
-# truth for the system-profile paths: the `vesma service install
-# --system` installer, the container build and future deb/rpm packaging
-# all derive their artifacts from THIS file, never from private path
-# lists; engine code resolves system paths only through
-# `vesma.service.fhs` (the manifest resolver).
+# (specs/layout/v2 §3.12; ADR-0045 Decision 5; ADR-0048 installer-lane
+# amendment) — the single source of truth for the system-profile paths:
+# the `vesma system install` installer, the container build and future
+# deb/rpm packaging all derive their artifacts from THIS file, never
+# from private path lists; engine code resolves system paths only
+# through `vesma.service.fhs` (the manifest resolver).
+#
+# PER-LANE SHIPPED MANIFESTS (ADR-0048): THIS table is the INSTALLER
+# lane's — an admin tool, so the code plane lives under /usr/local
+# (the FHS admin-software canon; on ostree/atomic distros /usr/local is
+# a persistent var/usrlocal symlink while /usr is immutable). A future
+# rpm lane ships ITS OWN manifest with /usr/lib/vesma forms — for a
+# package that is exactly the right place. The resolver code is ONE;
+# the table is per distribution channel.
 #
 # The FORM (fields, types, flag vocabulary) is fixed by the spec example
 # `examples/example-fhs-manifest.yaml`; the normative TABLE is spec §3.4.
@@ -79,8 +87,11 @@ paths:
     flags: [fail-closed, drop-in]
 
   # ── OS-mandated locations ───────────────────────────────────────────
+  # /usr/local/lib/sysusers.d is a systemd-sysusers(8) search directory
+  # (ADR-0048): the fragment is applied at install time via the explicit
+  # `systemd-sysusers <path>` invocation and picked up again on boot.
   - role: sysusers_fragment
-    system_path: /usr/lib/sysusers.d/vesma.conf
+    system_path: /usr/local/lib/sysusers.d/vesma.conf
     user_path: null              # user profile: no sysusers fragment
     kind: file
     mode: "0644"
@@ -96,9 +107,12 @@ paths:
     group: root
     flags: [generated, os-mandated-location]
 
-  # ── code plane (root-owned venvs, symlink revisions §3.10) ─────────
+  # ── code plane (root-owned venvs, symlink revisions §3.10; ADR-0048:
+  #    the INSTALLER lane puts admin-installed code under /usr/local —
+  #    on ostree distros /usr/local resolves into persistent var/usrlocal,
+  #    while /usr stays the package manager's read-only territory) ──────
   - role: code_root
-    system_path: /usr/lib/vesma
+    system_path: /usr/local/lib/vesma
     user_path: ~/.vesma
     kind: dir
     mode: "0755"
@@ -115,7 +129,7 @@ paths:
   # materialize leg, so the installer owns the whole tree (rmtree on
   # uninstall; re-materialized on the next install).
   - role: toolchain_pythons
-    system_path: /usr/lib/vesma/pythons
+    system_path: /usr/local/lib/vesma/pythons
     user_path: null              # user profile: uv resolves its own install dir
     kind: dir
     mode: "0755"
@@ -124,7 +138,7 @@ paths:
     flags: [installer-materialized]
 
   - role: venv_engine_revision
-    system_path: /usr/lib/vesma/venv-<rev>
+    system_path: /usr/local/lib/vesma/venv-<rev>
     user_path: null              # user profile: one engine venv, no revisions
     kind: dir
     mode: "0755"
@@ -133,7 +147,7 @@ paths:
     flags: [symlink-revision, installer-materialized]
 
   - role: venv_engine
-    system_path: /usr/lib/vesma/venv
+    system_path: /usr/local/lib/vesma/venv
     user_path: ~/.vesma/venv
     kind: symlink
     mode: "0755"
@@ -142,7 +156,7 @@ paths:
     flags: [symlink-revision, installer-materialized]
 
   - role: venv_component_root
-    system_path: /usr/lib/vesma/venvs
+    system_path: /usr/local/lib/vesma/venvs
     user_path: ~/.vesma/venvs
     kind: dir
     mode: "0755"
@@ -150,7 +164,7 @@ paths:
     group: root
 
   - role: venv_component_revision
-    system_path: /usr/lib/vesma/venvs/<name>-<rev>
+    system_path: /usr/local/lib/vesma/venvs/<name>-<rev>
     user_path: null              # user profile: plain dirs, no revisions
     kind: dir
     mode: "0755"
@@ -159,7 +173,7 @@ paths:
     flags: [symlink-revision, installer-materialized]
 
   - role: venv_component
-    system_path: /usr/lib/vesma/venvs/<name>
+    system_path: /usr/local/lib/vesma/venvs/<name>
     user_path: ~/.vesma/venvs/<name>
     kind: symlink
     mode: "0755"
@@ -169,7 +183,7 @@ paths:
 
   # ── distribution static (read-only at runtime) ──────────────────────
   - role: distro_static
-    system_path: /usr/share/vesma
+    system_path: /usr/local/share/vesma
     user_path: null              # user profile: static ships inside the wheel
     kind: dir
     mode: "0755"

@@ -291,41 +291,41 @@ def system_unit_path(prefix: Path | None = None) -> Path:
 
 
 def system_sysusers_path(prefix: Path | None = None) -> Path:
-    """/usr/lib/sysusers.d/vesma.conf (creates vesma:vesma, §3.13)."""
+    """/usr/local/lib/sysusers.d/vesma.conf (creates vesma:vesma, §3.13)."""
     return resolve_system_path(load_fhs_manifest().entry("sysusers_fragment"), prefix)
 
 
 def system_venv_engine(prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/venv — the engine venv symlink (active revision)."""
+    """/usr/local/lib/vesma/venv — the engine venv symlink (active revision)."""
     return resolve_system_path(load_fhs_manifest().entry("venv_engine"), prefix)
 
 
 def system_toolchain_pythons(prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/pythons — the canonical uv toolchain install dir
+    """/usr/local/lib/vesma/pythons — the canonical uv toolchain install dir
     (UV_PYTHON_INSTALL_DIR for the installer's materialize leg; never
     $HOME-dependent, never the data plane)."""
     return resolve_system_path(load_fhs_manifest().entry("toolchain_pythons"), prefix)
 
 
 def system_venv_engine_revision(rev: str, prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/venv-<rev> — one materialized engine revision."""
+    """/usr/local/lib/vesma/venv-<rev> — one materialized engine revision."""
     entry = load_fhs_manifest().entry("venv_engine_revision")
     return resolve_system_path(entry, prefix, rev=rev)
 
 
 def system_venvs_root(prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/venvs — parent of component venv symlinks."""
+    """/usr/local/lib/vesma/venvs — parent of component venv symlinks."""
     return resolve_system_path(load_fhs_manifest().entry("venv_component_root"), prefix)
 
 
 def system_venv_component(name: str, prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/venvs/<name> — component venv symlink."""
+    """/usr/local/lib/vesma/venvs/<name> — component venv symlink."""
     entry = load_fhs_manifest().entry("venv_component")
     return resolve_system_path(entry, prefix, name=name)
 
 
 def system_venv_component_revision(name: str, rev: str, prefix: Path | None = None) -> Path:
-    """/usr/lib/vesma/venvs/<name>-<rev> — one materialized revision."""
+    """/usr/local/lib/vesma/venvs/<name>-<rev> — one materialized revision."""
     entry = load_fhs_manifest().entry("venv_component_revision")
     return resolve_system_path(entry, prefix, name=name, rev=rev)
 
@@ -336,7 +336,7 @@ def system_cache_root(prefix: Path | None = None) -> Path:
 
 
 def system_static_root(prefix: Path | None = None) -> Path:
-    """/usr/share/vesma (distro static, read-only at runtime)."""
+    """/usr/local/share/vesma (distro static, read-only at runtime)."""
     return resolve_system_path(load_fhs_manifest().entry("distro_static"), prefix)
 
 

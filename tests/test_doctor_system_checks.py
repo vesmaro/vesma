@@ -41,7 +41,15 @@ ENGINE_VERSION = si._engine_version()
 def sim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Temp deployment prefix + isolated user plane (controlled machine)."""
     prefix = tmp_path / "deploy"
-    for segment in ("etc", "var/lib", "var/cache", "var/log", "usr/lib", "usr/share", "run"):
+    for segment in (
+        "etc",
+        "var/lib",
+        "var/cache",
+        "var/log",
+        "usr/local/lib",
+        "usr/local/share",
+        "run",
+    ):
         (prefix / segment).mkdir(parents=True)
     monkeypatch.setattr(fhs, "default_prefix", lambda: prefix)
     home = tmp_path / "home"
@@ -221,7 +229,7 @@ class TestDr16Revisions:
 
     def test_dangling_symlink_fails(self, sim: Path) -> None:
         install_system()
-        engine = sim / "usr/lib/vesma/venv"
+        engine = sim / "usr/local/lib/vesma/venv"
         engine.unlink()
         engine.symlink_to("venv-does-not-exist")
         finding = _finding(run_service_checks(), "DR-16")
@@ -230,16 +238,19 @@ class TestDr16Revisions:
 
     def test_escaping_target_fails(self, sim: Path) -> None:
         install_system()
-        engine = sim / "usr/lib/vesma/venv"
+        engine = sim / "usr/local/lib/vesma/venv"
         engine.unlink()
-        engine.symlink_to("../../../etc/vesma")
+        # The escape target must EXIST for the escape branch (not the
+        # dangling branch) to fire: 4 levels up the ADR-0048 depth
+        # (/usr/local/lib/vesma) lands on the prefix root's /etc/vesma.
+        engine.symlink_to("../../../../etc/vesma")
         finding = _finding(run_service_checks(), "DR-16")
         assert finding.severity is Severity.FAIL
         assert "OUTSIDE" in (finding.detail or "")
 
     def test_non_symlink_slot_fails(self, sim: Path) -> None:
         install_system()
-        engine = sim / "usr/lib/vesma/venv"
+        engine = sim / "usr/local/lib/vesma/venv"
         rev = Path(os.path.realpath(engine))
         engine.unlink()
         shutil.copytree(rev, engine)
@@ -249,7 +260,7 @@ class TestDr16Revisions:
 
     def test_leftover_revision_warns(self, sim: Path) -> None:
         install_system()
-        ghost = sim / "usr/lib/vesma/venvs/metrics-0.0.0-ghost"
+        ghost = sim / "usr/local/lib/vesma/venvs/metrics-0.0.0-ghost"
         ghost.mkdir()
         finding = _finding(run_service_checks(), "DR-16")
         assert finding.severity is Severity.WARN
@@ -279,7 +290,7 @@ class TestDr17SystemInversion:
 
     def test_unrecorded_content_in_strict_dir_fails(self, sim: Path) -> None:
         install_system()
-        stray = sim / "usr/lib/vesma/stray-file.txt"
+        stray = sim / "usr/local/lib/vesma/stray-file.txt"
         stray.write_text("unrecorded\n", encoding="utf-8")
         finding = _finding(run_service_checks(), "DR-17")
         assert finding.severity is Severity.FAIL
@@ -326,7 +337,7 @@ class TestDr17SystemInversion:
         """Detection and refusal share one function — the doctor renders
         the same drift the updater refuses on."""
         install_system()
-        stray = sim / "usr/share/vesma/stray.txt"
+        stray = sim / "usr/local/share/vesma/stray.txt"
         stray.write_text("x\n", encoding="utf-8")
         drift = si.system_state_drift()
         finding = _finding(run_service_checks(), "DR-17")

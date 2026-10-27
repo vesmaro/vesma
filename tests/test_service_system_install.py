@@ -18,6 +18,7 @@ The one root-dependent leg (real ownership application) is env-gated:
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -80,9 +81,17 @@ class Seam:
 
 @pytest.fixture
 def sim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The temp deployment prefix: /etc, /var/lib, /usr/lib under tmp."""
+    """The temp deployment prefix: /etc, /var/lib, /usr/local under tmp."""
     prefix = tmp_path / "deploy"
-    for segment in ("etc", "var/lib", "var/cache", "var/log", "usr/lib", "usr/share", "run"):
+    for segment in (
+        "etc",
+        "var/lib",
+        "var/cache",
+        "var/log",
+        "usr/local/lib",
+        "usr/local/share",
+        "run",
+    ):
         (prefix / segment).mkdir(parents=True)
     monkeypatch.setattr(fhs, "default_prefix", lambda: prefix)
     return prefix
@@ -374,7 +383,7 @@ class TestSy03SystemTreeRights:
 class TestSy04Sysusers:
     def test_fragment_creates_vesma_account(self, sim: Path, seams: Seam) -> None:
         install_system()
-        fragment = sim / "usr/lib/sysusers.d/vesma.conf"
+        fragment = sim / "usr/local/lib/sysusers.d/vesma.conf"
         text = fragment.read_text(encoding="utf-8")
         assert "g     vesma" in text
         assert "u     vesma" in text
@@ -386,7 +395,7 @@ class TestSy04Sysusers:
 
     def test_reinstall_never_duplicates_the_account(self, sim: Path, seams: Seam) -> None:
         install_system()
-        fragment = sim / "usr/lib/sysusers.d/vesma.conf"
+        fragment = sim / "usr/local/lib/sysusers.d/vesma.conf"
         first = fragment.read_text(encoding="utf-8")
         install_system()
         assert fragment.read_text(encoding="utf-8") == first
@@ -405,16 +414,17 @@ class TestSy08VenvMaterialization:
         # metrics is the bundled python child: same-build pin via the
         # {engine_version} placeholder.
         assert any("vesma==" + ENGINE_VERSION in reqs for _, reqs in seams.venvs if len(reqs) == 1)
-        # Revisions are symlink-revision materialized under /usr/lib/vesma.
+        # Revisions are symlink-revision materialized under the manifest
+        # code plane (ADR-0048: /usr/local/lib/vesma).
         for venv_dir, _ in seams.venvs:
-            assert str(venv_dir).startswith(str(sim / "usr/lib/vesma"))
+            assert str(venv_dir).startswith(str(sim / "usr/local/lib/vesma"))
 
     def test_symlinks_point_inside_the_venvs_root(self, sim: Path, seams: Seam) -> None:
         install_system()
-        engine = sim / "usr/lib/vesma/venv"
+        engine = sim / "usr/local/lib/vesma/venv"
         assert engine.is_symlink()
         assert os.readlink(engine) == f"venv-{ENGINE_VERSION}"
-        metrics = sim / "usr/lib/vesma/venvs/metrics"
+        metrics = sim / "usr/local/lib/vesma/venvs/metrics"
         assert metrics.is_symlink()
         assert os.readlink(metrics) == f"metrics-{ENGINE_VERSION}"
 
@@ -434,7 +444,7 @@ class TestSy08VenvMaterialization:
     ) -> None:
         monkeypatch.setattr(si, "_uv_path", lambda: None)
         with pytest.raises(SystemInstallError, match="uv is not on PATH"):
-            si._materialize_venv(sim / "usr/lib/vesma/venv-x", ("vesma==1.0.0",), 0o755)
+            si._materialize_venv(sim / "usr/local/lib/vesma/venv-x", ("vesma==1.0.0",), 0o755)
 
     def test_pin_drift_after_materialization_is_loud(
         self, sim: Path, monkeypatch: pytest.MonkeyPatch
@@ -467,9 +477,9 @@ class TestSy09ExactInverseUninstall:
         for gone in (
             "etc/vesma",
             "etc/systemd/system/vesma.service",
-            "usr/lib/sysusers.d/vesma.conf",
-            "usr/lib/vesma",
-            "usr/share/vesma",
+            "usr/local/lib/sysusers.d/vesma.conf",
+            "usr/local/lib/vesma",
+            "usr/local/share/vesma",
             "var/lib/vesma/install-state.yaml",
         ):
             assert not (sim / gone).exists(), f"{gone} survived uninstall"
@@ -498,7 +508,7 @@ class TestSy09ExactInverseUninstall:
         assert not any(line.startswith("removed:") for line in result.lines)
         # Nothing was touched: the tree is exactly as the installer left it.
         assert (sim / "etc/vesma").is_dir()
-        assert (sim / "usr/lib/vesma").is_dir()
+        assert (sim / "usr/local/lib/vesma").is_dir()
         assert (sim / "var/lib/vesma/install-state.yaml").is_file()
         assert [list(c) for c in seams.systemctl] == systemctl_before
         # And the real uninstall still completes afterwards (same state).
@@ -551,12 +561,12 @@ class TestSy09ExactInverseUninstall:
         state_path = sim / "var/lib/vesma/install-state.yaml"
         doc = yaml.safe_load(state_path.read_text(encoding="utf-8"))
         for artifact in doc["artifacts"]:
-            if artifact["path"] == str(sim / "usr/share/vesma"):
+            if artifact["path"] == str(sim / "usr/local/share/vesma"):
                 artifact["status"] = "planned"
         state_path.write_text(
             yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8"
         )
-        (sim / "usr/share/vesma").rmdir()
+        (sim / "usr/local/share/vesma").rmdir()
         result = uninstall_system()
         assert any("not materialized" in line for line in result.lines)
 
@@ -698,6 +708,194 @@ class TestF3CanonicalToolchain:
         assert not fhs.system_toolchain_pythons(sim).exists()
 
 
+# ── ADR-0048: the installer-lane code plane lives under /usr/local ────
+
+
+class TestAdr0048InstallerLaneCodePlane:
+    """The /usr/local table is a PINNED contract (ADR-0048): admin
+    software belongs in /usr/local (FHS; ostree's /usr/local is a
+    persistent var/usrlocal symlink), /usr is the package manager's
+    territory — the future rpm lane ships its OWN manifest there."""
+
+    def test_manifest_table_carries_the_usrlocal_forms(self) -> None:
+        manifest = fhs.load_fhs_manifest()
+        by_role = {e.role: e for e in manifest.entries}
+        expected = {
+            "code_root": "/usr/local/lib/vesma",
+            "toolchain_pythons": "/usr/local/lib/vesma/pythons",
+            "venv_engine_revision": "/usr/local/lib/vesma/venv-<rev>",
+            "venv_engine": "/usr/local/lib/vesma/venv",
+            "venv_component_root": "/usr/local/lib/vesma/venvs",
+            "venv_component_revision": "/usr/local/lib/vesma/venvs/<name>-<rev>",
+            "venv_component": "/usr/local/lib/vesma/venvs/<name>",
+            "distro_static": "/usr/local/share/vesma",
+            "sysusers_fragment": "/usr/local/lib/sysusers.d/vesma.conf",
+        }
+        for role, system_path in expected.items():
+            assert by_role[role].system_path == system_path, (
+                f"{role}: {by_role[role].system_path} != {system_path} (ADR-0048)"
+            )
+
+    def test_no_installer_role_targets_usr_lib_or_usr_share(self) -> None:
+        """/usr = the package manager's territory (FHS; immutable on
+        ostree): NO role of the INSTALLER lane may target /usr/lib or
+        /usr/share — the rpm lane's own manifest owns those forms."""
+        for entry in fhs.load_fhs_manifest().entries:
+            assert not entry.system_path.startswith("/usr/lib/"), (
+                f"{entry.role}: {entry.system_path} (installer lane must"
+                " not write under /usr/lib — ADR-0048)"
+            )
+            assert not entry.system_path.startswith("/usr/share/"), (
+                f"{entry.role}: {entry.system_path} (installer lane must"
+                " not write under /usr/share — ADR-0048)"
+            )
+
+    def test_installed_code_plane_lives_under_usr_local(self, sim: Path, seams: Seam) -> None:
+        install_system()
+        # Every venv the installer materialized is under the manifest
+        # code plane — /usr/local/lib/vesma, never /usr/lib/vesma.
+        for venv_dir, _ in seams.venvs:
+            assert venv_dir.is_relative_to(sim / "usr/local/lib/vesma")
+            assert not venv_dir.is_relative_to(sim / "usr/lib")
+        assert (sim / "usr/local/lib/vesma/pythons").is_dir()  # toolchain slot
+        assert (sim / "usr/local/share/vesma").is_dir()  # distro static
+        assert (sim / "usr/local/lib/sysusers.d/vesma.conf").is_file()
+        assert not (sim / "usr/lib/vesma").exists()
+        assert not (sim / "usr/share/vesma").exists()
+
+    def test_sysusers_fragment_is_applied_as_an_explicit_file(
+        self, sim: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The install-time apply runs `systemd-sysusers <fragment-path>`
+        (an explicit file argument — /usr/local/lib/sysusers.d is a
+        systemd-sysusers search dir, so boot-time pickup also works)."""
+        calls: list[list[str]] = []
+        monkeypatch.setattr(si.shutil, "which", lambda name: "/fake/systemd-sysusers")
+        monkeypatch.setattr(
+            si.subprocess,
+            "run",
+            lambda argv, **_kwargs: (
+                calls.append(list(argv))
+                or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            ),
+        )
+        fragment = sim / "usr/local/lib/sysusers.d/vesma.conf"
+        assert si._apply_sysusers(fragment) == "ok"
+        assert calls == [["/fake/systemd-sysusers", str(fragment)]]
+
+
+# ── ADR-0048 leg 2: the typed EROFS refusal (card 151a55ff) ───────────
+
+
+class TestAdr0048ErofsTypedRefusal:
+    """An EROFS failure on a code-plane leg is the TYPED refusal with the
+    atomic-distro remediation; the atomic detection words the message
+    only — the refusal is always by the EROFS fact (ADR-0048 Decision 5).
+    A non-EROFS OSError keeps the previous classification."""
+
+    @staticmethod
+    def _ro_at(prefix: str, errno_value: int) -> Any:
+        """A _ensure_dir wrapper raising the given errno under ``prefix``."""
+        real_ensure = si._ensure_dir
+
+        def failing(path: Path, mode: int) -> bool:
+            if prefix in str(path):
+                raise OSError(errno_value, os.strerror(errno_value))
+            return real_ensure(path, mode)
+
+        return failing
+
+    def test_erofs_on_a_code_plane_leg_refuses_typed(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EROFS))
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        message = str(excinfo.value)
+        assert "EROFS" in message
+        assert "rpm-ostree usroverlay" in message
+        assert "rpm package" in message
+        # The refusal integrates with the interrupted-install discipline:
+        # the earlier legs' state survives for the doctor to inventory.
+        assert read_system_profile() == "system"
+
+    def test_erofs_remediation_carries_the_atomic_hints(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EROFS))
+        monkeypatch.setattr(
+            si,
+            "_atomic_system_hints",
+            lambda: ["detected: os-release VARIANT_ID=silverblue"],
+        )
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        assert "VARIANT_ID=silverblue" in str(excinfo.value)
+        assert "rpm-ostree usroverlay" in str(excinfo.value)
+
+    def test_erofs_on_the_sysusers_fragment_leg_refuses_typed(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_write = si._atomic_write
+
+        def ro_write(path: Path, data: str, mode: int) -> None:
+            if str(path).endswith("sysusers.d/vesma.conf"):
+                raise OSError(errno.EROFS, "Read-only file system")
+            real_write(path, data, mode)
+
+        monkeypatch.setattr(si, "_atomic_write", ro_write)
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        assert str(sim / "usr/local/lib/sysusers.d/vesma.conf") in str(excinfo.value)
+        # Step 0 precedes the state write: nothing else was recorded.
+        assert read_system_state() is None
+
+    def test_non_erofs_oserror_keeps_the_previous_classification(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The previous classification for a non-EROFS OSError on a leg is
+        # the raw OSError propagation (EACCES/ENOSPC/… never masquerade
+        # as the read-only refusal).
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EACCES))
+        with pytest.raises(OSError) as excinfo:
+            install_system()
+        assert not isinstance(excinfo.value, SystemInstallError)
+        assert excinfo.value.errno == errno.EACCES
+
+    def test_typed_refusal_exit_code_is_stable(self) -> None:
+        # The C15 taxonomy discipline (ADR-0047): a typed refusal with a
+        # STABLE exit code, additive to the mover's 1-16 window.
+        assert issubclass(si.SystemInstallReadOnlyTargetError, SystemInstallError)
+        assert si.SystemInstallReadOnlyTargetError.exit_code == 17
+        assert si.READ_ONLY_TARGET_EXIT_CODE == 17
+
+    def test_atomic_hints_from_boot_marker_and_os_release(self, tmp_path: Path) -> None:
+        (tmp_path / "run").mkdir()
+        (tmp_path / "run" / "ostree-booted").write_text("IS_OSTREE=1\n", encoding="utf-8")
+        (tmp_path / "etc").mkdir()
+        (tmp_path / "etc" / "os-release").write_text(
+            'ID=fedora\nVARIANT_ID="silverblue"\n', encoding="utf-8"
+        )
+        hints = si._atomic_system_hints(tmp_path)
+        assert any("ostree-booted" in hint for hint in hints)
+        assert any("silverblue" in hint for hint in hints)
+
+    def test_atomic_hints_fall_back_to_usr_lib_os_release(self, tmp_path: Path) -> None:
+        (tmp_path / "usr" / "lib").mkdir(parents=True)
+        (tmp_path / "usr" / "lib" / "os-release").write_text(
+            'VARIANT_ID="coreos"\n', encoding="utf-8"
+        )
+        hints = si._atomic_system_hints(tmp_path)
+        assert hints == ["detected: os-release VARIANT_ID=coreos"]
+
+    def test_no_atomic_hints_on_a_plain_system(self, tmp_path: Path) -> None:
+        (tmp_path / "etc").mkdir()
+        (tmp_path / "etc" / "os-release").write_text(
+            'ID=fedora\nVARIANT_ID="workstation"\n', encoding="utf-8"
+        )
+        assert si._atomic_system_hints(tmp_path) == []
+
+
 # ── Installer wave 2026-10-23: F9 adopted-conffile uninstall ──────────
 
 
@@ -816,12 +1014,12 @@ class TestSystemUnit:
         assert "RuntimeDirectoryMode=0750" in unit
         assert "WantedBy=multi-user.target" in unit
         assert 'Environment="PYTHONNOUSERSITE=1"' in unit
-        assert f"ExecStart={sim}/usr/lib/vesma/venv/bin/vesma service run" in unit
+        assert f"ExecStart={sim}/usr/local/lib/vesma/venv/bin/vesma service run" in unit
         assert "%h" not in unit  # a system unit has no home tilde
         # The opt-in log root renders with the systemd '-' prefix.
         assert f"-{sim}/var/log/vesma" in unit
         # Supply-chain boundary: the code + static trees read-only.
-        assert f"ReadOnlyPaths={sim}/usr/lib/vesma {sim}/usr/share/vesma" in unit
+        assert f"ReadOnlyPaths={sim}/usr/local/lib/vesma {sim}/usr/local/share/vesma" in unit
 
     def test_generator_refuses_relative_venv(self) -> None:
         with pytest.raises(unitgen.UnitGenerationError, match="absolute"):
@@ -853,7 +1051,7 @@ class TestRealOwnership:
         import shutil
 
         prefix = tmp_path / "deploy"
-        for segment in ("etc", "var/lib", "var/cache", "usr/lib", "usr/share"):
+        for segment in ("etc", "var/lib", "var/cache", "usr/local/lib", "usr/local/share"):
             (prefix / segment).mkdir(parents=True)
         monkeypatch.setattr(
             si,
