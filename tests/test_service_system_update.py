@@ -84,9 +84,17 @@ def _make_fake_materializer(record: Seam):  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def sim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The temp deployment prefix: /etc, /var/lib, /usr/lib under tmp."""
+    """The temp deployment prefix: /etc, /var/lib, /usr/local under tmp."""
     prefix = tmp_path / "deploy"
-    for segment in ("etc", "var/lib", "var/cache", "var/log", "usr/lib", "usr/share", "run"):
+    for segment in (
+        "etc",
+        "var/lib",
+        "var/cache",
+        "var/log",
+        "usr/local/lib",
+        "usr/local/share",
+        "run",
+    ):
         (prefix / segment).mkdir(parents=True)
     monkeypatch.setattr(fhs, "default_prefix", lambda: prefix)
     return prefix
@@ -210,13 +218,13 @@ class TestUpdateMechanics:
         self, installed_old: Path, seams: Seam
     ) -> None:
         result = update_system()
-        engine = installed_old / "usr/lib/vesma/venv"
+        engine = installed_old / "usr/local/lib/vesma/venv"
         assert _readlink(engine) == f"venv-{ENGINE_VERSION}"
-        assert (installed_old / "usr/lib/vesma" / f"venv-{ENGINE_VERSION}").is_dir()
-        assert not (installed_old / "usr/lib/vesma" / f"venv-{OLD_VERSION}").exists(), (
+        assert (installed_old / "usr/local/lib/vesma" / f"venv-{ENGINE_VERSION}").is_dir()
+        assert not (installed_old / "usr/local/lib/vesma" / f"venv-{OLD_VERSION}").exists(), (
             "the previous engine revision must be retired after the gate"
         )
-        assert not (installed_old / "usr/lib/vesma/venvs" / f"metrics-{OLD_VERSION}").exists()
+        assert not (installed_old / "usr/local/lib/vesma/venvs" / f"metrics-{OLD_VERSION}").exists()
         assert any("retired previous revision" in line for line in result.lines)
         assert any("health:" in line for line in result.lines)
         # The state describes the NEW revision set (exact-inverse stays exact).
@@ -224,8 +232,12 @@ class TestUpdateMechanics:
         assert doc is not None
         assert doc["engine_version"] == ENGINE_VERSION
         recorded_paths = {a["path"] for a in doc["artifacts"]}
-        assert str(installed_old / "usr/lib/vesma" / f"venv-{ENGINE_VERSION}") in recorded_paths
-        assert str(installed_old / "usr/lib/vesma" / f"venv-{OLD_VERSION}") not in recorded_paths
+        assert (
+            str(installed_old / "usr/local/lib/vesma" / f"venv-{ENGINE_VERSION}") in recorded_paths
+        )
+        assert (
+            str(installed_old / "usr/local/lib/vesma" / f"venv-{OLD_VERSION}") not in recorded_paths
+        )
 
     def test_same_build_pins_uv_seams_only_no_foreign_venvs(
         self, installed_old: Path, seams: Seam
@@ -235,7 +247,7 @@ class TestUpdateMechanics:
         assert ("vesma==" + ENGINE_VERSION,) in pins, (
             "the new revision is built from the SAME build's wheel pin"
         )
-        code_root = str(installed_old / "usr/lib/vesma")
+        code_root = str(installed_old / "usr/local/lib/vesma")
         for venv_dir, _ in seams.venvs:
             assert str(venv_dir).startswith(code_root), (
                 "venvs are only ever materialized in the manifest code plane"
@@ -251,7 +263,7 @@ class TestUpdateMechanics:
         monkeypatch.setattr(
             su, "_probe_revision", lambda rev_dir, marker, *, expected: (False, "stub failure")
         )
-        engine = installed_old / "usr/lib/vesma/venv"
+        engine = installed_old / "usr/local/lib/vesma/venv"
         state_before = (installed_old / "var/lib/vesma/install-state.yaml").read_text(
             encoding="utf-8"
         )
@@ -259,9 +271,9 @@ class TestUpdateMechanics:
             update_system()
         # The previous revision is ACTIVE again (symlink rolled back).
         assert _readlink(engine) == f"venv-{OLD_VERSION}"
-        assert (installed_old / "usr/lib/vesma" / f"venv-{OLD_VERSION}").is_dir()
+        assert (installed_old / "usr/local/lib/vesma" / f"venv-{OLD_VERSION}").is_dir()
         # The failed new revision stays on disk for diagnosis (DR-16 leftover).
-        assert (installed_old / "usr/lib/vesma" / f"venv-{ENGINE_VERSION}").is_dir()
+        assert (installed_old / "usr/local/lib/vesma" / f"venv-{ENGINE_VERSION}").is_dir()
         # The state is byte-restored: it describes the ACTIVE revision.
         assert (installed_old / "var/lib/vesma/install-state.yaml").read_text(
             encoding="utf-8"
@@ -279,7 +291,7 @@ class TestUpdateMechanics:
         monkeypatch.setattr(su.si, "install_system", broken_install)
         with pytest.raises(SystemInstallError, match="uv is not on PATH"):
             update_system()
-        assert _readlink(installed_old / "usr/lib/vesma/venv") == f"venv-{OLD_VERSION}"
+        assert _readlink(installed_old / "usr/local/lib/vesma/venv") == f"venv-{OLD_VERSION}"
         doc = read_system_state()
         assert doc is not None
         assert doc["engine_version"] == OLD_VERSION
@@ -526,7 +538,7 @@ class TestTreeRightsAfterUpdate:
         self, installed_old: Path, seams: Seam
     ) -> None:
         update_system()
-        new_rev = installed_old / "usr/lib/vesma" / f"venv-{ENGINE_VERSION}"
+        new_rev = installed_old / "usr/local/lib/vesma" / f"venv-{ENGINE_VERSION}"
         assert stat.S_IMODE(new_rev.stat().st_mode) == 0o755
         state = installed_old / "var/lib/vesma/install-state.yaml"
         assert stat.S_IMODE(state.stat().st_mode) == 0o640

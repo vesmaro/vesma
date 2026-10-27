@@ -1347,8 +1347,10 @@ def _dr15() -> Finding:
     )
 
 
-# ── DR-16: symlink-revision integrity under /usr/lib/vesma (layout v2
-# §3.10; ADR-0045 Decision 6 — the doctor wave, rollout 3) ────────────────
+# ── DR-16: symlink-revision integrity under the manifest code plane
+# (layout v2 §3.10; ADR-0045 Decision 6 — the doctor wave, rollout 3;
+# ADR-0048: the title renders the manifest-resolved code root —
+# per-lane shipped manifests may name different /usr forms) ───────────────
 
 
 def _dr16() -> Finding:
@@ -1358,13 +1360,12 @@ def _dr16() -> Finding:
     symlink points at are leftover updates (post-rollback diagnosis
     state) → WARN, never silent.
     """
-    title = "symlink-revision integrity (/usr/lib/vesma)"
     try:
         state = read_system_state()
     except SystemInstallError as exc:
         return Finding(
             "DR-16",
-            title,
+            "symlink-revision integrity",
             Severity.WARN,
             f"the system install-state is unreadable: {exc}",
             "vesma doctor  (inventory the broken install-state)",
@@ -1372,12 +1373,13 @@ def _dr16() -> Finding:
     if state is None:
         return Finding(
             "DR-16",
-            title,
+            "symlink-revision integrity",
             Severity.OK,
             "no system-profile installation on this machine",
         )
     manifest = fhs.load_fhs_manifest()
     code_root = fhs.resolve_system_path(manifest.entry("code_root"))
+    title = f"symlink-revision integrity ({code_root})"
     venvs_root = fhs.system_venvs_root()
     hard: list[str] = []
     leftovers: list[str] = []
@@ -1575,7 +1577,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-13", "container downgrade allowlist", _dr13),
         ("DR-14", "profile isolation (user ↔ system roots + stamps)", _dr14),
         ("DR-15", "system-profile rights vs FHS manifest", _dr15),
-        ("DR-16", "symlink-revision integrity (/usr/lib/vesma)", _dr16),
+        ("DR-16", "symlink-revision integrity", _dr16),
         ("DR-17", "install-state ↔ filesystem (generations + system inversion)", _dr17),
         ("DR-18", "system unit vs regeneration", _dr18),
         ("DR-19", "layout generation advisories", _dr19),

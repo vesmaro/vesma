@@ -498,7 +498,7 @@ class TestSystemProfileDispatch:
         assert paths.config_path == tmp_path / "etc/vesma/config.yaml"
         assert paths.data_dir == tmp_path / "var/lib/vesma/metrics"
         assert paths.runtime_dir == tmp_path / "run/vesma"
-        assert paths.venv_bin == tmp_path / "usr/lib/vesma/venvs/metrics/bin"
+        assert paths.venv_bin == tmp_path / "usr/local/lib/vesma/venvs/metrics/bin"
 
     def test_profile_stamp_reader(
         self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

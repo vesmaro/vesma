@@ -18,7 +18,7 @@ The update contract, in execution order:
    2026-10-20: same build == same content-id keeps the flow idempotent;
    a freeze-hash content-id remains a candidate and is NOT adopted
    without this wave's health-gate semantics being re-ratified).
-3. **Atomic swap**: the stable symlinks (``/usr/lib/vesma/venv``,
+3. **Atomic swap**: the stable symlinks (``/usr/local/lib/vesma/venv``,
    ``venvs/<name>``) are re-pointed by tmp-link + rename — a partial or
    missing revision is never observable through the symlink.
 4. **Health gate**: EVERY new revision must prove itself before the

@@ -613,7 +613,7 @@ def resolve_component_paths(name: str) -> ComponentPaths:
     resolution point — giving ``/etc/vesma/config.yaml``,
     ``/var/lib/vesma/<name>``, ``/run/vesma`` (the systemd
     ``RuntimeDirectory`` slot, §3.8 — the system profile has no XDG
-    fallback chain) and ``/usr/lib/vesma/venvs/<name>/bin``. Otherwise
+    fallback chain) and ``/usr/local/lib/vesma/venvs/<name>/bin``. Otherwise
     (user profile, no system state, or a state unreadable to this
     account) the generation tables of THIS module resolve —
     byte-for-byte as before.
