@@ -411,12 +411,17 @@ def test_is_duplicate_probability_is_calibrated_not_a_step(provider: VesmaProvid
     V42 surface (measured 2026-10-27): at the pinned synthetic similarity
     0.93 the near-identical twin grades 0.00405 — BELOW the cut (B1
     graded the same input 0.99998). The identity cut separation lives in
-    the measured-cosine smoke test (self-pair 0.998 ≥ cut); this unit pin
+    the measured-cosine smoke test (self-pair forced to 1.0 by the
+    structural guard); this unit pin
     records the adopted artifact's sharper near-duplicate band as-is,
     not hidden. Known-class caveat carried to the deploy report: a
     type-less record against itself (type_match 0.0 by the frozen
-    double-null rule) grades 0.0039 at cosine 1.0 under v42 (B1: ~1.0) —
-    the cortex watchlist class (near-0009, adoption 05.10).
+    double-null rule) grades 0.0039 at cosine 1.0 under v42 on the RAW
+    model surface (B1: ~1.0) — the cortex watchlist class (near-0009,
+    adoption 05.10); closed at the provider layer by the structural
+    self-pair guard (measured cosine >= 1.0 → forced duplicate P = 1.0
+    before scoring), which is why no evaluate() call can observe the
+    raw 0.0039 readout anymore.
     """
     a = CanonRecordView(
         title="Fix auth bug",
@@ -694,7 +699,14 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     re-verified on the same exam before deploy (fed9c0a, 0.9662 exact).
     The #480 inversion is gone on v42: the self-pair grades ~1.0, ABOVE
     the cut, and the verdict ordering is monotone in cosine
-    (self > family > twin). Measured deviation from the B1 surface is
+    (self > family > twin). Since the structural self-pair guard
+    (watchlist near-0009; #480 class; owner directive 27.10) the
+    self-pair verdict is no longer a model readout at all: measured
+    cosine >= 1.0 (identical embeddings) forces duplicate P = 1.0
+    BEFORE scoring, so the #480 class is impossible by construction.
+    The v42 model's own self-pair readout stays recorded for honesty:
+    0.998054 (measured 2026-10-27) — above the cut, superseded by the
+    structural 1.0. Measured deviation from the B1 surface is
     pinned as-is, not hidden: v42 grades the template twins ~8.6e-05 (B1:
     ~7.5e-06) and the family pair ~9.8e-05 (B1: ~0.016) — both still far
     BELOW the cut, so the sharpening moves the whole below-cut band, not
@@ -704,8 +716,10 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     decision = _corpus_view("examples/after/decision.json")
     report = _corpus_view("examples/after/report.json")
 
-    # A record against itself (measured cosine 1.0): duplicate, graded
-    # ~1.0 — the #480 inversion signature (B2 graded ~0.011) is gone.
+    # A record against itself (measured cosine 1.0): the structural
+    # self-pair guard forces duplicate P = 1.0 before any model scoring —
+    # the #480 inversion signature (B2 graded ~0.011) is impossible by
+    # construction; the v42 model's own readout here was 0.998054.
     self_state = CanonState(
         record=checkpoint,
         candidate=checkpoint,
@@ -713,9 +727,8 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     )
     self_verdict = provider.evaluate(IsDuplicateRequest(), self_state)
     assert isinstance(self_verdict, Noul)
-    assert 0.0 < self_verdict.probability < 1.0  # graded, not a step
+    assert self_verdict.probability == 1.0  # structural guard, not a model readout
     assert self_verdict.probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
-    assert self_verdict.probability == pytest.approx(0.998054, rel=0.05)
 
     # Template twins (checkpoint/decision, cosine ≈ 0.86): below the cut —
     # the W4c lesson the artifact exists for (v42 grades ~8.6e-05).
@@ -745,3 +758,48 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     assert 0.0 < family_verdict.probability < 1.0
     assert family_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
     assert family_verdict.probability == pytest.approx(9.781e-05, rel=0.05)
+
+
+# ── Structural self-pair guard (watchlist near-0009; #480 class) ──────────────
+
+
+def test_self_pair_structural_guard_forces_duplicate_before_scoring(
+    provider: VesmaProvider, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Regression (watchlist near-0009, v42 adoption 05.10; the #480
+    class; owner directive 27.10): a TYPE-LESS record measured against
+    itself (measured cosine 1.0 — the double-null type_match corner)
+    must get a forced duplicate verdict P = 1.0 from the structural
+    guard BEFORE any model scoring.
+
+    The ORT session is stubbed to explode: the pass proves the guard
+    short-circuits the scoring path (no CORTEX-E-INFER degrade may
+    appear either — the deterministic fallback must not mask a broken
+    guard). The cos < 1.0 model path is untouched (the
+    calibrated-surface pin and the smoke test exercise it).
+    """
+    # Type-less: no tags — the frozen double-null rule zeroes type_match,
+    # the corner where v42's RAW model surface graded P(dup) ≈ 0.0039.
+    record = CanonRecordView(
+        title="Session checkpoint",
+        body="The sync loop stalls when the token expires mid-refresh.",
+        language="en",
+    )
+    state = CanonState(record=record, candidate=record, similarity=1.0)
+    restore = _swap_session(provider, _BoomSession())
+    try:
+        with caplog.at_level(logging.INFO, logger="vesma.decision_provider"):
+            verdict = provider.evaluate(IsDuplicateRequest(), state)
+    finally:
+        restore()
+    assert isinstance(verdict, Noul)
+    assert verdict.question == QUESTION_IS_DUPLICATE
+    assert verdict.probability == 1.0
+    # The guard short-circuited scoring: no degrade warn, and the
+    # machine-parseable DECISION line carries the guard marker + reason.
+    assert not any("CORTEX-E-INFER" in r.getMessage() for r in caplog.records)
+    decision_lines = [
+        r.getMessage() for r in caplog.records if "override=self-pair-guard" in r.getMessage()
+    ]
+    assert decision_lines, "no DECISION line with override=self-pair-guard"
+    assert "self-pair structural identity guard" in decision_lines[0]
