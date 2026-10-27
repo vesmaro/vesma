@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [7.1.0] — 2026-10-27
+## [6.6.0] — 2026-10-27
+
+> **Numbering incident, resolved same day:** this content was published for a few hours on 2026-10-27 as **v7.1.0** in error (an unratified MAJOR number), withdrawn hours later (GitHub tag, release object and ghcr image deleted), and re-released as **6.6.0** per the ratified version policy (2026-10-24: majors only for substantial milestones; main continues minors). The version number is the only difference — the 6.6.0 artifacts replace the withdrawn v7.1.0 ones.
 
 ### Changed
 
