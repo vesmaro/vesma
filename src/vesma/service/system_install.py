@@ -58,6 +58,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import datetime
+import errno
 import grp
 import hashlib
 import json
@@ -69,6 +70,7 @@ import shutil
 import subprocess  # nosec B404 - fixed-argv installer subprocesses
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final
 
@@ -105,6 +107,115 @@ _SYSUSERS_TEMPLATE = (
 
 class SystemInstallError(Exception):
     """System install/uninstall refused — the message is operator-facing."""
+
+
+#: The stable exit code of the read-only-target refusal (ADR-0048
+#: Decision 5; the ADR-0047 C15 taxonomy discipline — additive window:
+#: the mover's refusals occupy 1-16, this one takes 17). Declared on the
+#: class; surfacing it through ``typer.Exit`` in ``cli/system_cmd.py``
+#: is reserved for the CLI wave (additive, non-breaking).
+READ_ONLY_TARGET_EXIT_CODE: Final[int] = 17
+
+
+class SystemInstallReadOnlyTargetError(SystemInstallError):
+    """A code-plane install leg hit ``EROFS`` (Read-only file system) —
+    the typed refusal with the atomic-distro remediation (ADR-0048
+    Decision 5, card ``151a55ff``).
+
+    Raised ONLY on the EROFS fact (``errno.EROFS`` from the failing
+    write); the atomic/immutable-distro detection (os-release hints,
+    ``/run/ostree-booted``) informs ONLY the remediation wording — never
+    the refusal decision itself.
+    """
+
+    exit_code: int = READ_ONLY_TARGET_EXIT_CODE
+
+
+#: os-release ``VARIANT_ID`` tokens that hint an atomic/immutable distro
+#: (remediation WORDING only — the refusal stays EROFS-fact-based; the
+#: universal ostree signal is the ``/run/ostree-booted`` marker, which
+#: covers the rest of the ostree family beyond these names).
+_ATOMIC_VARIANT_TOKENS: Final[tuple[str, ...]] = ("silverblue", "coreos", "bluefin")
+
+
+def _read_os_release(path: Path) -> dict[str, str]:
+    """Best-effort ``KEY=VALUE`` parse of one os-release file."""
+    values: dict[str, str] = {}
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return values
+    for line in raw.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep or not key.strip().isupper():
+            continue
+        values[key.strip()] = value.strip().strip('"')
+    return values
+
+
+def _atomic_system_hints(root: Path | None = None) -> list[str]:
+    """«This machine looks atomic/immutable» hints — used ONLY to word
+    the EROFS remediation (ADR-0048 Decision 5): the refusal is always
+    by the EROFS fact, never by a distro guess. Signals: the
+    ``/run/ostree-booted`` marker (the universal ostree signal) and an
+    os-release ``VARIANT_ID`` naming a known atomic variant
+    (``root`` is injectable for tests).
+    """
+    base = Path(os.sep) if root is None else root
+    hints: list[str] = []
+    marker = base / "run" / "ostree-booted"
+    try:
+        ostree = marker.exists() or "IS_OSTREE=1" in marker.read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        ostree = False
+    if ostree:
+        hints.append("detected: /run/ostree-booted (ostree-based system)")
+    for rel in ("etc/os-release", "usr/lib/os-release"):
+        variant = _read_os_release(base / rel).get("VARIANT_ID", "").lower()
+        if any(token in variant for token in _ATOMIC_VARIANT_TOKENS):
+            hints.append(f"detected: os-release VARIANT_ID={variant}")
+            break
+    return hints
+
+
+def _readonly_remediation(target: Path, hints: list[str]) -> str:
+    """The operator-facing EROFS refusal text (ADR-0048): what failed,
+    the atomic/immutable guidance (rpm-ostree usroverlay for an
+    experiment, the rpm package for a permanent install) and the lane
+    split that keeps /usr writable for packages only."""
+    atomic = (
+        f"atomic/immutable system {'; '.join(hints)}"
+        if hints
+        else "atomic/immutable system (Silverblue/CoreOS): if this is one"
+    )
+    return (
+        f"cannot write {target}: read-only filesystem (EROFS) — the"
+        " installer cannot lay the code plane there (ADR-0048:"
+        " /usr/local; on ostree distros it resolves into persistent"
+        " var/usrlocal, so this failure means an admin-readonly mount)."
+        f" {atomic} — for a one-off experiment:"
+        " `sudo rpm-ostree usroverlay` (lives until reboot); for a"
+        " permanent install use the rpm package (the rpm lane ships its"
+        " own manifest with /usr/lib/vesma). Nothing else can be done by"
+        " this installer."
+    )
+
+
+@contextlib.contextmanager
+def _rofs_guard(target: Path) -> Iterator[None]:
+    """Convert an ``EROFS`` ``OSError`` raised by a code-plane leg into
+    the typed ADR-0048 refusal; ANY other ``OSError`` keeps its original
+    classification (EACCES, ENOSPC, … are not the read-only case)."""
+    try:
+        yield
+    except OSError as exc:
+        if exc.errno == errno.EROFS:
+            raise SystemInstallReadOnlyTargetError(
+                _readonly_remediation(target, _atomic_system_hints())
+            ) from exc
+        raise
 
 
 @dataclasses.dataclass(frozen=True)
@@ -858,7 +969,8 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     sysusers_path = fhs.system_sysusers_path(resolved_prefix)
     fragment = _SYSUSERS_TEMPLATE.format(home=str(data_root))
     existed = sysusers_path.exists()
-    write_file("sysusers_fragment", sysusers_path, fragment)
+    with _rofs_guard(sysusers_path):
+        write_file("sysusers_fragment", sysusers_path, fragment)
     report.append(
         f"sysusers fragment: {sysusers_path}"
         + (" (unchanged — the account is not duplicated on re-install)" if existed else "")
@@ -911,16 +1023,23 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     )
 
     # 4. Code plane + toolchain + engine venv revision (SY-07
-    #    groundwork, SY-08; F3 toolchain slot).
-    make_dir("code_root", fhs.resolve_system_path(manifest.entry("code_root"), resolved_prefix))
+    #    groundwork, SY-08; F3 toolchain slot). Every /usr-style leg
+    #    runs under the EROFS guard (ADR-0048 Decision 5): a read-only
+    #    target is the typed refusal, anything else keeps its class.
+    code_root_path = fhs.resolve_system_path(manifest.entry("code_root"), resolved_prefix)
     toolchain_dir = fhs.system_toolchain_pythons(resolved_prefix)
-    make_dir("toolchain_pythons", toolchain_dir, remove_mode="rmtree")
+    venvs_root_path = fhs.system_venvs_root(resolved_prefix)
+    with _rofs_guard(code_root_path):
+        make_dir("code_root", code_root_path)
+    with _rofs_guard(toolchain_dir):
+        make_dir("toolchain_pythons", toolchain_dir, remove_mode="rmtree")
     # The materialize leg resolves/downloads interpreters into the
     # canonical toolchain slot — never sudo's $HOME/.local/share/uv
     # (0700 root: the service account could not execute the engine) and
     # never a path inside the revision trees (C1 freshness).
     uv_env = {**os.environ, "UV_PYTHON_INSTALL_DIR": str(toolchain_dir)}
-    make_dir("venv_component_root", fhs.system_venvs_root(resolved_prefix))
+    with _rofs_guard(venvs_root_path):
+        make_dir("venv_component_root", venvs_root_path)
     # Revision id = the engine version for THIS wave (chairman
     # ratification 2026-10-20): same build == same content-id, which is
     # what keeps a re-install idempotent. A freeze-hash content-id is
@@ -930,18 +1049,20 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
     engine_symlink = fhs.system_venv_engine(resolved_prefix)
     # The engine venv's lock IS its wheel pin (vesma==version) — no lock
     # file; the component venvs below carry freeze locks.
-    _ensure_venv_revision(
-        "venv_engine_revision",
-        engine_rev_dir,
-        (f"vesma=={version}",),
-        plan,
-        revisions,
-        report,
-        ownership,
-        done_marker="bin/vesma",
-        uv_env=uv_env,
-    )
-    _ensure_venv_symlink("venv_engine", engine_symlink, engine_rev_dir, plan, report)
+    with _rofs_guard(engine_rev_dir):
+        _ensure_venv_revision(
+            "venv_engine_revision",
+            engine_rev_dir,
+            (f"vesma=={version}",),
+            plan,
+            revisions,
+            report,
+            ownership,
+            done_marker="bin/vesma",
+            uv_env=uv_env,
+        )
+    with _rofs_guard(engine_symlink):
+        _ensure_venv_symlink("venv_engine", engine_symlink, engine_rev_dir, plan, report)
 
     # 5. Bundled components: manifests (SY-05 conffile discipline), data
     #    dirs, python children's venvs.
@@ -1020,19 +1141,21 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         for line in requirements:
             user_install._validate_pin(line)
         rev_dir = fhs.system_venv_component_revision(comp.name, version, resolved_prefix)
-        frozen = _ensure_venv_revision(
-            "venv_component_revision",
-            rev_dir,
-            requirements,
-            plan,
-            revisions,
-            report,
-            ownership,
-            done_marker="bin/python",
-            uv_env=uv_env,
-        )
+        with _rofs_guard(rev_dir):
+            frozen = _ensure_venv_revision(
+                "venv_component_revision",
+                rev_dir,
+                requirements,
+                plan,
+                revisions,
+                report,
+                ownership,
+                done_marker="bin/python",
+                uv_env=uv_env,
+            )
         symlink = fhs.system_venv_component(comp.name, resolved_prefix)
-        _ensure_venv_symlink("venv_component", symlink, rev_dir, plan, report)
+        with _rofs_guard(symlink):
+            _ensure_venv_symlink("venv_component", symlink, rev_dir, plan, report)
         # The lock is the full freeze of the materialized venv (the
         # freeze==lock discipline, layout v2 §3.10); the updater of
         # rollout 3 verifies against it before swapping.
@@ -1043,7 +1166,9 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         report.append(f"lock: {lock_path}")
 
     # 6. Distro static (read-only at runtime; content ships later waves).
-    make_dir("distro_static", fhs.system_static_root(resolved_prefix))
+    static_root = fhs.system_static_root(resolved_prefix)
+    with _rofs_guard(static_root):
+        make_dir("distro_static", static_root)
 
     # 7. The system unit (§3.4; coexists with the user unit by scope).
     #    The text comes from regenerate_system_unit — the ONE source the
@@ -1457,10 +1582,12 @@ def _refuse_foreign(
 
 __all__ = [
     "CONFFILE_NEW_SUFFIX",
+    "READ_ONLY_TARGET_EXIT_CODE",
     "REVISION_ROLES",
     "STATE_SCHEMA",
     "StateArtifact",
     "SystemInstallError",
+    "SystemInstallReadOnlyTargetError",
     "SystemInstallResult",
     "SystemUninstallResult",
     "install_system",

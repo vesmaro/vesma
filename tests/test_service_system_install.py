@@ -18,6 +18,7 @@ The one root-dependent leg (real ownership application) is env-gated:
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -781,6 +782,118 @@ class TestAdr0048InstallerLaneCodePlane:
         fragment = sim / "usr/local/lib/sysusers.d/vesma.conf"
         assert si._apply_sysusers(fragment) == "ok"
         assert calls == [["/fake/systemd-sysusers", str(fragment)]]
+
+
+# ── ADR-0048 leg 2: the typed EROFS refusal (card 151a55ff) ───────────
+
+
+class TestAdr0048ErofsTypedRefusal:
+    """An EROFS failure on a code-plane leg is the TYPED refusal with the
+    atomic-distro remediation; the atomic detection words the message
+    only — the refusal is always by the EROFS fact (ADR-0048 Decision 5).
+    A non-EROFS OSError keeps the previous classification."""
+
+    @staticmethod
+    def _ro_at(prefix: str, errno_value: int) -> Any:
+        """A _ensure_dir wrapper raising the given errno under ``prefix``."""
+        real_ensure = si._ensure_dir
+
+        def failing(path: Path, mode: int) -> bool:
+            if prefix in str(path):
+                raise OSError(errno_value, os.strerror(errno_value))
+            return real_ensure(path, mode)
+
+        return failing
+
+    def test_erofs_on_a_code_plane_leg_refuses_typed(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EROFS))
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        message = str(excinfo.value)
+        assert "EROFS" in message
+        assert "rpm-ostree usroverlay" in message
+        assert "rpm package" in message
+        # The refusal integrates with the interrupted-install discipline:
+        # the earlier legs' state survives for the doctor to inventory.
+        assert read_system_profile() == "system"
+
+    def test_erofs_remediation_carries_the_atomic_hints(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EROFS))
+        monkeypatch.setattr(
+            si,
+            "_atomic_system_hints",
+            lambda: ["detected: os-release VARIANT_ID=silverblue"],
+        )
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        assert "VARIANT_ID=silverblue" in str(excinfo.value)
+        assert "rpm-ostree usroverlay" in str(excinfo.value)
+
+    def test_erofs_on_the_sysusers_fragment_leg_refuses_typed(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_write = si._atomic_write
+
+        def ro_write(path: Path, data: str, mode: int) -> None:
+            if str(path).endswith("sysusers.d/vesma.conf"):
+                raise OSError(errno.EROFS, "Read-only file system")
+            real_write(path, data, mode)
+
+        monkeypatch.setattr(si, "_atomic_write", ro_write)
+        with pytest.raises(si.SystemInstallReadOnlyTargetError) as excinfo:
+            install_system()
+        assert str(sim / "usr/local/lib/sysusers.d/vesma.conf") in str(excinfo.value)
+        # Step 0 precedes the state write: nothing else was recorded.
+        assert read_system_state() is None
+
+    def test_non_erofs_oserror_keeps_the_previous_classification(
+        self, sim: Path, seams: Seam, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The previous classification for a non-EROFS OSError on a leg is
+        # the raw OSError propagation (EACCES/ENOSPC/… never masquerade
+        # as the read-only refusal).
+        monkeypatch.setattr(si, "_ensure_dir", self._ro_at("usr/local/lib/vesma", errno.EACCES))
+        with pytest.raises(OSError) as excinfo:
+            install_system()
+        assert not isinstance(excinfo.value, SystemInstallError)
+        assert excinfo.value.errno == errno.EACCES
+
+    def test_typed_refusal_exit_code_is_stable(self) -> None:
+        # The C15 taxonomy discipline (ADR-0047): a typed refusal with a
+        # STABLE exit code, additive to the mover's 1-16 window.
+        assert issubclass(si.SystemInstallReadOnlyTargetError, SystemInstallError)
+        assert si.SystemInstallReadOnlyTargetError.exit_code == 17
+        assert si.READ_ONLY_TARGET_EXIT_CODE == 17
+
+    def test_atomic_hints_from_boot_marker_and_os_release(self, tmp_path: Path) -> None:
+        (tmp_path / "run").mkdir()
+        (tmp_path / "run" / "ostree-booted").write_text("IS_OSTREE=1\n", encoding="utf-8")
+        (tmp_path / "etc").mkdir()
+        (tmp_path / "etc" / "os-release").write_text(
+            'ID=fedora\nVARIANT_ID="silverblue"\n', encoding="utf-8"
+        )
+        hints = si._atomic_system_hints(tmp_path)
+        assert any("ostree-booted" in hint for hint in hints)
+        assert any("silverblue" in hint for hint in hints)
+
+    def test_atomic_hints_fall_back_to_usr_lib_os_release(self, tmp_path: Path) -> None:
+        (tmp_path / "usr" / "lib").mkdir(parents=True)
+        (tmp_path / "usr" / "lib" / "os-release").write_text(
+            'VARIANT_ID="coreos"\n', encoding="utf-8"
+        )
+        hints = si._atomic_system_hints(tmp_path)
+        assert hints == ["detected: os-release VARIANT_ID=coreos"]
+
+    def test_no_atomic_hints_on_a_plain_system(self, tmp_path: Path) -> None:
+        (tmp_path / "etc").mkdir()
+        (tmp_path / "etc" / "os-release").write_text(
+            'ID=fedora\nVARIANT_ID="workstation"\n', encoding="utf-8"
+        )
+        assert si._atomic_system_hints(tmp_path) == []
 
 
 # ── Installer wave 2026-10-23: F9 adopted-conffile uninstall ──────────
