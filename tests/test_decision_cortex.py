@@ -61,11 +61,13 @@ from vesma.embeddings import NanoProvider, config_fingerprint
 
 from .test_decision_provider import load_corpus
 
-# ── Frozen pins (B1 revision beb0a65d, recalled-safe; verdict #480) ───────────
+# ── Frozen pins (v42 revision 00fc6b71, adopted 2026-10-05, BA 0.9662
+# ── holdout-276; deployed 2026-10-27 by owner order, issue #41 — the B1
+# ── interim (beb0a65d, verdict #480 recall-safe restore) is history) ───────
 
 #: The bundled artifact's weights sha256 — the recalibration identity
 #: (a new sha = new weights = recalibration event, spec §8).
-WEIGHTS_SHA256: Final[str] = "beb0a65da14f9ed2554951aa8850f68db47fd1212af1577955239a34ab04a091"
+WEIGHTS_SHA256: Final[str] = "00fc6b71c62dbfa8268db358b39c0a4d9f30148805a4a18986487bc70e8346b2"
 
 #: The artifact's embedder pin — exactly the default engine vintage
 #: (``config_fingerprint(EmbeddingConfig())`` → ``nano:sha256:<hash>``).
@@ -76,8 +78,8 @@ EMBEDDER_PIN: Final[str] = (
 #: sha256 of the ``\\n``-joined frozen feature names (spec §4).
 FEATURE_SET_SHA256: Final[str] = "dd86228f8c634f28d8a15b2d8279da1b99735d68e309be02d30f1c24698fa6af"
 
-#: The artifact's train-corpus fingerprint (B1 manifest + ONNX metadata).
-CORPUS_FINGERPRINT: Final[str] = "edd940730a471e3d8c84461b7c3ca35dd86d691f354af0fcf4c498745d1aff61"
+#: The artifact's train-corpus fingerprint (v42 manifest + ONNX metadata).
+CORPUS_FINGERPRINT: Final[str] = "b45f385345526caeb3c11073d6e7aec410da89cc6e6bc43555737e43978af860"
 
 #: The frozen 13-feature contract — literal pin (cortex repo, A3a freeze).
 FROZEN_FEATURE_NAMES: Final[tuple[str, ...]] = (
@@ -154,9 +156,10 @@ def test_bundle_onnx_is_byte_identical_to_the_adopted_artifact() -> None:
     onnx_path = Path(str(resource_files("vesma") / "models" / CORTEX_ARTIFACT_DIR / "model.onnx"))
     payload = onnx_path.read_bytes()
     assert hashlib.sha256(payload).hexdigest() == WEIGHTS_SHA256, (
-        "bundled model.onnx sha256 drifted from the adopted B1 artifact "
-        "(recalled-safe, verdict #480) — a new sha is a RECALIBRATION "
-        "EVENT (spec §8), never a silent swap"
+        "bundled model.onnx sha256 drifted from the adopted v42 artifact "
+        "(deploy 2026-10-27, owner order issue #41; the #480 recall stays "
+        "in history) — a new sha is a RECALIBRATION EVENT (spec §8), "
+        "never a silent swap"
     )
     assert len(payload) <= CORTEX_MAX_ARTIFACT_BYTES
 
@@ -403,7 +406,18 @@ def test_record_quality_is_the_honest_placeholder(provider: VesmaProvider) -> No
 
 def test_is_duplicate_probability_is_calibrated_not_a_step(provider: VesmaProvider) -> None:
     """Spec §3: a graded likelihood, deliberately not the {0.0, 1.0} step
-    of the deterministic baseline."""
+    of the deterministic baseline.
+
+    V42 surface (measured 2026-10-27): at the pinned synthetic similarity
+    0.93 the near-identical twin grades 0.00405 — BELOW the cut (B1
+    graded the same input 0.99998). The identity cut separation lives in
+    the measured-cosine smoke test (self-pair 0.998 ≥ cut); this unit pin
+    records the adopted artifact's sharper near-duplicate band as-is,
+    not hidden. Known-class caveat carried to the deploy report: a
+    type-less record against itself (type_match 0.0 by the frozen
+    double-null rule) grades 0.0039 at cosine 1.0 under v42 (B1: ~1.0) —
+    the cortex watchlist class (near-0009, adoption 05.10).
+    """
     a = CanonRecordView(
         title="Fix auth bug",
         body="The login flow breaks when the token expires; refresh handling missing.",
@@ -433,9 +447,16 @@ def test_is_duplicate_probability_is_calibrated_not_a_step(provider: VesmaProvid
     assert 0.0 < twin.probability < 1.0
     assert 0.0 < far.probability < 1.0
     assert twin.probability > far.probability
-    # Application policy (product side): the 0.5 cut separates them.
-    assert twin.probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    # V42 policy surface (measured 2026-10-27): at pinned similarity 0.93
+    # the twin grades 0.00405 and far grades 9.18e-05 — BOTH below the
+    # 0.5 cut (B1 separated them across the cut: 0.99998 vs 9.03e-06).
+    # Pinned as measured: the graded monotone readout is the contract
+    # here; the application-policy cut separation is exercised with
+    # MEASURED cosine in the smoke test.
+    assert twin.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
     assert far.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+    assert twin.probability == pytest.approx(0.004052, rel=0.05)
+    assert far.probability == pytest.approx(9.176e-05, rel=0.05)
 
 
 def test_is_duplicate_requires_measured_evidence(provider: VesmaProvider) -> None:
@@ -663,20 +684,21 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     """Real corpus records + the real embedder's measured cosine (the
     minting-flow shape).
 
-    B1 RESTORE (weights ``beb0a65d…``, measured 2026-10-04): the shipped
+    V42 DEPLOY (weights ``00fc6b71…``, measured 2026-10-27): the adopted
+    2026-10-05 revision (BA 0.9662 on holdout-276) replaces the interim B1
+    restore (``beb0a65d…``, measured 2026-10-04) by owner order (issue
+    #41) — a recalibration event per spec §8. History stays honest: the
     B2 revision (``71f0572d…``) was RECALLED (investigation verdict #480 —
     ranking inversion on identity pairs: a record graded BELOW the cut
-    against ITSELF) and the bundle swapped back to the recalled-safe B1
-    artifact — the vintage the prod cortex registry already runs. The
-    #480 inversion is gone: the self-pair grades ~1.0, ABOVE the cut, and
-    the verdict ordering is monotone in cosine (self > family > twin);
-    the cortex-side adversarial sanity suite passes on the same weights
-    (self-pair 1.0, near-boundary 1.0, unrelated 0.0, monotone ladder).
-    Measured deviation from the W5d-era surface (weights ``281bd0fd…``)
-    is pinned as-is, not hidden: the real-record family pair
-    (checkpoint/report, cos ≈ 0.98) grades BELOW the cut (~0.016) — no
-    inversion, but the interim B1 readout is sharper than W5d's; the
-    retrain wave (#480) will re-address the family band.
+    against ITSELF), B1 served as the recalled-safe interim, and v42 was
+    re-verified on the same exam before deploy (fed9c0a, 0.9662 exact).
+    The #480 inversion is gone on v42: the self-pair grades ~1.0, ABOVE
+    the cut, and the verdict ordering is monotone in cosine
+    (self > family > twin). Measured deviation from the B1 surface is
+    pinned as-is, not hidden: v42 grades the template twins ~8.6e-05 (B1:
+    ~7.5e-06) and the family pair ~9.8e-05 (B1: ~0.016) — both still far
+    BELOW the cut, so the sharpening moves the whole below-cut band, not
+    the verdicts.
     """
     checkpoint = _corpus_view("examples/after/checkpoint.json")
     decision = _corpus_view("examples/after/decision.json")
@@ -693,10 +715,10 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     assert isinstance(self_verdict, Noul)
     assert 0.0 < self_verdict.probability < 1.0  # graded, not a step
     assert self_verdict.probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
-    assert self_verdict.probability == pytest.approx(0.999992, rel=0.05)
+    assert self_verdict.probability == pytest.approx(0.998054, rel=0.05)
 
     # Template twins (checkpoint/decision, cosine ≈ 0.86): below the cut —
-    # the W4c lesson the artifact exists for (B1 grades ~7.5e-06).
+    # the W4c lesson the artifact exists for (v42 grades ~8.6e-05).
     twin_state = CanonState(
         record=checkpoint,
         candidate=decision,
@@ -706,12 +728,13 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     assert isinstance(twin_verdict, Noul)
     assert 0.0 < twin_verdict.probability < 1.0
     assert twin_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
-    assert twin_verdict.probability == pytest.approx(7.54e-06, rel=0.05)
+    assert twin_verdict.probability == pytest.approx(8.628e-05, rel=0.05)
 
     # Structurally similar family members (checkpoint/report, cosine
-    # ≈ 0.98): B1 grades ~0.016 — BELOW the cut (W5d said duplicate).
+    # ≈ 0.98): v42 grades ~9.8e-05 — BELOW the cut (B1 graded ~0.016).
     # Pinned as measured: the ordering stays monotone (no #480-style
-    # inversion), the interim artifact is simply sharper than W5d's.
+    # inversion); the adopted revision reads the below-cut band sharper
+    # than the interim B1, verdicts unchanged.
     family_state = CanonState(
         record=checkpoint,
         candidate=report,
@@ -721,4 +744,4 @@ def test_smoke_verdict_on_real_records(provider: VesmaProvider, embedder: NanoPr
     assert isinstance(family_verdict, Noul)
     assert 0.0 < family_verdict.probability < 1.0
     assert family_verdict.probability < CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
-    assert family_verdict.probability == pytest.approx(0.016314, rel=0.05)
+    assert family_verdict.probability == pytest.approx(9.781e-05, rel=0.05)

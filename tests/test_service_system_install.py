@@ -42,6 +42,29 @@ from vesma.store_migration import MIGRATE_CONFFILE_HEADER, MIGRATION_MARKER_NAME
 ENGINE_VERSION = si._engine_version()
 
 
+def _engine_version_on_pypi(version: str = ENGINE_VERSION) -> bool:
+    """True when the checkout's engine version already resolves on PyPI.
+
+    Release trains bump the version BEFORE the publish: the PR gate runs CI
+    on the bumped tree while the wheel reaches PyPI only at the tag push
+    (release.yml). The real-install leg below would then have nothing to
+    install — on the DETERMINISTIC PyPI answer it skips instead of failing
+    loud; version consistency itself stays guarded by
+    tests/test_version_guard.py (#204). Train gap found on the 7.1.0 train
+    (the leg is real-pip by design; earlier trains cancelled CI or ran it
+    red — 1c774dd).
+    """
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen("https://pypi.org/pypi/vesma/json", timeout=20) as resp:
+            releases = json.load(resp).get("releases", {})
+    except OSError:
+        return True  # no answer — run the leg's usual path
+    return version in releases
+
+
 # ── Fixtures (dest-dir simulation, no root) ───────────────────────────
 
 
@@ -147,6 +170,11 @@ class TestSy01ProfileAndIsolation:
     ) -> None:
         from vesma.service.install import install as user_install_fn
 
+        if not _engine_version_on_pypi():
+            pytest.skip(
+                f"vesma=={ENGINE_VERSION} is not on PyPI yet — release train: "
+                "PR CI runs on the bumped tree before the tag publishes the wheel"
+            )
         user_install_fn()  # the user profile (default)
         install_system()  # the system profile — same machine
         user_stamp = isolated_home / ".vesma" / "install-state.yaml"
