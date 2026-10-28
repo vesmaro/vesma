@@ -147,7 +147,7 @@ import stat
 import subprocess  # nosec B404 - fixed-argv systemctl probes, no shell
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -192,6 +192,7 @@ __all__ = [
     "SourceRecoveryRequiredError",
     "StoreMigrationError",
     "SystemProfileNotInstalledError",
+    "TargetNameCollisionError",
     "TargetStoreContentError",
     "UsageError",
     "VerificationError",
@@ -400,6 +401,19 @@ class SchemaStampError(StoreMigrationError):
     store. Exit code 19 — additive to the C15 taxonomy."""
 
     exit_code = 19
+
+
+class TargetNameCollisionError(StoreMigrationError):
+    """The carry map maps MULTIPLE source files onto ONE target name —
+    e.g. the legacy ``mnemos.db`` rename tail sitting beside the real
+    ``vesma.db`` in the source data dir (field incident 2026-10-28: the
+    last writer silently won, the published store was the tail, and the
+    verification — comparing the renamed pair only — reported parity).
+    The plan is invalid by construction; the refusal lists the conflicting
+    pairs and the remediation. Dry-run refuses too. Exit code 20 —
+    additive to the C15 taxonomy."""
+
+    exit_code = 20
 
 
 def activation_gate_open() -> bool:
@@ -2447,6 +2461,50 @@ def _sibling_sqlite_dbs(layout: _StoreLayout) -> list[Path]:
     ]
 
 
+def _target_name_collisions(
+    planned_files: Iterable[PlannedFile],
+) -> dict[Path, tuple[PlannedFile, ...]]:
+    """Group the carry map by target path; keep ONLY the targets claimed by
+    MORE THAN ONE source. The map must be injective (plan listing ==
+    publish map, cascade P2-2): a collision means the materialization's
+    LAST WRITER would silently overwrite the earlier copy — the field
+    incident of 2026-10-28 (a legacy ``mnemos.db`` tail beside the real
+    ``vesma.db`` published the tail as the store)."""
+    by_target: dict[Path, list[PlannedFile]] = {}
+    for row in planned_files:
+        by_target.setdefault(row.target, []).append(row)
+    return {target: tuple(rows) for target, rows in by_target.items() if len(rows) > 1}
+
+
+def _collision_last_writer_lines(
+    collisions: dict[Path, tuple[PlannedFile, ...]], main_db_source: Path
+) -> list[str]:
+    """The loud last-writer pin lines (field incident 2026-10-28, fix 2):
+    when a collision somehow survived planning, the final verification
+    semantics are EXPLICIT — the main store db is materialized LAST
+    (siblings first, then the main copy), so it is the authoritative
+    content of the collided target; the displaced source survives only in
+    the snapshot."""
+    lines: list[str] = []
+    for target in sorted(collisions):
+        rows = collisions[target]
+        sources = ", ".join(f"{row.source} ({row.size_bytes} bytes)" for row in rows)
+        winner = next(
+            (row.source for row in rows if row.source == main_db_source),
+            max((row.source for row in rows), key=lambda path: path.name),
+        )
+        lines.append(
+            f"target-name collision survived planning: {target} is claimed by "
+            f"{len(rows)} sources ({sources}) — last writer wins: the "
+            f"authoritative content is {winner.name} (the main store db is "
+            "copied LAST); verification compared the target against the last "
+            "writer; the displaced source content remains only in the "
+            "snapshot. The plan-phase collision refusal should have caught "
+            "this — report this run"
+        )
+    return lines
+
+
 def _schema_stamp_problems(layout: _StoreLayout) -> list[str]:
     """ADR-0049 wave 0: read-only parity/band sweep of the home's sqlite
     family (``PRAGMA user_version``, ADR-documented map: vesma.db hosts
@@ -2636,6 +2694,28 @@ def build_plan(
         raise SchemaStampError(
             "source home schema stamps are not coherent (ADR-0049 wave 0): "
             + "; ".join(stamp_problems)
+        )
+
+    # Field incident 2026-10-28: two source files mapping onto ONE target
+    # name (a legacy mnemos.db rename tail beside the real vesma.db) made
+    # the materialization's last writer silently overwrite the real store,
+    # and the renamed-pair verification reported parity. The carry map must
+    # be injective — refuse TYPED, in dry-run too (the plan is invalid by
+    # construction), before any write.
+    collisions = _target_name_collisions(planned)
+    if collisions:
+        details: list[str] = []
+        for target_path in sorted(collisions):
+            rows = collisions[target_path]
+            listed = ", ".join(f"{row.source} ({row.size_bytes} bytes)" for row in rows)
+            details.append(f"{target_path} <- [{listed}]")
+        raise TargetNameCollisionError(
+            "the carry map maps multiple source files onto one target name "
+            "(the last writer would silently win): "
+            + "; ".join(details)
+            + " — remediation: remove or rename the legacy mnemos.db tail "
+            "in the SOURCE data dir (a rename leftover, not store data), "
+            "then re-run; nothing was written"
         )
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -3050,6 +3130,15 @@ def _run_user_migration(plan: MigrationPlan) -> MigrationReport:
     if snapshot.stats.ids_digest != pre_stats.ids_digest:
         raise SnapshotError("source changed between plan and snapshot — retry")
 
+    # Field incident 2026-10-28 pin: if a target-name collision somehow
+    # survived build_plan (a hand-built plan — the only way left past the
+    # typed refusal), the run must NOT pass silently — loud last-writer
+    # lines ride the report; verify_target below already compares the
+    # target db against the snapshot main = the last writer.
+    collisions = _target_name_collisions(plan.planned_files)
+    if collisions:
+        warnings.extend(_collision_last_writer_lines(collisions, snapshot.layout.db_path))
+
     config_plan: ConfigPlan | None = None
     try:
         applied = _materialize_target(snapshot, plan.staging_dir)
@@ -3178,6 +3267,16 @@ def _run_system_migration(
     if snapshot.stats.ids_digest != pre_stats.ids_digest:
         raise SnapshotError("source changed between plan and snapshot — retry")
 
+    # Field incident 2026-10-28 pin: a collision that survived build_plan
+    # must not verify silently — loud last-writer lines ride the report,
+    # and the collided target names leave the sibling-parity mapping in
+    # phase 4 (the staged file of a collided target belongs to the LAST
+    # WRITER, not to the displaced sibling); verify_target compares the
+    # target db against the snapshot main = the last writer.
+    collisions = _target_name_collisions(plan.planned_files)
+    if collisions:
+        warnings.extend(_collision_last_writer_lines(collisions, snapshot.layout.db_path))
+
     # Phase 2 — staging build from the verified snapshot.
     emit("[system migrate] 2/7 staging build")
     applied = _materialize_target(snapshot, plan.staging_dir, progress=progress)
@@ -3216,10 +3315,20 @@ def _run_system_migration(
         parity_problems += _sha256_parity_problems(
             plan.snapshot_dir / "vault", plan.staging_dir / "vault"
         )
+    # C8, plan-mapping driven (field incident 2026-10-28): ONLY the actual
+    # main db source name is exempt from sibling parity — the old blanket
+    # exemption of BOTH canonical db NAMES let a legacy vesma.db TAIL in
+    # the snapshot escape the parity check because its name merely LOOKED
+    # like a main db. A collided target name is exempt too — its staged
+    # file belongs to the last writer (pinned above), never to the
+    # sibling it displaced.
     parity_problems += _sibling_table_parity_problems(
         plan.snapshot_dir / "data",
         plan.staging_dir / "data",
-        main_db_names=(snapshot.layout.db_path.name, LEGACY_DB_NAME, CANONICAL_DB_NAME),
+        main_db_names=(
+            snapshot.layout.db_path.name,
+            *(target.name for target in collisions),
+        ),
     )
     parity_problems += _key_invariant_problems(snapshot, plan.staging_dir / "data")
     if parity_problems:
