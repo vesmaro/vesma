@@ -66,6 +66,7 @@ from vesma.metrics.schema import (
 from vesma.metrics.schema import (
     validate_meta as validate_meta,  # re-export: part of the sink contract
 )
+from vesma.schema_stamp import apply_schema_stamp
 
 logger = logging.getLogger("vesma.metrics.sink")
 
@@ -330,6 +331,7 @@ class MetricsStore(VerbLedgerMixin):
                         # harness columns + the dedup unique index (no-op
                         # on fresh/migrated files).
                         migrate_turn_usage_harness(conn)
+                        apply_schema_stamp(conn)  # ADR-0049 wave 0
                         conn.commit()
                         self._chmod_sidecar_files()  # belt and braces
                         self._local.conn = conn

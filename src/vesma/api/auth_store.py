@@ -19,6 +19,8 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from vesma.schema_stamp import apply_schema_stamp
+
 logger = logging.getLogger(__name__)
 
 TOKEN_PREFIX = "mnk_"  # nosec B105 - a bearer token prefix, not a credential
@@ -106,6 +108,7 @@ class AuthStore:
         with self._lock:
             self._conn.executescript(_AUTH_DDL)
             self._ensure_columns()
+            apply_schema_stamp(self._conn)  # ADR-0049 wave 0
             self._conn.commit()
 
     def _ensure_columns(self) -> None:
