@@ -147,6 +147,7 @@ def _plan_payload(plan: MigrationPlan) -> dict[str, Any]:
         payload["remaining_cargo"] = list(plan.remaining_cargo)
         payload["precondition_lines"] = list(plan.precondition_lines)
         payload["secret_path_warnings"] = list(plan.secret_path_warnings)
+        payload["config_drops"] = list(plan.config_drops)
         payload["forecast"] = _forecast_dicts()  # P3-4: C13 promised it in dry-run
     return payload
 
@@ -241,6 +242,12 @@ def _print_plan(plan: MigrationPlan) -> None:
                 console.print(f"    ! {line}")
         for line in plan.secret_path_warnings:
             console.print(f"  [yellow]warning: {line}[/yellow]")
+        for key_path in plan.config_drops:
+            console.print(
+                f"  [cyan]config: dropped user-path key: {key_path} "
+                "(planned — journald is the primary sink; the value is "
+                "not printed)[/cyan]"
+            )
         for line in _forecast_lines():
             console.print(f"  [cyan]forecast: {line}[/cyan]")
     for warning in plan.quiesce_warnings:

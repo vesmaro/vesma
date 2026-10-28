@@ -273,6 +273,8 @@ def generate_system_unit(
     read_only_paths: Collection[Path],
     optional_read_write_paths: Collection[Path] = (),
     *,
+    config_path: Path,
+    working_directory: Path,
     user: str = SYSTEM_USER,
     group: str = SYSTEM_GROUP,
 ) -> str:
@@ -286,6 +288,15 @@ def generate_system_unit(
     - ``WantedBy=multi-user.target`` — a system unit, not a user session;
     - ``Environment="PYTHONNOUSERSITE=1"`` — the venv discipline MUST
       (layout v2 §3.10), spelled on the unit for the system profile;
+    - ``Environment="VESMA_CONFIG=<config_path>"`` + ``WorkingDirectory=
+      <working_directory>`` — the config WIRING (card ``4c8a0cbe``): a
+      system unit runs WITHOUT a user session's environment, so without
+      these the engine resolved zero-config and silently served an empty
+      auto-store under the account's ``$HOME/.vesma`` while health read
+      ok (the 2026-10-28 field incident). ``config_path`` is the FHS
+      conffile (``/etc/vesma/config.yaml``), ``working_directory`` the
+      FHS data root (``/var/lib/vesma`` — in ``ReadWritePaths``, so the
+      chdir succeeds under ``ProtectSystem=strict``);
     - ``optional_read_write_paths`` render with the systemd ``-`` prefix
       (a missing path is not an error) — the opt-in ``/var/log/vesma``
       tree (§3.9) must not brick unit start when the operator never
@@ -318,9 +329,18 @@ def generate_system_unit(
     lines.append(f"User={user}")
     lines.append(f"Group={group}")
     lines.append('Environment="PYTHONNOUSERSITE=1"')
+    # Config wiring (card 4c8a0cbe): the engine's config chain reads
+    # VESMA_CONFIG first — without it a system unit starts zero-config
+    # and silently serves an empty auto-store under the account home.
+    lines.append(f'Environment="VESMA_CONFIG={config_path}"')
     lines.append("RuntimeDirectory=vesma")
     # layout v2 §3.8: system IPC dir 0750 (the user unit keeps 0700).
     lines.append("RuntimeDirectoryMode=0750")
+    # Working directory = the data root (card 4c8a0cbe): pins the
+    # engine's ./config.yaml + relative-path resolution onto the FHS
+    # store home instead of systemd's default CWD (/). The data root is
+    # in ReadWritePaths, so the chdir succeeds under ProtectSystem=strict.
+    lines.append(f"WorkingDirectory={working_directory}")
     lines.append(f"ExecStart={exec_start}")
     lines += [
         "# ExecStop is intentionally NOT generated: the default SIGTERM to the main",
