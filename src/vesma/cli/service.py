@@ -48,6 +48,10 @@ from vesma.service.control import MAX_TAIL
 from vesma.service.errors import ManifestError
 from vesma.service.home_lock import WriterLockBusyError, writer_lock
 from vesma.service.install import InstallError, UninstallResult, install, uninstall
+from vesma.service.instance_registry import (
+    forget_profile_instance,
+    record_user_profile_instance,
+)
 from vesma.service.system_install import (
     SystemInstallError,
     SystemUninstallResult,
@@ -154,6 +158,11 @@ def service_install(
         # rendered without markup, only the prefix is styling.
         console.print(style, Text(line))
     console.print(f"[green]Service installed ({result.unit_path}).[/green]")
+    # ADR-0049 wave 0: the registry is ADVISORY — a write problem is a
+    # reported line, never an install failure.
+    problem = record_user_profile_instance(result.unit_path.name)
+    if problem is not None:
+        console.print("[yellow]⚠[/yellow]", Text(problem))
 
 
 @service_app.command(name="uninstall")
@@ -208,6 +217,13 @@ def service_uninstall(
         style = "[yellow]⚠[/yellow]" if warn_line else "[green]✓[/green]"
         console.print(style, Text(line))
     console.print("[green]Uninstall complete.[/green]")
+    # ADR-0049 wave 0: a WHOLE-profile uninstall drops the instance's
+    # registry row (a component uninstall keeps it). Advisory — a problem
+    # is a reported line, never an uninstall failure.
+    if not system and remove_all:
+        problem = forget_profile_instance(profile="user")
+        if problem is not None:
+            console.print("[yellow]⚠[/yellow]", Text(problem))
 
 
 @service_app.command(name="update")
