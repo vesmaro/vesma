@@ -201,10 +201,10 @@ Every JSON export carries two version markers in its metadata:
 | Field | Meaning |
 |-------|---------|
 | `format_version` | The export schema version (currently `1.0`). Bumped when the JSON structure changes in a breaking way. |
-| `vesma_version` | The Vesma version that produced the export. Renamed from `vesma_version` in 6.0.0 — the importer still accepts the legacy `vesma_version` key from pre-6.0 exports (one deprecation note per import). |
+| `vesma_version` | The Vesma version that produced the export. Renamed from `mnemos_version` in 6.0.0 — the importer still accepts the legacy `mnemos_version` key from pre-6.0 exports (one deprecation note per import). |
 
 > `vesma:` is the canonical storage prefix (6.0 flip); the legacy
-> `vesma:` spelling is accepted on import and normalized to the canon.
+> `mnemos:` spelling is accepted on import and normalized to the canon.
 > Tag values inside an export are always stored (and imported) in the
 > canonical `vesma:*` form — see [tag-contract.md](tag-contract.md).
 
