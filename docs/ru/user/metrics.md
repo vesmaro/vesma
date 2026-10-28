@@ -154,7 +154,7 @@ GET /api/v1/stats/timeseries?metric=memories_added&range=30d&granularity=day
 Возвращает Prometheus text exposition для скрейпинга Grafana / Prometheus.
 Content-Type: `text/plain; version=0.0.4; charset=utf-8`.
 
-**Доступные метрики** (имена несут легаси-префикс `vesma_` —
+**Доступные метрики** (имена несут канонический префикс `vesma_` —
 формат-стабильные идентификаторы, не бренд; переименование ломало бы
 существующие дашборды):
 

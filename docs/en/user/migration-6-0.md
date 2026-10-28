@@ -74,9 +74,9 @@ Safety contract, enforced by the command itself:
 The mover ships with 6.0. Update your install to the 6.0 line and confirm:
 
 ```bash
-vesma update check
-vesma update apply          # or: pip install --upgrade vesma / uv tool upgrade vesma
-vesma --version             # expect 6.0.x
+vesma self-update check
+vesma self-update apply     # or: pip install --upgrade vesma / uv tool upgrade vesma
+vesma --version             # confirm the version you just installed
 ```
 
 ### Step 1 — back up
@@ -196,8 +196,8 @@ against a live 5.x peer.
 
 The mover writes the canonical `config.yaml` into the new home (section
 renamed `mnemos:` → `vesma:`, paths re-rooted, `db_name: vesma.db` pinned).
-At this release the built-in default config path is still the legacy one, so
-point your installation at the new config explicitly:
+At the 6.0.0 moment the built-in default config path still pointed at the
+legacy home, so point your installation at the new config explicitly:
 
 ```bash
 export VESMA_CONFIG=~/.vesma/config.yaml    # persist in your service env/unit
@@ -205,6 +205,12 @@ vesma service start core
 vesma service health                        # expect OK
 vesma doctor                                # full pass over the install
 ```
+
+> **Since 6.x the default config path is `~/.vesma/config.yaml`.** The
+> explicit `VESMA_CONFIG` export above describes the 6.0.0 window, when the
+> built-in default still resolved to the legacy home. On any current 6.x
+> install the default already points at the new home — set `VESMA_CONFIG`
+> only when your config lives at a custom path.
 
 `vesma doctor` checks config, database, vault, pending queue, MCP,
 integration, completion and the tag contract — every check should report
@@ -394,7 +400,7 @@ Every layer of the migration has a way back:
   installation at the old home again (the old `VESMA_CONFIG` / config path
   you used before), start the service — the 5.x store is intact.
 - **Package.** The 5.6.x releases stay installable from PyPI:
-  `vesma update apply --to 5.6.5`, or pin explicitly
+  `vesma self-update apply --to 5.6.5`, or pin explicitly
   (`pip install vesma==5.6.5` / `uv tool install vesma==5.6.5`). Roll the
   config change back together with the package (restore `VESMA_*` env
   spellings your 5.6.x expects — or simply the old config file).

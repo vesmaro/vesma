@@ -268,5 +268,5 @@ argument (MCP `vesma_filter`).
 ## See also
 
 - [Integration Guide](integration-guide.md) — behavioural instructions that tell agents *when* to filter.
-- [MCP Tools Reference](mcp-tools.md) — the full tool catalogue (tool names carry the legacy `vesma_` prefix).
+- [MCP Tools Reference](mcp-tools.md) — the full tool catalogue (tool names carry the canonical `vesma_` prefix).
 - [CLI Reference](cli-reference.md) — every `vesma` subcommand.
