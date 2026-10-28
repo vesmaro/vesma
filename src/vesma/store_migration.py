@@ -136,6 +136,7 @@ is normative here; the load-bearing points:
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -2247,25 +2248,36 @@ def _assert_no_sidecars(tree: Path) -> None:
 def _check_free_space(planned_bytes: int, snapshot_dir: Path, data_root: Path) -> None:
     """C14 preflight: snapshot fs >= 1x source, target fs >= 2x source —
     the refusal carries the numbers. The snapshot fs is measured at its
-    parent (the snapshot dir itself is created only on --apply)."""
-    requirements = (
+    parent (the snapshot dir itself is created only on --apply).
+
+    ADR-0049 wave 0: the arithmetic counts every LIVE sibling transit on
+    the same devices (clone + backup on one disk used to starve each
+    other mid-copy) — each other transit's planned appetite joins the
+    «needed» side of its volume."""
+    transit_parents = [snapshot_dir.parent, data_root.parent]
+    sibling_lines = _sibling_transit_lines(transit_parents)
+    requirements: list[tuple[str, Path, int]] = [
         ("snapshot", snapshot_dir.parent, planned_bytes),
         ("target", data_root, planned_bytes * _FREE_SPACE_FACTOR),
-    )
+    ]
     for label, path, needed in requirements:
         try:
             usage = shutil.disk_usage(path)
+            device = os.stat(path).st_dev
         except OSError as exc:
             raise InsufficientSpaceError(
                 f"cannot measure free space on the {label} filesystem ({path}): {exc}"
             ) from exc
+        needed += _sibling_transit_bytes(transit_parents, device)
         if usage.free < needed:
+            detail = "".join(f"\n  - {line}" for line in sibling_lines)
             raise InsufficientSpaceError(
                 f"insufficient free space on the {label} filesystem "
                 f"({path}): {usage.free} bytes free, {needed} bytes needed "
                 f"(source volume {planned_bytes} bytes, factor "
-                f"{_FREE_SPACE_FACTOR if label == 'target' else 1}) — free "
-                "space and retry"
+                f"{_FREE_SPACE_FACTOR if label == 'target' else 1}"
+                f"{'; concurrent transits counted' if sibling_lines else ''}) — free "
+                "space and retry" + detail
             )
 
 
@@ -2650,6 +2662,13 @@ def build_plan(
             else target_home.parent / f"{SNAPSHOT_DIR_PREFIX}{timestamp}"
         )
     staging_dir = target_home.parent / f"{target_home.name}.staging-{timestamp}"
+    # ADR-0049 wave 0: the advisory disk-transit picture for BOTH targets —
+    # live sibling transits on the involved volumes (the system target's
+    # C14 arithmetic above already HARD-counts their appetite).
+    transit_parents = [staging_dir.parent, resolved_snapshot.parent]
+    if data_root is not None:
+        transit_parents.append(data_root.parent)
+    quiesce_warnings = quiesce_warnings + tuple(_sibling_transit_lines(transit_parents))
     fast_path = (
         stats.subtype_swaps == 0 and stats.project_swaps == 0 and stats.duplicates_removed == 0
     )
@@ -2767,6 +2786,152 @@ class MigrationReport:
 
 def _cleanup_staging(staging: Path) -> None:
     shutil.rmtree(staging, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        _transit_marker_for(staging).unlink()
+
+
+# ── Disk-transit accounting (ADR-0049 wave 0) ────────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class TransitMarker:
+    """The on-disk evidence of ONE active transit (the sibling file
+    ``<staging>.transit.json``). The disk-level overlap class the contract
+    closes at wave 0: clone + backup on one disk used to be able to starve
+    each other mid-copy — preflight now sums every LIVE transit on the
+    involved volumes. Liveness = the recorded pid (a dead pid's marker is
+    residue, not an active transit); the holder's own pid never counts
+    against itself."""
+
+    pid: int
+    started: str
+    source: str
+    target: str
+    planned_bytes: int | None  # None = unparsable payload: unknown appetite
+
+    def is_alive(self) -> bool:
+        if self.pid <= 0 or self.pid == os.getpid():
+            return False
+        try:
+            os.kill(self.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # another account's process — alive for accounting
+        return True
+
+
+def _transit_marker_for(staging: Path) -> Path:
+    """The marker path of a staging dir: a SIBLING file (never inside —
+    the staging root is renamed onto the target whole, and the publish
+    moves its pieces; a rider would pollute the migrated home)."""
+    return staging.with_name(staging.name + ".transit.json")
+
+
+def _write_transit_marker(plan: MigrationPlan, progress: Callable[[str], None] | None) -> None:
+    """Open the transit's disk account: the sibling marker names the
+    holder (pid), the endpoints and the planned appetite. Typed failure:
+    a transit that cannot ACCOUNT itself must not run silently."""
+    marker = _transit_marker_for(plan.staging_dir)
+    payload = json.dumps(
+        {
+            "pid": os.getpid(),
+            "started": datetime.now(UTC).isoformat(timespec="seconds"),
+            "source": str(plan.source_home),
+            "target": str(plan.target_home),
+            "planned_bytes": sum(f.size_bytes for f in plan.planned_files),
+        }
+    )
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise VerificationError(f"cannot record the transit marker ({marker}): {exc}") from exc
+    if progress is not None:
+        progress(f"[migrate] transit marker: {marker}")
+
+
+def _read_transit_marker(path: Path) -> TransitMarker | None:
+    """Parse a marker; ``None`` when unreadable (accounting never dies on
+    evidence it cannot parse — the free-space arithmetic proceeds without
+    the unknown appetite and the warning names the file)."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict) or not isinstance(raw.get("pid"), int):
+        return None
+    planned = raw.get("planned_bytes")
+    started = raw.get("started")
+    source = raw.get("source")
+    target = raw.get("target")
+    return TransitMarker(
+        pid=raw["pid"],
+        started=started if isinstance(started, str) else "",
+        source=source if isinstance(source, str) else "",
+        target=target if isinstance(target, str) else "",
+        planned_bytes=planned if isinstance(planned, int) else None,
+    )
+
+
+def _live_sibling_transits(parents: list[Path]) -> list[tuple[Path, TransitMarker | None]]:
+    """Every LIVE foreign transit whose staging dir shares one of the
+    given parents (the family tree — the realistic clone+backup overlap).
+    Bounded: one shallow glob per parent, no tree walk."""
+    found: list[tuple[Path, TransitMarker | None]] = []
+    seen: set[Path] = set()
+    for parent in parents:
+        try:
+            candidates = sorted(parent.glob("*.staging-*.transit.json"))
+        except OSError:
+            continue
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            marker = _read_transit_marker(path)
+            if marker is not None and not marker.is_alive():
+                continue
+            found.append((path, marker))
+    return found
+
+
+def _sibling_transit_lines(parents: list[Path]) -> list[str]:
+    """One advisory line per live sibling transit (or its unreadable
+    marker) — the plan's warnings carry the disk-level picture."""
+    lines: list[str] = []
+    for path, marker in _live_sibling_transits(parents):
+        if marker is None:
+            lines.append(f"active transit with an unparsable marker: {path}")
+        else:
+            lines.append(
+                f"active transit on the same volumes (pid {marker.pid}, "
+                f"started {marker.started}, {marker.source} -> {marker.target}, "
+                f"appetite {marker.planned_bytes} bytes): {path}"
+            )
+    return lines
+
+
+def _sibling_transit_bytes(parents: list[Path], device: int) -> int:
+    """Sum of the LIVE sibling transits' appetites ON ONE DEVICE (st_dev
+    match) — the free-space arithmetic must count concurrent writers, not
+    just our own copy. Unparsable markers contribute 0 and stay visible
+    via :func:`_sibling_transit_lines`."""
+    total = 0
+    for path, marker in _live_sibling_transits(parents):
+        if marker is None or marker.planned_bytes is None:
+            continue
+        try:
+            if os.stat(path).st_dev != device:
+                continue
+        except OSError:
+            continue
+        total += marker.planned_bytes
+    return total
 
 
 def _fsync_dir(path: Path) -> None:
@@ -2848,16 +3013,18 @@ def run_migration(
                 stack.enter_context(
                     writer_lock(plan.data_root, endpoint=f"{lock_endpoint} (target)")
                 )
-            if plan.target == SYSTEM_TARGET:
-                try:
+            # ADR-0049 wave 0: open the transit's disk account BEFORE any
+            # copy — sibling preflights sum this file while it is live.
+            _write_transit_marker(plan, progress)
+            try:
+                if plan.target == SYSTEM_TARGET:
                     return _run_system_migration(plan, progress=progress)
-                finally:
-                    # The SINGLE cleanup path: on ANY failure — typed, unexpected,
-                    # or a BaseException like KeyboardInterrupt — staging is
-                    # removed; published entries were rolled back by the publish
-                    # guard; the snapshot stays (the rollback artifact).
-                    _cleanup_staging(plan.staging_dir)
-            return _run_user_migration(plan)
+                return _run_user_migration(plan)
+            finally:
+                # The marker's SINGLE removal path, covering legs whose own
+                # inner cleanup starts too late (the user leg's snapshot
+                # gates run BEFORE its try/finally) — idempotent with them.
+                _cleanup_staging(plan.staging_dir)
     except WriterLockBusyError as exc:
         raise HomeWriterLockBusyError(str(exc)) from exc
 
