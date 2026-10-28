@@ -155,6 +155,7 @@ from urllib.parse import quote
 
 from vesma.models import NO_FEDERATE_TAG
 from vesma.service import fhs
+from vesma.service.home_lock import WriterLockBusyError, writer_lock
 
 __all__ = [
     "CANONICAL_DB_NAME",
@@ -372,6 +373,15 @@ class InsufficientSpaceError(StoreMigrationError):
     carries the numbers."""
 
     exit_code = 16
+
+
+class HomeWriterLockBusyError(StoreMigrationError):
+    """Another writer-of-record holds the source/target home (ADR-0049
+    Lock 1, wave 0): a live supervisor or a concurrent transit. The
+    message names the holder (pid + endpoint). Exit code 18 — additive to
+    the C15 taxonomy after the installer lane's 17 (ADR-0048)."""
+
+    exit_code = 18
 
 
 def activation_gate_open() -> bool:
@@ -2729,28 +2739,49 @@ def run_migration(
 
     ``progress`` receives phased banner + streaming counter lines (C14) —
     plain text, paths and numbers only (no spinner: sudo+ssh+grep safe).
+
+    ADR-0049 Lock 1 (wave 0): the WHOLE transit runs under the per-home
+    EXCLUSIVE writer lock — on the source home always, and on the target
+    root too when it already exists (system target). A transit overlapping
+    a live supervisor or a concurrent transit over the same home is a
+    typed refusal naming the holder (:class:`HomeWriterLockBusyError`,
+    exit 18) — the kernel-level complement of the C7 quiesce gate.
     """
     if plan.mode != "apply":
         raise UsageError("run_migration requires a plan built with apply=True")
-    if plan.target == SYSTEM_TARGET:
-        # C13 belt-and-braces: the CLI gates already refuse; the machinery
-        # itself re-checks so nothing can bypass the gate by construction.
-        if not activation_gate_open():
-            raise ActivationGateError(
-                "--apply for the system target is gated (C13 / ADR-0045 "
-                "Decision 9): it refuses until the round-trip soak has "
-                "closed green AND the owner has given the word. The dry-run "
-                "is fully functional and is the soak's own tool"
-            )
-        try:
-            return _run_system_migration(plan, progress=progress)
-        finally:
-            # The SINGLE cleanup path: on ANY failure — typed, unexpected,
-            # or a BaseException like KeyboardInterrupt — staging is
-            # removed; published entries were rolled back by the publish
-            # guard; the snapshot stays (the rollback artifact).
-            _cleanup_staging(plan.staging_dir)
-    return _run_user_migration(plan)
+    # C13 belt-and-braces: the CLI gates already refuse; the machinery
+    # itself re-checks so nothing can bypass the gate by construction.
+    if plan.target == SYSTEM_TARGET and not activation_gate_open():
+        raise ActivationGateError(
+            "--apply for the system target is gated (C13 / ADR-0045 "
+            "Decision 9): it refuses until the round-trip soak has "
+            "closed green AND the owner has given the word. The dry-run "
+            "is fully functional and is the soak's own tool"
+        )
+    lock_endpoint = f"migrate-store target={plan.target} source={plan.source_home}"
+    try:
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(writer_lock(plan.layout_data_dir, endpoint=lock_endpoint))
+            if (
+                plan.target == SYSTEM_TARGET
+                and plan.data_root is not None
+                and plan.data_root.is_dir()
+            ):
+                stack.enter_context(
+                    writer_lock(plan.data_root, endpoint=f"{lock_endpoint} (target)")
+                )
+            if plan.target == SYSTEM_TARGET:
+                try:
+                    return _run_system_migration(plan, progress=progress)
+                finally:
+                    # The SINGLE cleanup path: on ANY failure — typed, unexpected,
+                    # or a BaseException like KeyboardInterrupt — staging is
+                    # removed; published entries were rolled back by the publish
+                    # guard; the snapshot stays (the rollback artifact).
+                    _cleanup_staging(plan.staging_dir)
+            return _run_user_migration(plan)
+    except WriterLockBusyError as exc:
+        raise HomeWriterLockBusyError(str(exc)) from exc
 
 
 def _run_user_migration(plan: MigrationPlan) -> MigrationReport:

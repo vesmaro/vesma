@@ -19,7 +19,7 @@ from rich.table import Table
 from vesma.cli._manager import get_manager, load_settings_or_exit
 from vesma.cli.migrate_store_cmd import migrate_store
 from vesma.cli.util import print_snapshot_entry
-from vesma.config import find_config_file
+from vesma.config import Settings, find_config_file
 from vesma.fs_hardening import ensure_private_dir
 from vesma.logging_setup import setup_logging
 from vesma.models import (
@@ -1957,8 +1957,6 @@ def serve(
     """
     import os
 
-    import uvicorn
-
     settings = load_settings_or_exit(config)
     if log_file is not None:
         settings.logging.log_file = log_file
@@ -1989,16 +1987,48 @@ def serve(
     os.environ["VESMA_API__HOST"] = h
     os.environ["VESMA_API__PORT"] = str(p)
 
-    # Native mesh serve wiring (W2, ROADMAP-v2 go-live): when the mesh is
-    # enabled, serve the federation mesh gRPC server on the configured Unix
-    # socket in THIS process, next to the HTTP API — the mnemos-mesh Go
-    # binary dials that socket. Mirrors the reference wiring in
-    # vesma-mesh/test/integration/serve-with-mesh.py. Additive: with
-    # ``mesh.enabled: false`` (the default) the command behaves exactly
-    # as before (uvicorn only).
-    # Issue #510: the wiring itself lives in the SHARED helper
-    # (backend.start_mesh_legs) so `service run` reaches the identical
-    # unix+tcp parity without duplicating the manager-singleton seeding.
+    # ADR-0049 Lock 1 (wave 0): the API server is a writer-of-record of its
+    # store home — the per-home exclusive flock is held for the whole serve
+    # lifetime (the multi-worker fleet included: THIS parent process holds
+    # it, the worker pool writes under it). A second server over the SAME
+    # home refuses here with the holder's name, whatever its endpoint.
+    from vesma.service.home_lock import WriterLockBusyError
+
+    lock_endpoint = f"serve http://{h}:{p}"
+    try:
+        _serve_locked(settings, h, p, config, lock_endpoint)
+    except WriterLockBusyError as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+
+
+def _serve_locked(
+    settings: Settings, h: str, p: int, config: str | None, lock_endpoint: str
+) -> None:
+    """The serve body under the per-home exclusive writer lock (ADR-0049)."""
+    from vesma.service.home_lock import writer_lock
+
+    with writer_lock(settings.vesma.data_dir, endpoint=lock_endpoint):
+        _serve_body(settings, h, p, config)
+
+
+def _serve_body(settings: Settings, h: str, p: int, config: str | None) -> None:
+    """The mesh+uvicorn serve body (extracted verbatim from ``serve``).
+
+    Native mesh serve wiring (W2, ROADMAP-v2 go-live): when the mesh is
+    enabled, serve the federation mesh gRPC server on the configured Unix
+    socket in THIS process, next to the HTTP API — the mnemos-mesh Go
+    binary dials that socket. Mirrors the reference wiring in
+    vesma-mesh/test/integration/serve-with-mesh.py. Additive: with
+    ``mesh.enabled: false`` (the default) the command behaves exactly
+    as before (uvicorn only).
+
+    Issue #510: the wiring itself lives in the SHARED helper
+    (backend.start_mesh_legs) so ``service run`` reaches the identical
+    unix+tcp parity without duplicating the manager-singleton seeding.
+    """
+    import uvicorn
+
     mesh_server = None
     if settings.mesh.enabled:
         from vesma.service.backend import start_mesh_legs

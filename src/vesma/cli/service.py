@@ -46,6 +46,7 @@ from vesma.service.client import (
 )
 from vesma.service.control import MAX_TAIL
 from vesma.service.errors import ManifestError
+from vesma.service.home_lock import WriterLockBusyError, writer_lock
 from vesma.service.install import InstallError, UninstallResult, install, uninstall
 from vesma.service.system_install import (
     SystemInstallError,
@@ -568,16 +569,28 @@ def run(
     if outcome.status == "already-running":
         console.print(f"vesma service is already running (socket: {outcome.path})")
         raise typer.Exit(code=0)
+    # ADR-0049 Lock 1 (wave 0): the supervisor is THE writer of its store
+    # home — the per-home exclusive flock is held for the whole process
+    # lifetime, AFTER the endpoint guard (the same-endpoint case answers
+    # «already running» above; a DIFFERENT-endpoint supervisor over the
+    # SAME home refuses here with the holder's name).
+    lock_endpoint = f"service control={outcome.path} core=http://{host}:{port}"
     try:
-        app.start()
-    except CoreStartupError as exc:
+        with writer_lock(settings.vesma.data_dir, endpoint=lock_endpoint):
+            try:
+                app.start()
+            except CoreStartupError as exc:
+                _fail(str(exc))
+            core_part = f", core: http://{host}:{port}"
+            if app.core_port is not None:  # port 0 resolved to the ephemeral port
+                core_part = f", core: http://{host}:{app.core_port}"
+            console.print(
+                f"vesma service running (socket: {outcome.path}, pid: {os.getpid()}{core_part})"
+            )
+            code = app.wait()
+            console.print(f"vesma service stopped (exit code: {code})")
+    except WriterLockBusyError as exc:
         _fail(str(exc))
-    core_part = f", core: http://{host}:{port}"
-    if app.core_port is not None:  # port 0 resolved to the ephemeral port
-        core_part = f", core: http://{host}:{app.core_port}"
-    console.print(f"vesma service running (socket: {outcome.path}, pid: {os.getpid()}{core_part})")
-    code = app.wait()
-    console.print(f"vesma service stopped (exit code: {code})")
     raise typer.Exit(code=code)
 
 
