@@ -85,7 +85,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 |-------|------|----------|---------|-------------|
 | `content` | string | **yes** | — | Text to remember. |
 | `title` | string | no | auto | Short title. |
-| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `vesma:<subtype>` spelling is accepted as an input alias). |
+| `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `mnemos:<subtype>` spelling is accepted as an input alias). |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | no | auto | One of `log`, `terminal`, `code`, `docs`, `web`, `default`. Drives M10 context filter. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |

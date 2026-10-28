@@ -153,7 +153,7 @@ they do not raise an error, so the dashboard can degrade gracefully.
 Returns Prometheus text exposition format for scraping by Grafana /
 Prometheus. Content-Type is `text/plain; version=0.0.4; charset=utf-8`.
 
-**Available metrics** (the names carry the legacy `vesma_` prefix —
+**Available metrics** (the names carry the canonical `vesma_` prefix —
 format-stable identifiers, not a brand statement; renaming them would
 break existing dashboards):
 

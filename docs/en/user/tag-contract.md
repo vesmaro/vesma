@@ -50,7 +50,7 @@ spelling is accepted on input everywhere and rewritten to the canon.
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
 | `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory |
-| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (a legacy prefix — the format-stable namespace; a valid tag is `vesma:decision`, not `vesma:decision`). |
+| `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (the canonical `vesma:` prefix — a format-stable namespace; the legacy `mnemos:<subtype>` spelling is accepted as an input alias). |
 
 ### `vesma:` subtypes
 
