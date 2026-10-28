@@ -712,6 +712,11 @@ def regenerate_system_unit(prefix: Path | None = None) -> str:
             fhs.system_static_root(prefix),
         ),
         optional_read_write_paths=(fhs.resolve_system_path(manifest.entry("log_root"), prefix),),
+        # Config wiring (card 4c8a0cbe): the FHS conffile + the data root
+        # as the working directory — every path manifest/prefix-resolved
+        # (SY-02: no path literals here).
+        config_path=fhs.system_config_path(prefix),
+        working_directory=fhs.system_data_root(prefix),
     )
 
 

@@ -140,3 +140,56 @@ def test_autocompression_gate_fires_on_load_settings_both_surfaces(
     )
     with pytest.raises(ValidationError, match=r"ccr\.validate_markers=true"):
         load_settings(cfg)
+
+
+def test_settings_load_with_untraversable_cwd(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Card 4c8a0cbe, defect leg (b): a NON-TRAVERSABLE working directory
+    must not crash the settings load.
+
+    pydantic-settings stats the relative ``.env`` before reading it and
+    pathlib re-raises ``PermissionError`` (EACCES is not in pathlib's
+    ignore set) — the system-profile daemon died at startup on that bare
+    stat instead of skipping the optional dotenv source. The guard
+    degrades permission-class failures to "file absent" for BOTH the
+    dotenv source and the ``./config.yaml`` search candidate.
+
+    Needs a non-root runner (root bypasses the directory mode bits, so
+    the EACCES would never fire)."""
+    import os
+
+    import pytest
+
+    from vesma.config import load_settings
+
+    if os.geteuid() == 0:
+        pytest.skip("permission semantics require a non-root runner")
+
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("VESMA_CONFIG", str(tmp_path / "absent" / "config.yaml"))
+    monkeypatch.delenv("VESMA_DATA_DIR", raising=False)
+    monkeypatch.delenv("VESMA_VESMA__DATA_DIR", raising=False)
+    monkeypatch.chdir(jail)
+    jail.chmod(0o000)
+    try:
+        settings = load_settings()
+        assert settings.vesma.data_dir == (tmp_path / "home" / ".vesma" / "data").resolve()
+    finally:
+        jail.chmod(0o700)
+
+
+def test_dotenv_still_loads_through_the_guarded_source(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Card 4c8a0cbe positive pin: the guarded dotenv source must keep
+    the normal path EXACTLY as it was — a ``.env`` in the CWD contributes
+    ``VESMA_*`` values (dotenv_filtering=only_existing unchanged). The
+    env_file wiring moved OFF model_config (the eager framework load
+    there precedes the guard), so this pin fails if the explicit
+    rewiring ever drops the file."""
+    from vesma.config import Settings
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("VESMA_API__HOST", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("VESMA_API__HOST=10.9.8.7\n", encoding="utf-8")
+    assert str(Settings().api.host) == "10.9.8.7"

@@ -1639,6 +1639,237 @@ def _dr18() -> Finding:
     )
 
 
+# ── DR-21: the system daemon serves the FHS data root (card 4c8a0cbe) ──
+
+
+def _unit_env_value(unit_text: str, name: str) -> str | None:
+    """The last ``Environment="NAME=…"`` value in a unit (quoted or bare);
+    ``None`` when the unit never wires the variable — the 6.6.0-era shape
+    that left the system engine zero-config (card 4c8a0cbe)."""
+    prefix = f"{name}="
+    for line in unit_text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("Environment="):
+            continue
+        value = stripped[len("Environment=") :]
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        if value.startswith(prefix):
+            return value[len(prefix) :]
+    return None
+
+
+def _expand_against(raw: str, account_home: Path) -> Path:
+    """``expanduser`` mirrored against the SERVICE account's home — the
+    doctor operator's own home must never leak into the resolution."""
+    if raw == "~":
+        return account_home
+    if raw.startswith("~/"):
+        return account_home / raw[2:]
+    return Path(raw)
+
+
+def _resolved_system_store_home(
+    unit_text: str, *, getpwnam: Callable[[str], Any] | None = None
+) -> tuple[Path | None, str] | None:
+    """The store home the SYSTEM daemon would resolve RIGHT NOW, mirrored
+    through the engine's OWN config chain (read-only; no protocol call):
+
+    1. ``VESMA_CONFIG`` from the unit's ``Environment=`` (the wiring the
+       generator emits since card 4c8a0cbe);
+    2. ``<WorkingDirectory>/config.yaml`` (systemd's default CWD for a
+       system unit without the directive is ``/``);
+    3. ``<account home>/.vesma/config.yaml`` — the zero-config home leg.
+
+    The first candidate that READS wins: its ``vesma.data_dir`` is the
+    resolved home (a ``~``-value expands against the service account's
+    home, never the doctor operator's); a config without ``data_dir``
+    falls through to the zero-config default ``<home>/.vesma/data``.
+
+    Returns ``(None, reason)`` when a config candidate exists but cannot
+    be mirrored (unreadable/unparsable — the engine refuses at boot on
+    it, never a silent fall-through), and ``None`` when the service
+    account itself is unresolvable (the daemon could not run at all —
+    DR-15 owns that class).
+
+    ``getpwnam`` is injectable for tests.
+    """
+    """The store home the SYSTEM daemon would resolve RIGHT NOW, mirrored
+    through the engine's OWN config chain (read-only; no protocol call):
+
+    1. ``VESMA_CONFIG`` from the unit's ``Environment=`` (the wiring the
+       generator emits since card 4c8a0cbe);
+    2. ``<WorkingDirectory>/config.yaml`` (systemd's default CWD for a
+       system unit without the directive is ``/``);
+    3. ``<account home>/.vesma/config.yaml`` — the zero-config home leg.
+
+    The first candidate that READS wins: its ``vesma.data_dir`` is the
+    resolved home (a ``~``-value expands against the service account's
+    home, never the doctor operator's); a config without ``data_dir``
+    falls through to the zero-config default ``<home>/.vesma/data``.
+    ``None`` when the service account itself is unresolvable (the daemon
+    could not run at all — DR-15 owns that class).
+
+    ``getpwnam`` is injectable for tests.
+    """
+    lookup = getpwnam if getpwnam is not None else pwd.getpwnam
+    directives, _commented = unitgen.parse_unit(unit_text)
+    user = directives.get("User") or unitgen.SYSTEM_USER
+    try:
+        account_home = Path(str(lookup(user).pw_dir))
+    except KeyError:
+        return None
+
+    import yaml
+
+    candidates: list[tuple[Path, str]] = []
+    env_config = _unit_env_value(unit_text, "VESMA_CONFIG")
+    if env_config:
+        candidates.append((Path(env_config), f"VESMA_CONFIG={env_config} (unit Environment)"))
+    working_dir = directives.get("WorkingDirectory") or os.sep
+    candidates.append(
+        (Path(working_dir) / "config.yaml", f"config.yaml under WorkingDirectory={working_dir}")
+    )
+    home_candidate = account_home / ".vesma" / "config.yaml"
+    candidates.append((home_candidate, f"{home_candidate} (the account-home zero-config leg)"))
+
+    default_home = account_home / ".vesma" / "data"
+    for candidate, how in candidates:
+        try:
+            if not candidate.is_file():
+                continue
+            doc = yaml.safe_load(candidate.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError, UnicodeDecodeError):
+            # The engine would refuse at boot on this candidate (an
+            # unreadable/unparsable config is loud there, never a silent
+            # fall-through) — the false-green mirror stops honestly.
+            return (
+                None,
+                f"config candidate {candidate} ({how}) exists but cannot be"
+                " mirrored: unreadable or unparsable",
+            )
+        if not isinstance(doc, dict):
+            continue
+        section = doc.get("vesma")
+        data_dir = section.get("data_dir") if isinstance(section, dict) else None
+        if isinstance(data_dir, str) and data_dir.strip():
+            resolved = _expand_against(data_dir, account_home).resolve()
+            return (resolved, f"vesma.data_dir from {candidate} ({how})")
+        return (
+            default_home,
+            f"zero-config default ({candidate} ({how}) carries no vesma.data_dir)",
+        )
+    return (
+        default_home,
+        "zero-config default (~/.vesma/data of the account home; no config candidate exists)",
+    )
+
+
+def _dr21() -> Finding:
+    """The system daemon serves the FHS data root, not a user home (card
+    ``4c8a0cbe`` — the 2026-10-28 false-green class).
+
+    With the unit missing the config wiring, the engine resolved
+    ZERO-CONFIG and silently auto-created an EMPTY store under the
+    service account's ``$HOME/.vesma`` — while ``health`` read ok and
+    every pre-existing gate stayed green: nothing compared the daemon's
+    EFFECTIVE store home with the FHS data root. This check mirrors the
+    engine's own resolution (unit Environment → WorkingDirectory →
+    account-home config chain) and compares it with the install-state's
+    recorded data root; a live mismatch is corroborated by the store
+    database actually present under the wrongly-resolved home.
+    """
+    title = "system daemon serves the FHS data root"
+    try:
+        state = read_system_state()
+    except SystemInstallError as exc:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.WARN,
+            f"the system install-state is unreadable: {exc}",
+            "vesma doctor  (inventory the broken install-state)",
+        )
+    if state is None:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.OK,
+            "no system-profile installation on this machine (n/a)",
+        )
+    expected = fhs.system_data_root()
+    artifacts = state.get("artifacts")
+    if isinstance(artifacts, list):
+        for artifact in artifacts:
+            if isinstance(artifact, dict) and artifact.get("role") == "data_root":
+                recorded = artifact.get("path")
+                if isinstance(recorded, str) and recorded:
+                    expected = Path(recorded)
+                break
+    unit_path = fhs.system_unit_path()
+    try:
+        unit_text = unit_path.read_text(encoding="utf-8")
+    except OSError:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.FAIL,
+            f"the system unit is MISSING at {unit_path} — the daemon has no"
+            " unit to resolve anything from (DR-18 carries the unit gate)",
+            "sudo vesma system install",
+        )
+    resolution = _resolved_system_store_home(unit_text)
+    if resolution is None:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.WARN,
+            f"the {unitgen.SYSTEM_USER} service account is not resolvable —"
+            " the daemon's store-home resolution cannot be mirrored (a"
+            " missing account means the daemon cannot run at all; DR-15"
+            " flags the ownership drift)",
+            "sudo vesma system install  (applies the sysusers fragment)",
+        )
+    home, how = resolution
+    if home is None:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.WARN,
+            f"the daemon's store-home resolution cannot be mirrored: {how}"
+            " (the engine refuses at boot on such a config — health would"
+            " NOT be ok; fix the config, then re-run `vesma doctor`)",
+        )
+    if home == expected:
+        return Finding(
+            "DR-21",
+            title,
+            Severity.OK,
+            f"the daemon resolves its store to the FHS data root {expected} (via {how})",
+        )
+    from vesma.store_migration import CANONICAL_DB_NAME
+
+    evidence = ""
+    if (home / CANONICAL_DB_NAME).exists():
+        evidence = (
+            f" — the auto-created store IS materialized there"
+            f" ({home / CANONICAL_DB_NAME} exists): the health-ok but"
+            " EMPTY-auto-store false-green is live"
+        )
+    return Finding(
+        "DR-21",
+        title,
+        Severity.FAIL,
+        f"the daemon resolves its store to {home} (via {how}) — NOT the"
+        f" FHS data root {expected}{evidence}. This is the 2026-10-28"
+        " false-green class: health reads ok while the daemon serves an"
+        " auto-created store outside the installed data root",
+        "sudo vesma system install  (regenerates the unit with the"
+        " VESMA_CONFIG + WorkingDirectory wiring) — then verify"
+        " /etc/vesma/config.yaml names the data root as vesma.data_dir",
+    )
+
+
 def _uid_to_name(uid: int) -> str:
     try:
         return pwd.getpwuid(uid).pw_name
@@ -1665,7 +1896,8 @@ def run_service_checks() -> list[Finding]:
     env.d 0600 FAIL gate), DR-16 (symlink-revision integrity),
     DR-17 (generation mixing + system state↔fs inversion), DR-18 (system
     unit vs regeneration), DR-19 (generation advisories, both profiles),
-    DR-20 (second writer on the store home — ADR-0049 wave 0).
+    DR-20 (second writer on the store home — ADR-0049 wave 0), DR-21
+    (the system daemon serves the FHS data root — card 4c8a0cbe).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -1704,6 +1936,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-18", "system unit vs regeneration", _dr18),
         ("DR-19", "layout generation advisories", _dr19),
         ("DR-20", "second writer on the store home", _dr20),
+        ("DR-21", "system daemon serves the FHS data root", _dr21),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

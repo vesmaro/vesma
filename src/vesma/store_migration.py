@@ -1050,6 +1050,9 @@ class ConfigPlan:
     paths_rerooted: int
     db_name_pinned: bool
     kept_untouched_values: int
+    # Card 4c8a0cbe: user-path keys dropped (not carried) for the system
+    # target — key paths only ("logging.log_file"), values never echoed.
+    dropped_user_path_keys: tuple[str, ...] = ()
 
 
 def _reroot(value: Any, old_home: Path, new_home: Path) -> tuple[Any, bool]:
@@ -1801,6 +1804,43 @@ def _is_under(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
+def _system_dropped_user_path_keys(doc: dict[str, Any]) -> list[str]:
+    """Keys whose USER-path values are DROPPED (not carried) when a config
+    is destined to the system conffile (card 4c8a0cbe).
+
+    ``logging.log_file`` names a user-home log file; under the system
+    profile journald is the primary sink (StandardOutput=journal) and a
+    carried user path EACCES-crashes the logger at service start under
+    the vesma service account (the 2026-10-28 field incident). A
+    non-empty value is neutralized to the empty path (stderr → journald)
+    and the key path is reported loud; the VALUE itself is never echoed
+    (output privacy). Returns key paths ("section.key").
+    """
+    section = doc.get("logging")
+    if isinstance(section, dict) and str(section.get("log_file") or "").strip():
+        return ["logging.log_file"]
+    return []
+
+
+def _source_system_config_drops(layout: _StoreLayout) -> list[str]:
+    """The drop prediction from the SOURCE config (dry-run plan phase) —
+    the same predicate ``_migrate_config_system`` applies to the staged
+    copy, so the plan and the apply can never disagree. Unparsable
+    sources yield [] here; ``migrate_config`` refuses them with its own
+    typed error later."""
+    import yaml
+
+    if not layout.config_path.is_file():
+        return []
+    try:
+        doc = yaml.safe_load(layout.config_path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError, UnicodeDecodeError):
+        return []
+    if not isinstance(doc, dict):
+        return []
+    return _system_dropped_user_path_keys(doc)
+
+
 def _secret_path_warnings(layout: _StoreLayout) -> list[str]:
     """C10: out-of-home secret-path overrides in the source config. Key
     NAMES only — values are never printed (output privacy)."""
@@ -2289,8 +2329,11 @@ def _migrate_config_system(
     """C3/C10 config leg for the system target: the classic rewrite
     (section map, schema validation) re-rooted onto the data root, then
     the FLAT system shape is pinned unconditionally — the store home IS
-    the data root, so data_dir/vault_path/db_name must name it. The
-    out-of-home secret-path warnings (C10) ride the PLAN (dry-run
+    the data root, so data_dir/vault_path/db_name must name it. A
+    carried user-path key (``logging.log_file``, card 4c8a0cbe) is
+    DROPPED to the empty path (journald primary) instead of travelling
+    byte-for-byte — the C10 "re-provision" warning became an action.
+    The out-of-home secret-path warnings (C10) ride the PLAN (dry-run
     included), not this leg."""
     import yaml
 
@@ -2309,11 +2352,17 @@ def _migrate_config_system(
         if section.get(key) != value:
             section[key] = value
             pins.append(key)
-    if pins:
+    dropped = _system_dropped_user_path_keys(doc)
+    for key_path in dropped:
+        section_name, _, key = key_path.partition(".")
+        doc[section_name][key] = ""  # empty path = stderr only → journald
+    if pins or dropped:
         staged_config.write_text(
             yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8"
         )
         _harden_file(staged_config)
+    if dropped:
+        cplan = replace(cplan, dropped_user_path_keys=tuple(dropped))
     return staged_config, cplan
 
 
@@ -2432,6 +2481,10 @@ class MigrationPlan:
     remaining_cargo: tuple[str, ...] = ()
     precondition_lines: tuple[str, ...] = ()
     secret_path_warnings: tuple[str, ...] = ()
+    # Card 4c8a0cbe: user-path keys the config leg will DROP for the
+    # system target (predicted from the source config; the apply's
+    # ConfigPlan.dropped_user_path_keys must match this exactly).
+    config_drops: tuple[str, ...] = ()
 
 
 def _sibling_sqlite_dbs(layout: _StoreLayout) -> list[Path]:
@@ -2699,6 +2752,9 @@ def build_plan(
         ),
         secret_path_warnings=(
             tuple(_secret_path_warnings(layout)) if target == SYSTEM_TARGET else ()
+        ),
+        config_drops=(
+            tuple(_source_system_config_drops(layout)) if target == SYSTEM_TARGET else ()
         ),
     )
 
@@ -3189,6 +3245,14 @@ def _run_system_migration(
     # Phase 3 — config leg (C3 disposition decided at publish, C10 pins).
     emit("[system migrate] 3/7 config leg")
     config_staged, _config_plan = _migrate_config_system(layout, data_root, plan.staging_dir)
+    # Card 4c8a0cbe: a dropped user-path key is LOUD, in the report (the
+    # value itself is never echoed — output privacy).
+    for key_path in _config_plan.dropped_user_path_keys:
+        warnings.append(
+            f"dropped user-path key: {key_path} — journald is the primary "
+            "sink on the system profile (the carried value is neutralized "
+            "to the empty path; provision a file sink explicitly if wanted)"
+        )
     # F9 adopt evidence: the published config gets the provenance header
     # (stamped BEFORE hashing), and the marker gains the conffile record
     # (canonical path + sha as published) plus the recoverability

@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -21,7 +22,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic.fields import FieldInfo
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+from pydantic_settings import BaseSettings, DotEnvSettingsSource, PydanticBaseSettingsSource
 
 from vesma.fs_hardening import ensure_private_dir
 
@@ -1476,6 +1477,32 @@ class _EnvCompatAliasSettingsSource(PydanticBaseSettingsSource):
         return data
 
 
+class _GuardedDotEnvSettingsSource(DotEnvSettingsSource):
+    """Dotenv source that degrades an UNREADABLE ``.env`` to "absent".
+
+    pydantic-settings stats every ``env_file`` before reading it, and
+    pathlib re-raises permission errors from ``is_file()`` — so with a
+    NON-TRAVERSABLE working directory the bare ``stat(".env")`` raised
+    ``PermissionError`` and the whole ``Settings()`` construction
+    crashed (card ``4c8a0cbe``, defect leg (b), the 2026-10-28 field
+    incident: the system-profile daemon died at startup instead of just
+    skipping the OPTIONAL dotenv source). Permission-class failures
+    during the dotenv read degrade to "no file contributed" here with a
+    warning log; every other error class stays loud.
+    """
+
+    def _read_env_files(self) -> Mapping[str, str | None]:
+        try:
+            return super()._read_env_files()
+        except PermissionError as exc:
+            logger.warning(
+                "dotenv source: env file %r is unreadable (%s) — treating it as absent",
+                self.env_file,
+                exc,
+            )
+            return {}
+
+
 class Settings(BaseSettings):
     vesma: VesmaConfig = VesmaConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
@@ -1512,13 +1539,14 @@ class Settings(BaseSettings):
         # period: ``VESMARO_*``/``MNEMOS_*`` spellings are no longer honoured).
         "env_prefix": _ENV_PREFIX_CANONICAL,
         "env_nested_delimiter": "__",
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        # Dotenv files only ever contribute values for KNOWN fields. Without
-        # this, pydantic-settings injects every unmatched ``.env`` key as a
-        # top-level extra and ``Settings()`` (extra=forbid) hard-crashes — a
-        # latent fragility this switch also fixes (unknown ``.env`` keys are
-        # now ignored instead of fatal).
+        # NOTE (card 4c8a0cbe): ``env_file`` is deliberately NOT set here.
+        # pydantic-settings EAGERLY loads the dotenv file in the DEFAULT
+        # source's constructor (EnvSettingsSource.__init__ →
+        # _load_env_vars), BEFORE ``settings_customise_sources`` runs — an
+        # env_file on model_config would crash ``Settings()`` on a bare
+        # stat(".env") under a non-traversable CWD before the guarded
+        # source below could ever intercept. The .env file is wired
+        # EXPLICITLY into ``_GuardedDotEnvSettingsSource`` instead.
         "dotenv_filtering": "only_existing",
     }
 
@@ -1555,7 +1583,15 @@ class Settings(BaseSettings):
             init_settings,
             env_settings,
             _EnvCompatAliasSettingsSource(settings_cls),
-            dotenv_settings,
+            # The guarded dotenv source (card 4c8a0cbe): explicit env_file
+            # wiring — the model_config deliberately carries none (see the
+            # note there), and this construction order is what keeps the
+            # eager dotenv load inside OUR guarded override.
+            _GuardedDotEnvSettingsSource(
+                settings_cls,
+                env_file=".env",
+                env_file_encoding="utf-8",
+            ),
             file_secret_settings,
         )
 
@@ -1721,9 +1757,21 @@ def find_config_file(config_path: str | Path | None = None) -> Path | None:
         candidates = [Path(config_path)]
 
     for candidate in candidates:
-        if candidate and candidate.is_file():
+        if candidate and _candidate_is_file(candidate):
             return candidate
     return None
+
+
+def _candidate_is_file(candidate: Path) -> bool:
+    """``is_file()`` that reads a permission-refused candidate as absent
+    (card 4c8a0cbe, defect leg (b)): a non-traversable CWD makes the
+    candidate ``stat`` raise ``PermissionError`` — the optional config
+    search must degrade to "not found", never crash the settings load.
+    Non-permission OS errors keep their class (loud)."""
+    try:
+        return candidate.is_file()
+    except PermissionError:
+        return False
 
 
 # ── Legacy home detection + fork refusal (ADR-0044 gate 5) ────────────────────

@@ -1021,9 +1021,33 @@ class TestSystemUnit:
         # Supply-chain boundary: the code + static trees read-only.
         assert f"ReadOnlyPaths={sim}/usr/local/lib/vesma {sim}/usr/local/share/vesma" in unit
 
+    def test_unit_carries_config_wiring(self, sim: Path, seams: Seam) -> None:
+        """Card 4c8a0cbe: the system unit wires the engine's config chain.
+
+        Without VESMA_CONFIG + WorkingDirectory the daemon started
+        zero-config and silently served an empty auto-store under the
+        account's $HOME/.vesma while health read ok (the 2026-10-28
+        field incident on core-51). These pins are the regression gate:
+        a generator that drops either line fails here.
+        """
+        install_system()
+        unit = (sim / "etc/systemd/system/vesma.service").read_text(encoding="utf-8")
+        # The FHS conffile rides the unit explicitly (env → ./config.yaml
+        # → $HOME/.vesma/config.yaml never reaches /etc/vesma otherwise).
+        assert f'Environment="VESMA_CONFIG={sim}/etc/vesma/config.yaml"' in unit
+        # Working directory = the FHS data root (in ReadWritePaths — the
+        # chdir succeeds under ProtectSystem=strict).
+        assert f"WorkingDirectory={sim}/var/lib/vesma" in unit
+
     def test_generator_refuses_relative_venv(self) -> None:
         with pytest.raises(unitgen.UnitGenerationError, match="absolute"):
-            unitgen.generate_system_unit(Path("relative/venv"), (), ())
+            unitgen.generate_system_unit(
+                Path("relative/venv"),
+                (),
+                (),
+                config_path=Path("/etc/vesma/config.yaml"),
+                working_directory=Path("/var/lib/vesma"),
+            )
 
 
 # ── Root-gated leg (env-gated: VESMA_TEST_SYSTEM_ROOT=1 AND euid 0) ───

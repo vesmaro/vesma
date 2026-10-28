@@ -1468,3 +1468,61 @@ def test_f9_source_scan_no_install_state_write_in_mover() -> None:
     source = Path(sm.__file__).read_text(encoding="utf-8")
     assert "_write_state" not in source
     assert "install_state.yaml" not in source
+
+
+# ── C10 drop action (card 4c8a0cbe): user-path keys never travel ─────────────
+
+
+def _source_with_user_log_path(home: Path) -> None:
+    """Give the source config a logging.log_file naming a USER home (the
+    exact 28.10 battlefield shape: an out-of-home path the reroot leg
+    carries byte-for-byte)."""
+    (home / "config.yaml").write_text(
+        "vesma:\n  db_name: vesma.db\nlogging:\n  log_file: /home/abyss/logs/vesma.log\n",
+        encoding="utf-8",
+    )
+
+
+def test_c10_dry_run_planned_drop_of_user_path_log_key(
+    sys_env: dict[str, Path], tmp_path: Path
+) -> None:
+    """Card 4c8a0cbe: the dry-run PLAN names the drop BEFORE the apply —
+    the same predicate the config leg executes (plan == apply)."""
+    home = make_source_6x(tmp_path)
+    _source_with_user_log_path(home)
+    plan = _plan_system(home)
+    assert plan.config_drops == ("logging.log_file",)
+
+
+def test_c10_dry_run_no_drop_without_the_key(sys_env: dict[str, Path], tmp_path: Path) -> None:
+    home = make_source_6x(tmp_path)
+    assert _plan_system(home).config_drops == ()
+
+
+def test_c10_apply_neutralizes_user_path_log_key_and_reports_loud(
+    sys_env: dict[str, Path], tmp_path: Path
+) -> None:
+    """The carried /home/abyss/... value never reaches the system
+    conffile: neutralized to the empty path (journald primary), loud
+    report line, value never echoed (output privacy)."""
+    carried_value = "/home/abyss/logs/vesma.log"
+    home = make_source_6x(tmp_path)
+    _source_with_user_log_path(home)
+    report = _apply_system(home, sys_env)
+    conffile = sys_env["config"].read_text(encoding="utf-8")
+    assert carried_value not in conffile
+    doc = yaml.safe_load(conffile)
+    assert doc["logging"]["log_file"] == ""
+    assert any(
+        warning.startswith("dropped user-path key: logging.log_file")
+        for warning in report.warnings
+    )
+    assert all(carried_value not in warning for warning in report.warnings)
+
+
+def test_c10_apply_without_log_key_has_no_drop_line(
+    sys_env: dict[str, Path], tmp_path: Path
+) -> None:
+    home = make_source_6x(tmp_path)
+    report = _apply_system(home, sys_env)
+    assert not any(warning.startswith("dropped user-path key:") for warning in report.warnings)
