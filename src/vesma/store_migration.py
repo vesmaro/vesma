@@ -154,6 +154,12 @@ from typing import Any, get_args
 from urllib.parse import quote
 
 from vesma.models import NO_FEDERATE_TAG
+from vesma.schema_stamp import (
+    MIN_SUPPORTED_SCHEMA_STAMP,
+    SCHEMA_STAMP_VERSION,
+    apply_schema_stamp,
+    read_schema_stamp,
+)
 from vesma.service import fhs
 from vesma.service.home_lock import WriterLockBusyError, writer_lock
 
@@ -382,6 +388,17 @@ class HomeWriterLockBusyError(StoreMigrationError):
     the C15 taxonomy after the installer lane's 17 (ADR-0048)."""
 
     exit_code = 18
+
+
+class SchemaStampError(StoreMigrationError):
+    """The source home's schema stamps are not coherent (ADR-0049
+    Lock 1, wave 0): mixed generations in one home (a home assembled from
+    parts of different installs), a stamp outside the supported band (a
+    store written by a NEWER vesma), or an unreadable family member. The
+    mover never translates a mixed-generation home as if it were one
+    store. Exit code 19 — additive to the C15 taxonomy."""
+
+    exit_code = 19
 
 
 def activation_gate_open() -> bool:
@@ -2418,6 +2435,57 @@ def _sibling_sqlite_dbs(layout: _StoreLayout) -> list[Path]:
     ]
 
 
+def _schema_stamp_problems(layout: _StoreLayout) -> list[str]:
+    """ADR-0049 wave 0: read-only parity/band sweep of the home's sqlite
+    family (``PRAGMA user_version``, ADR-documented map: vesma.db hosts
+    the main store + sessions/auth/agent-tokens; code_graph.db hosts the
+    graph + its audit trail). Refusal classes: an unreadable member, a
+    stamp outside the supported band (0 = coherent pre-stamp legacy), a
+    MIXED home — parts of different generations never translate as one
+    store. Names only, contents never echoed."""
+    stamps: dict[str, int] = {}
+    problems: list[str] = []
+    for db in [layout.db_path, *_sibling_sqlite_dbs(layout)]:
+        try:
+            stamps[db.name] = read_schema_stamp(db)
+        except (OSError, sqlite3.DatabaseError) as exc:
+            problems.append(f"{db.name}: unreadable ({type(exc).__name__})")
+    if problems:
+        return problems
+    for stamp in sorted(set(stamps.values())):
+        if stamp < MIN_SUPPORTED_SCHEMA_STAMP or stamp > SCHEMA_STAMP_VERSION:
+            problems.append(
+                f"{', '.join(name for name, s in sorted(stamps.items()) if s == stamp)}: "
+                f"stamp {stamp} outside the supported band "
+                f"[{MIN_SUPPORTED_SCHEMA_STAMP}, {SCHEMA_STAMP_VERSION}] — "
+                "the store was written by a different vesma generation"
+            )
+    if len(set(stamps.values())) > 1:
+        detail = ", ".join(f"{name}={stamp}" for name, stamp in sorted(stamps.items()))
+        problems.append(f"mixed schema generations in one home ({detail})")
+    return problems
+
+
+def _stamp_staged_databases(staging_data: Path) -> int:
+    """Stamp every staged sqlite file onto the current generation (ADR-0049
+    wave 0): a legacy 0-stamped file joins the era through the MOVED TARGET
+    — the source is never written (C6), so the transit is how legacy homes
+    advance. Already-stamped files pass through unchanged; connections are
+    opened and CLOSED per file (a clean close folds the WAL away — the
+    publish legs assert a sidecar-free staging)."""
+    stamped = 0
+    for db_path in _moved_sqlite_dbs(staging_data):
+        conn = sqlite3.connect(str(db_path), timeout=30.0)
+        try:
+            before = read_schema_stamp(db_path)
+            apply_schema_stamp(conn)
+            if read_schema_stamp(db_path) != before:
+                stamped += 1
+        finally:
+            conn.close()
+    return stamped
+
+
 def build_plan(
     source_home: Path,
     target_home: Path | None,
@@ -2547,6 +2615,16 @@ def build_plan(
         # vanished/unreadable source file is an operator-facing usage
         # problem (review P3h).
         raise UsageError(f"source file unreadable while planning: {exc}") from exc
+
+    # ADR-0049 wave 0: after the file-level planning gates (P3h keeps its
+    # exit-2 precedence), before any quiesce/write — a mixed-generation
+    # home refuses while everything is still read-only.
+    stamp_problems = _schema_stamp_problems(layout)
+    if stamp_problems:
+        raise SchemaStampError(
+            "source home schema stamps are not coherent (ADR-0049 wave 0): "
+            + "; ".join(stamp_problems)
+        )
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     if target == SYSTEM_TARGET:
@@ -2810,6 +2888,12 @@ def _run_user_migration(plan: MigrationPlan) -> MigrationReport:
         applied = _materialize_target(snapshot, plan.staging_dir)
         target_db = plan.staging_dir / "data" / CANONICAL_DB_NAME
         moved_dbs = _moved_sqlite_dbs(plan.staging_dir / "data")
+        stamped = _stamp_staged_databases(plan.staging_dir / "data")
+        if stamped:
+            warnings.append(
+                f"schema stamps: {stamped} staged database(s) joined the "
+                f"current generation ({SCHEMA_STAMP_VERSION})"
+            )
         _, config_plan = migrate_config(layout, plan.target_home, plan.staging_dir)
         verification = verify_target(target_db, snapshot, moved_dbs)
         # Atomic appearance of the fully verified target (same-FS rename).
@@ -2975,6 +3059,17 @@ def _run_system_migration(
         raise VerificationError("; ".join(parity_problems))
     verification["sha256_parity"] = "ok"
     verification["sibling_table_parity"] = "ok"
+
+    # ADR-0049 wave 0: the staged family joins the current generation —
+    # AFTER the sha256 parity gate above (a stamp write would change the
+    # file bytes) and BEFORE the publish (the published root must come up
+    # with a coherent stamp set).
+    stamped = _stamp_staged_databases(plan.staging_dir / "data")
+    if stamped:
+        emit(
+            f"[system migrate] schema stamps: {stamped} staged database(s) "
+            f"joined the current generation ({SCHEMA_STAMP_VERSION})"
+        )
 
     # Phase 5 — publish map + ownership pass (C4): the pass runs on the
     # STAGED paths, per manifest role, BEFORE fsync + publish.
