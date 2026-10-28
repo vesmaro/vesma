@@ -3,7 +3,7 @@
 **🌐 Language / Язык:** English · [Русский](../../ru/user/getting-started.md)
 
 > The complete Vesma user lifecycle: install → service → integration →
-> doctor → updates → legacy cleanup. Current for release 6.5.0. The store
+> doctor → updates → legacy cleanup. Current for release 6.6.0. The store
 > home is `~/.vesma/` (since 6.0.0; the 5.x move is covered in
 > [migration-6-0.md](migration-6-0.md)).
 
@@ -87,6 +87,54 @@ Plus external LLM enrichment: `pip install "vesma[ollama]"` — also `openai`,
 > the same server (`pip install "mnemos-memory-server[ollama]"` works through the
 > whole dual period). `vesma-memory-server` is our live mirror alias of the same code.
 
+### Interactive prompts (install.sh)
+
+A default `install.sh` run ends with up to three yes/no prompts (each reads
+`[Y/n]` — Enter accepts the default). What each one does:
+
+| Prompt | Answering yes… | No VS Code / no Copilot on this machine? |
+|--------|----------------|------------------------------------------|
+| `Set up VS Code MCP integration now? [Y/n]` | registers the Vesma MCP server in VS Code (Copilot) via `mcp-setup.sh` | answer `n` — nothing is written; the setup script can run later |
+| `Deploy agent integration pack (instructions+skills+prompts)? [Y/n]` | deploys the behavioral pack to every detected harness (`vesma integration setup` under the hood) | answer `y` is still safe — it targets only harnesses it actually finds; none detected means a no-op |
+| `Wire Vesma MCP to all Copilot agents? [Y/n]` | adds the `vesma_*` MCP tools to Copilot agent frontmatters | answer `n` — it touches only Copilot agent files |
+
+Every prompt has a silent form for scripts and CI: `--mcp` / `--no-mcp`,
+`--instructions` / `--no-instructions`, `--wire-agents` /
+`--no-wire-agents`. The pack and the wiring can be (re)deployed later at any
+time with `vesma integration setup` — idempotent.
+
+### What you should see
+
+Run the recommended channel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vesmaro/vesma/main/scripts/install.sh | bash
+```
+
+The tail of a successful run (verbatim):
+
+```text
+✓  Vesma installed. Next steps:
+  • Run 'vesma completion' to enable shell autocompletion
+  • Run 'vesma integration setup' to deploy behavioral instructions to your agent harness
+  • Run 'vesma doctor' to verify your installation
+✓  Try it:
+    vesma add 'Hello' --tags project:test,agent:setup,vesma:learning
+    vesma search 'Hello'
+```
+
+Then bring the service up and verify it the way [Service](#service-vesma-service)
+describes:
+
+```bash
+vesma service install                        # manifests, dirs, venvs, the unit
+systemctl --user enable --now vesma.service  # autostart (Linux, systemd user)
+vesma service health                         # expect: OK
+```
+
+`vesma service health` answering `OK` is the confirmation that the deployment
+is live; `vesma doctor` is the full-install gate.
+
 ### Container in one command
 
 The image is published to `ghcr.io/vesmaro/vesma`; `docker` works too — replace
@@ -100,14 +148,14 @@ podman run -d --name vesma \
   -v vesma-vault:/vault \
   -e VESMA_API__TOTP_MASTER_KEY="${VESMA_API__TOTP_MASTER_KEY}" \
 <!-- version:image -->
-  ghcr.io/vesmaro/vesma:6.5.0
+  ghcr.io/vesmaro/vesma:6.6.0
 <!-- /version:image -->
 
 curl -s http://localhost:8787/health | jq
 ```
 
 <!-- version:tags -->
-Tags: `:6.5.0` (pinned) · `:latest` (rolling).
+Tags: `:6.6.0` (pinned) · `:latest` (rolling).
 <!-- /version:tags -->
 
 Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md).
@@ -116,7 +164,7 @@ Full guide: [container-deployment.md](../admin/runbooks/container-deployment.md)
 
 <!-- version:pip -->
 ```bash
-pip install vesma==6.5.0
+pip install vesma==6.6.0
 ```
 <!-- /version:pip -->
 
@@ -589,6 +637,31 @@ updated automatically.
 
 ---
 
+## Move to a new machine
+
+Vesma carries no machine-binding state: install on the new machine, export on
+the old one, import on the new one. Short checklist:
+
+1. **Stop the service on the old machine before a SQLite export** — the store
+   must be quiet: `vesma service stop core`, then `vesma service status` to
+   confirm.
+2. **Export** on the old machine: `vesma export -o vesma-full.sqlite -f sqlite`
+   (formats, filters, encryption — [export-import.md](export-import.md)).
+3. **Install** on the new machine — [Installation](#installation).
+4. **Import** on the new machine: `vesma import vesma-full.sqlite`. Vectors
+   either regenerate from content (JSON) or arrive inside the snapshot
+   (SQLite); the export carries the vault — a target with an empty vault gets
+   it restored by the import.
+5. **Carry by hand** — the export does not include these:
+   `~/.vesma/config.yaml` (or your custom `VESMA_CONFIG` path), the
+   `~/.config/vesma/env/` secret files (tokens; keep `0600` on the copy), and
+   component data dirs under `~/.local/share/vesma/<name>/` if any components
+   ran.
+6. **Re-deploy the wiring** on the new machine: `vesma integration setup`,
+   then `vesma doctor` as the gate.
+
+---
+
 ## Cleaning up old installations
 
 Installations from the rebrand and the pre-service-track era leave artifacts
@@ -599,7 +672,9 @@ the current state: `vesma doctor paths` (where the config points),
 ### Scenario A — clean the legacy, keep the database
 
 The database, the vault and the configs **stay in place**. Only the old-name
-mechanics are removed.
+mechanics are removed. The order matters: bring the surviving install up to
+date first, migrate the legacy 5.x store, and only then remove the old-name
+mechanics.
 
 **What to keep (do not delete):**
 
@@ -615,28 +690,39 @@ mechanics are removed.
 **What to remove:**
 
 ```bash
-# 1. pip distributions under old names (keep one current dist; the list — vesma self-update components)
+# 1. bring the surviving install up to date first — every step below assumes the current vesma
+vesma self-update apply
+
+# 2. migrate the legacy 5.x store before touching anything (dry-run is the default;
+#    full walkthrough — migration-6-0.md)
+vesma migrate-store --from ~/.mnemos --to ~/.vesma           # plan only
+vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply   # the real move
+
+# 3. pip distributions under old names (keep one current dist; the list — vesma self-update components)
 pip uninstall mnemos-memory-server vesma-memory-server
 
-# 2. legacy vesma-* units (systemd user)
+# 4. legacy vesma-* units (systemd user)
 systemctl --user disable --now vesma-*.service 2>/dev/null
 rm -i ~/.config/systemd/user/vesma-*.service ~/.config/systemd/user/vesma-*.timer
 systemctl --user daemon-reload
 
-# 3. old shell wrappers and old-name launchers
+# 5. old shell wrappers and old-name launchers
 rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
 
-# 4. old completion scripts (legacy 5.x location; the current ones live in
+# 6. old completion scripts (legacy 5.x location; the current ones live in
 #    ~/.vesma/completion/ — leave those)
 rm -i ~/.mnemos/completion/vesma.*
 
-# 5. legacy venv directories with versions in the name (hand-created — NOT the canonical vesma/venv*)
+# 7. legacy venv directories with versions in the name (hand-created — NOT the canonical vesma/venv*)
 rm -ri ~/venv-5.x   # example: any manual venv of the old install
 ```
 
 Then bring what remains up to date:
 
 ```bash
+vesma migrate-store --from ~/.mnemos --to ~/.vesma --apply
+                            # the store must be on 6.x before the gate
+                            # (skip if migrated in step 2 above — or no legacy home existed)
 vesma completion            # regenerate the current completion scripts
 vesma integration update    # refresh the deployed pack
 vesma doctor                # the health gate — every check should be green
@@ -670,8 +756,15 @@ systemctl --user disable --now vesma.service 2>/dev/null
 rm -i ~/.config/systemd/user/vesma*.service ~/.config/systemd/user/vesma-update.{service,timer}
 systemctl --user daemon-reload
 
-# 6. the data and config directories — everything (~/.mnemos is the 5.x legacy home)
-rm -ri ~/.vesma ~/.mnemos ~/.config/vesma ~/.local/share/vesma ~/.local/state/vesma ~/.cache/vesma
+# 6. the data and config directories — everything (~/.mnemos is the 5.x legacy home).
+#    Inspect ~/.local/share/vesma BEFORE the blanket removal: step 1 preserved
+#    component data dirs there (export first if any is still needed), and the
+#    same directory can host homes of SECOND instances (e.g. a LAN store at
+#    ~/.local/share/vesma/lan) that belong to another installation — keep those.
+rm -ri ~/.vesma ~/.mnemos ~/.config/vesma ~/.local/state/vesma ~/.cache/vesma
+ls ~/.local/share/vesma           # operator data or a foreign instance home inside?
+rm -ri ~/.local/share/vesma/venv ~/.local/share/vesma/venvs   # this install's trees
+# nothing left to keep → finish it: rm -ri ~/.local/share/vesma
 
 # 7. launchers and completion scripts
 rm -i ~/.local/bin/vesma ~/.local/bin/vesma-*
@@ -860,4 +953,4 @@ note in the [integration guide](integration-guide.md).
 
 ---
 
-_Last updated: 2026-10-24 (release 6.5.0)_
+_Last updated: 2026-10-28 (release 6.6.0)_
