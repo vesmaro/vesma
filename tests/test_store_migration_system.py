@@ -13,6 +13,7 @@ fixture, which flips the constant back to False.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -606,7 +607,14 @@ def test_c7_enabled_unit_is_warning_not_fatal(
     assert "enabled" in _output(result)
 
 
-def test_c7_control_socket_is_warning_not_fatal(sys_env: dict[str, Path], tmp_path: Path) -> None:
+def test_c7_control_socket_is_warning_not_fatal(
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Wrap determinism (2026-10-28): the assertion substrings are plain
+    # text, but rich hard-breaks a word that exceeds the detected console
+    # width — a long basetemp path used to land the break INSIDE
+    # "control.sock" and the substring then missed. Pin a wide console.
+    monkeypatch.setenv("COLUMNS", "400")
     sock_dir = sys_env["prefix"] / "run" / "vesma"
     sock_dir.mkdir(parents=True)
     (sock_dir / "control.sock").write_text("", encoding="utf-8")
@@ -745,7 +753,13 @@ def test_c9_explicit_snapshot_dir_honored(sys_env: dict[str, Path], tmp_path: Pa
 # ── C10: keys and secrets ────────────────────────────────────────────────────
 
 
-def test_c10_totp_precondition_printed_in_dry_run(sys_env: dict[str, Path], tmp_path: Path) -> None:
+def test_c10_totp_precondition_printed_in_dry_run(
+    sys_env: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Wrap determinism (2026-10-28, see the c7 socket test): a long
+    # basetemp path used to land rich's hard break INSIDE the asserted
+    # substrings. Pin a wide console.
+    monkeypatch.setenv("COLUMNS", "400")
     home = make_source_6x(tmp_path)
     (home / "config.yaml").write_text("api:\n  totp_enabled: true\n", encoding="utf-8")
     result = runner.invoke(app, ["migrate-store", "--from", str(home), "--target", "system"])
@@ -1468,3 +1482,175 @@ def test_f9_source_scan_no_install_state_write_in_mover() -> None:
     source = Path(sm.__file__).read_text(encoding="utf-8")
     assert "_write_state" not in source
     assert "install_state.yaml" not in source
+
+
+# ── Target-name collisions (field incident 2026-10-28) ────────────────────────
+#
+# The field defect: ``migrate-store --target=system`` planned TWO source
+# files onto ONE target name — data/mnemos.db (the 08.10 rename tail,
+# schema-only) AND the real data/vesma.db both → <data-root>/vesma.db.
+# On apply the materialization copied siblings first and the main db
+# last, so the TAIL silently won the name; the renamed-pair verification
+# reported parity while the real store was never published. Pins: the
+# typed refusal (exit 20, dry-run included, nothing written), the green
+# contrast leg, and the last-writer defense for a plan that bypassed
+# build_plan.
+
+
+def make_source_with_legacy_tail(tmp_path: Path) -> Path:
+    """The field shape: a REAL 6.0 main (``data/vesma.db``, one canonical
+    record) beside the LEGACY TAIL (``data/mnemos.db`` — tables, zero
+    rows, the 08.10 rename leftover). ``_resolve_layout`` picks the tail
+    as the main, so the carry map claims ``vesma.db`` twice."""
+    home = tmp_path / "tail-home"
+    data = home / "data"
+    data.mkdir(parents=True)
+    conn = sqlite3.connect(str(data / LEGACY_NAME))
+    try:
+        conn.executescript(_DB_SCHEMA)  # the tail: tables, NO rows
+        conn.commit()
+    finally:
+        conn.close()
+    _insert_records(data / STORE_DB_NAME, canonical=True)  # the real main
+    (data / "readme.txt").write_text("plain sibling", encoding="utf-8")
+    return home
+
+
+def test_collision_dry_run_refuses_typed_exit_20(sys_env: dict[str, Path], tmp_path: Path) -> None:
+    """The dry-run refuses too: the plan is invalid by construction."""
+    home = make_source_with_legacy_tail(tmp_path)
+    result = runner.invoke(app, ["migrate-store", "--from", str(home), "--target", "system"])
+    assert result.exit_code == 20, _output(result)
+    text = _output(result)
+    # the conflicting pairs are named, with the remediation
+    assert str(home / "data" / LEGACY_NAME) in text
+    assert str(home / "data" / STORE_DB_NAME) in text
+    assert "remove or rename" in text
+    assert "nothing was written" in text
+
+
+def test_collision_refusal_typed_and_writes_nothing(
+    sys_env: dict[str, Path], tmp_path: Path
+) -> None:
+    home = make_source_with_legacy_tail(tmp_path)
+    with pytest.raises(sm.TargetNameCollisionError) as dry:
+        _plan_system(home)
+    assert dry.value.exit_code == 20
+    assert "vesma.db" in str(dry.value)
+    # apply refuses on the SAME plan-invalidity
+    with pytest.raises(sm.TargetNameCollisionError):
+        _plan_system(home, apply=True)
+    # nothing was written anywhere: no snapshot, no staging, fresh target
+    assert not list(tmp_path.glob("migrate-snapshot-*"))
+    assert not list(tmp_path.glob("*.staging-*"))
+    assert [p.name for p in sys_env["data_root"].iterdir()] == ["install-state.yaml"]
+
+
+def test_no_tail_same_shape_migrates_green(sys_env: dict[str, Path], tmp_path: Path) -> None:
+    """The contrast leg: the same shape WITHOUT the tail is the expected
+    6.0 relocation — green, the real main lands as the target db, and
+    the C8 legs stay ok (no existing pin weakened)."""
+    home = make_source_6x(tmp_path)
+    report = _apply_system(home, sys_env)
+    assert report.records == 1
+    assert report.verification is not None
+    assert report.verification["sha256_parity"] == "ok"
+    assert report.verification["sibling_table_parity"] == "ok"
+    conn = _target_db(sys_env["data_root"])
+    try:
+        assert conn.execute("SELECT count(*) FROM memories").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def _insert_main_record(db_path: Path) -> None:
+    """One legacy-namespace record (the 5.x main the run must publish)."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(_DB_SCHEMA)
+        conn.execute(
+            """INSERT INTO memories
+               (id, content, title, tags, source, memory_type, created_at,
+                updated_at, metadata, project, agent, status, marker_version)
+               VALUES ('id-1', 'main-content', 'main-title', ?, 'mcp',
+                       'note', '2026-10-28T00:00:00Z', '2026-10-28T00:00:00Z',
+                       '{}', 'mnemos', 'user', 'published', 1)""",
+            ('["project:mnemos","agent:user"]',),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_tail_record(db_path: Path) -> None:
+    """One CANONICAL-namespace record (the tail that must NOT win)."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(_DB_SCHEMA)
+        conn.execute(
+            """INSERT INTO memories
+               (id, content, title, tags, source, memory_type, created_at,
+                updated_at, metadata, project, agent, status, marker_version)
+               VALUES ('id-tail', 'tail-content', 'tail-title', ?, 'mcp',
+                       'note', '2026-10-28T00:00:00Z', '2026-10-28T00:00:00Z',
+                       '{}', 'vesma', 'user', 'published', 1)""",
+            ('["vesma:note"]',),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_collision_surviving_plan_is_loud_and_last_writer_verified(
+    sys_env: dict[str, Path], tmp_path: Path
+) -> None:
+    """Defense-in-depth pin: a collision that BYPASSED build_plan (a
+    hand-built plan — the only way left past the typed refusal) must
+    neither pass silently nor publish the displaced source: loud
+    last-writer lines ride the report, the target holds the MAIN db
+    content, the tail survives only in the snapshot."""
+    home = tmp_path / "bypass-home"
+    data = home / "data"
+    data.mkdir(parents=True)
+    _insert_main_record(data / LEGACY_NAME)
+    plan = _plan_system(home)  # no collision yet: the tail does not exist
+    # the tail appears between plan and run (the slipped-collision shape)
+    _insert_tail_record(data / STORE_DB_NAME)
+    collided_plan = dataclasses.replace(
+        plan,
+        mode="apply",
+        planned_files=(
+            *plan.planned_files,
+            sm.PlannedFile(
+                source=data / STORE_DB_NAME,
+                target=plan.target_home / STORE_DB_NAME,
+                size_bytes=(data / STORE_DB_NAME).stat().st_size,
+                via_backup_api=True,
+            ),
+        ),
+    )
+    report = sm.run_migration(collided_plan)
+    loud = [w for w in report.warnings if "target-name collision survived planning" in w]
+    assert len(loud) == 1
+    assert "last writer wins" in loud[0]
+    conn = _target_db(sys_env["data_root"])
+    try:
+        ids = {str(row[0]) for row in conn.execute("SELECT id FROM memories")}
+    finally:
+        conn.close()
+    assert ids == {"id-1"}  # the MAIN db won; the tail's row is absent
+    snap_conn = sqlite3.connect(str(plan.snapshot_dir / "data" / STORE_DB_NAME))
+    try:
+        snap_ids = {str(row[0]) for row in snap_conn.execute("SELECT id FROM memories")}
+    finally:
+        snap_conn.close()
+    assert snap_ids == {"id-tail"}  # the displaced source is in the snapshot only
+
+
+def test_user_target_tail_keeps_already_migrated_refusal(tmp_path: Path) -> None:
+    """The USER-target contract keeps its polite refusal (exit 7 —
+    existing pin, NOT weakened): the tail shape is an already-migrated
+    source there, and exit 7 legitimately precedes the collision code."""
+    home = make_source_with_legacy_tail(tmp_path)
+    with pytest.raises(sm.AlreadyMigratedError):
+        sm.build_plan(home, tmp_path / "fresh-target", apply=False)
