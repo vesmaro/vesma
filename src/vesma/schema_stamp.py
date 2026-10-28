@@ -13,7 +13,10 @@ rebuilds): per-store migrations keep evolving inside a generation; the
 generation stamp moves only when the home-wide contract does.
 
 Physical map of a home (the contract's «8 баз» counts logical stores;
-they share 4 files — verified against the wiring, 2026-10-28):
+they share 4 files — verified against the wiring, 2026-10-28; the metrics
+sidecar's file name is owned by :mod:`vesma.metrics.schema` and is
+deliberately not spelled here — the C1 isolation canary keeps that name
+inside the package):
 
 ========================  =============================================
 file                      logical stores living in it
@@ -21,7 +24,7 @@ file                      logical stores living in it
 ``vesma.db``              main store + sessions + auth + agent tokens
 ``vectors.db``            vector store
 ``code_graph.db``         project graph + its audit trail
-``metrics.sqlite``        vitals/awareness sink
+the metrics sidecar       vitals/awareness sink (name: metrics.schema)
 ========================  =============================================
 
 Legacy homes predate the stamp and read ``user_version == 0`` on every
