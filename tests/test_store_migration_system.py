@@ -1654,6 +1654,8 @@ def test_user_target_tail_keeps_already_migrated_refusal(tmp_path: Path) -> None
     home = make_source_with_legacy_tail(tmp_path)
     with pytest.raises(sm.AlreadyMigratedError):
         sm.build_plan(home, tmp_path / "fresh-target", apply=False)
+
+
 # ── C10 drop action (card 4c8a0cbe): user-path keys never travel ─────────────
 
 
@@ -1698,8 +1700,7 @@ def test_c10_apply_neutralizes_user_path_log_key_and_reports_loud(
     doc = yaml.safe_load(conffile)
     assert doc["logging"]["log_file"] == ""
     assert any(
-        warning.startswith("dropped user-path key: logging.log_file")
-        for warning in report.warnings
+        warning.startswith("dropped user-path key: logging.log_file") for warning in report.warnings
     )
     assert all(carried_value not in warning for warning in report.warnings)
 
@@ -1709,3 +1710,4 @@ def test_c10_apply_without_log_key_has_no_drop_line(
 ) -> None:
     home = make_source_6x(tmp_path)
     report = _apply_system(home, sys_env)
+    assert not any(warning.startswith("dropped user-path key:") for warning in report.warnings)
