@@ -14,6 +14,7 @@ W3 — replace the inline probe when that lands.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import getpass
 import grp
@@ -1095,7 +1096,8 @@ def _dr20() -> Finding:
     alive = _supervisor_alive()
 
     registry_note = ""
-    try:
+    # advisory context only — a missing/corrupt registry never fails DR-20
+    with contextlib.suppress(Exception):
         from vesma.service.instance_registry import load_registry
 
         state = load_registry()
@@ -1108,8 +1110,6 @@ def _dr20() -> Finding:
             )
         elif state.problem is not None:
             registry_note = f"; {state.problem}"
-    except Exception:
-        pass  # advisory context only
 
     if held:
         holder_desc = holder.describe() if holder is not None else "payload unreadable"
