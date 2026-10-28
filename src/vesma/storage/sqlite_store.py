@@ -40,6 +40,7 @@ from vesma.models import (
     Project,
     Trace,
 )
+from vesma.schema_stamp import apply_schema_stamp
 
 logger = logging.getLogger(__name__)
 
@@ -1386,6 +1387,9 @@ class SQLiteStore:
                     conn.execute("PRAGMA busy_timeout=5000")
                     conn.executescript(_DB_SCHEMA)
                     self._run_migrations(conn)
+                    # ADR-0049 wave 0: the file joins the home-wide schema
+                    # generation (no-op on an already-stamped file).
+                    apply_schema_stamp(conn)
                     # Cascade fix 2026-10-09: sqlite creates the db + the
                     # WAL/SHM sidecars under the process umask — narrow to
                     # 0600 right after bootstrap (no-op when compliant).

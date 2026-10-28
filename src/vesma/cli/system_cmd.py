@@ -24,6 +24,10 @@ from rich.text import Text
 
 from vesma.service.errors import ManifestError
 from vesma.service.install import InstallError
+from vesma.service.instance_registry import (
+    forget_profile_instance,
+    record_system_profile_instance,
+)
 from vesma.service.system_install import (
     SystemInstallError,
     install_system,
@@ -104,6 +108,11 @@ def system_install() -> None:
         style = "[yellow]⚠[/yellow]" if (downgraded_line or warn_line) else "[green]✓[/green]"
         console.print(style, Text(line))
     console.print(f"[green]Service installed ({result.unit_path}).[/green]")
+    # ADR-0049 wave 0: the registry is ADVISORY — a write problem is a
+    # reported line, never an install failure.
+    problem = record_system_profile_instance(result.unit_path.name)
+    if problem is not None:
+        console.print("[yellow]⚠[/yellow]", Text(problem))
 
 
 @system_app.command(name="uninstall")
@@ -170,6 +179,12 @@ def system_uninstall(
         _fail_system(exc)
     _print_report(result.lines, ("WARN:", "preserved"))
     console.print("[green]Uninstall complete.[/green]")
+    # ADR-0049 wave 0: the whole-profile uninstall drops the instance's
+    # registry row. Advisory — a problem is a reported line, never an
+    # uninstall failure.
+    problem = forget_profile_instance(profile="system")
+    if problem is not None:
+        console.print("[yellow]⚠[/yellow]", Text(problem))
 
 
 @system_app.command(name="update")

@@ -33,6 +33,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from vesma.schema_stamp import apply_schema_stamp
+
 logger = logging.getLogger(__name__)
 
 #: Allowed node kinds (ADR-0032 §3.1; CHECK-enforced). ``Command`` /
@@ -337,6 +339,9 @@ class CodeGraphStore:
         with self._bootstrap_lock:
             conn.executescript(_SCHEMA)
             self._migrate_schema(conn)
+            # ADR-0049 wave 0: the home-wide generation stamp (distinct
+            # axis from the per-store SCHEMA_VERSION rebuilds above).
+            apply_schema_stamp(conn)
         conn.commit()
 
     def _migrate_schema(self, conn: sqlite3.Connection) -> None:

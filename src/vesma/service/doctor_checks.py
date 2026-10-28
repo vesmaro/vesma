@@ -1030,6 +1030,127 @@ def _dr19() -> Finding:
     return Finding("DR-19", title, severity, detail, fix)
 
 
+# ── DR-20: second writer on the store home (ADR-0049 Lock 1, wave 0) ─────────
+
+
+def _supervisor_alive() -> bool:
+    """True when the user-profile supervisor answers a control hello (the
+    DR-08 liveness predicate, extracted for the writer-lock cross-check;
+    a stale socket, a probe failure and an absent socket all read NOT
+    alive — DR-08 carries the finer statuses)."""
+    sock_path = layout.resolve_runtime_dir().path / "control.sock"
+    if not sock_path.exists():
+        return False
+    request = json.dumps({"id": 1, "method": "hello", "params": {"protocol_version": 1}})
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(2.0)
+            sock.connect(str(sock_path))
+            sock.sendall((request + "\n").encode("utf-8"))
+            sock.recv(4096)
+    except OSError:
+        return False
+    return True
+
+
+def _user_store_home() -> Path:
+    """The USER profile's store home, resolved leniently (env + defaults,
+    no config-file demand) — the same resolution the instance registry's
+    wave-0 writer uses, so the probed home and the recorded row agree."""
+    from vesma.config import Settings
+
+    settings = Settings()
+    settings.resolve_paths()
+    return settings.vesma.data_dir
+
+
+def _dr20() -> Finding:
+    """Second writer on the store home (ADR-0049 wave 0).
+
+    The per-home writer lock's LIVE verdict against the supervisor's
+    liveness — the flock is the authority, the holder file is the
+    attribution:
+
+    - lock held + supervisor alive → the DESIGNED state (the supervisor
+      IS the exclusive holder) → OK, holder named;
+    - lock held + NO supervisor → the DR-20 hazard class: a writer-of-
+      record nobody supervises (a mover transit in flight, or a foreign /
+      second supervisor) → FAIL with the holder's attribution;
+    - supervisor alive + lock FREE → the single-writer invariant is not
+      enforced on this machine (a pre-wave-0 build?) → WARN;
+    - nothing holds, nothing runs → OK.
+
+    Advisory context: the instance registry's row for this home joins the
+    detail (registry problems never flip the severity — advisory by
+    contract).
+    """
+    title = "second writer on the store home"
+    try:
+        store_home = _user_store_home()
+    except Exception as exc:  # doctor reports, never crashes
+        return Finding("DR-20", title, Severity.WARN, f"store home unresolved: {exc}")
+    from vesma.service.home_lock import probe_writer_lock
+
+    held, holder = probe_writer_lock(store_home)
+    alive = _supervisor_alive()
+
+    registry_note = ""
+    try:
+        from vesma.service.instance_registry import load_registry
+
+        state = load_registry()
+        rows = [row for row in state.entries if str(store_home) == row.home]
+        if rows:
+            row = rows[0]
+            registry_note = (
+                f"; registry: profile={row.profile} endpoint={row.endpoint!r} "
+                f"unit={row.unit!r} instance_id={row.instance_id!r}"
+            )
+        elif state.problem is not None:
+            registry_note = f"; {state.problem}"
+    except Exception:
+        pass  # advisory context only
+
+    if held:
+        holder_desc = holder.describe() if holder is not None else "payload unreadable"
+        if alive:
+            return Finding(
+                "DR-20",
+                title,
+                Severity.OK,
+                f"the supervisor holds the home writer lock "
+                f"({store_home}): {holder_desc}{registry_note}",
+            )
+        return Finding(
+            "DR-20",
+            title,
+            Severity.FAIL,
+            f"a writer-of-record holds {store_home} while NO supervisor is "
+            f"running — a mover transit in flight, or a foreign/second "
+            f"supervisor (the two-writers hazard): {holder_desc}{registry_note}",
+            "identify the holder from the attribution above; if it is a "
+            "mover, let it finish; otherwise stop it, then re-run `vesma "
+            "doctor`",
+        )
+    if alive:
+        return Finding(
+            "DR-20",
+            title,
+            Severity.WARN,
+            f"the supervisor runs WITHOUT the home writer lock ({store_home}) "
+            "— the single-writer invariant is not enforced on this machine "
+            f"(a pre-wave-0 build?){registry_note}",
+            "restart under the current build: vesma service stop && vesma service start",
+        )
+    return Finding(
+        "DR-20",
+        title,
+        Severity.OK,
+        f"no writer-of-record holds the home ({store_home}) and no "
+        f"supervisor is running{registry_note}",
+    )
+
+
 # ── DR-14: profile isolation — user ↔ system roots + stamp cross-checks
 # (specs/layout/v2 §3.1; the data-root minimal leg landed with rollout 2,
 # the config-root overlap and the stamp cross-checks complete the matrix
@@ -1543,7 +1664,8 @@ def run_service_checks() -> list[Finding]:
     full matrix), DR-15 (system rights vs the FHS manifest incl. the
     env.d 0600 FAIL gate), DR-16 (symlink-revision integrity),
     DR-17 (generation mixing + system state↔fs inversion), DR-18 (system
-    unit vs regeneration), DR-19 (generation advisories, both profiles).
+    unit vs regeneration), DR-19 (generation advisories, both profiles),
+    DR-20 (second writer on the store home — ADR-0049 wave 0).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -1581,6 +1703,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-17", "install-state ↔ filesystem (generations + system inversion)", _dr17),
         ("DR-18", "system unit vs regeneration", _dr18),
         ("DR-19", "layout generation advisories", _dr19),
+        ("DR-20", "second writer on the store home", _dr20),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

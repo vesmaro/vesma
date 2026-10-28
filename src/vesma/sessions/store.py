@@ -34,6 +34,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from vesma.schema_stamp import apply_schema_stamp
 from vesma.sessions.models import (
     LoadMode,
     Outcome,
@@ -151,6 +152,7 @@ class SessionStore:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA busy_timeout=5000")
             self._ensure_schema(conn)
+            apply_schema_stamp(conn)  # ADR-0049 wave 0 (no-op when stamped)
             self._local.conn = conn
         return conn
 

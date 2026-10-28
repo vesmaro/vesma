@@ -69,6 +69,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from vesma.schema_stamp import apply_schema_stamp
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -506,6 +508,7 @@ class AgentTokenStore:
         self._conn.execute("PRAGMA foreign_keys=ON")
         with self._lock:
             self._conn.executescript(_AGENT_TOKEN_DDL)
+            apply_schema_stamp(self._conn)  # ADR-0049 wave 0
             self._conn.commit()
 
     # ── writes ───────────────────────────────────────────────────────────

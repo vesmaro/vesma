@@ -17,6 +17,7 @@ from typing import Any, cast
 import numpy as np
 
 from vesma.fs_hardening import ensure_private_dir, harden_file
+from vesma.schema_stamp import apply_schema_stamp
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS embeddings (
@@ -41,6 +42,7 @@ class VectorStore:
         conn.execute(_CREATE_INDEX)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        apply_schema_stamp(conn)  # ADR-0049 wave 0
         conn.commit()
         # The db + WAL/SHM sidecars were created under the process umask.
         db_path = Path(self._db_path)
