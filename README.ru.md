@@ -109,7 +109,7 @@ curl -fsS http://localhost:8787/health  # → {"status":"ok"}
 # легаси-имя ассета — unit-файл остаётся vesma.container до деплой-волны
 cp deploy/podman/quadlet/vesma.container ~/.config/containers/systemd/
 # впишите TOTP-ключ в ~/.vesma.env (оба имени переменной), затем:
-podman pull ghcr.io/vesmaro/vesma:6.6.0  # образы публикуются синхронно с каждым релизом
+podman pull ghcr.io/vesmaro/vesma:6.7.0  # образы публикуются синхронно с каждым релизом
 # quadlet выводит имя unit из имени файла — пока это vesma.service
 systemctl --user daemon-reload && systemctl --user start vesma
 curl -fsS http://localhost:8787/health
