@@ -330,14 +330,21 @@ def test_systemd_units_valid() -> None:
     # on a problem. Treat a clean exit as pass.
     if verify.returncode != 0:
         # Some systemd versions warn about the missing EnvironmentFile at
-        # verify time (the file is not present in CI). Distinguish that from a
-        # real structural error: if the only complaint is the EnvironmentFile
-        # or a missing binary, the unit structure is still valid.
+        # verify time (the file is not present in CI), and `verify` walks
+        # the full unit graph — the RUNNER's own units produce removed-option
+        # noise on image updates (2026-10-29: xfs_scrub/walinuxagent
+        # CPUAccounting lines failed this test with zero relation to ours).
+        # Structural = a complaint that names OUR units, minus the expected
+        # EnvironmentFile / missing-binary classes.
         msg = verify.stderr + verify.stdout
+        our_units = (SERVICE.name, TIMER.name)
         structural_errors = [
             line
             for line in msg.splitlines()
-            if line and "EnvironmentFile" not in line and "Command" not in line
+            if line
+            and any(name in line for name in our_units)
+            and "EnvironmentFile" not in line
+            and "Command" not in line
         ]
         assert not structural_errors, f"systemd-analyze verify reported structural errors:\n{msg}"
 

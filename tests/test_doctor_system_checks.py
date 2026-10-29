@@ -299,10 +299,30 @@ class TestDr17SystemInversion:
     def test_conffile_zone_is_exempt(self, sim: Path) -> None:
         """Operator conffile-zone content (drop-ins, env secrets, config)
         is operator-provisioned BY the manifest — its presence is never
-        state↔fs drift."""
+        state↔fs drift. The drop-in is a VALID manifest: the doctor's
+        installation load (now the dispatched canonical dir) is
+        fail-closed on garbage, DR-00 owns that class."""
         install_system()
-        (sim / "etc/vesma/components.d/mycomp.yaml").write_text(
-            "operator drop-in\n", encoding="utf-8"
+        (sim / "etc/vesma/components.d/mesh.yaml").write_text(
+            # Minimal VALID operator manifest (the owner's Go sidecar
+            # shape, in-process so no venv leg exists).
+            "apiVersion: vesma.component/v1\n"
+            "kind: in-process\n"
+            "metadata:\n"
+            "  name: mesh\n"
+            "  version: 0.4.2\n"
+            "  tier: optional\n"
+            '  description: "Operator-authored sidecar (conffile-zone fixture)."\n'
+            "  provenance:\n"
+            "    repo: https://example.invalid/mesh\n"
+            "    license: MIT\n"
+            "in_process:\n"
+            "  module: vesma.service.board\n"
+            "  entrypoint: create_component\n"
+            "  python:\n"
+            '    version: ">=3.11"\n'
+            "depends_on: [board]\n",
+            encoding="utf-8",
         )
         env_dir = sim / "etc/vesma/env.d"
         (env_dir / "app.env").write_text("TOKEN=redacted\n", encoding="utf-8")
