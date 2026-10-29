@@ -97,6 +97,26 @@ _RECV_CHUNK = 65536
 _FOLLOW_POLL_S = 0.2  # follow-loop poll ceiling (idle/hard-cap reactivity)
 
 
+def socket_path_for(instance_id: str | None) -> tuple[Path, bool]:
+    """``(path, used_fallback)`` for the instance's control socket.
+
+    ``None`` (or the literal ``default``) — today's canonical
+    ``${XDG_RUNTIME_DIR}/vesma/control.sock`` byte-for-byte (backward
+    compatibility, ADR-0049 §3). Any other id —
+    ``${XDG_RUNTIME_DIR}/vesma/instances/<id>/control.sock``; the state-home
+    fallback mirrors the same shape (``<run>/instances/<id>/control.sock``).
+    The WARN line for the fallback branch is emitted by
+    :func:`vesma.service.layout.resolve_runtime_dir`; the ``instances/<id>``
+    directory itself is created by the §4.2 bind.
+    """
+    from vesma.service.instance import runtime_instance_dir
+
+    resolution = layout.resolve_runtime_dir()
+    return runtime_instance_dir(resolution.path, instance_id) / SOCKET_NAME, (
+        resolution.used_fallback
+    )
+
+
 def default_socket_path() -> tuple[Path, bool]:
     """``(path, used_fallback)`` for ``${XDG_RUNTIME_DIR}/vesma/control.sock``.
 
@@ -104,8 +124,7 @@ def default_socket_path() -> tuple[Path, bool]:
     (``~/.local/state/vesma/run/control.sock``) — the WARN line is
     emitted by :func:`vesma.service.layout.resolve_runtime_dir`.
     """
-    resolution = layout.resolve_runtime_dir()
-    return resolution.path / SOCKET_NAME, resolution.used_fallback
+    return socket_path_for(None)
 
 
 # ── Typed errors the server surface carries ───────────────────────────
@@ -361,19 +380,28 @@ def _is_response_frame(line: bytes) -> bool:
     return ("result" in doc and "error" not in doc) or ("error" in doc and "result" not in doc)
 
 
-def hello_result() -> dict[str, Any]:
-    """The §4.4 hello success payload (engine version, not contract version)."""
+def hello_result(instance_id: str | None = None) -> dict[str, Any]:
+    """The §4.4 hello success payload (engine version, not contract version).
+
+    ``instance_id`` (ADR-0049 Lock 3, wave 1) names the serving instance:
+    ``None`` means the default instance and is reported AS
+    ``"default"`` — the field is always present, so clients can rely on
+    it (older servers simply never send it).
+    """
     try:
         from vesma import __version__
 
         engine_version: str = __version__
     except Exception:  # pragma: no cover - metadata always present in installs
         engine_version = "0.0.0"
+    from vesma.service.instance import DEFAULT_INSTANCE_ID
+
     return {
         "protocol_version": PROTOCOL_VERSION,
         "min_protocol": MIN_PROTOCOL,
         "server_version": engine_version,
         "pid": os.getpid(),
+        "instance_id": instance_id if instance_id is not None else DEFAULT_INSTANCE_ID,
     }
 
 
@@ -682,6 +710,8 @@ class ControlServer:
         max_connections: int = MAX_CONNECTIONS,
         hello_timeout_s: float = HELLO_TIMEOUT_S,
         send_deadline_s: float = SEND_DEADLINE_S,
+        instance_id: str | None = None,
+        socket_instance_id: str | None = None,
         log: logging.Logger | None = None,
     ) -> None:
         self._backend = backend
@@ -695,6 +725,15 @@ class ControlServer:
         self._max_connections = max_connections
         self._hello_timeout_s = hello_timeout_s
         self._send_deadline_s = send_deadline_s
+        # ADR-0049 Lock 3: the identity this server reports in every hello
+        # frame (None = the default instance, reported as "default").
+        self._instance_id = instance_id
+        # The ENDPOINT namespace the default bind() derives the socket dir
+        # from: None/``default`` → today's canonical path; any other id →
+        # ``instances/<id>/`` (wave 1). Deliberately separate from the
+        # hello identity: the default instance has a MINTED uuid identity
+        # but keeps the canonical socket.
+        self._socket_instance_id = socket_instance_id
         self._follows = _FollowCounters()
         self._listener: socket.socket | None = None
         self._sock_path: Path | None = None
@@ -715,10 +754,12 @@ class ControlServer:
         return self._listener is not None
 
     def bind(self) -> BindResult:
-        """Run the §4.2 procedure at the canonical path; keep the listener."""
-        resolution = layout.resolve_runtime_dir()
-        self._used_fallback = resolution.used_fallback
-        return self.bind_at(resolution.path / SOCKET_NAME)
+        """Run the §4.2 procedure at the instance's canonical path; keep
+        the listener (default instance → today's socket path; a named
+        instance → ``instances/<id>/control.sock``, ADR-0049 wave 1)."""
+        path, used_fallback = socket_path_for(self._socket_instance_id)
+        self._used_fallback = used_fallback
+        return self.bind_at(path)
 
     def bind_at(self, path: Path) -> BindResult:
         """Bind an explicit path (same §4.2 procedure)."""
@@ -986,7 +1027,7 @@ class ControlServer:
                 f"unsupported protocol major {version}",
                 {"supported": SUPPORTED_MAJORS},
             )
-        return hello_result()
+        return hello_result(self._instance_id)
 
     def _run_follow(self, conn: socket.socket, peer_key: str, request: _Request) -> bool:
         """``logs follow=true``: stream frames until a final answer (§4.5/§4.7)."""

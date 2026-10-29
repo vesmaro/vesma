@@ -19,7 +19,9 @@ Advisory status, per contract: ``install``/``update`` WRITE,
 ``doctor``/CLI READ. A write failure is a reported problem line — the
 install itself never fails because the registry could not be updated; a
 read failure yields an empty registry plus the problem for the reader to
-surface. ``instance_id`` stays ``None`` until wave 1 mints it.
+surface. Since wave 1 (ADR-0049 Lock 3) the writers mint the instance id
+and record it (the wave-0 ``None`` placeholder; an unmintable identity
+degrades advisorially to ``None`` + the problem line).
 """
 
 from __future__ import annotations
@@ -179,40 +181,100 @@ def _write_rows(rows: list[dict[str, object]]) -> str | None:
 
 
 def record_user_profile_instance(unit_name: str) -> str | None:
-    """Wave-0 writer for the USER profile installs: resolves the current
-    settings leniently (defaults, no config-file demand) and upserts the
-    row. Advisory — callers print the problem, never raise."""
+    """Writer for the USER profile installs: resolves the current
+    settings leniently (defaults, no config-file demand), mints/loads the
+    instance id (ADR-0049 Lock 3, wave 1 — the wave-0 ``None`` placeholder
+    is filled from here on) and upserts the row. Advisory — callers print
+    the problem, never raise."""
     from vesma.config import Settings
+    from vesma.service.instance import (
+        InstanceError,
+        ensure_instance_id,
+        resolve_requested_instance_id,
+    )
 
     settings = Settings()
     settings.resolve_paths()
-    return record_instance(
+    mint_problem: str | None = None
+    try:
+        instance_id = ensure_instance_id(
+            settings.vesma.data_dir, env_value=resolve_requested_instance_id()
+        )
+    except (InstanceError, OSError) as exc:
+        # Advisory: an unmintable identity still installs — the row
+        # carries instance_id=None and the problem line explains it.
+        instance_id, mint_problem = None, f"user instance-id mint failed: {exc}"
+    problem = record_instance(
         InstanceEntry(
             profile="user",
             home=str(settings.vesma.data_dir),
             endpoint=f"http://{settings.api.host}:{settings.api.port}",
             unit=unit_name,
-            instance_id=None,
+            instance_id=instance_id,
             updated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
     )
+    if mint_problem is not None:
+        problem = f"{problem}; {mint_problem}" if problem else mint_problem
+    return problem
+
+
+def _mint_system_instance_id(system_home: Path) -> tuple[str | None, str | None]:
+    """The SYSTEM home's instance id + an advisory note (or ``None``).
+
+    The id file is minted by the ROOT installer but must stay readable —
+    and re-writable at a later boot — by the SERVICE account: ``0644`` +
+    account ownership when the account resolves (the id is an identifier,
+    never a secret). ``InstanceHomeMismatchError`` cannot happen here (no
+    env claim at a system install); any other failure degrades
+    advisorially to ``(None, problem)``.
+    """
+    import grp
+    import pwd
+
+    from vesma.service.instance import InstanceError, ensure_instance_id, id_file_path
+    from vesma.service.unitgen import SYSTEM_GROUP, SYSTEM_USER
+
+    try:
+        instance_id = ensure_instance_id(system_home)
+    except (InstanceError, OSError) as exc:
+        return None, f"system instance-id mint failed ({system_home}): {exc}"
+    path = id_file_path(system_home)
+    note: str | None = None
+    try:
+        os.chmod(path, 0o644)
+        uid = pwd.getpwnam(SYSTEM_USER).pw_uid
+        gid = grp.getgrnam(SYSTEM_GROUP).gr_gid
+        os.chown(path, uid, gid)
+    except (OSError, KeyError) as exc:
+        note = (
+            f"system instance-id file left installer-owned ({path}): {exc} — "
+            f"the {SYSTEM_USER} account may not be able to rewrite it at boot"
+        )
+    return instance_id, note
 
 
 def record_system_profile_instance(unit_name: str) -> str | None:
-    """Wave-0 writer for the SYSTEM profile installs (the FHS data root
-    is the home). Advisory — callers print the problem, never raise."""
+    """Writer for the SYSTEM profile installs (the FHS data root is the
+    home); wave 1 fills ``instance_id`` (ADR-0049 Lock 3). Advisory —
+    callers print the problem, never raise."""
     from vesma.service import fhs
 
-    return record_instance(
+    system_home = fhs.system_data_root()
+    instance_id, mint_note = _mint_system_instance_id(system_home)
+    problem = record_instance(
         InstanceEntry(
             profile="system",
-            home=str(fhs.system_data_root()),
+            home=str(system_home),
             endpoint=None,
             unit=unit_name,
-            instance_id=None,
+            instance_id=instance_id,
             updated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
     )
+    if mint_note is not None:
+        problem = f"{problem}; {mint_note}" if problem else mint_note
+    return problem
 
 
 def forget_profile_instance(*, profile: str) -> str | None:

@@ -170,17 +170,19 @@ def _validate_tree_name(name: str) -> None:
         )
 
 
-def _write_unit(unit_text: str, report: list[str]) -> Path:
+def _write_unit(unit_text: str, report: list[str], *, unit_name: str = "vesma.service") -> Path:
     """Write the generated unit; v2 keeps canonical storage in sync.
 
     v1.5 (unchanged behavior): the unit file IS the only copy at the
     systemd user dir. v2 (§3.2-a.1): the canonical copy lives at
-    ``~/.vesma/systemd/user/vesma.service`` and the systemd location gets
+    ``~/.vesma/systemd/user/<unit_name>`` and the systemd location gets
     an atomic symlink — single source, no canonical↔installed drift.
+    ``unit_name`` parameterized for the ADR-0049 wave-1 instance
+    TEMPLATE unit (``vesma@.service``); the default stays ``vesma.service``.
     """
-    installed = _unit_path()
+    installed = layout.installed_unit_path(unit_name)
     if layout.detect_generation() is layout.LayoutGeneration.V2:
-        canonical = layout.unit_canonical_path()
+        canonical = layout.unit_canonical_path(unit_name)
         layout.ensure_dir(canonical.parent, layout.MODE_DIR_DEFAULT)
         _atomic_write(canonical, unit_text, 0o644)
         layout.ensure_dir(installed.parent, layout.MODE_DIR_DEFAULT)
@@ -575,6 +577,20 @@ def install() -> InstallResult:
     )
     unit_path = _write_unit(unit_text, report)
     report.append(f"unit: {unit_path} (0644, generated — do not edit)")
+
+    # 6b. The instance TEMPLATE unit (ADR-0049 wave 1): instantiates as
+    # vesma@<id>.service; the DEFAULT unit above stays byte-identical to
+    # its previous generation (backward compatibility, contract §3).
+    template_text = unitgen.generate_template_unit(
+        home=layout.home(),
+        engine_venv=engine_venv(),
+        read_write_paths=layout.unit_rw_paths(),
+        read_only_paths=layout.unit_ro_paths(),
+        downgraded=downgraded,
+    )
+    template_path = _write_unit(template_text, report, unit_name=unitgen.TEMPLATE_UNIT_NAME)
+    report.append(f"instance template unit: {template_path} (vesma@<id> instantiates it)")
+
     reload_status = _daemon_reload()
     report.append(f"systemctl --user daemon-reload: {reload_status}")
 

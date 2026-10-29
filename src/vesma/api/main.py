@@ -35,6 +35,7 @@ from vesma.api.federation import router as federation_router
 from vesma.api.middleware import (
     AuthMiddleware,
     DeprecationMiddleware,
+    InstanceIdHeaderMiddleware,
     VitalsVerbMiddleware,
 )
 from vesma.api.rate_limit import limiter
@@ -174,6 +175,14 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # calling load_settings() on every request.
     application.state.api_config = settings.api
 
+    # ADR-0049 Lock 3 (wave 1): the instance identity for the
+    # X-Vesma-Instance-Id response header — the SAME ensured identity the
+    # hello frame and instances.json carry (read-only here: the serve/run
+    # startup already minted it; direct app boots resolve without minting).
+    from vesma.service.instance import current_instance_id
+
+    application.state.instance_id = current_instance_id(settings.vesma.data_dir)
+
     # M16: own SessionStore lives on app.state so the A2A router can
     # pick it up.  Re-uses the same db_path as MemoryManager so the
     # schema and WAL are shared.
@@ -271,6 +280,10 @@ app.add_middleware(VitalsVerbMiddleware)
 # moves the routes physically. Orthogonal to the AuthMiddleware/VitalsVerb
 # bypass lists — no auth or vitals semantics change here.
 app.add_middleware(DeprecationMiddleware)
+# ADR-0049 wave 1 — every response names its instance (X-Vesma-Instance-Id;
+# additive observability: a bare test app without app.state.instance_id
+# serves unstamped, never fails).
+app.add_middleware(InstanceIdHeaderMiddleware)
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

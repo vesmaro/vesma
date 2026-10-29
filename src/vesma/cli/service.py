@@ -570,6 +570,27 @@ def run(
             "the in-process core is always single-process (workers=1)"
         )
 
+    # ADR-0049 wave 1 (Lock 3): the identity (env VESMA_INSTANCE_ID from
+    # the vesma@<id>.service template unit wins; the default instance
+    # mints uuid on first boot — stable across restarts) + the typed
+    # port-conflict refusal (card ff6a9385) BEFORE any bind. The socket
+    # namespace follows the REQUESTED id: the default instance keeps
+    # today's canonical socket, a template instance binds
+    # instances/<id>/control.sock.
+    from vesma.service.instance import (
+        InstanceError,
+        ensure_instance_id,
+        preflight_api_port,
+        resolve_requested_instance_id,
+    )
+
+    requested = resolve_requested_instance_id()
+    try:
+        identity = ensure_instance_id(settings.vesma.data_dir, env_value=requested)
+        preflight_api_port(host, port)
+    except InstanceError as exc:
+        _fail(str(exc))
+
     app = ServiceApp(
         manifests,
         socket_path=socket,
@@ -577,6 +598,8 @@ def run(
         log=logger,
         config=config,
         component_configs=dict(settings.components),
+        instance_id=identity,
+        socket_instance_id=requested,
     )
     try:
         outcome = app.bind()
@@ -590,7 +613,7 @@ def run(
     # lifetime, AFTER the endpoint guard (the same-endpoint case answers
     # «already running» above; a DIFFERENT-endpoint supervisor over the
     # SAME home refuses here with the holder's name).
-    lock_endpoint = f"service control={outcome.path} core=http://{host}:{port}"
+    lock_endpoint = f"service control={outcome.path} core=http://{host}:{port} instance={identity}"
     try:
         with writer_lock(settings.vesma.data_dir, endpoint=lock_endpoint):
             try:

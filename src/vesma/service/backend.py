@@ -383,22 +383,27 @@ def start_mesh_legs(
     if not settings.mesh.enabled:
         return None
     log = log or logger
+    # ADR-0049 wave 1 (card ba729a40): the effective socket comes from the
+    # INSTANCE (system profile → /run/vesma; a named user instance → its
+    # own runtime dir; an explicit operator setting always wins; the
+    # default user instance keeps today's path byte-for-byte).
+    from vesma.service.instance import effective_mesh_socket_path
+
+    socket_path = effective_mesh_socket_path(settings)
     try:
         from vesma.api.main import get_manager as get_api_manager
         from vesma.mesh_server import MeshServer
 
         manager = get_api_manager(config_path)
-        server = MeshServer(settings.mesh.socket_path, manager, settings)
+        server = MeshServer(socket_path, manager, settings)
         server.start()
     except MeshLegError:
         raise  # mesh_server's own fail-fast type: propagate verbatim
     except Exception as exc:
-        raise MeshLegError(
-            f"mesh server failed to start on {settings.mesh.socket_path}: {exc}"
-        ) from exc
+        raise MeshLegError(f"mesh server failed to start on {socket_path}: {exc}") from exc
     log.info(
         "mesh legs listening (unix: %s%s)",
-        settings.mesh.socket_path,
+        socket_path,
         f", tcp: {settings.mesh.tcp.bind}:{server.tcp_bound_port}"
         if settings.mesh.tcp.enabled and server.tcp_bound_port is not None
         else "",
@@ -446,6 +451,8 @@ class ServiceApp:
         log: logging.Logger | None = None,
         config: str | None = None,
         component_configs: Mapping[str, Mapping[str, Any]] | None = None,
+        instance_id: str | None = None,
+        socket_instance_id: str | None = None,
     ) -> None:
         self._log = log or logger
         self._with_core = with_core
@@ -478,7 +485,19 @@ class ServiceApp:
             component_configs=self._component_configs,
         )
         self.backend = SupervisorBackend(self.supervisor, self.buffer)
-        self.server = ControlServer(self.backend, log=self._log)
+        # ADR-0049 Lock 3 (wave 1): ``instance_id`` is the hello-frame
+        # identity (minted uuid for the default instance);
+        # ``socket_instance_id`` is the ENDPOINT namespace the default
+        # bind() derives the socket dir from (None = today's canonical
+        # path; a template unit's env id → ``instances/<id>/``).
+        self.instance_id = instance_id
+        self.socket_instance_id = socket_instance_id
+        self.server = ControlServer(
+            self.backend,
+            instance_id=instance_id,
+            socket_instance_id=socket_instance_id,
+            log=self._log,
+        )
         self._socket_override = str(socket_path) if socket_path is not None else None
 
     # ── lifecycle ──

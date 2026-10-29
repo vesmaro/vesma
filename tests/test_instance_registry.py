@@ -19,6 +19,7 @@ from vesma.service.instance_registry import (
     forget_profile_instance,
     load_registry,
     record_instance,
+    record_system_profile_instance,
     record_user_profile_instance,
     registry_path,
 )
@@ -142,3 +143,64 @@ def test_unwritable_registry_reports_problem_not_raise(
     )
     problem = record_instance(_entry())
     assert problem is not None and "update failed" in problem
+
+
+# ── wave 1 (ADR-0049 Lock 3): instance_id is minted and recorded ──────
+
+
+class TestWave1InstanceIdFill:
+    def test_user_writer_mints_and_records(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vesma.service.instance import id_file_path
+
+        home = tmp_path / "home" / ".vesma" / "data"
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("VESMA_INSTANCE_ID", raising=False)
+        assert record_user_profile_instance("vesma.service") is None
+        state = load_registry()
+        assert len(state.entries) == 1
+        row = state.entries[0]
+        assert row.instance_id is not None
+        # the SAME identity is persisted in the store home (stable across
+        # restarts; the boot path re-reads exactly this file)
+        assert id_file_path(home).read_text(encoding="utf-8").strip() == row.instance_id
+
+    def test_user_writer_records_env_claimed_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("VESMA_INSTANCE_ID", "work")
+        assert record_user_profile_instance("vesma.service") is None
+        row = load_registry().entries[0]
+        assert row.instance_id == "work"
+        assert row.endpoint == "http://127.0.0.1:8787"
+
+    def test_system_writer_mints_and_records(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import grp
+        import os
+        import pwd
+
+        from vesma.service import fhs
+
+        system_root = tmp_path / "var" / "lib" / "vesma"
+        monkeypatch.setattr(fhs, "system_data_root", lambda prefix=None: system_root, raising=False)
+        # Ownership resolves to THIS test account: a non-root chown to
+        # another account would be refused — the assertion targets the
+        # mint + readability, the root-only account transfer is an
+        # installer-flow concern.
+        monkeypatch.setattr("vesma.service.unitgen.SYSTEM_USER", pwd.getpwuid(os.geteuid()).pw_name)
+        monkeypatch.setattr("vesma.service.unitgen.SYSTEM_GROUP", grp.getgrgid(os.getgid()).gr_name)
+
+        result = record_system_profile_instance("vesma.service")
+        state = load_registry()
+        assert len(state.entries) == 1
+        row = state.entries[0]
+        assert row.profile == "system"
+        assert row.instance_id is not None, result
+        id_file = system_root / "instance-id"
+        assert id_file.exists()
+        assert id_file.read_text(encoding="utf-8").strip() == row.instance_id
+        assert id_file.stat().st_mode & 0o777 == 0o644

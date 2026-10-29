@@ -475,22 +475,23 @@ def run_fallback_dir() -> Path:
 # ── systemd unit locations (layout v2 §3.2-a.1) ───────────────────────
 
 
-def installed_unit_path() -> Path:
-    """``$XDG_CONFIG_HOME/systemd/user/vesma.service`` — where systemd
+def installed_unit_path(unit_name: str = "vesma.service") -> Path:
+    """``$XDG_CONFIG_HOME/systemd/user/<unit_name>`` — where systemd
     reads the unit, BOTH generations (the OS mandate; the one closed-list
-    exception of §3.2-a.1)."""
+    exception of §3.2-a.1). ``unit_name`` parameterized for the ADR-0049
+    wave-1 instance TEMPLATE unit (``vesma@.service``)."""
     config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
     base = Path(config_home) if config_home else home() / ".config"
-    return base / "systemd" / "user" / "vesma.service"
+    return base / "systemd" / "user" / unit_name
 
 
-def unit_canonical_path() -> Path:
-    """Canonical unit storage: ``~/.vesma/systemd/user/vesma.service`` (v2;
+def unit_canonical_path(unit_name: str = "vesma.service") -> Path:
+    """Canonical unit storage: ``~/.vesma/systemd/user/<unit_name>`` (v2;
     the install flow links it into :func:`installed_unit_path`) — v1.5 has
     no separate canonical storage, so the installed path IS canonical."""
     if detect_generation() is LayoutGeneration.V2:
-        return vesma_home() / "systemd" / "user" / "vesma.service"
-    return installed_unit_path()
+        return vesma_home() / "systemd" / "user" / unit_name
+    return installed_unit_path(unit_name)
 
 
 # ── §3.6 runtime ──────────────────────────────────────────────────────

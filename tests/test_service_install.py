@@ -748,3 +748,50 @@ class TestInstallAllBackup:
         assert backup.read_text(encoding="utf-8") == first_edits, (
             "the one-time rule: the FIRST divergence record survives"
         )
+
+
+# ── Instance template unit (ADR-0049 wave 1) ──────────────────────────
+
+
+class TestInstanceTemplateUnit:
+    def test_template_written_alongside_default(
+        self, installed: Path, fake_venv_installer: list[str]
+    ) -> None:
+        installed_unit = installed / ".config/systemd/user/vesma@.service"
+        canonical_unit = installed / ".vesma/systemd/user/vesma@.service"
+        assert installed_unit.exists()
+        assert canonical_unit.exists()
+        assert oct(installed_unit.stat().st_mode & 0o777) == oct(0o644)
+        assert installed_unit.is_symlink(), "v2: installed path is the canonical symlink"
+
+    def test_template_carries_instance_wiring(self, installed: Path) -> None:
+        text = (installed / ".config/systemd/user/vesma@.service").read_text(encoding="utf-8")
+        active, _ = unitgen.parse_unit(text)
+        assert "VESMA_INSTANCE_ID=%i" in active["Environment"]
+        assert active["RuntimeDirectory"] == "vesma/instances/%i"
+        assert active["RuntimeDirectoryMode"] == "0700"
+        assert active["SyslogIdentifier"] == "vesma@%i"
+        assert active["ExecStart"].endswith("/bin/vesma service run")
+        assert "ExecStop" not in active
+        assert active["WantedBy"] == "default.target"
+
+    def test_default_unit_text_unchanged_by_template_install(
+        self, installed: Path, fake_venv_installer: list[str]
+    ) -> None:
+        """Backward compatibility (contract §3): the DEFAULT unit's text is
+        byte-identical to a fresh generate() — the template wave never
+        rewrites the default instance's contract surface."""
+        on_disk = (installed / ".config/systemd/user/vesma.service").read_text(encoding="utf-8")
+        downgraded = tuple(sorted(unitgen.DOWNGRADE_ALLOWED)) if unitgen.container_detect() else ()
+        fresh = unitgen.generate(
+            home=layout.home(),
+            engine_venv=install_mod.engine_venv(),
+            read_write_paths=layout.unit_rw_paths(),
+            read_only_paths=layout.unit_ro_paths(),
+            downgraded=downgraded,
+        )
+        assert on_disk == fresh
+
+    def test_report_names_the_template(self, installed: Path) -> None:
+        result = install()
+        assert any("vesma@.service" in line for line in result.lines)
