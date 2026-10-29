@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -118,10 +119,24 @@ def test_serve_degrades_to_http_only_when_mesh_leg_fails(
             uvicorn_calls.append(kwargs)
 
     monkeypatch.setattr("uvicorn.run", _FakeUvicorn.run)
-    result = runner.invoke(app, ["serve"])
-    assert result.exit_code == 0, result.output
-    assert "HTTP-only (degraded)" in result.output
-    assert uvicorn_calls, "the HTTP server must still start"
+    # serve propagates host/port via the process environment (auth-1);
+    # an in-process invocation must not leak into the rest of the suite.
+    # The port is NOT the 8787 default: wave 1's preflight refuses a busy
+    # endpoint typed-loud, and on a live machine the default port belongs
+    # to the running service — this test owns an uncommon one.
+    leaked_env_keys = ("VESMA_API__HOST", "VESMA_API__PORT")
+    saved_env = {key: os.environ.get(key) for key in leaked_env_keys}
+    try:
+        result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "18924"])
+        assert result.exit_code == 0, result.output
+        assert "HTTP-only (degraded)" in result.output
+        assert uvicorn_calls, "the HTTP server must still start"
+    finally:
+        for key, prev in saved_env.items():
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
 
 
 # ── stub resolution (wheel vendoring, issue #514 tail) ────────────────────────

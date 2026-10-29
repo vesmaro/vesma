@@ -124,6 +124,13 @@ def test_serve_first_touch_builds_a_private_log_tree(
     root = logging.getLogger()
     saved_handlers = list(root.handlers)
     saved_level = root.level
+    # serve propagates its resolved host/port to workers via the process
+    # environment (auth-1) — an in-process CLI-runner invocation writes
+    # into THIS interpreter's os.environ and must not leak into the rest
+    # of the suite (the 28.10 CI incident: a later Settings() read the
+    # leaked port). Snapshot-restore both keys around the invocation.
+    leaked_env_keys = ("VESMA_API__HOST", "VESMA_API__PORT")
+    saved_env = {key: os.environ.get(key) for key in leaked_env_keys}
     try:
         with patch("uvicorn.run"):
             result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "18799"])
@@ -134,6 +141,11 @@ def test_serve_first_touch_builds_a_private_log_tree(
     finally:
         root.handlers = saved_handlers
         root.setLevel(saved_level)
+        for key, prev in saved_env.items():
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
 
 
 def test_existing_wider_paths_are_narrowed_never_widened(

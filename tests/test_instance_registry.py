@@ -171,6 +171,11 @@ class TestWave1InstanceIdFill:
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("VESMA_INSTANCE_ID", "work")
+        # The assertion targets the DEFAULT endpoint: ambient VESMA_API__*
+        # overrides (e.g. leaked by an earlier in-process serve invocation)
+        # must not redefine what "default" means here.
+        monkeypatch.delenv("VESMA_API__HOST", raising=False)
+        monkeypatch.delenv("VESMA_API__PORT", raising=False)
         assert record_user_profile_instance("vesma.service") is None
         row = load_registry().entries[0]
         assert row.instance_id == "work"
