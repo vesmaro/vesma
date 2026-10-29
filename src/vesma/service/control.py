@@ -711,6 +711,7 @@ class ControlServer:
         hello_timeout_s: float = HELLO_TIMEOUT_S,
         send_deadline_s: float = SEND_DEADLINE_S,
         instance_id: str | None = None,
+        socket_instance_id: str | None = None,
         log: logging.Logger | None = None,
     ) -> None:
         self._backend = backend
@@ -727,6 +728,12 @@ class ControlServer:
         # ADR-0049 Lock 3: the identity this server reports in every hello
         # frame (None = the default instance, reported as "default").
         self._instance_id = instance_id
+        # The ENDPOINT namespace the default bind() derives the socket dir
+        # from: None/``default`` → today's canonical path; any other id →
+        # ``instances/<id>/`` (wave 1). Deliberately separate from the
+        # hello identity: the default instance has a MINTED uuid identity
+        # but keeps the canonical socket.
+        self._socket_instance_id = socket_instance_id
         self._follows = _FollowCounters()
         self._listener: socket.socket | None = None
         self._sock_path: Path | None = None
@@ -750,7 +757,7 @@ class ControlServer:
         """Run the §4.2 procedure at the instance's canonical path; keep
         the listener (default instance → today's socket path; a named
         instance → ``instances/<id>/control.sock``, ADR-0049 wave 1)."""
-        path, used_fallback = socket_path_for(self._instance_id)
+        path, used_fallback = socket_path_for(self._socket_instance_id)
         self._used_fallback = used_fallback
         return self.bind_at(path)
 

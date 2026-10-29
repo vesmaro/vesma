@@ -49,6 +49,7 @@ from starlette.types import ASGIApp
 
 from vesma.api.auth_store import AuthStore
 from vesma.api.client_ip import resolve_client_ip
+from vesma.service.instance import INSTANCE_HEADER
 
 logger = logging.getLogger(__name__)
 
@@ -430,4 +431,29 @@ class DeprecationMiddleware(BaseHTTPMiddleware):
             logger.info("deprecation: legacy REST alias hit template=%s (first)", template)
         else:
             logger.debug("deprecation: legacy REST alias hit template=%s count=%d", template, count)
+        return response
+
+
+class InstanceIdHeaderMiddleware(BaseHTTPMiddleware):
+    """Stamp every response with the serving instance's id (ADR-0049
+    Lock 3, wave 1) — ``X-Vesma-Instance-Id: <id>``.
+
+    Multi-instance operators (and the wave-1 port-conflict preflight)
+    attribute a running API to its instance by this header. The value is
+    resolved by the lifespan into ``app.state.instance_id`` (the SAME
+    ensured identity the hello frame and the registry carry); a bare
+    test app without the state serves UNSTAMPED — the header is additive
+    observability and must never fail a request (unlike auth, which
+    fails closed by design).
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        instance_id = getattr(request.app.state, "instance_id", None)
+        if instance_id:
+            response.headers[INSTANCE_HEADER] = str(instance_id)
         return response

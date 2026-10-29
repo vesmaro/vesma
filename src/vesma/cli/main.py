@@ -1987,6 +1987,27 @@ def serve(
     os.environ["VESMA_API__HOST"] = h
     os.environ["VESMA_API__PORT"] = str(p)
 
+    # ADR-0049 wave 1 (Lock 3): resolve/mint THIS instance's identity
+    # (env VESMA_INSTANCE_ID wins; the default instance keeps today's
+    # paths and ports), then the typed port-conflict refusal (card
+    # ff6a9385) BEFORE the lock or any bind — the operator sees the
+    # holder's name instead of a raw uvicorn bind traceback.
+    from vesma.service.instance import (
+        InstanceError,
+        ensure_instance_id,
+        preflight_api_port,
+        resolve_requested_instance_id,
+    )
+
+    try:
+        identity = ensure_instance_id(
+            settings.vesma.data_dir, env_value=resolve_requested_instance_id()
+        )
+        preflight_api_port(h, p)
+    except InstanceError as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+
     # ADR-0049 Lock 1 (wave 0): the API server is a writer-of-record of its
     # store home — the per-home exclusive flock is held for the whole serve
     # lifetime (the multi-worker fleet included: THIS parent process holds
@@ -1994,7 +2015,7 @@ def serve(
     # home refuses here with the holder's name, whatever its endpoint.
     from vesma.service.home_lock import WriterLockBusyError
 
-    lock_endpoint = f"serve http://{h}:{p}"
+    lock_endpoint = f"serve http://{h}:{p} instance={identity}"
     try:
         _serve_locked(settings, h, p, config, lock_endpoint)
     except WriterLockBusyError as exc:

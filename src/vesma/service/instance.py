@@ -181,6 +181,26 @@ def _minted_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def current_instance_id(data_dir: Path) -> str:
+    """READ-ONLY identity for response surfaces (the API header).
+
+    Env wins; the persisted file next; :data:`DEFAULT_INSTANCE_ID` when
+    neither exists. Never mints, never mkdirs — a request-path resolver
+    has no business writing (the server startup's
+    :func:`ensure_instance_id` owns the mint; a damaged id file degrades
+    to ``default`` here instead of crashing a response — the loud
+    refusal for a damaged file belongs to the startup resolution).
+    """
+    requested = resolve_requested_instance_id()
+    if requested is not None:
+        return requested
+    try:
+        persisted = read_persisted_instance_id(data_dir)
+    except InstanceIdError:
+        return DEFAULT_INSTANCE_ID
+    return persisted if persisted is not None else DEFAULT_INSTANCE_ID
+
+
 def ensure_instance_id(data_dir: Path, *, env_value: str | None = None) -> str:
     """The home's instance id: env wins, persisted file next, mint last.
 
@@ -323,6 +343,7 @@ __all__ = [
     "InstanceError",
     "InstanceHomeMismatchError",
     "InstanceIdError",
+    "current_instance_id",
     "effective_mesh_socket_path",
     "ensure_instance_id",
     "id_file_path",

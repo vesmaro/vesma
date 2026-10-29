@@ -452,6 +452,7 @@ class ServiceApp:
         config: str | None = None,
         component_configs: Mapping[str, Mapping[str, Any]] | None = None,
         instance_id: str | None = None,
+        socket_instance_id: str | None = None,
     ) -> None:
         self._log = log or logger
         self._with_core = with_core
@@ -484,11 +485,19 @@ class ServiceApp:
             component_configs=self._component_configs,
         )
         self.backend = SupervisorBackend(self.supervisor, self.buffer)
-        # ADR-0049 Lock 3 (wave 1): the app's instance identity — the hello
-        # frame reports it and the default bind() derives the socket dir
-        # from it (None = the default instance, today's canonical paths).
+        # ADR-0049 Lock 3 (wave 1): ``instance_id`` is the hello-frame
+        # identity (minted uuid for the default instance);
+        # ``socket_instance_id`` is the ENDPOINT namespace the default
+        # bind() derives the socket dir from (None = today's canonical
+        # path; a template unit's env id → ``instances/<id>/``).
         self.instance_id = instance_id
-        self.server = ControlServer(self.backend, instance_id=instance_id, log=self._log)
+        self.socket_instance_id = socket_instance_id
+        self.server = ControlServer(
+            self.backend,
+            instance_id=instance_id,
+            socket_instance_id=socket_instance_id,
+            log=self._log,
+        )
         self._socket_override = str(socket_path) if socket_path is not None else None
 
     # ── lifecycle ──
