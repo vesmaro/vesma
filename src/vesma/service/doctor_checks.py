@@ -1199,9 +1199,12 @@ def _dr14() -> Finding:
     system_data_root = fhs.system_data_root()
     system_config_root = fhs.system_config_root()
     user_data_roots = (layout.vesma_home(), layout.data_root())
+    # USER-plane roots, deliberately NOT the profile-dispatched resolvers
+    # (components_dir/env_dir): on a system-stamped machine those resolve
+    # the FHS slots — comparing them against the system config root would
+    # self-collide. config_root() is user-plane by contract (layout v2 §3.2).
     user_config_roots = (
-        layout.components_dir().parent,
-        layout.env_dir().parent,
+        layout.config_root(),
         layout.vesma_home(),
     )
     problems: list[str] = []
@@ -1884,6 +1887,157 @@ def _gid_to_name(gid: int) -> str:
         return f"gid-{gid}"
 
 
+# ── DR-22: loaded component tree vs canonical manifests dir ───────────
+
+
+def _dr22() -> Finding:
+    """Loaded tree == canonical dir (card 0f75698d, ArchCom 2026-10-29).
+
+    The live source of truth is the RUNNING supervisor's own component set
+    (control-socket ``status``), never a re-resolution through the same
+    layout resolver — the bug class this check guards is precisely
+    "resolver says X, supervisor runs Y". While the supervisor is down the
+    check degrades to a directory summary (status, not an error), and a
+    failed probe degrades the same way per the DR-08 contract.
+    """
+    title = "loaded components vs canonical manifests dir"
+    canonical = layout.components_dir()
+    disk_names = sorted(p.stem for p in canonical.glob("*.yaml")) if canonical.is_dir() else []
+
+    system_unit_present = fhs.system_unit_path().exists()
+    if not layout.system_profile_active() and system_unit_present:
+        return Finding(
+            "DR-22",
+            title,
+            Severity.OK,
+            "system installation detected, but this doctor session resolves "
+            "the user plane (unprivileged) — re-run privileged to audit the "
+            "system manifests plane",
+        )
+    if not canonical.is_dir():
+        return Finding(
+            "DR-22",
+            title,
+            Severity.WARN,
+            f"canonical manifests dir {canonical} does not exist"
+            + (
+                " — the system manifest step never ran or was removed"
+                if layout.system_profile_active()
+                else ""
+            ),
+            f"install components so manifests land in {canonical}: vesma install board",
+        )
+    if not os.access(canonical, os.R_OK):
+        return Finding(
+            "DR-22",
+            title,
+            Severity.FAIL,
+            f"canonical manifests dir {canonical} is not readable by this "
+            "identity — the service user may be blind to its own manifests",
+            "restore the FHS rights (dir 0750 root:vesma, manifests 0640 "
+            "root:vesma) — see the layout v2 §3.4 table",
+        )
+
+    # Manifests parked in a service-home plane dir: the pre-fix workaround
+    # shape (card 0f75698d). Once the resolver dispatches, these copies are
+    # dead weight the operator must remove — flagged as hygiene.
+    parked: list[Path] = []
+    if layout.system_profile_active():
+        data_root = fhs.system_data_root()
+        parked = [
+            p
+            for p in (
+                data_root / ".config" / "vesma" / "components.d",
+                data_root / ".vesma" / "components.d",
+            )
+            if p.is_dir() and any(p.glob("*.yaml"))
+        ]
+
+    loaded_names: list[str] | None = None
+    probe_note = ""
+    runtime = layout.resolve_runtime_dir()
+    sock_path = runtime.path / "control.sock"
+    if sock_path.exists():
+        try:
+            hello = json.dumps({"id": 1, "method": "hello", "params": {"protocol_version": 1}})
+            status_req = json.dumps({"id": 2, "method": "status", "params": {}})
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(2.0)
+                sock.connect(str(sock_path))
+                sock.sendall((hello + "\n").encode("utf-8"))
+                sock.recv(65536).decode("utf-8", errors="replace")
+                sock.sendall((status_req + "\n").encode("utf-8"))
+                status_reply = sock.recv(65536).decode("utf-8", errors="replace").strip()
+            payload = json.loads(status_reply.splitlines()[0])
+            loaded_names = sorted(payload.get("result", {}).get("components", {}))
+        except (OSError, json.JSONDecodeError, IndexError, AttributeError) as exc:
+            probe_note = f"live probe failed ({type(exc).__name__}) — comparison degraded"
+
+    if loaded_names is None:
+        finding = Finding(
+            "DR-22",
+            title,
+            Severity.OK,
+            f"supervisor not running or probe unavailable — canonical dir "
+            f"{canonical} holds {len(disk_names)} manifests"
+            + (f" ({', '.join(disk_names)})" if disk_names else "")
+            + (f"; {probe_note}" if probe_note else ""),
+        )
+    else:
+        loaded_set, disk_set = set(loaded_names), set(disk_names)
+        bundle_only = bool(loaded_set) and loaded_set <= {"board", "metrics"}
+        if bundle_only and (disk_set - loaded_set):
+            finding = Finding(
+                "DR-22",
+                title,
+                Severity.FAIL,
+                f"supervisor runs the BUNDLE fallback ({', '.join(loaded_names)}) while "
+                f"the canonical manifests dir {canonical} holds operator manifests the "
+                f"service did NOT load ({', '.join(sorted(disk_set - loaded_set))}) — "
+                "loss-class",
+                "restart the service so it loads the canonical manifests: "
+                "sudo systemctl restart vesma.service",
+            )
+        elif bundle_only and not disk_set:
+            finding = Finding(
+                "DR-22",
+                title,
+                Severity.OK,
+                "supervisor runs the bundle fallback; the canonical dir "
+                f"{canonical} holds no operator manifests (nothing lost)",
+            )
+        elif loaded_set != disk_set:
+            finding = Finding(
+                "DR-22",
+                title,
+                Severity.WARN,
+                f"loaded {sorted(loaded_set)} != canonical {sorted(disk_set)} at {canonical}",
+                "restart the service after any manifest change: "
+                "sudo systemctl restart vesma.service",
+            )
+        else:
+            finding = Finding(
+                "DR-22",
+                title,
+                Severity.OK,
+                f"loaded tree matches the canonical dir ({len(loaded_set)} components "
+                f"at {canonical})",
+            )
+
+    if parked and finding.severity != Severity.FAIL:
+        return Finding(
+            "DR-22",
+            title,
+            Severity.WARN,
+            f"manifests parked in a non-canonical service-home dir "
+            f"({', '.join(str(p) for p in parked)}) — pre-fix workaround shape; the "
+            f"canonical plane is {canonical}",
+            "confirm the service loads from the canonical dir (this check), then "
+            "remove the parked copies",
+        )
+    return finding
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
@@ -1937,6 +2091,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-19", "layout generation advisories", _dr19),
         ("DR-20", "second writer on the store home", _dr20),
         ("DR-21", "system daemon serves the FHS data root", _dr21),
+        ("DR-22", "loaded components vs canonical manifests dir", _dr22),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

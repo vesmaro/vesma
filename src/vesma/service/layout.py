@@ -337,32 +337,59 @@ def legacy_engine_venv_dir() -> Path:
     return _v15_data_root() / "venv"
 
 
-# ── §3.2 config plane (generation-dispatched) ─────────────────────────
+# ── §3.2 config plane (profile- then generation-dispatched) ───────────
+#
+# The config plane serves TWO consumers with different homes: an operator
+# session (user layout) and the system service / privileged installer
+# (system FHS slots, §3.4). Dispatch follows the same key as the F5
+# venv/data/ipc dispatch — :func:`system_profile_active`, i.e. the
+# ``profile:`` line of the system install-state — and inherits its
+# permission-blind semantics: a plain user account on a system-profile
+# machine gets ``EACCES`` on the state file, which degrades to the user
+# layout (the account's own lane), never a crash. (ArchCom 2026-10-29,
+# card 0f75698d: the missing dispatch made the system supervisor resolve
+# manifests from its service $HOME and silently fall back to bundle
+# manifests while the installer wrote /etc/vesma/components.d.)
 
 
 def config_root() -> Path:
-    """``~/.config/vesma/`` (v1.5) or ``~/.vesma/`` (v2) — 0700."""
+    """The USER-layout config root: ``~/.config/vesma/`` (v1.5) or
+    ``~/.vesma/`` (v2) — 0700.
+
+    User-plane only: system-profile consumers go through the dispatched
+    resolvers below (:func:`components_dir`, :func:`env_dir`,
+    :func:`canonical_config_path`), never through this helper.
+    """
     if detect_generation() is LayoutGeneration.V2:
         return vesma_home()
     return _v15_config_root()
 
 
 def canonical_config_path() -> Path:
-    """The shared config: ``vesma.yaml`` (v1.5) / ``config.yaml`` (v2 —
-    the name aligned with the engine store-home canon, layout v2 §7)."""
+    """The shared config: ``/etc/vesma/config.yaml`` (system profile) /
+    ``vesma.yaml`` (v1.5) / ``config.yaml`` (v2 — the name aligned with
+    the engine store-home canon, layout v2 §7)."""
+    if system_profile_active():
+        return fhs.system_config_path()
     if detect_generation() is LayoutGeneration.V2:
         return vesma_home() / "config.yaml"
     return _v15_config_root() / "vesma.yaml"
 
 
 def components_dir() -> Path:
-    """Manifests drop-in dir (0700): ``components.d`` of the generation."""
+    """Manifests drop-in dir (0700): ``/etc/vesma/components.d`` (system
+    profile) or ``components.d`` of the user-layout generation."""
+    if system_profile_active():
+        return fhs.system_components_dir()
     return config_root() / "components.d"
 
 
 def env_dir() -> Path:
-    """Env-secrets dir (0700, files 0600): ``env/`` (v1.5) / ``env.d``
-    (v2 — the directory renamed by layout v2 §7)."""
+    """Env-secrets dir (0700, files 0600): ``/etc/vesma/env.d`` (system
+    profile) / ``env/`` (v1.5) / ``env.d`` (v2 — the directory renamed by
+    layout v2 §7)."""
+    if system_profile_active():
+        return fhs.system_env_dir()
     if detect_generation() is LayoutGeneration.V2:
         return vesma_home() / "env.d"
     return _v15_config_root() / "env"

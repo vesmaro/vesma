@@ -523,6 +523,15 @@ def _load_manifests() -> dict[str, Any]:
     if components_dir.is_dir():
         return dict(load_installation(components_dir))
     bundled = ("board", "metrics")
+    # A silent bundle fallback here is a loss-class event (card 0f75698d):
+    # board/metrics look alive while operator components (e.g. mesh) are
+    # NOT loaded. Make the fallback loud — journald carries the warning.
+    logger.warning(
+        "operator manifests not found at %s — using bundle fallback (%s); "
+        "operator-installed components are NOT loaded",
+        components_dir,
+        ", ".join(bundled),
+    )
     return {name: load_bundled_manifest(name, set(bundled)) for name in bundled}
 
 

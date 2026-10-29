@@ -561,3 +561,53 @@ class TestSystemProfileDispatch:
         state.chmod(0o000)
         assert layout.read_system_profile_stamp() is None
         assert layout.system_profile_active() is False
+
+
+class TestConfigPlaneProfileDispatch:
+    """The config-plane profile dispatch (card 0f75698d, ArchCom
+    2026-10-29): ``components_dir`` / ``env_dir`` / ``canonical_config_path``
+    follow the same system stamp as the F5 dispatch — on a system profile
+    they resolve the §3.4 FHS slots, never the service account's $HOME."""
+
+    def test_system_profile_resolves_fhs_config_plane(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        _stamp_system_state(tmp_path)
+        assert layout.components_dir() == tmp_path / "etc/vesma/components.d"
+        assert layout.env_dir() == tmp_path / "etc/vesma/env.d"
+        assert layout.canonical_config_path() == tmp_path / "etc/vesma/config.yaml"
+        assert layout.env_file_path("mesh") == tmp_path / "etc/vesma/env.d/mesh.env"
+
+    def test_user_layout_resolves_generation_config_plane(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        tree = isolated_home / ".vesma"
+        assert layout.components_dir() == tree / "components.d"
+        assert layout.env_dir() == tree / "env.d"
+        assert layout.canonical_config_path() == tree / "config.yaml"
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses DAC — EACCES leg is unreachable")
+    def test_unreadable_system_state_resolves_user_config_plane(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Permission-blind dispatch: EACCES on the system state keeps a
+        plain user on ITS OWN config plane, never a half-system guess."""
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        state = _stamp_system_state(tmp_path)
+        state.chmod(0o000)
+        tree = isolated_home / ".vesma"
+        assert layout.components_dir() == tree / "components.d"
+        assert layout.env_dir() == tree / "env.d"
+
+    def test_v15_generation_resolves_v15_config_plane(
+        self, v15_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        config = v15_home / ".config" / "vesma"
+        assert layout.components_dir() == config / "components.d"
+        assert layout.env_dir() == config / "env"
+        assert layout.canonical_config_path() == config / "vesma.yaml"
