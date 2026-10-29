@@ -2,7 +2,7 @@
 
 Mental model = apt vs systemctl: ``vesma system`` owns the SYSTEM profile's
 lifecycle — the FHS tree (``/etc/vesma``, ``/var/lib/vesma``,
-``/usr/lib/vesma``, root required) — while ``vesma service`` owns the
+``/usr/local/lib/vesma``, root required) — while ``vesma service`` owns the
 daemon's RUNTIME control (status/health/start/stop/restart/logs/run) and
 the user-profile install; the user profile updates via ``vesma self-update``.
 
@@ -45,7 +45,7 @@ system_app = typer.Typer(
     help=(
         "The SYSTEM profile domain: install, update, uninstall — plus doctor.\n\n"
         "Install/update/uninstall own the SYSTEM profile's lifecycle (FHS: "
-        "/etc/vesma, /var/lib/vesma, /usr/lib/vesma, root required): `install` "
+        "/etc/vesma, /var/lib/vesma, /usr/local/lib/vesma, root required): `install` "
         "lays down the FHS tree, the sysusers.d service account, root-owned "
         "venv revisions and the systemd system unit; `update` materializes "
         "the running build's revisions beside the current ones with an "

@@ -140,7 +140,7 @@ def service_install(
     downgraded (marker in the unit + report lines).
 
     The SYSTEM profile has its own domain: `vesma system install` (FHS:
-    /etc/vesma, /var/lib/vesma, /usr/lib/vesma; requires root). The former
+    /etc/vesma, /var/lib/vesma, /usr/local/lib/vesma; requires root). The former
     `--system` flag form remains here as a hidden deprecated alias —
     identical behavior, removal not before 9.0.
     """
