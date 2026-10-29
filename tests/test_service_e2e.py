@@ -597,3 +597,135 @@ class TestInProcessCore:
             blocker.close()
         assert app.socket_path is not None
         wait_until(lambda: not app.socket_path.exists(), "control socket cleaned up")
+
+
+# ── ADR-0049 wave-1 GATE: two instances, one-home guard ───────────────
+
+
+class TestMultiInstanceGate:
+    """The contract gate (ADR-0049 §4, wave 1): TWO in-process
+    supervisors live concurrently on distinct homes + endpoints; the
+    guard chain refuses the SECOND writer over the SAME home — the
+    wave-1 identity guard (env id vs the home's persisted id), the
+    wave-0 kernel flock (holder attribution now carries the endpoint
+    identity), and the wave-1 typed port-conflict refusal naming the
+    holder instance. The real systemd path is verified by the owner's
+    final re-install (out of a hermetic test's reach by contract)."""
+
+    def test_two_instances_live_guard_refuses_second_on_same_home(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        isolated_home: Path,
+        make_app: Callable[..., ServiceApp],
+        api_env_guard: None,
+    ) -> None:
+        from vesma.service.home_lock import WriterLockBusyError, writer_lock
+        from vesma.service.instance import (
+            EndpointBusyError,
+            InstanceHomeMismatchError,
+            ensure_instance_id,
+            preflight_api_port,
+            resolve_requested_instance_id,
+        )
+
+        # Short per-test runtime dir: the AF_UNIX 108-byte budget is the
+        # wave-1 socket shape's binding constraint (instances/<id>/ nests
+        # deeper than the canonical path — never under a long HOME).
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        manifests = write_manifests(tmp_path, {"worker": child_doc("worker", "sleeper.py")})
+        home_a = isolated_home / ".vesma" / "data"
+        home_b = tmp_path / "home-b" / ".vesma" / "data"
+
+        # ── instance ALPHA: own home, own endpoint, live core ──
+        monkeypatch.setenv("VESMA_INSTANCE_ID", "alpha")
+        identity_a = ensure_instance_id(home_a, env_value=resolve_requested_instance_id())
+        assert identity_a == "alpha"
+        app_a = make_app(
+            manifests,
+            with_core=True,
+            core_bind=("127.0.0.1", 0),
+            socket_path=None,
+            instance_id=identity_a,
+            socket_instance_id="alpha",
+        )
+        app_a.bind()
+        app_a.start()
+        port_a = app_a.core_port
+        assert port_a is not None and port_a > 0
+        assert app_a.socket_path is not None
+        assert app_a.socket_path.name == "control.sock"
+        assert app_a.socket_path.parent.name == "alpha"
+
+        def api_ok() -> bool:
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", port_a, timeout=3)
+                connection.request("GET", "/health")
+                response = connection.getresponse()
+                response.read()
+                connection.close()
+            except OSError:
+                return False
+            return response.status == 200
+
+        wait_until(api_ok, "alpha's embedded API answers /health")
+
+        # the CLI-shaped lifetime writer lock of instance A (ADR-0049 Lock 1)
+        with writer_lock(
+            home_a,
+            endpoint=(
+                f"service control={app_a.socket_path} core=http://127.0.0.1:{port_a} instance=alpha"
+            ),
+        ):
+            # ── instance BETA: a DIFFERENT home + endpoint — must live ──
+            monkeypatch.setenv("VESMA_INSTANCE_ID", "beta")
+            identity_b = ensure_instance_id(home_b, env_value=resolve_requested_instance_id())
+            assert identity_b == "beta"
+            app_b = make_app(
+                manifests,
+                with_core=False,
+                socket_path=None,
+                instance_id=identity_b,
+                socket_instance_id="beta",
+            )
+            assert app_b.bind().status == "bound"
+            app_b.start()
+            assert app_b.socket_path is not None
+            assert app_b.socket_path.parent.name == "beta"
+            assert app_b.socket_path != app_a.socket_path
+            conn_b = JsonlConn(app_b.socket_path)
+            try:
+                assert hello_ok(conn_b)["instance_id"] == "beta"
+            finally:
+                conn_b.close()
+
+            # GUARD 1 (wave 1): beta's identity over ALPHA's home refused
+            monkeypatch.setenv("VESMA_INSTANCE_ID", "beta")
+            with pytest.raises(InstanceHomeMismatchError):
+                ensure_instance_id(home_a, env_value=resolve_requested_instance_id())
+
+            # GUARD 2 (wave 0 flock + wave-1 attribution): a second writer
+            # on the SAME home refuses with the holder NAMED by identity
+            with (
+                pytest.raises(WriterLockBusyError) as busy,
+                writer_lock(home_a, endpoint="service core=http://127.0.0.1:1 instance=beta"),
+            ):
+                raise AssertionError("the second lock must never be granted")
+            assert "instance=alpha" in str(busy.value)
+
+            # GUARD 3 (ff6a9385): beta's port preflight against ALPHA's
+            # LIVE core refuses with the holder's instance identity
+            with pytest.raises(EndpointBusyError) as busy_port:
+                preflight_api_port("127.0.0.1", port_a)
+            assert "alpha" in str(busy_port.value)
+
+            # the header leg (Lock 3): alpha's core names itself
+            connection = http.client.HTTPConnection("127.0.0.1", port_a, timeout=3)
+            connection.request("GET", "/health")
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            assert response.getheader("X-Vesma-Instance-Id") == "alpha"
+
+            app_b.request_stop()
+            assert app_b.wait() == 0

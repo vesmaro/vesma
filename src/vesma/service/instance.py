@@ -163,7 +163,15 @@ def _persist_instance_id(data_dir: Path, value: str) -> str:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _ID_FILE_MODE)
     except FileExistsError:
         existing = read_persisted_instance_id(data_dir)
-        assert existing is not None  # O_EXCL loser: the winner's file exists
+        if existing is None:
+            # EEXIST then unreadable-missing: a concurrent creator won AND
+            # its file disappeared before this read. Inventing a fresh id
+            # here would re-identify the home — refuse instead.
+            raise InstanceError(
+                f"instance id file {path} appeared and vanished during the "
+                "mint race — refusing to invent an identity; re-run the "
+                "operation"
+            ) from None
         return existing
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
