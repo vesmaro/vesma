@@ -2038,6 +2038,284 @@ def _dr22() -> Finding:
     return finding
 
 
+# ── DR-23: artifacts outside the platform (ArchCom 2026-10-29,
+# verdict 1c2b8d64: "an artifact outside the slot table is a doctor
+# finding, not a lifestyle"; the audit classes live in handoff
+# vesma-component-platform-file-layout-20261029.md §3: DE-2 the root unit
+# exec'ing into a user home, DE-3 the legacy mnemos-* binary names, DE-3/5
+# live component-named processes without a supervising unit) ──────────────
+
+
+#: A path under SOMEONE's user home (``/home/<user>/…`` or
+#: ``/var/home/<user>/…`` — the immutable-host spellings included).
+_DR23_FOREIGN_HOME_RE = re.compile(r"^/(?:var/)?home/[^/]+(?:/|$)")
+
+#: Active (non-comment) path-bearing directives of a service unit.
+_DR23_UNIT_PATH_DIRECTIVE_RE = re.compile(r"^(Exec[A-Za-z]+|EnvironmentFile)\s*=\s*(.+)$")
+
+#: Component-name families that must exist ONLY inside the platform
+#: (``vesma-``/``vesmaro-`` current names, ``mnemos-`` the pre-2026-10-01
+#: rebrand legacy); a BARE ``vesma`` (no dash) is the supervisor itself
+#: and never matches.
+_DR23_COMPONENT_NAME_RE = re.compile(r"vesma-|vesmaro-|mnemos-")
+
+#: The units allowed to own component processes (the supervisor's own).
+_DR23_SUPERVISED_UNIT_EXACT = "vesma.service"
+_DR23_SUPERVISED_UNIT_PREFIX = "vesma@"
+
+#: /proc walking caps: a read-only scan must stay cheap and bounded.
+_DR23_PID_SCAN_CAP = 4096
+_DR23_DETAIL_ITEMS_CAP = 6
+
+#: Largest unit file the unit parse will read (bytes) — the manifest
+#: loader's cap discipline (``manifest.MAX_MANIFEST_BYTES``): the biggest
+#: real unit is a few KB, 1 MiB leaves operator headroom; an oversized
+#: "unit" is skipped with an honest note, never slurped into memory.
+#: Units are read TOLERANTLY (``errors="replace"``): systemd accepts
+#: latin-1 unit files, and a non-UTF-8 byte must degrade into the parse,
+#: never crash the whole check (security-audit fix, accept-after-fix).
+_DR23_MAX_UNIT_BYTES = 1_048_576
+
+#: Injectable for tests (monkeypatch to a fake proc tree).
+_PROC_PATH = Path("/proc")
+
+
+def _dr23_unit_dirs(prefix: Path) -> tuple[Path, Path]:
+    """The SYSTEM unit directories of the scan universe: the admin dir
+    (every root-owned unit) and the vendor dir (vesma-named units only —
+    a vendor unit is not platform-installed unless it IS the manifest's
+    system unit)."""
+    return prefix / "etc/systemd/system", prefix / "usr/lib/systemd/system"
+
+
+def _dr23_unit_files(prefix: Path) -> list[Path]:
+    """The unit files to audit: ``*.service`` from the admin dir plus
+    ``vesma*.service`` from the vendor dir, the ratified system unit
+    (``fhs.system_unit_path()``) excluded — the platform's own unit is
+    DR-18's subject and must never be slandered here. Deduplicated by
+    resolved path."""
+    admin_dir, vendor_dir = _dr23_unit_dirs(prefix)
+    canonical = fhs.system_unit_path()
+    candidates: list[Path] = []
+    if admin_dir.is_dir():
+        candidates.extend(sorted(admin_dir.glob("*.service")))
+    if vendor_dir.is_dir():
+        candidates.extend(sorted(vendor_dir.glob("vesma*.service")))
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate if not candidate.is_symlink() else Path(os.path.realpath(candidate))
+        if resolved == Path(os.path.realpath(canonical)) or resolved in seen:
+            continue
+        seen.add(resolved)
+        files.append(candidate)
+    return files
+
+
+def _dr23_directive_paths(value: str) -> list[str]:
+    """The path-like tokens of one directive value (shlex, not str.split:
+    systemd parses the value with shell-like quoting — the DR-12
+    precedent). ``-``-prefixed EnvironmentFile absence markers and
+    ``--flag=path`` spellings are undone so the path itself is judged."""
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        tokens = [value]
+    paths: list[str] = []
+    for token in tokens:
+        candidate = token[1:] if token.startswith("-") else token
+        # systemd command prefixes: ``!!`` (privilege requirement) rides
+        # the SAME argv token as the binary path — strip before judging.
+        candidate = candidate.lstrip("!")
+        candidate = candidate.split("=", 1)[-1] if "=" in candidate else candidate
+        if candidate.startswith("/"):
+            paths.append(candidate)
+    return paths
+
+
+def _dr23_scan_units(
+    prefix: Path,
+) -> tuple[list[str], list[str], int, int, list[str]]:
+    """Legs (a)+(b) over the unit corpus — pure text parsing, nothing is
+    executed. Returns ``(fail_items, warn_items, units_checked,
+    units_unreadable, na_notes)``:
+
+    - leg (a) FAIL: a root-owned unit whose Exec*/EnvironmentFile path
+      lands under a user home (``/home|/var/home/<user>/``) instead of
+      the ratified service home (paths under ``fhs.system_data_root()``
+      are legal by contract) — root executing a user-writable file is
+      the LPE class;
+    - leg (b) WARN: an argv path whose basename carries the legacy
+      ``mnemos-*`` name (pre-rebrand 2026-10-01) — the rename contract
+      keeps artifacts under the platform's name table.
+    """
+    fail_items: list[str] = []
+    warn_items: list[str] = []
+    na_notes: list[str] = []
+    files = _dr23_unit_files(prefix)
+    data_root = fhs.system_data_root()
+    checked = 0
+    unreadable = 0
+    for unit_path in files:
+        try:
+            if unit_path.stat().st_size > _DR23_MAX_UNIT_BYTES:
+                na_notes.append(f"unit skipped: too large: {unit_path}")
+                continue
+            text = unit_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            unreadable += 1
+            continue
+        checked += 1
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith(("#", ";", "[")):
+                continue
+            match = _DR23_UNIT_PATH_DIRECTIVE_RE.match(line)
+            if match is None:
+                continue
+            directive, value = match.group(1), match.group(2)
+            for candidate in _dr23_directive_paths(value):
+                # The data-root exemption covers leg (a) ONLY — a legacy
+                # NAME is a finding wherever it lives (the legs are
+                # independent; no short-circuit between them).
+                candidate_path = Path(candidate)
+                if (
+                    data_root != candidate_path
+                    and data_root not in candidate_path.parents
+                    and _DR23_FOREIGN_HOME_RE.match(candidate)
+                ):
+                    fail_items.append(
+                        f"{unit_path}: {directive} -> {candidate} (a root-owned"
+                        " unit executing/reading a user-writable home path —"
+                        " the LPE class; move the artifact into the platform"
+                        " slot)"
+                    )
+                basename = candidate.rsplit("/", 1)[-1].split("=", 1)[-1]
+                if basename.startswith("mnemos-"):
+                    warn_items.append(
+                        f"{unit_path}: {directive} -> {candidate} (a legacy"
+                        " mnemos-* binary name from before the 2026-10-01"
+                        " rebrand — the platform rename contract keeps"
+                        " artifacts under vesma-* names)"
+                    )
+    if not files and unreadable == 0:
+        na_notes.append("no system units found (n/a)")
+    return fail_items, warn_items, checked, unreadable, na_notes
+
+
+def _dr23_process_unit(proc_root: Path, pid: str) -> str | None:
+    """The systemd unit owning ``pid`` via its cgroup path (the last
+    ``.service`` basename across the cgroup lines; ``None`` when the
+    cgroup file is unreadable or names no service)."""
+    try:
+        lines = (proc_root / pid / "cgroup").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    unit = None
+    for line in lines:
+        parts = line.split(":", 2)
+        cgroup_path = parts[2] if len(parts) == 3 else ""
+        basename = cgroup_path.rsplit("/", 1)[-1]
+        if basename.endswith(".service"):
+            unit = basename
+    return unit
+
+
+def _dr23_scan_processes(proc_root: Path) -> tuple[list[str], int, bool]:
+    """Leg (c), best-effort: live processes whose name carries a platform
+    component-name family but whose owning unit is NOT the supervisor's
+    (``vesma.service`` / ``vesma@*.service``) — a component running
+    outside the platform's lifecycle. Read-only, bounded; a partially
+    unreadable /proc degrades to the ``checked`` count speaking for
+    itself. Returns ``(flagged_items, processes_checked, proc_available)``.
+    """
+    if not proc_root.is_dir():
+        return [], 0, False
+    flagged: list[str] = []
+    checked = 0
+    pids = sorted((p for p in proc_root.iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
+    for pid_dir in pids[:_DR23_PID_SCAN_CAP]:
+        try:
+            name = (pid_dir / "comm").read_text(encoding="utf-8").strip()
+        except OSError:
+            continue  # unreadable entry — the honest degrade is the count
+        checked += 1
+        if not name or _DR23_COMPONENT_NAME_RE.search(name) is None:
+            continue
+        unit = _dr23_process_unit(proc_root, pid_dir.name)
+        supervised = unit is not None and (
+            unit == _DR23_SUPERVISED_UNIT_EXACT or unit.startswith(_DR23_SUPERVISED_UNIT_PREFIX)
+        )
+        if not supervised:
+            flagged.append(
+                f"{name} (pid {pid_dir.name}, unit {unit or 'unknown'}) is not"
+                " owned by the supervisor — a live component outside the"
+                " platform's lifecycle"
+            )
+    return flagged, checked, True
+
+
+def _dr23(proc_root: Path | None = None) -> Finding:
+    """Artifacts outside the platform (ArchCom 2026-10-29, 1c2b8d64):
+    three independent legs, one finding, worst severity wins — every leg
+    stays readable in the detail:
+
+    (a) system units exec/reading user homes — FAIL (security class);
+    (b) legacy ``mnemos-*`` binary names in units — WARN (rename
+        contract);
+    (c) live component-named processes without a supervising unit —
+        WARN, best-effort over ``/proc`` with an honest degrade.
+
+    All legs read-only; the doctor never kills, moves or rewrites — the
+    findings name the platform slot and the fix belongs to the operator.
+    Known coverage edge (honest, by the cheap-text-parse design): direct
+    argv paths are judged; a path buried inside a shell-wrapped
+    argument (``bash -lc 'exec /home/x/…'``) is indirection this parse
+    deliberately does not chase.
+    """
+    title = "artifacts outside the platform"
+    prefix = fhs.default_prefix()
+    fail_items, warn_items, units_checked, units_unreadable, na_notes = _dr23_scan_units(prefix)
+    root = proc_root if proc_root is not None else _PROC_PATH
+    process_items, processes_checked, proc_available = _dr23_scan_processes(root)
+
+    segments: list[str] = []
+    units_summary = f"system units: {units_checked} checked"
+    if units_unreadable:
+        units_summary += f", {units_unreadable} unreadable without privileges"
+    segments.append(units_summary + (f" ({'; '.join(na_notes)})" if na_notes else ""))
+    if proc_available:
+        segments.append(f"live processes: {processes_checked} scanned")
+    else:
+        segments.append("live processes: scan unavailable (no /proc)")
+
+    problems = fail_items + warn_items + process_items
+    if problems:
+        listed = "; ".join(segments + problems[:_DR23_DETAIL_ITEMS_CAP])
+        if len(problems) > _DR23_DETAIL_ITEMS_CAP:
+            listed += f"; … {len(problems) - _DR23_DETAIL_ITEMS_CAP} further finding(s) suppressed"
+        if fail_items:
+            return Finding(
+                "DR-23",
+                title,
+                Severity.FAIL,
+                listed,
+                "move the artifact into its platform slot and regenerate the"
+                " unit from the component manifest (`vesma service install`;"
+                " hand-written units are a doctor finding, not a lifestyle)",
+            )
+        return Finding(
+            "DR-23",
+            title,
+            Severity.WARN,
+            listed,
+            "re-point the legacy artifact at the platform slot (component"
+            " manifest + `vesma install board`) and stop the out-of-platform"
+            " process; components run under the supervisor's units",
+        )
+    return Finding("DR-23", title, Severity.OK, "; ".join(segments))
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
@@ -2051,7 +2329,8 @@ def run_service_checks() -> list[Finding]:
     DR-17 (generation mixing + system state↔fs inversion), DR-18 (system
     unit vs regeneration), DR-19 (generation advisories, both profiles),
     DR-20 (second writer on the store home — ADR-0049 wave 0), DR-21
-    (the system daemon serves the FHS data root — card 4c8a0cbe).
+    (the system daemon serves the FHS data root — card 4c8a0cbe), DR-23
+    (artifacts outside the platform — ArchCom 2026-10-29, 1c2b8d64).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -2092,6 +2371,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-20", "second writer on the store home", _dr20),
         ("DR-21", "system daemon serves the FHS data root", _dr21),
         ("DR-22", "loaded components vs canonical manifests dir", _dr22),
+        ("DR-23", "artifacts outside the platform", _dr23),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:
