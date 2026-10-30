@@ -1,0 +1,114 @@
+# vesma-eyes — OPERATOR component template (component platform wave R,
+# ArchCom 2026-10-29 verdict 1c2b8d64: «глаза — компонент с манифестом»).
+#
+# NOT a bundled manifest (CM §3.1: pack manifests are engine-shipped
+# only) — the operator copies THIS file into the components.d slot of the
+# target plane (user: ~/.vesma/components.d/eyes.yaml; system:
+# /etc/vesma/components.d/eyes.yaml), edits the values marked
+# OPERATOR-EDIT below, then:
+#
+#   vesma service components install eyes   # validates fail-closed, data dir
+#   vesma service install                   # materializes the component venv
+#   vesma service start eyes
+#
+# Form: python CHILD-PROCESS component. The platform owns the lifecycle
+# (supervisor spawn, health probe, restart policy, stop discipline); the
+# component venv lives in the ratified venv_component slot (user:
+# ~/.vesma/venvs/eyes; system: /usr/local/lib/vesma/venvs/eyes) and is
+# materialized by the install flow — never by hand (layout §3.8).
+#
+# Secrets live OUTSIDE this file, in the env.d slot (0600, fail-closed):
+# ~/.vesma/env.d/eyes.env (system: /etc/vesma/env.d/eyes.env) — see
+# eyes.env.example next to this file.
+#
+# Deliberate residual (documented, not hidden): the vesma-eyes CHECKOUT
+# itself is an operator-provisioned code source — eyes is not a PyPI
+# package, so its server/web code lives outside the slot table until
+# either a `operator_code` table role or an eyes publishing train exists
+# (ArchCom follow-up, see contrib/eyes/README.md §Invariant).
+apiVersion: vesma.component/v1
+kind: child-process
+metadata:
+  name: eyes
+  # The vesma-eyes release this template was pinned against — bump it
+  # when you re-pin the requirements below.
+  version: "1.91.0"
+  tier: optional
+  description: "vesma-eyes — операционный кокпит: task board и прокси к живым стора́м vesma (child-process, HTTP 127.0.0.1:8140)."
+  provenance:
+    repo: https://github.com/vesmaro/vesma-eyes
+    license: Apache-2.0
+    # NO artifact_sha256 here — DELIBERATE: that pin is the BINARY child's
+    # artifact gate (wave Q); declaring it on a python child would make the
+    # supervisor hash argv[0] (a venv python interpreter) at every start.
+    # A python child pins its dependencies through the exact requirements
+    # below (layout §3.8) — which also keeps the install leg on the
+    # venv_component slot instead of the binary_artifact slot.
+launch:
+  python:
+    # LY §3.8 exact-pins grammar — bare names only: the extras spelling
+    # `uvicorn[standard]==…` is REJECTED by the pin grammar, so the
+    # runtime-useful members of that extra are pinned explicitly
+    # (uvicorn auto-detects uvloop/httptools at import). websockets/
+    # watchfiles/python-dotenv (the rest of the extra) serve --reload and
+    # websocket transports the board does not use — not pinned.
+    # Re-resolve pins when bumping vesma-eyes (uv pip freeze over
+    # server/requirements.txt of that release).
+    requirements:
+      - "fastapi==0.162.0"
+      - "uvicorn==0.54.0"
+      - "uvloop==0.23.0"
+      - "httptools==0.9.0"
+      - "httpx==0.28.1"
+      - "pydantic==2.14.2"
+      - "pyyaml==6.0.3"
+      - "asyncssh==2.24.0"
+  # OPERATOR-EDIT (both places, SAME path): absolute path of the
+  # vesma-eyes checkout on THIS machine. server.app:app is imported from
+  # it (--app-dir) and it is the working directory of the child.
+  cwd: /opt/vesma-eyes
+  argv:
+    - "{venv_bin}/python"
+    - "-m"
+    - "uvicorn"
+    - "--app-dir"
+    - "/opt/vesma-eyes"
+    - "server.app:app"
+    - "--host"
+    # Loopback-only is the v1 platform posture (public-bind edge — the
+    # bundled board manifest's bind pattern is the precedent). The dev
+    # podman/distrobox instance keeps its own 0.0.0.0:8140; THIS instance
+    # is the supervised form. Widening the bind is a deliberate,
+    # documented operator change — argv and health.url below must move
+    # together.
+    - "127.0.0.1"
+    - "--port"
+    - "8140"
+  env:
+    vars:
+      # OPERATOR-EDIT: env.vars values are NOT placeholder-expanded and
+      # eyes reads no data-dir CLI flag — write the ABSOLUTE
+      # component_data slot of the target plane:
+      #   user:   <your-home>/.vesma/components/eyes   (resolved, no ~)
+      #   system: /var/lib/vesma/eyes
+      VESMARO_DATA: "/home/OPERATOR/.vesma/components/eyes"
+    # The secrets slot: 0600, owned by the supervisor user, OUTSIDE the
+    # manifests dir (fail-closed — layout §3.5, LY-03). The supervisor
+    # refuses the start without it. Required keys: MNEMOS_URL,
+    # MNEMOS_TOKEN, VESMARO_BOARD_TOKEN, VESMARO_UI_TOKEN,
+    # VESMARO_ALLOWED_MEMORY_HOSTS — see eyes.env.example.
+    env_file: ~/.vesma/env.d/eyes.env
+health:
+  checker: http
+  http:
+    url: "http://127.0.0.1:8140/api/health"
+    interval: 5s
+    timeout: 2s
+    unhealthy_threshold: 3
+  startup:
+    grace: 30s
+    interval: 2s
+    timeout: 2s
+stop:
+  signal: SIGTERM
+  grace_period: 10s
