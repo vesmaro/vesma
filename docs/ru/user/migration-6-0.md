@@ -345,7 +345,7 @@ MCP-сервер регистрирует **только** имена тулов
 | `importlib.resources.files("vesmaro")` | `importlib.resources.files("vesma")` |
 | `settings.mnemos.data_dir` | `settings.vesma.data_dir` |
 | ключ экспортного JSON `mnemos_version` | `vesma_version` (импортёр принимает и старый ключ) |
-| консольные скрипты `vesma` / `vesmaro` / `mnemos` | установлены все три; канон — `vesma`, алиасы указывают на ту же точку входа |
+| консольные скрипты `vesma` / `vesmaro` / `mnemos` | легаси-точки входа (`vesmaro`, `mnemos`) выведены в 6.0 — устанавливаются только `vesma` и `vesma-train` |
 
 Периода устаревания у имён импорта нет — 6.0 это жёсткий срез. После
 обновления переустановите пакет (`uv sync` / `pip install -e .`); wheel'ы

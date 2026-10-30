@@ -1,7 +1,7 @@
 {
   "name": "pi-mnemos",
   "version": "4.3.0",
-  "description": "Mnemos memory & knowledge server — Pi extension. Spawns `mnemos mcp-server` over stdio and exposes every mnemos_* tool as a native Pi tool, plus the mnemos skill pack.",
+  "description": "Vesma memory & knowledge server — Pi extension. Spawns `vesma mcp-server` over stdio and exposes the vesma_* tool suite as native Pi tools, plus the vesma skill pack.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "Korrnals",

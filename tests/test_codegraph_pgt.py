@@ -206,7 +206,7 @@ class TestPGT1ZeroBytesEndToEnd:
 class TestPGT5ExportNeverCarriesGraph:
     """The export door is welded BEFORE any code exists (ADR-0032 §6):
     the JSON payload reads the main DB only, and the sqlite snapshot
-    enumerates mnemos.db + vectors.db explicitly — code_graph.db is a
+    enumerates vesma.db + vectors.db explicitly — code_graph.db is a
     separate file that export NEVER touches. These tests pin it while
     the sidecar is loaded and populated."""
 
@@ -302,12 +302,12 @@ class TestPGT5ExportNeverCarriesGraph:
             # By construction: the snapshot enumerates exactly the main
             # DB files — code_graph.db (a sibling in data_dir!) is not
             # among them, and no -wal/-shm leakage either.
-            assert members == {"mnemos.db", "vectors.db"}
-            db_obj = tar.extractfile("mnemos.db")
+            assert members == {"vesma.db", "vectors.db"}
+            db_obj = tar.extractfile("vesma.db")
             assert db_obj is not None
-            mnemos_db = tmp_path / "extracted-mnemos.db"
-            mnemos_db.write_bytes(db_obj.read())
-            conn = sqlite3.connect(mnemos_db)
+            vesma_db = tmp_path / "extracted-vesma.db"
+            vesma_db.write_bytes(db_obj.read())
+            conn = sqlite3.connect(vesma_db)
             try:
                 tables = {
                     name

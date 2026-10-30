@@ -191,7 +191,49 @@ ALLOW=(
   'RESIDUE-BAIT'              # the committed self-test bait line (see header)
   'residue-check'             # this gate file itself
   'org is named vesmaro'      # this gate file's own comment
+  # Sweep 2026-10-30 (card 06f83893) — classified LEGAL residue classes:
+  # ArchCom 2026-10-18 citation comments (Stage 1 delete provenance:
+  # manager.py, sqlite_store.py, workflow.py)
+  'ArchCom 2026-10-18, mnemos 24f32fa7'
+  # DR23 dual-recognition window (service/doctor_checks.py): recognizing
+  # legacy component names is the feature
+  'current names, ``mnemos-`` the pre-2026-10-01'
+  'r"vesma-|vesmaro-|mnemos-"'
+  '``mnemos-*`` name (pre-rebrand 2026-10-01)'
+  'basename.startswith("mnemos-")'
+  '" mnemos-* binary name from before the 2026-10-01"'
+  # Zone Б mesh-socket window (config.py, mesh_server.py): the /run/mnemos
+  # directory is the Linux default until the B4 rename window
+  '``/run/mnemos``'
+  # tag-contract RU example: legacy input normalizes to canonical vesma:
+  'Старый ввод mnemos: нормализуется'
+  # overview.md VESMARO_* retirement note (EN + RU, pinned sentence)
+  '`VESMARO_*` spelling is retired'
+  '`VESMARO_*` выведено из обращения'
+  # contrib/eyes operator env contract (frozen until the joint vesma-eyes
+  # rename decision — owner: NOT part of this wave)
+  'MNEMOS_URL'
+  'MNEMOS_TOKEN'
+  'VESMARO_DATA'
+  'VESMARO_BOARD_TOKEN'
+  'VESMARO_UI_TOKEN'
+  'VESMARO_ALLOWED_MEMORY_HOSTS'
 )
+
+# Rename-ledger docs (sweep 2026-10-30): their ENTIRE content is an
+# enumeration of legacy spellings — a legacy-name grep has zero signal
+# there (same class as docs/project/** and CHANGELOG: checked nowhere,
+# by design). Lines are still counted and reported transparently.
+EXEMPT_FILES=(
+  docs/en/user/migration-6-0.md
+  docs/ru/user/migration-6-0.md
+)
+for f in "${EXEMPT_FILES[@]}"; do
+  if [[ ! -e "$f" ]]; then
+    echo "residue-check: FAIL — exempt path does not exist: $f" >&2
+    exit 2
+  fi
+done
 
 # The ONE prose diagnostic class (cascade fix P2): a diagnostic word and a
 # legacy name co-occurring in the SAME pre-comment span (<=80 chars, stop at
@@ -207,6 +249,7 @@ die_missing_path() { # internal — kept for callers importing the guard
 
 collect() {
   # $1 = scan root prefix override (empty = repo); prints candidate lines
+  # (rename-ledger docs from EXEMPT_FILES are filtered out by design)
   local root="${1:-}"
   local args=()
   if [[ -n "$root" ]]; then
@@ -214,7 +257,13 @@ collect() {
   else
     args=("${PATHS[@]}")
   fi
-  grep -rniI "mnemos\|vesmaro" "${args[@]}" 2>/dev/null || true
+  local -a exempt_args=()
+  local f
+  for f in "${EXEMPT_FILES[@]}"; do
+    exempt_args+=(-e "${f}:")
+  done
+  grep -rniI "mnemos\|vesmaro" "${args[@]}" 2>/dev/null \
+    | grep -vF "${exempt_args[@]}" || true
 }
 
 filter() {
@@ -242,9 +291,18 @@ main_run() {
   collect > "$tmp"
   local total
   total=$(wc -l < "$tmp")
+  local exempt
+  local -a exempt_args=()
+  local f
+  for f in "${EXEMPT_FILES[@]}"; do
+    exempt_args+=(-e "${f}:")
+  done
+  exempt=$(grep -rniI "mnemos\|vesmaro" "${PATHS[@]}" 2>/dev/null \
+    | { grep -cF "${exempt_args[@]}" || true; })
   local residue
   residue=$(filter "${ALLOW[@]}" < "$tmp" | wc -l)
   echo "residue-check: scanned live surfaces, raw legacy-name lines: ${total}"
+  echo "residue-check: rename-ledger docs exempted (by design): ${exempt} line(s)"
   if [[ "$residue" -ne 0 ]]; then
     filter "${ALLOW[@]}" < "$tmp" >&2
     rm -f "$tmp"

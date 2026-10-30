@@ -1,13 +1,14 @@
 """Tests for export/import functionality (M17 — backup/restore).
 
 CRITICAL: every test uses ``tmp_path`` for the database — the real
-``~/.mnemos/mnemos.db`` is never touched. Import restore-mode tests wipe
+``~/.vesma/vesma.db`` is never touched. Import restore-mode tests wipe
 only the isolated tmp DB.
 """
 
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import sqlite3
 import tarfile
@@ -157,14 +158,14 @@ class TestExportSQLite:
         assert out.exists()
         with tarfile.open(out, "r:gz") as tar:
             names = tar.getnames()
-            assert "mnemos.db" in names
+            assert "vesma.db" in names
 
     def test_sqlite_export_contains_memories(self, mgr, tmp_path):
         _add_memory(mgr, "snapshot me")
         out = tmp_path / "backup.tar.gz"
         run_export(mgr, fmt=ExportFormat.SQLITE, output=out)
         with tarfile.open(out, "r:gz") as tar:
-            db_bytes = tar.extractfile("mnemos.db").read()
+            db_bytes = tar.extractfile("vesma.db").read()
         # Write to a temp file and query it.
         tmp_db = tmp_path / "restored.db"
         tmp_db.write_bytes(db_bytes)
@@ -187,7 +188,7 @@ class TestExportSQLite:
         assert any("Filters are ignored" in w for w in result.warnings)
         # Snapshot still contains both memories.
         with tarfile.open(out, "r:gz") as tar:
-            db_bytes = tar.extractfile("mnemos.db").read()
+            db_bytes = tar.extractfile("vesma.db").read()
         tmp_db = tmp_path / "restored.db"
         tmp_db.write_bytes(db_bytes)
         conn = sqlite3.connect(str(tmp_db))
@@ -942,3 +943,22 @@ class TestImportSQLite:
         assert result.dry_run is True
         assert result.imported == 1
         assert mgr.sqlite.count() == before
+
+    def test_sqlite_import_accepts_legacy_mnemos_db_member(self, mgr, tmp_path):
+        """Pre-6.0 archives carry the DB under the legacy ``mnemos.db``
+        member name — the importer must keep reading them."""
+        _add_memory(mgr, "legacy snapshot")
+        out = tmp_path / "backup.tar.gz"
+        run_export(mgr, fmt=ExportFormat.SQLITE, output=out)
+        legacy = tmp_path / "legacy.tar.gz"
+        with tarfile.open(out, "r:gz") as src, tarfile.open(legacy, "w:gz") as dst:
+            for m in src.getmembers():
+                data = src.extractfile(m).read()
+                name = "mnemos.db" if m.name == "vesma.db" else m.name
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                dst.addfile(info, io.BytesIO(data))
+
+        result = run_import(mgr, legacy, mode=ImportMode.RESTORE, confirm=True)
+        assert result.imported == 1
+        assert mgr.sqlite.count() == 1

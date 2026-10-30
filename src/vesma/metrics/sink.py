@@ -29,7 +29,7 @@ Hard rules carried from the ArchCom decisions (7ec9dda3 + 061398fe):
 # ── PROVENANCE ────────────────────────────────────────────────────────
 # Vendored from mnemos-vitals main (phase A2, 2026-09-22; phase C
 # record_usage + overflow hardening ported 2026-09-29, master 698a650).
-# Master copy + methodology: ~/LABs/Projects/Project-Mnemos/mnemos-vitals.
+# Master copy + methodology: /var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals.
 # Sync rule: changes land there first, then are ported in the same wave
 # (drift-guard tests on both sides must stay green).
 
