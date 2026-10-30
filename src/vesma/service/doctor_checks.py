@@ -2067,6 +2067,15 @@ _DR23_SUPERVISED_UNIT_PREFIX = "vesma@"
 _DR23_PID_SCAN_CAP = 4096
 _DR23_DETAIL_ITEMS_CAP = 6
 
+#: Largest unit file the unit parse will read (bytes) — the manifest
+#: loader's cap discipline (``manifest.MAX_MANIFEST_BYTES``): the biggest
+#: real unit is a few KB, 1 MiB leaves operator headroom; an oversized
+#: "unit" is skipped with an honest note, never slurped into memory.
+#: Units are read TOLERANTLY (``errors="replace"``): systemd accepts
+#: latin-1 unit files, and a non-UTF-8 byte must degrade into the parse,
+#: never crash the whole check (security-audit fix, accept-after-fix).
+_DR23_MAX_UNIT_BYTES = 1_048_576
+
 #: Injectable for tests (monkeypatch to a fake proc tree).
 _PROC_PATH = Path("/proc")
 
@@ -2149,7 +2158,10 @@ def _dr23_scan_units(
     unreadable = 0
     for unit_path in files:
         try:
-            text = unit_path.read_text(encoding="utf-8")
+            if unit_path.stat().st_size > _DR23_MAX_UNIT_BYTES:
+                na_notes.append(f"unit skipped: too large: {unit_path}")
+                continue
+            text = unit_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             unreadable += 1
             continue

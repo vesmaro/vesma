@@ -118,6 +118,40 @@ def test_systemd_double_bang_prefix_is_judged(platform: dict[str, Path]) -> None
     assert str(script) in (finding.detail or "")
 
 
+def test_non_utf8_unit_degrades_into_the_parse_not_a_crash(
+    platform: dict[str, Path],
+) -> None:
+    """Security-audit fix (low, accept-after-fix): systemd accepts
+    latin-1 units and a root-owned unit may carry non-UTF-8 bytes; the
+    tolerant read keeps all three legs alive instead of crashing the
+    whole check into a false «check crashed» FAIL."""
+    platform["units"].mkdir(parents=True, exist_ok=True)
+    (platform["units"] / "latin1.service").write_bytes(
+        b"[Unit]\nDescription=caf\xe9 reader\n[Service]\nExecStart=/usr/bin/env\n"
+    )
+    finding = _dr23(platform["proc"])
+    assert finding.severity is Severity.OK
+    assert "check crashed" not in (finding.detail or "")
+    assert "1 checked" in (finding.detail or "")
+
+
+def test_oversized_unit_is_skipped_with_an_honest_note(
+    platform: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The byte cap (the manifest loader's MAX_MANIFEST_BYTES
+    discipline): an oversized unit is skipped and NAMED, never slurped
+    into memory — and it is a note, not a verdict flip."""
+    monkeypatch.setattr(doctor_checks, "_DR23_MAX_UNIT_BYTES", 64)
+    unit_path = platform["units"] / "huge.service"
+    unit_path.parent.mkdir(parents=True, exist_ok=True)
+    unit_path.write_text("[Service]\nExecStart=/usr/bin/env # " + "x" * 100, encoding="utf-8")
+    finding = _dr23(platform["proc"])
+    assert finding.severity is Severity.OK
+    assert "unit skipped: too large" in (finding.detail or "")
+    assert str(unit_path) in (finding.detail or "")
+    assert "0 checked" in (finding.detail or "")
+
+
 def test_paths_under_data_root_are_legal(platform: dict[str, Path]) -> None:
     """Paths under the ratified service data home are the platform's own
     (including the ``-`` absence marker of EnvironmentFile)."""
