@@ -71,17 +71,22 @@ def _dr23(proc: Path) -> doctor_checks.Finding:
 
 def test_root_unit_exec_into_user_home_fails(platform: dict[str, Path]) -> None:
     """The DE-2 shape: a root-owned unit exec'ing a script from a user
-    home — root executing a user-writable file, the LPE class."""
-    script = platform["prefix"] / "var/home/alice/.local/share/mnemos-prod/cortex-metrics.sh"
+    home — root executing a user-writable file, the LPE class.
+
+    The victim path is LITERAL in the unit text — the doctor's parser is
+    text-only (no disk lookup for the path), and a tmp_path-derived path
+    matches ``^/(?:var/)?home/`` only when basetemp itself sits under
+    ``/var/home`` (green by accident; red under ``/tmp``)."""
+    victim = "/var/home/victim/.local/share/mnemos-prod/cortex-metrics.sh"
     _unit(
         platform["units"] / "vesma-cortex-metrics.service",
         "[Service]",
         "Type=simple",
-        f"ExecStart={script}",
+        f"ExecStart={victim}",
     )
     finding = _dr23(platform["proc"])
     assert finding.severity is Severity.FAIL
-    assert str(script) in (finding.detail or "")
+    assert victim in (finding.detail or "")
     assert "vesma-cortex-metrics.service" in (finding.detail or "")
     assert "user-writable" in (finding.detail or "")
     assert finding.fix_command is not None
@@ -90,8 +95,9 @@ def test_root_unit_exec_into_user_home_fails(platform: dict[str, Path]) -> None:
 
 def test_environmentfile_on_user_home_fails(platform: dict[str, Path]) -> None:
     """The directive breadth: EnvironmentFile pointing into a user home
-    is the same trust violation (root reads a user-controlled file)."""
-    env_file = platform["prefix"] / "home/bob/.config/vesma-board/board.env"
+    is the same trust violation (root reads a user-controlled file).
+    Literal victim path — see the leg-(a) lead test."""
+    env_file = "/home/victim/.config/vesma-board/board.env"
     _unit(
         platform["units"] / "board-container.service",
         "[Service]",
@@ -100,22 +106,23 @@ def test_environmentfile_on_user_home_fails(platform: dict[str, Path]) -> None:
     )
     finding = _dr23(platform["proc"])
     assert finding.severity is Severity.FAIL
-    assert str(env_file) in (finding.detail or "")
+    assert env_file in (finding.detail or "")
 
 
 def test_systemd_double_bang_prefix_is_judged(platform: dict[str, Path]) -> None:
     """systemd's ``!!`` privilege-requirement prefix rides the SAME argv
     token as the path — it must not hide a foreign home from leg (a)
-    (found on a real machine: ``ExecStart=!!/usr/lib/…``)."""
-    script = platform["prefix"] / "var/home/alice/legacy.sh"
+    (found on a real machine: ``ExecStart=!!/usr/lib/…``). Literal
+    victim path — see the leg-(a) lead test."""
+    victim = "/var/home/victim/legacy.sh"
     _unit(
         platform["units"] / "pinned.service",
         "[Service]",
-        f"ExecStart=!!{script}",
+        f"ExecStart=!!{victim}",
     )
     finding = _dr23(platform["proc"])
     assert finding.severity is Severity.FAIL
-    assert str(script) in (finding.detail or "")
+    assert victim in (finding.detail or "")
 
 
 def test_non_utf8_unit_degrades_into_the_parse_not_a_crash(
@@ -180,16 +187,18 @@ def test_canonical_system_unit_is_exempt(platform: dict[str, Path]) -> None:
 
 def test_vendor_dir_vesma_unit_included(platform: dict[str, Path]) -> None:
     """A vesma-named unit in the vendor dir is in the scan universe (it
-    is not platform-installed unless it IS the manifest's system unit)."""
-    script = platform["prefix"] / "home/alice/legacy.sh"
+    is not platform-installed unless it IS the manifest's system unit).
+    Literal victim path — see the leg-(a) lead test."""
+    victim = "/home/victim/legacy.sh"
     _unit(
         platform["prefix"] / "usr/lib/systemd/system/vesma-legacy.service",
         "[Service]",
-        f"ExecStart={script}",
+        f"ExecStart={victim}",
     )
     finding = _dr23(platform["proc"])
     assert finding.severity is Severity.FAIL
     assert "vesma-legacy.service" in (finding.detail or "")
+    assert victim in (finding.detail or "")
 
 
 def test_user_plane_unit_is_out_of_scope(platform: dict[str, Path]) -> None:
