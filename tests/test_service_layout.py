@@ -436,6 +436,7 @@ class TestReservedTreeNames:
                 {
                     "venv",
                     "venvs",
+                    "bin",
                     "components",
                     "components.d",
                     "env.d",
@@ -457,6 +458,8 @@ class TestReservedTreeNames:
         ("name", "reserved"),
         [
             ("venv", True),
+            ("bin", True),
+            ("binlin", False),
             ("install-state.yaml", True),
             ("env.d", True),
             ("board", False),
@@ -611,3 +614,61 @@ class TestConfigPlaneProfileDispatch:
         assert layout.components_dir() == config / "components.d"
         assert layout.env_dir() == config / "env"
         assert layout.canonical_config_path() == config / "vesma.yaml"
+
+
+class TestBinarySlotPlane:
+    """The binary child slot plane (component-platform wave Q): the
+    dispatched slot resolver — FHS ``/usr/local/lib/vesma/bin/<name>``
+    under a system profile, ``~/.vesma/bin/<name>`` in the user-layout
+    generations — the same key as the config-plane dispatch."""
+
+    def test_user_v2_resolves_the_vesma_tree(
+        self, v2_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        tree = v2_home / ".vesma"
+        assert layout.binary_artifacts_root() == tree / "bin"
+        assert layout.binary_artifact_dir("mesh-agent") == tree / "bin" / "mesh-agent"
+
+    def test_v15_generation_resolves_the_vesma_tree_too(
+        self, v15_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The bin slot is generation-independent on the user plane: BOTH
+        generations fold it into the shared ``~/.vesma`` root (the engine
+        store home lives there since the 6.0 home flip)."""
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        assert layout.binary_artifact_dir("mesh-agent") == (
+            v15_home / ".vesma" / "bin" / "mesh-agent"
+        )
+
+    def test_system_profile_dispatches_to_the_fhs_slot(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        _stamp_system_state(tmp_path)
+        assert layout.binary_artifacts_root() == tmp_path / "usr/local/lib/vesma/bin"
+        assert layout.binary_artifact_dir("mesh-agent") == (
+            tmp_path / "usr/local/lib/vesma/bin/mesh-agent"
+        )
+
+    def test_user_profile_state_resolves_the_user_plane(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        _stamp_system_state(tmp_path, profile="user")
+        assert layout.binary_artifact_dir("mesh-agent") == (
+            isolated_home / ".vesma" / "bin" / "mesh-agent"
+        )
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses DAC — EACCES leg is unreachable")
+    def test_unreadable_system_state_resolves_the_user_plane(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Permission-blind dispatch (the 0f75698d canon): EACCES on the
+        system state keeps this account on ITS OWN plane."""
+        monkeypatch.setattr(fhs, "default_prefix", lambda: tmp_path)
+        state = _stamp_system_state(tmp_path)
+        state.chmod(0o000)
+        assert layout.binary_artifact_dir("mesh-agent") == (
+            isolated_home / ".vesma" / "bin" / "mesh-agent"
+        )

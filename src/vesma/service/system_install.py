@@ -79,7 +79,13 @@ import yaml
 from vesma.config import load_settings
 from vesma.service import fhs, unitgen
 from vesma.service import install as user_install
-from vesma.service.manifest import CONFFILE_NEW_SUFFIX, bundled_manifest_path, load_installation
+from vesma.service.manifest import (
+    CONFFILE_NEW_SUFFIX,
+    ComponentManifest,
+    bundled_manifest_path,
+    load_installation,
+    load_manifest,
+)
 
 logger = logging.getLogger("vesma.service.system_install")
 
@@ -1133,9 +1139,27 @@ def install_system(prefix: Path | None = None) -> SystemInstallResult:
         f"validation: components.d loaded fail-closed — "
         f"{len(installation)} component(s): {', '.join(sorted(installation))}"
     )
+
+    # 5b. Binary child slot root (component-platform wave Q): installer-
+    #     owned WHOLE-TREE (rmtree on uninstall — the toolchain_pythons
+    #     discipline; the per-name .pre-regen.bak divergence records go
+    #     with it). The per-name files land inside the component loop
+    #     below, each recorded as its own binary_artifact row.
+    bin_root = fhs.system_binary_bin_root(resolved_prefix)
+    with _rofs_guard(bin_root):
+        make_dir("binary_bin_root", bin_root, remove_mode="rmtree")
+
     for comp in sorted(installation.values(), key=lambda m: m.name):
         data_dir = fhs.system_component_data_dir(comp.name, resolved_prefix)
         make_dir("component_data", data_dir, preserve=True)
+        if user_install.is_binary_child(comp):
+            slot = fhs.system_binary_artifact(comp.name, resolved_prefix)
+            with _rofs_guard(slot):
+                _, bin_status = _materialize_system_binary(
+                    comp, None, resolved_prefix, report, ownership
+                )
+            plan("binary_artifact", slot, remove_mode="file").status = bin_status
+            continue
         if not user_install._has_venv(comp):
             report.append(
                 f"venv: {comp.name} — no component venv (in-process or"
@@ -1273,6 +1297,195 @@ def _ensure_venv_symlink(
     _atomic_symlink(Path(target_name), link_path)
     plan(role, link_path, remove_mode="symlink", target=Path(target_name)).status = "created"
     report.append(f"venv symlink: {link_path} -> {target_name} (atomic swap)")
+
+
+# ── Binary child slots (component-platform wave Q, ArchCom 2026-10-29) ─
+
+
+def _materialize_system_binary(
+    manifest: ComponentManifest,
+    source: Path | None,
+    prefix: Path,
+    report: list[str],
+    ownership: _Ownership,
+) -> tuple[Path, str]:
+    """Materialize one binary child's pinned artifact into its FHS slot.
+
+    The wave-Q core shared by :func:`install_system` (per component, in
+    the flow — the caller plans the state row) and
+    :func:`install_system_binary` (the operator verb — the caller records
+    the state row itself). Returns ``(slot, status)``, status
+    ``"created"`` | ``"kept"``.
+
+    Refusals (typed, tree untouched): the sha pin is MANDATORY
+    (:func:`user_install.binary_pin` — a binary child without
+    ``provenance.artifact_sha256`` installs nowhere); a needed-but-absent
+    source; a source whose sha256 disagrees with the pin. A slot whose
+    sha256 still matches the pin is CURRENT — no source is needed (the
+    idempotent re-install never re-asks for the artifact). Replacement
+    of a different-sha slot goes behind the one-time
+    ``<slot>.pre-regen.bak`` backup (the manifests' divergence-record
+    discipline; byte-exact via :func:`_atomic_backup`).
+    """
+    name = manifest.name
+    try:
+        pin = user_install.binary_pin(manifest)
+    except user_install.InstallError as exc:
+        raise SystemInstallError(str(exc)) from exc
+    entry = fhs.load_fhs_manifest().entry("binary_artifact")
+    slot = fhs.system_binary_artifact(name, prefix)
+    if slot.is_file() and not slot.is_symlink() and user_install.sha256_of(slot) == pin:
+        ownership.apply_to(slot, entry.owner, entry.group)
+        report.append(f"binary (current): {slot}")
+        return slot, "kept"
+    try:
+        source_path = user_install.resolve_binary_source(manifest, source)
+    except user_install.InstallError as exc:
+        raise SystemInstallError(str(exc)) from exc
+    # Read ONCE, verify THESE bytes, write THESE bytes (supply-chain
+    # discipline): a source swapped between verify and copy could
+    # otherwise land unverified bytes in the slot.
+    data = source_path.read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != pin:
+        raise SystemInstallError(
+            f"binary artifact hash mismatch for {name!r}: {source_path} hashes "
+            f"{actual}, provenance.artifact_sha256 pins {pin} — install "
+            "refused (fail-closed); rebuild or re-export the artifact, "
+            "then update the pin"
+        )
+    if slot.exists() or slot.is_symlink():
+        backup = slot.with_name(slot.name + user_install.BINARY_BACKUP_SUFFIX)
+        if backup.exists():
+            report.append(
+                f"note: backup {backup} already exists — the current slot is "
+                "replaced without a new backup"
+            )
+        else:
+            _atomic_backup(slot, backup, entry, ownership)
+            report.append(f"backup: {backup} (previous binary preserved)")
+    with _rofs_guard(slot):
+        user_install._atomic_write_bytes(slot, data, entry.mode)
+    ownership.apply_to(slot, entry.owner, entry.group)
+    report.append(
+        f"binary: {slot} (materialized from {source_path}, mode "
+        f"{format(entry.mode, '04o')}, sha256 verified)"
+    )
+    return slot, "created"
+
+
+def install_system_binary(
+    name: str,
+    source: Path | None = None,
+    prefix: Path | None = None,
+    *,
+    manifest: ComponentManifest | None = None,
+) -> tuple[Path, list[str]]:
+    """Materialize ONE binary child's artifact into its FHS slot — the
+    system-profile leg behind ``vesma install <name> --binary <path>``
+    (wave Q). Returns ``(slot, report_lines)``.
+
+    Gates (typed refusals, tree untouched): the real prefix requires
+    root; the system profile must be INSTALLED (the install-state with
+    ``profile: system`` is the trust boundary — a hand-created FHS
+    directory never receives installer artifacts, the conffile-verb
+    P3-1 lesson); the component must be an installed binary child.
+
+    The slot AND the bin root are recorded in the install-state (SY-09:
+    every installer-created artifact stays uninstallable) — the slot's
+    row is replaced in place on re-materialization, and a pre-wave-Q
+    state's missing ``binary_bin_root`` row is healed in the same pass.
+    """
+    resolved_prefix = fhs.default_prefix() if prefix is None else prefix
+    if resolved_prefix == Path(os.sep) and os.geteuid() != 0:
+        raise SystemInstallError(
+            f"the system binary slot lives in the real FHS tree — run it as"
+            f" root: `sudo vesma install {name} --binary <path>`"
+        )
+    if read_system_profile(resolved_prefix) != "system":
+        raise SystemInstallError(
+            "the system profile is not installed (no install-state with"
+            " `profile: system`) — the binary slot is an installer-owned"
+            " artifact; install the profile first:"
+            " `sudo vesma system install`"
+        )
+    if manifest is None:
+        components = fhs.system_components_dir(resolved_prefix)
+        target = components / f"{name}.yaml"
+        alt = components / f"{name}.yml"
+        manifest_path = target if target.exists() else (alt if alt.exists() else None)
+        if manifest_path is None:
+            raise SystemInstallError(
+                f"component {name!r} has no manifest in {components} —"
+                f" install the manifest first: `vesma install {name}`"
+            )
+        manifest = load_manifest(manifest_path)
+        if manifest.name != name:
+            raise SystemInstallError(
+                f"manifest {manifest_path.name} declares component"
+                f" {manifest.name!r}, not {name!r} — the file name must"
+                " match metadata.name"
+            )
+    if not user_install.is_binary_child(manifest):
+        raise SystemInstallError(
+            f"component {name!r} is not a binary child-process component —"
+            " the binary slot applies to kind: child-process components"
+            " whose argv does not reference {venv_bin}"
+        )
+
+    ownership = _Ownership(apply_ownership=os.geteuid() == 0)
+    root_entry = fhs.load_fhs_manifest().entry("binary_bin_root")
+    bin_root = fhs.system_binary_bin_root(resolved_prefix)
+    with _rofs_guard(bin_root):
+        _ensure_dir(bin_root, root_entry.mode)
+        ownership.apply_to(bin_root, root_entry.owner, root_entry.group)
+    report: list[str] = []
+    slot, status = _materialize_system_binary(manifest, source, resolved_prefix, report, ownership)
+
+    doc = read_system_state(resolved_prefix)
+    if doc is None:
+        raise SystemInstallError(
+            f"the system install-state at {_state_path(resolved_prefix)}"
+            " disappeared mid-run — refusing to record an unowned artifact"
+        )
+    try:
+        artifacts = [StateArtifact.from_dict(a) for a in doc["artifacts"]]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemInstallError(
+            f"the system install-state at {_state_path(resolved_prefix)} has"
+            f" malformed artifact records ({exc}) — refusing to update"
+        ) from exc
+    entry = fhs.load_fhs_manifest().entry("binary_artifact")
+    for record in (
+        StateArtifact(
+            role="binary_bin_root",
+            kind="dir",
+            path=str(bin_root),
+            mode=root_entry.mode,
+            owner=root_entry.owner,
+            group=root_entry.group,
+            status="kept",
+            remove_mode="rmtree",
+        ),
+        StateArtifact(
+            role="binary_artifact",
+            kind="file",
+            path=str(slot),
+            mode=entry.mode,
+            owner=entry.owner,
+            group=entry.group,
+            status=status,
+            remove_mode="file",
+        ),
+    ):
+        artifacts = [a for a in artifacts if a.path != record.path]
+        artifacts.append(record)
+    doc["artifacts"] = [a.to_dict() for a in artifacts]
+    _write_state(resolved_prefix, doc, ownership)
+    logger.info(
+        "system binary artifact materialized: name=%s slot=%s status=%s", name, slot, status
+    )
+    return slot, report
 
 
 # ── Uninstall (SY-09 — exact inverse) ─────────────────────────────────
@@ -1596,6 +1809,7 @@ __all__ = [
     "SystemInstallResult",
     "SystemUninstallResult",
     "install_system",
+    "install_system_binary",
     "read_system_profile",
     "read_system_state",
     "regenerate_system_unit",

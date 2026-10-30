@@ -271,6 +271,7 @@ RESERVED_TREE_NAMES: frozenset[str] = frozenset(
     {
         "venv",
         "venvs",
+        "bin",
         "components",
         "components.d",
         "env.d",
@@ -446,6 +447,36 @@ def component_venv_dir(name: str) -> Path:
 def component_venv_bin(name: str) -> Path:
     """``<venvs_root>/<name>/bin`` — the ``{venv_bin}`` target."""
     return component_venv_dir(name) / "bin"
+
+
+# ── Binary child slot plane (component-platform wave Q, ArchCom
+#    2026-10-29) ─────────────────────────────────────────────────────────
+#
+# A binary (non-python) child-process component's pinned artifact lives
+# in ONE installer-materialized slot per component: the FHS slot
+# (/usr/local/lib/vesma/bin/<name>) on a system profile, ``~/.vesma/bin``
+# (v2 tree) otherwise. Dispatch follows the same key as the config-plane
+# dispatch — :func:`system_profile_active` — with its permission-blind
+# semantics (a plain user on a system machine resolves ITS user plane).
+
+
+def binary_artifacts_root() -> Path:
+    """Parent of the binary child slots (0700 user plane): the FHS
+    ``/usr/local/lib/vesma/bin`` (system profile) or ``~/.vesma/bin``
+    (user-layout generations)."""
+    if system_profile_active():
+        return fhs.system_binary_bin_root()
+    return vesma_home() / "bin"
+
+
+def binary_artifact_dir(name: str) -> Path:
+    """The binary child slot for ``name``: ``/usr/local/lib/vesma/bin/<name>``
+    (system profile, via the FHS manifest) / ``~/.vesma/bin/<name>``
+    (user-layout generations). The ONE resolution point for the slot —
+    install materializes into it, uninstall removes it."""
+    if system_profile_active():
+        return fhs.system_binary_artifact(name)
+    return binary_artifacts_root() / name
 
 
 # ── State plane ───────────────────────────────────────────────────────

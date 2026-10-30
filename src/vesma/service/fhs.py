@@ -330,6 +330,21 @@ def system_venv_component_revision(name: str, rev: str, prefix: Path | None = No
     return resolve_system_path(entry, prefix, name=name, rev=rev)
 
 
+def system_binary_bin_root(prefix: Path | None = None) -> Path:
+    """/usr/local/lib/vesma/bin — parent of the binary child slots
+    (component-platform wave Q). Installer-owned whole-tree (rmtree on
+    uninstall, the toolchain_pythons discipline)."""
+    return resolve_system_path(load_fhs_manifest().entry("binary_bin_root"), prefix)
+
+
+def system_binary_artifact(name: str, prefix: Path | None = None) -> Path:
+    """/usr/local/lib/vesma/bin/<name> — one binary child's pinned
+    artifact slot (materialized by the installer, sha256-pinned by the
+    manifest's provenance.artifact_sha256)."""
+    entry = load_fhs_manifest().entry("binary_artifact")
+    return resolve_system_path(entry, prefix, name=name)
+
+
 def system_cache_root(prefix: Path | None = None) -> Path:
     """/var/cache/vesma (regenerable, never secrets)."""
     return resolve_system_path(load_fhs_manifest().entry("cache_root"), prefix)
@@ -354,6 +369,8 @@ __all__ = [
     "default_prefix",
     "load_fhs_manifest",
     "resolve_system_path",
+    "system_binary_artifact",
+    "system_binary_bin_root",
     "system_cache_root",
     "system_component_data_dir",
     "system_components_dir",

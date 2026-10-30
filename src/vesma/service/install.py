@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
 import json
 import logging
 import os
@@ -46,7 +47,7 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
-from vesma.service import layout, unitgen
+from vesma.service import fhs, layout, unitgen
 from vesma.service.errors import ManifestError
 from vesma.service.manifest import (
     ComponentManifest,
@@ -120,6 +121,7 @@ class InstallResult:
     unit_path: Path
     downgraded: tuple[str, ...]
     daemon_reload: str  # "ok" or "skipped: <reason>"
+    binaries: tuple[Path, ...] = ()  # materialized binary child slots (wave Q)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -142,6 +144,25 @@ def _atomic_write(path: Path, data: str, mode: int) -> None:
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _atomic_write_bytes(path: Path, data: bytes, mode: int) -> None:
+    """Byte-content twin of :func:`_atomic_write` (binary artifacts).
+
+    Same mkstemp-in-target-dir + ``os.replace`` discipline: ``O_CREAT|
+    O_EXCL`` can never follow a pre-placed symlink, and the rename is
+    atomic on one filesystem — a torn binary slot is impossible.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp-")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
             handle.write(data)
         os.chmod(tmp, mode)
         os.replace(tmp, path)
@@ -305,6 +326,182 @@ def _write_component_schemas(manifest: ComponentManifest) -> Path | None:
 def _has_venv(manifest: ComponentManifest) -> bool:
     """A python child: its launch argv references ``{venv_bin}``."""
     return manifest.launch is not None and any("{venv_bin}" in arg for arg in manifest.launch.argv)
+
+
+# ── Binary child materialization (component-platform wave Q, ArchCom
+#    2026-10-29) ─────────────────────────────────────────────────────────
+
+
+#: The one-time divergence record for a REPLACED binary slot (the same
+#: discipline as the manifests' ``.pre-regen.bak``: the FIRST previous
+#: artifact is preserved, never clobbered by later replacements).
+BINARY_BACKUP_SUFFIX: Final[str] = ".pre-regen.bak"
+
+
+def sha256_of(path: Path) -> str:
+    """The hex sha256 of a file's bytes (1 MiB chunks — binaries are big)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def is_binary_child(manifest: ComponentManifest) -> bool:
+    """A binary child: ``kind: child-process`` whose argv does NOT
+    reference ``{venv_bin}`` — the artifact is a pinned executable, not a
+    python venv. In-process components are never binary children."""
+    return manifest.kind == "child-process" and not _has_venv(manifest)
+
+
+def binary_pin(manifest: ComponentManifest) -> str:
+    """The manifest's artifact pin — REFUSAL without it (fail-closed).
+
+    A binary child without ``provenance.artifact_sha256`` cannot be
+    verified against its source NOR against the slot on re-install: the
+    installer would have to trust whatever bytes it finds. Refused with
+    the operator-facing fix.
+    """
+    pin = manifest.metadata.provenance.artifact_sha256
+    if not pin:
+        raise InstallError(
+            f"component {manifest.name!r} is a binary child-process component "
+            "without provenance.artifact_sha256 — install refused (fail-closed): "
+            "binary components pin their artifact — add artifact_sha256 to provenance"
+        )
+    return pin
+
+
+def resolve_binary_source(manifest: ComponentManifest, binary_source: Path | None) -> Path:
+    """The binary artifact source: the operator's ``--binary`` path, else
+    ``launch.binary.path`` resolved RELATIVE TO THE MANIFEST (an absolute
+    path wins verbatim). Refusal when neither yields a regular file."""
+    name = manifest.name
+    if binary_source is not None:
+        if not binary_source.is_file():
+            raise InstallError(
+                f"binary source {binary_source} not found (or not a regular "
+                f"file) — component {name!r} is not materialized"
+            )
+        return binary_source
+    raw = manifest.launch_binary_path()
+    if raw:
+        source = Path(raw).expanduser()
+        if not source.is_absolute():
+            source = manifest.path.parent / source
+        if source.is_file():
+            return source
+        raise InstallError(
+            f"launch.binary.path {raw!r} of component {name!r} resolves to "
+            f"{source}, which is not a regular file — put the pinned artifact "
+            f"there or pass `vesma install {name} --binary <path>`"
+        )
+    raise InstallError(
+        f"binary component {name!r} has no materializable source — pass a "
+        f"local artifact path: `vesma install {name} --binary <path>`, or "
+        "declare launch.binary.path (resolved relative to the manifest) "
+        "and re-run"
+    )
+
+
+def _binary_slot_mode() -> int:
+    """The slot file mode per plane: the FHS manifest's 0755 (system —
+    the service account executes it) / 0700 (user plane, owner-private,
+    the v2 tree discipline)."""
+    if layout.system_profile_active():
+        return fhs.load_fhs_manifest().entry("binary_artifact").mode
+    return 0o700
+
+
+def _install_component_binary(
+    manifest: ComponentManifest, report: list[str], *, binary_source: Path | None = None
+) -> Path:
+    """Materialize one binary child's pinned artifact into its slot.
+
+    The ratified invariant (component-platform wave Q): EVERY artifact
+    lands in its slot at install time — a launch.argv pointing at a
+    hand-placed binary is the desync class this leg closes.
+
+    Discipline:
+
+    * the pin is MANDATORY (:func:`binary_pin`, fail-closed);
+    * the slot is profile-dispatched (:func:`layout.binary_artifact_dir`
+      — FHS slot on a system profile, ``~/.vesma/bin`` otherwise) and the
+      mode per plane (:func:`_binary_slot_mode`);
+    * idempotent: a slot whose sha256 still matches the pin is CURRENT —
+      no source needed (a re-install never re-asks for the artifact);
+    * a different-slot sha means replacement BEHIND the one-time
+      ``<slot>.pre-regen.bak`` backup (the manifests' pre-regen
+      discipline: the first divergence record is never clobbered);
+    * the source is verified BEFORE any mutation — a mismatched artifact
+      refuses with the tree untouched;
+    * bytes land atomically (:func:`_atomic_write_bytes`).
+
+    The SYSTEM profile's state-recording leg lives in
+    :mod:`vesma.service.system_install` (:func:`system_install.
+    install_system_binary` — the per-component verb dispatches there);
+    this leg is the stateless user-plane materializer used by the whole-
+    installation flow.
+    """
+    name = manifest.name
+    pin = binary_pin(manifest)
+    slot = layout.binary_artifact_dir(name)
+    mode = _binary_slot_mode()
+    if slot.is_file() and not slot.is_symlink() and sha256_of(slot) == pin:
+        report.append(f"binary: {slot} (current — sha256 verified)")
+        return slot
+    source = resolve_binary_source(manifest, binary_source)
+    # Read ONCE, verify THESE bytes, write THESE bytes (supply-chain
+    # discipline): a source swapped between verify and copy could
+    # otherwise land unverified bytes in the slot.
+    data = source.read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != pin:
+        raise InstallError(
+            f"binary artifact hash mismatch for {name!r}: {source} hashes "
+            f"{actual}, provenance.artifact_sha256 pins {pin} — install "
+            "refused (fail-closed); rebuild or re-export the artifact, "
+            "then update the pin"
+        )
+    layout.ensure_dir(slot.parent, layout.MODE_DIR_DEFAULT)
+    if slot.exists() or slot.is_symlink():
+        backup = slot.with_name(slot.name + BINARY_BACKUP_SUFFIX)
+        if backup.exists():
+            report.append(
+                f"note: backup {backup} already exists — the current slot is "
+                "replaced without a new backup"
+            )
+        else:
+            _atomic_write_bytes(backup, slot.read_bytes(), 0o600)
+            report.append(f"backup: {backup} (previous binary preserved)")
+    _atomic_write_bytes(slot, data, mode)
+    report.append(
+        f"binary: {slot} (materialized from {source}, mode {format(mode, '04o')}, sha256 verified)"
+    )
+    logger.info("binary artifact materialized: name=%s slot=%s source=%s", name, slot, source)
+    return slot
+
+
+def _remove_binary_slot(name: str) -> list[str]:
+    """Remove one component's binary slot (+ its one-time backup).
+
+    User-plane uninstall discipline: only what the install flow owns —
+    the slot file and its ``.pre-regen.bak`` divergence record; the bin
+    root itself stays (the tree structure is not a per-component
+    artifact). Absent slots report honestly, never fail.
+    """
+    slot = layout.binary_artifact_dir(name)
+    lines: list[str] = []
+    if slot.is_symlink() or slot.exists():
+        slot.unlink()
+        lines.append(f"binary slot removed: {slot}")
+    else:
+        lines.append(f"binary slot absent (nothing to remove): {slot}")
+    backup = slot.with_name(slot.name + BINARY_BACKUP_SUFFIX)
+    if backup.exists():
+        backup.unlink()
+        lines.append(f"binary backup removed: {backup}")
+    return lines
 
 
 def _validate_pin(line: str) -> None:
@@ -556,8 +753,16 @@ def install() -> InstallResult:
             report.append(f"schema: {schema_path}")
 
     # 5. One venv per python child (LY-05); in-process board has none.
+    #    Binary children (non-python child-process) materialize their
+    #    pinned artifact into the slot instead (wave Q) — the refusal
+    #    discipline lives in _install_component_binary (no pin, no source,
+    #    hash mismatch = the whole install refuses fail-closed).
     venvs: list[Path] = []
+    binaries: list[Path] = []
     for manifest in sorted(installation.values(), key=lambda m: m.name):
+        if is_binary_child(manifest):
+            binaries.append(_install_component_binary(manifest, report))
+            continue
         if not _has_venv(manifest):
             report.append(
                 f"venv: {manifest.name} — no component venv "
@@ -608,6 +813,7 @@ def install() -> InstallResult:
         unit_path=unit_path,
         downgraded=downgraded,
         daemon_reload=reload_status,
+        binaries=tuple(binaries),
     )
 
 
@@ -629,7 +835,7 @@ class InstallComponentResult:
     written: bool  # bundle bytes were (re)written from this engine's bundle
 
 
-def install_component(name: str) -> InstallComponentResult:
+def install_component(name: str, *, binary: Path | None = None) -> InstallComponentResult:
     """Install ONE component's manifest — the per-component slice of
     :func:`install`, idempotent.
 
@@ -642,6 +848,16 @@ def install_component(name: str) -> InstallComponentResult:
     installation-wide artifacts and stay owned by :func:`install`
     (``vesma install --all`` / ``vesma service install``); a python child
     gets a loud pointer instead of a silent half-install.
+
+    BINARY children (wave Q) are the per-component exception: their
+    pinned artifact slot is a per-component artifact, so the
+    materialization runs HERE — ``binary`` is the operator's local
+    artifact path (``vesma install <name> --binary <path>``); without it
+    the manifest's ``launch.binary.path`` or an already-current slot
+    answers. On a system profile the leg dispatches to
+    :func:`vesma.service.system_install.install_system_binary` (root
+    gate + install-state recording); ``--binary`` on a python/in-process
+    component is an addressed refusal.
 
     Spelling (``.yaml`` vs ``.yml``): the canonical install target is
     ``.yaml``. A bundled manifest parked under ``.yml`` is MOVED to the
@@ -744,6 +960,25 @@ def install_component(name: str) -> InstallComponentResult:
             f"manifest {target.name} declares component {manifest.name!r}, not {name!r} — "
             "the file name must match metadata.name"
         )
+
+    if binary is not None and not is_binary_child(manifest):
+        shape = "python child" if _has_venv(manifest) else (manifest.kind or "unknown kind")
+        raise InstallError(
+            f"--binary applies to binary child-process components, and "
+            f"{name!r} is not one ({shape}) — nothing was materialized"
+        )
+    if is_binary_child(manifest):
+        if layout.system_profile_active():
+            # The system profile's slot is install-state recorded
+            # (exact-inverse uninstall, SY-09) and root-gated — the
+            # system installer owns that plane. Lazy import: this module
+            # is system_install's dependency, never the reverse.
+            from vesma.service import system_install
+
+            _, bin_lines = system_install.install_system_binary(name, binary, manifest=manifest)
+            report.extend(bin_lines)
+        else:
+            _install_component_binary(manifest, report, binary_source=binary)
 
     layout.ensure_dir(layout.data_dir(name), layout.MODE_DIR_DEFAULT)
     schema_path = _write_component_schemas(manifest)
@@ -993,8 +1228,9 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
     """Uninstall one component, or the whole installation with ``--all``.
 
     Drop-in discipline (LY-02): only files the install flow owns are
-    removed — the component manifest, its env file, its venv. Component
-    data dirs are operator data and are ALWAYS preserved.
+    removed — the component manifest, its env file, its venv, its binary
+    slot (wave Q). Component data dirs are operator data and are ALWAYS
+    preserved.
     """
     if remove_all == (name is not None):
         raise InstallError("specify either a component name or --all, not both/neither")
@@ -1041,6 +1277,7 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
             env_path.unlink()
             lines.append(f"env file removed: {env_path}")
         lines.append(_remove_venv(name))
+        lines.extend(_remove_binary_slot(name))
         lines.append(f"data dir preserved (operator data): {layout.data_dir(name)}")
     else:
         # --all: stop/disable + remove the unit, then every component file.
@@ -1069,6 +1306,7 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
                 env_path.unlink()
                 lines.append(f"env file removed: {env_path}")
             lines.append(_remove_venv(comp))
+            lines.extend(_remove_binary_slot(comp))
             lines.append(f"data dir preserved (operator data): {layout.data_dir(comp)}")
         if load_error is not None:
             # Sweep the install-owned files whose names the broken dir no
@@ -1086,21 +1324,37 @@ def uninstall(name: str | None = None, *, remove_all: bool = False) -> Uninstall
             if venvs_root.is_dir():
                 for venv_dir in sorted(venvs_root.iterdir()):
                     lines.append(_remove_venv_dir(venv_dir))
+            # The binary slots of components the broken dir no longer
+            # declares: every regular file under the install-owned bin
+            # root (the slot of a broken-install component can no longer
+            # be named from the manifests).
+            bin_root = layout.binary_artifacts_root()
+            if bin_root.is_dir():
+                for slot in sorted(bin_root.iterdir()):
+                    if slot.is_dir() and not slot.is_symlink():
+                        continue  # never rmtree foreign dirs from the sweep
+                    slot.unlink()
+                    lines.append(f"binary slot removed: {slot}")
 
     logger.info("service uninstalled: name=%s all=%s", name, remove_all)
     return UninstallResult(lines=tuple(lines))
 
 
 __all__ = [
+    "BINARY_BACKUP_SUFFIX",
     "BUNDLED_COMPONENTS",
     "InstallComponentResult",
     "InstallError",
     "InstallResult",
     "UninstallResult",
+    "binary_pin",
     "install",
     "install_component",
+    "is_binary_child",
     "parse_pin_line",
     "read_lock",
     "regenerate_component_manifest",
+    "resolve_binary_source",
+    "sha256_of",
     "uninstall",
 ]
