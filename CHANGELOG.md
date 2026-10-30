@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **The legacy `mnema-embed-v1` bundled artifact directory and its rebrand fallback (owner directive 2026-10-31, rudiments sweep; fulfils the rebrand's own "removed in 6.0" contract)** — the vesma rebrand (2026-10-01) left the byte-identical pre-rebrand twin `src/vesma/models/mnema-embed-v1/` (~30 MB int8 ONNX + tokenizer) shipped inside the wheel payload alongside `vesma-embed-v1`, plus the `_LEGACY_ARTIFACT_DIRS` mixed-install fallback in `_mnema_artifact_dir` that silently re-pointed a missing new-name directory at the deprecated twin with a warning. Both are gone: the shipped payload shrinks by the ~30 MB duplicate, and a bundled name that does not resolve now fails loud with `FileNotFoundError` naming the looked-at path — no silent re-points, per the no-silent-degradation doctrine. Store pins are unaffected by design: the nano pin is `nano:sha256:<weights_sha256>` over the model bytes and the weights are untouched — the shipped `vesma-embed-v1` artifact (round-3 export, `3b752e06…`) is byte-identical to what it always was, and a config naming the bundled default resolves exactly as before. Only a config explicitly naming `mnema-embed-v1` as a bundled model spec changes behavior: it now gets the loud not-bundled error instead of silently resolving the twin. Files: `src/vesma/embeddings/__init__.py`, `src/vesma/models/mnema-embed-v1/` (deleted); regression pin `tests/test_embeddings_mnema.py::test_legacy_mnema_artifact_dir_is_gone_fails_loud`.
+
 ## [6.8.0] — 2026-10-30
 
 ### Added

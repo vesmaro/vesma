@@ -68,15 +68,11 @@ class EmbeddingProvider(ABC):
 #: never shadows it at import time.
 #: Renamed from ``mnema-embed-v1`` in the vesma rebrand: the weights are
 #: byte-identical (the store pin is ``nano:sha256:<onnx-hash>`` — a rename
-#: cannot invalidate stored pins), and the old-name directory ships until
-#: 6.0 for the deprecated mnemos-memory-server mirror.
+#: cannot invalidate stored pins). The legacy mnema-* directory and its
+#: mixed-install fallback shipped through 5.x per the rebrand contract
+#: ("removed in 6.0") and are gone since the 2026-10-31 rudiments sweep —
+#: an unresolvable bundled name now fails loud, never silently re-points.
 MNEMA_EMBED_MODEL = "vesma-embed-v1"
-
-#: Pre-6.0 rebrand fallback: bundled name → legacy artifact directory.
-#: If the new-name directory is missing (e.g. a deploy where only the
-#: deprecated mirror shipped the old directory), resolve the legacy
-#: directory instead and warn — the weights there are byte-identical.
-_LEGACY_ARTIFACT_DIRS: dict[str, str] = {"vesma-embed-v1": "mnema-embed-v1"}
 
 #: Static sequence shape of the exported graph (batch 1 x 256 tokens).
 MNEMA_MAX_SEQ = 256
@@ -113,21 +109,6 @@ def _mnema_artifact_dir(model: str) -> Path:
         # onnxruntime needs a real file path, so the Traversable is
         # stringified — the wheel/source layouts are real directories.
         return Path(str(bundled))
-    # Rebrand fallback (pre-6.0): the vesma-* directory is missing but the
-    # deprecated mnema-* twin (byte-identical weights) is still bundled —
-    # resolve it so upgraded-but-mixed installs keep working.
-    legacy_name = _LEGACY_ARTIFACT_DIRS.get(name)
-    if legacy_name:
-        legacy = resource_files("vesma") / "models" / legacy_name
-        if (legacy / "model.onnx").is_file():
-            logger.warning(
-                "bundled artifact %r not found, falling back to the deprecated "
-                "legacy directory %r (byte-identical weights; the legacy name "
-                "is removed in 6.0)",
-                name,
-                legacy_name,
-            )
-            return Path(str(legacy))
     raise FileNotFoundError(
         f"vesma-embed artifact {name!r} is not bundled (looked at {bundled!s}); "
         f"expected model.onnx + tokenizer.json inside it"
