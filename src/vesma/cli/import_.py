@@ -54,6 +54,8 @@ from typing import TYPE_CHECKING, Any
 
 from vesma.canon_validate import canon_envelope_is_client_authored, strip_client_lineage_marks
 from vesma.cli.export import (
+    LEGACY_SQLITE_DB_MEMBER,
+    SQLITE_DB_MEMBER,
     CompressMode,
     ExportFormat,
     decompress,
@@ -858,17 +860,18 @@ def _import_sqlite(
 
     # Validate the snapshot by reading the memory count from it.
     with tarfile.open(fileobj=io.BytesIO(snapshot), mode="r:gz") as tar:
-        legacy_member = None
-        for m in tar.getmembers():
-            if m.name == "mnemos.db":
-                legacy_member = m
-                break
-        if legacy_member is None:
-            result.errors.append("SQLite snapshot missing mnemos.db.")
+        members = {m.name: m for m in tar.getmembers()}
+        # 6.0+ archives carry the canonical vesma.db; pre-rename archives
+        # used the legacy mnemos.db — accept both (backwards compatibility).
+        db_member = members.get(SQLITE_DB_MEMBER) or members.get(LEGACY_SQLITE_DB_MEMBER)
+        if db_member is None:
+            result.errors.append(
+                f"SQLite snapshot missing {SQLITE_DB_MEMBER} (or legacy {LEGACY_SQLITE_DB_MEMBER})."
+            )
             return result
-        extracted = tar.extractfile(legacy_member)
+        extracted = tar.extractfile(db_member)
         if extracted is None:
-            result.errors.append("SQLite snapshot mnemos.db payload is empty.")
+            result.errors.append(f"SQLite snapshot {db_member.name} payload is empty.")
             return result
         db_bytes = extracted.read()
 

@@ -344,7 +344,7 @@ If you integrate with Vesma as a library or parse its exports:
 | `importlib.resources.files("vesmaro")` | `importlib.resources.files("vesma")` |
 | `settings.mnemos.data_dir` | `settings.vesma.data_dir` |
 | export JSON key `mnemos_version` | `vesma_version` (the importer still accepts the old key) |
-| console scripts `vesma` / `vesmaro` / `mnemos` | all three still installed; `vesma` is canonical, the aliases point at the same entry point |
+| console scripts `vesma` / `vesmaro` / `mnemos` | legacy entry points (`vesmaro`, `mnemos`) retired in 6.0 — only `vesma` and `vesma-train` are installed |
 
 There is no deprecation period for the import names — 6.0 is the hard cut.
 Reinstall after upgrading (`uv sync` / `pip install -e .`); wheels build from

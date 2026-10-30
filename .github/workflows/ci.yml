@@ -73,6 +73,11 @@ jobs:
       - name: Format check (ruff format)
         run: source .venv/bin/activate && ruff format --check .
 
+      - name: Rebrand residue gate
+        # Fails the job on any live-surface legacy-name line outside the
+        # exact-token allowlist (scripts/residue-check.sh exits 1 on hit).
+        run: bash scripts/residue-check.sh
+
       - name: Type check (mypy --strict)
         run: source .venv/bin/activate && mypy --strict src/vesma/
 

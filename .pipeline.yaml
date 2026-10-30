@@ -1,4 +1,4 @@
 # Release-pipeline profile (Korrnals/release-pipeline, symlink mode via
-# scripts/run-release-local.sh). mnemos is a dual-stack project: PyPI
+# scripts/run-release-local.sh). vesma is a dual-stack project: PyPI
 # (mnemos-memory-server) + npm (pi extension, alias channels).
 plugins: [python, node]

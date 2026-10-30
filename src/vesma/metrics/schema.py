@@ -20,7 +20,7 @@ Privacy is by structure, not by filter (ADR-0026):
 
 # ── PROVENANCE ────────────────────────────────────────────────────────
 # Vendored from mnemos-vitals main (phase A2, 2026-09-22). Master copy
-# + methodology: ~/LABs/Projects/Project-Mnemos/mnemos-vitals. Sync rule:
+# + methodology: /var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals. Sync rule:
 # changes land there first, then are ported in the same wave
 # (drift-guard tests on both sides must stay green).
 

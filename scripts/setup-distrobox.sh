@@ -51,8 +51,7 @@ distrobox enter "$CONTAINER_NAME" -- bash -c "
     fi
 
     echo '--- Creating vault directory ---'
-    mkdir -p ~/vesma-vault
-    mkdir -p ~/.mnemos
+    mkdir -p ~/.vesma/vault
 
     echo ''
     echo '============================================='

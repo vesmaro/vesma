@@ -5,7 +5,7 @@ Design (owner-confirmed, 2026-06-20):
 * **JSON format** — metadata only (memories + projects). Vectors are
   regenerated on import. Traces are NEVER included (audit/log data, not
   exportable).
-* **SQLite format** — complete snapshot: copies the raw ``mnemos.db`` and
+* **SQLite format** — complete snapshot: copies the raw ``vesma.db`` and
   ``vectors.db`` files into a ``.tar.gz`` archive. Fastest full backup.
 * **Filters** (``--project``, ``--agent``, ``--status``, ``--tags``,
   ``--since``, ``--until``) apply to JSON only. SQLite is always a full
@@ -365,9 +365,15 @@ def build_json_payload(
 
 # ── SQLite export ─────────────────────────────────────────────────────────────
 
+# Snapshot tar member for the memories database. 6.0+ archives carry the
+# canonical ``vesma.db``; archives written before the rename used the
+# legacy ``mnemos.db`` — readers accept both (backwards compatibility).
+SQLITE_DB_MEMBER = "vesma.db"
+LEGACY_SQLITE_DB_MEMBER = "mnemos.db"
+
 
 def _build_sqlite_snapshot(mgr: MemoryManager) -> bytes:
-    """Build an in-memory tar.gz containing mnemos.db + vectors.db.
+    """Build an in-memory tar.gz containing vesma.db + vectors.db.
 
     The raw DB files are copied byte-for-byte so the snapshot is a
     complete, restorable image. We checkpoint the WAL first so the
@@ -388,7 +394,7 @@ def _build_sqlite_snapshot(mgr: MemoryManager) -> bytes:
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         vesma_db_path = mgr.settings.db_path
         vectors_db_path = mgr.settings.vesma.data_dir / "vectors.db"
-        for name, path in (("mnemos.db", vesma_db_path), ("vectors.db", vectors_db_path)):
+        for name, path in ((SQLITE_DB_MEMBER, vesma_db_path), ("vectors.db", vectors_db_path)):
             if not path.exists():
                 continue
             data = path.read_bytes()
@@ -599,11 +605,14 @@ def decompress(data: bytes, mode: CompressMode) -> bytes:
 
 
 def detect_sqlite_snapshot(data: bytes) -> bool:
-    """Return True if ``data`` is a gzip tar containing mnemos.db."""
+    """Return True if ``data`` is a gzip tar with a memories DB member.
+
+    Accepts the canonical ``vesma.db`` and the legacy ``mnemos.db``.
+    """
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             names = tar.getnames()
-            return "mnemos.db" in names
+            return SQLITE_DB_MEMBER in names or LEGACY_SQLITE_DB_MEMBER in names
     except (tarfile.TarError, OSError):
         return False
 
@@ -614,7 +623,7 @@ def restore_sqlite_snapshot(
     *,
     backup_current: Path | None = None,
 ) -> int:
-    """Replace the live mnemos.db + vectors.db with the snapshot contents.
+    """Replace the live vesma.db + vectors.db with the snapshot contents.
 
     Destructive: overwrites the current DB files. The caller MUST confirm.
     If ``backup_current`` is set, the current files are copied there first.
@@ -644,10 +653,10 @@ def restore_sqlite_snapshot(
 
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         for member in tar.getmembers():
-            if member.name == "mnemos.db":
+            if member.name in (SQLITE_DB_MEMBER, LEGACY_SQLITE_DB_MEMBER):
                 extracted = tar.extractfile(member)
                 if extracted is None:
-                    raise ValueError("SQLite snapshot missing mnemos.db payload")
+                    raise ValueError("SQLite snapshot missing memories DB payload")
                 vesma_db.write_bytes(extracted.read())
             elif member.name == "vectors.db":
                 extracted = tar.extractfile(member)

@@ -10,7 +10,7 @@ VERSION := $(shell grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
 PYTHON ?= $(VENV)/python
 
 help:
-	@echo "Mnemos development commands"
+	@echo "Vesma development commands"
 	@echo "  make bootstrap  - [DEV] Create .venv and install project (editable) + dev extras"
 	@echo "  make check-venv - [DEV] Verify .venv editable install resolves to ./src"
 	@echo "  make install    - Install with dev dependencies"
@@ -174,7 +174,7 @@ doctor:
 	fi
 
 bootstrap:
-	@echo "🔧 Creating .venv and installing mnemos (editable) + dev extras..."
+	@echo "🔧 Creating .venv and installing vesma (editable) + dev extras..."
 	python -m venv .venv
 	.venv/bin/python -m pip install --upgrade pip
 	.venv/bin/python -m pip install -e ".[dev]"
@@ -201,13 +201,13 @@ build-dist:
 	python -m build
 
 build-image:
-	podman build -t localhost/mnemos:$(VERSION) -t localhost/mnemos:latest -f Containerfile .
+	podman build -t localhost/vesma:$(VERSION) -t localhost/vesma:latest -f Containerfile .
 
 push-image:
 	# Run `make build-image` first to ensure the local image exists.
 	# Requires: podman login ghcr.io  (credentials are NOT embedded here).
-	podman tag localhost/mnemos:$(VERSION) ghcr.io/vesmaro/vesma:$(VERSION)
-	podman tag localhost/mnemos:latest ghcr.io/vesmaro/vesma:latest
+	podman tag localhost/vesma:$(VERSION) ghcr.io/vesmaro/vesma:$(VERSION)
+	podman tag localhost/vesma:latest ghcr.io/vesmaro/vesma:latest
 	podman push ghcr.io/vesmaro/vesma:$(VERSION)
 	podman push ghcr.io/vesmaro/vesma:latest
 

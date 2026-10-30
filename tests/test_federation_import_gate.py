@@ -28,7 +28,8 @@ redact or never carry the planted PUBLISHED secret row the gate has to
 catch — a tampered snapshot is exactly the #245 threat model. Snapshot DBs
 are built with the live store's own schema (Settings + MemoryManager over
 a tmp_path, ``sqlite.save`` of hand-built Memory objects), then tarred as
-``vesma.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite`` expects.
+``vesma.tar.gz`` with the legacy ``mnemos.db`` member ``_import_sqlite``
+still accepts (pre-6.0 archive name; kept as legacy coverage).
 """
 
 from __future__ import annotations
@@ -205,8 +206,8 @@ def _snapshot_file(
     the snapshot is built directly: a live-schema DB over a tmp_path,
     ``sqlite.save`` of the hand-built rows (bypassing every manager-level
     gate — this simulates a tampered/at-rest-leaked snapshot), then tarred
-    as ``vesma.tar.gz`` with the ``mnemos.db`` member ``_import_sqlite``
-    expects (import_.py:584-597).
+    as ``vesma.tar.gz`` with the legacy ``mnemos.db`` member
+    ``_import_sqlite`` still accepts (pre-6.0 archive name).
 
     ``corrupt`` (optional): run after the saves, BEFORE the checkpoint/
     tar — a direct ``sqlite3`` UPDATE hook for planting a row no Memory/
@@ -214,7 +215,7 @@ def _snapshot_file(
     i.e. the malformed-payload half of the tampered-snapshot threat model.
 
     ``embed_rows`` (optional): also embed every PUBLISHED row into the
-    snapshot's ``vectors.db`` and tar it alongside ``mnemos.db`` — the
+    snapshot's ``vectors.db`` and tar it alongside the DB member — the
     full image ``_build_sqlite_snapshot`` produces and
     ``restore_sqlite_snapshot`` swaps back (#259: the restored embeds are
     LIVE after the swap, so a gate refusal must evict them).

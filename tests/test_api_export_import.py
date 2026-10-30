@@ -114,7 +114,7 @@ class TestApiExport:
         import tarfile
 
         with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:gz") as tar:
-            assert "mnemos.db" in tar.getnames()
+            assert "vesma.db" in tar.getnames()
 
     def test_export_encrypt_requires_passphrase_header(self, client):
         _add(client, "secret")

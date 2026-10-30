@@ -42,7 +42,7 @@ not zero: with no reports the value keys carry ``None``.
 # Vendored from mnemos-vitals main (phase C, 2026-09-29; includes the
 # C1-review fixups of master commit 698a650: degraded touched_share
 # carries the kappa reason). Master copy + methodology:
-# ~/LABs/Projects/Project-Mnemos/mnemos-vitals. Sync rule: changes land
+# /var/home/abyss/LABs/Projects/Project-Vesma/vesma-vitals. Sync rule: changes land
 # there first, then are ported in the same wave (drift-guard tests on
 # both sides must stay green).
 
