@@ -19,7 +19,7 @@ import pytest
 from vesma.service import install as install_mod
 from vesma.service import layout, unitgen
 from vesma.service.errors import CLAMP_VIOLATION, MANIFEST_SCHEMA_INVALID, ManifestError
-from vesma.service.install import InstallError, install, uninstall
+from vesma.service.install import InstallError, install, install_component, uninstall
 from vesma.service.manifest import bundled_manifest_path, load_bundled_manifest
 
 
@@ -795,3 +795,212 @@ class TestInstanceTemplateUnit:
     def test_report_names_the_template(self, installed: Path) -> None:
         result = install()
         assert any("vesma@.service" in line for line in result.lines)
+
+
+# ── Binary child materialization (component-platform wave Q) ──────────
+
+
+def _sha256_of(path: Path | bytes) -> str:
+    import hashlib
+
+    data = path.read_bytes() if isinstance(path, Path) else path
+    return hashlib.sha256(data).hexdigest()
+
+
+def _write_binary_child_manifest(
+    components: Path,
+    name: str,
+    sha: str,
+    *,
+    binary_path: str | None = None,
+    pin: str | None = None,
+) -> Path:
+    """One operator-authored BINARY child manifest (non-python child-
+    process — no {venv_bin}, hence the binary leg, never the venv leg)."""
+    pin_line = f"    artifact_sha256: {pin or sha}\n" if (pin or sha) else ""
+    binary_block = f"  binary:\n    path: {binary_path}\n" if binary_path else ""
+    target = components / f"{name}.yaml"
+    target.write_text(
+        "apiVersion: vesma.component/v1\n"
+        "kind: child-process\n"
+        "metadata:\n"
+        f"  name: {name}\n"
+        "  version: 1.0.0\n"
+        "  tier: optional\n"
+        "  description: fake binary child\n"
+        "  provenance:\n"
+        "    repo: https://example.com/mesh-agent\n"
+        "    license: MIT\n"
+        f"{pin_line}"
+        "launch:\n"
+        "  argv:\n"
+        f"    - /usr/local/bin/{name}\n"
+        f"{binary_block}"
+        "stop:\n"
+        "  signal: SIGTERM\n"
+        "  grace_period: 5s\n",
+        encoding="utf-8",
+    )
+    return target
+
+
+class TestBinaryChildInstall:
+    """The installer materializes a binary child's pinned artifact into
+    its slot (wave Q, ArchCom 2026-10-29): sha-pinned, idempotent,
+    .bak-disciplined, fail-closed without the pin."""
+
+    @pytest.fixture
+    def binary_child(self, isolated_home: Path) -> tuple[Path, Path, str]:
+        """A binary artifact source + its sha + the manifest in components.d
+        (launch.binary.path ABSOLUTE — the ../ shape is pinned separately)."""
+        source_dir = isolated_home / "artifacts"
+        source_dir.mkdir()
+        source = source_dir / "mesh-agent"
+        source.write_bytes(b"\x7fELF fake binary payload")
+        sha = _sha256_of(source)
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(components, "mesh-agent", sha, binary_path=str(source))
+        return source, layout.binary_artifact_dir("mesh-agent"), sha
+
+    def test_install_materializes_the_pinned_slot(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, _ = binary_child
+        result = install()
+        assert slot.is_file()
+        assert slot.read_bytes() == source.read_bytes()
+        assert oct(slot.stat().st_mode & 0o777) == oct(0o700), (
+            "user plane: the slot is owner-private (0700), the v2 discipline"
+        )
+        assert any("sha256 verified" in line for line in result.lines)
+        assert slot in result.binaries
+
+    def test_launch_binary_path_relative_resolves_against_manifest_dir(
+        self, isolated_home: Path
+    ) -> None:
+        """A RELATIVE launch.binary.path resolves against the manifest's
+        directory (../artifacts/… — the source lives OUTSIDE the
+        fail-closed components.d, the conffile-backup shape)."""
+        source_dir = isolated_home / "artifacts"
+        source_dir.mkdir()
+        source = source_dir / "mesh-agent"
+        source.write_bytes(b"\x7fELF relative payload")
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(
+            components,
+            "mesh-agent",
+            _sha256_of(source),
+            binary_path="../../artifacts/mesh-agent",
+        )
+        install()
+        slot = layout.binary_artifact_dir("mesh-agent")
+        assert slot.read_bytes() == source.read_bytes()
+
+    def test_reinstall_is_current_without_rereading_the_source(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        _, slot, _ = binary_child
+        install()
+        source = isolated_home / "artifacts" / "mesh-agent"
+        source.unlink()  # the source is GONE — a current slot must not care
+        result = install()
+        assert any("current — sha256 verified" in line for line in result.lines)
+        assert slot.is_file()
+
+    def test_refuses_without_artifact_sha256_fail_closed(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(components, "mesh-agent", "")  # no pin
+        with pytest.raises(InstallError, match="binary components pin their artifact"):
+            install()
+        assert not layout.binary_artifact_dir("mesh-agent").exists()
+
+    def test_refuses_on_sha_mismatch(self, isolated_home: Path) -> None:
+        source_dir = isolated_home / "artifacts"
+        source_dir.mkdir()
+        source = source_dir / "mesh-agent"
+        source.write_bytes(b"\x7fELF actual bytes")
+        wrong_pin = "b" * 64  # hex64 STRING — "0"*64 would YAML-parse as int 0
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(components, "mesh-agent", wrong_pin, binary_path=str(source))
+        with pytest.raises(InstallError, match="hash mismatch"):
+            install()
+        assert not layout.binary_artifact_dir("mesh-agent").exists(), (
+            "fail-closed: a mismatched artifact never lands in the slot"
+        )
+
+    def test_refuses_when_pin_but_no_source_and_no_slot(self, isolated_home: Path) -> None:
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(components, "mesh-agent", "a" * 64)
+        with pytest.raises(InstallError, match="no materializable source"):
+            install()
+
+    def test_replacement_with_different_sha_writes_the_one_time_bak(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, _ = binary_child
+        first_bytes = source.read_bytes()
+        install()
+        source.write_bytes(b"\x7fELF upgraded payload")
+        components = layout.components_dir()
+        manifest = components / "mesh-agent.yaml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                _sha256_of(first_bytes), _sha256_of(source)
+            ),
+            encoding="utf-8",
+        )
+        install()
+        backup = slot.with_name(slot.name + install_mod.BINARY_BACKUP_SUFFIX)
+        assert backup.read_bytes() == first_bytes, "the FIRST divergence record"
+        assert slot.read_bytes() == source.read_bytes()
+        assert oct(backup.stat().st_mode & 0o777) == oct(0o600)
+
+    def test_uninstall_removes_slot_and_backup(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        _, slot, _ = binary_child
+        install()
+        backup = slot.with_name(slot.name + install_mod.BINARY_BACKUP_SUFFIX)
+        backup.write_bytes(b"stale")  # simulate a prior divergence record
+        result = uninstall("mesh-agent")
+        assert not slot.exists()
+        assert not backup.exists()
+        assert any("binary slot removed" in line for line in result.lines)
+        assert layout.binary_artifacts_root().is_dir(), (
+            "the tree structure is not a per-component artifact — it stays"
+        )
+
+    def test_binary_option_materializes_through_install_component(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, sha = binary_child
+        components = layout.components_dir()
+        (components / "mesh-agent.yaml").unlink()
+        # No launch.binary.path in the manifest — the CLI option IS the source.
+        _write_binary_child_manifest(components, "mesh-agent", sha)
+        result = install_component("mesh-agent", binary=source)
+        assert slot.read_bytes() == source.read_bytes()
+        assert any("sha256 verified" in line for line in result.lines)
+
+    def test_binary_option_refuses_on_pin_mismatch(
+        self, isolated_home: Path, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, _ = binary_child
+        components = layout.components_dir()
+        (components / "mesh-agent.yaml").unlink()
+        _write_binary_child_manifest(components, "mesh-agent", "b" * 64)
+        with pytest.raises(InstallError, match="hash mismatch"):
+            install_component("mesh-agent", binary=source)
+        assert not slot.exists()
+
+    def test_binary_option_on_python_child_refuses(self, isolated_home: Path) -> None:
+        with pytest.raises(InstallError, match="--binary applies to binary"):
+            install_component("metrics", binary=Path("/dev/null"))
+
+    def test_full_install_refuses_binary_child_without_source(self, isolated_home: Path) -> None:
+        """The whole-installation flow is fail-closed too: one binary child
+        without a materializable source refuses `vesma install --all`."""
+        components = layout.ensure_dir(layout.components_dir(), 0o700)
+        _write_binary_child_manifest(components, "mesh-agent", "c" * 64)
+        with pytest.raises(InstallError, match="no materializable source"):
+            install()

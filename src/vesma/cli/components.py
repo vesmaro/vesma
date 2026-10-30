@@ -277,6 +277,16 @@ def install_command(
             "systemd user unit (the full service-install flow).",
         ),
     ] = False,
+    binary: Annotated[
+        Path | None,
+        typer.Option(
+            "--binary",
+            help="Materialize a binary child-process component's pinned artifact "
+            "from this local path into its slot (sha256 must match the "
+            "manifest's provenance.artifact_sha256). NAME required.",
+            show_default=False,
+        ),
+    ] = None,
     *,
     invoked_as: str = "vesma install",
 ) -> None:
@@ -290,6 +300,11 @@ def install_command(
     Component venvs and the systemd unit are installation-wide artifacts:
     `--all` (or `vesma service install`) owns them.
 
+    Binary children (kind: child-process without {venv_bin}) materialize
+    their pinned artifact into the slot: pass `--binary <path>` (the
+    sha256 is verified against provenance.artifact_sha256 — fail-closed),
+    or rely on launch.binary.path / an already-current slot.
+
     Bare invocation changes nothing — it lists what is installable and
     how to proceed.
     """
@@ -297,7 +312,7 @@ def install_command(
         if all_components:
             _fail("specify either a component NAME or --all, not both")
         try:
-            result: InstallComponentResult = install_component(name)
+            result: InstallComponentResult = install_component(name, binary=binary)
         except (InstallError, ManifestError, OSError) as exc:
             # OSError (disk full, EACCES, ...) renders as one clean line
             # like every other refusal — never a traceback (P3-2).
@@ -306,6 +321,8 @@ def install_command(
             console.print("[green]✓[/green]", Text(line))
         console.print(f"Component {name} installed ({result.origin}).", style="green")
         return
+    if binary is not None:
+        _fail("--binary needs a component NAME: `vesma install NAME --binary <path>`")
     if all_components:
         try:
             full = install_service()
@@ -948,6 +965,16 @@ def components_install(
             "systemd user unit (the full service-install flow).",
         ),
     ] = False,
+    binary: Annotated[
+        Path | None,
+        typer.Option(
+            "--binary",
+            help="Materialize a binary child-process component's pinned artifact "
+            "from this local path into its slot (sha256 must match the "
+            "manifest's provenance.artifact_sha256). NAME required.",
+            show_default=False,
+        ),
+    ] = None,
 ) -> None:
     """Install a component's manifest (NAME), or the whole installation (--all).
 
@@ -957,12 +984,14 @@ def components_install(
     release's bundle (a diverging installed manifest is preserved as a
     one-time .pre-regen.bak backup), operator-authored manifests are
     validated fail-closed and left untouched, data dirs and config
-    schemas are materialized. Bare invocation lists what is installable
-    and how to proceed (never mutates).
+    schemas are materialized. Binary children materialize their pinned
+    artifact with `--binary <path>`. Bare invocation lists what is
+    installable and how to proceed (never mutates).
     """
     install_command(
         name,
         all_components,
+        binary,
         invoked_as="vesma service components install",
     )
 

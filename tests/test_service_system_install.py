@@ -1168,3 +1168,238 @@ class TestCliWiring:
             result = CliRunner().invoke(service_cli.service_app, args)
             assert result.exit_code == 1, args
             assert "do not combine" in result.output
+
+
+# ── Binary child slots (component-platform wave Q, ArchCom 2026-10-29) ─
+
+
+def _write_binary_child_manifest(
+    components: Path,
+    name: str,
+    sha: str,
+    *,
+    binary_path: str | None = None,
+    pin: str | None = None,
+) -> Path:
+    """One operator-authored BINARY child manifest in the system
+    components.d (non-python child-process — the binary leg, never the
+    venv leg)."""
+    pin_line = f"    artifact_sha256: {pin or sha}\n" if (pin or sha) else ""
+    binary_block = f"  binary:\n    path: {binary_path}\n" if binary_path else ""
+    target = components / f"{name}.yaml"
+    target.write_text(
+        "apiVersion: vesma.component/v1\n"
+        "kind: child-process\n"
+        "metadata:\n"
+        f"  name: {name}\n"
+        "  version: 1.0.0\n"
+        "  tier: optional\n"
+        "  description: fake system binary child\n"
+        "  provenance:\n"
+        "    repo: https://example.com/mesh-node\n"
+        "    license: MIT\n"
+        f"{pin_line}"
+        "launch:\n"
+        "  argv:\n"
+        f"    - /usr/local/bin/{name}\n"
+        f"{binary_block}"
+        "stop:\n"
+        "  signal: SIGTERM\n"
+        "  grace_period: 5s\n",
+        encoding="utf-8",
+    )
+    return target
+
+
+class TestBinarySlotManifestRoles:
+    """The manifest table: the binary slot roles sit in the code plane
+    under /usr/local (the installer lane), installer-materialized."""
+
+    def test_roles_and_paths(self) -> None:
+        manifest = fhs.load_fhs_manifest()
+        by_role = {e.role: e for e in manifest.entries}
+        root = by_role["binary_bin_root"]
+        artifact = by_role["binary_artifact"]
+        assert root.system_path == "/usr/local/lib/vesma/bin"
+        assert root.kind == "dir"
+        assert root.user_path == "~/.vesma/bin"
+        assert artifact.system_path == "/usr/local/lib/vesma/bin/<name>"
+        assert artifact.kind == "file"
+        assert artifact.user_path == "~/.vesma/bin/<name>"
+        assert artifact.mode == 0o755
+        for entry in (root, artifact):
+            assert entry.has_flag("installer-materialized")
+            assert (entry.owner, entry.group) == ("root", "vesma")
+        # create-order: the slots sit with the venv plane, before the
+        # distribution static.
+        roles = [e.role for e in manifest.entries]
+        assert roles.index("venv_component") < roles.index("binary_bin_root")
+        assert roles.index("binary_artifact") < roles.index("distro_static")
+
+    def test_resolvers(self, sim: Path) -> None:
+        assert fhs.system_binary_bin_root(sim) == sim / "usr/local/lib/vesma/bin"
+        assert fhs.system_binary_artifact("mesh-node", sim) == (
+            sim / "usr/local/lib/vesma/bin/mesh-node"
+        )
+        with pytest.raises(ValueError, match="component name"):
+            fhs.system_binary_artifact("../escape", sim)
+
+    def test_root_dir_is_created_by_every_install_and_matches_the_manifest(
+        self, sim: Path, seams: Seam
+    ) -> None:
+        install_system()
+        root = fhs.system_binary_bin_root(sim)
+        assert root.is_dir()
+        entry = fhs.load_fhs_manifest().entry("binary_bin_root")
+        assert stat.S_IMODE(root.stat().st_mode) == entry.mode
+
+
+class TestSystemBinaryMaterialization:
+    """The installer materializes a binary child's pinned artifact into
+    its FHS slot: sha-pinned fail-closed, idempotent, state-recorded,
+    exact-inversely uninstallable."""
+
+    @pytest.fixture
+    def binary_child(self, sim: Path, tmp_path: Path) -> tuple[Path, Path, str]:
+        """A source artifact outside the conffile zone + its sha + the
+        manifest in the system components.d (launch.binary.path absolute)."""
+        source_dir = tmp_path / "artifacts"
+        source_dir.mkdir()
+        source = source_dir / "mesh-node"
+        source.write_bytes(b"\x7fELF system fake payload")
+        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        components = fhs.system_components_dir(sim)
+        components.mkdir(parents=True, exist_ok=True)
+        _write_binary_child_manifest(components, "mesh-node", sha, binary_path=str(source))
+        return source, fhs.system_binary_artifact("mesh-node", sim), sha
+
+    def test_flow_materializes_from_launch_binary_path(
+        self, sim: Path, seams: Seam, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, _ = binary_child
+        install_system()
+        assert slot.is_file()
+        assert slot.read_bytes() == source.read_bytes()
+        assert stat.S_IMODE(slot.stat().st_mode) == 0o755
+        doc = read_system_state()
+        assert doc is not None
+        by_path = {a["path"]: a for a in doc["artifacts"]}
+        assert by_path[str(slot)]["role"] == "binary_artifact"
+        assert by_path[str(slot)]["remove_mode"] == "file"
+        root_row = by_path[str(fhs.system_binary_bin_root(sim))]
+        assert root_row["role"] == "binary_bin_root"
+        assert root_row["remove_mode"] == "rmtree"
+
+    def test_flow_refuses_without_source_then_verb_completes_it(
+        self, sim: Path, seams: Seam, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        """The ratified operator flow: the pin lives in the manifest, the
+        source is operator-local — the flow refuses fail-closed, the
+        `--binary` verb materializes + records, the re-run goes current."""
+        source_dir = tmp_path / "artifacts"
+        source_dir.mkdir()
+        source = source_dir / "mesh-node"
+        source.write_bytes(b"\x7fELF operator-local payload")
+        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        components = fhs.system_components_dir(sim)
+        components.mkdir(parents=True, exist_ok=True)
+        _write_binary_child_manifest(components, "mesh-node", sha)
+        with pytest.raises(SystemInstallError, match="no materializable source"):
+            install_system()
+        slot = fhs.system_binary_artifact("mesh-node", sim)
+        assert not slot.exists()
+        _, lines = si.install_system_binary("mesh-node", source, sim)
+        assert slot.read_bytes() == source.read_bytes()
+        assert any("sha256 verified" in line for line in lines)
+        result = install_system()
+        assert any("binary (current)" in line for line in result.lines)
+        by_path = {a["path"]: a for a in read_system_state()["artifacts"]}
+        assert by_path[str(slot)]["status"] == "kept"
+
+    def test_flow_refuses_without_the_sha_pin(
+        self, sim: Path, seams: Seam, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        components = fhs.system_components_dir(sim)
+        components.mkdir(parents=True, exist_ok=True)
+        _write_binary_child_manifest(components, "mesh-node", "")
+        with pytest.raises(SystemInstallError, match="binary components pin their artifact"):
+            install_system()
+        assert not fhs.system_binary_artifact("mesh-node", sim).exists()
+
+    def test_reinstall_keeps_the_current_slot(
+        self, sim: Path, seams: Seam, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, _ = binary_child
+        install_system()
+        source.unlink()  # a current slot never re-asks for the source
+        install_system()
+        assert slot.read_bytes() == b"\x7fELF system fake payload"
+
+    def test_verb_replaces_behind_the_bak_after_a_pin_update(
+        self, sim: Path, seams: Seam, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        source, slot, sha = binary_child
+        install_system()
+        # The operator swaps the slot out-of-band (the drift the slot
+        # invariant exists to close): the slot no longer matches the pin.
+        tampered = b"\x7fELF tampered payload"
+        slot.write_bytes(tampered)
+        upgraded = source.parent / "mesh-node-v2"
+        upgraded.write_bytes(b"\x7fELF upgraded payload")
+        backup = slot.with_name(slot.name + ".pre-regen.bak")
+        # Refusal first: the manifest still pins the OLD sha — and the
+        # refusal precedes ANY mutation (no backup, slot untouched).
+        with pytest.raises(SystemInstallError, match="hash mismatch"):
+            si.install_system_binary("mesh-node", upgraded, sim)
+        assert slot.read_bytes() == tampered
+        assert not backup.exists()
+        # The operator updates the pin, then the verb replaces the slot
+        # BEHIND the one-time backup (the manifests' divergence-record
+        # discipline: the first previous artifact is preserved).
+        components = fhs.system_components_dir(sim)
+        manifest = components / "mesh-node.yaml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                sha, hashlib.sha256(upgraded.read_bytes()).hexdigest()
+            ),
+            encoding="utf-8",
+        )
+        _, _lines = si.install_system_binary("mesh-node", upgraded, sim)
+        assert backup.read_bytes() == tampered
+        assert slot.read_bytes() == upgraded.read_bytes()
+        # Security audit 2026-10-30 (accept-after-fix): the backup carries
+        # UNVERIFIED bytes — it lands owner-only 0600, never the slot's
+        # inherited executable 0755.
+        assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+        by_path = {a["path"]: a for a in read_system_state()["artifacts"]}
+        assert by_path[str(slot)]["status"] == "created"
+
+    def test_uninstall_removes_the_slot_and_the_bin_root(
+        self, sim: Path, seams: Seam, binary_child: tuple[Path, Path, str]
+    ) -> None:
+        _, slot, _ = binary_child
+        install_system()
+        # SY-09: the operator manifest is foreign content to the recorded
+        # tree — the operator removes it before the exact inverse.
+        (fhs.system_components_dir(sim) / "mesh-node.yaml").unlink()
+        uninstall_system()
+        assert not slot.exists()
+        assert not fhs.system_binary_bin_root(sim).exists()
+
+    def test_verb_requires_an_installed_system_profile(self, sim: Path, tmp_path: Path) -> None:
+        source = tmp_path / "mesh-node"
+        source.write_bytes(b"\x7fELF orphan payload")
+        with pytest.raises(SystemInstallError, match="system profile is not installed"):
+            si.install_system_binary("mesh-node", source, sim)
+
+    def test_verb_refuses_a_non_binary_child(self, sim: Path, seams: Seam, tmp_path: Path) -> None:
+        install_system()  # board/metrics installed; metrics is a python child
+        source = tmp_path / "metrics-bin"
+        source.write_bytes(b"\x7fELF not for metrics")
+        with pytest.raises(SystemInstallError, match="not a binary child"):
+            si.install_system_binary("metrics", source, sim)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root gate leg: run unprivileged")
+    def test_verb_refuses_the_real_prefix_without_root(self) -> None:
+        with pytest.raises(SystemInstallError, match="sudo vesma install"):
+            si.install_system_binary("mesh-node", Path("/dev/null"))

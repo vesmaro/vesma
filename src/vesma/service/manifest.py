@@ -313,6 +313,24 @@ class Launch:
     cwd: str | None = None
     env: Env | None = None
     python: LaunchPython | None = None
+    binary: LaunchBinary | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class LaunchBinary:
+    """``launch.binary`` — the binary child's artifact declaration
+    (component-platform wave Q, ArchCom 2026-10-29).
+
+    ``path`` — where the pinned artifact source lives; a RELATIVE path
+    resolves against the manifest file's directory at INSTALL time. The
+    installer copies the source into the ``binary_artifact`` slot after
+    verifying it against ``provenance.artifact_sha256`` (mandatory for
+    binary children — install refuses fail-closed without the pin);
+    the supervisor's start-time hash check
+    (``supervisor.py::_artifact_hash_ok``) stays the runtime gate.
+    """
+
+    path: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -427,6 +445,14 @@ class ComponentManifest:
             return ()
         return self.launch.python.requirements
 
+    def launch_binary_path(self) -> str | None:
+        """``launch.binary.path`` (the binary child's artifact source),
+        ``None`` when absent. Raw — the RELATIVE-vs-manifest-dir
+        resolution is install-time (the binary materialization leg)."""
+        if self.launch is None or self.launch.binary is None:
+            return None
+        return self.launch.binary.path
+
 
 # ── Builders (schema-validated shapes; defensive anyway) ──────────────
 
@@ -469,11 +495,16 @@ def _build_launch(raw: dict[str, Any]) -> Launch:
         if isinstance(python_raw, dict)
         else None
     )
+    binary_raw = raw.get("binary")
+    binary = (
+        LaunchBinary(path=str(binary_raw.get("path"))) if isinstance(binary_raw, dict) else None
+    )
     return Launch(
         argv=[str(a) for a in raw.get("argv", [])],
         cwd=raw.get("cwd"),
         env=env,
         python=python,
+        binary=binary,
     )
 
 

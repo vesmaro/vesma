@@ -181,6 +181,32 @@ paths:
     group: root
     flags: [symlink-revision, installer-materialized]
 
+  # Binary child-process components (component-platform wave Q, ArchCom
+  # 2026-10-29): the installer materializes a non-python child's pinned
+  # artifact INTO the slot — a launch.argv on a hand-placed /usr/local/bin
+  # binary is the desync class the slot invariant exists to close. The
+  # file bytes are pinned by the manifest's provenance.artifact_sha256
+  # (mandatory for binary children — install refuses fail-closed without
+  # it); the root dir is installer-owned WHOLE-TREE (rmtree on
+  # uninstall), the toolchain_pythons discipline.
+  - role: binary_bin_root
+    system_path: /usr/local/lib/vesma/bin
+    user_path: ~/.vesma/bin
+    kind: dir
+    mode: "0755"
+    owner: root
+    group: vesma
+    flags: [installer-materialized]
+
+  - role: binary_artifact
+    system_path: /usr/local/lib/vesma/bin/<name>
+    user_path: ~/.vesma/bin/<name>
+    kind: file
+    mode: "0755"
+    owner: root
+    group: vesma
+    flags: [installer-materialized]
+
   # ── distribution static (read-only at runtime) ──────────────────────
   - role: distro_static
     system_path: /usr/local/share/vesma

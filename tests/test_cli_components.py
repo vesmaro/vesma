@@ -179,7 +179,7 @@ class TestInstall:
         """P3-2 (cascade): a disk-level OSError is one red line, not a
         traceback — same refusal shape as the typed errors."""
 
-        def raise_disk_full(name: str) -> object:
+        def raise_disk_full(name: str, **kwargs: object) -> object:
             raise OSError(28, "No space left on device")
 
         monkeypatch.setattr("vesma.cli.components.install_component", raise_disk_full)
@@ -752,3 +752,87 @@ class TestSurface:
             assert result.exit_code == 1, (argv, result.output)
             assert "fail-closed validation" in result.output, (argv, result.output)
             assert "Traceback" not in result.output, argv
+
+
+# ── --binary: the binary child materialization option (wave Q) ────────
+
+
+class TestBinaryOption:
+    def test_binary_without_name_refuses(self, components_home: Path) -> None:
+        result = runner.invoke(app, ["service", "components", "install", "--binary", "/dev/null"])
+        assert result.exit_code == 1
+        assert "--binary needs a component NAME" in result.output
+
+    def test_binary_materializes_a_binary_child(
+        self, components_home: Path, tmp_path: Path
+    ) -> None:
+        import hashlib
+
+        source = tmp_path / "mesh-agent"
+        source.write_bytes(b"\x7fELF cli payload")
+        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        (components_home / "mesh-agent.yaml").write_text(
+            "apiVersion: vesma.component/v1\n"
+            "kind: child-process\n"
+            "metadata:\n"
+            "  name: mesh-agent\n"
+            "  version: 1.0.0\n"
+            "  tier: optional\n"
+            "  description: fake binary child\n"
+            "  provenance:\n"
+            "    repo: https://example.com/mesh-agent\n"
+            "    license: MIT\n"
+            f"    artifact_sha256: {sha}\n"
+            "launch:\n"
+            "  argv:\n"
+            "    - /usr/local/bin/mesh-agent\n"
+            "stop:\n"
+            "  signal: SIGTERM\n"
+            "  grace_period: 5s\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            ["service", "components", "install", "mesh-agent", "--binary", str(source)],
+        )
+        assert result.exit_code == 0, result.output
+        slot = layout.binary_artifact_dir("mesh-agent")
+        assert slot.read_bytes() == source.read_bytes(), (
+            "the pinned artifact lands in the slot, sha-verified"
+        )
+        # The report names the slot (rich wraps long lines in the test
+        # console — assert on the stable short fragment, not the tail).
+        assert "bin/mesh-agent" in result.output
+
+    def test_binary_refuses_on_pin_mismatch(self, components_home: Path, tmp_path: Path) -> None:
+        import hashlib
+
+        source = tmp_path / "mesh-agent"
+        source.write_bytes(b"\x7fELF cli payload")
+        components_home.joinpath("mesh-agent.yaml").write_text(
+            "apiVersion: vesma.component/v1\n"
+            "kind: child-process\n"
+            "metadata:\n"
+            "  name: mesh-agent\n"
+            "  version: 1.0.0\n"
+            "  tier: optional\n"
+            "  description: fake binary child\n"
+            "  provenance:\n"
+            "    repo: https://example.com/mesh-agent\n"
+            "    license: MIT\n"
+            f"    artifact_sha256: {'a' * 64}\n"
+            "launch:\n"
+            "  argv:\n"
+            "    - /usr/local/bin/mesh-agent\n"
+            "stop:\n"
+            "  signal: SIGTERM\n"
+            "  grace_period: 5s\n",
+            encoding="utf-8",
+        )
+        assert hashlib.sha256(source.read_bytes()).hexdigest() != "a" * 64
+        result = runner.invoke(
+            app,
+            ["service", "components", "install", "mesh-agent", "--binary", str(source)],
+        )
+        assert result.exit_code == 1
+        assert "hash mismatch" in result.output

@@ -153,6 +153,21 @@
               "description": "Точные == пины зависимостей venv, только PyPI (LY §3.8). Install-флоу наполняет venv ровно этим списком; отсутствие блока при {venv_bin} в argv = reject (§3.5.1)."
             }
           }
+        },
+        "binary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Путь к исходному артефакту бинарного компонента. Относительный путь резолвится относительно каталога файла манифеста в МОМЕНТ УСТАНОВКИ; инсталлер сверяет sha256 источника с metadata.provenance.artifact_sha256 и материализует артефакт в слот binary_artifact (wave Q, ArchCom 2026-10-29)."
+            }
+          },
+          "description": "Декларация артефакта бинарного (non-python) child-process компонента. Опциональна: без неё источник задаётся оператором через `vesma install <name> --binary <path>`. Не разрешается супервайзером и не участвует в argv."
         }
       }
     },
