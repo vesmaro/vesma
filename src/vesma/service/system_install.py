@@ -762,13 +762,22 @@ def _validate_conffile_candidate(source: Path, data: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def _atomic_backup(target: Path, backup: Path, entry: Any, ownership: _Ownership) -> None:
+def _atomic_backup(
+    target: Path, backup: Path, entry: Any, ownership: _Ownership, *, mode: int | None = None
+) -> None:
     """Land the conffile backup through the same atomic discipline as the
     install itself (security spot-check P3-2): mkstemp same-dir → the
     CURRENT bytes (read once) → the previous mode → ``os.replace`` — a
     torn ``.bak`` on a mid-write crash is impossible, and the manifest
-    ownership keeps the backup readable by the vesma group."""
-    old_mode = target.stat().st_mode & 0o777
+    ownership keeps the backup readable by the vesma group.
+
+    ``mode`` overrides the inherited old mode: a BINARY slot's backup
+    carries UNVERIFIED bytes (the slot is replaced precisely because its
+    content no longer matches the pin), so it lands owner-only 0600 —
+    never an executable copy of unverified content (security audit
+    2026-10-30, accept-after-fix). The conffile callers keep the
+    inherited mode: there the old mode IS the legal semantics (0640)."""
+    old_mode = target.stat().st_mode & 0o777 if mode is None else mode
     data = target.read_bytes()
     fd, tmp_name = tempfile.mkstemp(
         dir=str(backup.parent), prefix=f".{backup.name}.", suffix=".tmp"
@@ -1362,7 +1371,11 @@ def _materialize_system_binary(
                 "replaced without a new backup"
             )
         else:
-            _atomic_backup(slot, backup, entry, ownership)
+            # 0600, never the slot's inherited 0755: the backup carries
+            # UNVERIFIED bytes (the pin is exactly what failed) — an
+            # executable copy of unverified content must not appear
+            # (security audit 2026-10-30, accept-after-fix).
+            _atomic_backup(slot, backup, entry, ownership, mode=0o600)
             report.append(f"backup: {backup} (previous binary preserved)")
     with _rofs_guard(slot):
         user_install._atomic_write_bytes(slot, data, entry.mode)

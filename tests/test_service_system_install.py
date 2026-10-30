@@ -1367,6 +1367,10 @@ class TestSystemBinaryMaterialization:
         _, _lines = si.install_system_binary("mesh-node", upgraded, sim)
         assert backup.read_bytes() == tampered
         assert slot.read_bytes() == upgraded.read_bytes()
+        # Security audit 2026-10-30 (accept-after-fix): the backup carries
+        # UNVERIFIED bytes — it lands owner-only 0600, never the slot's
+        # inherited executable 0755.
+        assert stat.S_IMODE(backup.stat().st_mode) == 0o600
         by_path = {a["path"]: a for a in read_system_state()["artifacts"]}
         assert by_path[str(slot)]["status"] == "created"
 
