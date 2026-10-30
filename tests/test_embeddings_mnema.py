@@ -78,6 +78,19 @@ def test_default_config_builds_nano() -> None:
     assert isinstance(built, NanoProvider)
 
 
+def test_legacy_mnema_artifact_dir_is_gone_fails_loud() -> None:
+    """Rudiments sweep 2026-10-31: the rebrand fallback is removed per its
+    own "removed in 6.0" contract — the legacy mnema-* directory ships no
+    more and an unresolvable bundled name fails loud instead of silently
+    re-pointing at the deprecated twin."""
+    legacy_dir = resource_files("vesma") / "models" / "mnema-embed-v1"
+    assert not (legacy_dir / "model.onnx").is_file(), (
+        "legacy mnema-embed-v1 directory is bundled again — the removal regressed"
+    )
+    with pytest.raises(FileNotFoundError, match="mnema-embed-v1"):
+        mnema_artifact_onnx_path("mnema-embed-v1")
+
+
 # ── embeddings ────────────────────────────────────────────────────────────────
 
 
