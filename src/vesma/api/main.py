@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -32,6 +32,12 @@ from vesma.ambient import IDENTITY_MAX_CHARS, compose_ambient, surface_now
 from vesma.api.auth import router as auth_router
 from vesma.api.auth_store import AuthStore
 from vesma.api.federation import router as federation_router
+from vesma.api.mcp_endpoint import (
+    MCP_HTTP_MOUNT_PATH,
+    McpHttpEndpoint,
+    McpTokenDeps,
+    build_mcp_session_manager,
+)
 from vesma.api.middleware import (
     AuthMiddleware,
     DeprecationMiddleware,
@@ -222,8 +228,45 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         meta_poller = MetaPoller(mgr.sqlite, settings.federation)
         meta_poller.start()
 
+    # ADR-0050 W1 — the in-core MCP streamable HTTP plane mounted at
+    # ``/mcp`` (see the ``app.mount`` below). The gate + token deps are
+    # published on app.state so the mounted gate resolves them per
+    # request; a bare app without a lifespan cycle leaves the flag unset
+    # and the gate answers 404 (fail closed). The SDK session manager is
+    # built lazily through vesma.mcp_server (ADR-0023: the mcp SDK is
+    # imported only there — core/API imports never load it). Token deps
+    # are first-use lazy too: no /mcp traffic = no token registry, no
+    # signing-key mint.
+    application.state.mcp_endpoint_enabled = settings.mcp.endpoint_enabled
+    application.state.mcp_token_deps = McpTokenDeps(settings)
+    mcp_session_manager: Any = None
+    if settings.mcp.endpoint_enabled:
+        try:
+            mcp_session_manager = build_mcp_session_manager()
+        except ImportError as exc:
+            # The SDK is a base dependency (ADR-0023), so this is a broken
+            # install — but the API plane must keep serving (the stdio MCP
+            # leg was never in-process here): fail closed on THIS surface
+            # only (the mounted gate answers 503 without a manager) and let
+            # the doctor transport check carry the loud remediation.
+            logger.warning(
+                "MCP HTTP endpoint unavailable this boot: mcp SDK import failed (%s) — "
+                "`vesma doctor` reports the transport check; reinstall the mcp SDK",
+                exc,
+            )
+        else:
+            application.state.mcp_session_manager = mcp_session_manager
+    #: run() is once-per-instance, so the context is entered per lifespan
+    #: cycle around the SAME yield the other background legs use; a
+    #: disabled/unavailable endpoint keeps the app byte-identical to a
+    #: no-op (the nullcontext placeholder keeps one code path below).
+    mcp_session_cm: AbstractAsyncContextManager[None] = nullcontext()
+    if mcp_session_manager is not None:
+        mcp_session_cm = mcp_session_manager.run()
+
     try:
-        yield
+        async with mcp_session_cm:
+            yield
     finally:
         if meta_poller is not None:
             await meta_poller.stop()
@@ -231,6 +274,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         mgr.stop_background_processor()
         store.close()
         auth_store.close()
+        application.state.mcp_token_deps.close()
         if _manager is not None:
             _manager.close()
         # Null the singleton WITH the close: get_manager() must never hand
@@ -284,6 +328,15 @@ app.add_middleware(DeprecationMiddleware)
 # additive observability: a bare test app without app.state.instance_id
 # serves unstamped, never fails).
 app.add_middleware(InstanceIdHeaderMiddleware)
+
+# ADR-0050 W1 — the MCP streamable HTTP plane at /mcp. Mounted as raw
+# ASGI behind the McpHttpEndpoint auth gate (Bearer agent token on every
+# request, fail-closed — loopback trust of the REST API does NOT extend
+# here; AuthMiddleware bypasses the path and the gate is the only auth).
+# Per-request state (enabled flag, session manager, token deps) is
+# resolved from app.state, which the lifespan populates — a bare app
+# serves 404 from the gate.
+app.mount(MCP_HTTP_MOUNT_PATH, McpHttpEndpoint())
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

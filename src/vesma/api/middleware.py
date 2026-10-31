@@ -55,7 +55,11 @@ logger = logging.getLogger(__name__)
 
 # Paths that always bypass auth. Health/login/verify are public by design;
 # federation pull is public to the *middleware* because it authenticates
-# itself per-peer (see below).
+# itself per-peer (see below); ``/mcp`` (ADR-0050 W1) is likewise
+# self-authenticating — the mounted McpHttpEndpoint gate validates the
+# Bearer agent token fail-closed on EVERY request, so the REST trust
+# zones (including loopback-with-auth-off) deliberately do NOT apply:
+# loopback without a token is a 401 from the gate, by construction.
 #
 # Docs endpoints (/docs, /redoc, /openapi.json) AND metrics endpoints
 # (/metrics, /api/v1/metrics) are only bypassed on loopback binds — see
@@ -83,6 +87,7 @@ _ALWAYS_BYPASS = frozenset(
         "/auth/login",
         "/auth/verify",
         "/api/v1/federation/pull",
+        "/mcp",
     }
 )
 _DOCS_BYPASS = frozenset({"/docs", "/redoc", "/openapi.json"})
@@ -249,7 +254,19 @@ class VitalsVerbMiddleware(BaseHTTPMiddleware):
     """
 
     _EXCLUDED = frozenset(
-        {"/health", "/metrics", "/api/v1/metrics", "/docs", "/redoc", "/openapi.json"}
+        {
+            "/health",
+            "/metrics",
+            "/api/v1/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            # ADR-0050 W1 — the MCP plane is not a REST surface: its calls
+            # are already ledgered per tool by the MCP call_tool shell
+            # (surface="mcp"); a second rest:METHOD:/mcp row would
+            # double-count the same work in the verb vitals.
+            "/mcp",
+        }
     )
 
     async def dispatch(
