@@ -276,6 +276,40 @@ def no_update_check_network(monkeypatch: pytest.MonkeyPatch) -> None:
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_mcp_http_leg_in_shared_env(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
+    """Disable the lifespan's MCP HTTP leg in the shared suite (ADR-0050 W1).
+
+    The conftest MCP-SDK stubs above mean some tests import
+    ``vesma.mcp_server`` with the stub ``_Server``; that module object can
+    survive in the package namespace into LATER tests, and the real
+    ``StreamableHTTPSessionManager.run()`` then calls ``stub.lifespan`` —
+    AttributeError on every REST test whose lifespan starts with
+    ``mcp.endpoint_enabled=True`` (the CI break of the f2210af merge).
+    The shared environment therefore refuses the leg at its single choke
+    point; the endpoint contract tests opt IN through their module-scoped
+    real-SDK fixture, which owns the stub/real module identity for its
+    own lifetime.
+    """
+    if request.module.__name__ == "tests.test_mcp_http_endpoint":
+        yield
+        return
+    from typing import Any
+
+    import vesma.api.main as api_main
+
+    def _refuse() -> Any:
+        raise ImportError(
+            "MCP HTTP leg is disabled in the shared test environment "
+            "(ADR-0050 W1); opt in via tests/test_mcp_http_endpoint.py"
+        )
+
+    monkeypatch.setattr(api_main, "build_mcp_session_manager", _refuse)
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Store-home isolation (wave 61 test-isolation slice)
 # ---------------------------------------------------------------------------
