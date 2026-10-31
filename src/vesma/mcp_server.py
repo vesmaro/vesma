@@ -3685,11 +3685,29 @@ def streamable_http_session_manager(*, json_response: bool = True, stateless: bo
     stateless shape. Keyword-only so a caller must opt out explicitly.
     """
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from mcp.server.transport_security import TransportSecuritySettings
 
     return StreamableHTTPSessionManager(
         app=server,
         json_response=json_response,
         stateless=stateless,
+        # Cascade hardening (security review of cce39cb, LOW #1): the SDK
+        # silently DISABLES DNS-rebinding protection when security_settings
+        # is None. Every auth'd caller is local (loopback bind), so pin the
+        # allowed Hosts explicitly — an empty list would 421 everything,
+        # and the SDK's ":*" patterns require an explicit port, so both the
+        # bare and the ported spellings of each loopback name are listed.
+        security_settings=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=[
+                "localhost",
+                "localhost:*",
+                "127.0.0.1",
+                "127.0.0.1:*",
+                "[::1]",
+                "[::1]:*",
+            ],
+        ),
     )
 
 

@@ -169,9 +169,11 @@ class McpHttpEndpoint:
     1. endpoint disabled (``mcp.endpoint_enabled=false``, or the flag was
        never set by a lifespan) → 404 — the surface does not exist and
        its auth state is not revealed;
-    2. no session manager on the app (enabled but the lifespan never
+    2. no ``Authorization: Bearer`` header → 401 — BEFORE any lifecycle
+       state is revealed (an unauthenticated caller cannot probe whether
+       the endpoint is initialized);
+    3. no session manager on the app (enabled but the lifespan never
        built one — only possible on a bare/misconfigured app) → 503;
-    3. no ``Authorization: Bearer`` header → 401;
     4. token store/key unavailable → 503 with a FIXED detail (the cause
        goes to the log only — no store paths on the wire, the mesh
        data-gate discipline);
@@ -197,17 +199,9 @@ class McpHttpEndpoint:
             )
             return
 
-        # 2. Enabled but no manager → lifecycle misconfiguration, fail closed.
-        manager = getattr(state, "mcp_session_manager", None)
-        if manager is None:  # pragma: no cover - defensive
-            await _send_json(
-                send,
-                status=503,
-                body={"detail": "MCP HTTP endpoint is not initialized"},
-            )
-            return
-
-        # 3. Bearer presence.
+        # 2. Bearer presence — BEFORE any lifecycle state is revealed
+        #    (cascade hardening, LOW #2: an unauthenticated caller must not
+        #    be able to probe whether the endpoint is initialized).
         token = _bearer_token(scope.get("headers", []))
         if token is None:
             logger.info("mcp_http: rejected request reason=no_bearer")
@@ -218,6 +212,16 @@ class McpHttpEndpoint:
                     "detail": "Authentication required: Bearer agent token "
                     "(vesma agent-token issue)"
                 },
+            )
+            return
+
+        # 3. Enabled but no manager → lifecycle misconfiguration, fail closed.
+        manager = getattr(state, "mcp_session_manager", None)
+        if manager is None:  # pragma: no cover - defensive
+            await _send_json(
+                send,
+                status=503,
+                body={"detail": "MCP HTTP endpoint is not initialized"},
             )
             return
 

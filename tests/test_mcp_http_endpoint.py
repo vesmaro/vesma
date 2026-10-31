@@ -31,6 +31,7 @@ import json
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -176,7 +177,14 @@ def _build_harness(settings: Settings) -> McpHarness:
     from vesma import mcp_server as mcp_server_module
 
     mcp_server_module._manager = mgr
-    return McpHarness(client=TestClient(test_app), settings=settings, manager=mgr)
+    # base_url must be loopback-shaped: the transport's DNS-rebinding
+    # protection (cascade hardening) admits only localhost/127.0.0.1/[::1]
+    # Host headers — the TestClient default "testserver" would 421.
+    return McpHarness(
+        client=TestClient(test_app, base_url="http://127.0.0.1"),
+        settings=settings,
+        manager=mgr,
+    )
 
 
 @pytest.fixture
@@ -367,6 +375,54 @@ class TestMcpHttpAuthNegatives:
             json=_rpc("tools/list", {}),
         )
         assert resp.status_code == 401
+
+    def test_expired_token_is_401(self, client: McpHarness) -> None:
+        """A registered token past its exp answers 401 (cascade review: HTTP
+        surface must pin the lifetime leg, not just agent_tokens internals)."""
+        key = load_or_create_signing_key(signing_key_path(client.settings.vesma.data_dir))
+        store = AgentTokenStore(client.settings.db_path)
+        try:
+            token, _claims = issue_agent_token(
+                agent_id="test-harness",
+                node_id=current_instance_id(client.settings.vesma.data_dir),
+                scope_spec="rw",
+                ttl_hours=1.0,
+                store=store,
+                key=key,
+                now=int(datetime.now(UTC).timestamp()) - 7200,
+            )
+        finally:
+            store.close()
+        resp = _post(client, token, _rpc("tools/list", {}))
+        assert resp.status_code == 401
+        assert "expired" in resp.json()["detail"]
+
+    def test_unknown_jti_with_valid_signature_is_401(self, client: McpHarness) -> None:
+        """Possessing the signing key is NOT access: a correctly signed
+        envelope whose jti was never registered answers 401 unknown_jti."""
+        from vesma.agent_tokens import AgentTokenClaims, encode_agent_token
+
+        key = load_or_create_signing_key(signing_key_path(client.settings.vesma.data_dir))
+        now = int(datetime.now(UTC).timestamp())
+        claims = AgentTokenClaims(
+            iss="vesma",
+            sub="test-harness",
+            aud=current_instance_id(client.settings.vesma.data_dir),
+            scope=["rw"],
+            iat=now,
+            exp=now + 3600,
+            jti="never-registered-jti-000000000000",
+        )
+        resp = _post(client, encode_agent_token(claims, key), _rpc("tools/list", {}))
+        assert resp.status_code == 401
+        assert "unknown_jti" in resp.json()["detail"]
+
+    def test_get_and_options_without_token_are_401(self, client: McpHarness) -> None:
+        """The gate is verb-agnostic: no method reaches the transport
+        unauthenticated (cascade review: pin the absence of verb holes)."""
+        for method in ("get", "options"):
+            resp = getattr(client.client, method)("/mcp", headers=dict(_MCP_HEADERS))
+            assert resp.status_code == 401, method
 
 
 class TestMcpHttpDisabled:
