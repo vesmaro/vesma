@@ -307,6 +307,13 @@ class ApiConfig(BaseModel):
 
 class McpConfig(BaseModel):
     transport: str = "stdio"
+    # ADR-0050 W1 — the in-core MCP streamable HTTP plane (``/mcp`` on the
+    # ``vesma serve`` app). Enabled by default; when False the endpoint
+    # answers 404 and nothing else changes (no task group, no token store).
+    # Auth is NOT a lever: every request to ``/mcp`` requires a Bearer
+    # agent token (fail-closed) — loopback trust of the REST API never
+    # extends to this surface.
+    endpoint_enabled: bool = True
 
 
 class WatcherConfig(BaseModel):

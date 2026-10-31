@@ -3663,6 +3663,36 @@ server = Server(
 )
 
 
+# ── Streamable HTTP leg (ADR-0050 W1) ─────────────────────────────────────────
+
+
+def streamable_http_session_manager(*, json_response: bool = True, stateless: bool = True) -> Any:
+    """Build an SDK 2.x streamable-HTTP session manager over the shared ``server``.
+
+    ADR-0050 W1: the ``vesma serve`` API plane mounts ``/mcp`` in front of
+    this manager and reuses THE SAME handler wiring (``on_list_tools`` /
+    ``on_call_tool`` above) as the stdio leg — the tool surface is
+    transport-independent. Lives in THIS module because the mcp SDK is
+    imported only here (ADR-0023 isolation guard,
+    ``tests/test_mcp_core_isolation.py``); the API plane calls this
+    factory lazily from its lifespan.
+
+    W1 contract (locked): ``json_response=True`` — plain JSON answers,
+    curl-friendly, no SSE needed for request/response tools — and
+    ``stateless=True`` — a fresh transport per request, no server-side
+    session state, so EVERY request carries (and re-validates) its Bearer
+    agent token and the future Ф2 component front inherits the same
+    stateless shape. Keyword-only so a caller must opt out explicitly.
+    """
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    return StreamableHTTPSessionManager(
+        app=server,
+        json_response=json_response,
+        stateless=stateless,
+    )
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 
