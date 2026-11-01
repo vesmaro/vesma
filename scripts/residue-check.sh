@@ -129,6 +129,11 @@ ALLOW=(
   'korrnals'                  # legacy pre-rebrand registry namespace (factual)
   '(Vesmaro Project)'         # literal PyPI summary string of published dists
   '5.x shipped src/vesmaro'   # pypi-publish history note (pinned sentence)
+  # Zone Б — frozen sha-pinned ML artifact bundle (vesma-cortex-merge-v2,
+  # wave W1-W3): the embed_text recipe carries a rename-provenance note
+  # INSIDE the pinned bytes (sha256 60d1fe73…, editing = ratification-class
+  # pin break), i.e. data, not a live-surface reference
+  'vesmaro->vesma'
   # Stored-format constants written into record content (byte-stable)
   'retrieve via mnemos_retrieve'
   '[mnemos:<memory-id>'
