@@ -939,6 +939,8 @@ class MemoryManager:
         """
         folded: set[str] = set()
         mode = self.settings.vesma.merge_arbiter
+        if mode == "off":
+            return folded
         arbiter = self._merge_arbiter_seam()
         if arbiter is None:
             return folded
@@ -1911,6 +1913,54 @@ class MemoryManager:
             if "canon" in internal and canon_envelope_is_client_authored(internal["canon"]):
                 del internal["canon"]
             memory.metadata = {**memory.metadata, **internal}
+            # ── ADR-0037 Д5 merge-back (W1-W3): the row's own SERVER-
+            # minted marks survive a client metadata replacement on a
+            # client-authored envelope. The checkpoint branch above
+            # already restores whole server-minted envelopes (marks
+            # included); for task/decision/report rows the client's
+            # corrected envelope stands — but the marks minted on this
+            # row by the arbiter/executor (fold history: append-only,
+            # ADR-0037 D6) are the row's provenance, not the client's to
+            # drop: they merge back UNDER the incoming canon, and the
+            # client's (already stripped above) array never resurrects
+            # forged entries. Same trust direction as every strip above:
+            # server mint, client zero.
+            stored_canon = previous_metadata.get("canon")
+            stored_marks = (
+                stored_canon.get("lineage_marks") if isinstance(stored_canon, dict) else None
+            )
+            new_canon = memory.metadata.get("canon")
+            if isinstance(stored_marks, list) and stored_marks:
+                if isinstance(new_canon, dict):
+                    memory.metadata = {
+                        **memory.metadata,
+                        "canon": {
+                            **new_canon,
+                            "lineage_marks": list(stored_marks),
+                        },
+                    }
+                    logger.info(
+                        "update: preserved server-minted lineage_marks across a "
+                        "client metadata update (ADR-0037 Д5 merge-back): "
+                        "id=%s marks=%d",
+                        memory_id[:8],
+                        len(stored_marks),
+                    )
+                else:
+                    # The client dropped the envelope entirely: marks have
+                    # no canon locus then (canon §9 — no envelope, outside
+                    # canon scope; a half-valid reconstructed envelope
+                    # would only mint CANON-E-ENVELOPE noise on every
+                    # later write). The loss is LOUD, never silent — the
+                    # fold's durable link (the merge-arbiter edge) and the
+                    # deletion journal still carry the history.
+                    logger.warning(
+                        "code=MERGE-E-CONTOUR class=mark-class lineage_marks lost "
+                        "with the removed canon envelope (no locus, canon §9; "
+                        "durable provenance lives in edges/journal): id=%s marks=%d",
+                        memory_id[:8],
+                        len(stored_marks),
+                    )
             # ADR-0027 Ф3 (review round P3-1): restore the row's own
             # minted doc-sweep stamp on top of the replacement dict —
             # a client metadata dict can neither forge nor erase it

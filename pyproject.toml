@@ -346,6 +346,11 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
 # sqlite_store's RU docstrings); RUF002/RUF003 lookalike warnings are
 # noise here.
 "src/vesma/merge_arbiter.py" = ["RUF002", "RUF003"]
+# tests/test_merge_arbiter_*.py: the zone/feature fixtures carry RU
+# record content ON PURPOSE (cross-language strata are the arbiter's
+# bread and butter) — RUF001 lookalike warnings are noise, same
+# rationale as the training-corpus ignores above.
+"tests/test_merge_arbiter_core.py" = ["RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
