@@ -159,6 +159,25 @@ def test_fold_carries_over_folded_marks_in_d6_order(mgr: MemoryManager) -> None:
     assert marks[1]["ref"] == folded.id  # the fold entry, LAST
 
 
+def test_fold_strengthens_a_pre_existing_fuel_edge(mgr: MemoryManager) -> None:
+    """The Д3 claim has no PK-collision exception: when the fold link's
+    slot is already occupied by a weaker 'auto-dedupe' fuel edge (past
+    minting sessions), the fold STRENGTHENS its provenance instead of
+    silently losing the claim to INSERT OR IGNORE."""
+    keeper = _row(mgr, "keeper omega", canon=True)
+    folded = _row(mgr, "folded psi record", canon=True)
+    # a past session minted the fuel edge in the SAME direction
+    mgr.add_memory_edge(
+        keeper.id, folded.id, kind="relates_to", weight=2.0, provenance="auto-dedupe"
+    )
+    executor = ConsolidationExecutor(mgr)
+    executor.fold(keeper.id, [folded.id])
+    edges = mgr.sqlite.get_incoming_edges(folded.id, kind="relates_to")
+    matching = [e for e in edges if e["from_memory_id"] == keeper.id]
+    assert len(matching) == 1  # no duplicate row
+    assert matching[0]["provenance"] == MERGE_ARBITER_PROVENANCE
+
+
 def test_refold_is_idempotent(mgr: MemoryManager) -> None:
     keeper = _row(mgr, "keeper epsilon", canon=True)
     folded = _row(mgr, "folded zeta", canon=True)

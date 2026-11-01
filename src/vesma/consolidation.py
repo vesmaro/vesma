@@ -260,14 +260,26 @@ class ConsolidationExecutor:
             if folded_appended:
                 _write_metadata(self._manager.sqlite, folded_id, folded_mark)
 
-            # Д3/OQ-2 minimum: the durable link.
-            self._manager.add_memory_edge(
+            # Д3/OQ-2 minimum: the durable link. INSERT OR IGNORE on the
+            # (from, to, kind) PK means a pre-existing weaker fuel edge
+            # (provenance 'auto-dedupe') would silently swallow the claim
+            # — the fold STRENGTHENS the existing row's provenance so the
+            # Д3 contract holds either way («provenance или не было» has
+            # no exception).
+            inserted = self._manager.add_memory_edge(
                 keeper_id,
                 folded_id,
                 kind="relates_to",
                 weight=MERGE_ARBITER_EDGE_WEIGHT,
                 provenance=MERGE_ARBITER_PROVENANCE,
             )
+            if not inserted:
+                self._manager.sqlite.strengthen_edge_provenance(
+                    keeper_id,
+                    folded_id,
+                    kind="relates_to",
+                    provenance=MERGE_ARBITER_PROVENANCE,
+                )
 
             # The store's own Stage-1 tombstone (terminal state +
             # hash-chained journal + descendant quarantine).

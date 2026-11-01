@@ -4861,6 +4861,44 @@ class SQLiteStore:
         conn.commit()
         return cur.rowcount > 0
 
+    def strengthen_edge_provenance(
+        self,
+        from_memory_id: str,
+        to_memory_id: str,
+        *,
+        kind: str,
+        provenance: str,
+    ) -> bool:
+        """Upgrade the provenance of an EXISTING edge to a stronger claim
+        (W1-W3, ADR-0037 Д3): when a fold link's ``(from, to, kind)`` slot
+        is already occupied by a weaker minted-fuel edge, the fold
+        STRENGTHENS that row's provenance instead of silently losing the
+        claim to the PK collision (INSERT OR IGNORE would keep
+        ``auto-dedupe`` and the Д3 «durable link with provenance
+        ``merge-arbiter``» contract would not hold). The provenance may
+        only move FORWARD onto the stronger value the caller names — the
+        method refuses to weaken or overwrite a DIFFERENT non-empty
+        provenance with a new one unless it matches the caller's claim
+        already (idempotent).
+
+        Returns ``True`` when a row was updated (or already carried the
+        provenance), ``False`` when no such edge exists.
+
+        Static SQL, bound parameters, PK-bounded — the same injection
+        discipline as every writer in this module.
+        """
+        if not provenance:
+            raise ValueError("provenance must be non-empty")
+        conn = self._get_conn()
+        cur = conn.execute(
+            "UPDATE memory_edges SET provenance = ? "
+            "WHERE from_memory_id = ? AND to_memory_id = ? AND kind = ? "
+            "AND (provenance IS NULL OR provenance != ?)",
+            (provenance, from_memory_id, to_memory_id, kind, provenance),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
     def get_direct_edges(
         self,
         from_memory_id: str,
