@@ -32,6 +32,7 @@ import logging
 import os
 import sqlite3
 import tarfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -206,6 +207,8 @@ def _redact_metadata(
 def build_json_payload(
     mgr: MemoryManager,
     filt: ExportFilter,
+    *,
+    row_filter: Callable[[Any], bool] | None = None,
 ) -> dict[str, Any]:
     """Build the JSON export payload dict (not yet serialised).
 
@@ -221,6 +224,15 @@ def build_json_payload(
       secret is replaced with ``<REDACTED:<pattern_name>>`` so the export
       never ships a raw credential, even if the write-path scanner
       (Layer 1) missed it.
+
+    ``row_filter`` (ADR-0050 W3, additive — default ``None`` keeps the
+    payload byte-identical): an optional per-row visibility predicate the
+    /mcp plane passes to enforce ``mcp.namespace.cross_read`` — a harness
+    must not download the whole store around its read aperture. A row the
+    predicate declines is skipped before any redaction work and counted
+    in ``redaction_summary.excluded_cross_read`` (the key appears only
+    when a filter ran). The predicate never narrows the ``projects``
+    section — project rows carry no content.
 
     The redaction summary is recorded in the payload ``redaction_summary``
     field for operator visibility (counts only — never raw values).
@@ -240,6 +252,7 @@ def build_json_payload(
 
     excluded_no_federate = 0
     excluded_tombstoned = 0
+    excluded_cross_read = 0
     redacted_records = 0
     redaction_counts: dict[str, int] = {}
     export_memories: list[dict[str, Any]] = []
@@ -255,6 +268,13 @@ def build_json_payload(
         # ── Exclude no-federate records entirely ─────────────────────────
         if NO_FEDERATE_TAG in mem.tags:
             excluded_no_federate += 1
+            continue
+
+        # ── Exclude per the caller's row filter (ADR-0050 W3 cross_read) ─
+        # BEFORE any redaction work — content the aperture declines is
+        # never even scanned, let alone shipped.
+        if row_filter is not None and not row_filter(mem):
+            excluded_cross_read += 1
             continue
 
         # ── Redact secrets in content + raw_content ───────────────────────
@@ -344,6 +364,7 @@ def build_json_payload(
             "excluded_tombstoned": excluded_tombstoned,
             "redacted_records": redacted_records,
             "patterns": redaction_counts,
+            **({"excluded_cross_read": excluded_cross_read} if row_filter is not None else {}),
         },
     }
     if excluded_tombstoned:
@@ -509,18 +530,25 @@ def run_export(
     passphrase: str | None = None,
     passphrase_file: Path | None = None,
     filt: ExportFilter | None = None,
+    row_filter: Callable[[Any], bool] | None = None,
 ) -> ExportResult:
     """Run an export and write the result to ``output``.
 
     The caller is responsible for confirming destructive operations; this
     function only writes to ``output`` (it does not touch the live DB).
+
+    ``row_filter`` (ADR-0050 W3) narrows the JSON payload per row (see
+    :func:`build_json_payload`); ``None`` — the default and every local
+    caller — keeps the export byte-identical. The SQLite snapshot leg
+    ignores it (that format is operator-only and refused on agent-facing
+    surfaces long before this seam).
     """
     filt = filt or ExportFilter()
     warnings: list[str] = []
 
     # ── Build the raw payload ────────────────────────────────────────────
     if fmt == ExportFormat.JSON:
-        payload = build_json_payload(mgr, filt)
+        payload = build_json_payload(mgr, filt, row_filter=row_filter)
         memory_count = len(payload["memories"])
         project_count = len(payload["projects"])
         raw = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")

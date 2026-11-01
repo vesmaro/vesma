@@ -2316,6 +2316,139 @@ def _dr23(proc_root: Path | None = None) -> Finding:
     return Finding("DR-23", title, Severity.OK, "; ".join(segments))
 
 
+# ── DR-25: MCP plane namespace health (ADR-0050 §4/§5, wave W3) ────────
+
+#: F-8 (cascade review, wave W3) — the WARN window of the rotation-health
+#: leg in seconds (6h). The token TTL cap is 24h, so anything wider is a
+#: permanent WARN on every live token (signage fatigue).
+_DR25_WARN_WINDOW_SECONDS = 6 * 3600
+
+
+def _dr25(settings_loader: Callable[[], Any] | None = None) -> Finding:
+    """The /mcp namespace plane's health in three legs, worst severity wins:
+
+    (a) the cross-read config value is a RATIFIED mode — a config that
+        fails to load, or carries an unknown ``mcp.namespace.cross_read``,
+        FAILS: the plane's contract is fail-closed, and the doctor
+        re-verifies the value against the mode set so a future refactor
+        that loosens the config Literal can never widen the aperture
+        silently;
+    (b) live agent tokens inside their final 6 h — WARN listing the
+        agent_ids (rotation health, TM §5; the 6-24h band is an info line —
+        a 24h WARN threshold would fire on every live token for its whole
+        life, the TTL cap IS 24h — F-8, cascade review wave W3); the
+        rotation automation itself is a W3+ condition of the ADR and lands
+        separately;
+    (c) revoked/expired/grace-dead token rows never purged from the
+        registry — an INFO line (severity OK on purpose: these rows are
+        the denylist records the per-request validator reads; the purge
+        tooling belongs to the W4 resilience wave).
+
+    Read-only: the token registry is opened lazily, one ``list_tokens``
+    read, closed immediately; a store home that does not exist yet (or an
+    unreadable registry) degrades to a status line — the DR-08 semantics
+    (absence is a status, not an error).
+    """
+    title = "MCP plane namespace health"
+    import time as _time
+
+    from vesma.agent_tokens import AgentTokenStore
+    from vesma.mcp_namespace import CROSS_READ_MODES
+
+    loader = settings_loader if settings_loader is not None else _dr25_default_settings
+    try:
+        settings = loader()
+    except Exception as exc:
+        return Finding(
+            "DR-25",
+            title,
+            Severity.FAIL,
+            f"config fails closed: {type(exc).__name__}: {exc}",
+            "fix the vesma config — the MCP plane must not boot on it",
+        )
+    value: Any = getattr(getattr(settings, "mcp", None), "namespace", None)
+    value = getattr(value, "cross_read", None)
+    if value not in CROSS_READ_MODES:
+        return Finding(
+            "DR-25",
+            title,
+            Severity.FAIL,
+            f"mcp.namespace.cross_read={value!r} is not a ratified mode "
+            f"({', '.join(CROSS_READ_MODES)}) — fail-closed refused",
+            "set mcp.namespace.cross_read to published_only or own_only",
+        )
+
+    segments = [f"cross_read={value}"]
+    now = int(_time.time())
+    db_path = settings.db_path
+    if not db_path.exists():
+        segments.append("no store home yet — token registry nothing to audit")
+        return Finding("DR-25", title, Severity.OK, "; ".join(segments))
+    try:
+        store = AgentTokenStore(db_path)
+    except Exception as exc:
+        segments.append(
+            f"agent-token registry unavailable ({type(exc).__name__}) — "
+            "token hygiene not audited this run"
+        )
+        return Finding("DR-25", title, Severity.OK, "; ".join(segments))
+    try:
+        rows = store.list_tokens()
+    finally:
+        store.close()
+
+    def _retired(row: dict[str, Any]) -> bool:
+        if row["revoked_at"] is not None:
+            return True
+        if int(row["exp"]) <= now:
+            return True
+        grace = row["grace_until"]
+        return grace is not None and now >= int(grace)
+
+    live = [r for r in rows if not _retired(r)]
+    retired = [r for r in rows if _retired(r)]
+    # F-8 (cascade review, wave W3): the TTL cap IS 24h, so a 24h WARN
+    # threshold would fire on EVERY live token for its whole life —
+    # permanent signage fatigue. WARN = inside the final 6h (rotation is
+    # URGENT); the 6-24h band degrades to an info line (rotation is due
+    # today, nothing urgent).
+    expiring = [r for r in live if int(r["exp"]) - now < _DR25_WARN_WINDOW_SECONDS]
+    aging = [r for r in live if r not in expiring and int(r["exp"]) - now < 86_400]
+
+    severity = Severity.OK
+    if not rows:
+        segments.append("no agent tokens issued")
+    if expiring:
+        severity = Severity.WARN
+        agents = sorted({str(r["agent_id"]) for r in expiring})
+        segments.append(
+            f"{len(expiring)} live token(s) expiring within 6h — rotate NOW "
+            f"`vesma agent-token rotate --agent <id>`: {', '.join(agents)}"
+        )
+    if aging:
+        agents = sorted({str(r["agent_id"]) for r in aging})
+        segments.append(
+            f"info: {len(aging)} live token(s) in their final 24h (rotate today): "
+            f"{', '.join(agents)}"
+        )
+    if retired:
+        agents = sorted({str(r["agent_id"]) for r in retired})
+        segments.append(
+            f"info: {len(retired)} revoked/expired token row(s) still in the "
+            f"registry ({', '.join(agents)}) — denylist records the validator "
+            "reads; purge tooling lands with W4 resilience"
+        )
+    return Finding("DR-25", title, severity, "; ".join(segments))
+
+
+def _dr25_default_settings() -> Any:
+    """The real settings load for DR-25 (a seam keeps the check testable
+    without touching the host's config)."""
+    from vesma.config import load_settings
+
+    return load_settings()
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
@@ -2330,7 +2463,8 @@ def run_service_checks() -> list[Finding]:
     unit vs regeneration), DR-19 (generation advisories, both profiles),
     DR-20 (second writer on the store home — ADR-0049 wave 0), DR-21
     (the system daemon serves the FHS data root — card 4c8a0cbe), DR-23
-    (artifacts outside the platform — ArchCom 2026-10-29, 1c2b8d64).
+    (artifacts outside the platform — ArchCom 2026-10-29, 1c2b8d64),
+    DR-25 (MCP plane namespace health — ADR-0050 §4/§5, wave W3).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -2372,6 +2506,9 @@ def run_service_checks() -> list[Finding]:
         ("DR-21", "system daemon serves the FHS data root", _dr21),
         ("DR-22", "loaded components vs canonical manifests dir", _dr22),
         ("DR-23", "artifacts outside the platform", _dr23),
+        # DR-24 is RESERVED for the W4 resilience wave (ADR-0050 волны:
+        # signage) — DR-25 (MCP plane namespace health) landed first.
+        ("DR-25", "MCP plane namespace health", _dr25),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:

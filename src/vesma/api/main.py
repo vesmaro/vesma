@@ -49,6 +49,7 @@ from vesma.config import ApiConfig, Settings, load_settings
 from vesma.context_rewrite import ContextRewriteRateLimitError
 from vesma.hooks import HOOK_ACTIONS, dispatch_hook
 from vesma.manager import MemoryManager, SessionAgentMismatchError
+from vesma.mcp_namespace import TokenQuota
 from vesma.models import (
     CHECKPOINT_FIELDS,
     AgentRecallQuery,
@@ -239,6 +240,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # signing-key mint.
     application.state.mcp_endpoint_enabled = settings.mcp.endpoint_enabled
     application.state.mcp_token_deps = McpTokenDeps(settings)
+    # ADR-0050 W3 — the per-token quota (the resource axis of harness
+    # isolation): a sliding in-process window keyed by the token jti,
+    # checked by the gate before every session-manager hand-off. The
+    # object is process-local by design (Ф1: one core process).
+    application.state.mcp_token_quota = TokenQuota(settings.mcp.quota.calls_per_minute)
     mcp_session_manager: Any = None
     if settings.mcp.endpoint_enabled:
         try:

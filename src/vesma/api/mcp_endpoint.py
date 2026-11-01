@@ -25,13 +25,26 @@ thin ASGI auth gate:
 * **Token hygiene** — token values are never logged: rejections log the
   verdict's coarse reason / agent_id / jti only (the mesh data-gate
   convention).
+* **Per-token quota (ADR-0050 §4, wave W3)** — after a valid verdict the
+  gate consults the sliding-window :class:`vesma.mcp_namespace.TokenQuota`
+  published on ``app.state.mcp_token_quota`` (key = the token ``jti``);
+  an over-limit request answers 429 JSON with ``Retry-After`` BEFORE the
+  session manager runs (denied calls never reach a tool).
+* **Identity threading (ADR-0050 §4, wave W3)** — the verdict's
+  ``(agent_id, jti)`` is published as an :class:`McpIdentity` into the
+  module-level request-identity contextvar for the duration of
+  ``manager.handle_request`` (set before the await, reset in a
+  ``finally``); the MCP tool dispatch reads it for the enforced
+  ``agent:<slug>`` namespace and the ``cross_read`` aperture
+  (:mod:`vesma.mcp_namespace`). Off-plane callers never see a value —
+  the local CLI / stdio / embedded-store behavior is unchanged.
 
 The gate is a raw ASGI app (not BaseHTTPMiddleware) so it adds no
 buffering layer between the SDK transport and the server; per-request
 state comes from ``scope["app"].state`` which the API lifespan populates
 (``mcp_endpoint_enabled`` / ``mcp_session_manager`` / ``mcp_token_deps``
-/ ``instance_id``). Anything missing = fail-closed (404/503), never an
-open endpoint.
+/ ``mcp_token_quota`` / ``instance_id``). Anything missing = fail-closed
+(404/503), never an open endpoint.
 """
 
 from __future__ import annotations
@@ -52,6 +65,12 @@ from vesma.agent_tokens import (
     validate_agent_token,
 )
 from vesma.config import Settings
+from vesma.mcp_namespace import (
+    McpIdentity,
+    TokenQuota,
+    reset_request_identity,
+    set_request_identity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,8 +166,15 @@ def _bearer_token(headers: list[tuple[bytes, bytes]]) -> str | None:
     return None
 
 
-async def _send_json(send: Send, *, status: int, body: dict[str, str]) -> None:
-    """Send a bare JSON ASGI response (401s carry ``WWW-Authenticate: Bearer``)."""
+async def _send_json(
+    send: Send,
+    *,
+    status: int,
+    body: dict[str, str],
+    retry_after: int | None = None,
+) -> None:
+    """Send a bare JSON ASGI response (401s carry ``WWW-Authenticate: Bearer``,
+    a quota 429 carries ``Retry-After`` seconds)."""
     payload = json.dumps(body).encode("utf-8")
     headers = [
         (b"content-type", b"application/json"),
@@ -156,6 +182,8 @@ async def _send_json(send: Send, *, status: int, body: dict[str, str]) -> None:
     ]
     if status == 401:
         headers.append((b"www-authenticate", b"Bearer"))
+    if retry_after is not None:
+        headers.append((b"retry-after", str(max(1, int(retry_after))).encode("ascii")))
     message: Message = {"type": "http.response.start", "status": status, "headers": headers}
     await send(message)
     await send({"type": "http.response.body", "body": payload})
@@ -179,7 +207,12 @@ class McpHttpEndpoint:
        data-gate discipline);
     5. :func:`validate_agent_token` against the serving instance id →
        any rejection is a 401 with the coarse reason category;
-    6. only then the request enters the SDK session manager.
+    6. per-token quota (``app.state.mcp_token_quota``, keyed by the
+       verdict's ``jti``) → over-limit is a 429 JSON with ``Retry-After``
+       (the resource axis of ADR-0050 §4; W3);
+    7. only then the request enters the SDK session manager — with the
+       verdict identity published into the request-identity contextvar
+       for the dispatch (W3), reset in a ``finally``.
 
     Non-http scopes (ASGI lifespan frames never reach a Mount, but be
     explicit) are dropped silently.
@@ -272,10 +305,55 @@ class McpHttpEndpoint:
             )
             return
 
-        # 6. Authenticated — hand the request to the SDK session manager
-        #    (its handle_request is the ASGI entry: a body-size guard in
-        #    front of the per-request transport).
-        await manager.handle_request(scope, receive, send)
+        # 6. Per-token quota (ADR-0050 §4, W3) — BEFORE the session manager
+        #    runs: denied calls never reach a tool. Key = the verdict's jti
+        #    (a rotated token starts a fresh window). The verdict is valid
+        #    here, so agent_id/jti are both minted by the validator; the
+        #    identity-shaped defensive fallback keeps the gate typed even
+        #    if a future validator change ever loosened that invariant
+        #    (fail-closed to "" rather than crashing the plane).
+        quota: TokenQuota | None = getattr(state, "mcp_token_quota", None)
+        if quota is None:  # pragma: no cover - defensive (lifespan always publishes)
+            await _send_json(
+                send,
+                status=503,
+                body={"detail": "MCP HTTP endpoint is not initialized"},
+            )
+            return
+        identity = McpIdentity(
+            agent_id=verdict.agent_id or "",
+            jti=verdict.jti or "",
+        )
+        decision = quota.check(identity.jti)
+        if not decision.allowed:
+            logger.info(
+                "mcp_http: quota exceeded agent_id=%s jti=%s retry_after=%ss",
+                identity.agent_id,
+                identity.jti,
+                decision.retry_after,
+            )
+            await _send_json(
+                send,
+                status=429,
+                body={
+                    "detail": (
+                        "MCP per-token quota exceeded (mcp.quota.calls_per_minute) — retry later"
+                    )
+                },
+                retry_after=decision.retry_after,
+            )
+            return
+
+        # 7. Authenticated and inside the quota — publish the request
+        #    identity for the dispatch (enforced agent:<slug> + cross_read,
+        #    vesma.mcp_namespace) strictly for the duration of the SDK
+        #    session manager call, reset in a finally: the var is
+        #    per-request state, never a process default.
+        ctx_token = set_request_identity(identity)
+        try:
+            await manager.handle_request(scope, receive, send)
+        finally:
+            reset_request_identity(ctx_token)
 
 
 #: The module-level ASGI app mounted on the API app (see ``api.main``).

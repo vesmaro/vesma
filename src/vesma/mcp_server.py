@@ -42,6 +42,18 @@ from vesma.config import load_settings
 from vesma.context_rewrite import ContextRewriteRateLimitError
 from vesma.heartbeat import native_heartbeat_tail
 from vesma.hooks import HOOK_ACTIONS, dispatch_hook
+from vesma.mcp_namespace import (
+    McpIdentity,
+    NamespaceViolationError,
+    assert_rows_owned,
+    cross_read_visible,
+    current_identity,
+    enforce_agent_arg,
+    enforce_agent_tags,
+    enforce_bulk_rename_prefixes,
+    record_owner,
+    resolve_identity_agent,
+)
 from vesma.models import (
     CHECKPOINT_FIELDS,
     AgentRecallQuery,
@@ -2287,6 +2299,12 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
 
     try:
         result = await _dispatch(name, arguments)
+    except NamespaceViolationError as exc:
+        # ADR-0050 W3 — the enforced agent:<slug> namespace is
+        # reject-LOUD: a typed, distinct result (never a silent strip and
+        # never the generic error rendering) so a harness whose client
+        # tags disagree with its token identity finds out immediately.
+        return [TextContent(type="text", text=f"❌ Namespace violation (ADR-0050):\n{exc}")]
     except TagContractError as exc:
         return [TextContent(type="text", text=f"❌ Tag contract violation:\n{exc}")]
     except Exception as exc:
@@ -2542,6 +2560,20 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             }
 
     try:
+        # W3 (ADR-0050 §5): export is a READ surface — without the aperture a
+        # harness would download the whole store around cross_read. Off-plane
+        # (identity=None) no filter is passed and the export is byte-identical.
+        cross_read_row_filter = None
+        export_identity = current_identity()
+        if export_identity is not None:
+            export_mode = mgr.settings.mcp.namespace.cross_read
+
+            def _cross_read_visible_row(mem: Any) -> bool:
+                return cross_read_visible(
+                    record_owner(mem.tags), str(mem.status), export_identity, export_mode
+                )
+
+            cross_read_row_filter = _cross_read_visible_row
         result = run_export(
             mgr,
             fmt=fmt,
@@ -2550,6 +2582,7 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
             encrypt=encrypt,
             passphrase=passphrase,
             filt=filt,
+            row_filter=cross_read_row_filter,
         )
     except Exception as exc:  # surface a clean error to the caller
         return {"error": f"Export failed: {exc}"}
@@ -2563,6 +2596,87 @@ def _handle_export(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
         "bytes": result.bytes_written,
         "warnings": list(result.warnings),
     }
+
+
+def _import_namespace_prescan(
+    mgr: Any,
+    source_path: Path,
+    identity: McpIdentity,
+    passphrase: str | None,
+    *,
+    overwrite: bool,
+) -> None:
+    """ADR-0050 W3 pre-scan: every imported row's tags pass the mint gate
+    BEFORE anything is written.
+
+    An export file is client-supplied data — rows arrive with their tags
+    verbatim, so a foreign ``agent:<slug>`` tag would mint a foreign
+    namespace wholesale, around the create-path enforcement (the same
+    CWE-346 class the import canon-stamp strip already owns for
+    metadata). The unwrap chain mirrors ``run_import`` exactly (same
+    helpers, same compress/encrypt detection); any unwrap/parse failure
+    falls through SILENTLY — the real import then produces its canonical
+    error (encrypted-without-passphrase, invalid JSON, …) instead of this
+    scan preempting it with a different message. A SQLite snapshot under
+    identity is refused outright: it is a whole-store image the row scan
+    cannot inspect (its export twin is already operator-only).
+
+    F-1 (cascade review, wave W3): with ``overwrite=True`` every id the
+    import would REPLACE is additionally ownership-checked against the
+    live store — a foreign-owned row must never be wiped by an import
+    the identity does not own.
+    """
+    from vesma.cli.export import (
+        CompressMode,
+        detect_sqlite_snapshot,
+        is_encrypted,
+        parse_json_export,
+    )
+    from vesma.cli.import_ import _unwrap_payload
+
+    raw = source_path.read_bytes()
+    encrypted = is_encrypted(raw)
+    if not encrypted and detect_sqlite_snapshot(raw):
+        raise NamespaceViolationError(
+            "vesma_import: a SQLite snapshot is a whole-store image — the "
+            "namespace pre-scan cannot inspect it row-by-row; agent-facing "
+            "imports must be JSON exports (enforced agent:<slug>, ADR-0050 §4)"
+        )
+    try:
+        compress: CompressMode | None = None
+        if not encrypted:
+            compress = CompressMode.GZIP if raw[:2] == b"\x1f\x8b" else CompressMode.NONE
+        payload_bytes = _unwrap_payload(
+            raw, compress=compress, encrypted=encrypted, passphrase=passphrase
+        )
+        payload = parse_json_export(payload_bytes)
+    except Exception:
+        # Malformed / undecryptable: run_import owns the canonical error.
+        return
+    for idx, row in enumerate(payload.get("memories", [])):
+        tags = row.get("tags") if isinstance(row, dict) else None
+        if not tags:
+            continue
+        try:
+            enforce_agent_tags(list(tags), identity)
+        except NamespaceViolationError as exc:
+            raise NamespaceViolationError(f"vesma_import: row {idx}: {exc}") from exc
+
+    # F-1 (cascade review, wave W3): merge+overwrite REPLACES an existing
+    # row by id WHOLESALE — the incoming-tags scan above would let a
+    # foreign-owned row be silently wiped (data-loss class). Every id the
+    # import would overwrite must belong to the request identity; an id
+    # that does not exist (or is not being overwritten) keeps the
+    # import's own merge/skip contract. Owner read at STORE level with
+    # tombstones included: a tombstoned id still occupies its slot.
+    if overwrite:
+        for row in payload.get("memories", []):
+            row_id = row.get("id") if isinstance(row, dict) else None
+            if not isinstance(row_id, str) or not row_id:
+                continue
+            existing = mgr.sqlite.get(row_id, include_tombstoned=True)
+            if existing is not None:
+                assert_rows_owned([existing], identity, action="vesma_import:overwrite")
 
 
 def _handle_import(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
@@ -2610,6 +2724,20 @@ def _handle_import(mgr: Any, args: dict[str, Any]) -> dict[str, Any]:
                 )
             }
 
+    # W3 (ADR-0050 §4): the per-row mint gate — under identity, imported
+    # rows carrying a foreign agent:<slug> tag are refused BEFORE any
+    # write; F-1 adds the overwrite-ownership leg (cascade review).
+    # Off-plane the import behaves exactly as before.
+    import_identity = current_identity()
+    if import_identity is not None:
+        _import_namespace_prescan(
+            mgr,
+            source_path,
+            import_identity,
+            passphrase,
+            overwrite=bool(args.get("overwrite", False)),
+        )
+
     try:
         result = run_import(
             mgr,
@@ -2653,9 +2781,87 @@ def _parse_iso_arg(value: str) -> datetime | None:
     return dt
 
 
+def _bulk_tag_affected_rows(mgr: Any, action: str, args: dict[str, Any]) -> list[Any]:
+    """The rows a bulk tag operation WOULD mutate (ADR-0050 W3 ownership gate).
+
+    Mirrors the manager's own scan scope (paged ``sqlite.list_all`` with
+    the same project/agent filter, page 500) and its mutation predicates:
+    ``add`` appends to every row missing at least one target tag;
+    ``remove`` drops exact (or wildcard-prefix) matches; ``rename``
+    rewrites tags under ``from_prefix`` honoring the subtype whitelist,
+    the byte-stable ``no-federate`` skip and the invalid-subtype skip —
+    the same rules as ``MemoryManager.tags_rename`` (pinned by tests).
+    Used ONLY to decide row ownership BEFORE the manager runs; a row that
+    matches but would not actually change is still gated (fail-closed —
+    the gate errs toward refusing, never toward letting a foreign mutation
+    through).
+    """
+    from vesma.models import NO_FEDERATE_TAG, VESMA_TAG_SUBTYPES
+
+    project = args.get("project")
+    agent = args.get("agent")
+    page_size = 500
+    offset = 0
+    affected: list[Any] = []
+
+    if action == "remove":
+        matchers = [t for t in args.get("tags", []) if t]
+        wildcard = bool(args.get("wildcard", False))
+
+        def _is_match(tag: str) -> bool:
+            if wildcard:
+                return any(tag.startswith(m) for m in matchers)
+            return tag in matchers
+
+    if action == "rename":
+        from_prefix: str = args["from_prefix"]
+        to_prefix: str = args["to_prefix"]
+        subtype_filter: set[str] | None = set(args["subtypes"]) if args.get("subtypes") else None
+        invalid_to_legacy = bool(args.get("invalid_subtypes_to_legacy", False))
+
+        def _renames(tag: str) -> bool:
+            if not tag.startswith(from_prefix):
+                return False
+            subtype = tag[len(from_prefix) :]
+            if subtype_filter is not None and subtype not in subtype_filter:
+                return False
+            if subtype == "no-federate" and to_prefix + subtype != NO_FEDERATE_TAG:
+                return False  # byte-stable trust marker: never renamed
+            if subtype in VESMA_TAG_SUBTYPES:
+                target = to_prefix + subtype
+            elif invalid_to_legacy:
+                target = to_prefix + "legacy"
+            else:
+                return False  # invalid subtype: skipped, counted in the report
+            return target != tag
+
+    while True:
+        batch = mgr.sqlite.list_all(limit=page_size, offset=offset, project=project, agent=agent)
+        if not batch:
+            break
+        offset += len(batch)
+        for mem in batch:
+            if action == "add":
+                to_add = [t for t in args.get("tags", []) if t]
+                if any(t not in mem.tags for t in to_add):
+                    affected.append(mem)
+            elif action == "remove":
+                if matchers and any(_is_match(t) for t in mem.tags):
+                    affected.append(mem)
+            else:  # rename
+                if any(_renames(t) for t in mem.tags):
+                    affected.append(mem)
+    return affected
+
+
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     mgr = get_manager()
     settings = mgr.settings
+    # ADR-0050 W3 — the request identity (ADR-0050 §4): set by the /mcp
+    # gate around handle_request, None on every other plane (stdio, CLI,
+    # embedded store). Every namespace behavior below keys on it; None
+    # keeps each surface byte-identical to its pre-W3 contract.
+    identity: McpIdentity | None = current_identity()
     # PG-0.5: the native auto-index hint rides EVERY dispatch — one
     # cut-in point, cheap (flag + queue put), failure-isolated below.
     _emit_codegraph_hint(mgr, args)
@@ -2668,6 +2874,11 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             raw_tags,
             strict=settings.vesma.strict_tag_contract,
         )
+        # W3 (ADR-0050 §4): on /mcp a client-authored agent:<slug> tag
+        # must be the request's own identity — a foreign mint is a loud
+        # typed refusal (the mint-protection class extended to the
+        # ownership tag). Non-agent tags are untouched.
+        tags = enforce_agent_tags(tags, identity)
         # Derive denormalised fields from validated tags
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
@@ -2720,6 +2931,24 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             status=status,
             refined_only=args.get("refined_only", False),
         )
+        # W3 (ADR-0050 §5): on /mcp, foreign (not-this-identity) records
+        # are filtered BEFORE issuance — published_only serves foreign
+        # rows in their published projection only, own_only none. Own
+        # rows are always served in full. Dispatch-level post-filter:
+        # the SQLite read path is shared with the local surfaces, which
+        # stay byte-identical. A post-filter may under-fill the requested
+        # limit (the same accepted trade-off as the quarantine filter).
+        if identity is not None:
+            results = [
+                r
+                for r in results
+                if cross_read_visible(
+                    record_owner(r.memory.tags),
+                    str(r.memory.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                )
+            ]
         # ADR-0018 P1-b (M1 + review F1/F3): scan-at-issuance — BOTH echoed
         # strings (content and title; auto_title() derives from raw content)
         # are scanned/redacted per item; refuse mode drops the item
@@ -2761,6 +2990,20 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             limit=args.get("limit", 20),
         )
         results = mgr.agent_recall(recall_query)
+        # W3 (ADR-0050 §5): the same cross-read aperture as vesma_search —
+        # agent_recall can otherwise address ANY agent's rows by slug, so
+        # on /mcp the foreign rows obey mcp.namespace.cross_read.
+        if identity is not None:
+            results = [
+                r
+                for r in results
+                if cross_read_visible(
+                    record_owner(r.memory.tags),
+                    str(r.memory.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                )
+            ]
         # ADR-0018 P1-b (M1 + review F1/F3): scan-at-issuance on BOTH echoed
         # strings (content and title) — same policy as vesma_search.
         recalled = []
@@ -2789,6 +3032,17 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     # ── vesma_save_context ─────────────────────────────────────────────────
     if name == "vesma_save_context":
         project = args.get("project") or _detect_project()
+        # W3 (ADR-0050 §4): the checkpoint channel's owner argument is the
+        # identity channel — on /mcp an explicit agent must BE the request
+        # identity (a foreign claim is a loud typed refusal), and an
+        # omitted one defaults to the identity (never the legacy "user":
+        # under isolation that would orphan the harness's checkpoints into
+        # a namespace it cannot read back). Off-plane (identity=None) the
+        # argument passes through untouched — pre-W3 behavior.
+        checkpoint_agent = enforce_agent_arg(
+            args.get("agent"), identity, surface="vesma_save_context"
+        )
+        checkpoint_agent = resolve_identity_agent(checkpoint_agent, identity)
         fields = {f: args.get(f) for f in CHECKPOINT_FIELDS}
         # canon v1.0.0: ``language`` is the per-call override of the
         # configured checkpoint body language (None → config default).
@@ -2800,7 +3054,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         memory, duplicate = mgr.save_checkpoint(
             fields,
             project=project,
-            agent=args.get("agent"),
+            agent=checkpoint_agent,
             session=args.get("session"),
             task=args.get("task"),
             # cascade QA P3-4 twin parity: REST /context/save stamps
@@ -2830,6 +3084,20 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         memories = mgr.recall_context(
             project=project, query=args.get("query"), task=args.get("task"), limit=5
         )
+        # W3 (ADR-0050 §5): the cross-read aperture before the render —
+        # checkpoints mint their agent tag at the save boundary, so the
+        # owner convention is uniform with the other read surfaces.
+        if identity is not None:
+            memories = [
+                m
+                for m in memories
+                if cross_read_visible(
+                    record_owner(m.tags),
+                    str(m.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                )
+            ]
         if not memories:
             instructions = (
                 _auto_collect_instructions(project) if _auto_collect_state["enabled"] else ""
@@ -2862,6 +3130,19 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             project=args.get("project"),
             task=args.get("task"),
         )
+        # W3 (ADR-0050 §5): the cross-read aperture before the issuance
+        # scan (same under-fill trade-off as vesma_search).
+        if identity is not None:
+            memories = [
+                m
+                for m in memories
+                if cross_read_visible(
+                    record_owner(m.tags),
+                    str(m.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                )
+            ]
         # ADR-0018 P1-b review (F1): this channel echoes titles
         # (auto_title() derives from raw content) and no content — the
         # title is scanned; refuse mode drops the row.
@@ -2887,7 +3168,30 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
 
     # ── vesma_list_tags ────────────────────────────────────────────────────
     if name == "vesma_list_tags":
-        return mgr.list_tags()
+        if identity is None:
+            return mgr.list_tags()
+        # W3 (ADR-0050 §5): the global counts cannot be post-filtered by
+        # owner (the store aggregates them SQL-side over every row), so
+        # on /mcp the counts are recomputed over the SAME records the
+        # cross-read aperture would serve — own rows in full, foreign
+        # rows per the mode. Paged through the EXISTING list_recent
+        # accessor (quarantine rows invisible — consistent with every
+        # other listing surface); the underlying order is stable, so the
+        # page cursor never skips or double-counts a row.
+        mode = settings.mcp.namespace.cross_read
+        counts: dict[str, int] = {}
+        page_size = 500
+        offset = 0
+        while True:
+            page = mgr.list_recent(limit=page_size, offset=offset)
+            for m in page:
+                if not cross_read_visible(record_owner(m.tags), str(m.status), identity, mode):
+                    continue
+                for tag in m.tags:
+                    counts[tag] = counts.get(tag, 0) + 1
+            if len(page) < page_size:
+                return counts
+            offset += page_size
 
     # ── vesma_tags (grouped: rename/remove/add) — pilot (vesma #97) ───────
     # Also serves as the backing dispatch for the legacy vesma_tags_rename
@@ -2908,6 +3212,19 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                     "error": "action='rename' requires 'from_prefix' and 'to_prefix' "
                     "(both must end with ':', e.g. 'gcw:' -> 'vesma:')"
                 }
+            # W3 (ADR-0050 §4): a bulk rename spans every row in scope —
+            # foreign ones included. FROM/TO the agent: namespace is refused
+            # ENTIRELY on /mcp (mass-rewrite / mass-mint of the ownership
+            # namespace); other prefixes run only when every row they would
+            # mutate belongs to the request identity.
+            if identity is not None:
+                enforce_bulk_rename_prefixes(args["from_prefix"], args["to_prefix"], identity)
+                if args["from_prefix"].endswith(":") and args["to_prefix"].endswith(":"):
+                    assert_rows_owned(
+                        _bulk_tag_affected_rows(mgr, "rename", args),
+                        identity,
+                        action="vesma_tags:rename",
+                    )
             return mgr.tags_rename(
                 from_prefix=args["from_prefix"],
                 to_prefix=args["to_prefix"],
@@ -2918,6 +3235,16 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 invalid_subtypes_to_legacy=args.get("invalid_subtypes_to_legacy", False),
             )
         if action == "remove":
+            # W3 (ADR-0050 §4): removing a foreign agent: tag from a FOREIGN
+            # row rips its ownership (the row turns unowned) — the row-
+            # ownership gate refuses; on the identity's OWN rows full freedom
+            # (you may repair your own namespace).
+            if identity is not None:
+                assert_rows_owned(
+                    _bulk_tag_affected_rows(mgr, "remove", args),
+                    identity,
+                    action="vesma_tags:remove",
+                )
             return mgr.tags_remove(
                 tags=args.get("tags", []),
                 wildcard=args.get("wildcard", False),
@@ -2926,6 +3253,16 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 agent=args.get("agent"),
             )
         if action == "add":
+            # W3 (ADR-0050 §4): TWO gates — the mint check on the tags being
+            # introduced (a NEW foreign agent:* tag is refused outright) and
+            # the row-ownership check (add spans every row in scope).
+            if identity is not None:
+                enforce_agent_tags([t for t in args.get("tags", []) if t], identity)
+                assert_rows_owned(
+                    _bulk_tag_affected_rows(mgr, "add", args),
+                    identity,
+                    action="vesma_tags:add",
+                )
             return mgr.tags_add(
                 tags=args.get("tags", []),
                 dry_run=args.get("dry_run", True),
@@ -2952,6 +3289,14 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 return {"error": "action='set' requires 'to' (target workflow status)"}
             if not actor:
                 return {"error": "action='set' requires 'actor' (free-form actor id)"}
+            # W3 (ADR-0050 §4): a workflow transition MUTATES the row —
+            # foreign (and unowned: "" is not a wildcard, consistent with
+            # cross_read) rows are refused. A memory that does not exist
+            # (or is tombstoned) keeps the manager's not-found contract.
+            if identity is not None:
+                target_mem = mgr.get(memory_id)
+                if target_mem is not None:
+                    assert_rows_owned([target_mem], identity, action="vesma_workflow:set")
             try:
                 return mgr.workflow_set(
                     memory_id,
@@ -2964,11 +3309,38 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
                 # Guardrail / state-machine violation — surface verbatim.
                 return {"error": str(exc)}
         if action == "get":
+            # F-4 (cascade review, wave W3): read-BY-ID obeys the SAME
+            # dispatch aperture as the list surfaces (own rows always;
+            # foreign rows per cross_read) — foreign published ids already
+            # surface in search under published_only, so hiding them by id
+            # would be inconsistent. An INVISIBLE row answers the surface's
+            # existing not-found shape (the same no-oracle contract the
+            # tombstone leg already holds).
+            if identity is not None:
+                wf_target = mgr.get(memory_id)
+                if wf_target is not None and not cross_read_visible(
+                    record_owner(wf_target.tags),
+                    str(wf_target.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                ):
+                    return {"error": f"memory {memory_id!r} not found"}
             result = mgr.workflow_get(memory_id)
             if result is None:
                 return {"error": f"memory {memory_id!r} not found"}
             return result
         if action == "history":
+            # F-4: same aperture as `get`; an invisible row answers the
+            # surface's existing empty-history shape (no existence oracle).
+            if identity is not None:
+                wf_hist_target = mgr.get(memory_id)
+                if wf_hist_target is not None and not cross_read_visible(
+                    record_owner(wf_hist_target.tags),
+                    str(wf_hist_target.status),
+                    identity,
+                    settings.mcp.namespace.cross_read,
+                ):
+                    return {"memory_id": memory_id, "history": []}
             return {
                 "memory_id": memory_id,
                 "history": mgr.workflow_history(memory_id, limit=int(args.get("limit", 50))),
@@ -2995,6 +3367,10 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         for label, value in (("agent", cp_agent), ("session", cp_session)):
             if value is not None and not isinstance(value, str):
                 return {"error": f"{label} must be a string when provided"}
+        # W3 (ADR-0050 §4): the CCR issuer ledger's agent is a provenance
+        # mint — on /mcp an explicit foreign agent is refused loudly (the
+        # issuer pair must be provable against the request identity).
+        cp_agent = enforce_agent_arg(cp_agent, identity, surface="vesma_compress")
         return mgr.compress_content(
             args["text"],
             profile=args.get("profile"),
@@ -3022,6 +3398,26 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         validate_marker_arg = args.get("validate_marker")
         if validate_marker_arg is not None and not isinstance(validate_marker_arg, bool):
             return {"error": "validate_marker must be a boolean when provided"}
+        # F-2 (cascade review, wave W3): CCR markers ride published content
+        # BY DESIGN, so a bare hash must not become a cross_read bypass —
+        # under identity the cache row's issuer agent must BE the request
+        # identity (same refusal class as the workflow gate: a typed
+        # violation, not a silent not-found). An unknown hash / a project-
+        # mismatched row falls through to retrieve_content's own found=False
+        # contract; local calls (identity=None) are unchanged and the
+        # validate_marker semantics stay untouched.
+        if identity is not None:
+            rt_cached = mgr.sqlite.ccr_get(args["hash"], project=args.get("project"), bump=False)
+            rt_owner = (rt_cached.get("issuer_agent") or "") if rt_cached else ""
+            if rt_cached is not None and rt_owner != identity.agent_id:
+                rt_minter = rt_owner or "an unidentified (pre-A2) issuer"
+                raise NamespaceViolationError(
+                    f"vesma_retrieve: the cache entry for hash "
+                    f"{str(args['hash'])[:12]}… was minted by {rt_minter!r}; this "
+                    f"request is authenticated as agent {identity.agent_id!r} — "
+                    f"redeeming another harness's CCR entries is refused "
+                    f"(ADR-0050 §4/§5)"
+                )
         return mgr.retrieve_content(
             args["hash"],
             query=args.get("query"),
@@ -3038,6 +3434,15 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         filter_project_arg = args.get("project")
         if filter_project_arg is not None and not isinstance(filter_project_arg, str):
             return {"error": "project must be a string when provided"}
+        # F-4 (cascade review, wave W3): re-filtering WRITES the filter
+        # projection on the row (a mutating surface, not a read) — a
+        # foreign/unowned row is refused under identity, exactly like the
+        # workflow gate. A row that does not exist keeps the manager's
+        # own not-found contract.
+        if identity is not None:
+            filter_target = mgr.get(memory_id)
+            if filter_target is not None:
+                assert_rows_owned([filter_target], identity, action="vesma_filter")
         # M1 (final review): the issuance twin — status gate (raw/archived
         # not filterable into context), optional caller-project scope, and
         # scan-at-issuance on the echoed clean_content (refuse mode drops
@@ -3075,6 +3480,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             raw_tags,
             strict=settings.vesma.strict_tag_contract,
         )
+        # W3 (ADR-0050 §4): the enforced agent namespace, same as vesma_add.
+        tags = enforce_agent_tags(tags, identity)
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
         memory = mgr.ingest_url(url_clean, tags=tags, project=project, agent=agent)
@@ -3098,6 +3505,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             raw_tags,
             strict=settings.vesma.strict_tag_contract,
         )
+        # W3 (ADR-0050 §4): the enforced agent namespace, same as vesma_add.
+        tags = enforce_agent_tags(tags, identity)
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
         doc_id = str(args["doc_id"]).strip()
@@ -3229,6 +3638,9 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         asm_agent = args.get("agent")
         if asm_agent is not None and not isinstance(asm_agent, str):
             return {"error": "agent must be a string when provided"}
+        # F-3 (cascade review, wave W3): same identity gate as the other
+        # agent-argument surfaces (the assemble provenance/issuer context).
+        asm_agent = enforce_agent_arg(asm_agent, identity, surface="vesma_assemble_context")
         try:
             asm_result = mgr.assemble_context(
                 session=asm_session,
@@ -3320,6 +3732,10 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             return {"error": "project is required and must be a non-empty string"}
         if not isinstance(cr_agent, str) or not cr_agent.strip():
             return {"error": "agent is required and must be a non-empty string"}
+        # W3 (ADR-0050 §4): the rewrite channel's owner argument is an
+        # identity mint — on /mcp it must be the request identity (loud
+        # refusal otherwise). Off-plane the argument passes through.
+        cr_agent = enforce_agent_arg(cr_agent, identity, surface="vesma_context_rewrite")
         cr_session = args.get("session")
         cr_supersedes = args.get("supersedes")
         cr_diff = args.get("diff")
@@ -3393,6 +3809,14 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         hk_awareness = args.get("include_awareness")
         if hk_awareness is not None and not isinstance(hk_awareness, bool):
             return {"error": "include_awareness must be a boolean when provided"}
+        # F-3 (cascade review, wave W3): the hooks agent argument is an
+        # identity mint — under identity a foreign claim is refused loudly
+        # (the guard above already guarantees a string, so the enforcement
+        # can only return it back).
+        hk_agent_enforced = enforce_agent_arg(hk_agent, identity, surface="vesma_hooks")
+        if not isinstance(hk_agent_enforced, str):  # pragma: no cover - unreachable
+            return {"error": "agent is required and must be a non-empty string"}
+        hk_agent = hk_agent_enforced
         try:
             return dispatch_hook(
                 mgr,

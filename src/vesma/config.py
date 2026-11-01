@@ -15,6 +15,7 @@ import yaml
 from click import ClickException
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     SecretStr,
     ValidationError,
@@ -337,7 +338,46 @@ class ApiConfig(BaseModel):
     trusted_proxies: list[str] = Field(default_factory=list)  # CIDRs for X-Forwarded-*
 
 
+class McpNamespaceConfig(BaseModel):
+    """ADR-0050 §4/§5 (wave W3) — the /mcp namespace plane knobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Cross-read aperture for FOREIGN (not-this-identity) records on the
+    # /mcp read surfaces. ``published_only`` (default) mirrors the
+    # awareness cross-silo cap: the identity's own rows are always served
+    # in full, foreign rows only in their published projection.
+    # ``own_only`` is the strict deployment posture (no foreign rows at
+    # all). The Literal fails closed at Settings construction — an
+    # unknown value never boots a server.
+    cross_read: Literal["published_only", "own_only"] = "published_only"
+
+
+class McpQuotaConfig(BaseModel):
+    """ADR-0050 §4 (wave W3) — the /mcp resource axis (per-token quota)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Sliding-window cap of tool calls per agent token per minute (key =
+    # the token jti). 120 is the ratified default; None disables the cap
+    # (a single-operator home box). The 429 carries Retry-After.
+    calls_per_minute: int | None = Field(default=120, ge=1)
+
+
 class McpConfig(BaseModel):
+    """ADR-0050 — the MCP plane config.
+
+    ``extra="forbid"`` (cascade review F-6, wave W3): this section now
+    carries fail-closed SECURITY knobs (``namespace.cross_read``,
+    ``quota.calls_per_minute``) — a key parked at the wrong nesting level
+    (``mcp: {cross_read: …}`` instead of
+    ``mcp: {namespace: {cross_read: …}}``) or a typo'd knob name must
+    refuse to boot LOUDLY, never silently fall back to the default
+    aperture while the operator believes the strict one is active.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     transport: str = "stdio"
     # ADR-0050 W1 — the in-core MCP streamable HTTP plane (``/mcp`` on the
     # ``vesma serve`` app). Enabled by default; when False the endpoint
@@ -346,6 +386,11 @@ class McpConfig(BaseModel):
     # agent token (fail-closed) — loopback trust of the REST API never
     # extends to this surface.
     endpoint_enabled: bool = True
+    # ADR-0050 W3 — harness isolation on the plane: enforced
+    # ``agent:<slug>`` namespaces and per-token quotas live in the nested
+    # groups below (the local CLI / stdio MCP plane is untouched by both).
+    namespace: McpNamespaceConfig = McpNamespaceConfig()
+    quota: McpQuotaConfig = McpQuotaConfig()
 
 
 class WatcherConfig(BaseModel):
