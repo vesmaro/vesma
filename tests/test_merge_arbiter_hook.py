@@ -146,29 +146,118 @@ def test_advisory_runs_on_the_same_manager_without_reloading(mgr, caplog) -> Non
 
 
 # ---------------------------------------------------------------------------
-# 2. Apply — the fold executes
+# 2. Apply — the fold executes, but ONLY behind the v42 silver gate
 # ---------------------------------------------------------------------------
 
 
-def test_apply_folds_the_newer_duplicate(mgr, caplog) -> None:
+def _vesma_mgr_with_real_embedder(tmpdir: str) -> MemoryManager:
+    """A manager over the REAL bundled embedder (NanoProvider — the
+    artifact's pinned vintage) with decision_provider="vesma": the v42
+    is-dup leg answers the probe and the apply gate admits it. The
+    caller keeps the tmpdir ALIVE until the manager is closed."""
+    tmp = Path(tmpdir)
+    settings = Settings(
+        vesma={
+            "vault_path": str(tmp / "vault"),
+            "data_dir": str(tmp / "data"),
+            "db_name": "test.db",
+            "merge_arbiter": "apply",
+            "decision_provider": "vesma",
+        },
+        embedding={"provider": "nano"},
+        scanner={"enabled": False},
+    )
+    settings.resolve_paths()
+    manager = MemoryManager(settings)
+    from vesma.embeddings import NanoProvider
+
+    manager._embedder = NanoProvider()
+    return manager
+
+
+def test_apply_folds_the_newer_duplicate_behind_the_v42_gate(caplog) -> None:
+    """The sanctioned composition end-to-end: v42 answers the probe
+    (self-pair guard on cos ≈ 1.0), the arbiter keep rides it, the fold
+    executes. The MERGE-ARBITER line carries gate=vesma-cortex."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manager = _vesma_mgr_with_real_embedder(tmpdir)
+        try:
+            caplog.set_level(logging.INFO)
+            first = manager.add(
+                MemoryCreate(content=CONTENT, title="deploy note", tags=["project:hookproj"]),
+                project="hookproj",
+                agent="wave",
+            )
+            second = manager.add(
+                MemoryCreate(content=CONTENT, title="deploy note", tags=["project:hookproj"]),
+                project="hookproj",
+                agent="wave",
+            )
+            lines = _arbiter_lines(caplog)
+            assert lines and "mode=apply" in lines[0]
+            assert "gate=vesma-cortex" in lines[0]
+            # the keeper (older) survives; the re-add is tombstoned
+            assert manager.get(first.id) is not None
+            with tombstones_visible():
+                assert _row_any(manager, second.id) is not None
+            status = manager.sqlite.get_workflow_status(second.id)
+            assert status is not None and status["workflow_status"] == "tombstoned"
+            assert manager.sqlite.journal_entry_count(second.id) == 1
+            # the Д3 edge exists; the plain auto-dedupe edge was skipped
+            edges = manager.sqlite.get_incoming_edges(second.id, kind="relates_to")
+            provenances = [e["provenance"] for e in edges]
+            assert "merge-arbiter" in provenances
+            assert "auto-dedupe" not in provenances
+        finally:
+            manager.close()
+
+
+def test_apply_refused_behind_the_deterministic_gate(mgr, caplog) -> None:
+    """THE ACTIVATION GATE: ``apply`` behind the deterministic step rule
+    (the config default) refuses the fold LOUDLY (MERGE-E-GATE) and
+    keeps the advisory legs — verdict logged, nothing folded, no
+    journal, no fold edge; the plain auto-dedupe fuel still mints."""
     mgr.settings.vesma.merge_arbiter = "apply"
     caplog.set_level(logging.INFO)
     first = _add(mgr, CONTENT)
-    second = _add(mgr, CONTENT)  # the byte-identical re-add
+    second = _add(mgr, CONTENT)
     lines = _arbiter_lines(caplog)
     assert lines and "mode=apply" in lines[0]
-    # the keeper (older) survives; the re-add is tombstoned
+    assert "gate=deterministic" in lines[0]  # honest attribution
+    assert any("MERGE-E-GATE" in r for r in caplog.messages)
+    assert not any("consolidation applied" in r for r in caplog.messages)
+    # NOTHING folded: both rows alive, no tombstone, no journal
     assert mgr.get(first.id) is not None
+    assert mgr.get(second.id) is not None
     with tombstones_visible():
-        assert _row_any(mgr, second.id) is not None
-    status = mgr.sqlite.get_workflow_status(second.id)
-    assert status is not None and status["workflow_status"] == "tombstoned"
-    assert mgr.sqlite.journal_entry_count(second.id) == 1
-    # the Д3 edge exists; the plain auto-dedupe edge was skipped
-    edges = mgr.sqlite.get_incoming_edges(second.id, kind="relates_to")
-    provenances = [e["provenance"] for e in edges]
-    assert "merge-arbiter" in provenances
-    assert "auto-dedupe" not in provenances
+        status = mgr.sqlite.get_workflow_status(second.id)
+    assert status is None or status["workflow_status"] != "tombstoned"
+    assert mgr.sqlite.journal_entry_count(second.id) == 0
+    # the advisory legs still ran: the plain fuel edge minted
+    edges = mgr.sqlite.get_incoming_edges(first.id, kind="relates_to")
+    assert any(e["provenance"] == "auto-dedupe" and e["from_memory_id"] == second.id for e in edges)
+
+
+def test_apply_refused_when_the_seam_degrades_to_deterministic(mgr, caplog, monkeypatch) -> None:
+    """Config says "vesma" but the seam DEGRADED (resolution failure →
+    deterministic baseline): the answering provider is honestly the
+    baseline, so the apply gate refuses — a degraded answer is not a
+    v42 verdict."""
+    mgr.settings.vesma.merge_arbiter = "apply"
+    mgr.settings.vesma.decision_provider = "vesma"
+
+    def _boom(settings: object, *, embedder_fingerprint: str) -> None:
+        raise RuntimeError("seam resolution exploded (injected)")
+
+    monkeypatch.setattr("vesma.manager.resolve_decision_provider", _boom)
+    caplog.set_level(logging.INFO)
+    first = _add(mgr, CONTENT)
+    second = _add(mgr, CONTENT)
+    assert any("MERGE-E-GATE" in r for r in caplog.messages)
+    assert not any("consolidation applied" in r for r in caplog.messages)
+    assert mgr.get(first.id) is not None
+    assert mgr.get(second.id) is not None
+    assert mgr.sqlite.journal_entry_count(second.id) == 0
 
 
 def test_apply_respects_the_ch2_refusal(mgr, caplog) -> None:

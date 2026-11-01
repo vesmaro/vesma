@@ -71,7 +71,11 @@ from typing import Any, Final
 
 import numpy as np
 
-from vesma.decision_provider import CanonRecordView, cortex_pair_features
+from vesma.decision_provider import (
+    CORTEX_MODEL_NAME,
+    CanonRecordView,
+    cortex_pair_features,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +219,28 @@ class MergeArbiterInferError(MergeArbiterError):
     """The dump walk failed or the score did not decode to [0, 1]."""
 
     code = "MERGE-E-INFER"
+
+
+class MergeArbiterGateError(MergeArbiterError):
+    """The ``apply``-mode activation gate refused: the cluster's silver
+    is-dup gate was NOT answered by the v42 leg (the answering provider's
+    identity differs from :data:`MERGE_APPLY_GATE_PROVIDER` — e.g. the
+    deterministic step rule, a degraded seam, or a foreign provider).
+    Folding behind a foreign gate is FORBIDDEN by construction: the
+    ratified composition is v42-gate → arbiter, and the template-twin
+    class (live-store verification, 2026-11-01) is exactly what the v42
+    leg refuses and the bare cosine rule admits. Advisory stays
+    unaffected — this code refuses the FOLD only."""
+
+    code = "MERGE-E-GATE"
+
+
+#: The ONLY silver gate an ``apply``-mode fold may ride: the is-dup
+#: verdict must come from the bundled v42 provider (its ``name``
+#: identity). This is the code-level form of the ratification package's
+#: «the arbiter receives a cluster ONLY after the silver is-dup gate» —
+#: advisory runs on any provider, apply does not.
+MERGE_APPLY_GATE_PROVIDER: Final[str] = CORTEX_MODEL_NAME
 
 
 # ── Member input ─────────────────────────────────────────────────────────────

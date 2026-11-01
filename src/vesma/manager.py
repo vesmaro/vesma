@@ -77,10 +77,12 @@ from vesma.graph_minting import (
     select_auto_dedupe_candidates,
 )
 from vesma.merge_arbiter import (
+    MERGE_APPLY_GATE_PROVIDER,
     MERGE_ARTIFACT_SHA256,
     ArbiterMember,
     MergeArbiter,
     MergeArbiterError,
+    MergeArbiterGateError,
 )
 from vesma.models import (
     CHECKPOINT_FIELDS,
@@ -421,6 +423,21 @@ class _WalkCandidate:
     depth: int
     weight: float
     via_relates: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeAnswer:
+    """One answered is-dup probe — data for telemetry and for the
+    merge-arbiter arrival/apply gates (W1-W3). ``provider_name`` is the
+    identity of whoever ACTUALLY answered (the seam's provider, or the
+    deterministic baseline after a fail-open per-request degrade) — the
+    apply-mode activation gate reads exactly this field: a fold may ride
+    only the v42-answered verdict
+    (:data:`vesma.merge_arbiter.MERGE_APPLY_GATE_PROVIDER`)."""
+
+    verdict: str
+    probability: float
+    provider_name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -785,17 +802,20 @@ class MemoryManager:
 
     def _decision_provider_probe(
         self, record_view: CanonRecordView, candidate_view: CanonRecordView, similarity: float
-    ) -> tuple[str, float] | None:
+    ) -> ProbeAnswer | None:
         """One live near-duplicate VERDICT probe (B0 telemetry capture).
 
         Asks the configured provider «is-duplicate» over the prepared
         pair state exactly as the ADR-0037 R1 seam prescribes it. §8.3
         verdict/action split: the probe NEVER gates, weights or
         suppresses anything by itself — it returns the answered
-        ``(verdict, probability)`` for the caller's telemetry and for
-        the merge-arbiter arrival gate (a cluster reaches the arbiter
-        ONLY after the is-dup leg answered «duplicate»). The §3.9
-        DECISION line is emitted by the provider's own evaluate
+        :class:`ProbeAnswer` (verdict, probability, and the ANSWERING
+        provider's identity) for the caller's telemetry and for the
+        merge-arbiter arrival gate (a cluster reaches the arbiter ONLY
+        after the is-dup leg answered «duplicate») and — since the
+        W1-W3 fix-slice — for the ``apply``-mode activation gate: a fold
+        may ride ONLY the v42-answered verdict. The §3.9 DECISION line
+        is emitted by the provider's own evaluate
         (:func:`log_decision_telemetry`; the B0 collector joins
         verdict/probability from it — b0-telemetry-plan.md criteria 3/5).
 
@@ -804,8 +824,10 @@ class MemoryManager:
         evidence) — the deterministic twin would raise it too — so the
         probe skips quietly (``None``) instead of fabricating; any OTHER
         exception degrades to the deterministic step rule with a
-        machine-parseable warn. Ingest is never blocked: the caller
-        already wraps this call best-effort.
+        machine-parseable warn, and the attribution honestly names the
+        BASELINE as the answerer (a degraded answer is not a v42
+        verdict — the apply gate reads exactly this). Ingest is never
+        blocked: the caller already wraps this call best-effort.
         """
         provider = self._decision_seam()
         if provider is None:
@@ -822,8 +844,8 @@ class MemoryManager:
                 exc,
             )
             try:
-                baseline = DeterministicProvider()
-                answer = baseline.evaluate(IsDuplicateRequest(), state)
+                provider = DeterministicProvider()
+                answer = provider.evaluate(IsDuplicateRequest(), state)
             except Exception:
                 logger.debug(
                     "code=DECISION-E-PROBE baseline fallback evaluate failed",
@@ -836,7 +858,11 @@ class MemoryManager:
             if probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
             else "not-duplicate"
         )
-        return verdict, probability
+        return ProbeAnswer(
+            verdict=verdict,
+            probability=probability,
+            provider_name=str(getattr(provider, "name", "unknown")),
+        )
 
     # ── Choice-arbiter seam (W1-W3, ADR-0037 Wave B) ───────────────────────
 
@@ -912,7 +938,9 @@ class MemoryManager:
             created_null=0.0,
         )
 
-    def _arbiter_contour(self, memory: Memory, survivors: Sequence[Any]) -> set[str]:
+    def _arbiter_contour(
+        self, memory: Memory, survivors: Sequence[Any], probe: ProbeAnswer | None
+    ) -> set[str]:
         """Run the Choice-arbiter over the is-dup-gated near-dup cluster.
 
         Arrival gate (the silver is-dup leg): the caller only invokes
@@ -930,7 +958,13 @@ class MemoryManager:
           * ``apply`` — additionally executes the consolidation fold via
             :meth:`ConsolidationExecutor.fold`; the folded ids are
             returned so the caller's mint loop can skip freshly
-            tombstoned rows.
+            tombstoned rows. ACTIVATION GATE (``MERGE-E-GATE``): a fold
+            may ride ONLY a verdict answered by the v42 is-dup leg
+            (:data:`vesma.merge_arbiter.MERGE_APPLY_GATE_PROVIDER`) —
+            behind any other answering provider (the deterministic
+            step rule, a degraded seam, a foreign/jev provider) the fold
+            is refused loudly and the run degrades to the advisory
+            behavior (verdict + observation marks, nothing folded).
           * ``off`` — the caller never invokes this.
 
         Fail-open: ANY arbiter error is a machine-parseable warn and a
@@ -968,7 +1002,7 @@ class MemoryManager:
 
         logger.info(
             "MERGE-ARBITER verdict=%s leg=%s class=%s k=%d keeper=%s e1=%s e2=%s "
-            "zone=%s artifact=%s… mode=%s",
+            "zone=%s gate=%s artifact=%s… mode=%s",
             verdict.verdict,
             verdict.leg,
             verdict.ch_class,
@@ -977,6 +1011,7 @@ class MemoryManager:
             verdict.e1,
             verdict.e2,
             (verdict.zone_hit or {}).get("zone_leg", "-"),
+            probe.provider_name if probe else "none",
             MERGE_ARTIFACT_SHA256[:12],
             mode,
         )
@@ -1000,6 +1035,24 @@ class MemoryManager:
                     )
 
         if mode == "apply" and verdict.verdict == "keep" and verdict.keeper_id:
+            # ── The apply-mode activation gate (W1-W3 fix-slice): the
+            # fold may ride ONLY the v42-answered is-dup verdict. A
+            # cluster gated by the deterministic step rule (or a
+            # degraded seam, or a foreign provider) carries
+            # template-twin pairs the bare cosine rule admits and the
+            # v42 leg refuses (live-store verification 2026-11-01) —
+            # folding behind such a gate is refused LOUDLY; the run
+            # keeps its advisory legs above.
+            if probe is None or probe.provider_name != MERGE_APPLY_GATE_PROVIDER:
+                logger.warning(
+                    "code=%s class=action-class apply-mode fold refused: the silver "
+                    "is-dup gate answered by provider=%r, not %r — folding behind a "
+                    "foreign gate is forbidden (verdict stays advisory, nothing folded)",
+                    MergeArbiterGateError.code,
+                    probe.provider_name if probe else "none",
+                    MERGE_APPLY_GATE_PROVIDER,
+                )
+                return folded
             executor = self._consolidation_executor()
             folded_ids = [m.id for m in members if m.id != verdict.keeper_id]
             try:
@@ -3814,15 +3867,16 @@ class MemoryManager:
                     exc,
                 )
                 probe = None
-            if probe is not None and probe[0] == "duplicate":
+            if probe is not None and probe.verdict == "duplicate":
                 # The silver is-dup gate answered «duplicate»: the
                 # near-dup cluster (new record + qualified survivors) may
                 # now reach the Choice-arbiter — advisory by default,
-                # folding only in the explicit apply posture. The
-                # returned ids were tombstoned by the fold this pass and
-                # are skipped by the mint loop below.
+                # folding only in the explicit apply posture AND only
+                # behind the v42-answered gate (MERGE-E-GATE, checked in
+                # the contour). The returned ids were tombstoned by the
+                # fold this pass and are skipped by the mint loop below.
                 try:
-                    folded_ids = self._arbiter_contour(memory, survivors)
+                    folded_ids = self._arbiter_contour(memory, survivors, probe)
                 except Exception as exc:  # pragma: no cover — the hook is fail-open
                     logger.warning(
                         "code=MERGE-E-CONTOUR class=verdict-class arbiter contour "

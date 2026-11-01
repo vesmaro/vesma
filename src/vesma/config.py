@@ -212,8 +212,16 @@ class VesmaConfig(BaseModel):
     #     marks carry over onto the keeper (ADR-0037 D6), the Д3
     #     ``relates_to`` edge (provenance ``merge-arbiter``) mints, and
     #     folded rows go through the store's own Stage-1 tombstone.
-    #     Flipping this is the TL/owner gate AFTER the executor has been
-    #     exercised on a store copy — never a silent default.
+    #     CODE INVARIANT (W1-W3 fix-slice, ``MERGE-E-GATE``): a fold
+    #     executes ONLY when the answering is-dup leg is the bundled
+    #     v42 provider — a cluster gated by the deterministic step rule,
+    #     a degraded seam, or a foreign provider folds NOTHING (the run
+    #     degrades to the advisory behavior with a machine-parseable
+    #     warn). The template-twin class (live-store verification,
+    #     2026-11-01) is exactly what v42 refuses and the bare cosine
+    #     rule admits. Flipping this flag is the TL/owner gate AFTER the
+    #     executor has been exercised on a store copy — never a silent
+    #     default.
     #   * "off" — the arbiter seam is disabled (call sites skip).
     # Fail-open: any MERGE-E-* load/pin/infer refusal disables the
     # arbiter for the process with a machine-parseable warn — ingest is
