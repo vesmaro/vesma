@@ -1,0 +1,20 @@
+{
+  "manifest_schema": 2,
+  "name": "vesma-cortex-merge-v2",
+  "version": "2",
+  "duty": "merge-arbiter (Choice 1-of-k with abstention)",
+  "artifact_file": "merge_arbiter_v2.json",
+  "sha256": "60d1fe733937accf936776327f8f259fc2116aa6ffd011e81cd448a283bceefd",
+  "embedder_pin": "nano:sha256:3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba",
+  "embed_convention": "n1(title)\\nn1(body)\\nn1(space-joined tags), [:4096]; n1 = lower + whitespace-collapse",
+  "thresholds": {
+    "tau_hi": 0.9,
+    "tau_m": 0.5
+  },
+  "zone_v1": "(cos <= 0.85 AND char5 <= 0.05) OR (zeps >= 3 AND char5 <= 0.20); refusal-only, any unordered cluster pair",
+  "feature_count": 34,
+  "adopts": "ADOPT 2026-10-30 (vesma-cortex run-log merge-arbiter-merge-v2-gate, single-shot)",
+  "sanity_exam": "spent (holdout 1fc459a4…; any recalibration = a new prereg cycle)",
+  "trained_at": "2026-10-30T00:45:19.396+00:00",
+  "engine_integration": "W1-W3, ADR-0033 native re-authoring; GCW package docs/experiments/merge-arbiter-v2-integration-package.md is REFERENCE only"
+}

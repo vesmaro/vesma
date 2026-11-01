@@ -17,7 +17,7 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -41,6 +41,10 @@ from vesma.canon_validate import (
     validate_canon_record,
 )
 from vesma.config import Settings
+from vesma.consolidation import (
+    ConsolidationError,
+    ConsolidationExecutor,
+)
 from vesma.danger_detectors import DetectionResult, detect
 
 # ADR-0027 Ф3 (epic #308) — the docs-as-memory document-ingest
@@ -50,6 +54,7 @@ from vesma.danger_detectors import DetectionResult, detect
 # single implementation).
 from vesma.decision_jev import resolve_decision_provider
 from vesma.decision_provider import (
+    CORTEX_DUPLICATE_PROBABILITY_THRESHOLD,
     CanonRecordView,
     CanonState,
     DecisionProvider,
@@ -70,6 +75,14 @@ from vesma.graph_minting import (
     AUTO_DEDUPE_EDGE_WEIGHT,
     AUTO_DEDUPE_PROVENANCE,
     select_auto_dedupe_candidates,
+)
+from vesma.merge_arbiter import (
+    MERGE_APPLY_GATE_PROVIDER,
+    MERGE_ARTIFACT_SHA256,
+    ArbiterMember,
+    MergeArbiter,
+    MergeArbiterError,
+    MergeArbiterGateError,
 )
 from vesma.models import (
     CHECKPOINT_FIELDS,
@@ -413,6 +426,21 @@ class _WalkCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class ProbeAnswer:
+    """One answered is-dup probe — data for telemetry and for the
+    merge-arbiter arrival/apply gates (W1-W3). ``provider_name`` is the
+    identity of whoever ACTUALLY answered (the seam's provider, or the
+    deterministic baseline after a fail-open per-request degrade) — the
+    apply-mode activation gate reads exactly this field: a fold may ride
+    only the v42-answered verdict
+    (:data:`vesma.merge_arbiter.MERGE_APPLY_GATE_PROVIDER`)."""
+
+    verdict: str
+    probability: float
+    provider_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class IssuanceScan:
     """Outcome of an issuance-boundary secret scan (ADR-0018 P1-b M1).
 
@@ -725,6 +753,13 @@ class MemoryManager:
         # stays honest without re-resolving the config on every write.
         self._decision_seam_provider: DecisionProvider | None | _SeamNotBuilt = _NOT_BUILT
         self._decision_seam_lock: threading.Lock = threading.Lock()
+        # The Choice-arbiter seam (W1-W3): built lazily ONCE — the
+        # verify-before-load refusal (MERGE-E-*) is a process-lifetime
+        # disable, not a per-write cost; same lock discipline as the
+        # decision seam above.
+        self._merge_arbiter: MergeArbiter | None | _SeamNotBuilt = _NOT_BUILT
+        self._merge_arbiter_lock: threading.Lock = threading.Lock()
+        self._consolidation: ConsolidationExecutor | _SeamNotBuilt = _NOT_BUILT
 
     def _decision_seam(self) -> DecisionProvider | None:
         """The live ADR-0004 provider seam (built lazily, once).
@@ -767,34 +802,41 @@ class MemoryManager:
 
     def _decision_provider_probe(
         self, record_view: CanonRecordView, candidate_view: CanonRecordView, similarity: float
-    ) -> None:
+    ) -> ProbeAnswer | None:
         """One live near-duplicate VERDICT probe (B0 telemetry capture).
 
         Asks the configured provider «is-duplicate» over the prepared
         pair state exactly as the ADR-0037 R1 seam prescribes it. §8.3
-        verdict/action split: the provider answers VERDICTS only — the
-        probe NEVER gates, weights or suppresses anything; the system
-        action stays with the existing minting logic until the Wave B
-        arbiter. The §3.9 DECISION line is emitted by the provider's own
-        evaluate (:func:`log_decision_telemetry`; the B0 collector joins
+        verdict/action split: the probe NEVER gates, weights or
+        suppresses anything by itself — it returns the answered
+        :class:`ProbeAnswer` (verdict, probability, and the ANSWERING
+        provider's identity) for the caller's telemetry and for the
+        merge-arbiter arrival gate (a cluster reaches the arbiter ONLY
+        after the is-dup leg answered «duplicate») and — since the
+        W1-W3 fix-slice — for the ``apply``-mode activation gate: a fold
+        may ride ONLY the v42-answered verdict. The §3.9 DECISION line
+        is emitted by the provider's own evaluate
+        (:func:`log_decision_telemetry`; the B0 collector joins
         verdict/probability from it — b0-telemetry-plan.md criteria 3/5).
 
         Fail-open (inference-v1.md §7): :class:`MissingEvidenceError` is
         the QUESTION being unanswerable for EVERY provider (no measured
         evidence) — the deterministic twin would raise it too — so the
-        probe skips quietly instead of fabricating; any OTHER exception
-        degrades to the deterministic step rule with a machine-parseable
-        warn. Ingest is never blocked: the caller already wraps this
-        call best-effort.
+        probe skips quietly (``None``) instead of fabricating; any OTHER
+        exception degrades to the deterministic step rule with a
+        machine-parseable warn, and the attribution honestly names the
+        BASELINE as the answerer (a degraded answer is not a v42
+        verdict — the apply gate reads exactly this). Ingest is never
+        blocked: the caller already wraps this call best-effort.
         """
         provider = self._decision_seam()
         if provider is None:
-            return
+            return None
         state = CanonState(record=record_view, candidate=candidate_view, similarity=similarity)
         try:
-            provider.evaluate(IsDuplicateRequest(), state)
+            answer = provider.evaluate(IsDuplicateRequest(), state)
         except MissingEvidenceError:
-            return
+            return None
         except Exception as exc:
             logger.warning(
                 "code=DECISION-E-PROBE class=verdict-class provider seam verdict degraded "
@@ -802,13 +844,243 @@ class MemoryManager:
                 exc,
             )
             try:
-                baseline = DeterministicProvider()
-                baseline.evaluate(IsDuplicateRequest(), state)
+                provider = DeterministicProvider()
+                answer = provider.evaluate(IsDuplicateRequest(), state)
             except Exception:
                 logger.debug(
                     "code=DECISION-E-PROBE baseline fallback evaluate failed",
                     exc_info=True,
                 )
+                return None
+        probability = float(getattr(answer, "probability", 0.0))
+        verdict = (
+            "duplicate"
+            if probability >= CORTEX_DUPLICATE_PROBABILITY_THRESHOLD
+            else "not-duplicate"
+        )
+        return ProbeAnswer(
+            verdict=verdict,
+            probability=probability,
+            provider_name=str(getattr(provider, "name", "unknown")),
+        )
+
+    # ── Choice-arbiter seam (W1-W3, ADR-0037 Wave B) ───────────────────────
+
+    def _merge_arbiter_seam(self) -> MergeArbiter | None:
+        """The bundled ``vesma-cortex-merge-v2`` arbiter, built lazily once.
+
+        Verify-before-load runs HERE: the constructor either leaves a
+        smoke-scored arbiter (artifact sha256 pin, feature contract,
+        zone-v1 constants, embedder pin — all asserted) or raises a typed
+        :class:`MergeArbiterError`, which disables the arbiter for the
+        PROCESS lifetime with a machine-parseable warn. Fail-open for
+        the write path — a wrong embedder vintage (``MERGE-E-PIN``) is
+        the recalibration-class event and is telegraphed as such, never
+        silently retried per write."""
+        arbiter = self._merge_arbiter
+        if not isinstance(arbiter, _SeamNotBuilt):
+            return arbiter
+        with self._merge_arbiter_lock:
+            arbiter = self._merge_arbiter
+            if not isinstance(arbiter, _SeamNotBuilt):
+                return arbiter
+            try:
+                arbiter = MergeArbiter(
+                    self.embedder.embed,
+                    self._embedder_fingerprint(),
+                )
+            except MergeArbiterError as exc:
+                logger.warning(
+                    "code=%s class=verdict-class merge-arbiter disabled for this "
+                    "process (fail-open, ingest never blocked): %s",
+                    exc.code,
+                    exc,
+                )
+                arbiter = None
+            except Exception as exc:  # boundary: env/ORT are untrusted
+                logger.warning(
+                    "code=MERGE-E-LOAD class=verdict-class merge-arbiter load failed "
+                    "unexpectedly, disabled for this process: %s",
+                    exc,
+                )
+                arbiter = None
+            self._merge_arbiter = arbiter
+            return arbiter
+
+    def _consolidation_executor(self) -> ConsolidationExecutor:
+        """The fold executor bound to THIS manager (lazy, lock-free after
+        the first build — a dataclass-thin binding, nothing to fail)."""
+        if isinstance(self._consolidation, _SeamNotBuilt):
+            self._consolidation = ConsolidationExecutor(self)
+        return self._consolidation
+
+    @staticmethod
+    def _arbiter_member(memory: Memory) -> ArbiterMember:
+        """Project a store row onto an arbiter member — the SAME canon
+        view projection the decision seam consumes, plus the creation
+        stamp the tie-break/label legs read. ``created_at`` normalizes to
+        UTC epoch (a naive stamp is read as UTC — the engine writes UTC
+        stamps; it never invents a timezone)."""
+        created_at = memory.created_at
+        if created_at is None:
+            return ArbiterMember(
+                id=memory.id,
+                view=CanonRecordView.from_memory(memory),
+                created_epoch=0.0,
+                created_null=1.0,
+            )
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        return ArbiterMember(
+            id=memory.id,
+            view=CanonRecordView.from_memory(memory),
+            created_epoch=created_at.timestamp(),
+            created_null=0.0,
+        )
+
+    def _arbiter_contour(
+        self, memory: Memory, survivors: Sequence[Any], probe: ProbeAnswer | None
+    ) -> set[str]:
+        """Run the Choice-arbiter over the is-dup-gated near-dup cluster.
+
+        Arrival gate (the silver is-dup leg): the caller only invokes
+        this when the decision seam's is-dup probe answered
+        «duplicate» on the top pair — a cluster reaches the arbiter
+        NEVER on vector similarity alone (v42 untouched; ADR-0002 pin
+        coupling). Members are the new record plus the qualified
+        near-dup survivors.
+
+        Postures (:attr:`Settings.vesma.merge_arbiter`):
+          * ``advisory`` (default) — the verdict lands in the structured
+            log (one machine-parseable MERGE-ARBITER line per run) and
+            the observation mark ``same-message-other-envelope`` mints
+            on the tie-break legs (W3 sighting, ADR-0037 W3); NO fold.
+          * ``apply`` — additionally executes the consolidation fold via
+            :meth:`ConsolidationExecutor.fold`; the folded ids are
+            returned so the caller's mint loop can skip freshly
+            tombstoned rows. ACTIVATION GATE (``MERGE-E-GATE``): a fold
+            may ride ONLY a verdict answered by the v42 is-dup leg
+            (:data:`vesma.merge_arbiter.MERGE_APPLY_GATE_PROVIDER`) —
+            behind any other answering provider (the deterministic
+            step rule, a degraded seam, a foreign/jev provider) the fold
+            is refused loudly and the run degrades to the advisory
+            behavior (verdict + observation marks, nothing folded).
+          * ``off`` — the caller never invokes this.
+
+        Fail-open: ANY arbiter error is a machine-parseable warn and a
+        skip — ingest is never blocked, no mark is minted half-way (the
+        observation mints happen only AFTER a verdict exists).
+        """
+        folded: set[str] = set()
+        mode = self.settings.vesma.merge_arbiter
+        if mode == "off":
+            return folded
+        arbiter = self._merge_arbiter_seam()
+        if arbiter is None:
+            return folded
+        members = [self._arbiter_member(memory)] + [
+            self._arbiter_member(s.memory) for s in survivors
+        ]
+        members.sort(key=lambda m: m.id)
+        try:
+            verdict = arbiter.arbitrate(members)
+        except MergeArbiterError as exc:
+            logger.warning(
+                "code=%s class=verdict-class merge-arbiter refused the cluster "
+                "(fail-open, no verdict, no action): %s",
+                exc.code,
+                exc,
+            )
+            return folded
+        except Exception as exc:  # boundary: the contour is untrusted
+            logger.warning(
+                "code=MERGE-E-CONTOUR class=verdict-class merge-arbiter failed "
+                "unexpectedly (fail-open, no verdict, no action): %s",
+                exc,
+            )
+            return folded
+
+        logger.info(
+            "MERGE-ARBITER verdict=%s leg=%s class=%s k=%d keeper=%s e1=%s e2=%s "
+            "zone=%s gate=%s artifact=%s… mode=%s",
+            verdict.verdict,
+            verdict.leg,
+            verdict.ch_class,
+            len(members),
+            (verdict.keeper_id or "")[:8],
+            verdict.e1,
+            verdict.e2,
+            (verdict.zone_hit or {}).get("zone_leg", "-"),
+            probe.provider_name if probe else "none",
+            MERGE_ARTIFACT_SHA256[:12],
+            mode,
+        )
+
+        if verdict.leg in ("ch0-tie-break", "ch5-tie-break") and verdict.keeper_id:
+            # W3 sighting marks (ADR-0037 W3): every non-keeper member is
+            # a second sighting of the keeper's message — observation
+            # provenance, safe in advisory mode, carried over by the D6
+            # discipline if a fold ever happens.
+            executor = self._consolidation_executor()
+            for member in members:
+                if member.id == verdict.keeper_id:
+                    continue
+                try:
+                    executor.mint_sighting(member.id, verdict.keeper_id)
+                except ConsolidationError as exc:
+                    logger.warning(
+                        "code=MERGE-E-CONTOUR class=mark-class sighting mint "
+                        "refused (non-fatal): %s",
+                        exc,
+                    )
+
+        if mode == "apply" and verdict.verdict == "keep" and verdict.keeper_id:
+            # ── The apply-mode activation gate (W1-W3 fix-slice): the
+            # fold may ride ONLY the v42-answered is-dup verdict. A
+            # cluster gated by the deterministic step rule (or a
+            # degraded seam, or a foreign provider) carries
+            # template-twin pairs the bare cosine rule admits and the
+            # v42 leg refuses (live-store verification 2026-11-01) —
+            # folding behind such a gate is refused LOUDLY; the run
+            # keeps its advisory legs above.
+            if probe is None or probe.provider_name != MERGE_APPLY_GATE_PROVIDER:
+                logger.warning(
+                    "code=%s class=action-class apply-mode fold refused: the silver "
+                    "is-dup gate answered by provider=%r, not %r — folding behind a "
+                    "foreign gate is forbidden (verdict stays advisory, nothing folded)",
+                    MergeArbiterGateError.code,
+                    probe.provider_name if probe else "none",
+                    MERGE_APPLY_GATE_PROVIDER,
+                )
+                return folded
+            executor = self._consolidation_executor()
+            folded_ids = [m.id for m in members if m.id != verdict.keeper_id]
+            try:
+                report = executor.fold(
+                    verdict.keeper_id,
+                    folded_ids,
+                    reason=(
+                        f"merged-by-arbiter: {verdict.leg} verdict over "
+                        f"{len(members)} members (vesma-cortex-merge-v2)"
+                    ),
+                )
+            except ConsolidationError as exc:
+                logger.warning(
+                    "code=MERGE-E-CONTOUR class=action-class fold refused "
+                    "(fail-open, the keeper stays): %s",
+                    exc,
+                )
+                return folded
+            for row in report["folded"]:
+                if row["status"] == "folded":
+                    folded.add(row["memory_id"])
+            logger.info(
+                "consolidation applied: keeper=%s folded=%d skipped=%d",
+                verdict.keeper_id[:8],
+                len(folded),
+                len(report["folded"]) - len(folded),
+            )
+        return folded
 
     @property
     def embedder(self) -> EmbeddingProvider:
@@ -1694,6 +1966,54 @@ class MemoryManager:
             if "canon" in internal and canon_envelope_is_client_authored(internal["canon"]):
                 del internal["canon"]
             memory.metadata = {**memory.metadata, **internal}
+            # ── ADR-0037 Д5 merge-back (W1-W3): the row's own SERVER-
+            # minted marks survive a client metadata replacement on a
+            # client-authored envelope. The checkpoint branch above
+            # already restores whole server-minted envelopes (marks
+            # included); for task/decision/report rows the client's
+            # corrected envelope stands — but the marks minted on this
+            # row by the arbiter/executor (fold history: append-only,
+            # ADR-0037 D6) are the row's provenance, not the client's to
+            # drop: they merge back UNDER the incoming canon, and the
+            # client's (already stripped above) array never resurrects
+            # forged entries. Same trust direction as every strip above:
+            # server mint, client zero.
+            stored_canon = previous_metadata.get("canon")
+            stored_marks = (
+                stored_canon.get("lineage_marks") if isinstance(stored_canon, dict) else None
+            )
+            new_canon = memory.metadata.get("canon")
+            if isinstance(stored_marks, list) and stored_marks:
+                if isinstance(new_canon, dict):
+                    memory.metadata = {
+                        **memory.metadata,
+                        "canon": {
+                            **new_canon,
+                            "lineage_marks": list(stored_marks),
+                        },
+                    }
+                    logger.info(
+                        "update: preserved server-minted lineage_marks across a "
+                        "client metadata update (ADR-0037 Д5 merge-back): "
+                        "id=%s marks=%d",
+                        memory_id[:8],
+                        len(stored_marks),
+                    )
+                else:
+                    # The client dropped the envelope entirely: marks have
+                    # no canon locus then (canon §9 — no envelope, outside
+                    # canon scope; a half-valid reconstructed envelope
+                    # would only mint CANON-E-ENVELOPE noise on every
+                    # later write). The loss is LOUD, never silent — the
+                    # fold's durable link (the merge-arbiter edge) and the
+                    # deletion journal still carry the history.
+                    logger.warning(
+                        "code=MERGE-E-CONTOUR class=mark-class lineage_marks lost "
+                        "with the removed canon envelope (no locus, canon §9; "
+                        "durable provenance lives in edges/journal): id=%s marks=%d",
+                        memory_id[:8],
+                        len(stored_marks),
+                    )
             # ADR-0027 Ф3 (review round P3-1): restore the row's own
             # minted doc-sweep stamp on top of the replacement dict —
             # a client metadata dict can neither forge nor erase it
@@ -3531,10 +3851,11 @@ class MemoryManager:
         # instrument; the fail-open discipline lives in
         # _decision_provider_probe.
         survivors = select_auto_dedupe_candidates(memory, resolved)
+        folded_ids: set[str] = set()
         if survivors:
             top = survivors[0]
             try:
-                self._decision_provider_probe(
+                probe = self._decision_provider_probe(
                     CanonRecordView.from_memory(memory),
                     CanonRecordView.from_memory(top.memory),
                     top.score,
@@ -3545,6 +3866,24 @@ class MemoryManager:
                     "(non-fatal, ingest never blocked): %s",
                     exc,
                 )
+                probe = None
+            if probe is not None and probe.verdict == "duplicate":
+                # The silver is-dup gate answered «duplicate»: the
+                # near-dup cluster (new record + qualified survivors) may
+                # now reach the Choice-arbiter — advisory by default,
+                # folding only in the explicit apply posture AND only
+                # behind the v42-answered gate (MERGE-E-GATE, checked in
+                # the contour). The returned ids were tombstoned by the
+                # fold this pass and are skipped by the mint loop below.
+                try:
+                    folded_ids = self._arbiter_contour(memory, survivors, probe)
+                except Exception as exc:  # pragma: no cover — the hook is fail-open
+                    logger.warning(
+                        "code=MERGE-E-CONTOUR class=verdict-class arbiter contour "
+                        "failed (non-fatal, ingest never blocked): %s",
+                        exc,
+                    )
+                    folded_ids = set()
         # ── Review L1: orientation-aware mint idempotency. The PK
         # (from, to, kind) treats A→B and B→A as distinct rows, but for
         # MINTED fuel the pair is semantically undirected — a re-mint of
@@ -3562,6 +3901,14 @@ class MemoryManager:
             if candidate.memory.id in incoming_from:
                 logger.debug(
                     "graph auto-mint: reverse pair exists, skipping from=%s to=%s",
+                    memory.id[:8],
+                    candidate.memory.id[:8],
+                )
+                continue
+            if candidate.memory.id in folded_ids:
+                logger.debug(
+                    "graph auto-mint: candidate folded by the arbiter this pass, "
+                    "skipping from=%s to=%s",
                     memory.id[:8],
                     candidate.memory.id[:8],
                 )

@@ -575,6 +575,16 @@ def fts_join_or(terms: list[str]) -> str:
 # change, by design.
 _EDGE_KINDS: Final[set[str]] = {"supersedes", "relates_to"}
 
+#: The provenance values strengthen_edge_provenance may upgrade FROM
+#: (W1-W3 E1): the SERVER-minted claims only — an unclaimed edge (NULL),
+#: the weaker auto-dedupe fuel mint (graph_minting.AUTO_DEDUPE_PROVENANCE,
+#: kept as a literal here to keep this module import-free), and the fold
+#: claim itself (the idempotent already-strong case; consolidation.
+#: MERGE_ARBITER_PROVENANCE). A FOREIGN claim — a client-declared
+#: ``declared`` edge above all — is NEVER rewritten: the WHERE clause
+#: refuses every value outside this whitelist.
+MERGE_EDGE_PROVENANCE_WHITELIST: Final[frozenset[str]] = frozenset({"auto-dedupe", "merge-arbiter"})
+
 # ADR-0030 A0 (issue #323) — used/rejected feedback event kinds for the
 # edge_stats capture table. Kept in lockstep with the SQL CHECK on
 # edge_stats (the same rule _EDGE_KINDS applies to memory_edges):
@@ -4857,6 +4867,58 @@ class SQLiteStore:
                 scope_project,
                 scope_agent,
             ),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+    def strengthen_edge_provenance(
+        self,
+        from_memory_id: str,
+        to_memory_id: str,
+        *,
+        kind: str,
+        provenance: str,
+    ) -> bool:
+        """Upgrade the provenance of an EXISTING edge to a stronger claim
+        (W1-W3, ADR-0037 Д3) — WITHIN the machine-minted whitelist only.
+
+        The upgradable claims are the values the SERVER minted:
+        :data:`MERGE_EDGE_PROVENANCE_WHITELIST` — NULL (never claimed),
+        ``auto-dedupe`` (the weaker fuel mint) and the target claim
+        itself (already strong — the update is then an idempotent
+        no-op). A FOREIGN claim (a client-declared ``declared`` edge, or
+        any other provenance a caller wrote on purpose) is NEVER
+        rewritten: the UPDATE's WHERE clause refuses every value outside
+        the whitelist, so the method cannot weaken, overwrite or
+        silently absorb someone else's statement. The caller (the
+        consolidation executor) answers a refused strengthening by
+        landing the Д3 durable link on the REVERSE direction instead —
+        the pair keeps its merge-arbiter link, the foreign claim keeps
+        its row.
+
+        Returns ``True`` when a whitelisted row was updated (or already
+        carried the provenance), ``False`` when no such edge exists OR
+        the slot carries a foreign claim (the refusal is not
+        distinguishable from absence — the caller's fallback is the same
+        either way).
+
+        Static SQL, bound parameters, PK-bounded — the same injection
+        discipline as every writer in this module.
+        """
+        if not provenance:
+            raise ValueError("provenance must be non-empty")
+        if provenance not in MERGE_EDGE_PROVENANCE_WHITELIST:
+            raise ValueError(
+                f"provenance {provenance!r} is outside the machine-minted whitelist "
+                f"{sorted(MERGE_EDGE_PROVENANCE_WHITELIST)} — this method upgrades "
+                "server-minted claims only"
+            )
+        conn = self._get_conn()
+        cur = conn.execute(
+            "UPDATE memory_edges SET provenance = ? "
+            "WHERE from_memory_id = ? AND to_memory_id = ? AND kind = ? "
+            "AND (provenance IS NULL OR provenance IN (?, ?))",
+            (provenance, from_memory_id, to_memory_id, kind, "auto-dedupe", provenance),
         )
         conn.commit()
         return cur.rowcount > 0
