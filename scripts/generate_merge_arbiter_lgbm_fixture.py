@@ -7,7 +7,7 @@ walker (``vesma.merge_arbiter.LightGbmDump``) — the V3 Δdeps=0 discipline.
 This generator pins the walker's exact equivalence against the REAL
 lightgbm runtime the model was trained with (lightgbm 4.7.0, the cortex
 line's pinned trainer version), so the engine test
-``tests/test_merge_arbiter_lgbm_eval.py`` can verify the walker WITHOUT
+``tests/test_merge_arbiter_core.py`` can verify the walker WITHOUT
 lightgbm installed.
 
 Rows are deterministic (seed 42): uniform draws over [0, 1]^34 plus

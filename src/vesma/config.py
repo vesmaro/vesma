@@ -219,9 +219,10 @@ class VesmaConfig(BaseModel):
     #     degrades to the advisory behavior with a machine-parseable
     #     warn). The template-twin class (live-store verification,
     #     2026-11-01) is exactly what v42 refuses and the bare cosine
-    #     rule admits. Flipping this flag is the TL/owner gate AFTER the
-    #     executor has been exercised on a store copy — never a silent
-    #     default.
+    #     rule admits. Flipping this flag is an explicit deployment
+    #     decision recorded right here in the config — never a silent
+    #     default — and is made only after the executor has been
+    #     exercised on a store copy (the W1-W3 verification report).
     #   * "off" — the arbiter seam is disabled (call sites skip).
     # Fail-open: any MERGE-E-* load/pin/infer refusal disables the
     # arbiter for the process with a machine-parseable warn — ingest is

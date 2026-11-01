@@ -267,7 +267,12 @@ class ConsolidationExecutor:
             # (provenance 'auto-dedupe') would silently swallow the claim
             # — the fold STRENGTHENS the existing row's provenance so the
             # Д3 contract holds either way («provenance или не было» has
-            # no exception).
+            # no exception). A FOREIGN claim on the slot (a client-
+            # declared edge) is REFUSED by the store's whitelist and is
+            # never rewritten — the durable link then lands on the
+            # REVERSE direction (folded → keeper), which satisfies the
+            # Д3 minimum on the pair while the client's statement keeps
+            # its row untouched.
             inserted = self._manager.add_memory_edge(
                 keeper_id,
                 folded_id,
@@ -275,13 +280,26 @@ class ConsolidationExecutor:
                 weight=MERGE_ARBITER_EDGE_WEIGHT,
                 provenance=MERGE_ARBITER_PROVENANCE,
             )
-            if not inserted:
-                self._manager.sqlite.strengthen_edge_provenance(
-                    keeper_id,
+            if not inserted and not self._manager.sqlite.strengthen_edge_provenance(
+                keeper_id,
+                folded_id,
+                kind="relates_to",
+                provenance=MERGE_ARBITER_PROVENANCE,
+            ):
+                reverse_inserted = self._manager.add_memory_edge(
                     folded_id,
+                    keeper_id,
                     kind="relates_to",
+                    weight=MERGE_ARBITER_EDGE_WEIGHT,
                     provenance=MERGE_ARBITER_PROVENANCE,
                 )
+                if not reverse_inserted:
+                    self._manager.sqlite.strengthen_edge_provenance(
+                        folded_id,
+                        keeper_id,
+                        kind="relates_to",
+                        provenance=MERGE_ARBITER_PROVENANCE,
+                    )
 
             # The store's own Stage-1 tombstone (terminal state +
             # hash-chained journal + descendant quarantine).

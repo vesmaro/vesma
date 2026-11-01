@@ -24,8 +24,11 @@ from vesma.decision_provider import (
     CORTEX_FEATURE_NAMES,
     CanonRecordView,
     cortex_feature_set_sha256,
+    cortex_pair_features,
 )
 from vesma.merge_arbiter import (
+    CHAR4_JACCARD_IDX,
+    CHAR5_JACCARD_IDX,
     IDX_E_COS,
     IDX_EPOCH,
     IDX_NULL,
@@ -42,10 +45,12 @@ from vesma.merge_arbiter import (
     MergeArbiterLoadError,
     MergeArbiterPinError,
     MergeArbiterSchemaError,
+    _side_dict,
     assert_cortex_merge_embedder_pin,
     decide_keep,
     keep_oldest,
     member_embed_text,
+    zeps_flags,
 )
 
 PIN = "nano:sha256:3b752e0671a50da5c108cb50e49630a66c160f7683afedcf879e1880d84317ba"
@@ -304,6 +309,141 @@ def test_zone_is_refusal_only_and_never_a_keep(
         verdict = arbiter.arbitrate(order)
         assert verdict.verdict == "abstain"
         assert verdict.leg == "zone-v1"
+
+
+# ── F1 (cascade review): the zone reads char5 BY NAME, never char4 ───────────
+
+_LETTERS_A = "acegik"
+_LETTERS_B = "bdfhjl"
+
+
+def _filler_words(prefix: str, letters: str, n: int) -> list[str]:
+    """Distinct 4-char words from a disjoint letter alphabet — filler
+    n-grams never collide across the two sides (the m/n prefix and the
+    disjoint suffix letters keep every filler gram one-sided)."""
+    words: list[str] = []
+    i = 0
+    while len(words) < n:
+        w = prefix + "".join(letters[(i >> (2 * k)) & 3] for k in range(3))
+        i += 1
+        if len(set(w)) == 4:
+            words.append(w)
+    return words
+
+
+def _char_axis_pair(
+    n_tokens: int,
+    n_filler: int,
+    *,
+    language: tuple[str, str] = ("ru", "ru"),
+    tags: tuple[tuple[str, ...], tuple[str, ...]] = (("tg",), ("tg",)),
+    record_type: tuple[str, str] = ("note", "note"),
+) -> tuple[ArbiterMember, ArbiterMember, float, float]:
+    """A crafted pair whose char4 and char5 axes are SEPARATED: shared
+    digit-tokens ride through both bodies (4-grams share through the bare
+    token), but side A dot-glues the token run (no spaces — every A-side
+    token 5-gram carries a period) while side B space-separates them, so
+    the 5-gram sets stay near-disjoint; fillers live on disjoint
+    alphabets. Returns the two members plus the pair's char4/char5 as the
+    FROZEN extractor computes them — every test using this craft asserts
+    the separation itself, so the construction is self-verifying."""
+    tokens = [f"t{i:03d}" for i in range(n_tokens)]
+    fa = _filler_words("m", _LETTERS_A, n_filler)
+    fb = _filler_words("n", _LETTERS_B, n_filler)
+    a_body = " ".join(fa) + " " + ".".join(tokens)
+    b_body = (
+        " ".join(fb[: n_filler // 2]) + " " + " ".join(tokens) + " " + " ".join(fb[n_filler // 2 :])
+    )
+    a = ArbiterMember(
+        id="ca",
+        view=CanonRecordView(
+            title="shared title",
+            body=a_body,
+            tags=tags[0],
+            language=language[0],
+            record_type=record_type[0],
+        ),
+        created_epoch=100.0,
+    )
+    b = ArbiterMember(
+        id="cb",
+        view=CanonRecordView(
+            title="shared title",
+            body=b_body,
+            tags=tags[1],
+            language=language[1],
+            record_type=record_type[1],
+        ),
+        created_epoch=200.0,
+    )
+    pair = cortex_pair_features(a.view, b.view, similarity=0.0)
+    return a, b, float(pair[CHAR4_JACCARD_IDX]), float(pair[CHAR5_JACCARD_IDX])
+
+
+def test_zone_cos_leg_gate_reads_char5_not_char4() -> None:
+    """F1 (a): a pair with char4 > tau_lex ≥ char5 — many shared short
+    fragments that stay 4-grams but never co-occur as 5-grams — MUST
+    fire the zone's cos leg. On the positional-sibling bug (reading
+    char4) the gate sees 0.15 > 0.05, no leg fires and the pair lands on
+    the model leg — this test is RED there by construction."""
+    a, b, char4, char5 = _char_axis_pair(100, 150)
+    assert char4 > 0.05, f"craft lost the char4 separation: {char4}"
+    assert char5 <= 0.05, f"craft lost the char5 separation: {char5}"
+    # the zeps leg must stay silent here (zeps < 3 on BOTH readings), so
+    # the only fire path is the cos gate
+    cos_target = 0.85
+    v_a = [1.0, 0.0]
+    v_b = [cos_target, math.sqrt(1.0 - cos_target * cos_target)]
+    vectors = {
+        member_embed_text(a.view): v_a,
+        member_embed_text(b.view): v_b,
+    }
+
+    def embed(text: str) -> list[float]:
+        return vectors[text]
+
+    verdict = MergeArbiter(embed, PIN).arbitrate([a, b])
+    assert verdict.verdict == "abstain"
+    assert verdict.leg == "zone-v1"
+    assert verdict.zone_hit is not None
+    assert verdict.zone_hit["zone_leg"] == "cos"
+
+
+def test_zeps_leg_gate_and_char5_flag_read_char5_not_char4(
+    arbiter: MergeArbiter,
+) -> None:
+    """F1 (b): the zeps mirror — the ``zeps_char5`` eps-flag and the
+    tau_lex2 gate read the CHAR5 axis. The craft carries three metadata
+    flags (language/tags/record_type) plus a near-zero char5, so the new
+    code fires the zeps leg; on the char4 positional bug the flag is 0,
+    the gate sees 0.24 > 0.20 and nothing fires — RED there."""
+    a, b, char4, char5 = _char_axis_pair(
+        400,
+        150,
+        language=("ru", "en"),
+        tags=(("tg",), ("tgx",)),
+        record_type=("note", "task"),
+    )
+    assert char4 > 0.20, f"craft lost the char4 separation: {char4}"
+    assert char5 <= 0.20, f"craft lost the char5 separation: {char5}"
+    # the eps-flag itself fires BY CHAR5 (≤ eps), never by the 4-gram axis
+    flags = zeps_flags(_side_dict(a.view), _side_dict(b.view), eps=0.01, char5=char5)
+    assert flags[1] == 1, f"zeps_char5 flag did not fire: char5={char5} flags={flags}"
+    # same stub vector on both sides → cos 1.0: the cos leg cannot fire,
+    # the zone must arrive through the zeps leg
+    vectors = {
+        member_embed_text(a.view): [1.0, 0.0],
+        member_embed_text(b.view): [1.0, 0.0],
+    }
+
+    def embed(text: str) -> list[float]:
+        return vectors[text]
+
+    verdict = MergeArbiter(embed, PIN).arbitrate([a, b])
+    assert verdict.verdict == "abstain"
+    assert verdict.leg == "zone-v1"
+    assert verdict.zone_hit is not None
+    assert verdict.zone_hit["zone_leg"] == "zeps"
 
 
 def test_high_overlap_pair_reaches_the_model_leg(arbiter: MergeArbiter) -> None:

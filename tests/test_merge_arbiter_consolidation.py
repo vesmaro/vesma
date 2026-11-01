@@ -178,6 +178,39 @@ def test_fold_strengthens_a_pre_existing_fuel_edge(mgr: MemoryManager) -> None:
     assert matching[0]["provenance"] == MERGE_ARBITER_PROVENANCE
 
 
+def test_fold_leaves_a_declared_edge_untouched_and_links_reverse(
+    mgr: MemoryManager,
+) -> None:
+    """E1 (cascade review): the provenance whitelist has no foreign-claim
+    exception either. A client-DECLARED edge on the fold slot is NEVER
+    rewritten (the whitelist refuses every value outside the machine-
+    minted set) — the Д3 durable link lands on the REVERSE direction
+    instead, so the pair still carries its merge-arbiter link and the
+    client's statement keeps its row."""
+    keeper = _row(mgr, "keeper chi record", canon=True)
+    folded = _row(mgr, "folded psi two record", canon=True)
+    # a CLIENT declared this relationship on exactly the fold slot
+    mgr.add_memory_edge(keeper.id, folded.id, kind="relates_to", weight=1.0, provenance="declared")
+    executor = ConsolidationExecutor(mgr)
+    executor.fold(keeper.id, [folded.id])
+    # the forward slot: the declared claim survives BYTE-IDENTICAL
+    edges = mgr.sqlite.get_incoming_edges(folded.id, kind="relates_to")
+    declared = [e for e in edges if e["from_memory_id"] == keeper.id]
+    assert len(declared) == 1
+    assert declared[0]["provenance"] == "declared"
+    assert float(declared[0]["weight"]) == 1.0
+    # the Д3 link still exists on the pair — the reverse direction
+    reverse = [
+        e
+        for e in mgr.sqlite.get_incoming_edges(keeper.id, kind="relates_to")
+        if e["from_memory_id"] == folded.id
+    ]
+    assert len(reverse) == 1
+    assert reverse[0]["provenance"] == MERGE_ARBITER_PROVENANCE
+    # and the fold itself completed
+    assert mgr.sqlite.journal_entry_count(folded.id) == 1
+
+
 def test_refold_is_idempotent(mgr: MemoryManager) -> None:
     keeper = _row(mgr, "keeper epsilon", canon=True)
     folded = _row(mgr, "folded zeta", canon=True)

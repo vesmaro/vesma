@@ -72,6 +72,7 @@ from typing import Any, Final
 import numpy as np
 
 from vesma.decision_provider import (
+    CORTEX_FEATURE_NAMES,
     CORTEX_MODEL_NAME,
     CanonRecordView,
     cortex_pair_features,
@@ -160,6 +161,19 @@ IDX_ZEPS_SUM: Final[int] = 33
 #: Number of mean-over-others terms that ride the pair vector (everything
 #: before the own-value envelope columns).
 N_PAIR_TERMS: Final[int] = 22
+
+#: The frozen extractor's index of ``char5_jaccard`` — the axis the
+#: RATIFIED zone-v1 rule and the zeps ``char5`` flag are defined on
+#: (package §1/§2, framing §2.4). Read BY NAME, never by position: the
+#: positional sibling ``char4_jaccard`` sits one index away and reading
+#: it silently re-defines the ratified rule on the wrong axis (the
+#: cascade-review F1 class — caught by the dedicated craft tests, which
+#: separate the two axes).
+CHAR5_JACCARD_IDX: Final[int] = CORTEX_FEATURE_NAMES.index("char5_jaccard")
+
+#: The positional sibling — deliberately NOT read anywhere in the
+#: contour; exported for the craft tests that pin the two axes apart.
+CHAR4_JACCARD_IDX: Final[int] = CORTEX_FEATURE_NAMES.index("char4_jaccard")
 
 #: The zone version literal the artifact must declare (constants frozen by
 #: ratification; a different version is a NEW ratification, not a load).
@@ -784,11 +798,21 @@ class MergeArbiter:
         return sum(x * y for x, y in zip(a, b, strict=True))
 
     # ── features (member-level, permutation-invariant) ────────────────────
-    def _pair_member_terms(self, mi: ArbiterMember, mj: ArbiterMember) -> list[float]:
-        """Per-pair terms of member i against member j (22 values): the 13
-        frozen pair features (reused, never re-implemented) + the d/e
-        blocks on the body surfaces."""
+    def _pair_member_terms(self, mi: ArbiterMember, mj: ArbiterMember) -> tuple[list[float], float]:
+        """Per-pair terms of member i against member j: the 22-value vector
+        (the 13 frozen pair features — reused, never re-implemented — plus
+        the d/e blocks on the body surfaces) AND the pair's ``char5``
+        value for the zeps leg.
+
+        ``char5`` rides along from the SAME frozen 13-vector: the frozen
+        extractor computes it from the n-gram sets alone — the
+        measured-similarity argument feeds ``cos_target`` only — so the
+        value is EXACTLY the one the ratified zone/zeps convention reads
+        (a second extractor call per pair would return the identical
+        number). Read BY NAME via :data:`CHAR5_JACCARD_IDX`, never by
+        position."""
         values = list(cortex_pair_features(mi.view, mj.view, similarity=self.similarity_constant))
+        char5 = values[CHAR5_JACCARD_IDX]
 
         bi = _norm1_body(mi.view.body)
         bj = _norm1_body(mj.view.body)
@@ -811,7 +835,7 @@ class MergeArbiter:
         values.append((mine - other) / (mine + other + 1e-9))  # e_rel_chars
         values.append(_digit_frac(mine_txt))  # e_digit_mine
         values.append(_digit_frac(other_txt))  # e_digit_other
-        return values
+        return values, char5
 
     def cluster_features(self, members: Sequence[ArbiterMember]) -> np.ndarray:
         """The (k, 34) member feature matrix — permutation-invariant by
@@ -830,10 +854,10 @@ class MergeArbiter:
             for j in order:
                 if j == i:
                     continue
-                acc[:N_PAIR_TERMS] += self._pair_member_terms(members[i], members[j])
+                pair_terms, char5 = self._pair_member_terms(members[i], members[j])
+                acc[:N_PAIR_TERMS] += pair_terms
                 acc[IDX_DELTA] += members[i].created_epoch - members[j].created_epoch
                 acc[IDX_E_COS] += self._cos(vectors[i], vectors[j])
-                char5 = cortex_pair_features(members[i].view, members[j].view, similarity=0.0)[2]
                 flags = zeps_flags(sides[i], sides[j], self.zone_eps, char5)
                 for f, v in enumerate(flags):
                     acc[IDX_ZEPS_FLAGS + f] += float(v)
@@ -911,7 +935,9 @@ class MergeArbiter:
             for j in range(i + 1, len(members)):
                 vi, vj = self._member_vector(members[i].view), self._member_vector(members[j].view)
                 cos = self._cos(vi, vj)
-                char5 = cortex_pair_features(members[i].view, members[j].view, similarity=0.0)[2]
+                char5 = cortex_pair_features(members[i].view, members[j].view, similarity=0.0)[
+                    CHAR5_JACCARD_IDX
+                ]
                 zeps = sum(zeps_flags(sides[i], sides[j], self.zone_eps, char5))
                 if cos <= self.zone_tau_cos and char5 <= self.zone_tau_lex:
                     return {
