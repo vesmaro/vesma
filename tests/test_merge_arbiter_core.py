@@ -27,6 +27,7 @@ from vesma.decision_provider import (
     cortex_pair_features,
 )
 from vesma.merge_arbiter import (
+    _EMBED_CACHE_MAX_ENTRIES,
     CHAR4_JACCARD_IDX,
     CHAR5_JACCARD_IDX,
     IDX_E_COS,
@@ -37,6 +38,7 @@ from vesma.merge_arbiter import (
     MERGE_ARTIFACT_FILE,
     MERGE_ARTIFACT_SHA256,
     MERGE_FEATURE_NAMES,
+    MERGE_MODEL_NAME,
     ArbiterMember,
     ArbiterVerdict,
     LightGbmDump,
@@ -144,6 +146,48 @@ def test_foreign_embedder_fingerprint_is_a_pin_refusal() -> None:
 def test_empty_fingerprint_is_a_pin_refusal() -> None:
     with pytest.raises(MergeArbiterPinError, match="unassertable"):
         assert_cortex_merge_embedder_pin(PIN, "")
+
+
+def test_artifact_identity_is_exact_not_a_prefix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-3 (security audit): an artifact whose identity merely EXTENDS
+    the ratified name (``vesma-cortex-merge-v2-evil``) is refused even
+    when its bytes pass the sha256 pin — the identity check is EXACT
+    equality, so a future pin loosening cannot reopen the hole."""
+    bundle = tmp_path / "models" / MERGE_ARTIFACT_DIR
+    bundle.mkdir(parents=True)
+    raw = json.dumps({"artifact": MERGE_MODEL_NAME + "-evil"}).encode("utf-8")
+    (bundle / MERGE_ARTIFACT_FILE).write_bytes(raw)
+    monkeypatch.setattr("vesma.merge_arbiter.resource_files", lambda _pkg: tmp_path)
+    monkeypatch.setattr(
+        "vesma.merge_arbiter.MERGE_ARTIFACT_SHA256",
+        hashlib.sha256(raw).hexdigest(),
+    )
+    with pytest.raises(MergeArbiterContractError, match="exact identity"):
+        MergeArbiter(_norm_stub_embed, PIN)
+
+
+def test_embed_cache_is_bounded(arbiter: MergeArbiter) -> None:
+    """S-1 (security audit): the embed-text cache cannot grow with the
+    process lifetime — after warming past the ceiling with unique texts
+    the cache sits AT the ceiling, the cold (oldest) entries are
+    evicted, the hot (newest) ones stay."""
+    limit = _EMBED_CACHE_MAX_ENTRIES
+    for i in range(limit + 50):
+        arbiter._member_vector(
+            CanonRecordView(title=f"cache probe {i}", body=f"unique filler body {i}")
+        )
+    assert len(arbiter._text_cache) <= limit
+    assert len(arbiter._text_cache) == limit  # the ceiling is exact
+    cold_key = member_embed_text(
+        CanonRecordView(title="cache probe 0", body="unique filler body 0")
+    )
+    hot_key = member_embed_text(
+        CanonRecordView(title=f"cache probe {limit + 49}", body=f"unique filler body {limit + 49}")
+    )
+    assert cold_key not in arbiter._text_cache  # LRU tail evicted
+    assert hot_key in arbiter._text_cache  # the hot head survives
 
 
 def test_feature_contract_is_frozen_and_reuses_the_pair_block() -> None:

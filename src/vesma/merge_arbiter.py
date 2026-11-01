@@ -62,6 +62,7 @@ import hashlib
 import json
 import logging
 import re
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -255,6 +256,15 @@ class MergeArbiterGateError(MergeArbiterError):
 #: «the arbiter receives a cluster ONLY after the silver is-dup gate» —
 #: advisory runs on any provider, apply does not.
 MERGE_APPLY_GATE_PROVIDER: Final[str] = CORTEX_MODEL_NAME
+
+#: The embed-text cache ceiling (S-1, security audit): entries are the
+#: pinned-convention texts (≤ 4 KB each) mapped to 384-float vectors —
+#: ~10 KB per entry — so the cap keeps the cache in the tens-of-MB
+#: envelope for a process-lifetime arbiter instance (a long-running
+#: daemon sees unbounded unique member texts otherwise). LRU order: the
+#: working set of one arbitration is ≤ 2k texts (k ≤ 8), so evictions
+#: only ever touch cold entries.
+_EMBED_CACHE_MAX_ENTRIES: Final[int] = 4096
 
 
 # ── Member input ─────────────────────────────────────────────────────────────
@@ -675,7 +685,7 @@ class MergeArbiter:
         fingerprint fails the pin assert — an unassertable pin is a
         refusal, not an assumption."""
         self._embed = embed
-        self._text_cache: dict[str, list[float]] = {}
+        self._text_cache: OrderedDict[str, list[float]] = OrderedDict()
         self._load(embedder_fingerprint)
 
     # ── verify-before-load ────────────────────────────────────────────────
@@ -707,9 +717,21 @@ class MergeArbiter:
             raise MergeArbiterLoadError(f"artifact JSON unreadable: {exc}") from exc
 
         identity = str(doc.get("artifact", ""))
-        if not identity.startswith(MERGE_MODEL_NAME):
+        # EXACT name-token equality (S-3, security audit): the identity
+        # field is "<name> [(<free-text annotation>)]" — the ratified
+        # artifact ships as 'vesma-cortex-merge-v2 (Choice v2,
+        # ADDENDUM-6)' and its bytes are sha-pinned, so the check splits
+        # the NAME TOKEN off and requires it to EQUAL the ratified name.
+        # A bare startswith would admit a foreign artifact whose
+        # identity EXTENDS the name (``vesma-cortex-merge-v2-evil`` — no
+        # " (" separator, the whole string is the token) — unexploitable
+        # behind today's pin, but a live hole the moment it loosens.
+        name_token = identity.split(" (", 1)[0]
+        if name_token != MERGE_MODEL_NAME:
             raise MergeArbiterContractError(
-                f"artifact identity {identity!r} does not declare {MERGE_MODEL_NAME!r}"
+                f"artifact identity {identity!r}: name token {name_token!r} != "
+                f"{MERGE_MODEL_NAME!r} — exact identity required (an unstructured "
+                "prefix match would admit a foreign artifact)"
             )
         feature_names = tuple(str(n) for n in doc.get("feature_names", ()))
         if feature_names != MERGE_FEATURE_NAMES:
@@ -790,6 +812,13 @@ class MergeArbiter:
         if vec is None:
             vec = [float(x) for x in self._embed(text)]
             self._text_cache[text] = vec
+            if len(self._text_cache) > _EMBED_CACHE_MAX_ENTRIES:
+                # S-1: bounded cache — evict the least-recently-used text
+                # (the arbitration working set is ≤ 2k texts, so this
+                # only ever drops cold entries).
+                self._text_cache.popitem(last=False)
+        else:
+            self._text_cache.move_to_end(text)
         return vec
 
     def _cos(self, a: list[float], b: list[float]) -> float:
