@@ -67,7 +67,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from importlib.resources import files as resource_files
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 
@@ -259,7 +259,7 @@ class ArbiterVerdict:
     scores: dict[str, float] = field(default_factory=dict)
     e1: float | None = None
     e2: float | None = None
-    zone_hit: dict | None = None
+    zone_hit: dict[str, Any] | None = None
 
 
 # ── The pinned conventions (exact mirrors of the ratified reference) ─────────
@@ -338,10 +338,10 @@ def _norm2_edit_clusters(body_a: str, body_b: str) -> list[tuple[int, int, int, 
             c[2], c[3] = min(c[2], j1), max(c[3], j2)
         else:
             clusters.append([i1, i2, j1, j2])
-    return [tuple(c) for c in clusters]
+    return [(c[0], c[1], c[2], c[3]) for c in clusters]
 
 
-def _side_dict(view: CanonRecordView) -> dict:
+def _side_dict(view: CanonRecordView) -> dict[str, Any]:
     """The zeps pair shape: plain side fields (the reference's
     ``_side_dict``; language/record_type stay ``None``-able)."""
     return {
@@ -383,8 +383,8 @@ class LightGbmDump:
         header_obj = ""
         num_feature = -1
         objective = ""
-        trees_raw: list[dict[str, list[float]]] = []
-        current: dict[str, list[float]] | None = None
+        trees_raw: list[dict[str, list[str]]] = []
+        current: dict[str, list[str]] | None = None
         for line in model_string.splitlines():
             if line.startswith("Tree="):
                 current = {}
@@ -551,7 +551,9 @@ def keep_oldest(members: Sequence[ArbiterMember]) -> ArbiterMember:
     return min(members, key=lambda m: (m.created_epoch, m.id))
 
 
-def zeps_flags(side_a: dict, side_b: dict, eps: float, char5: float) -> tuple[int, ...]:
+def zeps_flags(
+    side_a: dict[str, Any], side_b: dict[str, Any], eps: float, char5: float
+) -> tuple[int, ...]:
     """The 7 eps-flags of the ratified framing (§2.4). ``char5`` arrives
     precomputed from the FROZEN pair extractor (its value does not depend
     on the measured-similarity argument, so the precomputation is exact)."""
@@ -796,9 +798,9 @@ class MergeArbiter:
         order = sorted(range(k), key=lambda p: members[p].id)
         vectors = [self._member_vector(m.view) for m in members]
         sides = [_side_dict(m.view) for m in members]
-        rows = np.zeros((k, width), dtype=np.float64)
+        rows: np.ndarray[Any, Any] = np.zeros((k, width), dtype=np.float64)
         for i in range(k):
-            acc = np.zeros(width, dtype=np.float64)
+            acc: np.ndarray[Any, Any] = np.zeros(width, dtype=np.float64)
             for j in order:
                 if j == i:
                     continue
@@ -874,7 +876,7 @@ class MergeArbiter:
             e2=round(e2, 6),
         )
 
-    def _zone_hit(self, members: Sequence[ArbiterMember]) -> dict | None:
+    def _zone_hit(self, members: Sequence[ArbiterMember]) -> dict[str, Any] | None:
         """Any unordered pair inside zone-v1 fires the refusal leg. The
         zone is ONE-SIDED: only the low sides of cos/char5/zeps are read;
         the keep side of any axis is read nowhere."""

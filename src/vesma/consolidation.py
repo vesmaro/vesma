@@ -234,9 +234,11 @@ class ConsolidationExecutor:
             # Д6 carry-over onto the keeper: the folded row's own marks
             # first, then the merged-by-arbiter entry — append-only.
             folded_canon = folded.metadata.get("canon")
-            folded_marks = []
-            if isinstance(folded_canon, dict) and isinstance(folded_canon.get(_LINEAGE_KEY), list):
-                folded_marks = list(folded_canon.get(_LINEAGE_KEY))
+            folded_marks: list[Any] = []
+            if isinstance(folded_canon, dict):
+                raw_marks = folded_canon.get(_LINEAGE_KEY)
+                if isinstance(raw_marks, list):
+                    folded_marks = list(raw_marks)
             keeper_canon = keeper.metadata.get("canon")
             carry = [m for m in folded_marks if isinstance(m, dict)]
             carry.append(lineage_mark("merged-by-arbiter", fold_ts, folded_id))
