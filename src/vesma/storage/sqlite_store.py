@@ -573,7 +573,12 @@ def fts_join_or(terms: list[str]) -> str:
 # set requires updating the SQL CHECK constraint on memory_edges (schema
 # migration), this whitelist, and the manager wrappers — in the same
 # change, by design.
-_EDGE_KINDS: Final[set[str]] = {"supersedes", "relates_to"}
+# 'contradicts' (ADR 0002 duty #6, wave B6-conflict): the conflict
+# warning edge between records asserting incompatible facts about the
+# same subject. Advisory-only until the detector artifact ADOPTs — the
+# mint surface exists, production auto-minting does not fire (the
+# corpus gate closed 2026-11-02: g_gold PASS 48/48, committee fallback).
+_EDGE_KINDS: Final[set[str]] = {"supersedes", "relates_to", "contradicts"}
 
 #: The provenance values strengthen_edge_provenance may upgrade FROM
 #: (W1-W3 E1): the SERVER-minted claims only — an unclaimed edge (NULL),
@@ -1110,7 +1115,7 @@ END;
 CREATE TABLE IF NOT EXISTS memory_edges (
     from_memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     to_memory_id   TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-    kind           TEXT NOT NULL CHECK (kind IN ('supersedes', 'relates_to')),
+    kind           TEXT NOT NULL CHECK (kind IN ('supersedes', 'relates_to', 'contradicts')),
     created_at     TEXT NOT NULL,
     weight         REAL NOT NULL DEFAULT 1.0,
     provenance     TEXT NOT NULL DEFAULT 'declared',
@@ -1357,6 +1362,27 @@ CREATE TABLE memory_edges_a0_rebuild (
 )
 """
 
+# ADR 0002 duty #6 (wave B6-conflict) — rebuild target for the
+# memory_edges kind migration that admits ``contradicts`` into the
+# CHECK (SQLite CHECK constraints cannot be ALTERed). Detection of the
+# pre-migration shape is by the table's sqlite_master DDL: the
+# ``'contradicts'`` literal is absent. Shape mirrors the memory_edges
+# DDL in _DB_SCHEMA exactly.
+_EDGES_KIND_CONTRADICTS_REBUILD_DDL: Final[str] = """
+CREATE TABLE memory_edges_kind_rebuild (
+    from_memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    to_memory_id   TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('supersedes', 'relates_to', 'contradicts')),
+    created_at     TEXT NOT NULL,
+    weight         REAL NOT NULL DEFAULT 1.0,
+    provenance     TEXT NOT NULL DEFAULT 'declared',
+    scope_project  TEXT,
+    scope_agent    TEXT,
+    PRIMARY KEY (from_memory_id, to_memory_id, kind),
+    CHECK (from_memory_id <> to_memory_id)
+)
+"""
+
 
 # ── SQLiteStore ───────────────────────────────────────────────────────────────
 
@@ -1448,6 +1474,8 @@ class SQLiteStore:
         SQLiteStore._migrate_b1_backfill_pipeline_state(conn)
         # ── ADR-0030 A0 (issue #321): memory_edges edge-kinds rebuild ──
         SQLiteStore._migrate_a0_edges_kinds(conn)
+        # ── ADR 0002 duty #6 (B6-conflict): admit contradicts ──
+        SQLiteStore._migrate_edges_contradicts_kind(conn)
 
     @staticmethod
     def _migrate_c8_drop_turns_fts(conn: sqlite3.Connection) -> None:
@@ -1691,6 +1719,61 @@ class SQLiteStore:
         logger.info(
             "A0 edge-kinds migration: memory_edges rebuilt with "
             "relates_to/weight/provenance/scope: %d rows kept",
+            total,
+        )
+
+    @staticmethod
+    def _migrate_edges_contradicts_kind(conn: sqlite3.Connection) -> None:
+        """Wave B6-conflict (ADR 0002 duty #6) — admit ``contradicts``.
+
+        Idempotent by DDL inspection: after the first run (or on a fresh
+        store) the memory_edges CHECK carries the ``'contradicts'``
+        literal and the rebuild converges to a no-op. Rows survive the
+        rebuild (all eight columns are copied); the transaction is atomic
+        and rolls back to the intact table on any failure.
+        """
+        ddl = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memory_edges'"
+        ).fetchone()
+        if ddl is None:
+            return  # no table yet — _DB_SCHEMA creates the final shape
+        if ddl[0] and "'contradicts'" in ddl[0]:
+            # Final shape already (fresh/migrated) — converge a possible
+            # orphan from a crash mid-rebuild.
+            conn.execute("DROP TABLE IF EXISTS memory_edges_kind_rebuild")
+            conn.commit()
+            return
+        total = int(conn.execute("SELECT COUNT(*) FROM memory_edges").fetchone()[0])
+        try:
+            # B608: the script is composed EXCLUSIVELY of static module
+            # constants and literals — no user-controlled fragment ever
+            # enters it. One transaction so the DDL is atomic.
+            conn.executescript(
+                "BEGIN IMMEDIATE;\n"  # nosec B608 - static literal
+                "DROP TABLE IF EXISTS memory_edges_kind_rebuild;\n"  # nosec B608
+                + _EDGES_KIND_CONTRADICTS_REBUILD_DDL.rstrip()
+                + ";\n"  # nosec B608 - static literal
+                + "INSERT INTO memory_edges_kind_rebuild "  # nosec B608 - static copy stmt
+                "(from_memory_id, to_memory_id, kind, created_at, weight, "
+                " provenance, scope_project, scope_agent) "
+                "SELECT from_memory_id, to_memory_id, kind, created_at, weight, "
+                "       provenance, scope_project, scope_agent FROM memory_edges;\n"
+                "DROP TABLE memory_edges;\n"
+                "ALTER TABLE memory_edges_kind_rebuild RENAME TO memory_edges;\n"
+                "COMMIT;"
+            )
+        except Exception:
+            # Roll the half-run script back so the next connect sees the
+            # intact table and re-runs cleanly; re-raise as-is.
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        # Restore the edge indexes (and re-assert the rest of the schema).
+        conn.executescript(_DB_SCHEMA)
+        conn.commit()
+        logger.info(
+            "B6-conflict kind migration: memory_edges rebuilt with "
+            "contradicts admitted to the CHECK: %d rows kept",
             total,
         )
 
@@ -4870,6 +4953,21 @@ class SQLiteStore:
         )
         conn.commit()
         return cur.rowcount > 0
+
+    def has_memory_edge_between(self, from_memory_id: str, to_memory_id: str, *, kind: str) -> bool:
+        """Whether a directed edge of ``kind`` exists between the two ids.
+
+        Wave B6-conflict mint-surface helper: the contradicts minter
+        consults it for the NC-3 suppression rule (a pair already bound
+        by ``supersedes`` must not gain a conflict edge). Read-only —
+        no epoch bump, no journal entry.
+        """
+        cur = self._get_conn().execute(
+            "SELECT 1 FROM memory_edges "
+            "WHERE from_memory_id = ? AND to_memory_id = ? AND kind = ? LIMIT 1",
+            (from_memory_id, to_memory_id, kind),
+        )
+        return cur.fetchone() is not None
 
     def strengthen_edge_provenance(
         self,

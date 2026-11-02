@@ -8083,6 +8083,47 @@ class MemoryManager:
             return 0
         return int(current) if current else 0
 
+    def mint_contradicts_edge(self, from_memory_id: str, to_memory_id: str) -> str:
+        """Mint an advisory ``contradicts`` edge between two memories.
+
+        Wave B6-conflict (ADR 0002 duty #6): the conflict warning edge —
+        rank-only, store-default weight, provenance
+        ``conflict-detector``. Advisory-only: production auto-minting
+        does not fire until the detector artifact ADOPTs (mirror of the
+        B4 §7 boundary — the corpus seal mints no production edges).
+
+        NC-3 suppression runs on every attempt and is not optional: a
+        pair already bound by ``supersedes`` (either direction) must not
+        gain a conflict edge — staleness is supersede semantics, not a
+        contradiction.
+
+        Returns the outcome string: ``"minted"`` (edge inserted; bumps
+        the per-project graph_epoch via the store path), ``"duplicate"``
+        (the identical edge already existed), or
+        ``"suppressed-supersedes"`` (NC-3 rule fired; nothing written).
+        One CONFLICT-MINT telemetry line is emitted per attempt.
+        """
+        from vesma import conflict_minting
+
+        if conflict_minting.suppressed_by_supersedes(self.sqlite, from_memory_id, to_memory_id):
+            outcome = conflict_minting.SUPPRESSED_SUPERSEDES
+        else:
+            inserted = self.sqlite.add_memory_edge(
+                from_memory_id,
+                to_memory_id,
+                kind=conflict_minting.CONTRADICTS_EDGE_KIND,
+                weight=conflict_minting.CONTRADICTS_EDGE_WEIGHT,
+                provenance=conflict_minting.CONTRADICTS_PROVENANCE,
+            )
+            outcome = conflict_minting.MINTED if inserted else conflict_minting.DUPLICATE
+        logger.info(
+            "CONFLICT-MINT attempt %s→%s: %s",
+            from_memory_id,
+            to_memory_id,
+            outcome,
+        )
+        return outcome
+
     def get_memory_edges(
         self,
         from_memory_id: str,
