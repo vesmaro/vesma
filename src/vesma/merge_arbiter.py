@@ -180,6 +180,17 @@ CHAR4_JACCARD_IDX: Final[int] = CORTEX_FEATURE_NAMES.index("char4_jaccard")
 #: ratification; a different version is a NEW ratification, not a load).
 MERGE_ZONE_VERSION: Final[str] = "zone-v1"
 
+#: The version token of the deterministic version-guard leg (wave
+#: B6-conflict pin contract): the guard's constants — semver pattern,
+#: version-namespace keywords — are part of the inference contract and
+#: must be pinned together with the artifact that depends on them; a
+#: guard change is a contract change and requalifies as such. The
+#: guard's engine-side instantiation lands with the conflict-detector
+#: artifact slice (training after the contradicts migration per
+#: ADR 0002 duty #6); this constant declares the pin point now so the
+#: wiring cannot drift silently.
+MERGE_GUARD_VERSION: Final[str] = "guard-v1"
+
 
 # ── Typed refusals (machine-parseable, own telemetry family per ADR-0002) ────
 

@@ -271,7 +271,9 @@ class TestFreshInstallSchema:
 
 class TestCheckWhitelistSync:
     def test_check_accepts_exactly_the_whitelist(self, store: SQLiteStore) -> None:
-        assert set(_EDGE_KINDS) == {"supersedes", "relates_to"}
+        # B6-conflict (ADR 0002 duty #6) expanded the whitelist with
+        # ``contradicts``; the pin stays exact so drift is caught.
+        assert set(_EDGE_KINDS) == {"supersedes", "relates_to", "contradicts"}
         store.save(_make_memory("m-a"))
         store.save(_make_memory("m-b"))
         conn = store._get_conn()
@@ -282,7 +284,7 @@ class TestCheckWhitelistSync:
                 " VALUES ('m-a','m-b',?,?)",
                 (kind, now),
             )
-        assert conn.execute("SELECT COUNT(*) FROM memory_edges").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM memory_edges").fetchone()[0] == 3
 
     def test_check_rejects_unknown_kind_at_db_level(self, store: SQLiteStore) -> None:
         store.save(_make_memory("m-a"))
@@ -590,5 +592,7 @@ class TestManagerWrapper:
             project="a0",
             agent="a0-agent",
         )
+        # The B6-conflict wave made ``contradicts`` a KNOWN kind — the
+        # unknown-kind specimen here is a genuinely outside-the-list kind.
         with pytest.raises(ValueError, match="unknown edge kind"):
-            manager.add_memory_edge(a.id, a.id, kind="contradicts")
+            manager.add_memory_edge(a.id, a.id, kind="bogus")
