@@ -347,7 +347,7 @@ class McpFront:
           namespace violation / tag contract / invalid status —
           ``accepted=False``) pockets the row as rejected-permanent.
         """
-        assert self._resilience is not None  # the wiring guarantees a coordinator
+        assert self._resilience is not None  # nosec B101 - defensive wiring guard, also feeds mypy narrowing
         settings = self._resilience.settings
         token = settings.service_token
         if token is None:
@@ -396,7 +396,7 @@ class McpFront:
 
     async def _production_notify(self, url: str) -> None:
         """The out-of-machine escalation webhook (best-effort, 5 s cap)."""
-        assert self._resilience is not None  # the wiring guarantees a coordinator
+        assert self._resilience is not None  # nosec B101 - defensive wiring guard, also feeds mypy narrowing
         async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
             await client.post(
                 url,
@@ -426,7 +426,7 @@ class McpFront:
         """Spool one WRITING tools/call body and answer the receipt (or
         the typed refusal). All answers carry the signage header; refusal
         messages are FIXED (no paths, no contents)."""
-        assert self._resilience is not None
+        assert self._resilience is not None  # nosec B101 - defensive wiring guard, also feeds mypy narrowing
         try:
             intercepted = self._resilience.intercept_write(body)
         except (DegradedTTLExceeded, SpoolQuotaExceeded) as refusal:
@@ -447,7 +447,7 @@ class McpFront:
                 extra_headers=self._degraded_signage_headers(),
             )
             return
-        assert intercepted is not None
+        assert intercepted is not None  # nosec B101 - receive-set invariant from the test seam
         result, _receipt = intercepted
         await _send_json(
             send,
