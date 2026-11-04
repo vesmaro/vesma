@@ -203,11 +203,27 @@ if "mcp" not in sys.modules:
             self.tools = tools
 
     class _CallToolResult:
-        """Stub for mcp.types.CallToolResult."""
+        """Stub for mcp.types.CallToolResult.
 
-        def __init__(self, *, content: list, is_error: bool = False) -> None:
+        N1 (W4 final slice) — the naming TRUTH: the real SDK's PYTHON
+        attribute is ``is_error`` (snake_case); ``isError`` exists only
+        as the to-camel ALIAS on the WIRE (``model_dump(by_alias=True)``
+        → ``"isError"`` — the MCP protocol spelling). Production
+        constructs with ``is_error=`` — do NOT "fix" that call site to
+        ``isError=``, the alias is what puts isError on the wire. This
+        stub accepts BOTH spellings (tests may build the wire form
+        directly) and exposes ``is_error`` as the attribute."""
+
+        def __init__(
+            self,
+            *,
+            content: list,
+            is_error: bool = False,
+            isError: bool = False,  # noqa: N803 - the WIRE-key spelling
+        ) -> None:
             self.content = content
-            self.is_error = is_error
+            self.is_error = is_error or isError
+            self.isError = self.is_error  # the wire-key alias, tests only
 
     class _CallToolRequestParams:
         """Stub for mcp.types.CallToolRequestParams."""
