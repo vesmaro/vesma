@@ -1,0 +1,115 @@
+# vesma-mcp-front — OPERATOR component template (ADR-0050 wave W2, Ф2:
+# «MCP-фронт — компонент платформы», ratified 2026-10-31).
+#
+# NOT a bundled manifest (CM §3.1: pack manifests are engine-shipped
+# only) — the operator copies THIS file into the components.d slot of the
+# target plane (user: ~/.vesma/components.d/mcp-front.yaml; system:
+# /etc/vesma/components.d/mcp-front.yaml), edits the values marked
+# OPERATOR-EDIT below, then:
+#
+#   vesma service components install mcp-front   # validates fail-closed
+#   vesma service install                        # materializes the venv
+#   vesma service start mcp-front
+#
+# Form: python CHILD-PROCESS component running the engine's own front
+# module (vesma.mcp_front — a stateless streamable-HTTP proxy to the
+# core /mcp plane). The platform owns the lifecycle (supervisor spawn,
+# health probe, restart policy, stop discipline); the component venv
+# lives in the ratified venv_component slot (user: ~/.vesma/venvs/
+# mcp-front; system: /usr/local/lib/vesma/venvs/mcp-front) and is
+# materialized by the install flow — never by hand (layout §3.8).
+#
+# C2 (ADR-0050 §3): the front is an IDENTITY CARRIER, not an authorizer.
+# Harness Authorization headers pass through UNREAD to the core's /mcp
+# gate — this component stores NO secrets and validates NO tokens. The
+# target below is loopback-only by construction (a non-loopback target
+# would ship harness tokens off-box and is refused by the module itself).
+#
+# The config defaults this template mirrors live at mcp.front.* in
+# config.yaml (port/target/timeout — McpFrontConfig); the CM grammar has
+# NO port placeholder, so the operative values are pinned here as
+# literals — the eyes-template precedent (argv and health.url must move
+# together).
+apiVersion: vesma.component/v1
+kind: child-process
+metadata:
+  name: mcp-front
+  # The vesma ENGINE release this template was pinned against — bump it
+  # together with the vesma requirement pin below.
+  version: "6.9.0"
+  tier: optional
+  description: "MCP-фронт: stateless streamable-HTTP прокси к ядру /mcp (child-process, HTTP 127.0.0.1:8790)."
+  provenance:
+    repo: https://github.com/vesmaro/vesma
+    license: Apache-2.0
+    # NO artifact_sha256 here — DELIBERATE (the eyes-template rule): that
+    # pin is the BINARY child's artifact gate; on a python child it would
+    # make the supervisor hash argv[0] (the venv interpreter) at every
+    # start. Dependencies pin through the exact requirements below.
+launch:
+  python:
+    # LY §3.8 exact-pins grammar — bare names only. The module runs from
+    # an installed vesma (the metrics-manifest precedent of pinning the
+    # engine itself); uvicorn is the ASGI server it serves under and
+    # httpx is the upstream client it proxies with — both are pinned
+    # EXPLICITLY so the component venv cannot float them inside vesma's
+    # transitive ranges. Re-pin from the engine release's uv.lock when
+    # bumping the vesma pin.
+    # OPERATOR-EDIT: the vesma pin tracks the release train BY HAND here
+    # (an operator template is not release-train-tracked — no
+    # {engine_version} placeholder) — bump it on every engine upgrade.
+    requirements:
+      - "vesma==6.9.0"
+      - "uvicorn==0.54.0"
+      - "httpx==0.28.1"
+  argv:
+    - "{venv_bin}/python"
+    - "-m"
+    - "vesma.mcp_front"
+    - "--host"
+    # Loopback-only is the v1 platform posture (public-bind edge — the
+    # eyes-template precedent). Widening the bind is a deliberate,
+    # documented operator change — argv and health.url below must move
+    # together.
+    - "127.0.0.1"
+    - "--port"
+    # OPERATOR-EDIT (both places, SAME value): the front's listen port —
+    # 8790 is the port the prod mcp config section reserves for the MCP
+    # plane (mcp.front.port). NOTE: mesh.tcp.port defaults to the same
+    # number — do not enable both legs on one box without moving one.
+    # CM placeholders have no port form, so this literal is the contract;
+    # the env.d slot below carries the non-secret TARGET instead.
+    - "8790"
+    - "--timeout"
+    # OPERATOR-EDIT (optional): upstream timeout, seconds. MCP tool calls
+    # can run long against a big store — keep generous (default 60).
+    - "60"
+  env:
+    # The env.d slot: 0600, owned by the supervisor user, OUTSIDE the
+    # manifests dir (fail-closed — layout §3.5, LY-03). The supervisor
+    # refuses the start without it.
+    #
+    # THE FRONT STORES NO SECRETS: harness tokens pass through untouched
+    # (C2) — today this file carries ONLY the non-secret target below.
+    # It stays in the fail-closed env.d slot because that is the
+    # component config channel (and where future front knobs land; W4
+    # resilience adds the spool, not secrets). See mcp-front.env.example
+    # next to this file.
+    env_file: ~/.vesma/env.d/mcp-front.env
+health:
+  checker: http
+  http:
+    # Front liveness (/healthz is local, never forwarded). A dead CORE
+    # is a 503 on real requests — the front process itself is stateless
+    # and stays healthy.
+    url: "http://127.0.0.1:8790/healthz"
+    interval: 5s
+    timeout: 2s
+    unhealthy_threshold: 3
+  startup:
+    grace: 15s
+    interval: 2s
+    timeout: 2s
+stop:
+  signal: SIGTERM
+  grace_period: 10s
