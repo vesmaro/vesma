@@ -364,6 +364,57 @@ class McpQuotaConfig(BaseModel):
     calls_per_minute: int | None = Field(default=120, ge=1)
 
 
+class McpFrontConfig(BaseModel):
+    """ADR-0050 W2 (Ф2) — the component-front knobs (``mcp.front.*``).
+
+    The component front (``contrib/mcp-front/`` — the supervised
+    stateless streamable-HTTP proxy that gives harnesses ONE entry point
+    to the core ``/mcp`` plane) reads these as the deployment's declared
+    defaults; the operative literals live in the component manifest (the
+    CM grammar has no port placeholder — the operator template pins them
+    with OPERATOR-EDIT marks). The front itself authenticates nothing
+    (C2: identity carrier, the core W1 gate stays authoritative) — the
+    ONLY security-relevant knob is ``target``: it is where harness
+    ``Authorization`` headers GO, so a non-loopback value is refused
+    fail-closed at Settings construction (token-exfiltration guard; a
+    remote-core deployment needs an explicit future opt-out).
+
+    ``extra="forbid"`` — same fail-closed posture as the rest of
+    ``McpConfig`` (cascade review F-6, wave W3).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The front's listen port (what the component manifest's argv and
+    # health probe must agree on). 8790 is the port the prod ``mcp``
+    # config section reserves for the MCP plane; NOTE: the mesh TCP leg
+    # (``mesh.tcp.port``, default-off Phase-2 k8s form) defaults to the
+    # SAME number — enabling both on one box requires moving one of them.
+    port: int = Field(default=8790, ge=1, le=65535)
+    # The core MCP plane URL the front forwards to. Loopback-only
+    # (validated fail-closed — see the class docstring).
+    target: str = Field(default="http://127.0.0.1:8787/mcp/", max_length=2048)
+    # Upstream timeout, seconds (connect/read/write/pool alike). MCP tool
+    # calls can run long against a big store — the default is generous.
+    timeout: float = Field(default=60.0, gt=0.0, le=3600.0)
+
+    @field_validator("target")
+    @classmethod
+    def _target_is_loopback(cls, value: str) -> str:
+        """C2 guard: refuse any non-loopback front target at boot time.
+
+        Lazy import on purpose — :mod:`vesma.mcp_front` is the child
+        process's module (imports httpx); a config that never names a
+        front target should not pull it at import time.
+        """
+        from vesma.mcp_front import validate_target
+
+        try:
+            return validate_target(value)
+        except ValueError as exc:
+            raise ValueError(f"mcp.front.target: {exc}") from exc
+
+
 class McpConfig(BaseModel):
     """ADR-0050 — the MCP plane config.
 
@@ -391,6 +442,11 @@ class McpConfig(BaseModel):
     # groups below (the local CLI / stdio MCP plane is untouched by both).
     namespace: McpNamespaceConfig = McpNamespaceConfig()
     quota: McpQuotaConfig = McpQuotaConfig()
+    # ADR-0050 W2 (Ф2) — the component front's declared deployment
+    # defaults (``contrib/mcp-front/``; the manifest carries the
+    # operative literals). Additive: configs without the key parse
+    # unchanged.
+    front: McpFrontConfig = Field(default_factory=McpFrontConfig)
 
 
 class WatcherConfig(BaseModel):
