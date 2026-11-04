@@ -2449,6 +2449,178 @@ def _dr25_default_settings() -> Any:
     return load_settings()
 
 
+# ── DR-24: degraded-mode spool + machine state (ADR-0051, wave W4) ──────
+
+
+def _dr24(settings_loader: Callable[[], Any] | None = None) -> Finding:
+    """The degraded-mode plane's health (ADR-0051 signage matrix, DR row).
+
+    Legs, worst severity wins:
+
+    (a) the config posture: a config that fails to load FAILS (the
+        plane's fail-closed contract); ``resilience.degraded`` absent is
+        the legitimate refuse-writes posture — an OK/info line UNLESS
+        spool artifacts exist anyway (an orphan of a previously-enabled
+        deployment — WARN);
+    (b) no spool tree → OK (absence is a status, DR-08 semantics);
+    (c) a machine state file WITHOUT any actor spool → INFO (the
+        crash-between-corner the header arbitration covers; nothing to
+        act on);
+    (d) spool artifacts present → WARN baseline (degraded mode was or
+        is active) with: the degradation age, the %TTL consumed, the
+        pending-op count; TTL >80% consumed or machine BLOCKED_WRITES
+        → FAIL (the signage ladder's escalation); weakened file/dir
+        modes (anything beyond 0600/0700) or a foreign owner → FAIL
+        (the never-weaker posture; the DR-15 env.d precedent); a
+        hash-chain verification problem → FAIL (tamper evidence, loud);
+        orphaned replay tails (``ops.jsonl.replayed`` leftovers or a
+        header with no ops under a HEALTHY machine) → the WARN-tail the
+        operator clears manually.
+
+    F2/F6 (W4 cascade review): the check reads the front's persisted
+    ``last_replay_summary`` and renders it when non-empty — the
+    rejected-permanent pocket (identity-tagged rows refused under the
+    service token and similar) stays VISIBLE here after the spool is
+    consumed and removed. SCOPE NOTE: the spool tree is resolved at the
+    DEFAULT state home for the CURRENT user (``resolve_state_home`` +
+    ``VESMA_FRONT_INSTANCE``); a doctor run must execute as the SAME
+    user that owns the state home (user plane: the operator; system
+    plane: root reading the system state home) — a cross-user run sees
+    a foreign/absent tree and reports the absence honestly, it never
+    fabricates health for a tree it cannot read.
+    """
+    title = "degraded-mode spool and machine state"
+    import os as _os
+    import time as _time
+
+    from vesma.resilience import (
+        ResilienceMode,
+        Spool,
+        StateStore,
+        arbitrate,
+        resolve_instance,
+        resolve_state_home,
+    )
+
+    loader = settings_loader if settings_loader is not None else _dr25_default_settings
+    try:
+        settings = loader()
+    except Exception as exc:
+        return Finding(
+            "DR-24",
+            title,
+            Severity.FAIL,
+            f"config fails closed: {type(exc).__name__}: {exc}",
+            "fix the vesma config — the resilience plane must not boot on it",
+        )
+    degraded = getattr(getattr(settings, "resilience", None), "degraded", None)
+
+    state_home = resolve_state_home()
+    instance = resolve_instance()
+    instance_dir = state_home / "vesma" / "spool" / instance
+    spools = Spool.discover(instance_dir)
+    segments: list[str] = [f"instance={instance}"]
+    severity = Severity.OK
+
+    if not spools and not (instance_dir / StateStore.STATE_NAME).exists():
+        if degraded is None:
+            segments.append(
+                "no degraded artifacts, resilience.degraded not configured "
+                "(refuse-writes posture, ADR-0051 fail-closed)"
+            )
+        else:
+            segments.append("no degraded artifacts (degraded mode configured and clean)")
+        return Finding("DR-24", title, Severity.OK, "; ".join(segments))
+
+    if degraded is None:
+        severity = Severity.WARN
+        segments.append(
+            "degraded-mode artifacts exist while resilience.degraded is NOT "
+            "configured — an orphan of a previously-enabled deployment"
+        )
+
+    state = arbitrate(StateStore(instance_dir).load_unlocked(), instance_dir)
+    now = float(_time.time())
+
+    if not spools:
+        # (c) state file without any actor spool — the crash corner.
+        segments.append(
+            f"machine state file present ({state.mode}) without any actor "
+            f"spool — the header-arbitration corner, nothing pending (info)"
+        )
+        if state.last_replay_summary:
+            # F2: the rejected-permanent pocket stays visible even with
+            # the spool consumed and gone.
+            segments.append(f"last replay: {state.last_replay_summary}")
+        return Finding("DR-24", title, Severity.OK, "; ".join(segments))
+
+    # (d) spool artifacts present — baseline WARN.
+    if severity == Severity.OK:
+        severity = Severity.WARN
+    if state.mode == ResilienceMode.HEALTHY or state.degraded_since is None:
+        severity = Severity.WARN
+        segments.append(
+            "spool artifacts exist under a HEALTHY machine state — orphaned "
+            "replay tail, clear manually after verifying the replay report"
+        )
+    else:
+        age = int(now - state.degraded_since)
+        ttl = max(1, state.ttl_sec)
+        consumed = age / ttl
+        left = max(0, state.ttl_sec - age)
+        pending = sum(len(spool.verify_chain()[0]) for spool in spools)
+        segments.append(
+            f"mode={state.mode}, degraded for {age}s ({consumed * 100:.0f}% of "
+            f"TTL, {left}s left), pending ops={pending}"
+        )
+        if state.last_replay_summary:
+            # F2: the rejected-permanent pocket stays visible here.
+            segments.append(f"last replay: {state.last_replay_summary}")
+        if state.mode == ResilienceMode.BLOCKED_WRITES or consumed > 0.8:
+            severity = Severity.FAIL
+            segments.append(
+                "TTL escalation: >80% consumed or writes BLOCKED — resolve NOW "
+                "(recover the core or plan the managed replay)"
+            )
+
+    # mode/owner never-weaker check (dirs 0700, files 0600).
+    uid = _os.getuid()
+    for spool in spools:
+        for path in (instance_dir, spool.dir):
+            mode = _mode(path)
+            owner = _owner(path)
+            if mode is not None and _weakened(mode, 0o700):
+                severity = Severity.FAIL
+                segments.append(f"weakened dir mode {oct(mode)} on {path.name} (0700 required)")
+            if owner is not None and owner != uid:
+                severity = Severity.FAIL
+                segments.append(f"foreign owner uid={owner} on {path.name}")
+        for file_path in (spool.header_path, spool.ops_path):
+            if not file_path.exists():
+                continue
+            mode = _mode(file_path)
+            owner = _owner(file_path)
+            if mode is not None and _weakened(mode, 0o600):
+                severity = Severity.FAIL
+                segments.append(
+                    f"weakened file mode {oct(mode)} on {file_path.name} (0600 required)"
+                )
+            if owner is not None and owner != uid:
+                severity = Severity.FAIL
+                segments.append(f"foreign owner uid={owner} on {file_path.name}")
+        done = spool.dir / (Spool.OPS_NAME + Spool.DONE_SUFFIX)
+        if done.exists():
+            segments.append(f"orphaned replay tail: {done.name} present — clear manually")
+
+    # Hash-chain verification (tamper evidence is FAIL-class, loud).
+    for spool in spools:
+        _rows, problems = spool.verify_chain()
+        for problem in problems:
+            severity = Severity.FAIL
+            segments.append(f"chain: {problem}")
+    return Finding("DR-24", title, severity, "; ".join(segments))
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
@@ -2464,6 +2636,7 @@ def run_service_checks() -> list[Finding]:
     DR-20 (second writer on the store home — ADR-0049 wave 0), DR-21
     (the system daemon serves the FHS data root — card 4c8a0cbe), DR-23
     (artifacts outside the platform — ArchCom 2026-10-29, 1c2b8d64),
+    DR-24 (degraded-mode spool + machine state — ADR-0051, wave W4),
     DR-25 (MCP plane namespace health — ADR-0050 §4/§5, wave W3).
     """
     installation: dict[str, ComponentManifest] | None = None
@@ -2506,8 +2679,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-21", "system daemon serves the FHS data root", _dr21),
         ("DR-22", "loaded components vs canonical manifests dir", _dr22),
         ("DR-23", "artifacts outside the platform", _dr23),
-        # DR-24 is RESERVED for the W4 resilience wave (ADR-0050 волны:
-        # signage) — DR-25 (MCP plane namespace health) landed first.
+        ("DR-24", "degraded-mode spool and machine state", _dr24),
         ("DR-25", "MCP plane namespace health", _dr25),
     ]
     findings: list[Finding] = []

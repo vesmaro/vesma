@@ -22,16 +22,20 @@ Files:
   every write flows through the core's writer invariants (ADR-0049
   writer-lock, mint-protection), W3 namespaces and quotas apply to every
   request by construction.
-- **Слот для W4-спула.** The front is the ONE process between harnesses
-  and the core — exactly where ADR-0051 (W4) will add the resilience
-  spool (queue tool calls while the core restarts). Nothing else in the
-  topology needs to change when that lands.
+- **Слот для W4-спула — занят.** ADR-0051 (W4) landed IN this component
+  (see "Degraded write mode" below): the front is the ONE process
+  between harnesses and the core, so it is the spool carrier — writes
+  queue locally while the core is down and replay through the core's
+  own write plane on recovery. Nothing else in the topology changed
+  when that landed.
 
 Contract (C2, ADR-0050 §3): **the front is an identity carrier, not an
 authorizer.** Harness `Authorization` headers pass through UNREAD; the
-core's W1 gate stays the only authority. The front stores NO secrets and
-authenticates nothing — there is deliberately no auth lever on it (the
-pin tests enforce that shape).
+core's W1 gate stays the only authority for HARNESS identity. The front
+holds exactly ONE credential of its own — the replay service token
+(`VESMA_FRONT_SERVICE_TOKEN`, ADR-0051 W4; see the env template) — and
+authenticates no harness with it. Everything else in the slot stays
+non-secret.
 
 ## Why python-child, not a launcher binary
 
@@ -80,6 +84,40 @@ to the core (`vesma agent-token issue --agent <harness> --node
 <instance-id>`). The path is not mapped — any path on the front lands on
 the configured core plane URL; `/healthz` is the one local exception.
 
+## Degraded write mode (ADR-0051, W4)
+
+When the core's `/mcp` plane is unreachable, the front — with degraded
+mode enabled — keeps harness writes alive instead of failing them:
+
+- **Machine**: 3 failed probes (request outcomes double as probes; the
+  poller adds the quiet-period cadence) flip `HEALTHY → DEGRADED`;
+  a probe success flips to `REPLAY` and, after 100% verified delivery,
+  back to `HEALTHY`; the TTL expiry flips to `BLOCKED_WRITES` (writes
+  get the typed `DegradedTTLExceeded` refusal, reads stay available,
+  the spool freezes FOREVER — nothing is auto-deleted).
+- **Writes** (the op classifier in `vesma.resilience`: `vesma_add`,
+  `vesma_save_context`, tag/import/ingest writes, …) land in the spool
+  at `<state_home>/vesma/spool/<instance>/<actor>/` — 0600/0700,
+  append-only JSONL with a per-row SHA-256 hash chain, fsync, a
+  secret-scan at write time (flagged rows carry pattern NAMES only).
+  The harness gets a normal MCP tool result whose TEXT is the receipt
+  (op_id, TTL remainder, do-not-retry) plus the `X-Vesma-Degraded`
+  header on every front response while not HEALTHY; `/healthz` carries
+  the degraded section (mode/since/ttl_left/spool counters). DR-24 in
+  `vesma doctor` audits the spool (age, %TTL, mode/owner, chain).
+- **Reads** stay transparent: while degraded they answer the honest
+  fixed 503 (the front has no local planes to read from).
+- **Replay** goes through the core's OWN `tools/call` plane under the
+  FRONT SERVICE TOKEN — the spool never becomes a second engine. Rows
+  carry `vesma_degraded_op_id` in their arguments; the front removes a
+  spool atomically only after every row applied; any failed row keeps
+  the whole spool loud and on disk.
+- **Config** (the env.d slot, fail-closed): WITHOUT
+  `VESMA_FRONT_DEGRADED_MAX_DURATION` the front runs refuse-writes (the
+  W2 fixed-503 behavior, loudly logged at boot). The same knobs exist
+  canonically in `config.yaml` under `resilience.degraded.*` (required
+  `enabled` + `max_duration`, `extra=forbid`).
+
 ## Operational notes
 
 - **Port 8790, loopback-only** — the port the prod `mcp` config section
@@ -113,9 +151,26 @@ the configured core plane URL; `/healthz` is the one local exception.
   this template ships the documented TCP-loopback form with the
   mandatory token auth carried by the core. The UDS leg is a deliberate
   follow-up, not a silent gap.
-- **W4 (ADR-0051) resilience** — spool, state machine, TTL, signage —
-  lands IN this component (its slot is reserved above); nothing here
-  pre-implements it.
+- **Degraded-mode residuals (ADR-0051 W4, honest)**: (a) per-row CLIENT
+  re-authz at replay is approximated, not implemented — the front never
+  stored harness tokens (C2), so a client revoked during a degradation
+  is not re-checked per row; the service token refusal aborts the run
+  with nothing applied, and the `actor_policy` seam exists for a future
+  core status API. (a2, the F2 residual) an IDENTITY-TAGGED row (a
+  client `agent:<slug>` tag) replayed under the front SERVICE token is
+  either delivered into the FRONT-SERVICE namespace (untagged rows) or
+  REFUSED by the core's namespace enforcement and pocketed
+  **rejected-permanent** — counted, never retried, visible in the
+  replay log, the persisted replay summary and DR-24; DELIVERY INTO THE
+  CLIENT'S NAMESPACE is a future core mechanism (an op-level identity
+  delegation), not a silent re-own. The receipt text deliberately does
+  NOT promise delivery — it points at DR-24. (b) the `superseded` rule
+  (a store row newer than the spooled op wins) stays 0 in W4 — it needs
+  a core-side conditional write, a later line. (c) the per-row commit
+  watermark bounds the crash window to ONE re-application: a crash
+  between "row applied" and "watermark persisted" can re-apply exactly
+  that row on the next pass (the `vesma_degraded_op_id` envelope is in
+  place for a future core-side dedup).
 - The front proxies to a LOOPBACK core by construction; a remote-core
   deployment (front and core on different boxes) needs an explicit
   future opt-out in `validate_target` — today it is refused fail-closed

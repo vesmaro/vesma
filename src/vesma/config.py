@@ -1404,6 +1404,112 @@ class CodeGraphConfig(BaseModel):
     watch_max_interval_sec: float = Field(default=60.0, ge=0.1)
 
 
+class ResilienceSignageConfig(BaseModel):
+    """ADR-0051 signage knobs (``resilience.degraded.signage.*``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The repeat-cadence of the degraded log line after the entry WARN
+    # (ADR-0051: WARN on entering DEGRADED, then every 15 m with the age
+    # and the TTL remainder). Accepts the systemd-style grammar ("15m")
+    # or plain seconds (int) — normalized to seconds by the validator.
+    log_interval: int = Field(default=900, ge=60)
+
+    @field_validator("log_interval", mode="before")
+    @classmethod
+    def _duration_grammar(cls, value: Any) -> Any:
+        from vesma.resilience import parse_duration
+
+        if isinstance(value, str):
+            return parse_duration(value)
+        return value
+
+
+class ResilienceDegradedConfig(BaseModel):
+    """ADR-0051 degraded-mode knobs (``resilience.degraded.*``).
+
+    FAIL-CLOSED by contract: ``enabled`` and ``max_duration`` are BOTH
+    required — a section that names one and forgets the other refuses
+    to load (the owner's directive: the TTL must be a declared value,
+    never an invented default), and the WHOLE ``resilience.degraded``
+    section being absent means the deployment runs refuse-writes (the
+    front boots with a loud line and never spools; DR-24 reports the
+    posture as an info line).
+
+    ``extra="forbid"`` — the rest of the plane's fail-closed posture
+    (a typo'd knob name must not silently fall back to a default).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The explicit posture key (§7.5: «явный ключ»). True = the front
+    # spools writes while the core is unreachable; False = refuse-writes
+    # (the W2 behavior: the honest 503).
+    enabled: bool
+    # THE mandatory TTL (the owner's directive; the documented
+    # recommendation is 7d — config.example.yaml carries it). Accepts
+    # the systemd-style grammar ("7d") or plain seconds; normalized to
+    # seconds by the validator. There is deliberately NO field default.
+    max_duration: int
+    # Probe cadence while degraded (ADR-0051: 30 s; the backoff below
+    # grows it toward its ceiling).
+    poll_interval: int = Field(default=30, ge=1)
+    # Consecutive failed probes that flip HEALTHY → DEGRADED.
+    probe_failure_threshold: int = Field(default=3, ge=1)
+    # The probe backoff ceiling (ADR-0051: 10 m).
+    backoff_max: int = Field(default=600, ge=1)
+    # The spool byte quota (ADR-0051: 1 GiB; exhaustion ⇒ BLOCKED_WRITES).
+    spool_max_bytes: int = Field(
+        default=1024 * 1024 * 1024,
+        ge=1024,
+    )
+    signage: ResilienceSignageConfig = Field(default_factory=ResilienceSignageConfig)
+    # The out-of-machine escalation channel (§7.4: the webhook fires on
+    # entering DEGRADED and on the 80% TTL crossing, best-effort with a
+    # 5 s timeout — a dead webhook never blocks the machine). None =
+    # no webhook (in-machine signage only).
+    notify_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("max_duration", "poll_interval", "backoff_max", mode="before")
+    @classmethod
+    def _duration_grammar(cls, value: Any) -> Any:
+        from vesma.resilience import parse_duration
+
+        if isinstance(value, str):
+            return parse_duration(value)
+        return value
+
+    @field_validator("notify_url")
+    @classmethod
+    def _notify_url_scheme(cls, value: str | None) -> str | None:
+        """Only http(s) notify targets (the webhook POSTs there; an
+        accidentally-configured file:// or unknown scheme refuses)."""
+        if value is None:
+            return value
+        from urllib.parse import urlsplit
+
+        scheme = urlsplit(value).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise ValueError(
+                f"resilience.degraded.notify_url must be an http(s) URL, got scheme {scheme!r}"
+            )
+        return value
+
+
+class ResilienceConfig(BaseModel):
+    """ADR-0051 — the resilience plane config (``resilience.*``).
+
+    ``degraded`` absent (the default) = the deployment runs REFUSE-WRITES:
+    the front boots with a loud line and never spools; DR-24 reports the
+    posture. Present-but-incomplete refuses the whole config (fail-closed
+    — see :class:`ResilienceDegradedConfig`).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    degraded: ResilienceDegradedConfig | None = None
+
+
 class VitalsConfig(BaseModel):
     """Passive assemble metrics into the vitals sidecar (ADR-0026).
 
@@ -1661,6 +1767,7 @@ class Settings(BaseSettings):
     federation: FederationConfig = FederationConfig()
     scanner: ScannerConfig = ScannerConfig()
     mesh: MeshConfig = MeshConfig()
+    resilience: ResilienceConfig = ResilienceConfig()
     code_graph: CodeGraphConfig = CodeGraphConfig()
     vitals: VitalsConfig = VitalsConfig()
     updates: UpdatesConfig = Field(default_factory=UpdatesConfig)

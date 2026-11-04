@@ -63,6 +63,40 @@ components:
 mcp:
   transport: stdio
 
+# ── Resilience plane (ADR-0051, wave W4) ─────────────────────────────
+# Degraded write mode: when the core MCP plane is unreachable, the
+# component front spools WRITING tool calls locally and delivers them
+# through the core's own write plane on recovery (receipts + the
+# X-Vesma-Degraded header + DR-24 in `vesma doctor`).
+# FAIL-CLOSED: WITHOUT the resilience.degraded section the deployment
+# runs refuse-writes (the front answers the honest fixed 503, nothing
+# is spooled). Present-but-incomplete refuses the whole config — the
+# TTL must be a DECLARED value, never an invented default (owner
+# directive); the documented recommendation is 7d.
+resilience:
+  degraded:
+    # The explicit posture key; false = refuse-writes even with the
+    # section present.
+    enabled: true
+    # THE mandatory TTL of the degraded mode (systemd-style grammar:
+    # 7d / 12h / 30m / 600s, or plain seconds).
+    max_duration: 7d
+    # Probe cadence while degraded, and the backoff ceiling (ADR-0051:
+    # 30s → 10m).
+    poll_interval: 30s
+    probe_failure_threshold: 3
+    backoff_max: 600s
+    # Spool byte quota — exhaustion blocks writes until a replay drains
+    # the spool.
+    spool_max_bytes: 1073741824   # 1 GiB
+    signage:
+      # The repeat cadence of the degraded log line after the entry WARN.
+      log_interval: 15m
+    # OPTIONAL out-of-machine escalation webhook (best-effort POST, 5s
+    # timeout): fires on entering DEGRADED and on the 80% TTL crossing.
+    notify_url: null
+    # notify_url: "http://127.0.0.1:9999/vesma-alerts"
+
 watcher:
   # Directories to auto-index (used by `vesma watch` when no args given)
   paths: []

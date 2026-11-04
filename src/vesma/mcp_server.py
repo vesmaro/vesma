@@ -4073,10 +4073,30 @@ async def _on_list_tools(ctx: _CTX_T, params: PaginatedRequestParams | None) -> 
 
 
 async def _on_call_tool(ctx: _CTX_T, params: CallToolRequestParams) -> CallToolResult:
-    """SDK 2.x ``on_call_tool`` handler — wraps :func:`call_tool`."""
+    """SDK 2.x ``on_call_tool`` handler — wraps :func:`call_tool`.
+
+    W4 cascade-review fix (F1, CRITICAL): a refusal rendered as the
+    loud ``❌``-prefixed TextContent (the dispatch wrapper's
+    NamespaceViolationError / TagContractError / generic-exception
+    mapping, and the in-tool input-validation refusals) IS a semantic
+    tool error by the MCP STANDARD — ``CallToolResult.isError=True``
+    tells typed clients (and the resilience replay leg,
+    ``mcp_front._core_answer_accepted``) that the call did NOT apply.
+    Before this fix every refusal looked like a success on the wire:
+    the degraded-mode replay counted refused rows as delivered and
+    deleted the spool — the silent-loss class. One central rule here
+    covers every transport (stdio + streamable HTTP share ``server``)
+    and every ❌-rendering call site.
+    """
     arguments = dict(params.arguments) if params.arguments else {}
     content: list[Any] = list(await call_tool(params.name, arguments))
-    return CallToolResult(content=content)
+    is_error = (
+        bool(content) and isinstance(content[0], TextContent) and content[0].text.startswith("❌")
+    )
+    # The python attribute is ``is_error``; the SDK serializes it to the
+    # wire key ``isError`` (the MCP protocol spelling) — what the replay
+    # leg's ``core_answer_accepted`` reads.
+    return CallToolResult(content=content, is_error=is_error)
 
 
 server = Server(
