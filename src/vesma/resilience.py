@@ -2050,7 +2050,7 @@ class ResilienceCoordinator:
                 return
             state = self._store.load()
             if state.mode == ResilienceMode.HEALTHY:
-                await asyncio.sleep(self.settings.poll_interval_sec)
+                await asyncio.sleep(max(1, self.settings.poll_interval_sec))
                 continue
             try:
                 await self.poll_once()
