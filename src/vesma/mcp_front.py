@@ -489,7 +489,13 @@ class McpFront:
                 self._ensure_client()
                 if self._resilience is not None:
                     self._ensure_resilience_io()
-                    self._resilience_poller = asyncio.create_task(self._resilience.run_poller())
+                    if self._resilience_poller is None:
+                        # One poller per process, ever: a non-standard
+                        # lifespan sequence repeating startup must not
+                        # stack poller tasks (the F-A class of the W4
+                        # memory-bomb audit — side effects per iteration
+                        # inside an unbounded contract loop).
+                        self._resilience_poller = asyncio.create_task(self._resilience.run_poller())
                 await send({"type": "lifespan.startup.complete"})
             elif message["type"] == "lifespan.shutdown":
                 await self.aclose()
