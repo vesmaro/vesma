@@ -36,7 +36,7 @@ metadata:
   name: mcp-front
   # The vesma ENGINE release this template was pinned against — bump it
   # together with the vesma requirement pin below.
-  version: "6.9.0"
+  version: "6.10.0"
   tier: optional
   description: "MCP-фронт: stateless streamable-HTTP прокси к ядру /mcp (child-process, HTTP 127.0.0.1:8790)."
   provenance:
@@ -59,7 +59,7 @@ launch:
     # (an operator template is not release-train-tracked — no
     # {engine_version} placeholder) — bump it on every engine upgrade.
     requirements:
-      - "vesma==6.9.0"
+      - "vesma==6.10.0"
       - "uvicorn==0.54.0"
       - "httpx==0.28.1"
   argv:

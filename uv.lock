@@ -5143,7 +5143,7 @@ wheels = [
 
 [[package]]
 name = "vesma"
-version = "6.9.0"
+version = "6.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
