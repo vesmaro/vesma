@@ -52,6 +52,7 @@ from tests.test_mcp_namespace import (
 from vesma.config import Settings
 from vesma.manager import MemoryManager
 from vesma.mcp_namespace import (
+    AgentNamespaceViolationError,
     McpIdentity,
     NamespaceViolationError,
     enforce_agent_tags,
@@ -700,3 +701,217 @@ class TestSpecialistCliParity:
             )
             assert result.exit_code == 1
             assert "specialist" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Fix-slice 2026-11-06 (owner directive «срочно») — the teaching hint
+# ---------------------------------------------------------------------------
+
+
+class TestSpecialistTeachingHint:
+    """The namespace-violation render TEACHES the specialist channel —
+    but ONLY for agent-identity mints on writes
+    (:class:`AgentNamespaceViolationError`: a client-authored
+    ``agent:<slug>`` tag or a foreign owner argument). The row-ownership
+    and bulk-namespace refusals stay on the base class and render
+    hintless — a foreign-ROW mutation has no specialist-shaped fix, and
+    the hint there would mislead the caller.
+
+    Since the ADR-0050 addendum the canonical root cause of an
+    agent-identity mint is a harness hardcoding its SPECIALIST role
+    (``agent:tech-lead``) into the identity tag — the hint names the
+    fixing action (the specialist parameter) as the message's second
+    sentence."""
+
+    HINT_MARKERS = ('specialist="tech-lead"', "minted server-side from your token")
+
+    async def test_agent_tag_violation_renders_specialist_hint(
+        self, store_factory: Any, tmp_path: Path
+    ) -> None:
+        """vesma_add with a foreign client-authored agent: tag → the loud
+        refusal carries the specialist hint (second sentence)."""
+        store_factory(_base_settings(tmp_path))
+        async with mcp_identity("harness-a"):
+            text = await _call_tool_text(
+                "vesma_add",
+                {
+                    "content": "hardcoded-role body",
+                    "tags": ["project:ns-wave", "agent:tech-lead", "vesma:learning"],
+                },
+            )
+        assert "Namespace violation" in text
+        for marker in self.HINT_MARKERS:
+            assert marker in text, f"hint marker {marker!r} missing in: {text}"
+
+    async def test_foreign_agent_arg_renders_specialist_hint(
+        self, store_factory: Any, tmp_path: Path
+    ) -> None:
+        """vesma_save_context with a foreign explicit agent argument → the
+        same teaching hint (the argument-shaped identity mint)."""
+        store_factory(_base_settings(tmp_path))
+        async with mcp_identity("harness-a"):
+            text = await _call_tool_text(
+                "vesma_save_context",
+                {
+                    "project": "ns-wave",
+                    "goals": "claim a foreign identity",
+                    "agent": "tech-lead",
+                },
+            )
+        assert "Namespace violation" in text
+        for marker in self.HINT_MARKERS:
+            assert marker in text, f"hint marker {marker!r} missing in: {text}"
+
+    async def test_ownership_refusal_has_no_hint(self, store_factory: Any, tmp_path: Path) -> None:
+        """A row-ownership refusal (vesma_workflow:set on a foreign row)
+        renders the plain violation — NO specialist hint (passing
+        specialist= cannot fix foreign-row ownership; the hint would
+        mislead)."""
+        mgr = store_factory(_base_settings(tmp_path))
+        foreign = mgr.add(
+            MemoryCreate(
+                content="foreign row for hintless workflow refusal",
+                tags=["project:ns-wave", "agent:other-agent", "vesma:learning"],
+                source=MemorySource.MCP,
+                status=MemoryStatus.PUBLISHED,
+            ),
+            project="ns-wave",
+            agent="other-agent",
+        )
+        async with mcp_identity("harness-a"):
+            text = await _call_tool_text(
+                "vesma_workflow",
+                {"action": "set", "memory_id": foreign.id, "to": "in-progress", "actor": "x"},
+            )
+        assert "❌" in text
+        assert "owned by" in text
+        assert 'specialist="' not in text
+
+    async def test_bulk_rename_refusal_has_no_hint(
+        self, store_factory: Any, tmp_path: Path
+    ) -> None:
+        """A bulk-namespace rewrite refusal (rename touching agent:) stays
+        on the base class — hintless."""
+        store_factory(_base_settings(tmp_path))
+        async with mcp_identity("harness-a"):
+            text = await _call_tool_text(
+                "vesma_tags",
+                {"action": "rename", "from_prefix": "agent:", "to_prefix": "project:"},
+            )
+        assert "❌" in text
+        assert 'specialist="' not in text
+
+    async def test_import_violation_has_no_hint(self, store_factory: Any, tmp_path: Path) -> None:
+        """The import prescan downgrades to the BASE class on purpose:
+        import is a bulk RESTORE surface, not an authoring one — the
+        caller cannot fix a foreign-authored archive by passing
+        specialist=, so the render keeps the plain violation text."""
+        store_factory(_base_settings(tmp_path))
+        payload = {
+            "format_version": "1",
+            "memories": [
+                {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "content": "imported foreign-mint row",
+                    "tags": ["project:ns-wave", "agent:other-agent", "vesma:learning"],
+                    "status": "published",
+                }
+            ],
+        }
+        source = tmp_path / "foreign.json"
+        source.write_text(json.dumps(payload), encoding="utf-8")
+        async with mcp_identity("harness-a"):
+            text = await _call_tool_text(
+                "vesma_import",
+                {"source_path": str(source), "mode": "merge"},
+            )
+        assert "Namespace violation" in text
+        assert 'specialist="' not in text
+
+    def test_identity_mint_checks_raise_the_teachable_subclass(self) -> None:
+        """Unit pin: enforce_agent_tags / enforce_agent_arg raise the
+        SUBCLASS (teachable); assert_rows_owned and
+        enforce_bulk_rename_prefixes raise the BASE class (hintless)."""
+        from vesma.mcp_namespace import enforce_agent_arg, enforce_agent_tags
+
+        identity = McpIdentity(agent_id="harness-a", jti="jti-hint")
+
+        with pytest.raises(AgentNamespaceViolationError) as exc_info:
+            enforce_agent_tags(["agent:tech-lead"], identity)
+        assert isinstance(exc_info.value, NamespaceViolationError)
+
+        with pytest.raises(AgentNamespaceViolationError):
+            enforce_agent_arg("tech-lead", identity, surface="test")
+
+        with pytest.raises(NamespaceViolationError) as owned_info:
+            from vesma.mcp_namespace import assert_rows_owned
+
+            assert_rows_owned([{"id": "x", "tags": ["agent:other"]}], identity, action="t")
+        assert not isinstance(owned_info.value, AgentNamespaceViolationError)
+
+        with pytest.raises(NamespaceViolationError) as rename_info:
+            from vesma.mcp_namespace import enforce_bulk_rename_prefixes
+
+            enforce_bulk_rename_prefixes("agent:", "project:", identity)
+        assert not isinstance(rename_info.value, AgentNamespaceViolationError)
+
+
+# ---------------------------------------------------------------------------
+# Fix-slice 2026-11-06 — the pack canon (two-layer convention)
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: The pack surfaces that teach the tag contract to harnesses — every one
+#: must mention the specialist channel (the two-layer identity, server
+#: 6.11+). Sweep-pinned so a future pack edit cannot silently re-teach
+#: the deprecated self-authored "authoring agent tag".
+_PACK_CANON_FILES = (
+    "integrations/agents_md/vesma-always-on.md",
+    "integrations/skills/vesma-tag-contract.md",
+    "integrations/skills/vesma-write.md",
+    "integrations/instructions/vesma-memory-ops.instructions.md",
+    "integrations/prompts/vesma-memory.prompt.md",
+    "integrations/adapter-template.md",
+    "integrations/mcp-presets.md",
+    "integrations/hermes/__init__.py",
+    "integrations/extensions/vesma-mcp.ts",
+)
+
+
+class TestPackCanonTwoLayerConvention:
+    @pytest.mark.parametrize("relpath", _PACK_CANON_FILES)
+    def test_pack_files_teach_specialist_channel(self, relpath: str) -> None:
+        path = _REPO_ROOT / relpath
+        assert path.is_file(), f"pack canon file vanished: {relpath}"
+        content = path.read_text(encoding="utf-8")
+        assert "specialist" in content, (
+            f"{relpath} no longer teaches the specialist channel — the pack "
+            f"canon must carry the two-layer identity (ADR-0050 addendum)"
+        )
+
+    def test_agents_md_template_marks_authoring_agent_deprecated(self) -> None:
+        """The AGENTS.md template (the text every harness memorizes) must
+        carry the full two-layer contract: server-minted agent tag, the
+        specialist parameter, and the explicit deprecation + migration
+        phrase for the old 'authoring agent tag' pattern."""
+        content = (_REPO_ROOT / "integrations/agents_md/vesma-always-on.md").read_text(
+            encoding="utf-8"
+        )
+        assert "do NOT author an `agent:` tag yourself" in content
+        assert "specialist" in content
+        assert "DEPRECATED pattern" in content
+        assert "Migrate:" in content
+
+    def test_pack_tag_contract_tables_drop_self_authored_agent(self) -> None:
+        """The write-skill examples no longer show a self-authored
+        ``agent:<slug>`` in the tags list (the server mints it)."""
+        for relpath in (
+            "integrations/skills/vesma-write.md",
+            "integrations/skills/vesma-tag-contract.md",
+            "integrations/prompts/vesma-memory.prompt.md",
+        ):
+            content = (_REPO_ROOT / relpath).read_text(encoding="utf-8")
+            assert '"agent:<slug>",' not in content, (
+                f"{relpath} still teaches self-authoring the agent: tag in the tags list"
+            )

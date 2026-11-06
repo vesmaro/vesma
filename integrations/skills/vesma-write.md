@@ -56,10 +56,15 @@ beyond the current session.
    ```text
    tags=[
      "project:<slug>",
-     "agent:<slug>",
      "vesma:<subtype>"
    ]
    ```
+
+   Do NOT author an `agent:<slug>` tag — the server mints the harness
+   identity from your token (a client-authored foreign `agent:` tag is
+   rejected loudly). If you worked as a named SPECIALIST role, pass it
+   via the `specialist` parameter (e.g. `specialist="tech-lead"`) —
+   attribution only (server 6.11+).
 
    Add optional tags as needed: `severity:`, `stack:`, `source:`,
    `applyTo:`, `milestone:`, `domain:`.
@@ -70,6 +75,7 @@ beyond the current session.
    vesma_add(
      content=<markdown body>,
      tags=[...],
+     specialist="<role>",    # optional executor-role attribution
      title=<short title>     # optional, auto-generated if omitted
    )
    ```

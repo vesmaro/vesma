@@ -37,17 +37,30 @@ Memory is the FIRST information source — own silo, neighbors, board. Rich proc
 
 ## Tag contract (every `vesma_add` / `vesma_ingest_url` call)
 
-Tags are the searchability backbone of the store. Every write MUST carry:
+Tags are the searchability backbone of the store. Every write carries
+the two-layer identity (server 6.11+):
 
 - exactly one `project:<slug>` — the codebase or initiative;
-- exactly one `agent:<slug>` — the authoring agent (`agent:user` for
-  user-authored);
+- exactly one `agent:<slug>` — the harness identity; the server mints
+  it from your token — **do NOT author an `agent:` tag yourself** (a
+  client-authored foreign `agent:` tag is rejected loudly since W3);
+- the optional `specialist` PARAMETER (not a tag) — your executor
+  role, e.g. `specialist="tech-lead"` in `vesma_add` — pure
+  attribution ("who did this work"), the server mints the
+  `specialist:<slug>` tag itself;
 - at least one `vesma:<subtype>` — e.g. `vesma:decision`,
   `vesma:learning`, `vesma:bug-pattern`, `vesma:checkpoint` (the
   `vesma:` tag prefix is the canonical storage form since 6.0; the
   legacy `mnemos:` spelling is accepted on input — except the
   `mnemos:no-federate` exclusion marker, which stays byte-stable
   forever).
+
+DEPRECATED pattern (pre-two-layer): authoring the `agent:<slug>` tag
+yourself ("the authoring agent tag"). Migrate: drop the `agent:` tag
+from your writes (the server mints it from the token) and pass the
+`specialist` parameter for the executor role — a hardcoded
+`agent:tech-lead` now fails with a namespace violation pointing at
+`specialist`.
 
 Without the contract, memory degrades into unstructured noise: project and
 agent-scoped recall stop working.

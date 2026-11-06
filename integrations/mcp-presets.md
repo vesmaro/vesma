@@ -262,7 +262,10 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 A JSON-RPC reply with `"serverInfo":{"name":"vesma"...}` means the server
 answers. Then ask your agent: *“use vesma_add to save a memory”* — a valid
 roundtrip needs the [tag contract](../docs/en/user/tag-contract.md):
-one `project:<slug>`, one `agent:<slug>`, at least one `vesma:<subtype>`.
+one `project:<slug>` plus at least one `vesma:<subtype>`; the `agent:`
+tag is minted by the server from the token (do not author it — the old
+"authoring agent tag" pattern is deprecated), and the executor role
+goes into the optional `specialist` parameter.
 
 For any harness not listed here, copy the
 [adapter template](adapter-template.md) (Connect / Expose / Configure +

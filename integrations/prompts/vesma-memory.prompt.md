@@ -65,13 +65,18 @@ be stored. Re-discovering what memory has is wasted tokens.
 
 ## MANDATORY: Tag contract (on every vesma_add / vesma_ingest_url)
 
-Every write must carry:
+Every write carries (two-layer identity, server 6.11+):
 
-| Tag | Cardinality | Example |
+| Tag / parameter | Cardinality | Example |
 |-----|-------------|---------|
-| `project:<slug>` | **exactly 1** | `project:vesma` |
-| `agent:<slug>` | **exactly 1** | `agent:tech-lead` (or `agent:user`) |
-| `vesma:<subtype>` | **at least 1** | `vesma:decision` |
+| `project:<slug>` (tag) | **exactly 1** | `project:vesma` |
+| `agent:<slug>` (tag) | **exactly 1** | **minted by the server from your token — do NOT author it** (a foreign `agent:` tag is rejected loudly) |
+| `specialist="<role>"` (parameter) | optional | `specialist="tech-lead"` — your executor ROLE as attribution; the server mints `specialist:<slug>` |
+| `vesma:<subtype>` (tag) | **at least 1** | `vesma:decision` |
+
+DEPRECATED pattern (pre-two-layer): self-authoring the "authoring agent
+tag" (e.g. hardcoding `agent:tech-lead`). Migrate: drop the `agent:`
+tag from writes and pass the `specialist` parameter for the role.
 
 ### Valid vesma subtypes
 
@@ -90,17 +95,18 @@ vesma_add(
   content="FTS5 query planner mishandles leading wildcards on large tables.",
   tags=[
     "project:vesma",
-    "agent:tech-lead",
     "vesma:bug-pattern",
     "severity:medium",
     "stack:sqlite"
   ],
+  specialist="tech-lead",
   title="fts5-leading-wildcard-planner-issue"
 )
 ```
 
 Missing or malformed tags cause the write to be **rejected** in strict mode
-(default). Do not guess tags — determine project and agent before writing.
+(default). Do not guess tags — determine the project before writing; the
+agent identity is the server's job, your role rides `specialist=`.
 
 ## MANDATORY: Checkpoint on compaction signals
 

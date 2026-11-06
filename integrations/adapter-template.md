@@ -63,19 +63,27 @@ harness's instruction channel — system prompt, rules file, AGENTS.md):
 
 ```text
 At session start call vesma_agent_recall before reading files.
-Before writing any memory, compose tags: exactly one project:<slug>,
-exactly one agent:<slug>, at least one vesma:<subtype>.
+Before writing any memory, compose tags: exactly one project:<slug>
+plus at least one vesma:<subtype>. Do NOT author an agent:<slug> tag —
+the server mints the harness identity from the token; pass your
+executor role via the specialist parameter instead
+(e.g. specialist="tech-lead").
 Before compaction or session end, call vesma_save_context.
 ```
 
 ## 3 · Configure — slugs and the tag contract
 
-Pick two slugs once and reuse them everywhere (keeps recall scoped):
+Pick the project slug once and reuse it everywhere (keeps recall scoped):
 
 - `project:<slug>` — the repo/product this harness works on (e.g. `project:vesma`)
-- `agent:<slug>` — this harness's identity (e.g. `agent:cursor`, or `agent:user`)
+- `agent:<slug>` — the harness identity; the SERVER mints it from the
+  token (on the /mcp plane a client-authored foreign `agent:` tag is
+  rejected). The old pattern of self-authoring "the authoring agent
+  tag" is DEPRECATED — the executor ROLE goes into the optional
+  `specialist` parameter (`specialist="tech-lead"`), pure attribution
+  (server 6.11+).
 
-Every write must carry exactly one of each plus at least one
+Every write must carry exactly one `project:<slug>` plus at least one
 `vesma:<subtype>` (`decision`, `rule`, `session`, `checkpoint`, `learning`, …).
 Full schema: [tag-contract.md](../docs/en/user/tag-contract.md). The server
 rejects contract-breaking writes, so a failed `vesma_add` means bad tags,
@@ -95,8 +103,9 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 - [ ] `vesma_*` tools from the Expose table are visible to the agent.
 - [ ] `vesma_agent_recall` returns (possibly empty) results at session start.
 - [ ] The wire probe above replies with a JSON-RPC result whose `serverInfo.name` is `vesma`.
-- [ ] A test write roundtrips: `vesma_add` with `project:test,agent:<slug>,vesma:learning`,
-      then `vesma_search "test"` finds it.
+- [ ] A test write roundtrips: `vesma_add` with `project:test,vesma:learning`
+      (plus `specialist="test-role"` — the row should carry
+      `specialist:test-role`), then `vesma_search "test"` finds it.
 - [ ] A write missing `project:` is rejected — the tag contract is active.
 - [ ] `vesma doctor` (in a shell) reports no FAIL-level checks.
 - [ ] The behavioural rule from Expose is present in the agent's instruction channel.

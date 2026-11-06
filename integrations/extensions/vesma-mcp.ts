@@ -44,7 +44,7 @@ const VESMA_STANDING_HINT = [
 	"- Session start: call vesma_recall_context(project=<current-project>) BEFORE reading project files; surface a <=4-line memory header. Never block on failure.",
 	"- Before context compaction, session end or handoff: vesma_save_context(project, goals, completed, next_steps) — unsaved context is lost.",
 	"- PRIORITY ops: vesma_search before architectural decisions and before web searches; vesma_add when you learn something non-obvious or make a decision; vesma_agent_recall when resuming a named agent role.",
-	"- Tag contract on every vesma_add/vesma_ingest_url: exactly one project:<slug>, one agent:<slug>, at least one vesma:<subtype>.",
+	"- Tag contract on every vesma_add/vesma_ingest_url: exactly one project:<slug>, at least one vesma:<subtype>. Do NOT author an agent:<slug> tag — the server mints it from the token; pass your executor role via the specialist parameter (e.g. specialist=\"tech-lead\").",
 ].join("\n");
 
 interface McpTool {

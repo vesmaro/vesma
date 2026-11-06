@@ -561,29 +561,37 @@ vesma_add(
 
 ### Initiator vs Executor tagging
 
-When a subagent writes a reasoning trace to memory, two tags identify
-the delegation chain:
+When a subagent writes a reasoning trace to memory, the delegation
+chain is identified by (server 6.11+, the two-layer identity):
 
-| Tag | Role | Who |
+| Tag / parameter | Role | Who |
 |-----|------|-----|
-| `agent:<slug>` | **Executor** | The subagent that performed the work |
+| `agent:<slug>` | **Executor (harness)** | The subagent that performed the work — minted by the server from the token; do NOT author it yourself |
+| `specialist` (parameter) | **Executor (role)** | The named specialist role behind the work, e.g. `specialist="gcw-senior-system-engineer"` — attribution only; the server mints `specialist:<slug>` |
 | `source:<slug>` | **Initiator** | The senior agent that delegated the task |
 
 Use `source:` ONLY when the entry is the result of a delegated task
 (subagent → senior). For entries written by a senior agent directly
 (no delegation), omit `source:` — the `agent:` tag is sufficient.
+DEPRECATED pattern: hardcoding the role into the identity tag (e.g.
+`agent:tech-lead` to mean "the tech-lead specialist") — migrate to the
+`specialist` parameter; a foreign `agent:` tag now fails with a
+namespace violation pointing at `specialist`.
 
 ### Tag discipline
 
-- **Never omit required tags.** If you do not know the project or agent,
-  determine it before calling `vesma_add`. Do not guess.
+- **Never omit required tags.** If you do not know the project,
+  determine it before calling `vesma_add`. Do not guess. (The
+  `agent:` tag is not yours to supply — the server mints it.)
 - **Do not invent new `vesma:` subtypes.** If you need a category that does not
   exist, propose it via PR to the tag contract — do not use an ad-hoc value.
 - **One `project:` per entry.** If a learning spans projects, write one entry
   per project, or use `project:shared` if it is genuinely cross-project.
 - **`agent:user` for user-authored content.** When the user provides a fact
   or decision directly, tag it `agent:user` — do not attribute it to the
-  agent that happened to be running.
+  agent that happened to be running. (Legacy local-CLI convention; on the
+  /mcp plane the server mints `agent:` from the token and roles ride the
+  `specialist` parameter instead.)
 - **Use `vesma:` prefix for new writes.** `gcw:` is a read-only alias for
   legacy data; it works but is deprecated and will be removed in a future
   major release. Never create new `gcw:` tags.
