@@ -149,6 +149,24 @@ class NamespaceViolationError(Exception):
     """
 
 
+class AgentNamespaceViolationError(NamespaceViolationError):
+    """A client claimed a FOREIGN AGENT IDENTITY on a write (layer 1).
+
+    The teachable twin: raised ONLY by the identity-mint checks
+    (:func:`enforce_agent_tags` — a client-authored ``agent:<slug>`` tag
+    — and :func:`enforce_agent_arg` — a foreign owner argument), i.e.
+    the harness told the server "write me as agent X" while its token
+    says otherwise. The canonical root cause since the ADR-0050
+    addendum: a harness hardcoding its SPECIALIST role
+    (``agent:tech-lead``) into the authoring-agent tag. The dispatch
+    renders this subclass with the specialist-attribution hint (the
+    fixing action named in the error); the row-ownership refusals
+    (:func:`assert_rows_owned`, :func:`enforce_bulk_rename_prefixes`)
+    stay on the base class — a foreign-ROW mutation has no
+    specialist-shaped fix, and the hint there would mislead.
+    """
+
+
 def record_owner(tags: list[str] | tuple[str, ...] | None) -> str:
     """The ``agent:<slug>`` slug of a record's tags, ``""`` when unowned.
 
@@ -181,7 +199,7 @@ def enforce_agent_tags(tags: list[str], identity: McpIdentity | None) -> list[st
     expected = f"{AGENT_TAG_PREFIX}{identity.agent_id}"
     for tag in tags:
         if tag.startswith(AGENT_TAG_PREFIX) and tag != expected:
-            raise NamespaceViolationError(
+            raise AgentNamespaceViolationError(
                 f"tag {tag!r} mints a foreign agent namespace; this request is "
                 f"authenticated as agent {identity.agent_id!r} — write under "
                 f"{expected!r} (enforced agent:<slug>, ADR-0050 §4)"
@@ -258,7 +276,7 @@ def enforce_agent_arg(
     if identity is None or agent is None:
         return agent
     if agent != identity.agent_id:
-        raise NamespaceViolationError(
+        raise AgentNamespaceViolationError(
             f"{surface}: agent={agent!r} mints a foreign agent namespace; this "
             f"request is authenticated as agent {identity.agent_id!r} "
             f"(enforced agent:<slug>, ADR-0050 §4)"
@@ -377,6 +395,7 @@ __all__ = [
     "CROSS_READ_MODES",
     "DEFAULT_CALLS_PER_MINUTE",
     "QUOTA_WINDOW_SECONDS",
+    "AgentNamespaceViolationError",
     "CrossReadMode",
     "McpIdentity",
     "NamespaceViolationError",

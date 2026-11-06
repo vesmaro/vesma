@@ -43,6 +43,7 @@ from vesma.context_rewrite import ContextRewriteRateLimitError
 from vesma.heartbeat import native_heartbeat_tail
 from vesma.hooks import HOOK_ACTIONS, dispatch_hook
 from vesma.mcp_namespace import (
+    AgentNamespaceViolationError,
     McpIdentity,
     NamespaceViolationError,
     assert_rows_owned,
@@ -2344,7 +2345,25 @@ async def _call_tool_dispatch(name: str, arguments: dict[str, Any]) -> list[Text
         # reject-LOUD: a typed, distinct result (never a silent strip and
         # never the generic error rendering) so a harness whose client
         # tags disagree with its token identity finds out immediately.
-        return [TextContent(type="text", text=f"❌ Namespace violation (ADR-0050):\n{exc}")]
+        # Fix-slice 2026-11-06 (owner directive): an AGENT-IDENTITY mint
+        # on a WRITE (AgentNamespaceViolationError — a client-authored
+        # agent:<slug> tag or a foreign owner argument) is the canonical
+        # "harness hardcoded its specialist role into the identity tag"
+        # mistake since the specialist-attribution addendum, so the
+        # render carries the fixing hint as its second sentence. The
+        # row-ownership refusals (assert_rows_owned /
+        # enforce_bulk_rename_prefixes — base class) stay hintless: a
+        # foreign-ROW mutation has no specialist-shaped fix.
+        text = f"❌ Namespace violation (ADR-0050):\n{exc}"
+        if isinstance(exc, AgentNamespaceViolationError):
+            text = (
+                f"{text}\n"
+                "Hint: to record yourself as the executor (a role), pass the "
+                'specialist parameter instead — e.g. specialist="tech-lead" '
+                "(attribution only; the agent: tag is minted server-side from "
+                "your token)."
+            )
+        return [TextContent(type="text", text=text)]
     except TagContractError as exc:
         return [TextContent(type="text", text=f"❌ Tag contract violation:\n{exc}")]
     except Exception as exc:
@@ -2700,6 +2719,11 @@ def _import_namespace_prescan(
         try:
             enforce_agent_tags(list(tags), identity)
         except NamespaceViolationError as exc:
+            # Intentional DOWN-grade to the base class: import is a bulk
+            # RESTORE surface, not an authoring one — the specialist
+            # parameter hint would mislead here (the caller cannot fix a
+            # foreign-authored archive by passing specialist=), so the
+            # render keeps the plain violation text.
             raise NamespaceViolationError(f"vesma_import: row {idx}: {exc}") from exc
 
     # F-1 (cascade review, wave W3): merge+overwrite REPLACES an existing

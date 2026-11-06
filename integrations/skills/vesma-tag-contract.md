@@ -27,8 +27,15 @@ on it.
 | Tag | Format | Cardinality | Purpose |
 |-----|--------|-------------|---------|
 | `project:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Binds entry to a codebase / initiative |
-| `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | Agent that authored the memory (use `agent:user` for user-authored) |
+| `agent:<slug>` | `[a-z0-9][a-z0-9\-_]*` | **exactly 1** | The harness identity — **minted by the server from the token; do NOT author it yourself** (a client-authored foreign `agent:` tag is rejected loudly since W3). DEPRECATED pattern: self-authoring "the authoring agent tag" — migrate to the `specialist` parameter below. |
 | `vesma:<subtype>` | see table below | **at least 1** | Cognitive category (legacy `vesma:<subtype>` accepted on input) |
+
+Two-layer identity (server 6.11+, ADR-0050 addendum): the `agent:` tag
+carries WHOSE harness wrote the record (token-enforced), the optional
+`specialist` parameter carries the executor ROLE behind the write
+(e.g. `specialist="tech-lead"` in `vesma_add`) — pure attribution, the
+server mints the `specialist:<slug>` tag itself. Never encode your
+role into the `agent:` tag.
 
 ### Vesma subtypes (whitelist)
 
@@ -68,8 +75,10 @@ Unknown prefixes not listed here are **rejected** in strict mode.
 1. **Identify the project** — the codebase or initiative this entry belongs
    to. If unknown, determine it before calling `vesma_add`.
 
-2. **Identify the agent** — the agent slug that authored this entry. Use
-   `agent:user` for user-provided content.
+2. **Do NOT identify the agent yourself** — the server mints the
+   `agent:<slug>` tag from your token. If you worked as a named
+   SPECIALIST role, pass it via the `specialist` parameter (e.g.
+   `specialist="senior-system-engineer"`) — attribution, never identity.
 
 3. **Choose the subtype** — pick exactly one `vesma:<subtype>` from the
    whitelist. If none fits, do not invent one — propose a new subtype via
@@ -85,23 +94,26 @@ Unknown prefixes not listed here are **rejected** in strict mode.
      content=<body>,
      tags=[
        "project:<slug>",
-       "agent:<slug>",
        "vesma:<subtype>",
        "<optional>:<value>"
-     ]
+     ],
+     specialist="<role>"    # optional executor-role attribution
    )
    ```
 
 ## DISCIPLINE
 
-- **Never omit required tags.** If you do not know the project or agent,
-  determine it before writing. Do not guess.
+- **Never omit required tags.** If you do not know the project,
+  determine it before writing. Do not guess. (The `agent:` tag is not
+  yours to supply — the server mints it.)
 - **Do not invent new `vesma:` subtypes.** Propose additions via PR to the tag
   contract.
 - **One `project:` per entry.** If a learning spans projects, write one
   entry per project, or use `project:shared` if genuinely cross-project.
-- **`agent:user` for user-authored content.** Do not attribute user-provided
-  facts to the agent that happened to be running.
+- **Roles go in `specialist`, never in `agent:`.** Do not attribute
+  user-provided facts to any agent — and do not hardcode your executor
+  role (e.g. `agent:tech-lead`) into the identity tag; pass
+  `specialist="<role>"` instead.
 - **Slugs are lowercase.** `[a-z0-9][a-z0-9\-_]*` — no uppercase, no spaces.
 
 ## See also

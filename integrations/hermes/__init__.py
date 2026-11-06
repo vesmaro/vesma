@@ -173,9 +173,11 @@ VESMA_ADD_SCHEMA: dict[str, Any] = {
     "name": "vesma_add",
     "description": (
         "Add a memory entry to Vesma. Tag contract is mandatory: "
-        "exactly one project:<slug>, one agent:<slug>, and at least one "
-        "vesma:<subtype>. Write what you would want to read back in 30 days. "
-        "One idea per entry.\n\n"
+        "exactly one project:<slug> and at least one vesma:<subtype> — "
+        "do NOT author an agent:<slug> tag (the server mints it from the "
+        "token); pass your executor role via the optional specialist "
+        "parameter instead. Write what you would want to read back in 30 "
+        "days. One idea per entry.\n\n"
         "vesma subtypes: session, checkpoint, bug-pattern, learning, "
         "decision, rule, open-question, legacy."
     ),
@@ -186,7 +188,11 @@ VESMA_ADD_SCHEMA: dict[str, Any] = {
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": ('Required: ["project:<slug>", "agent:<slug>", "vesma:<subtype>"].'),
+                "description": (
+                    'Required: ["project:<slug>", "vesma:<subtype>"] — the agent: '
+                    "tag is minted server-side from the token; use the specialist "
+                    "parameter for the executor role."
+                ),
             },
             "title": {"type": "string", "description": "Short title (optional)."},
             "memory_type": {
@@ -501,10 +507,12 @@ class VesmaMemoryProvider(MemoryProvider):
             "vesma_agent_recall to recover your own prior findings. Use "
             "vesma_compress / vesma_retrieve to shrink and rehydrate "
             "large tool outputs losslessly.\n"
-            "Tag contract: project:<slug> + agent:<slug> + vesma:<subtype> "
+            "Tag contract: project:<slug> + vesma:<subtype> "
             "(session|checkpoint|bug-pattern|learning|decision|rule|"
-            "open-question|legacy). Search first, write sparingly, never "
-            "block on memory failure."
+            "open-question|legacy); the agent: tag is minted server-side "
+            "from the token (never author it yourself) and the executor "
+            "role rides the specialist parameter. Search first, write "
+            "sparingly, never block on memory failure."
         )
 
     # -- Prefetch (pre_llm_call → assemble_context, off the turn loop) ----
