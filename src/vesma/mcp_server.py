@@ -62,6 +62,7 @@ from vesma.models import (
     MemoryStatus,
     MemoryType,
     TagContractError,
+    mint_specialist_tag,
     validate_tag_contract,
 )
 
@@ -553,6 +554,17 @@ async def _canonical_tools() -> list[Tool]:
                             "severity:, stack:, applyTo:, source: prefixes."
                         ),
                     },
+                    "specialist": {
+                        "type": "string",
+                        "description": (
+                            "Optional specialist attribution — the executor ROLE behind "
+                            "this write (e.g. 'tech-lead', 'senior-system-engineer'). "
+                            "BARE slug, 1-64 chars of [a-z0-9_-], normalized to lowercase; "
+                            "the server mints the specialist:<slug> tag itself. Pure "
+                            "attribution (ADR-0050 addendum): it never overrides or "
+                            "replaces the enforced agent:<slug> identity."
+                        ),
+                    },
                     "memory_type": {
                         "type": "string",
                         "enum": ["note", "fact", "snippet", "bookmark", "conversation"],
@@ -691,6 +703,16 @@ async def _canonical_tools() -> list[Tool]:
                             "save boundary (one mint point, at most one task per "
                             "record); recall it with task= on vesma_recall_context "
                             "/ vesma_search / vesma_list_recent."
+                        ),
+                    },
+                    "specialist": {
+                        "type": "string",
+                        "description": (
+                            "Optional specialist attribution — the executor ROLE "
+                            "(e.g. 'tech-lead'). BARE slug, 1-64 chars of [a-z0-9_-], "
+                            "lowercased; the save boundary mints the specialist:<slug> "
+                            "tag. Pure attribution (ADR-0050 addendum): never overrides "
+                            "the enforced agent:<slug> identity."
                         ),
                     },
                     "language": {
@@ -912,6 +934,15 @@ async def _canonical_tools() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "Tags (must include project:, agent:, vesma:)",
                     },
+                    "specialist": {
+                        "type": "string",
+                        "description": (
+                            "Optional specialist attribution — the executor ROLE "
+                            "(e.g. 'tech-lead'). BARE slug, 1-64 chars of [a-z0-9_-], "
+                            "lowercased; the server mints the specialist:<slug> tag. "
+                            "Pure attribution (ADR-0050 addendum)."
+                        ),
+                    },
                 },
                 "required": ["url", "tags"],
             },
@@ -953,6 +984,15 @@ async def _canonical_tools() -> list[Tool]:
                     "source_url": {
                         "type": "string",
                         "description": "Optional provenance URL for the document",
+                    },
+                    "specialist": {
+                        "type": "string",
+                        "description": (
+                            "Optional specialist attribution — the executor ROLE "
+                            "(e.g. 'tech-lead'). BARE slug, 1-64 chars of [a-z0-9_-], "
+                            "lowercased; the server mints the specialist:<slug> tag on "
+                            "every chunk. Pure attribution (ADR-0050 addendum)."
+                        ),
                     },
                 },
                 "required": ["text", "doc_id", "tags"],
@@ -2879,6 +2919,15 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         # typed refusal (the mint-protection class extended to the
         # ownership tag). Non-agent tags are untouched.
         tags = enforce_agent_tags(tags, identity)
+        # Specialist attribution (ADR-0050 addendum, layer 2): the
+        # OPTIONAL executor-role channel. The server validates the bare
+        # slug and mints specialist:<slug> itself — the client never
+        # threads the tag through `tags`. Pure attribution: it joins the
+        # enforced agent:<slug> (layer 1 untouched), participates in no
+        # ownership decision, and an invalid/reserved value fails loud.
+        specialist_tag = mint_specialist_tag(args.get("specialist"))
+        if specialist_tag is not None:
+            tags = [*tags, specialist_tag]
         # Derive denormalised fields from validated tags
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
@@ -3057,6 +3106,11 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
             agent=checkpoint_agent,
             session=args.get("session"),
             task=args.get("task"),
+            # Specialist attribution (ADR-0050 addendum, layer 2): the
+            # save boundary validates the bare slug and mints the
+            # specialist:<slug> tag next to the task tag. Attribution
+            # only — the checkpoint's ownership stays agent:<slug>.
+            specialist=args.get("specialist"),
             # cascade QA P3-4 twin parity: REST /context/save stamps
             # SESSION_CONTEXT; the MCP twin now does the same (was the
             # NOTE default). Dedup is unaffected (hash = fields + agent
@@ -3482,6 +3536,11 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         )
         # W3 (ADR-0050 §4): the enforced agent namespace, same as vesma_add.
         tags = enforce_agent_tags(tags, identity)
+        # Specialist attribution (ADR-0050 addendum, layer 2) — same
+        # mint-at-dispatch shape as vesma_add above.
+        specialist_tag = mint_specialist_tag(args.get("specialist"))
+        if specialist_tag is not None:
+            tags = [*tags, specialist_tag]
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
         memory = mgr.ingest_url(url_clean, tags=tags, project=project, agent=agent)
@@ -3507,6 +3566,12 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         )
         # W3 (ADR-0050 §4): the enforced agent namespace, same as vesma_add.
         tags = enforce_agent_tags(tags, identity)
+        # Specialist attribution (ADR-0050 addendum, layer 2) — same
+        # mint-at-dispatch shape as vesma_add above; every chunk of the
+        # document inherits the specialist tag with the rest of the tags.
+        specialist_tag = mint_specialist_tag(args.get("specialist"))
+        if specialist_tag is not None:
+            tags = [*tags, specialist_tag]
         project = next((t[len("project:") :] for t in tags if t.startswith("project:")), "")
         agent = next((t[len("agent:") :] for t in tags if t.startswith("agent:")), "")
         doc_id = str(args["doc_id"]).strip()

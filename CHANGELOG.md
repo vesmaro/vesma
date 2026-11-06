@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Two-layer identity on memory writes: the enforced harness namespace (`agent:<token-sub>`, W3) now carries an optional SPECIALIST attribution — the executor ROLE (owner directive 2026-11-06; ADR-0050 addendum «specialist-атрибуция»)** — a record can now answer «кто делал запись» (which team specialist performed the work) WITHOUT weakening the security layer: layer 1 stays byte-identical and pinned (a client-authored `agent:<slug>` tag that is not the request identity is still the loud `NamespaceViolationError`; a foreign agent is refused even when the specialist matches), layer 2 is a NEW OPTIONAL `specialist` argument (bare slug) on the writing surfaces (`vesma_add`, `vesma_save_context`, `vesma_ingest_url`, `vesma_ingest_document` + CLI `vesma add --specialist`): the server mints the tag ITSELF through the ONE mint authority `mint_specialist_tag` — lowercase, the same slug class as agent ids (`[a-z0-9_-]{1,64}`), fail-loud on reserved namespace prefixes (`project:`/`agent:`/`task:`/`vesma:`/`mnemos:`/… and the bare word `committee`) BEFORE the generic colon-injection check (a specialist value is a bare slug, `foo:bar` is not one) — the minted `specialist:<slug>` tag can never collide with the enforced `agent:` namespace. THE INVARIANT (archcom-P0-1 class): attribution is NOT ownership — `record_owner` reads ONLY `agent:`; a forged specialist grants no workflow/tag mutations on foreign rows and never widens `cross_read`; pinned by the invariant test class. Specialist is deliberately EXCLUDED from the checkpoint dedup payload (canon §10, the language/task precedent). Search over `specialist:<slug>` rides the existing tag filters for free. Files: `src/vesma/models.py` (`mint_specialist_tag` + `normalize_specialist_slug` + reserved set), `src/vesma/mcp_server.py` (dispatch ×4 + tool schemas ×4), `src/vesma/manager.py` (`save_checkpoint` seam), `src/vesma/cli/main.py` (`add --specialist`); docs: `docs/project/adr/0050-mcp-plane.md` (addendum section), `docs/{en,ru}/user/tag-contract.md`, `docs/{en,ru}/user/mcp-tools.md`; tests `tests/test_specialist_attribution.py` (new, 56 — the mint matrix incl. 17 reserved values parameterized, dispatch ×4 incl. off-plane stdio/CLI and loud-refusal-no-row, the invariant pin class, the search smoke).
+
 ## [6.10.0] — 2026-11-06
 
 ### Added

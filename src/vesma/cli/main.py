@@ -334,6 +334,16 @@ def add(
     ),
     source: Annotated[MemorySource, typer.Option("--source", "-s")] = MemorySource.CLI,
     memory_type: Annotated[MemoryType, typer.Option("--type")] = MemoryType.NOTE,
+    specialist: str = typer.Option(
+        "",
+        "--specialist",
+        help=(
+            "Specialist attribution slug — the executor ROLE behind this write "
+            "(e.g. 'tech-lead', 'senior-system-engineer'). Bare slug, 1-64 chars "
+            "of [a-z0-9_-], lowercased; the server mints the specialist:<slug> tag. "
+            "Pure attribution — never replaces the agent:<slug> identity."
+        ),
+    ),
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -374,6 +384,22 @@ def add(
     tag_list = _validate_cli_tags(
         tag_list, strict=load_settings_or_exit(config).vesma.strict_tag_contract
     )
+
+    # Specialist attribution (ADR-0050 addendum, layer 2): the OPTIONAL
+    # executor-role channel, CLI parity with the MCP vesma_add tool. The
+    # bare slug is validated + minted into specialist:<slug> here (the
+    # same mint authority the MCP dispatch uses), BEFORE the dry-run
+    # preview so the preview shows the exact tag set that would be saved.
+    if specialist:
+        from vesma.models import mint_specialist_tag
+
+        try:
+            specialist_tag = mint_specialist_tag(specialist)
+        except ValueError as exc:
+            console.print(f"[red]✗ Invalid specialist:[/red] {exc}")
+            raise typer.Exit(1) from None
+        if specialist_tag is not None:
+            tag_list = [*tag_list, specialist_tag]
 
     # ── --dry-run: validate tags + run filter, then exit without saving ──
     if dry_run:
