@@ -77,6 +77,7 @@ rejected in strict mode.
 | Tag | Format | Purpose |
 |-----|--------|---------|
 | `task:<slug>` | `[a-z0-9][a-z0-9\-_]*` (max 64) | Binds the entry to one task scope (see below) |
+| `specialist:<slug>` | `[a-z0-9][a-z0-9\-_]*` (max 64) | Executor-role attribution (ADR-0050 addendum): the specialist behind the write, minted server-side from the bare-slug `specialist` parameter (MCP write tools `vesma_add` / `vesma_save_context` / `vesma_ingest_url` / `vesma_ingest_document`, CLI `vesma add --specialist`). Pure attribution — it joins the enforced `agent:<slug>` identity and never participates in ownership/rights. |
 | `source:<slug>` | any string | Origin of the entry (chat, file, url, …) |
 | `applyTo:<glob>` | file glob | Scope a `rule` to specific file paths |
 | `milestone:<id>` | any string | Links entry to a project milestone |

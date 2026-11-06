@@ -4142,6 +4142,7 @@ class MemoryManager:
         agent: str | None = None,
         session: str | None = None,
         task: str | None = None,
+        specialist: str | None = None,
         memory_type: MemoryType = MemoryType.NOTE,
         language: str | None = None,
     ) -> tuple[Memory, bool]:
@@ -4173,7 +4174,9 @@ class MemoryManager:
            Ф2 (epic #308): the payload does NOT include ``task`` either —
            same canon §10 logic: a dedup hit returns the first-minted row
            with ITS task scope; the new call's task never rewrites a
-           stored record.
+           stored record. The ADR-0050-addendum ``specialist`` slug is
+           excluded for the SAME reason — a dedup hit returns the
+           first-minted row with its own specialist attribution.
         5. Store with server-controlled metadata stamps
            (``checkpoint_agent`` / ``checkpoint_session`` /
            ``checkpoint_dedup_key``) PLUS the canon v1.0.0 envelope
@@ -4210,6 +4213,15 @@ class MemoryManager:
         ``vesma.vesma.checkpoint_language`` config value. Every call MUST land
         on a concrete language: the envelope mint raises ``ValueError``
         on anything outside the canon enum, fail-loud.
+
+        ``specialist`` (ADR-0050 addendum, the specialist-attribution
+        layer) is the OPTIONAL executor-role attribution: the bare slug,
+        validated + minted into ``specialist:<slug>`` at this same save
+        boundary via :func:`vesma.models.mint_specialist_tag`. Pure
+        attribution — it joins (never replaces) the enforced
+        ``agent:<slug>`` ownership tag and participates in no
+        ownership/rights decision; an invalid or reserved-namespace
+        value fails loud on the same ValueError channel as ``task``.
 
         The body render ALWAYS emits the five EN sections in
         :data:`CHECKPOINT_FIELDS` order (canon §3, ArchCom option A —
@@ -4269,6 +4281,18 @@ class MemoryManager:
         task_tag: str | None = None
         if task is not None:
             task_tag = self._normalize_task_boundary(task)
+
+        # ADR-0050 addendum — specialist attribution: validate the bare
+        # slug at the SAVE boundary (the same single-authority shape as
+        # the task boundary above) and mint specialist:<slug> here, NOT
+        # per-tool. The mint helper fail-louds on reserved namespaces /
+        # prefix injection / an off-alphabet value; the minted tag is
+        # attribution only — ownership stays agent:<resolved_agent>.
+        specialist_tag: str | None = None
+        if specialist is not None:
+            from vesma.models import mint_specialist_tag
+
+            specialist_tag = mint_specialist_tag(specialist)
 
         # 2. Trivial-reject before any store side effect.
         normalized = {f: (fields.get(f) or "") for f in CHECKPOINT_FIELDS}
@@ -4353,6 +4377,8 @@ class MemoryManager:
         ]
         if task_tag is not None:
             checkpoint_tags.append(task_tag)
+        if specialist_tag is not None:
+            checkpoint_tags.append(specialist_tag)
         data = MemoryCreate(
             content="\n".join(parts),
             tags=checkpoint_tags,

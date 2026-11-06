@@ -40,3 +40,50 @@
 - Единый источник правды: записи идут через writer plane ядра со всеми инвариантами.
 - MCP-поверхность инструментов (`vesma_*`) не меняется — меняется только транспорт.
 - Номера DR-24/DR-25 резервируются волнами W4/W3; номера ADR — против свежего main.
+
+---
+
+## Аддендум: specialist-атрибуция (двухслойная идентичность) — 2026-11-06
+
+Директива владельца (2026-11-06): записи в память должны нести не только
+harness-идентичность, но и **специалиста** — роль исполнителя
+(`tech-lead` / `senior-system-engineer` / …) — для рабочей связки «кто
+делал запись».
+
+**Слой 1 не затрагивается.** `agent:<slug>` остаётся enforced-от-токена
+(клиентский `agent:`-тег обязан совпадать с токен-субъектом, иначе
+reject-loud отказ — поведение W3 байт-в-байт). Пин-тесты
+(`tests/test_specialist_attribution.py`, класс
+`TestSpecialistAttributionInvariant`) фиксируют инвариант архком-P0-1
+(359c0cdf): specialist-слой НЕ участвует ни в каких ownership/правах —
+`record_owner` читает только `agent:`; подделанный specialist не даёт
+пере-запись чужих workflow-статусов/локов (`vesma_workflow`,
+`vesma_tags` — гейты `assert_rows_owned` не менялись) и никогда не
+подменяет agent-идентичность (write с `specialist=alice`, токен
+`zcode` → в записи `agent:zcode` + `specialist:alice`).
+
+**Слой 2** — новый ОПЦИОНАЛЬНЫЙ параметр `specialist` (bare slug,
+`[a-z0-9_-]{1,64}` — тот же regex-класс, что agent slug; нормализация в
+нижний регистр, пробелы→дефисы) на поверхностях ЗАПИСИ:
+
+- MCP-инструменты: `vesma_add`, `vesma_save_context`,
+  `vesma_ingest_url`, `vesma_ingest_document`;
+- CLI-паритет: `vesma add --specialist` (CLI save-context-команды не
+  существует; import — не нужен по брифу).
+
+Сервер валидирует форму и кладёт тег `specialist:<slug>` сам: минт-точка
+— диспетчер MCP (после `validate_tag_contract` + `enforce_agent_tags`) и
+save-граница чекпоинта (рядом с task-минтом); клиент никогда не передаёт
+префикс. Единственная точка минта —
+`vesma.models.mint_specialist_tag`. Запрещены (reject-loud
+`ValueError`): значения, начинающиеся на reserved-префиксы (`project:`,
+`agent:`, `task:`, `vesma:`, `mnemos:`, `priority:`, `owner:`, `size:`,
+`source:`, `severity:`, `stack:`, `applyTo:`, bare-слово `committee`) и
+любая двоеточие-инъекция.
+
+Теги записи: `[project:*, agent:<token-sub>, specialist:<slug>?,
+vesma:<subtype>...]`. Поиск — бесплатно: `vesma_search` /
+`vesma_list_recent` уже фильтруют по тегам точным совпадением (smoke
+«поиск по `specialist:tech-lead` находит» — в тест-файле). Dedup
+чекпоинтов specialist НЕ включает (канон §10, как language/task:
+dedup-hit возвращает первую запись с её собственной specialist-атрибуцией).

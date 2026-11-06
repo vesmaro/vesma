@@ -86,6 +86,7 @@ Create a new memory entry. The MCP layer enforces the Vesma tag contract ([M2](t
 | `content` | string | **yes** | — | Text to remember. |
 | `title` | string | no | auto | Short title. |
 | `tags` | string[] | **yes** | — | Must include `project:<slug>`, `agent:<slug>`, and at least one `vesma:<subtype>` (the legacy `mnemos:<subtype>` spelling is accepted as an input alias). |
+| `specialist` | string | no | — | ADR-0050 addendum: optional specialist attribution — the executor ROLE behind this write (e.g. `tech-lead`). Bare slug, 1–64 chars of `[a-z0-9_-]`, normalized to lowercase; the server mints the `specialist:<slug>` tag itself. Pure attribution — joins the enforced `agent:<slug>` identity, never participates in ownership. |
 | `memory_type` | string | no | `note` | One of `note`, `fact`, `snippet`, `bookmark`, `conversation`. |
 | `filter_profile` | string | no | auto | One of `log`, `terminal`, `code`, `docs`, `web`, `default`. Drives M10 context filter. |
 | `verbosity` | string | no | config default | One of `default`, `terse`, `minimal`. Injects output-style guidance into the tool result framing. See [Output token reduction](#output-token-reduction-p1-7). |
@@ -343,6 +344,7 @@ Persist a session checkpoint. Agents should call this **proactively**: after mea
 | `agent` | string | no | `"user"` | Agent identity for the checkpoint — the validated identity channel (non-empty string when provided, whitespace-only rejected). Must match the server-side session→agent binding when `session` is supplied. |
 | `session` | string | no | — | Session id binding the checkpoint to a conversation. First presentation records the session→agent binding server-side; later calls with the same session but a different agent are rejected. |
 | `task` | string | no | — | ADR-0027 Phase 2 (epic #308): optional task scope — the bare slug (`[a-z0-9_-]{1,64}`, no `task:` prefix). Mints the `task:<slug>` tag on this checkpoint at the save boundary (one mint point, at most one task per record); recall it with `task=` on `vesma_recall_context` / `vesma_search` / `vesma_list_recent`. A dedup hit returns the first-minted row with ITS task scope (the new call's task never rewrites a stored record). |
+| `specialist` | string | no | — | ADR-0050 addendum: optional specialist attribution — the executor ROLE (e.g. `tech-lead`). Bare slug, 1–64 chars of `[a-z0-9_-]`, lowercased; the save boundary mints the `specialist:<slug>` tag. Pure attribution — never overrides the enforced `agent:<slug>` identity. Excluded from the dedup payload (canon §10): a dedup hit returns the first-minted row with its own specialist attribution. |
 
 Vesma synthesises the parts into a single Markdown memory tagged with `project:<slug>`, `agent:<validated-agent>` (`agent:user` when omitted), and `vesma:checkpoint` — plus the optional `task:<slug>` when `task` is supplied. The validated identity is also stamped into server-controlled metadata (`checkpoint_agent`, `checkpoint_session`) — that metadata is the source of truth for per-agent attribution; tags are display-only.
 

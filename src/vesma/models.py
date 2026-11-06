@@ -397,6 +397,40 @@ _TASK_SLUG_PATTERN = r"[a-z0-9_\-]{1,64}"
 # row.tags) can never hit "task:t1\n" (Ф1-PREP, #360 review item 2).
 TASK_SLUG_RE: re.Pattern[str] = re.compile(rf"^{_TASK_SLUG_PATTERN}\Z")
 _TASK_RE = re.compile(rf"^task:{_TASK_SLUG_PATTERN}\Z")
+# ADR-0050 addendum — the specialist-attribution layer (layer 2). The
+# OPTIONAL ``specialist:<slug>`` tag names the EXECUTOR ROLE behind a
+# write ("who did this work": tech-lead, senior-system-engineer, …) in
+# addition to the enforced harness identity (``agent:<slug>``, layer 1 —
+# token-minted, untouched here). Pure attribution: the specialist
+# namespace participates in NO ownership/rights decision —
+# ``record_owner`` and every row-ownership check read ``agent:`` only.
+# Same slug alphabet/length as project/agent/task.
+# Anchored with ``\Z`` (absolute end), NOT ``$`` — the same #360
+# newline-dead-tag discipline as the task pattern above.
+SPECIALIST_TAG_PREFIX: Final[str] = "specialist:"
+SPECIALIST_SLUG_RE: re.Pattern[str] = re.compile(rf"^{_TASK_SLUG_PATTERN}\Z")
+_SPECIALIST_TAG_RE = re.compile(rf"^specialist:{_TASK_SLUG_PATTERN}\Z")
+# Values that impersonate an existing tag namespace (or a reserved bare
+# word) are refused BEFORE the alphabet check so the caller gets the
+# precise "reserved namespace" error, not a generic invalid-slug one.
+# Compared case-insensitively against the NORMALIZED (lowercased) value —
+# ``applyTo:`` covers ``applyto:``/``APPLYTO:`` alike. ``committee`` is a
+# reserved bare word (no colon) used as a free tag in the wild.
+SPECIALIST_RESERVED_PREFIXES: Final[tuple[str, ...]] = (
+    "project:",
+    "agent:",
+    "task:",
+    "vesma:",
+    "mnemos:",
+    "priority:",
+    "owner:",
+    "size:",
+    "source:",
+    "severity:",
+    "stack:",
+    "applyto:",
+    "committee",
+)
 # Accepts BOTH namespaces: ``vesma:`` (canonical since 6.0) and the legacy
 # ``mnemos:`` spelling. After alias migration the ONLY ``mnemos:`` tag that
 # can survive validation is the byte-stable ``mnemos:no-federate`` trust
@@ -509,6 +543,85 @@ def normalize_task_slug(value: str) -> str:
     unreachable at query time exactly like the #368 dead-tag case).
     """
     return value.strip().lower().replace(" ", "-")
+
+
+def normalize_specialist_slug(value: str) -> str:
+    """Normalize a specialist attribution slug to the canonical form.
+
+    The specialist twin of :func:`normalize_project_slug` /
+    :func:`normalize_task_slug` (the #400 single-authority doctrine,
+    ADR-0050 addendum): lowercases (the brief's «регистр — нормализовать
+    в нижний»), strips surrounding whitespace, replaces internal spaces
+    with hyphens — the SAME normalization the project/task slug callers
+    apply, so a specialist slug can never normalize differently from a
+    project slug of the same shape.
+
+    Returns ``""`` for empty/whitespace-only input — callers decide
+    whether absence is valid. A non-empty result either matches
+    :data:`SPECIALIST_SLUG_RE` or the input is NOT salvageable and the
+    caller must reject it fail-loud (see :func:`mint_specialist_tag` —
+    the single mint authority for the ``specialist:<slug>`` tag).
+    """
+    return value.strip().lower().replace(" ", "-")
+
+
+def mint_specialist_tag(value: str | None) -> str | None:
+    """Validate the specialist argument and mint ``specialist:<slug>``.
+
+    The ONE mint authority for the specialist-attribution layer
+    (ADR-0050 addendum): the caller passes the BARE slug (never the
+    ``specialist:`` prefix — the server mints the tag itself), the
+    helper normalizes (:func:`normalize_specialist_slug`), then
+    fail-loudly rejects, in order:
+
+    1. a value normalizing onto a reserved namespace prefix
+       (:data:`SPECIALIST_RESERVED_PREFIXES` — ``project:``, ``agent:``,
+       ``task:``, ``vesma:``, ``mnemos:``, ``priority:``, ``owner:``,
+       ``size:``, ``source:``, ``severity:``, ``stack:``,
+       ``applyto:`` and the bare word ``committee``);
+    2. any other colon-carrying value (prefix injection — a specialist
+       value is a BARE slug, ``foo:bar`` is not one);
+    3. anything outside the slug alphabet
+       (:data:`SPECIALIST_SLUG_RE` — ``[a-z0-9_-]{1,64}``, the same
+       class as the agent slug).
+
+    ``None`` (the argument omitted) passes through as ``None`` — the
+    layer is optional, absence mints nothing. The returned tag is
+    guaranteed to match :data:`_SPECIALIST_TAG_RE`, so it flows through
+    :func:`validate_tag_contract` untouched (an unknown prefix family
+    the contract does not police) and can never collide with the
+    enforced ``agent:`` namespace.
+
+    Raises:
+        ValueError: fail-loud, with the reason named — the same error
+            channel the task-boundary and checkpoint-identity checks
+            use (the dispatch renders it as ``❌ Error: ...``).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"specialist must be a slug string (got {type(value).__name__})")
+    normalized = normalize_specialist_slug(value)
+    if not normalized:
+        raise ValueError("specialist must be a non-empty slug when provided")
+    for prefix in SPECIALIST_RESERVED_PREFIXES:
+        if normalized.startswith(prefix):
+            raise ValueError(
+                f"specialist={value!r} impersonates a reserved tag namespace "
+                f"({prefix}*) — pass the bare specialist slug "
+                f"(1-64 chars of [a-z0-9_-], no prefix)"
+            )
+    if ":" in normalized:
+        raise ValueError(
+            f"specialist={value!r} carries a prefix separator — pass the BARE "
+            f"specialist slug (the server mints the specialist:<slug> tag itself)"
+        )
+    if SPECIALIST_SLUG_RE.fullmatch(normalized) is None:
+        raise ValueError(
+            f"specialist must be 1-64 characters of [a-z0-9_-] after normalization "
+            f"(got {normalized!r})"
+        )
+    return f"{SPECIALIST_TAG_PREFIX}{normalized}"
 
 
 class TagContractError(ValueError):
