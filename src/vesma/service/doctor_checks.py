@@ -100,11 +100,28 @@ def _group_or_world_writable(mode: int) -> bool:
 
 def _dr01() -> Finding:
     dir_specs: list[tuple[Path, int]] = list(layout.canonical_dir_specs())
+    # Zone discipline (cards a7830757 + 055a4c58; TL decision 2026-11-08):
+    # when the SYSTEM profile is active, components_dir()/env_dir()
+    # dispatch to the FHS slots (/etc/vesma/…) — the manifest's zone,
+    # audited by DR-15 against the manifest (0750 root:vesma dirs,
+    # 0600 vesma:vesma secrets per the fail-closed loader contract).
+    # DR-01 is the USER-plane table (0700, euid-owned): auditing the
+    # system slots here contradicted the manifest and made the doctor
+    # argue with itself (DR-01 demanding 0700 on dirs DR-15 wants 0750).
+    # The env-FILES leg obeys the same zone rule: DR-15 already audits
+    # mode + the manifest owner there, and this leg's ``owner ==
+    # os.geteuid()`` would false-FAIL the loader-correct vesma-owned
+    # secret when the doctor runs as root.
+    system_slots: set[Path] = set()
+    if layout.system_profile_active():
+        system_slots = {fhs.system_components_dir(), fhs.system_env_dir()}
     problems: list[str] = []
     fixes: list[str] = []
     checked = 0
     hard = False  # weakened rights / wrong owner / non-0600 env file = FAIL
     for path, expected in dir_specs:
+        if path in system_slots:
+            continue  # system FHS slot — DR-15's manifest-driven zone
         mode = _mode(path)
         if mode is None:
             continue  # not created yet — install has not run; not a finding
@@ -117,7 +134,7 @@ def _dr01() -> Finding:
             problems.append(f"{path}: mode {mode:04o} (stricter than {expected:04o} — review)")
             fixes.append(f"chmod {expected:04o} {path}")
     env_dir = layout.env_dir()
-    if env_dir.is_dir():
+    if env_dir not in system_slots and env_dir.is_dir():
         for env_file in sorted(env_dir.glob("*.env")):
             mode = _mode(env_file)
             checked += 1

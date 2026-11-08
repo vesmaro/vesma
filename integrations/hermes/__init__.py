@@ -82,7 +82,7 @@ from tools.registry import tool_error
 
 from vesma.adapters.hermes import HermesMemoryAdapter
 from vesma.config import Settings
-from vesma.models import MemoryType
+from vesma.models import MemoryType, mint_specialist_tag
 from vesma.sdk import VesmaSDK
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,17 @@ VESMA_ADD_SCHEMA: dict[str, Any] = {
                 ),
             },
             "title": {"type": "string", "description": "Short title (optional)."},
+            "specialist": {
+                "type": "string",
+                "description": (
+                    "Optional specialist attribution — the executor ROLE behind "
+                    "this write (e.g. 'tech-lead', 'senior-system-engineer'). "
+                    "BARE slug, 1-64 chars of [a-z0-9_-], normalized to lowercase; "
+                    "the server mints the specialist:<slug> tag itself. Pure "
+                    "attribution (ADR-0050 addendum): it never overrides or "
+                    "replaces the enforced agent:<slug> identity."
+                ),
+            },
             "memory_type": {
                 "type": "string",
                 "description": "note | fact | snippet | bookmark | conversation",
@@ -665,9 +676,18 @@ class VesmaMemoryProvider(MemoryProvider):
             return json.dumps({"results": items, "count": len(items)})
 
         if tool_name == "vesma_add":
+            tags = list(args["tags"])
+            # ADR-0050 addendum — the specialist channel, same mint authority
+            # as the canonical vesma_add dispatch (mcp_server): the caller
+            # never authors the agent: tag NOR the specialist: tag — both are
+            # minted server-side (the specialist slug validated fail-loud
+            # here, the error surfaces through handle_tool_call's renderer).
+            specialist_tag = mint_specialist_tag(args.get("specialist"))
+            if specialist_tag is not None:
+                tags.append(specialist_tag)
             memory = adapter.add_memory(
                 args["content"],
-                args["tags"],
+                tags,
                 title=args.get("title"),
                 memory_type=MemoryType(args.get("memory_type", "note")),
             )

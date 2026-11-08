@@ -5,13 +5,20 @@ stray file fails the load), LY-05 (exactly one venv per python child),
 LY-08 (exact == pins, URL requirements rejected), unit write + daemon-
 reload semantics, idempotent reinstall, uninstall scoping.
 
-The real venv/pip leg is replaced by a fake installer in the fixture —
-no test ever touches PyPI or the host user systemd bus.
+The real venv/pip leg is replaced by a fake installer in most classes —
+no test outside :class:`TestBinaryChildInstall` touches PyPI or the host
+user systemd bus. That class runs the whole ``install()`` walk for real
+(the binary-child mechanics are checked against actual venv/pip/rename
+behavior) and therefore pins an ALREADY-PUBLISHED engine version — see
+``PINNED_PUBLISHED_VERSION`` below.
 """
 
 from __future__ import annotations
 
+import functools
+import json
 import os
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -21,6 +28,37 @@ from vesma.service import layout, unitgen
 from vesma.service.errors import CLAMP_VIOLATION, MANIFEST_SCHEMA_INVALID, ManifestError
 from vesma.service.install import InstallError, install, install_component, uninstall
 from vesma.service.manifest import bundled_manifest_path, load_bundled_manifest
+
+#: The engine version :class:`TestBinaryChildInstall` installs from the
+#: live registry. The bundled metrics manifest pins
+#: ``vesma=={engine_version}``, which expands to the CURRENT working-tree
+#: version — a version that does NOT exist on PyPI yet on any release
+#: commit after the version bump (the 6.11.0 train went deterministically
+#: red on exactly this). Policy: the class checks install MECHANICS
+#: against the real registry, not the version currently being built, so
+#: it pins an already-published release. Bump this constant BY HAND at
+#: major hands (when the pinned release ages out of relevance); the
+#: :func:`_pinned_version_on_pypi` guard skips the class with a clear
+#: reason if the pinned version ever disappears from PyPI — it never
+#: fails because of the pin (card 8143cc7e).
+PINNED_PUBLISHED_VERSION = "6.10.0"
+
+
+@functools.lru_cache(maxsize=1)
+def _pinned_version_on_pypi(version: str = PINNED_PUBLISHED_VERSION) -> bool:
+    """True when the pinned install-check version resolves on PyPI.
+
+    Only a DEFINITIVE PyPI answer skips: registry reachable and the
+    version absent from ``releases``. No answer (offline CI leg, timeout)
+    runs the leg's usual path — the same contract as the
+    ``_engine_version_on_pypi`` guard of tests/test_service_system_install.py.
+    """
+    try:
+        with urllib.request.urlopen("https://pypi.org/pypi/vesma/json", timeout=20) as resp:
+            releases = json.load(resp).get("releases", {})
+    except OSError:
+        return True  # no answer — run the leg's usual path
+    return version in releases
 
 
 @pytest.fixture
@@ -848,6 +886,21 @@ class TestBinaryChildInstall:
     """The installer materializes a binary child's pinned artifact into
     its slot (wave Q, ArchCom 2026-10-29): sha-pinned, idempotent,
     .bak-disciplined, fail-closed without the pin."""
+
+    @pytest.fixture(autouse=True)
+    def published_engine_pin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The REAL venv leg (no fake_venv_installer here) pins the
+        published constant instead of the working-tree version — the
+        bundled metrics manifest's ``vesma=={engine_version}`` otherwise
+        expands to a version that is not on PyPI yet on release commits
+        (card 8143cc7e). Skip — never fail — when the pin leaves PyPI."""
+        if not _pinned_version_on_pypi():
+            pytest.skip(
+                f"pinned install-check version {PINNED_PUBLISHED_VERSION} is no "
+                "longer on PyPI — bump the PINNED_PUBLISHED_VERSION constant "
+                "in tests/test_service_install.py"
+            )
+        monkeypatch.setattr(install_mod, "_engine_version", lambda: PINNED_PUBLISHED_VERSION)
 
     @pytest.fixture
     def binary_child(self, isolated_home: Path) -> tuple[Path, Path, str]:

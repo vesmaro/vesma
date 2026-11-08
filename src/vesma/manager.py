@@ -2660,6 +2660,101 @@ class MemoryManager:
             return []
         return self.sqlite.get_workflow_history(memory_id, limit=limit)
 
+    # ── reown (operator-only, off-plane) — W3 tail, card 87cb4239 ─────────
+
+    def reown(self, memory_id: str, *, agent: str, reason: str) -> dict[str, Any]:
+        """Reassign a memory's ownership — rewrite its ``agent:`` tag.
+
+        Operator-only administrative surface (the root CLI ``vesma reown``);
+        deliberately NOT exposed on the MCP tool list. The W3 namespace
+        gates (``enforce_agent_tags`` / ``assert_rows_owned``, ADR-0050 §4)
+        run under the request identity, and the CLI plane is off-plane
+        (``identity=None``) — the enforcement no-ops there BY DESIGN: this
+        is the approved administrative loophole, not a bypass of the plane
+        gates. The motivating case: board rows authored before 6.10.0 carry
+        the legacy ``agent:tech-lead`` tag and are not mutable by a live
+        token (``vesma_workflow set`` refuses even ``force=True`` —
+        ownership ≠ lock, the invariant is correct); the operator reassigns
+        the row instead.
+
+        Args:
+            memory_id: Target memory.
+            agent: New owner slug (the ``agent:<slug>`` namespace; slug
+                shape is validated by the strict tag contract).
+            reason: Required human-readable reason — lands in the audit log
+                line, never in the row itself.
+
+        Returns:
+            ``{memory_id, old_owner, new_owner, reason, changed}``. When the
+            row is already owned by ``agent`` the write is a no-op
+            (``changed=False``) — nothing is rewritten and no audit line
+            lands (there is no state change to audit).
+
+        Raises:
+            ValueError: empty ``agent``/``reason``, unknown memory id,
+                tombstoned row, or a tag-contract violation (invalid slug /
+                broken resulting tag set) — the CLI maps these to exit 1.
+
+        Scope guarantee: ONLY ``agent:*`` tags are rewritten (old removed,
+        new minted); ``project:`` / ``vesma:`` / ``specialist:`` / ``task:``
+        / free tags pass through untouched. The write goes through
+        ``_commit_tags`` (strict contract + FTS5-safe ``UPDATE`` + the
+        denormalised ``agent`` column re-derivation) — the same commit path
+        every other tag mutation takes.
+        """
+        if not agent or not agent.strip():
+            raise ValueError("agent is required for reown (the new owner slug)")
+        agent = agent.strip()
+        if not reason or not reason.strip():
+            raise ValueError("reason is required for reown (audit trail)")
+        reason = reason.strip()
+
+        # Admin scope: the tombstone must be DISTINGUISHABLE from not-found
+        # (both refuse, but the operator needs to know which one happened).
+        mem = self.sqlite.get(memory_id, include_tombstoned=True)
+        if mem is None:
+            raise ValueError(f"memory {memory_id!r} not found")
+        if mem.workflow_status == "tombstoned":
+            raise ValueError(
+                f"memory {memory_id!r} is tombstoned — reown refused "
+                "(soft-deleted rows are immutable; there is no restore in Stage 1)"
+            )
+
+        from vesma.mcp_namespace import AGENT_TAG_PREFIX, record_owner
+
+        old_owner = record_owner(mem.tags)
+        if old_owner == agent:
+            return {
+                "memory_id": memory_id,
+                "old_owner": old_owner,
+                "new_owner": agent,
+                "reason": reason,
+                "changed": False,
+            }
+
+        new_tags = [t for t in mem.tags if not t.startswith(AGENT_TAG_PREFIX)]
+        new_tags.append(f"{AGENT_TAG_PREFIX}{agent}")
+        changed, err = self._commit_tags(mem, new_tags, dry_run=False, strict=True)
+        if err:
+            raise ValueError(f"reown refused: {err}")
+
+        # Audit: one loud log line per actual reassignment (reason is
+        # mandatory — see the guard above — so the line always carries it).
+        logger.warning(
+            "reown: memory %s owner %r -> %r (reason: %s)",
+            memory_id,
+            old_owner,
+            agent,
+            reason,
+        )
+        return {
+            "memory_id": memory_id,
+            "old_owner": old_owner,
+            "new_owner": agent,
+            "reason": reason,
+            "changed": bool(changed),
+        }
+
     # ── Workflow helpers ─────────────────────────────────────────────────
 
     @staticmethod

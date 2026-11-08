@@ -79,6 +79,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from integrations.hermes import (  # noqa: E402
+    VESMA_ADD_SCHEMA,
     VesmaMemoryProvider,
     _load_config,
     register,
@@ -430,3 +431,73 @@ class TestHandleToolCall:
         result = p.handle_tool_call("vesma_auto_collect_status", {})
         data = json.loads(result)
         assert data["signals"]["call_counter"]["calls_since_save"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# 9. The specialist channel on vesma_add (card cfe784f4, ADR-0050 addendum)
+# ---------------------------------------------------------------------------
+
+
+class TestVesmaAddSpecialistChannel:
+    def test_schema_declares_specialist_parameter(self):
+        """The vesma_add schema carries the optional specialist string with
+        the same attribution text as the canonical mcp_server schema."""
+        prop = VESMA_ADD_SCHEMA["parameters"]["properties"]["specialist"]
+        assert prop["type"] == "string"
+        assert "Optional specialist attribution" in prop["description"]
+        assert "never overrides or" in prop["description"]
+        # optional — never in required
+        assert "specialist" not in VESMA_ADD_SCHEMA["parameters"]["required"]
+
+    def test_specialist_is_minted_into_the_stored_tags(self):
+        """A specialist value rides the ONE mint authority: the dispatch
+        appends the server-minted specialist:<slug> tag to the caller
+        tags before the adapter write."""
+        p = _make_provider()
+        adapter = _make_mock_adapter()
+        p._adapter = adapter
+
+        p.handle_tool_call(
+            "vesma_add",
+            {
+                "content": "body",
+                "tags": ["project:hermes", "vesma:learning"],
+                "specialist": "Tech-Lead",
+            },
+        )
+
+        args, kwargs = adapter.add_memory.call_args
+        assert "specialist:tech-lead" in args[1]  # normalized + minted
+        assert "agent:tech-lead" not in args[1]  # attribution is NOT ownership
+        assert kwargs["memory_type"].value == "note"
+
+    def test_no_specialist_means_no_specialist_tag(self):
+        p = _make_provider()
+        adapter = _make_mock_adapter()
+        p._adapter = adapter
+
+        p.handle_tool_call(
+            "vesma_add",
+            {"content": "body", "tags": ["project:hermes", "vesma:learning"]},
+        )
+
+        args, _ = adapter.add_memory.call_args
+        assert not any(t.startswith("specialist:") for t in args[1])
+
+    def test_invalid_specialist_fails_loudly_before_the_write(self):
+        """A colon-carrying value (prefix injection) or a bad slug renders
+        as tool_error and the adapter write NEVER happens."""
+        p = _make_provider()
+        adapter = _make_mock_adapter()
+        p._adapter = adapter
+
+        result = p.handle_tool_call(
+            "vesma_add",
+            {
+                "content": "body",
+                "tags": ["project:hermes", "vesma:learning"],
+                "specialist": "agent:tech-lead",
+            },
+        )
+        assert "error" in json.loads(result)
+        adapter.add_memory.assert_not_called()

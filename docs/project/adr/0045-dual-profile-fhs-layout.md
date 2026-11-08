@@ -144,7 +144,7 @@ tests for both generations (rollout wave 1).
 | `/etc/vesma/` | configuration root | `0750 root:vesma` |
 | `/etc/vesma/config.yaml` | shared config | `0640 root:vesma`, conffile |
 | `/etc/vesma/components.d/<name>.yaml` | manifests (drop-in) | `0640 root:vesma`, conffile |
-| `/etc/vesma/env.d/<name>.env` | env secrets | `0600 root:vesma`¹ — doctor FAIL gate |
+| `/etc/vesma/env.d/<name>.env` | env secrets | `0600 vesma:vesma`¹ — doctor FAIL gate |
 | `/usr/lib/sysusers.d/vesma.conf` | creates `vesma:vesma` | `0644 root:root` |
 | `/etc/systemd/system/vesma.service` | system supervisor unit | `0644 root:root` |
 | `/usr/lib/vesma/venv/`, `venvs/<name>` | root-owned venvs, symlink revisions | tree `0755 root:root` |
@@ -161,6 +161,15 @@ tests for both generations (rollout wave 1).
 default `root:vesma`; the final pin belongs to the units wave). The
 normative invariant: `0600`, no group/world read, only the supervisor
 service account reads, loading fail-closed, any drift a doctor FAIL.
+AMENDMENT 2026-11-08 (cards a7830757 + 055a4c58, TL decision — the
+final pin this footnote reserved): the owner is `vesma:vesma`. The
+fail-closed env-file loader (envfile.py, component-manifest v1 §3.5)
+refuses to start unless `st_uid` equals the supervisor's euid
+(`ENV_FILE_UNSAFE`), so a root-owned secret file is a guaranteed start
+refusal — the manifest aligns UNDER the enforced loader contract. The
+normative invariant is unchanged (the amendment only fixes the
+provisional design default to the account the invariant already
+named).
 
 The `vesma-oper` group of the v1 §3.3 design table is NOT introduced;
 operator group access to the system socket is an open question of the

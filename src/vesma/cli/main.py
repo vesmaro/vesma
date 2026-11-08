@@ -1417,6 +1417,55 @@ def delete_memory(
     console.print("[dim]Verify the journal any time: vesma doctor[/dim]")
 
 
+@app.command()
+def reown(
+    memory_id: Annotated[str, typer.Argument(help="Target memory id.")],
+    agent: Annotated[
+        str,
+        typer.Option("--agent", help="New owner slug (the agent:<slug> namespace)."),
+    ],
+    reason: Annotated[
+        str,
+        typer.Option(
+            "--reason",
+            help="Why the row is reassigned — REQUIRED, lands in the audit log.",
+        ),
+    ],
+    config: str = ConfigOption,
+) -> None:
+    """Reassign a memory's ownership to another agent (operator-only).
+
+    Rewrites ONLY the agent: tag (old removed, new minted); project:,
+    vesma:, specialist: and task: tags pass through untouched. Off-plane
+    admin path (W3, ADR-0050 §4): the on-plane namespace gates do not run
+    here by design — this is the approved administrative loophole for
+    legacy rows (e.g. agent:tech-lead board cards a live token cannot
+    mutate). Tombstoned rows and unknown ids refuse loudly; --reason is
+    mandatory and lands in the audit log line.
+    """
+    mgr = get_manager(config)
+    try:
+        result = mgr.reown(memory_id, agent=agent, reason=reason)
+    except ValueError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    if not result["changed"]:
+        console.print(
+            f"[yellow]=[/yellow] Memory {memory_id} is already owned by "
+            f"agent:{result['new_owner']} (no-op, nothing written)"
+        )
+        return
+    table = Table(title=f"Reowned — {memory_id}", show_header=False)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="white")
+    old = f"agent:{result['old_owner']}" if result["old_owner"] else "(unowned)"
+    table.add_row("old_owner", old)
+    table.add_row("new_owner", f"agent:{result['new_owner']}")
+    table.add_row("reason", result["reason"])
+    console.print(table)
+
+
 # ── workflow (#96) ────────────────────────────────────────────────────────────
 #
 # Thin CLI wrappers over MemoryManager.workflow_set / workflow_get /

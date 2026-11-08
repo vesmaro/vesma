@@ -279,6 +279,49 @@ class TestSy02ManifestSingleSource:
         assert by_role["log_root"].has_flag("opt-in")
         assert by_role["file_logs"].has_flag("opt-in")
 
+
+class TestEnvSecretsLoaderContractAlignment:
+    """Cards a7830757 + 055a4c58, TL decision 2026-11-08: the fail-closed
+    env-file loader (src/vesma/service/envfile.py) is the ENFORCED
+    contract — ``st_uid != euid`` is a start refusal (ENV_FILE_UNSAFE) —
+    so the manifest's env_secrets ownership aligns UNDER the loader:
+    ``vesma:vesma`` (the service account the supervisor runs as), never
+    ``root:vesma`` (a root-owned secret file would be a guaranteed start
+    refusal on every deployment). Mode stays exactly 0600."""
+
+    def test_env_secrets_owned_by_the_service_account(self) -> None:
+        entry = fhs.load_fhs_manifest().entry("env_secrets")
+        assert entry.owner == "vesma"
+        assert entry.group == "vesma"
+
+    def test_env_secrets_mode_stays_the_exact_0600_gate(self) -> None:
+        entry = fhs.load_fhs_manifest().entry("env_secrets")
+        assert entry.mode == 0o600
+        assert entry.has_flag("fail-closed")
+
+    def test_no_other_fail_closed_role_carries_root_ownership(self) -> None:
+        """env_secrets is the only role the loader owner-checks; if a
+        future role joins the ``fail-closed`` flag class, its manifest
+        ownership must be re-judged against the loader in the same wave
+        (this pin makes the addition loud)."""
+        offenders = [
+            e.role
+            for e in fhs.load_fhs_manifest().entries
+            if e.has_flag("fail-closed") and e.owner == "root"
+        ]
+        assert offenders == []
+
+    def test_data_plane_dirs_keep_the_manifest_0750_canon(self) -> None:
+        """The 0700-vs-0750 conflict on the data dirs resolves to the
+        manifest (canon = manifest, TL decision): data_root and
+        component_data stay 0750 vesma:vesma — the prod drift line the
+        operator applies is ``chmod 750``, never a manifest weakening."""
+        by_role = {e.role: e for e in fhs.load_fhs_manifest().entries}
+        for role in ("data_root", "component_data", "supervisor_history"):
+            assert by_role[role].mode == 0o750, role
+            assert by_role[role].owner == "vesma", role
+            assert by_role[role].group == "vesma", role
+
     def test_created_paths_all_come_from_the_manifest(self, sim: Path, seams: Seam) -> None:
         install_system()
         doc = read_system_state()
