@@ -16,7 +16,7 @@
     "tags": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Record tags. Canon convention: project:<slug>, vesma:decision. The agent: tag is minted by the server from the token — do NOT author it yourself."
+      "description": "Record tags. Canon convention: project:<slug>, agent:<slug>, mnemos:decision."
     },
     "metadata": {
       "type": "object",
