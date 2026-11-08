@@ -2621,6 +2621,219 @@ def _dr24(settings_loader: Callable[[], Any] | None = None) -> Finding:
     return Finding("DR-24", title, severity, "; ".join(segments))
 
 
+# ── DR-26: MCP token injector (seamless harness access, ADR-0052) ────────
+
+_INJECTOR_UNIT = "vesma-mcp-injector.service"
+#: Canon port table (ArchCom 2026-11-06 contract addendum): 8787 = core
+#: REST/MCP, 8789 = injector zcode, 8790 = mesh.tcp (in-core), 8791 =
+#: mesh component, 8792 = mcp-front; further harnesses from 8793.
+_INJECTOR_DEFAULT_PORT = 8789
+#: Rotation cadence is 2x/day (04:17+16:17) against a 24h token TTL — the
+#: "rotation period < TTL" invariant (ADR-0052). A token file older than
+#: 25h means the rotation automation STOPPED: one missed cycle + slack.
+#: WARN (rotation health, the DR-25 aging-token precedent), not FAIL — the
+#: overlap still covers the harness until the live token actually expires.
+_INJECTOR_STALE_TOKEN_SECONDS = 25 * 3600
+
+
+def _dr26_probe(argv: list[str]) -> subprocess.CompletedProcess[bytes] | None:
+    """Fixed-argv read-only systemd/pgrep probe (the DR-26 seam default)."""
+    try:
+        return subprocess.run(argv, capture_output=True, timeout=10, check=False)  # nosec B603 - fixed-argv read-only probe
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _dr26_healthz(url: str, timeout: float) -> dict[str, Any]:
+    """One GET /healthz, JSON-decoded (the DR-26 seam default; OSError and
+    ValueError propagate — the caller classifies them)."""
+    import urllib.request
+
+    with urllib.request.urlopen(url, timeout=timeout) as resp:  # nosec B310 - fixed loopback url from the unit-parsed port
+        return json.loads(resp.read().decode())
+
+
+def _dr26(
+    probe: Callable[[list[str]], subprocess.CompletedProcess[bytes] | None] | None = None,
+    healthz: Callable[[str, float], dict[str, Any]] | None = None,
+    now: int | None = None,
+) -> Finding:
+    """The MCP token injector's health (ADR-0052; ArchCom 2026-11-06).
+
+    Detection-gated: the check speaks ONLY when the injector unit is
+    known to the user systemd manager (or an injector process is running
+    without a unit — an advisory leg of its own); on a host without the
+    injector this is a status line (DR-08 semantics: absence is a status,
+    not an error). The injector is a lifecycle/availability surface (a
+    SPOF for harness memory access by design — its refusal is a LOUD
+    named 503, never a silent 401 storm), so the legs are:
+
+    (a) unit known but inactive/failed -> WARN (restart is one command;
+        while down, harness sessions see the named 503 outage);
+    (b) /healthz (no auth, minimal body per contract): unreachable with
+        the unit active -> FAIL (the availability SPOF class); reachable
+        with upstream_tcp_ok=false -> WARN (the CORE is down — that is
+        DR-08's leg, but the injector names it here too);
+    (c) token file (path parsed from the unit's ExecStart): unreadable or
+        weakened mode -> FAIL (fail-closed means the proxy 503s EVERY
+        request); mtime older than 25h -> WARN (rotation automation
+        stopped — the period<TTL invariant breach; harnesses keep working
+        until the live token hits its TTL, then hard-stop);
+    (d) listener secret file: unreadable or weakened mode -> FAIL (same
+        fail-closed class).
+
+    Read-only: systemctl --user queries, one GET /healthz, stat() only —
+    the doctor never reads credential file CONTENTS (values never enter
+    the report; only paths parsed from the unit, which the unit already
+    exposes to the same user).
+    """
+    import time as _time
+
+    title = "MCP token injector (seamless harness access)"
+
+    # Seams (the _dr25_default_settings precedent): the probes default to
+    # the real host, tests inject fakes — the host's real state must not
+    # decide a test outcome.
+    _probe = probe if probe is not None else _dr26_probe
+    _healthz = healthz if healthz is not None else _dr26_healthz
+
+    # LoadState is the reliable existence probe: list-unit-files does not
+    # index every installed unit on some managers (verified 2026-11-08 —
+    # a live active unit answered "loaded" here while list-unit-files
+    # returned empty with rc=1).
+    load_state = _probe(
+        ["systemctl", "--user", "show", "-p", "LoadState", "--value", _INJECTOR_UNIT]
+    )
+    if load_state is None:
+        return Finding(
+            "DR-26",
+            title,
+            Severity.OK,
+            "systemd user manager unavailable — injector check idle",
+        )
+    state_value = load_state.stdout.decode(errors="replace").strip()
+    unit_found = bool(state_value) and state_value != "not-found"
+    process_found = False
+    pgrep = _probe(["pgrep", "-f", "vesma[.-]mcp[._-]injector"])
+    if pgrep is not None and pgrep.returncode == 0 and pgrep.stdout.strip():
+        process_found = True
+    if not unit_found and not process_found:
+        return Finding(
+            "DR-26",
+            title,
+            Severity.OK,
+            "no injector unit or process on this host — check idle "
+            "(deploy with the ADR-0052 unitgen form when a harness needs it)",
+        )
+
+    severity = Severity.OK
+    segments: list[str] = []
+    fixes: list[str] = []
+    active_state = ""
+
+    port = _INJECTOR_DEFAULT_PORT
+    token_path: Path | None = None
+    secret_path: Path | None = None
+    if unit_found:
+        shown = _probe(
+            ["systemctl", "--user", "show", "-p", "ExecStart", "--value", _INJECTOR_UNIT]
+        )
+        argv_value = shown.stdout.decode(errors="replace").strip() if shown else ""
+        try:
+            argv_parts = shlex.split(argv_value)
+        except ValueError:
+            argv_parts = []
+        for flag in ("--port", "--token-file", "--secret-file"):
+            if flag not in argv_parts:
+                continue
+            idx = argv_parts.index(flag)
+            if idx + 1 >= len(argv_parts):
+                continue
+            if flag == "--port":
+                with contextlib.suppress(ValueError):
+                    port = int(argv_parts[idx + 1])
+            elif flag == "--token-file":
+                token_path = Path(argv_parts[idx + 1])
+            else:
+                secret_path = Path(argv_parts[idx + 1])
+
+        active = _probe(["systemctl", "--user", "is-active", _INJECTOR_UNIT])
+        active_state = active.stdout.decode(errors="replace").strip() if active else ""
+        if active_state != "active":
+            severity = Severity.WARN
+            segments.append(
+                f"unit {_INJECTOR_UNIT} is {active_state or 'unknown'} "
+                "(harness sessions see the named 503 outage while it is down)"
+            )
+            fixes.append(f"systemctl --user start {_INJECTOR_UNIT}")
+
+    if process_found and not unit_found:
+        severity = Severity.WARN
+        segments.append(
+            "an injector PROCESS runs without a known user unit "
+            "(hand-launched or the unit was removed) — lifecycle unmanaged"
+        )
+
+    # healthz: no auth, minimal contract body {ok, token_file_readable,
+    # upstream_tcp_ok} (error strings never carry paths — module contract).
+    try:
+        body = _healthz(f"http://127.0.0.1:{port}/healthz", 2.0)
+        if not body.get("upstream_tcp_ok", False):
+            severity = max(severity, Severity.WARN, key=lambda s: s.value)
+            segments.append(
+                f"healthz reports upstream_tcp_ok=false on 127.0.0.1:{port} "
+                "(the CORE is down — check vesma.service / DR-08)"
+            )
+    except (OSError, ValueError) as exc:
+        if unit_found and active_state == "active":
+            severity = Severity.FAIL
+            segments.append(
+                f"healthz unreachable on 127.0.0.1:{port} while the unit is "
+                f"active ({type(exc).__name__}) — availability SPOF leg"
+            )
+            fixes.append(f"journalctl --user -u {_INJECTOR_UNIT} -n 50")
+        else:
+            segments.append(f"healthz unreachable on 127.0.0.1:{port} ({type(exc).__name__})")
+
+    # credential files: stat() only — contents are never read here
+    current = int(_time.time()) if now is None else now
+    for what, path in (("token", token_path), ("secret", secret_path)):
+        if path is None:
+            if unit_found:
+                segments.append(f"info: no {what} path parseable from the unit ExecStart")
+            continue
+        try:
+            st = path.stat()
+        except OSError:
+            severity = Severity.FAIL
+            segments.append(f"{what} file unreadable: {path} (fail-closed: every request 503s)")
+            fixes.append(f"restore the {what} file and chmod 600 {path}")
+            continue
+        if st.st_mode & 0o777 != 0o600:
+            severity = Severity.FAIL
+            segments.append(
+                f"weakened mode {oct(st.st_mode & 0o777)} on {what} file {path} (0600 required)"
+            )
+            fixes.append(f"chmod 600 {path}")
+        if what == "token" and current - int(st.st_mtime) > _INJECTOR_STALE_TOKEN_SECONDS:
+            severity = max(severity, Severity.WARN, key=lambda s: s.value)
+            age_h = (current - int(st.st_mtime)) // 3600
+            segments.append(
+                f"token file mtime is {age_h}h old — rotation automation stopped "
+                "(invariant: rotation period < TTL; harnesses hard-stop when the "
+                "live token expires)"
+            )
+            fixes.append("check the rotation timer: systemctl --user list-timers | grep token")
+
+    if not segments:
+        segments.append(
+            f"unit active, healthz ok on 127.0.0.1:{port}, credential files "
+            "0600 and fresh (rotation invariant intact)"
+        )
+    fix_command = "; ".join(dict.fromkeys(fixes)) or None
+    return Finding("DR-26", title, severity, "; ".join(segments), fix_command)
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 
@@ -2637,7 +2850,8 @@ def run_service_checks() -> list[Finding]:
     (the system daemon serves the FHS data root — card 4c8a0cbe), DR-23
     (artifacts outside the platform — ArchCom 2026-10-29, 1c2b8d64),
     DR-24 (degraded-mode spool + machine state — ADR-0051, wave W4),
-    DR-25 (MCP plane namespace health — ADR-0050 §4/§5, wave W3).
+    DR-25 (MCP plane namespace health — ADR-0050 §4/§5, wave W3),
+    DR-26 (MCP token injector, seamless harness access — ADR-0052).
     """
     installation: dict[str, ComponentManifest] | None = None
     try:
@@ -2681,6 +2895,7 @@ def run_service_checks() -> list[Finding]:
         ("DR-23", "artifacts outside the platform", _dr23),
         ("DR-24", "degraded-mode spool and machine state", _dr24),
         ("DR-25", "MCP plane namespace health", _dr25),
+        ("DR-26", "MCP token injector (seamless harness access)", _dr26),
     ]
     findings: list[Finding] = []
     for check_id, title, check in checks:
