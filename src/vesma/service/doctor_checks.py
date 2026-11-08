@@ -2650,7 +2650,8 @@ def _dr26_healthz(url: str, timeout: float) -> dict[str, Any]:
     import urllib.request
 
     with urllib.request.urlopen(url, timeout=timeout) as resp:  # nosec B310 - fixed loopback url from the unit-parsed port
-        return json.loads(resp.read().decode())
+        parsed: dict[str, Any] = json.loads(resp.read().decode())
+        return parsed
 
 
 def _dr26(

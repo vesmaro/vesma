@@ -57,9 +57,7 @@ class _FakeSystemd:
             if _property == "LoadState":
                 return subprocess.CompletedProcess(argv, 0, self.load_state.encode(), b"")
             if _property == "ExecStart":
-                return subprocess.CompletedProcess(
-                    argv, 0, (self.exec_start or "").encode(), b""
-                )
+                return subprocess.CompletedProcess(argv, 0, (self.exec_start or "").encode(), b"")
         raise AssertionError(f"unexpected probe: {argv}")
 
 

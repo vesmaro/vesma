@@ -70,18 +70,14 @@ def test_execstart_identity_argv_and_path_rendering(unit_text: str) -> None:
 
 
 def test_custom_ports_move_together(unit_text: str) -> None:
-    text = generate_injector_unit(
-        HOME, VENV, TOKEN, SECRET, port=8793, upstream_port=8787
-    )
+    text = generate_injector_unit(HOME, VENV, TOKEN, SECRET, port=8793, upstream_port=8787)
     assert "Description=vesma MCP token injector (127.0.0.1:8793 -> core 8787" in text
     assert "--port 8793" in _directives(text)["ExecStart"]
 
 
 def test_non_loopback_listen_host_refused_at_generation_time() -> None:
     with pytest.raises(UnitGenerationError, match=r"127\.0\.0\.1"):
-        generate_injector_unit(
-            HOME, VENV, TOKEN, SECRET, listen_host="0.0.0.0"
-        )
+        generate_injector_unit(HOME, VENV, TOKEN, SECRET, listen_host="0.0.0.0")
 
 
 def test_paths_outside_home_render_absolute() -> None:
