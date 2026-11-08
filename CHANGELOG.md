@@ -5,6 +5,12 @@ All notable changes to Vesma (formerly Mnemos).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`TestBinaryChildInstall` no longer paints any release-train commit red (card 8143cc7e)** (`tests/test_service_install.py`) — the class runs the whole `install()` walk for real (venv/pip mechanics), so the bundled metrics manifest's `vesma=={engine_version}` expanded to the CURRENT working-tree version, which does not exist on PyPI yet on any release commit after the version bump — a deterministic red on exactly that commit (the 6.10.0 and 6.11.0 trains both tripped it). The class now installs an ALREADY-PUBLISHED release via the new module constant `PINNED_PUBLISHED_VERSION = "6.10.0"` (policy comment: bump BY HAND at major hands — the test checks install MECHANICS against the real registry, not the version currently being built); the `_pinned_version_on_pypi` guard SKIPS — never fails — with a clear bump instruction when the pinned version disappears from PyPI (a definitive registry answer only: offline/timeout runs the leg's usual path, same contract as the `_engine_version_on_pypi` guard of `tests/test_service_system_install.py`). Suite: `tests/test_service_install.py` 59 passed (real PyPI leg included).
+
 ## [6.11.0] — 2026-11-06
 
 ### Added
