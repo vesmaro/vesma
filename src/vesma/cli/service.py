@@ -642,5 +642,69 @@ def run(
     raise typer.Exit(code=code)
 
 
+@service_app.command("injector-unit")
+def injector_unit(
+    token_file: Annotated[
+        Path,
+        typer.Option(
+            help=(
+                "Agent token file for this harness identity "
+                "(0600; re-read by the proxy on EVERY request)."
+            )
+        ),
+    ],
+    secret_file: Annotated[
+        Path,
+        typer.Option(
+            help=(
+                "Listener secret file (0600) — the only credential "
+                "the harness presents to the proxy."
+            )
+        ),
+    ],
+    port: Annotated[
+        int,
+        typer.Option(
+            help=(
+                "Listener port — ONE injector per harness identity "
+                "(canon: 8789 = zcode, further harnesses 8793+; ADR-0052 addendum)."
+            )
+        ),
+    ] = 8789,
+    upstream_port: Annotated[
+        int,
+        typer.Option(help="The core's /mcp plane port (canon: 8787)."),
+    ] = 8787,
+) -> None:
+    """Render the systemd --user unit for the MCP token injector (ADR-0052).
+
+    Prints the generated unit to stdout (read-only — this command never
+    installs anything). Install by writing the output to
+    ``~/.config/systemd/user/vesma-mcp-injector.service`` and running
+    ``systemctl --user daemon-reload && systemctl --user enable --now
+    vesma-mcp-injector.service``. The rotation invariant (rotation period
+    strictly below the token TTL — 2x/day cadence against 24h TTL) is a
+    deployment property; see the ADR-0052 runbook section.
+    """
+    from vesma.service.install import engine_venv
+    from vesma.service.unitgen import generate_injector_unit
+
+    try:
+        console.print(
+            generate_injector_unit(
+                layout.home(),
+                engine_venv(),
+                token_file,
+                secret_file,
+                port=port,
+                upstream_port=upstream_port,
+            ),
+            markup=False,
+            highlight=False,
+        )
+    except Exception as exc:  # UnitGenerationError and layout refusals
+        _fail(str(exc))
+
+
 if __name__ == "__main__":  # pragma: no cover — manual invocation
     service_app()
