@@ -217,6 +217,103 @@ class TestDr15Rights:
         if finding.severity is Severity.FAIL:
             assert "owner" in (finding.detail or "")
 
+    def test_env_secret_owned_by_the_service_account_matches_the_manifest(
+        self, sim: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The loader-contract canon (cards a7830757 + 055a4c58, TL
+        decision 2026-11-08): an env.d secret at the loader-correct
+        ``0600 vesma:vesma`` is NOT a drift line — the manifest itself
+        prescribes the service-account ownership since the alignment.
+        (Non-root simulation: the file's real uid/gid are mapped to the
+        ``vesma`` names the manifest carries.)"""
+        install_system()
+        env_file = sim / "etc/vesma/env.d/mcp-front.env"
+        env_file.write_text("TOKEN=redacted-not-logged\n", encoding="utf-8")
+        env_file.chmod(0o600)
+        real_uid = env_file.stat().st_uid
+        real_gid = env_file.stat().st_gid
+        monkeypatch.setattr(
+            doctor_checks, "_uid_to_name", lambda uid: "vesma" if uid == real_uid else "?"
+        )
+        monkeypatch.setattr(
+            doctor_checks, "_gid_to_name", lambda gid: "vesma" if gid == real_gid else "?"
+        )
+        finding = _finding(run_service_checks(), "DR-15")
+        detail = finding.detail or ""
+        assert "mcp-front.env" not in detail, (
+            "the loader-correct vesma:vesma 0600 secret must not be a drift line"
+        )
+
+    def test_env_secret_owned_by_root_is_now_the_drift_line(
+        self, sim: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The direction pin: with the manifest aligned UNDER the loader,
+        a root-owned env.d secret (the OLD manifest form) is the drift —
+        the finding names the manifest's vesma:vesma, matching the
+        loader's ENV_FILE_UNSAFE start refusal on a root-owned file."""
+        install_system()
+        env_file = sim / "etc/vesma/env.d/legacy.env"
+        env_file.write_text("TOKEN=x\n", encoding="utf-8")
+        env_file.chmod(0o600)
+        real_uid = env_file.stat().st_uid
+        real_gid = env_file.stat().st_gid
+        monkeypatch.setattr(
+            doctor_checks, "_uid_to_name", lambda uid: "root" if uid == real_uid else "?"
+        )
+        monkeypatch.setattr(
+            doctor_checks, "_gid_to_name", lambda gid: "vesma" if gid == real_gid else "?"
+        )
+        finding = _finding(run_service_checks(), "DR-15")
+        assert finding.severity is Severity.FAIL
+        detail = finding.detail or ""
+        assert "legacy.env" in detail
+        assert "manifest vesma:vesma" in detail
+
+
+# ── DR-01 zone discipline under the system profile ────────────────────
+
+
+class TestDr01ZoneDiscipline:
+    """Cards a7830757 + 055a4c58 (the self-contradicting doctor): when
+    the SYSTEM profile is active, components.d/env.d dispatch to the FHS
+    slots — DR-15's manifest-driven zone. DR-01 is the USER-plane table
+    (0700, euid-owned) and must NOT audit those slots anymore: the
+    manifest dirs are 0750 root:vesma, and DR-01 flagging them made the
+    doctor demand 0700 on dirs DR-15 wants 0750."""
+
+    def test_system_slots_are_not_dr01_drift_lines(self, sim: Path) -> None:
+        install_system()
+        # The manifest-created slots: 0750 dirs (≠ the user-plane 0700).
+        assert (sim / "etc/vesma/components.d").is_dir()
+        assert (sim / "etc/vesma/env.d").is_dir()
+        finding = _finding(run_service_checks(), "DR-01")
+        detail = finding.detail or ""
+        assert "etc/vesma/components.d" not in detail
+        assert "etc/vesma/env.d" not in detail
+        # The user-plane dirs of the invoking account are still audited —
+        # the doctor keeps its user-lane teeth (the temp HOME has no
+        # vesma tree here, so nothing was checked for them).
+        assert finding.severity is Severity.OK
+
+    def test_weakened_system_env_file_is_dr15s_line_not_dr01s(
+        self, sim: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The zone handoff is complete for the env-FILES leg too: a
+        weakened secret under the SYSTEM env.d is DR-15's manifest-driven
+        FAIL — DR-01 (whose euid-owner leg would false-FAIL the
+        loader-correct vesma-owned file under a root-run doctor) stays
+        out of that zone. The user-lane env-file auditing keeps its own
+        coverage in tests/test_service_doctor.py (no system stamp)."""
+        install_system()
+        weak = sim / "etc/vesma/env.d/app.env"
+        weak.write_text("TOKEN=x\n", encoding="utf-8")
+        weak.chmod(0o644)
+        dr01 = _finding(run_service_checks(), "DR-01")
+        assert "app.env" not in (dr01.detail or "")
+        dr15 = _finding(run_service_checks(), "DR-15")
+        assert dr15.severity is Severity.FAIL
+        assert "app.env" in (dr15.detail or "")
+
 
 # ── DR-16: symlink-revision integrity ─────────────────────────────────
 

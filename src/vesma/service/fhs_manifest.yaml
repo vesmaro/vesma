@@ -77,12 +77,21 @@ paths:
     group: vesma
     flags: [conffile, drop-in]
 
+  # The env secrets are OWNED BY THE SERVICE ACCOUNT (vesma:vesma), not
+  # root: the fail-closed env-file loader (src/vesma/service/envfile.py,
+  # contract component-manifest v1 §3.5) refuses to start unless
+  # st_uid == the supervisor's euid (ENV_FILE_UNSAFE) — a root-owned
+  # env file is a guaranteed start refusal on every deployment, and the
+  # live tree already carries the loader-correct ownership (card
+  # 055a4c58; TL decision 2026-11-08: the loader is the enforced
+  # contract, the manifest aligns UNDER it). Mode stays exactly 0600 —
+  # the loader checks it with the same fail-closed gate.
   - role: env_secrets
     system_path: /etc/vesma/env.d/<name>.env
     user_path: ~/.vesma/env.d/<name>.env
     kind: file
     mode: "0600"
-    owner: root
+    owner: vesma
     group: vesma
     flags: [fail-closed, drop-in]
 
