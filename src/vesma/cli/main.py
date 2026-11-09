@@ -1441,7 +1441,8 @@ def reown(
     here by design — this is the approved administrative loophole for
     legacy rows (e.g. agent:tech-lead board cards a live token cannot
     mutate). Tombstoned rows and unknown ids refuse loudly; --reason is
-    mandatory and lands in the audit log line.
+    mandatory and lands in the audit log line. --reason is stored in the
+    audit log verbatim: never put secrets (tokens, keys) in it.
     """
     mgr = get_manager(config)
     try:
