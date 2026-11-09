@@ -12,12 +12,20 @@ a test outcome.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
-from vesma.service.doctor_checks import Severity, _dr26
+import pytest
+
+from vesma.service.doctor_checks import (
+    _INJECTOR_PGREP_PATTERN,
+    Severity,
+    _dr26,
+    _dr26_healthz,
+)
 
 
 def _exec_start(token: Path, secret: Path) -> str:
@@ -48,6 +56,8 @@ class _FakeSystemd:
     def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[bytes] | None:
         assert argv[0] in ("systemctl", "pgrep")
         if argv[0] == "pgrep":
+            # SEC-C pin: the probe argv is exactly the canonical-invocation anchor
+            assert argv == ["pgrep", "-f", _INJECTOR_PGREP_PATTERN]
             out = b"12345\n" if self.pgrep_hits else b""
             return subprocess.CompletedProcess(argv, 0 if self.pgrep_hits else 1, out, b"")
         if argv[2] == "is-active":
@@ -186,3 +196,44 @@ def test_process_without_unit_is_warn() -> None:
     finding = _finding(probe=_FakeSystemd(load_state="not-found", pgrep_hits=True))
     assert finding.severity == Severity.WARN
     assert "lifecycle unmanaged" in finding.detail
+
+
+class _RecordingResp:
+    """urlopen stand recording every read() size (the SEC-A cap pin)."""
+
+    def __init__(self) -> None:
+        self.read_sizes: list[int] = []
+
+    def __enter__(self) -> _RecordingResp:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        return b'{"ok": true, "token_file_readable": true, "upstream_tcp_ok": true}'
+
+
+def test_dr26_healthz_read_is_capped_at_64kib(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-A pin: the seam default reads at most 64 KiB from /healthz — a
+    hostile listener on the port cannot balloon doctor memory; JSON
+    parsing of the contract body is unchanged."""
+    import urllib.request
+
+    resp = _RecordingResp()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout: resp)
+    body = _dr26_healthz("http://127.0.0.1:8789/healthz", 2.0)
+    assert resp.read_sizes == [65536]
+    assert body == {"ok": True, "token_file_readable": True, "upstream_tcp_ok": True}
+
+
+def test_pgrep_pattern_matches_only_canonical_invocation() -> None:
+    """SEC-C pin: the pgrep anchor matches the canonical
+    `python -m vesma.mcp_injector` argv and NOT arbitrary file paths or
+    logs that merely contain the word injector."""
+    canonical = "python3 -m vesma.mcp_injector --port 8789"
+    assert re.search(_INJECTOR_PGREP_PATTERN, canonical)
+    assert not re.search(_INJECTOR_PGREP_PATTERN, "less /tmp/vesma-mcp_injector-notes.txt")
+    assert not re.search(_INJECTOR_PGREP_PATTERN, "tail -f /var/log/vesma.mcp.injector.log")
+    assert not re.search(_INJECTOR_PGREP_PATTERN, "grep injector /opt/notes/vesma_mcp_injector.md")

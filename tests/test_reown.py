@@ -34,7 +34,7 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from vesma.cli.main import app
+from vesma.cli.main import app, reown
 from vesma.config import Settings
 from vesma.manager import MemoryManager
 from vesma.mcp_namespace import (
@@ -369,3 +369,11 @@ class TestReownCli:
         )
         assert result.exit_code == 1
         assert "tombstoned" in result.output
+
+    def test_cli_reown_docstring_warns_reason_is_verbatim_in_audit_log(self) -> None:
+        """SEC-E pin: --reason lands in the audit log verbatim — the command
+        docstring must warn the operator against secrets in it."""
+        assert reown.__doc__ is not None
+        assert "verbatim" in reown.__doc__
+        assert "audit log" in reown.__doc__
+        assert "secrets" in reown.__doc__.lower()

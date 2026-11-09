@@ -2651,6 +2651,9 @@ _INJECTOR_DEFAULT_PORT = 8789
 #: WARN (rotation health, the DR-25 aging-token precedent), not FAIL — the
 #: overlap still covers the harness until the live token actually expires.
 _INJECTOR_STALE_TOKEN_SECONDS = 25 * 3600
+#: pgrep anchor (SEC-C): only the canonical `python -m vesma.mcp_injector`
+#: invocation matches — arbitrary file paths containing "injector" must not.
+_INJECTOR_PGREP_PATTERN = "-m vesma[.]mcp_injector"
 
 
 def _dr26_probe(argv: list[str]) -> subprocess.CompletedProcess[bytes] | None:
@@ -2667,7 +2670,8 @@ def _dr26_healthz(url: str, timeout: float) -> dict[str, Any]:
     import urllib.request
 
     with urllib.request.urlopen(url, timeout=timeout) as resp:  # nosec B310 - fixed loopback url from the unit-parsed port
-        parsed: dict[str, Any] = json.loads(resp.read().decode())
+        # read capped at 64 KiB — contract body is ~100 bytes; no hostile memory balloon
+        parsed: dict[str, Any] = json.loads(resp.read(65536).decode())
         return parsed
 
 
@@ -2732,7 +2736,7 @@ def _dr26(
     state_value = load_state.stdout.decode(errors="replace").strip()
     unit_found = bool(state_value) and state_value != "not-found"
     process_found = False
-    pgrep = _probe(["pgrep", "-f", "vesma[.-]mcp[._-]injector"])
+    pgrep = _probe(["pgrep", "-f", _INJECTOR_PGREP_PATTERN])
     if pgrep is not None and pgrep.returncode == 0 and pgrep.stdout.strip():
         process_found = True
     if not unit_found and not process_found:
