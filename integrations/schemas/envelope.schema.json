@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://canon.vesmaro.dev/schemas/envelope.schema.json",
   "title": "Canon envelope v1 (metadata.canon)",
-  "description": "Envelope of a canon record v1, stored at metadata.canon of the record. The envelope never duplicates server-owned fields: title, tags, agent, project and dates live on the record itself; links between records live in server edges, not in the envelope. Unknown properties inside the envelope are forbidden — a typo (e.g. 'affets' instead of 'affects') must fail validation loudly. Per-type extras are required for their own type and rejected for every other type (conditional composition on 'type'). Canon §7 reserves status 'resolved' for task and report records; checkpoint and decision envelopes must not use it.",
+  "description": "Envelope of a canon record v1, stored at metadata.canon of the record. The envelope never duplicates server-owned fields: title, tags, agent, project and dates live on the record itself; links between records live in server edges, not in the envelope. Unknown properties inside the envelope are forbidden — a typo (e.g. 'affets' instead of 'affects') must fail validation loudly. Per-type extras are required for their own type and rejected for every other type (conditional composition on 'type'). Canon §7 reserves status 'resolved' for task and report records; checkpoint and decision envelopes must not use it. The optional lineage_marks field carries inheritance marks (same message under a different envelope, arbiter folds, splits): a mark is an input to merge arbitration, not the classifier's verdict — labeling-policy v1.1 §8.3.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -20,6 +20,10 @@
     "language": {
       "enum": ["ru", "en"],
       "description": "Primary language of the record body. Fixed section headers are always EN regardless of this value."
+    },
+    "lineage_marks": {
+      "$ref": "https://canon.vesmaro.dev/schemas/lineage_marks.schema.json",
+      "description": "Optional inherited lineage marks: where this record's content came from (same message under a different envelope date, folded by merge-arbiter, split out of another record). Absent when the record has no known lineage beyond itself."
     }
   },
   "required": ["schema_version", "type", "status", "language"],
