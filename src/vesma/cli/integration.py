@@ -178,23 +178,23 @@ ENGINE_MANIFEST_NAME = "engine-manifest.yaml"
 #: ``integrations/schemas/README.md`` — in the same change.
 SCHEMAS_SOURCE_PIN = {
     "repo": "github.com/vesmaro/vesma-canon",
-    "tag": "canon-v1.0.0",
-    "commit": "d4e998089acde88a9d57551fa71cfa2ef3c23fdf",
+    "tag": "canon-v1.0.1",
+    "commit": "4484685f93079a2d3b42925ff207c3b1870ab5c9",
     # Per-file sha256 of the pinned schema content. Kept as a nested dict
     # with line breaks: file name + 64-hex digest cannot fit the 100-char
     # ruff line budget otherwise.
     "sha256": {
         "envelope.schema.json": (
-            "3b7a57bcda64eb2758460e025ef1756236a03a481d0c4ae8c39cf206ba583f8f"
+            "81a7cc6e5edee88cabd8d45c270595e379e7fd078e6b165bbf4833541ca6b7e8"
         ),
         "checkpoint.schema.json": (
-            "e71ad139e4e21ef911c2ab3278df1b0ccbe6c94a9fea8c3db056803261808161"
+            "5fb40028e59d556e79b155240d9b606004627903da699a7593c6d4cb74353db1"
         ),
-        "task.schema.json": ("a08ad9fc718e1be977bd337bbb681a87e11403df1ebe5b024f4a84857a834b0c"),
+        "task.schema.json": ("c7528cc0e465e82cd1359f69635aa0ed624e81d4b2fd2c28d49ab76cf16087fc"),
         "decision.schema.json": (
-            "1a832e8c283c3e076b7f1252a28184544285aa5d32f0a872d30c313067047a3a"
+            "3ac9bde8353bce0d955c0ff2c8edd1bb7962767d1859b863c508890209499943"
         ),
-        "report.schema.json": ("0936b9d147dcb5c5cc1740a9ac32648dae4127b58e47d97fa273906e0595a51a"),
+        "report.schema.json": ("084e03a3efb0ea7cf0fa9d6c5aa0474603030d72fbd05b2bb1e2225abe2297df"),
     },
 }
 
