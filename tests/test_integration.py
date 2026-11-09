@@ -2627,8 +2627,8 @@ class TestSchemasPack:
         readme = self._pack_file("schemas", "README.md")
         assert readme.is_file(), "schemas/README.md provenance must ship"
         text = readme.read_text(encoding="utf-8")
-        assert "canon-v1.0.0" in text, "README pins the source tag"
-        assert "d4e9980" in text, "README pins the source commit"
+        assert "canon-v1.0.1" in text, "README pins the source tag"
+        assert "4484685" in text, "README pins the source commit"
         assert "vesma-canon" in text, "README names the source repo"
         assert "Do not edit" in text, "README forbids hand edits"
         for name in self.CANON_SCHEMA_NAMES:
@@ -2649,7 +2649,7 @@ class TestSchemasPack:
         """Drift pin: shipped bytes == canon pin tag (live sibling, else sha256).
 
         The canon repo is a sibling checkout of the repo's PRIMARY worktree;
-        when present the comparison is against the LIVE ``canon-v1.0.0`` tag
+        when present the comparison is against the LIVE ``canon-v1.0.1`` tag
         content (a canon-side change to the pinned files breaks this test
         LOUDLY, the pin protocol, canon §9). Without the sibling checkout
         the frozen sha256 table in ``SCHEMAS_SOURCE_PIN`` keeps the pin
@@ -2665,7 +2665,7 @@ class TestSchemasPack:
             shipped = self._pack_file("schemas", name).read_bytes()
             if live_tag_available:
                 expected = subprocess.run(  # nosec B603
-                    ["git", "-C", str(canon_repo), "show", f"canon-v1.0.0:schemas/{name}"],
+                    ["git", "-C", str(canon_repo), "show", f"canon-v1.0.1:schemas/{name}"],
                     check=True,
                     capture_output=True,
                 ).stdout
@@ -2673,11 +2673,11 @@ class TestSchemasPack:
                 expected = hashlib.sha256(shipped).hexdigest()
                 digest = SCHEMAS_SOURCE_PIN["sha256"][name]  # type: ignore[arg-type]
                 assert expected == digest, (
-                    f"{name} drifted from canon-v1.0.0 — re-vendor from the pin tag"
+                    f"{name} drifted from canon-v1.0.1 — re-vendor from the pin tag"
                 )
                 continue
             assert shipped == expected, (
-                f"{name} drifted from canon-v1.0.0 — re-vendor from the pin tag"
+                f"{name} drifted from canon-v1.0.1 — re-vendor from the pin tag"
             )
 
     def test_canon_sibling_lookup_is_worktree_independent(
@@ -2738,8 +2738,8 @@ class TestSchemasPack:
 
     def test_source_pin_table_matches_shipped_bytes(self) -> None:
         """The frozen sha256 table in SCHEMAS_SOURCE_PIN matches the shipped files."""
-        assert SCHEMAS_SOURCE_PIN["tag"] == "canon-v1.0.0"
-        assert SCHEMAS_SOURCE_PIN["commit"].startswith("d4e9980")
+        assert SCHEMAS_SOURCE_PIN["tag"] == "canon-v1.0.1"
+        assert SCHEMAS_SOURCE_PIN["commit"].startswith("4484685")
         assert set(SCHEMAS_SOURCE_PIN["sha256"]) == set(self.CANON_SCHEMA_NAMES)
         for name, digest in SCHEMAS_SOURCE_PIN["sha256"].items():
             actual = hashlib.sha256(self._pack_file("schemas", name).read_bytes()).hexdigest()
@@ -2754,7 +2754,7 @@ class TestSchemasPack:
         assert payload["deployed_version"] == "2.0.0"
         assert payload["kind"] == "schemas"
         assert payload["files"] == {"a.schema.json": "deadbeef"}
-        assert payload["source"]["tag"] == "canon-v1.0.0"
+        assert payload["source"]["tag"] == "canon-v1.0.1"
 
     # ── Round-trip through the real shipped pack + zcode target ───────────────
 
